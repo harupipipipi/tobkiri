@@ -12,7 +12,7 @@ else:
     _HTTPHandlerBase = object
 
 from .api_response import APIResponse
-from ..panel_auth import PanelAuthManager
+from ..panel_auth import PanelAuthBinding, PanelAuthManager
 
 
 class AuthGateMixin(_HTTPHandlerBase):
@@ -29,6 +29,8 @@ class AuthGateMixin(_HTTPHandlerBase):
 
     if TYPE_CHECKING:
         def _get_cors_origin(self, origin: str) -> str | None: ...
+
+        def _current_panel_auth_binding(self) -> PanelAuthBinding | None: ...
 
         def _send_response(
             self,
@@ -75,8 +77,11 @@ class AuthGateMixin(_HTTPHandlerBase):
         manager = self._panel_auth_manager
         if manager is None:
             return False
+        binding = self._current_panel_auth_binding()
+        if binding is None:
+            return False
         session_id = self._parse_cookie_header().get("rumi_panel_session", "")
-        session = manager.verify_session(session_id)
+        session = manager.verify_session(session_id, binding)
         if session is None:
             return False
         if method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:

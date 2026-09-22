@@ -76,6 +76,13 @@ MODEL_PROFILE_STREAM_OPERATION = (
     "rumi_model_registry_pack.model-profile-resource.stream"
 )
 MODEL_PROFILE_OPERATION = MODEL_PROFILE_GENERATE_OPERATION
+PROVIDER_REGISTRY_CONTRACT = "tobkiri.resource.ai.provider.registry.v1"
+PROVIDER_REGISTRY_GENERATE_OPERATION = (
+    "rumi_provider_registry_pack.provider-registry-resource.generate"
+)
+PROVIDER_REGISTRY_STREAM_OPERATION = (
+    "rumi_provider_registry_pack.provider-registry-resource.stream"
+)
 
 _DIAGNOSTIC_LIMIT = 256
 _DIAGNOSTICS: list[dict[str, Any]] = []
@@ -98,6 +105,7 @@ _GENERATE_ALLOWED_CONTRACTS = frozenset(
         REQUEST_PREPARE_CONTRACT,
         FAILOVER_CONTRACT,
         MODEL_PROFILE_CONTRACT,
+        PROVIDER_REGISTRY_CONTRACT,
     }
 )
 _STREAM_ALLOWED_CONTRACTS = frozenset(
@@ -112,6 +120,7 @@ _STREAM_ALLOWED_CONTRACTS = frozenset(
         REQUEST_PREPARE_CONTRACT,
         FAILOVER_CONTRACT,
         MODEL_PROFILE_CONTRACT,
+        PROVIDER_REGISTRY_CONTRACT,
     }
 )
 
@@ -355,6 +364,7 @@ def _invoke(
         health,
         streaming=streaming,
         explicit_pricing=request.get("_resolved_model_pricing"),
+        explicit_connection=request.get("_resolved_provider_connection_id"),
     )
     exact_binding = bool(
         requirement.preferred_model_id
@@ -436,6 +446,9 @@ def _invoke(
         "credential_handle": request.get("credential_handle"),
         "idempotency_key": request.get("idempotency_key"),
     }
+    provider_connection_id = selected.raw.get("provider_connection_id")
+    if provider_connection_id is not None:
+        invocation["provider_connection_id"] = provider_connection_id
     attempts: list[dict[str, Any]] = []
     for attempt_number, attempt_candidate in enumerate(ordered, 1):
         invocation["attempt"] = attempt_number
@@ -624,6 +637,38 @@ def _resolve_model_reference(
         request["credential_handle"] = profile.get("credential_handle")
     metadata = profile.get("metadata")
     metadata = metadata if isinstance(metadata, Mapping) else {}
+    connection_id = metadata.get("provider_connection_id")
+    if connection_id is not None:
+        if (
+            not isinstance(connection_id, str)
+            or not connection_id
+            or len(connection_id) > 256
+        ):
+            raise GlobalContractInvocationError(
+                "unresolved_profile", "saved Provider connection is invalid"
+            )
+        _require_current_provider_connection(
+            client,
+            connection_id,
+            streaming=streaming,
+        )
+        # Connection identity belongs to the registry; execution identity belongs
+        # to the captured contract. Never use one as a substitute for the other.
+        contract = STREAM_PROVIDER_CONTRACT if streaming else GENERATE_PROVIDER_CONTRACT
+        operation = STREAM_PROVIDER_OPERATION if streaming else GENERATE_PROVIDER_OPERATION
+        adapters = [
+            str(item.get("provider_instance_id") or "")
+            for item in client.providers(contract)
+            if item.get("operation_id") == operation
+        ]
+        if len(adapters) != 1 or not adapters[0]:
+            raise GlobalContractInvocationError(
+                "unresolved_profile", "saved Provider adapter is not uniquely selected"
+            )
+        request["_resolved_provider_connection_id"] = connection_id
+        request["requirements"]["preferred_model_id"] = str(profile.get("model_id") or "")
+        request["requirements"]["preferred_provider_instance_id"] = adapters[0]
+        request["allow_failover"] = False
     pricing = metadata.get("pricing")
     if isinstance(pricing, Mapping):
         request["_resolved_model_pricing"] = {
@@ -703,6 +748,7 @@ def _catalog_candidates(
     *,
     streaming: bool,
     explicit_pricing: Any = None,
+    explicit_connection: Any = None,
 ) -> tuple[list[Candidate], list[dict[str, str]]]:
     catalog_models: list[dict[str, Any]] = []
     for catalog_provider in client.providers(CATALOG_CONTRACT):
@@ -722,11 +768,26 @@ def _catalog_candidates(
             descriptor = dict(raw)
             descriptor["catalog_provider_instance_id"] = catalog_provider_id
             catalog_models.append(descriptor)
-    _append_explicit_live_model(
-        catalog_models,
-        requirement,
-        explicit_pricing=explicit_pricing,
-    )
+    if explicit_connection is not None:
+        # A saved raw model/connection pair is an explicit route, not a catalog
+        # brand/model identifier. Unknown capabilities stay unknown; requests
+        # cannot manufacture tool, image, context-size or residency evidence.
+        catalog_models = [{
+            "model_id": requirement.preferred_model_id,
+            "provider_model_id": requirement.preferred_model_id,
+            "provider_connection_id": explicit_connection,
+            "execution_provider_instance_id": requirement.preferred_provider_instance_id,
+            "health_provider_instance_id": explicit_connection,
+            "catalog_revision": "saved-connection:v1",
+            "modalities": ["text"],
+            "capabilities": [],
+        }]
+    else:
+        _append_explicit_live_model(
+            catalog_models,
+            requirement,
+            explicit_pricing=explicit_pricing,
+        )
     routed = client.invoke(
         ROUTING_CONTRACT,
         ROUTING_STREAM_OPERATION if streaming else ROUTING_GENERATE_OPERATION,
@@ -754,6 +815,59 @@ def _catalog_candidates(
             if isinstance(item, Mapping)
         ],
     )
+
+
+def _require_current_provider_connection(
+    client: GlobalContractClient,
+    connection_id: str,
+    *,
+    streaming: bool,
+) -> None:
+    """Require one current enabled opaque Provider connection identity."""
+    operation = (
+        PROVIDER_REGISTRY_STREAM_OPERATION
+        if streaming
+        else PROVIDER_REGISTRY_GENERATE_OPERATION
+    )
+    providers = [
+        item
+        for item in client.providers(PROVIDER_REGISTRY_CONTRACT)
+        if item.get("operation_id") == operation
+        and isinstance(item.get("provider_instance_id"), str)
+        and item["provider_instance_id"]
+    ]
+    if len(providers) != 1:
+        raise GlobalContractInvocationError(
+            "unresolved_profile",
+            "Provider Registry resource is not uniquely selected",
+        )
+    snapshot = client.invoke(
+        PROVIDER_REGISTRY_CONTRACT,
+        operation,
+        {},
+        provider_instance_id=str(providers[0]["provider_instance_id"]),
+    )
+    if (
+        not isinstance(snapshot, Mapping)
+        or type(snapshot.get("revision")) is not int
+        or snapshot["revision"] < 0
+        or not isinstance(snapshot.get("providers"), list)
+    ):
+        raise GlobalContractInvocationError(
+            "unresolved_profile",
+            "Provider Registry returned an invalid connection snapshot",
+        )
+    matches = [
+        item
+        for item in snapshot["providers"]
+        if isinstance(item, Mapping)
+        and item.get("provider_instance_id") == connection_id
+    ]
+    if len(matches) != 1 or matches[0].get("enabled") is not True:
+        raise GlobalContractInvocationError(
+            "unresolved_profile",
+            "saved Provider connection is unavailable",
+        )
 
 
 def _append_explicit_live_model(

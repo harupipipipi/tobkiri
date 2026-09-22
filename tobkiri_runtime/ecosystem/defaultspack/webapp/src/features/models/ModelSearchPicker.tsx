@@ -10,6 +10,7 @@ import {
 } from "react";
 import { Check, ChevronDown, Loader2, Search, X } from "lucide-react";
 
+import { ErrorNotice } from "../../components/ErrorNotice";
 import type { ModelSearchItem } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import {
@@ -607,7 +608,13 @@ export function ModelSearchPicker({
             <span id={instructionsId} className="sr-only">
               Use arrow, Home, End, and Page keys to move; moving beyond the displayed results reveals the remainder. Enter selects; Escape cancels; Tab closes or confirms a provider when configured. Alt+Backspace clears the query. Alt+Delete clears the selected model when available. Control+Enter or Command+Enter searches remotely when available.
             </span>
-            {error && <div role="alert" className="border-t border-zinc-800 px-3 py-2 text-[11px] text-rose-300">{error}</div>}
+            {error && (
+              <ErrorNotice
+                className="rounded-none border-x-0 border-b-0 px-3 py-2 text-[11px]"
+                copyLabel="モデル検索エラーをコピー"
+                message={error}
+              />
+            )}
             {clearLabel && value && (
               <button
                 type="button"

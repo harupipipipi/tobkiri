@@ -1,4 +1,5 @@
 import {useEffect, useRef, useState, type ReactNode} from 'react';
+import {AlertCircle, AlertTriangle} from 'lucide-react';
 import {
   cancelPackVM,
   cleanupPackVM,
@@ -7,7 +8,7 @@ import {
   preparePackVM,
   provisionPackVM,
   stopPackVM,
-} from '@/src/lib/api';
+} from '@/src/lib/hostClient';
 import type {
   ApiPackVMConsent,
   ApiPackVMDoctor,
@@ -30,6 +31,7 @@ import {
 import {useAppStore} from '@/src/store';
 import {Badge} from '@/src/components/ui/Badge';
 import {Button} from '@/src/components/ui/Button';
+import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/src/components/ui/Card';
 import {Input} from '@/src/components/ui/Input';
 import {PackDiagnostics} from './PackDiagnostics';
@@ -47,6 +49,18 @@ function safeUserError(error: unknown, fallback: string): string {
   return message || fallback;
 }
 
+function savedOperationCannotResume(error: unknown): boolean {
+  const data = error && typeof error === 'object' && 'data' in error
+    ? (error as {data?: unknown}).data
+    : null;
+  const code = data && typeof data === 'object' && 'code' in data
+    ? (data as {code?: unknown}).code
+    : null;
+  if (code === 'INVALID_REQUEST') return true;
+  const message = error instanceof Error ? error.message : '';
+  return /operation_id is unknown|unknown.*operation|operation.*unknown|operation.*not found|not found|stale or tampered|session.*(?:mismatch|invalid)|different session/i.test(message);
+}
+
 function digestRow(label: string, value: string): ReactNode {
   return (
     <div>
@@ -56,46 +70,79 @@ function digestRow(label: string, value: string): ReactNode {
   );
 }
 
-function failureDiagnostic(operation: ApiPackVMOperation): ReactNode {
+function typedFailureDiagnosticText(operation: ApiPackVMOperation): string | null {
   const diagnostic = operation.diagnostic;
   if (!operation.error_type && !diagnostic) return null;
+  const lines: string[] = [];
+  if (operation.error_type) {
+    lines.push(`Failure type: ${userSafePackVMError(operation.error_type)}`);
+  }
+  if (diagnostic) {
+    lines.push(`Diagnostic code: ${userSafePackVMError(diagnostic.code)}`);
+    lines.push(`Stage: ${userSafePackVMError(diagnostic.stage)}`);
+    lines.push(
+      `Process result: ${userSafePackVMError(diagnostic.kind)}${
+        diagnostic.exit_code === null ? '' : ` (${diagnostic.exit_code})`
+      }`,
+    );
+    if (diagnostic.stderr) {
+      lines.push(`Host diagnostic: ${userSafePackVMError(diagnostic.stderr)}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function failureDiagnostic(operation: ApiPackVMOperation): ReactNode {
+  const diagnostic = operation.diagnostic;
+  const copiedDiagnostic = typedFailureDiagnosticText(operation);
+  if (!copiedDiagnostic) return null;
   return (
-    <dl
-      className="mt-3 grid gap-2 rounded-lg border border-red-300/50 bg-red-500/5 p-3 text-xs text-text-muted sm:grid-cols-2"
+    <div
+      className="mt-3 rounded-lg border border-red-300/50 bg-red-500/5 p-3 text-xs text-text-muted"
       aria-label="Typed PackVM failure diagnostic"
+      role="alert"
     >
-      {operation.error_type ? (
-        <div>
-          <dt className="font-medium text-text-main">Failure type</dt>
-          <dd className="mt-1 break-all font-mono">{userSafePackVMError(operation.error_type)}</dd>
-        </div>
-      ) : null}
-      {diagnostic ? (
-        <>
-          <div>
-            <dt className="font-medium text-text-main">Diagnostic code</dt>
-            <dd className="mt-1 break-all font-mono">{userSafePackVMError(diagnostic.code)}</dd>
-          </div>
-          <div>
-            <dt className="font-medium text-text-main">Stage</dt>
-            <dd className="mt-1 break-all font-mono">{userSafePackVMError(diagnostic.stage)}</dd>
-          </div>
-          <div>
-            <dt className="font-medium text-text-main">Process result</dt>
-            <dd className="mt-1 break-all font-mono">
-              {userSafePackVMError(diagnostic.kind)}
-              {diagnostic.exit_code === null ? '' : ` (${diagnostic.exit_code})`}
-            </dd>
-          </div>
-          {diagnostic.stderr ? (
-            <div className="sm:col-span-2">
-              <dt className="font-medium text-text-main">Host diagnostic</dt>
-              <dd className="mt-1 whitespace-pre-wrap break-words">{userSafePackVMError(diagnostic.stderr)}</dd>
+      <div className="flex items-start gap-2">
+        <AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+        <dl className="min-w-0 flex-1 grid gap-2 sm:grid-cols-2">
+          {operation.error_type ? (
+            <div>
+              <dt className="font-medium text-text-main">Failure type</dt>
+              <dd className="mt-1 break-all font-mono">{userSafePackVMError(operation.error_type)}</dd>
             </div>
           ) : null}
-        </>
-      ) : null}
-    </dl>
+          {diagnostic ? (
+            <>
+              <div>
+                <dt className="font-medium text-text-main">Diagnostic code</dt>
+                <dd className="mt-1 break-all font-mono">{userSafePackVMError(diagnostic.code)}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-text-main">Stage</dt>
+                <dd className="mt-1 break-all font-mono">{userSafePackVMError(diagnostic.stage)}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-text-main">Process result</dt>
+                <dd className="mt-1 break-all font-mono">
+                  {userSafePackVMError(diagnostic.kind)}
+                  {diagnostic.exit_code === null ? '' : ` (${diagnostic.exit_code})`}
+                </dd>
+              </div>
+              {diagnostic.stderr ? (
+                <div className="sm:col-span-2">
+                  <dt className="font-medium text-text-main">Host diagnostic</dt>
+                  <dd className="mt-1 whitespace-pre-wrap break-words">{userSafePackVMError(diagnostic.stderr)}</dd>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </dl>
+        <CopyErrorButton
+          label="Copy typed PackVM failure diagnostic"
+          text={copiedDiagnostic}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -110,6 +157,7 @@ export function PackVMLifecyclePanel() {
   const [consent, setConsent] = useState<ApiPackVMConsent | null>(null);
   const [operation, setOperation] = useState<ApiPackVMOperation | null>(null);
   const [consentChecked, setConsentChecked] = useState(false);
+  const [storageConsentChecked, setStorageConsentChecked] = useState(false);
   const [cleanupText, setCleanupText] = useState('');
   const [cleanupRequested, setCleanupRequested] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -159,6 +207,7 @@ export function PackVMLifecyclePanel() {
       setPlan(null);
       setConsent(null);
       setConsentChecked(false);
+      setStorageConsentChecked(false);
       setOperation(null);
       throw new Error('PackVM returned a stale or tampered operation record.');
     }
@@ -180,6 +229,7 @@ export function PackVMLifecyclePanel() {
           : 'PackVM instance was cleaned up.',
         attestation_digest: null,
       });
+      clearPackVMOperationId();
       setPlan(null);
       setConsent(null);
       setCleanupRequested(false);
@@ -193,12 +243,12 @@ export function PackVMLifecyclePanel() {
       const nextOperation = await fetchPackVMProgress(operationId);
       await acceptOperation(nextOperation, operationId);
     } catch (error) {
-      const message = error instanceof Error ? error.message : '';
-      if (/operation_id is unknown|unknown.*operation|operation.*unknown|operation.*not found|not found|stale or tampered|session.*(?:mismatch|invalid)|different session/i.test(message)) {
+      if (savedOperationCannotResume(error)) {
         clearPackVMOperationId();
         setPlan(null);
         setConsent(null);
         setConsentChecked(false);
+        setStorageConsentChecked(false);
         setOperation(null);
       }
       setLifecycleError(safeUserError(
@@ -238,6 +288,7 @@ export function PackVMLifecyclePanel() {
       setPlan(nextPlan);
       setConsent(null);
       setConsentChecked(false);
+      setStorageConsentChecked(false);
       setOperation(null);
       clearPackVMOperationId();
       settledOperationRef.current = null;
@@ -249,19 +300,28 @@ export function PackVMLifecyclePanel() {
   };
 
   const handleConsent = async () => {
-    if (!plan || !consentChecked || !beginAction('consent')) return;
+    if (!plan || !consentChecked || (plan.storage_rebind && !storageConsentChecked)
+      || !beginAction('consent')) return;
     try {
       const nextConsent = await consentPackVM({
         plan_digest: plan.plan_digest,
         ceremony_nonce: plan.ceremony_nonce,
         confirmation: plan.confirmation,
         approve_image_download: consentChecked,
+        ...(plan.registration_update ? {
+          previous_attestation_digest: plan.registration_update.previous_attestation_digest,
+        } : {}),
+        ...(plan.storage_rebind ? {storage_rebind_digest: plan.storage_rebind.digest} : {}),
       });
       if (
         nextConsent.plan_digest !== plan.plan_digest
         || nextConsent.image_digest !== plan.image_digest
         || nextConsent.image_size_bytes !== plan.image_size_bytes
+        || nextConsent.image_source !== plan.image_source
         || nextConsent.image_download_approved !== consentChecked
+        || (nextConsent.previous_attestation_digest ?? null)
+          !== (plan.registration_update?.previous_attestation_digest ?? null)
+        || (nextConsent.storage_rebind_digest ?? null) !== (plan.storage_rebind?.digest ?? null)
       ) {
         throw new Error('PackVM returned consent for a different pinned plan.');
       }
@@ -347,21 +407,27 @@ export function PackVMLifecyclePanel() {
   };
 
   const operationStatus = operation
-    ? `${operation.operation_kind === 'cleanup' ? 'Cleanup' : 'Provisioning'}: ${operationStatusLabel(operation.state)}`
+    ? `${operation.operation_kind === 'cleanup' ? 'Cleanup' : 'Provisioning'}: ${operationStatusLabel(operation.state, operation.operation_kind)}`
     : null;
   const cleanupConfirmation = doctor ? cleanupConfirmationForInstance(doctor.instance) : '';
   const hasActiveOperation = Boolean(operation && operationIsPolling(operation.state));
   const canPrepareNewPlan = Boolean(
     !doctor?.ready
     && !hasActiveOperation
-    && (!operation || operation.state === 'failed' || operation.state === 'cancelled'),
+    && (
+      !operation
+      || operation.state === 'failed'
+      || operation.state === 'cancelled'
+      || operation.state === 'succeeded'
+    ),
   );
   const canPrepare = !doctor?.ready && !hasActiveOperation && !pendingAction;
   const planIsAvailable = plan?.runtime_path_status === 'ready'
     && plan.launcher_reason === null
     && plan.image_source !== 'unavailable';
   const canConsent = Boolean(
-    planIsAvailable && consentChecked && !consent && !pendingAction,
+    planIsAvailable && consentChecked && (!plan?.storage_rebind || storageConsentChecked)
+      && !consent && !pendingAction,
   );
   const canProvision = Boolean(
     planIsAvailable && consent && !operation && !pendingAction,
@@ -390,17 +456,18 @@ export function PackVMLifecyclePanel() {
             </p>
           ) : null}
           {packVmError ? (
-            <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200" role="alert">
-              {formatPackVMRecoveryError(
-                packVmError,
-                safeUserError(packVmError, 'PackVM readiness could not be verified.'),
-              )}
-            </p>
+            <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200" role="alert">
+              <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" data-packvm-error-icon="readiness-warning" />
+              <p className="min-w-0 flex-1 break-words">{formatPackVMRecoveryError(packVmError, safeUserError(packVmError, 'PackVM readiness could not be verified.'))}</p>
+              <CopyErrorButton label="Copy PackVM readiness error" text={formatPackVMRecoveryError(packVmError, safeUserError(packVmError, 'PackVM readiness could not be verified.'))} />
+            </div>
           ) : null}
           {lifecycleError ? (
-            <p className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-200" role="alert">
-              {lifecycleError}
-            </p>
+            <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-200" role="alert">
+              <AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+              <p className="min-w-0 flex-1 break-words">{lifecycleError}</p>
+              <CopyErrorButton label="Copy PackVM lifecycle error" text={lifecycleError} />
+            </div>
           ) : null}
 
           {doctor ? (
@@ -465,14 +532,40 @@ export function PackVMLifecyclePanel() {
             <div className="rounded-lg border border-border p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-medium text-text-main">Pinned plan</p>
+                  <p className="text-sm font-medium text-text-main">
+                    {plan.storage_rebind ? 'Review the changed PackVM storage identity'
+                      : plan.registration_update ? 'Update the existing PackVM registration' : 'Pinned plan'}
+                  </p>
                   <p className="mt-1 text-xs text-text-muted">
                     Review these Host-provided facts before consenting. The Launcher never displays the Host executable path.
                   </p>
                 </div>
                 <Badge variant="outline">{plan.architecture}</Badge>
               </div>
+              {plan.registration_update ? (
+                <p className="mt-4 text-sm text-text-main">
+                  Register the bundled helper and guest runner for future PackVM executions.
+                  The existing image, VM disks, firmware, domain files, and user data will be preserved.
+                  Existing VMs will not be restarted or reconnected by this update.
+                </p>
+              ) : null}
               <dl className="mt-4 grid gap-3 text-xs text-text-muted sm:grid-cols-2">
+                {plan.registration_update ? <>
+                  {digestRow('Previous registration', plan.registration_update.previous_attestation_digest)}
+                  {digestRow('Previous configuration', plan.registration_update.previous_config_digest)}
+                  {digestRow('Previous guest runner', plan.registration_update.previous_guest_runner_digest)}
+                  {digestRow('Previous host build', plan.registration_update.previous_host_build_digest)}
+                  {digestRow('New asset manifest', plan.registration_update.asset_manifest_digest)}
+                </> : null}
+                {plan.storage_rebind ? <>
+                  {digestRow('Existing storage location', plan.storage_rebind.state_root)}
+                  {digestRow('Existing instance location', plan.storage_rebind.instance_root)}
+                  {digestRow('Previous device number', String(plan.storage_rebind.previous_device))}
+                  {digestRow('Current device number', String(plan.storage_rebind.current_device))}
+                  {digestRow('Unchanged storage inode', String(plan.storage_rebind.state_root_inode))}
+                  {digestRow('Unchanged instance inode', String(plan.storage_rebind.instance_root_inode))}
+                  {digestRow('Storage confirmation digest', plan.storage_rebind.digest)}
+                </> : null}
                 {digestRow('Image source', plan.image_source)}
                 {digestRow('Image size', formatPackVMBytes(plan.image_size_bytes))}
                 {digestRow('Image digest', plan.image_digest)}
@@ -480,10 +573,22 @@ export function PackVMLifecyclePanel() {
                 {digestRow('Guest runner digest', plan.guest_runner_digest)}
                 {digestRow('Host build digest', plan.host_build_digest)}
                 {digestRow('Plan digest', plan.plan_digest)}
-                {digestRow('Required disk space', plan.image_download_required
-                  ? `${formatPackVMBytes(plan.image_size_bytes)} for the pinned image download`
+                {digestRow('Required host free space', formatPackVMBytes(
+                  plan.host_free_space_required_bytes,
+                ))}
+                {digestRow('Pinned image download', plan.image_download_required
+                  ? formatPackVMBytes(plan.image_size_bytes)
                   : 'No image download required')}
               </dl>
+              {plan.storage_rebind ? (
+                <p className="mt-4 text-sm text-text-main" role="note">
+                  The mounted device number changed. The Host verified the original registration,
+                  directory paths and inodes, ownership, and immutable image. The old registration
+                  has no volume UUID, so these checks do not prove that storage was never moved
+                  or restored. Only continue if you recognize this existing storage and authorize
+                  registering its current identity. The original registration will be retained.
+                </p>
+              ) : null}
               {plan.launcher_reason ? (
                 <p className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200" role="status">
                   {userSafePackVMError(plan.launcher_reason)}
@@ -508,9 +613,23 @@ export function PackVMLifecyclePanel() {
                       disabled={Boolean(pendingAction)}
                     />
                     <span>
-                      I reviewed this exact plan and authorize the pinned image action shown above.
+                      {plan.registration_update
+                        ? 'I reviewed the previous registration and new digests, and authorize this registration update while preserving existing VM files.'
+                        : 'I reviewed this exact plan and authorize the pinned image action shown above.'}
                     </span>
                   </label>
+                  {plan.storage_rebind ? (
+                    <label className="flex cursor-pointer items-start gap-3 text-sm text-text-main">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 rounded border-border accent-accent"
+                        checked={storageConsentChecked}
+                        onChange={(event) => setStorageConsentChecked(event.target.checked)}
+                        disabled={Boolean(pendingAction)}
+                      />
+                      <span>I recognize this existing storage location and explicitly authorize its changed device identity.</span>
+                    </label>
+                  ) : null}
                   <Button
                     onClick={() => void handleConsent()}
                     disabled={!canConsent}
@@ -535,7 +654,7 @@ export function PackVMLifecyclePanel() {
                 disabled={!canProvision}
                 loading={pendingAction === 'provision'}
               >
-                Provision PackVM
+                {plan?.registration_update ? 'Update registration' : 'Provision PackVM'}
               </Button>
             </div>
           ) : null}
@@ -574,14 +693,16 @@ export function PackVMLifecyclePanel() {
                         ? 'rounded-md border border-emerald-300 bg-emerald-50 p-2 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-300'
                         : 'rounded-md border border-border p-2'}
                   >
-                    {operationStatusLabel(state)}
+                    {operationStatusLabel(state, operation.operation_kind)}
                   </li>
                 ))}
               </ol>
               {operation.error ? (
-                <p className="mt-3 text-sm text-destructive" role="alert">
-                  {userSafePackVMError(operation.error)}
-                </p>
+                <div className="mt-3 flex items-start gap-2 text-sm text-destructive" role="alert">
+                  <AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                  <p className="min-w-0 flex-1 break-words">{userSafePackVMError(operation.error)}</p>
+                  <CopyErrorButton label="Copy PackVM operation error" text={userSafePackVMError(operation.error)} />
+                </div>
               ) : null}
               {operation.state === 'failed' ? failureDiagnostic(operation) : null}
               {operation.state === 'queued' ? (

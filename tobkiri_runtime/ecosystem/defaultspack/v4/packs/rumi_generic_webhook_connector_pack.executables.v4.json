@@ -1,42 +1,43 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:5cbc65794b034a344d31229937f968f34ffef328e845d17cee6743739450bf26",
   "pack_id": "rumi_generic_webhook_connector_pack",
-  "source_identity": "sha256:866386b045fbebd2a554efd18f367f4354efb3f686556bb24aea867521f5d53d",
+  "source_identity": "sha256:6520365536e529defbf3c659ca8eccc43f47a40e329ceae424359e7c483ffff9",
   "variants": [
     {
-      "architecture": "any",
-      "backend": "tobkiri.python-host-v4",
-      "execution_domain_profile": "host.extension.default.v1",
-      "execution_kind": "host_extension",
+      "variant_id": "rumi_generic_webhook_connector_pack.connector.generic_webhook.python",
       "function_id": "rumi_generic_webhook_connector_pack.connector.generic_webhook",
-      "implementation_digest": "sha256:a937eb103d12acf15b3e246f3e5b182b9f1061ffb18b3a39360443c80f266dce",
       "implementation_path": "runtime/adapter.py",
+      "implementation_digest": "sha256:a937eb103d12acf15b3e246f3e5b182b9f1061ffb18b3a39360443c80f266dce",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
       "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.service.connector.adapter.v1",
           "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "type": "object"
-          },
-          "idempotency": "none",
+          "revision_digest": "sha256:ad571b2fde969d5c216aa1ee17c10ce39021f20fd83fb66e9b0e02fa3b60210f",
+          "operation_id": "rumi_generic_webhook_connector_pack.generic-webhook-adapter",
           "input_schema": {
             "type": "object"
           },
-          "operation_id": "rumi_generic_webhook_connector_pack.generic-webhook-adapter",
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:5eae9a76d2b3cbf53169f42b64566e7b2e486c35db463adbf58d9220cb79b46e",
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
           "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
         }
-      ],
-      "platform": "any",
-      "runtime_abi": "python3.13",
-      "variant_id": "rumi_generic_webhook_connector_pack.connector.generic_webhook.python"
+      ]
     }
-  ]
+  ],
+  "materialization_catalog_digest": "sha256:21d5066856a0b2a7d2af20d6a32797f869398738285302f12d8e21d9c95a6d34",
+  "catalog_digest": "sha256:25deb34eee69278842ef6b1859e1c2b967f759efdd01b860912e0df3566aae73"
 }

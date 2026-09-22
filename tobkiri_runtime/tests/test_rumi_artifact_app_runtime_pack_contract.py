@@ -32,11 +32,11 @@ WORKFLOW_IDS = set(['manifest_validation', 'sandbox_render_contract', 'state_sna
 QUALITY_CHECK_IDS = set(['network_denied_by_default', 'first_tool_call_approval', 'client_approved_never_trusted', 'export_share_package_only', 'sandbox_owner_named', 'workspace_handoff_for_storage', 'rollback_parent_present', 'error_boundary_safe_fallback', 'no_direct_execution', 'asset_index_complete'])
 OWNER_EXPECTED = set(['artifact_app_manifest', 'sandbox_renderer_contract', 'artifact_state_snapshot', 'artifact_version_selector', 'tool_mcp_approval_prompt', 'runtime_error_boundary', 'share_export_manifest', 'artifact_runtime_ui_contract'])
 NON_OWNER_EXPECTED = set(['frontend design generation', 'file persistence', 'sandbox isolation runtime', 'MCP execution', 'API execution', 'media transforms', 'browser automation'])
-OVERLAP_EXPECTED = {'frontend_design_generation': 'handoff_to_rumi_reference_ui_pack', 'file_persistence': 'handoff_to_defaultspack', 'sandbox_isolation_runtime': 'handoff_to_defaultspack', 'mcp_execution': 'handoff_to_defaultspack', 'api_execution': 'handoff_to_defaultspack', 'media_transform': 'handoff_to_defaultspack', 'browser_automation': 'handoff_to_rumi_default_tools_pack', 'defaultspack_artifact_store': 'do_not_override', 'defaultspack_chat_artifact_file': 'read_only_selector_only', 'defaultspack_share_links': 'do_not_override', 'defaultspack_tool_execution': 'do_not_override', 'defaultspack_mcp_execution': 'do_not_override', 'artifact_manifest_contract': 'owned_by_rumi_artifact_app_runtime_pack', 'tool_approval_prompt': 'owned_by_rumi_artifact_app_runtime_pack', 'tool_aliases': 'prefer_explicit_pack_namespace'}
+OVERLAP_EXPECTED = {'frontend_design_generation': 'handoff_to_rumi_frontend_design_pack', 'file_persistence': 'handoff_to_defaultspack', 'sandbox_isolation_runtime': 'handoff_to_defaultspack', 'mcp_execution': 'handoff_to_defaultspack', 'api_execution': 'handoff_to_defaultspack', 'media_transform': 'handoff_to_defaultspack', 'browser_automation': 'handoff_to_rumi_default_tools_pack', 'defaultspack_artifact_store': 'do_not_override', 'defaultspack_chat_artifact_file': 'read_only_selector_only', 'defaultspack_share_links': 'do_not_override', 'defaultspack_tool_execution': 'do_not_override', 'defaultspack_mcp_execution': 'do_not_override', 'artifact_manifest_contract': 'owned_by_rumi_artifact_app_runtime_pack', 'tool_approval_prompt': 'owned_by_rumi_artifact_app_runtime_pack', 'tool_aliases': 'prefer_explicit_pack_namespace'}
 PROMOTION_BLOCKERS = set(['no_renderer_registry_runtime', 'no_per_artifact_storage_runtime', 'sandbox_execution_owned_elsewhere', 'mcp_api_execution_owned_elsewhere', 'approval_receipts_required_for_tool_calls', 'supports_all_ok_false_required', 'no_file_persistence_owner', 'no_media_transform_owner', 'no_mcp_api_execution_owner', 'client_supplied_approved_never_trusted', 'schema_contracts_only'])
 PROMOTION_EVIDENCE = set(['sample_app_manifest_cases', 'tool_approval_denial_cases', 'version_rollback_cases', 'error_boundary_cases', 'export_manifest_cases', 'sandbox_token_cases', 'storage_selector_cases', 'share_export_checksum_cases'])
 BLOCKED_BY_DEFAULT = set(['execute artifact code directly', 'call MCP tools before approval', 'allow network by default', 'persist files without workspace handoff', 'bypass sandbox runtime owner', 'trust client supplied approved flag', 'create share links directly', 'zip/export files directly', 'run media transforms', 'mutate defaultspack stores'])
-HANDOFF_TARGETS = set(['defaultspack', 'rumi_default_tools_pack', 'rumi_reference_ui_pack'])
+HANDOFF_TARGETS = set(['defaultspack', 'rumi_default_tools_pack', 'rumi_frontend_design_pack'])
 
 
 def read_json(path: Path) -> dict:
@@ -72,14 +72,14 @@ def test_required_assets_and_ecosystem_contract() -> None:
     assert metadata["declarative_only"] is True
     assert metadata["consumes_existing_sources_only"] is True
     assert metadata["output_effect"] == "draft_and_handoff_only"
-    assert metadata["defaultspack_promotion_eligible"] is False
+    assert metadata["base_pack_promotion_eligible"] is False
     assert set(metadata["owner_surfaces"]) >= OWNER_EXPECTED
     assert set(metadata["non_owner_surfaces"]) >= NON_OWNER_EXPECTED
     available = available_setup_pack_ids()
     assert HANDOFF_TARGETS <= available
     optional_integrations = {item["pack_id"]: item["reason"] for item in metadata["optional_integrations"]}
     assert HANDOFF_TARGETS <= set(optional_integrations)
-    assert "UI" in optional_integrations["rumi_reference_ui_pack"]
+    assert "UI" in optional_integrations["rumi_frontend_design_pack"]
     assert "sandbox" in optional_integrations["defaultspack"]
     assert "browser" in optional_integrations["rumi_default_tools_pack"]
     actual = {
@@ -95,7 +95,7 @@ def test_required_assets_and_ecosystem_contract() -> None:
     indexed_file_assets = {item for values in asset_index["categories"].values() for item in values}
     assert indexed_file_assets == actual
     assert asset_index["invariants"]["external_actions_are_handoffs"] is True
-    assert asset_index["invariants"]["defaultspack_promotion_eligible"] is False
+    assert asset_index["invariants"]["base_pack_promotion_eligible"] is False
 
 
 def test_yaml_json_assets_parse() -> None:
@@ -119,9 +119,9 @@ def test_setup_pack_discoverable_and_overlap_scoped() -> None:
         assert candidate.overlap_policy[key] == value
     assert any(value.startswith("owned_by_") for value in candidate.overlap_policy.values())
     assert any("handoff" in value for value in candidate.overlap_policy.values())
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert set(candidate.defaultspack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
-    assert set(candidate.defaultspack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert set(candidate.base_pack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
+    assert set(candidate.base_pack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
     assert candidate.marketplace["status"] == "verified"
     assert candidate.marketplace["category"] == 'artifact-app-runtime'
     assert candidate.signing["verified"] is True

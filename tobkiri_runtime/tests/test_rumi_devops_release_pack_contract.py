@@ -112,7 +112,7 @@ def test_rumi_devops_release_pack_setup_selector_discovers_policy_metadata():
     assert candidate.overlap_policy["default"] == "prefer_explicit_pack_namespace"
     assert "rumi_code_ide_pack" in candidate.overlap_policy["complements"]
     assert "rumi_agent_services_pack" in candidate.overlap_policy["complements"]
-    assert candidate.defaultspack_promotion["eligible"] is False
+    assert candidate.base_pack_promotion["eligible"] is False
 
     issues = PackSelector(SETUP_PACK_ROOT).validate_candidates(
         installed_packs={
@@ -142,7 +142,7 @@ def test_rumi_devops_release_pack_no_secrets_and_local_first_contract():
         "No executable code",
         "rumi_code_ide_pack",
         "rumi_agent_services_pack",
-        "defaultspack_promotion",
+        "base_pack_promotion",
         "eligible: false",
     ]:
         assert expected in combined

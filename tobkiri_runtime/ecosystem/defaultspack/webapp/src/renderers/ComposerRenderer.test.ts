@@ -1383,7 +1383,7 @@ test("composer renders the current steer above the main input", () => {
       belowExtensions: [],
       thinkingLevel: null,
       contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
-      steerStatus: "ステアを反映しました",
+      steerStatus: { kind: "success", message: "ステアを反映しました" },
       steerPreviewItems: [
         {
           id: "steer_1",
@@ -1404,6 +1404,35 @@ test("composer renders the current steer above the main input", () => {
   assert.match(html, /反映済み/);
   assert.match(html, /結論を先にして、短く返して/);
   assert.doesNotMatch(html, /フォローアップの変更を求める/);
+});
+
+test("steer errors use an assertive error notice with a separate copy action", () => {
+  const html = renderToStaticMarkup(
+    createElement(ComposerRenderer, {
+      input: "",
+      placeholder: "メッセージを入力...",
+      isGenerating: true,
+      selectedProfile: null,
+      favoriteProfiles: [],
+      inlineExtensions: [],
+      belowExtensions: [],
+      thinkingLevel: null,
+      contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+      steerStatus: { kind: "error", message: "Steer queue failed" },
+      onInputChange: () => undefined,
+      onSubmit: () => undefined,
+      onModelProfileSelect: () => undefined,
+      onThinkingLevelChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /role="alert"/);
+  assert.match(html, /aria-live="assertive"/);
+  assert.match(html, /data-error-icon="conversation-steer"/);
+  assert.match(html, /aria-label="ステアエラーをコピー"/);
+  assert.match(html, /data-copy-icon=""/);
+  assert.match(html, /Steer queue failed/);
+  assert.doesNotMatch(html, /text-zinc-500[^>]*>Steer queue failed/);
 });
 
 test("vision unsupported banner appears when image input exists and selected model lacks vision", () => {

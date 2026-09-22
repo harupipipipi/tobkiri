@@ -302,9 +302,15 @@ def test_key_edges_use_public_contracts_in_repository_policy():
         "domain/chat/ir_blocks",
         "domain/chat/ir_legacy_adapter",
         "domain/chat/store",
+        "domain/frontend_settings",
+        "domain/frontend_settings_client",
         "domain/frontend_settings_store",
     }
     assert "domain/chat" not in policy["tool"]["may_import"]
+    assert policy["frontend_settings_client"] == {
+        "may_import": [],
+        "path": "domain/frontend_settings_client.py",
+    }
     assert set(policy["tool"]["public_imports"]) == {
         "domain/chat/ir_blocks",
         "domain/chat/store",
@@ -340,5 +346,15 @@ def test_key_edges_use_public_contracts_in_repository_policy():
     assert "domain/capability" not in policy["frontend"]["may_import"]
     assert set(policy["frontend"]["public_imports"]) == {
         "domain/capability/catalog",
+        "domain/frontend_builtin_catalog",
+        "domain/frontend_command_catalog",
+        "domain/frontend_settings_catalog",
+        "domain/frontend_settings_client",
         "domain/frontend_settings_store",
     }
+    for name in (
+        "frontend_builtin_catalog",
+        "frontend_command_catalog",
+        "frontend_settings_catalog",
+    ):
+        assert policy[name] == {"may_import": [], "path": f"domain/{name}.py"}

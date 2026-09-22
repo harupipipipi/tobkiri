@@ -69,7 +69,7 @@ class SetupPackDefinition:
     depends_on: List[Dict[str, str]] = field(default_factory=list)
     conflicts_with: List[Dict[str, str]] = field(default_factory=list)
     overlap_policy: Dict[str, Any] = field(default_factory=dict)
-    defaultspack_promotion: Dict[str, Any] = field(default_factory=dict)
+    base_pack_promotion: Dict[str, Any] = field(default_factory=dict)
     compatibility: Dict[str, Any] = field(default_factory=dict)
     marketplace: Dict[str, Any] = field(default_factory=dict)
     signing: Dict[str, Any] = field(default_factory=dict)
@@ -145,7 +145,7 @@ class SetupPackManager:
                 ),
                 conflicts_with=_normalize_pack_ref_specs(raw.get("conflicts_with", [])),
                 overlap_policy=_as_dict(raw.get("overlap_policy")),
-                defaultspack_promotion=_as_dict(raw.get("defaultspack_promotion")),
+                base_pack_promotion=_as_dict(raw.get("base_pack_promotion")),
                 compatibility=compatibility,
                 marketplace=_as_dict(raw.get("marketplace")),
                 signing=_as_dict(raw.get("signing")),
@@ -213,7 +213,7 @@ class SetupPackManager:
                 "depends_on": list(item.depends_on),
                 "conflicts_with": list(item.conflicts_with),
                 "overlap_policy": dict(item.overlap_policy),
-                "defaultspack_promotion": dict(item.defaultspack_promotion),
+                "base_pack_promotion": dict(item.base_pack_promotion),
                 "compatibility": dict(item.compatibility),
                 "marketplace": dict(item.marketplace),
                 "signing": dict(item.signing),

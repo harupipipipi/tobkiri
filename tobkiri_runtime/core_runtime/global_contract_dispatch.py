@@ -64,6 +64,33 @@ class HostCredentialTransport(Protocol):
     ) -> Mapping[str, Any]:
         """Perform exactly one Host-bound credentialed JSON request."""
 
+    def select_git_https_credential(
+        self,
+        *,
+        workspace_id: str,
+        endpoint_origin: str,
+        provider_instance_id: str,
+        credential_scope: str,
+    ) -> Mapping[str, Any] | None:
+        """Select one exact opaque Git credential identity, or no credential."""
+
+    def push_git_https(
+        self,
+        *,
+        git_executable: str,
+        git_executable_identity: Mapping[str, Any],
+        bare_repository: str,
+        remote_url: str,
+        refspec: str,
+        force_with_lease: str,
+        credential_handle: str,
+        provider_instance_id: str,
+        credential_scope: str,
+        workspace_id: str,
+        selection_receipt: str,
+    ) -> str:
+        """Perform the sole Host-bound HTTPS Git push primitive."""
+
 
 def _require_v4_session(value: object) -> V4ContractDispatch:
     if not callable(getattr(value, "invoke", None)) or not callable(
@@ -90,14 +117,19 @@ def selected_global_providers(
     contract_id: str,
 ) -> tuple[dict[str, Any], ...]:
     """Return immutable provider metadata from the captured activation."""
-    return tuple(dict(item) for item in _require_v4_session(session).provider_metadata(contract_id))
+    return tuple(
+        dict(item)
+        for item in _require_v4_session(session).provider_metadata(contract_id)
+    )
 
 
 def captured_profile_id(session: V4ContractDispatch) -> str:
     """Return the profile identity pinned to this exact activation snapshot."""
     value = str(getattr(_require_v4_session(session), "profile_id", "")).strip()
     if not value:
-        raise GlobalContractUnavailable("Pack v4 dispatch session has no captured profile identity")
+        raise GlobalContractUnavailable(
+            "Pack v4 dispatch session has no captured profile identity"
+        )
     return value
 
 
@@ -111,7 +143,10 @@ def invoke_selected_global_provider(
     """Invoke after exact provider identity confirmation from snapshot metadata."""
     providers = selected_global_providers(session, contract_id)
     matches = [
-        item for item in providers if item.get("provider_instance_id") == provider_instance_id
+        item
+        for item in providers
+        if item.get("provider_instance_id") == provider_instance_id
+        and item.get("operation_id") == operation
     ]
     if len(matches) != 1:
         raise GlobalContractUnavailable(
@@ -187,9 +222,79 @@ class GlobalContractClient:
             pass
         raise HostCredentialTransportError
 
+    def select_git_https_credential(
+        self,
+        *,
+        workspace_id: str,
+        endpoint_origin: str,
+        provider_instance_id: str,
+        credential_scope: str,
+    ) -> Mapping[str, Any] | None:
+        """Ask the Host to select one resource-bound opaque Git handle."""
+
+        if self.host_credential_transport is None:
+            return None
+        try:
+            value = self.host_credential_transport.select_git_https_credential(
+                workspace_id=workspace_id,
+                endpoint_origin=endpoint_origin,
+                provider_instance_id=provider_instance_id,
+                credential_scope=credential_scope,
+            )
+            if value is None:
+                return None
+            if not isinstance(value, Mapping):
+                raise HostCredentialTransportError
+            return dict(value)
+        except Exception:
+            pass
+        raise HostCredentialTransportError
+
+    def push_git_https_with_credential(
+        self,
+        *,
+        git_executable: str,
+        git_executable_identity: Mapping[str, Any],
+        bare_repository: str,
+        remote_url: str,
+        refspec: str,
+        force_with_lease: str,
+        credential_handle: str,
+        provider_instance_id: str,
+        credential_scope: str,
+        workspace_id: str,
+        selection_receipt: str,
+    ) -> str:
+        """Use the finite Host HTTPS Git transport; never resolve material."""
+
+        if self.host_credential_transport is None:
+            raise PermissionError("Host credential transport is unavailable")
+        try:
+            value = self.host_credential_transport.push_git_https(
+                git_executable=git_executable,
+                git_executable_identity=git_executable_identity,
+                bare_repository=bare_repository,
+                remote_url=remote_url,
+                refspec=refspec,
+                force_with_lease=force_with_lease,
+                credential_handle=credential_handle,
+                provider_instance_id=provider_instance_id,
+                credential_scope=credential_scope,
+                workspace_id=workspace_id,
+                selection_receipt=selection_receipt,
+            )
+            if not isinstance(value, str):
+                raise HostCredentialTransportError
+            return value
+        except Exception:
+            pass
+        raise HostCredentialTransportError
+
     def _require_declared(self, contract_id: str) -> None:
         if contract_id not in self.allowed_contract_ids:
-            raise PermissionError(f"contract was not declared by consumer: {contract_id}")
+            raise PermissionError(
+                f"contract was not declared by consumer: {contract_id}"
+            )
 
 
 __all__ = [

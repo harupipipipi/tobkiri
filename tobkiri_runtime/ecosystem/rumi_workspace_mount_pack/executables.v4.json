@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:9532b9a5ac1d8bb24c677f7e467c70a831f4810c6b8a302e324d1bf2a27168e4",
+  "catalog_digest": "sha256:5515806c8f7829ea0bdb155336a5119ff7192bfc09a8a7369627296be6fe0f73",
   "pack_id": "rumi_workspace_mount_pack",
-  "source_identity": "sha256:d54937b9d0981de53d29e74376d53a4272e8c75937349cdb510a94c7bf8f4f28",
+  "source_identity": "sha256:faac005ba2cc13061652f19ab8f022ba9417a8cdb516d2678be4332d13a48bcc",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_workspace_mount_pack.workspace-mount.manage",
-      "implementation_digest": "sha256:7c339e5cd1716f30f264e3b0239344ed4f7a13415a544ff88f627d7202bb545b",
+      "implementation_digest": "sha256:925115f6cf67373e5c445929799fbe63cfb6ee67ae5784ee6c1f28190e77cad1",
       "implementation_path": "runtime/mounts.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -44,7 +44,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_workspace_mount_pack.workspace-mount.resource",
-      "implementation_digest": "sha256:7c339e5cd1716f30f264e3b0239344ed4f7a13415a544ff88f627d7202bb545b",
+      "implementation_digest": "sha256:925115f6cf67373e5c445929799fbe63cfb6ee67ae5784ee6c1f28190e77cad1",
       "implementation_path": "runtime/mounts.py",
       "materialization_mode": "on_demand",
       "operations": [

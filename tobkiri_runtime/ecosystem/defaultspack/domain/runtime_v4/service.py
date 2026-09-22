@@ -13,9 +13,11 @@ import importlib
 import errno
 import os
 import re
+import threading
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Protocol
 
@@ -23,7 +25,8 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
-from tobkiri_protocol.errors import ProtocolError, SchemaValidationError
+from tobkiri_protocol.errors import ProtocolError
+from tobkiri_protocol.executable_catalog import materialization_catalog_digest
 from tobkiri_protocol.profile_scope import normalize_requested_scope_template
 from tobkiri_protocol.platform_artifact import verify_platform_artifact
 from tobkiri_protocol.secure_persistence import (
@@ -31,22 +34,19 @@ from tobkiri_protocol.secure_persistence import (
     SecurePersistenceError,
 )
 from tobkiri_protocol.validation import validate_document
+from tobkiri_protocol.bundle_catalog import (
+    BundleIntegrityError as BundleIntegrityError,
+    BundledCatalog,
+    DefaultProfileV4Error,
+)
 
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _ACTIVATION_RE = re.compile(r"^activation:[a-z0-9][a-z0-9._-]{7,127}$")
-_BUNDLE_SCHEMA = "io.tobkiri.defaultspack-bundle-lock.v1"
 _ENVELOPE_SCHEMA = "io.tobkiri.defaultspack-activation-envelope.v1"
 _POINTER_SCHEMA = "io.tobkiri.defaultspack-active-pointer.v1"
 _PENDING_SCHEMA = "io.tobkiri.defaultspack-pending-activation.v1"
 _FOUNDATIONAL_CONTRACT = "conversation.turn.v1"
-
-
-class DefaultProfileV4Error(RuntimeError):
-    """Base error for the default Profile v4 boundary."""
-
-
-class BundleIntegrityError(DefaultProfileV4Error):
-    """Raised when the finite bundled inventory is invalid or has drifted."""
+_AUTHORITY_MODES = frozenset({"profile_grant", "interactive_only"})
 
 
 class ProfileResolutionDenied(DefaultProfileV4Error):
@@ -56,9 +56,17 @@ class ProfileResolutionDenied(DefaultProfileV4Error):
 class ProfileReconfirmationRequired(ProfileResolutionDenied):
     """Raised when a valid predecessor cannot authorize a changed Profile."""
 
+    verified_profile_definition_digest: str | None = None
+    verified_profile: Mapping[str, Any] | None = None
+    verified_activation_identity: tuple[str, str, str, str] | None = None
+
 
 class ActivationLockTimeout(ProfileResolutionDenied):
     """Raised when the activation process lock is unavailable by its deadline."""
+
+
+class ArtifactVerificationTimeout(ActivationLockTimeout):
+    """Raised when a shared artifact verification misses its bounded wait."""
 
 
 class ActivationAuthority(Protocol):
@@ -124,165 +132,6 @@ def _require_optional_pin(
         raise ProfileResolutionDenied(f"{field} is stale or mismatched")
 
 
-@dataclass(frozen=True)
-class BundledCatalog:
-    """Finite, digest-verified collection of bundled v4 documents."""
-
-    root: Path
-    packs: Mapping[str, Mapping[str, Any]]
-    bases: Mapping[str, Mapping[str, Any]]
-    shells: Mapping[str, Mapping[str, Any]]
-    profiles: Mapping[str, Mapping[str, Any]]
-    artifact_root: Path | None = None
-    executable_catalogs: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
-
-    @classmethod
-    def load(cls, root: Path, *, artifact_root: Path | None = None) -> "BundledCatalog":
-        """Load only files named by ``bundle.lock.json`` and verify every byte."""
-        requested_root = Path(root)
-        if requested_root.is_symlink():
-            raise BundleIntegrityError("bundle root must not be a symlink")
-        root = requested_root.resolve(strict=True)
-        lock_path = root / "bundle.lock.json"
-        if lock_path.is_symlink():
-            raise BundleIntegrityError("bundle lock must not be a symlink")
-        try:
-            lock = strict_loads(lock_path.read_bytes())
-        except (OSError, ProtocolError) as exc:
-            raise BundleIntegrityError(f"cannot read bundle lock: {exc}") from exc
-        if not isinstance(lock, dict) or set(lock) != {"schema", "entries"}:
-            raise BundleIntegrityError("bundle lock has unknown or missing fields")
-        if lock.get("schema") != _BUNDLE_SCHEMA:
-            raise BundleIntegrityError("bundle lock schema is not supported")
-        entries = lock.get("entries")
-        if not isinstance(entries, list) or not entries:
-            raise BundleIntegrityError("bundle lock entries must be a non-empty array")
-
-        collections: dict[str, dict[str, Mapping[str, Any]]] = {
-            "pack": {},
-            "base": {},
-            "shell": {},
-            "profile": {},
-            "executable_catalog": {},
-        }
-        identity_fields = {
-            "pack": ("pack", "id"),
-            "base": (None, "pack_id"),
-            "shell": (None, "provider_id"),
-            "profile": (None, "profile_id"),
-            "executable_catalog": (None, "pack_id"),
-        }
-        seen_paths: set[str] = set()
-        executable_lock_entries: dict[str, tuple[str, str]] = {}
-        for index, entry in enumerate(entries):
-            if not isinstance(entry, dict) or set(entry) != {"path", "kind", "digest"}:
-                raise BundleIntegrityError(f"bundle entry {index} has invalid fields")
-            relative = entry.get("path")
-            kind = entry.get("kind")
-            expected_digest = entry.get("digest")
-            if not isinstance(relative, str) or not relative or relative in seen_paths:
-                raise BundleIntegrityError(f"bundle entry {index} has an invalid path")
-            if kind not in collections:
-                raise BundleIntegrityError(f"bundle entry {relative} has an invalid kind")
-            if (
-                not isinstance(expected_digest, str)
-                or _DIGEST_RE.fullmatch(expected_digest) is None
-            ):
-                raise BundleIntegrityError(f"bundle entry {relative} has an invalid digest")
-            candidate = (root / relative).resolve(strict=True)
-            if candidate == root or root not in candidate.parents:
-                raise BundleIntegrityError(f"bundle entry escapes root: {relative}")
-            relative_path = Path(relative)
-            current = root
-            for part in relative_path.parts:
-                current /= part
-                if current.is_symlink():
-                    raise BundleIntegrityError(f"bundle entry contains a symlink: {relative}")
-            raw = candidate.read_bytes()
-            actual_digest = _sha256_bytes(raw)
-            if actual_digest != expected_digest:
-                raise BundleIntegrityError(
-                    f"bundle artifact digest changed: {relative} "
-                    f"({actual_digest} != {expected_digest})"
-                )
-            try:
-                document = validate_document(raw, kind)
-            except SchemaValidationError as exc:
-                raise BundleIntegrityError(f"invalid {kind} document {relative}: {exc}") from exc
-            if kind in {"base", "shell"}:
-                expected_revision = canonical_digest(
-                    {key: value for key, value in document.items() if key != "definition_revision"}
-                )
-                if document["definition_revision"] != expected_revision:
-                    raise BundleIntegrityError(
-                        f"{kind} definition revision is stale or tampered: {relative}"
-                    )
-            parent_field, identity_field = identity_fields[kind]
-            identity_source = document.get(parent_field) if parent_field else document
-            identity = (
-                identity_source.get(identity_field) if isinstance(identity_source, dict) else None
-            )
-            if not isinstance(identity, str) or identity in collections[kind]:
-                raise BundleIntegrityError(f"duplicate or missing {kind} identity: {identity!r}")
-            collections[kind][identity] = document
-            if kind == "executable_catalog":
-                executable_lock_entries[identity] = (relative, expected_digest)
-            seen_paths.add(relative)
-        for pack_id, executable in collections["executable_catalog"].items():
-            manifest = collections["pack"].get(pack_id)
-            if manifest is None:
-                raise BundleIntegrityError(
-                    f"executable catalog has no bundled Pack manifest: {pack_id}"
-                )
-            if executable["source_identity"] != manifest["integrity"]["source_identity"]:
-                raise BundleIntegrityError(
-                    f"executable catalog source identity is stale: {pack_id}"
-                )
-            expected_catalog_digest = canonical_digest(
-                {
-                    key: value
-                    for key, value in executable.items()
-                    if key != "catalog_digest"
-                }
-            )
-            if executable["catalog_digest"] != expected_catalog_digest:
-                raise BundleIntegrityError(
-                    f"executable catalog digest is stale: {pack_id}"
-                )
-            catalog_entries = [
-                item
-                for item in manifest["artifacts"]
-                if item["path"] == "executables.v4.json"
-            ]
-            if len(catalog_entries) != 1:
-                raise BundleIntegrityError(
-                    f"Pack manifest does not pin executable catalog: {pack_id}"
-                )
-            catalog_path, catalog_lock_digest = executable_lock_entries[pack_id]
-            catalog_raw = (root / catalog_path).read_bytes()
-            catalog_raw_digest = _sha256_bytes(catalog_raw)
-            if (
-                catalog_entries[0]["digest"] != catalog_raw_digest
-                or catalog_lock_digest != catalog_raw_digest
-            ):
-                raise BundleIntegrityError(
-                    f"Pack executable catalog artifact pin is stale: {pack_id}"
-                )
-        return cls(
-            root=root,
-            packs=collections["pack"],
-            bases=collections["base"],
-            shells=collections["shell"],
-            profiles=collections["profile"],
-            artifact_root=(
-                artifact_root.resolve(strict=True)
-                if artifact_root
-                else (root.parent / "platform-artifacts").resolve(strict=True)
-                if (root.parent / "platform-artifacts").is_dir()
-                else None
-            ),
-            executable_catalogs=collections["executable_catalog"],
-        )
 
 
 @dataclass(frozen=True)
@@ -302,6 +151,149 @@ class ActiveDefaultProfile:
     activation: Mapping[str, Any]
 
 
+@dataclass
+class _ArtifactVerificationFlight:
+    """One in-progress verification of an exact activation's artifact bytes."""
+
+    complete: threading.Event
+    error: BaseException | None = None
+    waiters: int = 0
+
+
+_ARTIFACT_VERIFICATION_FLIGHTS_LOCK = threading.Lock()
+_ARTIFACT_VERIFICATION_FLIGHTS: dict[
+    tuple[Path, Path, str, str, str, str, str],
+    _ArtifactVerificationFlight,
+] = {}
+_ACTIVATION_READ_GATES_LOCK = threading.Lock()
+_ACTIVATION_READ_GATES: dict[Path, threading.Lock] = {}
+
+
+@dataclass(frozen=True)
+class _PendingRepublish:
+    """One committed pending activation awaiting its unlocked artifact check."""
+
+    pending: Mapping[str, Any]
+    envelope_name: str
+    reservation_id: str
+    activation_id: str
+    fencing_token: int
+    profile: Mapping[str, Any]
+
+
+class _PendingRepublishRequired(BaseException):
+    """Unwind an activation lock hold for one unlocked artifact verification.
+
+    Every cheap fencing check already passed when this is raised; only the
+    packaged-tree hash remains.  The public entry point that owns the lock
+    catches it, verifies outside the lock, then republishes under a fresh hold
+    after proving the pending journal did not move.
+    """
+
+    def __init__(self, republish: _PendingRepublish) -> None:
+        super().__init__("committed pending activation needs unlocked verification")
+        self.republish = republish
+
+
+def _application_launch_identity(
+    manifest: Mapping[str, Any],
+) -> tuple[str, str, str]:
+    """Return the one neutral Application contribution or fail closed."""
+
+    pack_id = str(manifest["pack"]["id"])
+    operations = [
+        item
+        for item in manifest["operation_catalog"]
+        if item["owner"] == pack_id and item["operation_id"] == "launch"
+    ]
+    if len(operations) != 1:
+        raise ProfileResolutionDenied("Application launch contribution is ambiguous")
+    operation = operations[0]
+    providers = [
+        item
+        for item in manifest["provider_catalog"]
+        if item["owner"] == pack_id
+        and item["provider_id"] == operation["provider_id"]
+        and item["contract_reference"] == operation["contract_reference"]
+        and operation["operation_id"] in item["operations"]
+    ]
+    functions = [
+        item
+        for item in manifest["functions"]
+        if item["id"] == operation["provider_id"]
+        and operation["operation_id"] in item["operations"]
+    ]
+    if len(providers) != 1 or len(functions) != 1:
+        raise ProfileResolutionDenied("Application launch contribution is ambiguous")
+    provider = providers[0]
+    function = functions[0]
+    contracts = [
+        item
+        for item in manifest["contracts"]
+        if item["contract_id"] == operation["contract_reference"]
+        and item["revision_digest"] == function["contract_revision_digest"]
+        and operation["operation_id"] in item["operations"]
+    ]
+    if len(contracts) != 1:
+        raise ProfileResolutionDenied("Application launch contribution is stale")
+    return (
+        str(provider["provider_id"]),
+        str(operation["contract_reference"]),
+        str(operation["operation_id"]),
+    )
+
+
+def project_runtime_launch_selector(active: ActiveDefaultProfile) -> dict[str, Any]:
+    """Project the exact active launch contribution without catalog fallback.
+
+    The contribution is already part of the canonical ResolvedPlan. This
+    projection adds only the Activation identity that selects that immutable
+    plan; it deliberately creates no second digest or authority record.
+    """
+
+    lock = active.resolved.lock
+    plan = active.resolved.plan
+    activation = active.activation
+    plan_digest = canonical_digest(
+        {key: value for key, value in plan.items() if key != "plan_digest"}
+    )
+    if (plan["profile_id"], plan["profile_revision"], plan_digest) != (
+        lock["profile_id"],
+        lock["profile_revision"],
+        lock["plan_digest"],
+    ) or plan_digest != plan["plan_digest"]:
+        raise ProfileResolutionDenied("runtime launch selector plan is stale")
+    if (
+        activation.get("state") != "active"
+        or activation.get("profile_id") != plan["profile_id"]
+        or activation.get("profile_revision") != plan["profile_revision"]
+        or activation.get("plan_digest") != plan["plan_digest"]
+        or activation.get("lock_digest") != lock["lock_digest"]
+    ):
+        raise ProfileResolutionDenied("runtime launch selector activation is stale")
+    contribution = plan.get("launch_contribution")
+    application = plan.get("application")
+    shell = lock.get("shell")
+    if (
+        not isinstance(contribution, Mapping)
+        or not isinstance(application, Mapping)
+        or not isinstance(shell, Mapping)
+        or application.get("executable_artifact_digest")
+        != plan["shell"].get("executable_artifact_digest")
+        or contribution.get("platform") != shell.get("platform")
+        or contribution.get("architecture") != shell.get("architecture")
+    ):
+        raise ProfileResolutionDenied("runtime launch contribution is unavailable")
+    return {
+        "selector_api_version": "io.tobkiri.runtime-launch-selector.v1",
+        "profile_id": plan["profile_id"],
+        "profile_revision": plan["profile_revision"],
+        "activation_id": activation["activation_id"],
+        "plan_digest": plan["plan_digest"],
+        "launch_contribution": dict(contribution),
+    }
+
+
 def _edge_key(edge: Mapping[str, Any]) -> str:
     return "|".join(
         str(edge.get(field) or "")
@@ -312,6 +304,15 @@ def _edge_key(edge: Mapping[str, Any]) -> str:
             "operation_id",
         )
     )
+
+
+def _authority_mode(edge: Mapping[str, Any]) -> str:
+    """Return the closed activation authority policy for one requested edge."""
+
+    value = edge.get("authority_mode", "profile_grant")
+    if value not in _AUTHORITY_MODES:
+        raise ProfileResolutionDenied("requested edge authority mode is invalid")
+    return str(value)
 
 
 def _provider_candidates(
@@ -408,6 +409,13 @@ def dynamic_profile_edges(
         if manifest is None:
             raise ProfileResolutionDenied(f"dynamic Pack is not in the exact inventory: {pack_id}")
         closure.add(pack_id)
+        if depth >= 1:
+            # Only a selected optional Pack and its direct signed dependency
+            # receive dynamic caller edges.  The resolver validates the full
+            # transitive implementation closure separately; inferring callers
+            # beyond this point would both broaden authority and walk valid
+            # Host-provider dependency cycles.
+            continue
         dependencies = tuple(
             str(dependency) for dependency in manifest["requirements"]["pack_dependencies"]
         )
@@ -471,6 +479,10 @@ def dynamic_profile_edges(
                     raise ProfileResolutionDenied(
                         f"dynamic Pack dependency caller is ambiguous: {pack_id}"
                     )
+                # Dynamic Pack edges are never user-selected interactive
+                # authority.  Their absent mode deliberately means the closed
+                # ``profile_grant`` default, preserving older resolved Profile
+                # bytes while preventing a dynamic source from opting in.
                 result.append(
                     {
                         "caller_function_id": operation_caller,
@@ -500,9 +512,7 @@ def _exact_executable_variant(
     pack_id = str(manifest["pack"]["id"])
     executable = catalog.executable_catalogs.get(pack_id)
     if executable is None:
-        raise ProfileResolutionDenied(
-            f"executable catalog is not bundled for Pack: {pack_id}"
-        )
+        raise ProfileResolutionDenied(f"executable catalog is not bundled for Pack: {pack_id}")
     if (
         executable["pack_id"] != pack_id
         or executable["source_identity"] != manifest["integrity"]["source_identity"]
@@ -513,11 +523,7 @@ def _exact_executable_variant(
     )
     if executable["catalog_digest"] != expected_catalog_digest:
         raise ProfileResolutionDenied("executable catalog digest is stale")
-    variants = [
-        item
-        for item in executable["variants"]
-        if item["function_id"] == function["id"]
-    ]
+    variants = [item for item in executable["variants"] if item["function_id"] == function["id"]]
     if len(variants) != 1:
         raise ProfileResolutionDenied(
             f"executable variant is not unique: {pack_id}/{function['id']}"
@@ -537,11 +543,13 @@ def _exact_executable_variant(
     expected_execution_kind = (
         "host_extension"
         if manifest["pack"]["kind"] == "host_extension"
-        else "wasm"
-        if function.get("isolation") == "wasm_component"
-        else "remote"
-        if function.get("isolation") == "remote"
-        else "pack_vm"
+        else (
+            "wasm"
+            if function.get("isolation") == "wasm_component"
+            else "remote"
+            if function.get("isolation") == "remote"
+            else "pack_vm"
+        )
     )
     if variant["execution_kind"] != expected_execution_kind:
         raise ProfileResolutionDenied("executable variant execution kind is stale")
@@ -685,7 +693,7 @@ def resolve_default_profile(
         "Profile Shell artifact pin",
     )
     _require_optional_pin(
-        shell_request["executable_artifact_digest"],
+        shell_request.get("executable_artifact_digest"),
         str(selected_variant["entrypoint_digest"]),
         "Profile Shell executable pin",
     )
@@ -855,6 +863,7 @@ def resolve_default_profile(
     references: list[str] = []
     for source_edge in all_source_edges:
         edge = dict(source_edge)
+        authority_mode = _authority_mode(edge)
         candidates = _provider_candidates(selected, edge["contract_id"], edge["operation_id"])
         candidates = [item for item in candidates if item[1]["id"] == edge["target_provider_id"]]
         if len(candidates) != 1:
@@ -871,6 +880,8 @@ def resolve_default_profile(
         if reference not in references:
             references.append(reference)
         manifest, function, contract = candidates[0]
+        # ``candidates`` was filtered by ``target_provider_id`` above, so the
+        # captured Function principal is the exact target of this Profile edge.
         try:
             edge["requested_scope_template"] = normalize_requested_scope_template(
                 edge["requested_scope_template"],
@@ -898,12 +909,17 @@ def resolve_default_profile(
             str(edge["operation_id"]),
         )
         domain_kind = function.get("isolation", "pack_vm")
+        try:
+            executable_catalog_digest = materialization_catalog_digest(
+                manifest,
+                catalog.executable_catalogs[manifest["pack"]["id"]],
+            )
+        except ValueError as exc:
+            raise ProfileResolutionDenied(str(exc)) from exc
         pin = {
             "pack_id": manifest["pack"]["id"],
             "artifact_digest": manifest["pack"]["artifact_digest"],
-            "executable_catalog_digest": catalog.executable_catalogs[
-                manifest["pack"]["id"]
-            ]["catalog_digest"],
+            "executable_catalog_digest": executable_catalog_digest,
             "variant_id": variant["variant_id"],
             "platform": variant["platform"],
             "architecture": variant["architecture"],
@@ -916,27 +932,28 @@ def resolve_default_profile(
         previous_pin = variant_pins.setdefault(pin_key, pin)
         if previous_pin != pin:
             raise ProfileResolutionDenied("one executable variant has conflicting pins")
-        bindings.append(
-            {
-                "caller_function_id": edge["caller_function_id"],
-                "pack_id": manifest["pack"]["id"],
-                "artifact_digest": manifest["pack"]["artifact_digest"],
-                "function_principal": principal,
-                "contract_id": edge["contract_id"],
-                "operation_id": edge["operation_id"],
-                "domain_kind": domain_kind,
-                "executable_catalog_digest": pin["executable_catalog_digest"],
-                "variant_id": pin["variant_id"],
-                "platform": pin["platform"],
-                "architecture": pin["architecture"],
-                "runtime_abi": pin["runtime_abi"],
-                "backend": pin["backend"],
-                "execution_kind": pin["execution_kind"],
-                "authority_reference": reference,
-                "requested_scope_digest": canonical_digest(edge["requested_scope_template"]),
-                "adapter_digests": [],
-            }
-        )
+        binding = {
+            "caller_function_id": edge["caller_function_id"],
+            "pack_id": manifest["pack"]["id"],
+            "artifact_digest": manifest["pack"]["artifact_digest"],
+            "function_principal": principal,
+            "contract_id": edge["contract_id"],
+            "operation_id": edge["operation_id"],
+            "domain_kind": domain_kind,
+            "executable_catalog_digest": pin["executable_catalog_digest"],
+            "variant_id": pin["variant_id"],
+            "platform": pin["platform"],
+            "architecture": pin["architecture"],
+            "runtime_abi": pin["runtime_abi"],
+            "backend": pin["backend"],
+            "execution_kind": pin["execution_kind"],
+            "authority_reference": reference,
+            "requested_scope_digest": canonical_digest(edge["requested_scope_template"]),
+            "adapter_digests": [],
+        }
+        if authority_mode == "interactive_only":
+            binding["authority_mode"] = authority_mode
+        bindings.append(binding)
 
     profile = dict(source)
     profile["state"] = "resolved"
@@ -946,16 +963,18 @@ def resolve_default_profile(
         "definition_revision": base_definition["definition_revision"],
         "resolution": "verified",
     }
-    profile["shell"] = {
+    resolved_shell = {
         "provider_id": provider_id,
         "pack_id": shell_pack_id,
         "artifact_digest": shell_manifest["pack"]["artifact_digest"],
-        "executable_artifact_digest": selected_variant["entrypoint_digest"],
         "definition_revision": shell_definition["definition_revision"],
         "contract_id": "app.shell.v1",
         "platform": shell_request["platform"],
         "architecture": shell_request["architecture"],
     }
+    if source.get("profile_api_version") == "io.tobkiri.profile.v5":
+        resolved_shell["executable_artifact_digest"] = selected_variant["entrypoint_digest"]
+    profile["shell"] = resolved_shell
     profile["packs"] = [
         {
             "pack_id": manifest["pack"]["id"],
@@ -966,6 +985,16 @@ def resolve_default_profile(
         if manifest["pack"]["id"] not in {base_id, shell_pack_id}
     ]
     profile["requested_edges"] = resolved_edges
+    from core_runtime.profile_content_projection import (
+        resolve_profile_projection,
+        selected_projection_roots,
+    )
+
+    profile["content_projections"] = sorted(
+        [resolve_profile_projection(item) for item in source.get("content_projections") or []],
+        key=lambda item: item["projection_id"],
+    )
+    selected_projection_roots(profile["content_projections"])
     profile["authority_references"] = references
     profile["profile_authority_snapshot_digest"] = snapshot_digest
     catalog_revision = canonical_digest(
@@ -1015,13 +1044,31 @@ def resolve_default_profile(
             ],
         }
     )
-    closure_digest = canonical_digest(effective_set)
+    closure_digest = canonical_digest(
+        {
+            "effective_set": effective_set,
+            "content_projections": profile["content_projections"],
+        }
+    )
     provenance_digest = canonical_digest(profile["provenance"])
     application = {
         "pack_id": application_ids[0],
         "artifact_digest": application_manifest["pack"]["artifact_digest"],
         "executable_artifact_digest": selected_variant["entrypoint_digest"],
         "definition_digest": canonical_digest(application_manifest),
+    }
+    launch_provider_id, launch_contract_id, launch_operation_id = _application_launch_identity(
+        application_manifest
+    )
+    launch_contribution = {
+        "provider_id": launch_provider_id,
+        "contract_id": launch_contract_id,
+        "operation_id": launch_operation_id,
+        "platform": selected_variant["platform"],
+        "architecture": selected_variant["architecture"],
+        "artifact_digest": selected_variant["artifact_digest"],
+        "relative_path": selected_variant["relative_path"],
+        "entrypoint": selected_variant["entrypoint"],
     }
 
     plan: dict[str, Any] = {
@@ -1047,7 +1094,9 @@ def resolve_default_profile(
             "definition_digest": canonical_digest(shell_definition),
         },
         "application": application,
+        "launch_contribution": launch_contribution,
         "effective_set": effective_set,
+        "content_projections": profile["content_projections"],
         "requested_edges_digest": requested_edges_digest,
         "constraints_digest": constraints_digest,
         "closure_digest": closure_digest,
@@ -1073,11 +1122,16 @@ def resolve_default_profile(
             "artifact_digest": base_manifest["pack"]["artifact_digest"],
             "definition_revision": base_definition["definition_revision"],
         },
-        "shell": dict(profile["shell"]),
+        "shell": {
+            **dict(profile["shell"]),
+            "executable_artifact_digest": selected_variant["entrypoint_digest"],
+        },
         "application": application,
         "effective_set": effective_set,
+        "content_projections": profile["content_projections"],
         "variant_pins": sorted(
-            variant_pins.values(), key=lambda item: (item["pack_id"], item["variant_id"])
+            variant_pins.values(),
+            key=lambda item: (item["pack_id"], item["variant_id"]),
         ),
         "requested_edges_digest": requested_edges_digest,
         "constraints_digest": constraints_digest,
@@ -1192,15 +1246,45 @@ class ActivationStore:
         self._validate_record_graph(profile, lock, plan)
         if profile["profile_id"] != self.profile_id:
             raise ProfileResolutionDenied("activation Profile identity does not match store")
-        with self._activation_lock():
-            return self._activate_locked(
-                resolved=ResolvedDefaultProfile(profile=profile, lock=lock, plan=plan),
-                activation_id=activation_id,
-                created_at=created_at,
-                expected_predecessor_profile_revision=(expected_predecessor_profile_revision),
-                expected_predecessor_plan_digest=expected_predecessor_plan_digest,
-                expected_predecessor_activation_id=expected_predecessor_activation_id,
-            )
+        validated = ResolvedDefaultProfile(profile=profile, lock=lock, plan=plan)
+        expected_predecessor = (
+            expected_predecessor_profile_revision,
+            expected_predecessor_plan_digest,
+            expected_predecessor_activation_id,
+        )
+        while True:
+            try:
+                # Hashing a packaged artifact tree can take seconds, so the
+                # candidate and the pinned predecessor verify before the
+                # bounded cross-process lock rather than inside it.  The
+                # commit below still fails closed: reservation fencing, the
+                # journaled writes, and the pointer publish all follow these
+                # exact verifications.
+                self._verify_selected_artifact(
+                    profile,
+                    deadline_monotonic=(
+                        self._monotonic_clock() + self._lock_timeout_seconds
+                    ),
+                )
+                if any(value is not None for value in expected_predecessor) and (
+                    self._state.exists("active.json")
+                ):
+                    self.load_active_snapshot()
+                with self._activation_lock():
+                    return self._activate_locked(
+                        resolved=validated,
+                        activation_id=activation_id,
+                        created_at=created_at,
+                        expected_predecessor_profile_revision=(
+                            expected_predecessor_profile_revision
+                        ),
+                        expected_predecessor_plan_digest=expected_predecessor_plan_digest,
+                        expected_predecessor_activation_id=(
+                            expected_predecessor_activation_id
+                        ),
+                    )
+            except _PendingRepublishRequired as pending:
+                self._republish_pending(pending.republish)
 
     def _activate_locked(
         self,
@@ -1212,7 +1296,12 @@ class ActivationStore:
         expected_predecessor_plan_digest: str | None,
         expected_predecessor_activation_id: str | None,
     ) -> Mapping[str, Any]:
-        """Run one activation while holding the profile's process lock."""
+        """Run one activation while holding the profile's process lock.
+
+        The caller must already have verified the resolved Profile's selected
+        artifact bytes in this process; nothing in this body hashes the
+        packaged tree while the bounded cross-process lock is held.
+        """
         profile = resolved.profile
         lock = resolved.lock
         plan = resolved.plan
@@ -1226,7 +1315,7 @@ class ActivationStore:
         if any(value is not None for value in expected_predecessor) and self._state.exists(
             "active.json"
         ):
-            active = self._load_active_snapshot_locked()
+            active = self._load_active_snapshot_locked(verify_selected_artifact=False)
             if active.activation["activation_id"] == activation_id:
                 if active.resolved != resolved:
                     raise ProfileResolutionDenied(
@@ -1245,7 +1334,6 @@ class ActivationStore:
             )
             if actual_predecessor != expected_predecessor:
                 raise ProfileResolutionDenied("activation predecessor is stale")
-        self._verify_selected_artifact(profile)
         reservation_id, fencing_token = self._authority.reserve_activation(
             activation_id=activation_id,
             profile_id=self.profile_id,
@@ -1357,7 +1445,6 @@ class ActivationStore:
                 ),
             )
             self._fault("before_authority_commit")
-            self._verify_selected_artifact(profile)
             self._authority.transition_activation(
                 reservation_id,
                 expected_state=state,
@@ -1372,7 +1459,6 @@ class ActivationStore:
                 profile=profile,
                 fencing_token=fencing_token,
             )
-            self._verify_selected_artifact(profile)
             self._write_state(
                 "active.json",
                 self._active_pointer(activation_id, envelope_path, envelope_digest),
@@ -1400,8 +1486,13 @@ class ActivationStore:
     def recover(self) -> None:
         """Recover a crash to the complete old or complete committed activation."""
 
-        with self._activation_lock():
-            self._recover_locked()
+        while True:
+            try:
+                with self._activation_lock():
+                    self._recover_locked()
+                return
+            except _PendingRepublishRequired as pending:
+                self._republish_pending(pending.republish)
 
     def _recover_locked(self) -> None:
         """Recover state while the profile's process lock is held."""
@@ -1451,7 +1542,6 @@ class ActivationStore:
         envelope_name = str(pending["envelope_path"])
         if Path(envelope_name).name != envelope_name:
             raise ProfileResolutionDenied("pending activation envelope path is invalid")
-        envelope_path = self.state_root / "activations" / envelope_name
         state = str(reservation["state"])
         if state == "active":
             envelope = self._read_state(
@@ -1474,17 +1564,19 @@ class ActivationStore:
             )
             if not isinstance(envelope.get("profile"), Mapping):
                 raise ProfileResolutionDenied("committed activation profile is invalid")
-            self._verify_selected_artifact(envelope["profile"])
-            self._write_state(
-                "active.json",
-                self._active_pointer(
-                    str(pending["activation_id"]),
-                    envelope_path,
-                    str(pending["envelope_digest"]),
-                ),
+            # The packaged-tree hash runs outside this bounded lock: unwind so
+            # the caller verifies these exact bytes unlocked, then republishes
+            # under a fresh hold after proving the journal did not move.
+            raise _PendingRepublishRequired(
+                _PendingRepublish(
+                    pending=pending,
+                    envelope_name=envelope_name,
+                    reservation_id=reservation_id,
+                    activation_id=str(pending["activation_id"]),
+                    fencing_token=int(pending["fencing_token"]),
+                    profile=envelope["profile"],
+                )
             )
-            self._unlink_state("pending.json", missing_ok=True)
-            return
         if state in {"prepared", "ready_without_authority", "committing"}:
             self._authority.transition_activation(
                 reservation_id,
@@ -1495,6 +1587,56 @@ class ActivationStore:
             raise ProfileResolutionDenied("pending activation has an invalid authority state")
         self._unlink_state("pending.json", missing_ok=True)
         self._unlink_state(Path("activations") / envelope_name, missing_ok=True)
+
+    def _republish_pending(self, republish: _PendingRepublish) -> None:
+        """Verify a committed pending artifact unlocked, then publish it fenced.
+
+        The packaged-tree hash runs without the cross-process lock so readers
+        keep their bounded wait.  The pointer write happens only when the exact
+        pending journal and its pinned envelope are still current and the
+        Authority reservation still fences this activation, so recovered bytes
+        can never overwrite a newer commit or a moved journal.
+        """
+
+        self._verify_selected_artifact(
+            republish.profile,
+            deadline_monotonic=(
+                self._monotonic_clock() + self._lock_timeout_seconds
+            ),
+        )
+        with self._activation_lock():
+            if not self._state.exists("pending.json"):
+                return
+            pending = self._read_state("pending.json", "pending activation journal")
+            if canonical_digest(pending) != canonical_digest(republish.pending):
+                return
+            envelope = self._read_state(
+                Path("activations") / republish.envelope_name,
+                "committed activation envelope",
+            )
+            if (
+                not isinstance(envelope, dict)
+                or canonical_digest(envelope) != pending["envelope_digest"]
+                or not isinstance(envelope.get("activation"), dict)
+                or envelope["activation"].get("state") != "active"
+            ):
+                raise ProfileResolutionDenied("committed activation envelope changed")
+            self._revalidate_publish_reservation(
+                reservation_id=republish.reservation_id,
+                activation_id=republish.activation_id,
+                plan=envelope["plan"],
+                profile=envelope["profile"],
+                fencing_token=republish.fencing_token,
+            )
+            self._write_state(
+                "active.json",
+                self._active_pointer(
+                    republish.activation_id,
+                    self.state_root / "activations" / republish.envelope_name,
+                    str(pending["envelope_digest"]),
+                ),
+            )
+            self._unlink_state("pending.json", missing_ok=True)
 
     def _revalidate_publish_reservation(
         self,
@@ -1565,7 +1707,12 @@ class ActivationStore:
                     acquired = True
                     break
                 except OSError as exc:
-                    if exc.errno not in {None, errno.EACCES, errno.EAGAIN, errno.EDEADLK}:
+                    if exc.errno not in {
+                        None,
+                        errno.EACCES,
+                        errno.EAGAIN,
+                        errno.EDEADLK,
+                    }:
                         raise ProfileResolutionDenied(
                             "activation process lock is unavailable"
                         ) from exc
@@ -1677,8 +1824,130 @@ class ActivationStore:
 
     def load_active_snapshot(self) -> ActiveDefaultProfile:
         """Load the exact activation snapshot and reject stale restart state."""
-        with self._activation_lock():
-            return self._load_active_snapshot_locked()
+        # Artifact verification can hash a packaged application tree and is
+        # deliberately outside the activation publication lock.  Keeping that
+        # expensive read under the cross-process lock lets concurrent health
+        # and setup reads exhaust their bounded lock wait during a cold start.
+        while True:
+            try:
+                with self._activation_read_gate():
+                    with self._activation_lock():
+                        active = self._load_active_snapshot_locked(
+                            verify_selected_artifact=False
+                        )
+                try:
+                    self._verify_selected_artifact_coalesced(active)
+                except ProfileReconfirmationRequired as error:
+                    # Preserve the verified predecessor identity used by the
+                    # explicit reconfirmation ceremony even though hashing
+                    # runs outside the lock.
+                    plan = active.resolved.plan
+                    error.verified_profile_definition_digest = str(
+                        plan["profile_definition_digest"]
+                    )
+                    error.verified_profile = deepcopy(active.resolved.profile)
+                    error.verified_activation_identity = (
+                        str(plan["profile_revision"]),
+                        str(active.activation["activation_id"]),
+                        str(plan["plan_digest"]),
+                        str(active.resolved.lock["lock_digest"]),
+                    )
+                    raise
+                # Re-read the authenticated record graph after verifying its
+                # selected bytes.  A concurrent activation must never turn a
+                # valid check of the predecessor into authority for its
+                # successor.
+                with self._activation_read_gate():
+                    with self._activation_lock():
+                        current = self._load_active_snapshot_locked(
+                            verify_selected_artifact=False
+                        )
+                if current != active:
+                    raise ProfileResolutionDenied(
+                        "active Profile changed during artifact verification"
+                    )
+                return active
+            except _PendingRepublishRequired as pending:
+                self._republish_pending(pending.republish)
+
+    def _activation_read_gate(self) -> threading.Lock:
+        """Queue same-process readers before their bounded process-lock wait."""
+
+        with _ACTIVATION_READ_GATES_LOCK:
+            gate = _ACTIVATION_READ_GATES.get(self.state_root)
+            if gate is None:
+                gate = threading.Lock()
+                _ACTIVATION_READ_GATES[self.state_root] = gate
+            return gate
+
+    def _verify_selected_artifact_coalesced(
+        self,
+        active: ActiveDefaultProfile,
+    ) -> None:
+        """Share only an in-progress hash of one immutable activation input.
+
+        Every caller still validates its own Authority-backed activation graph
+        under the publication lock before and after this pure byte check.
+        Failed verification is not shared: each waiter retries and receives its
+        own typed error, while later requests always start a fresh verification.
+        """
+
+        plan = active.resolved.plan
+        key = (
+            self.state_root,
+            self.workspace_root,
+            self.profile_id,
+            str(plan["profile_revision"]),
+            str(active.activation["activation_id"]),
+            str(plan["plan_digest"]),
+            str(active.resolved.lock["lock_digest"]),
+        )
+        with _ARTIFACT_VERIFICATION_FLIGHTS_LOCK:
+            flight = _ARTIFACT_VERIFICATION_FLIGHTS.get(key)
+            leader = flight is None
+            if flight is None:
+                flight = _ArtifactVerificationFlight(complete=threading.Event())
+                _ARTIFACT_VERIFICATION_FLIGHTS[key] = flight
+            else:
+                flight.waiters += 1
+
+        if leader:
+            try:
+                self._verify_selected_artifact(
+                    active.resolved.profile,
+                    allow_verified_successor_reconfirmation=True,
+                    deadline_monotonic=(
+                        self._monotonic_clock() + self._lock_timeout_seconds
+                    ),
+                )
+            except BaseException as error:
+                flight.error = error
+                raise
+            finally:
+                with _ARTIFACT_VERIFICATION_FLIGHTS_LOCK:
+                    if _ARTIFACT_VERIFICATION_FLIGHTS.get(key) is flight:
+                        del _ARTIFACT_VERIFICATION_FLIGHTS[key]
+                flight.complete.set()
+            return
+
+        # Waiters share the leader's result only inside the same bounded wait
+        # scale used by the activation lock.  A verification that misses that
+        # deadline must fail closed with a typed error instead of pinning a
+        # status read or health check to an unbounded in-flight hash.
+        if not flight.complete.wait(self._lock_timeout_seconds):
+            with _ARTIFACT_VERIFICATION_FLIGHTS_LOCK:
+                flight.waiters -= 1
+            raise ArtifactVerificationTimeout(
+                "coalesced artifact verification deadline exceeded"
+            )
+        if flight.error is not None:
+            self._verify_selected_artifact(
+                active.resolved.profile,
+                allow_verified_successor_reconfirmation=True,
+                deadline_monotonic=(
+                    self._monotonic_clock() + self._lock_timeout_seconds
+                ),
+            )
 
     def reconcile_active(
         self,
@@ -1705,23 +1974,52 @@ class ActivationStore:
         self._validate_record_graph(profile, lock, plan)
         if profile["profile_id"] != self.profile_id:
             raise ProfileResolutionDenied("activation Profile identity does not match store")
-        with self._activation_lock():
+        validated = ResolvedDefaultProfile(profile=profile, lock=lock, plan=plan)
+        while True:
             try:
-                self._load_active_snapshot_locked()
-            except ProfileReconfirmationRequired:
-                pass
-            else:
-                raise ProfileResolutionDenied("activation confirmation was replayed")
-            return self._activate_locked(
-                ResolvedDefaultProfile(profile=profile, lock=lock, plan=plan),
-                activation_id=activation_id,
-                created_at=created_at,
-                expected_predecessor_profile_revision=None,
-                expected_predecessor_plan_digest=None,
-                expected_predecessor_activation_id=None,
-            )
+                # The predecessor's reconfirmation proof and the successor's
+                # artifact check both hash outside the bounded process lock;
+                # the fenced commit still re-reads the predecessor it proves.
+                with self._activation_lock():
+                    predecessor = self._load_active_snapshot_locked(
+                        verify_selected_artifact=False
+                    )
+                try:
+                    self._verify_selected_artifact_coalesced(predecessor)
+                except ProfileReconfirmationRequired:
+                    pass
+                else:
+                    raise ProfileResolutionDenied(
+                        "activation confirmation was replayed"
+                    )
+                self._verify_selected_artifact(
+                    profile,
+                    deadline_monotonic=(
+                        self._monotonic_clock() + self._lock_timeout_seconds
+                    ),
+                )
+                with self._activation_lock():
+                    current = self._load_active_snapshot_locked(
+                        verify_selected_artifact=False
+                    )
+                    if current != predecessor:
+                        raise ProfileResolutionDenied(
+                            "active Profile changed during artifact verification"
+                        )
+                    return self._activate_locked(
+                        validated,
+                        activation_id=activation_id,
+                        created_at=created_at,
+                        expected_predecessor_profile_revision=None,
+                        expected_predecessor_plan_digest=None,
+                        expected_predecessor_activation_id=None,
+                    )
+            except _PendingRepublishRequired as pending:
+                self._republish_pending(pending.republish)
 
-    def _load_active_snapshot_locked(self) -> ActiveDefaultProfile:
+    def _load_active_snapshot_locked(
+        self, *, verify_selected_artifact: bool = True
+    ) -> ActiveDefaultProfile:
         """Load one snapshot while holding the profile's process lock."""
         self._recover_locked()
         pointer = self._read_state("active.json", "active pointer")
@@ -1785,7 +2083,9 @@ class ActivationStore:
                 plan_value=plan_value,
                 activation_value=activation_value,
             )
-            return self._load_active_snapshot_locked()
+            return self._load_active_snapshot_locked(
+                verify_selected_artifact=verify_selected_artifact
+            )
         profile = validate_document(profile_value, "profile")
         lock = validate_document(lock_value, "profile_lock")
         plan = validate_document(plan_value, "resolved_plan")
@@ -1829,10 +2129,27 @@ class ActivationStore:
             raise ProfileResolutionDenied(
                 "active activation authority, fence, or SecurityEpoch is stale"
             )
-        self._verify_selected_artifact(
-            profile,
-            allow_verified_successor_reconfirmation=True,
-        )
+        if verify_selected_artifact:
+            try:
+                self._verify_selected_artifact(
+                    profile,
+                    allow_verified_successor_reconfirmation=True,
+                )
+            except ProfileReconfirmationRequired as error:
+                # The record graph and current Authority reservation were verified
+                # above. Expose their source and activation identities for the ceremony;
+                # the predecessor still cannot be captured for execution.
+                error.verified_profile_definition_digest = str(
+                    plan["profile_definition_digest"]
+                )
+                error.verified_profile = deepcopy(profile)
+                error.verified_activation_identity = (
+                    str(plan["profile_revision"]),
+                    str(activation["activation_id"]),
+                    str(plan["plan_digest"]),
+                    str(lock["lock_digest"]),
+                )
+                raise
         return ActiveDefaultProfile(
             resolved=ResolvedDefaultProfile(profile=profile, lock=lock, plan=plan),
             activation=activation,
@@ -1961,7 +2278,13 @@ class ActivationStore:
             raise
         if (
             legacy_effective != successor.plan["effective_set"]
-            or canonical_digest(legacy_effective) != successor.plan["closure_digest"]
+            or canonical_digest(
+                {
+                    "effective_set": legacy_effective,
+                    "content_projections": successor.plan["content_projections"],
+                }
+            )
+            != successor.plan["closure_digest"]
             or lock["base"] != successor.lock["base"]
             or {key: plan["base"][key] for key in ("pack_id", "artifact_digest")}
             != {key: successor.plan["base"][key] for key in ("pack_id", "artifact_digest")}
@@ -2066,6 +2389,8 @@ class ActivationStore:
         self,
         profile: Mapping[str, Any],
         definition: Mapping[str, Any],
+        *,
+        deadline_monotonic: float | None = None,
     ) -> bool:
         """Return whether the catalog has one verified successor for this Shell.
 
@@ -2118,7 +2443,11 @@ class ActivationStore:
         ):
             return False
         try:
-            verify_platform_artifact(self._catalog.artifact_root, successor)
+            verify_platform_artifact(
+                self._catalog.artifact_root,
+                successor,
+                deadline_monotonic=deadline_monotonic,
+            )
         except ProtocolError as exc:
             raise ProfileResolutionDenied(
                 f"verified successor Shell artifact rejected: {exc}"
@@ -2130,6 +2459,7 @@ class ActivationStore:
         profile: Mapping[str, Any],
         *,
         allow_verified_successor_reconfirmation: bool = False,
+        deadline_monotonic: float | None = None,
     ) -> None:
         """Reverify the exact selected Shell/Application bytes when catalogued."""
 
@@ -2171,7 +2501,9 @@ class ActivationStore:
         if (
             not exact_current_binding
             and allow_verified_successor_reconfirmation
-            and self._verified_shell_successor_is_available(profile, definition)
+            and self._verified_shell_successor_is_available(
+                profile, definition, deadline_monotonic=deadline_monotonic
+            )
         ):
             raise ProfileReconfirmationRequired(
                 "active Profile Shell artifact identity was superseded by the "
@@ -2180,7 +2512,11 @@ class ActivationStore:
         if not exact_current_binding or self._catalog.artifact_root is None:
             raise ProfileResolutionDenied("active Profile Shell artifact is unavailable")
         try:
-            verify_platform_artifact(self._catalog.artifact_root, variants[0])
+            verify_platform_artifact(
+                self._catalog.artifact_root,
+                variants[0],
+                deadline_monotonic=deadline_monotonic,
+            )
         except ProtocolError as exc:
             raise ProfileResolutionDenied(f"active Profile Shell artifact rejected: {exc}") from exc
 
@@ -2222,6 +2558,7 @@ class ActivationStore:
             "bundle_digest",
             "application",
             "effective_set",
+            "content_projections",
             "requested_edges_digest",
             "constraints_digest",
             "closure_digest",
@@ -2240,8 +2577,16 @@ class ActivationStore:
             raise ProfileResolutionDenied("Profile requested edge set is stale")
         if plan["provenance_digest"] != canonical_digest(profile["provenance"]):
             raise ProfileResolutionDenied("Profile provenance binding is stale")
-        if plan["closure_digest"] != canonical_digest(plan["effective_set"]):
+        if plan["closure_digest"] != canonical_digest(
+            {
+                "effective_set": plan["effective_set"],
+                "content_projections": plan["content_projections"],
+            }
+        ):
             raise ProfileResolutionDenied("Profile closure digest is stale")
+        from core_runtime.profile_content_projection import selected_projection_roots
+
+        selected_projection_roots(plan["content_projections"])
         effective_ids = [item["identity"] for item in plan["effective_set"]]
         if len(effective_ids) != len(set(effective_ids)):
             raise ProfileResolutionDenied("Profile closure contains duplicate artifacts")
@@ -2278,6 +2623,7 @@ class ActivationStore:
             _edge_key(edge): (
                 edge["authority_reference"],
                 canonical_digest(edge["requested_scope_template"]),
+                _authority_mode(edge),
             )
             for edge in profile["requested_edges"]
         }
@@ -2306,6 +2652,7 @@ class ActivationStore:
                 or (
                     matches[0]["authority_reference"],
                     matches[0]["requested_scope_digest"],
+                    _authority_mode(matches[0]),
                 )
                 != edge_bindings[_edge_key(edge)]
             ):

@@ -12,7 +12,7 @@ const MAP_PATH = resolve(
 const OUTPUT_PATH = resolve(FRONTEND_ROOT, "src/lib/generatedFrontendContractMap.ts");
 const MAP_ARTIFACT_PATH = "defaultspack/frontend_contract_map.v4.json";
 const PINNED_ARTIFACT_DIGEST =
-  "sha256:d216b97849485033b226f28b9eee0989f6db232034bb87f634b1818f792182d4";
+  "sha256:c4ed961160a56ea5d7ca5b6526473892f750a5f5819dd5c2e3df4753a9954249";
 
 const RUNTIME_TARGET_SPECS = [
   {
@@ -140,7 +140,7 @@ function exactKeys(value, keys) {
 }
 
 function validateSourceMap(map, rawDigest) {
-  if (!exactKeys(map, ["schema", "pack_id", "routes"])) {
+  if (!exactKeys(map, ["schema", "pack_id", "frontend", "routes"])) {
     fail("canonical map envelope is not exact");
   }
   if (map.schema !== "io.tobkiri.frontend-contract-map.v4" || map.pack_id !== "defaultspack") {
@@ -164,7 +164,7 @@ function validateSourceMap(map, rawDigest) {
       fail("canonical map route fields are not exact");
     }
     if (
-      (route.method !== "GET" && route.method !== "POST")
+      !["GET", "POST", "PUT", "DELETE"].includes(route.method)
       || typeof route.path !== "string"
       || typeof route.presentation !== "string"
       || !Array.isArray(route.targets)
@@ -315,7 +315,7 @@ export function validateGeneratedFrontendContractMap(
       throw new Error('Generated frontend Contract Map route is invalid.');
     }
     if (
-      (route.method !== 'GET' && route.method !== 'POST')
+      !['GET', 'POST', 'PUT', 'DELETE'].includes(route.method)
       || typeof route.path !== 'string'
       || typeof route.presentation !== 'string'
       || !Array.isArray(route.targets)

@@ -37,7 +37,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:9f79fddc4bb747277a0623bb2ba6cab74944d20e4fdf35005f4d355c06d6f932",
+      "artifact_hash": "sha256:3149aa0b49c6ba98e79167e16d5cbede62cf0d2ac1a62562572d2860a8ae72a6",
       "contract_id": "rumi.service.git.read.v1",
       "id": "git-read",
       "loader": "python",
@@ -78,9 +78,9 @@
           "authority": "read",
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:3eb22659cc6df47ce109abe7a6a0b0500b81d5216f22e18ec4f4d8fdbba05f6b",
+            "artifact_digest": "sha256:2bcbb019fac7f2b21d2fa67b7bd79f392e7c10d60a1bb39664aef6b8387dab9f",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:5c8ae1efd0bfe6a847b2b3db070225fca4b0901ee80544c48d544663acb79882"
+            "source_identity": "sha256:ee42e6c72d3d42830180139999c7d9a7ed0cc992c95af86450b28ac0c0d25b31"
           },
           "mutation": false,
           "network": false,
@@ -91,7 +91,7 @@
         "pack_identity": "rumi:ecosystem/rumi_git_read_pack",
         "provenance": {
           "build_identity": "rumi_git_read_pack:1.0.0",
-          "content_hash": "sha256:9f79fddc4bb747277a0623bb2ba6cab74944d20e4fdf35005f4d355c06d6f932",
+          "content_hash": "sha256:3149aa0b49c6ba98e79167e16d5cbede62cf0d2ac1a62562572d2860a8ae72a6",
           "signature": null,
           "trust_class": "local"
         },
@@ -119,7 +119,7 @@
       "owner": "rumi_git_read_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:5c8ae1efd0bfe6a847b2b3db070225fca4b0901ee80544c48d544663acb79882"
+      "source_identity": "sha256:ee42e6c72d3d42830180139999c7d9a7ed0cc992c95af86450b28ac0c0d25b31"
     }
   },
   "migration": {
@@ -157,7 +157,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_git_read_pack:1.0.0",
-    "content_hash": "sha256:9f79fddc4bb747277a0623bb2ba6cab74944d20e4fdf35005f4d355c06d6f932",
+    "content_hash": "sha256:3149aa0b49c6ba98e79167e16d5cbede62cf0d2ac1a62562572d2860a8ae72a6",
     "signature": null,
     "trust_class": "local"
   },

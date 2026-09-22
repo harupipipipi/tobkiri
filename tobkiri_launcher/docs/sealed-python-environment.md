@@ -102,7 +102,7 @@ The manifest has only the fixed top-level fields and fixed nested field sets
 defined in `.github/schemas/sealed-python-environment.v1.schema.json`.
 Its provenance `kind` is `pinned-python-build-standalone-v1` on macOS,
 `windows-authenticode-v1` on Windows, and `linux-immutable-package-v1` on
-Linux; `package_id` is always `dev.tobkiri.launcher`.
+Linux; `package_id` is always `dev.rumiai.app`.
 `files` is a sorted, link-free inventory of regular files and excludes only
 the manifest itself. All sealed digest fields, including `environment_digest`,
 the three sentinels, the raw manifest binding, and attestation digests, are

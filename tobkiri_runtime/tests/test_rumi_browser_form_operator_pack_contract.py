@@ -98,10 +98,10 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     assert candidate.risk_level == "high"
     assert candidate.depends_on == [{"pack_id": "defaultspack", "version": ">=2.0.0"}]
     assert candidate.overlap_policy["semantic_dom_collection"] == "handoff_to_rumi_browser_element_pack"
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert "Browser Form Operator" in candidate.defaultspack_promotion["reason"]
-    assert "no_browser_execution_runtime" in candidate.defaultspack_promotion["promotion_blockers"]
-    assert "submission_receipt_evidence_cases" in candidate.defaultspack_promotion["promotion_evidence_required"]
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert "Browser Form Operator" in candidate.base_pack_promotion["reason"]
+    assert "no_browser_execution_runtime" in candidate.base_pack_promotion["promotion_blockers"]
+    assert "submission_receipt_evidence_cases" in candidate.base_pack_promotion["promotion_evidence_required"]
     assert candidate.marketplace["id"].startswith("rumi.")
     assert candidate.marketplace["registry"] == "bundled"
     assert candidate.marketplace["publisher"] == "rumi-ai"

@@ -26,9 +26,9 @@ use crate::debug_approval::{
 use crate::desktop_system_info;
 use crate::host_audit::{now_epoch_seconds, summarize_args, write_audit_log, HostAuditEntry};
 use crate::host_broker_types::{
-    canonical_type_semantic_error_code, HostBrokerComputerRunRequest,
-    HostBrokerComputerRunResponse, HostBrokerConnectionInfo, HostBrokerError,
-    HostBrokerIntentRequest, HostBrokerIntentResponse, HostBrokerStatus,
+    canonical_type_semantic_error_code, HostBrokerAuthorityApprovalOpenRequest,
+    HostBrokerComputerRunRequest, HostBrokerComputerRunResponse, HostBrokerConnectionInfo,
+    HostBrokerError, HostBrokerIntentRequest, HostBrokerIntentResponse, HostBrokerStatus,
     HostBrokerStreamStopRequest,
 };
 
@@ -51,6 +51,7 @@ const DEBUG_OPERATOR_PATH: &str = "/api/host/debug/approval/operator";
 const DEBUG_OPERATOR_VERIFY_PATH: &str = "/api/host/debug/approval/verify";
 const DEBUG_OPERATOR_SETTLE_PATH: &str = "/api/host/debug/approval/settle";
 const DEBUG_EXECUTION_CONSUME_PATH: &str = "/api/host/debug/execution/consume";
+const AUTHORITY_APPROVAL_OPEN_PATH: &str = "/api/host/authority-approval/open";
 const RESPONSE_NONCE_HEADER: &str = "x-rumi-launcher-response-nonce";
 const PERMISSION_SUBJECT: &str = "Tobkiri Launcher";
 const MAX_CONCURRENT_REQUESTS: usize = 16;
@@ -92,6 +93,7 @@ struct HostBrokerShared {
     active_host_streams: Mutex<HashMap<String, HostStreamSession>>,
     used_approval_tokens: Mutex<HashMap<String, u64>>,
     attestation: BrokerAttestationIdentity,
+    authority_approval_window_opener: Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
 }
 
 #[derive(Debug, Clone)]
@@ -167,8 +169,13 @@ impl Drop for RequestSlot {
 }
 
 impl HostBrokerRuntime {
-    pub fn start(config: &AppConfig, debug_approval: Arc<DebugApprovalManager>) -> Result<Self> {
+    pub fn start(
+        config: &AppConfig,
+        debug_approval: Arc<DebugApprovalManager>,
+        app: tauri::AppHandle,
+    ) -> Result<Self> {
         let attestation = BrokerAttestationIdentity::generate();
+        let authority_approval_window_opener = Self::authority_approval_window_opener(app, config);
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             return Ok(Self {
@@ -181,6 +188,7 @@ impl HostBrokerRuntime {
                     active_host_streams: Mutex::new(HashMap::new()),
                     used_approval_tokens: Mutex::new(HashMap::new()),
                     attestation,
+                    authority_approval_window_opener,
                 }),
             });
         }
@@ -240,6 +248,7 @@ impl HostBrokerRuntime {
                     active_requests: Mutex::new(0),
                     active_host_streams: Mutex::new(HashMap::new()),
                     used_approval_tokens: Mutex::new(HashMap::new()),
+                    authority_approval_window_opener,
                     attestation,
                 }),
             };
@@ -275,6 +284,23 @@ impl HostBrokerRuntime {
 
             Ok(runtime)
         }
+    }
+
+    fn authority_approval_window_opener(
+        app: tauri::AppHandle,
+        config: &AppConfig,
+    ) -> Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync> {
+        let config = config.clone();
+        Arc::new(move |request_id: &str| {
+            let request_id = request_id.trim().to_string();
+            // The bootstrap `?code=` exchange is a blocking HTTP call with
+            // retries; keep it on this broker thread and hand only the window
+            // create/navigate/focus work to the UI thread through the shared
+            // bounded dispatch.
+            let approval_url =
+                crate::authority_approval_bootstrap_window_url(&config, &request_id)?;
+            crate::open_authority_approval_window_on_main_thread(&app, approval_url)
+        })
     }
 
     pub fn status_snapshot(&self) -> HostBrokerStatus {
@@ -317,8 +343,22 @@ fn configured_broker_port() -> Result<u16> {
 }
 
 fn bind_listener(port: u16) -> Result<TcpListener> {
-    TcpListener::bind((DEFAULT_HOST, port)).with_context(|| {
-        format!("failed to bind Viewer host broker listener at {DEFAULT_HOST}:{port}")
+    TcpListener::bind((DEFAULT_HOST, port)).map_err(|error| {
+        if error.kind() == io::ErrorKind::AddrInUse {
+            // A conflicting port owner is unknown to us: report it and tell the
+            // operator how to retry instead of treating the bind failure as an
+            // unrecoverable crash. The port owner is never killed.
+            anyhow!(error).context(format!(
+                "Viewer host broker port {port} is already in use on {DEFAULT_HOST}. \
+                     Quit the other Tobkiri Launcher instance or the program using port \
+                     {port} — or set {BROKER_PORT_ENV} to a free port — then relaunch \
+                     Tobkiri Launcher"
+            ))
+        } else {
+            anyhow!(error).context(format!(
+                "failed to bind Viewer host broker listener at {DEFAULT_HOST}:{port}"
+            ))
+        }
     })
 }
 
@@ -671,6 +711,28 @@ fn route_request(request: &ParsedRequest, shared: &Arc<HostBrokerShared>) -> (u1
                 }
             })
         }
+        ("POST", AUTHORITY_APPROVAL_OPEN_PATH) => handle_authorized_json(
+            request,
+            shared,
+            |payload: HostBrokerAuthorityApprovalOpenRequest| {
+                let request_id = payload.request_id.trim().to_string();
+                if !crate::valid_authority_request_id(&request_id) {
+                    return json!({
+                        "ok": false,
+                        "opened": false,
+                        "error": {"code": "AUTHORITY_APPROVAL_REQUEST_INVALID", "message": "invalid approval request id"}
+                    });
+                }
+                match (shared.authority_approval_window_opener)(&request_id) {
+                    Ok(()) => json!({"ok": true, "opened": true, "request_id": request_id}),
+                    Err(error) => json!({
+                        "ok": false,
+                        "opened": false,
+                        "error": {"code": "AUTHORITY_APPROVAL_OPEN_FAILED", "message": error}
+                    }),
+                }
+            },
+        ),
         ("POST", COMPUTER_RUN_PATH) => handle_authorized_json(request, shared, |run_request| {
             execute_computer_run(shared, run_request)
         }),
@@ -2838,6 +2900,39 @@ mod tests {
     }
 
     #[test]
+    fn bind_listener_reports_port_conflict_with_retry_guidance() {
+        let blocker = TcpListener::bind((DEFAULT_HOST, 0))
+            .expect("test listener should bind an ephemeral port");
+        let port = blocker
+            .local_addr()
+            .expect("bound listener should have a local address")
+            .port();
+
+        // The conflict must surface as a normal error — never a panic — so the
+        // launcher setup path can report it and exit cleanly.
+        let error = bind_listener(port).expect_err("an occupied port must fail to bind");
+
+        let message = format!("{error:#}");
+        assert!(
+            message.contains(&port.to_string()),
+            "conflict error must name the occupied port: {message}"
+        );
+        assert!(
+            message.contains("already in use"),
+            "conflict error must describe the failure: {message}"
+        );
+        assert!(
+            message.contains(BROKER_PORT_ENV),
+            "conflict error must carry retry guidance: {message}"
+        );
+        assert!(
+            !message.contains("failed to bind Viewer host broker listener"),
+            "conflict error must not use the generic bind context: {message}"
+        );
+        drop(blocker);
+    }
+
+    #[test]
     fn high_risk_functions_require_approval() {
         assert!(high_risk_function("computer.click"));
         assert!(high_risk_function("computer.click_text"));
@@ -3507,7 +3602,91 @@ mod tests {
             active_requests: Mutex::new(0),
             active_host_streams: Mutex::new(HashMap::new()),
             used_approval_tokens: Mutex::new(HashMap::new()),
+            authority_approval_window_opener: Arc::new(|_| Ok(())),
             attestation: BrokerAttestationIdentity::generate(),
         }
+    }
+
+    fn authority_approval_open_request(token: Option<&str>, body: Value) -> ParsedRequest {
+        let mut headers = HashMap::new();
+        if let Some(token) = token {
+            headers.insert("authorization".to_string(), format!("Bearer {token}"));
+        }
+        ParsedRequest {
+            method: "POST".to_string(),
+            path: AUTHORITY_APPROVAL_OPEN_PATH.to_string(),
+            headers,
+            body: serde_json::to_vec(&body).unwrap(),
+        }
+    }
+
+    #[test]
+    fn authority_approval_open_requires_broker_token() {
+        let (config, temp_dir) = test_config_with_approval_secret("secret");
+        let shared = Arc::new(test_shared(config));
+
+        let (status, response) = route_request(
+            &authority_approval_open_request(None, json!({"request_id": "req-1"})),
+            &shared,
+        );
+
+        assert_eq!(status, 401);
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(false));
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn authority_approval_open_rejects_invalid_request_id() {
+        let (config, temp_dir) = test_config_with_approval_secret("secret");
+        let shared = Arc::new(test_shared(config));
+
+        let (status, response) = route_request(
+            &authority_approval_open_request(
+                Some("broker-token"),
+                json!({"request_id": "bad id with spaces!"}),
+            ),
+            &shared,
+        );
+
+        assert_eq!(status, 200);
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            response.pointer("/error/code").and_then(Value::as_str),
+            Some("AUTHORITY_APPROVAL_REQUEST_INVALID")
+        );
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn authority_approval_open_invokes_opener_with_request_id() {
+        let (config, temp_dir) = test_config_with_approval_secret("secret");
+        let opened = Arc::new(Mutex::new(Vec::<String>::new()));
+        let opener = {
+            let opened = Arc::clone(&opened);
+            Arc::new(move |request_id: &str| {
+                opened.lock().unwrap().push(request_id.to_string());
+                Ok(())
+            }) as Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>
+        };
+        let mut shared = test_shared(config);
+        shared.authority_approval_window_opener = opener;
+        let shared = Arc::new(shared);
+
+        let (status, response) = route_request(
+            &authority_approval_open_request(
+                Some("broker-token"),
+                json!({"request_id": "interactive-effect-abc123"}),
+            ),
+            &shared,
+        );
+
+        assert_eq!(status, 200);
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(true));
+        assert_eq!(response.get("opened").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            opened.lock().unwrap().as_slice(),
+            &["interactive-effect-abc123".to_string()]
+        );
+        let _ = fs::remove_dir_all(temp_dir);
     }
 }

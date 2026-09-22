@@ -2,10 +2,7 @@ from __future__ import annotations
 
 import html
 import json
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import error, ok
 from domain.ai_client.oauth_store import (

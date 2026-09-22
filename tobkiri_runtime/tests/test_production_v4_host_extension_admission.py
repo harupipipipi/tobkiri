@@ -3,11 +3,23 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from core_runtime.authority.v4 import AuthorityDenied, FunctionPrincipal
+from core_runtime.authority.v4 import (
+    AuthorityDenied,
+    AuthorityScope,
+    FunctionPrincipal,
+)
 from core_runtime.bootstrap import production_v4
+from core_runtime.interactive_effect_coordinator import (
+    INTERACTIVE_EFFECT_COORDINATOR_CONTRACT_ID,
+    INTERACTIVE_EFFECT_COORDINATOR_OPERATION_ID,
+    INTERACTIVE_EFFECT_SPECS,
+)
+from core_runtime import host_provider_hooks_v4
 from tobkiri_host.contracts import OperationRoute, ResolvedOperationBinding
 from tobkiri_host.models import (
     ArtifactVariant,
@@ -146,6 +158,197 @@ def test_valid_host_extension_reaches_exact_loader(
     assert observed == [binding]
 
 
+def _effect_edge(
+    *,
+    operation_contract: str,
+    operation_id: str,
+    authority_mode: str,
+    target: str,
+) -> object:
+    """Build one minimal captured edge for coordinator route validation."""
+
+    scope = AuthorityScope(
+        capability="effect.execute",
+        semantics_digest=_digest("6"),
+    )
+    return SimpleNamespace(
+        caller=SimpleNamespace(principal_id="coordinator-principal"),
+        target=SimpleNamespace(principal_id=target),
+        resolved_binding=SimpleNamespace(
+            operation=SimpleNamespace(
+                contract_id=operation_contract,
+                operation_id=operation_id,
+            ),
+            artifact=SimpleNamespace(package_kind=PackageKind.HOST_EXTENSION),
+            variant=SimpleNamespace(execution_kind=ExecutionKind.HOST_EXTENSION),
+        ),
+        authority_mode=authority_mode,
+        ceilings=SimpleNamespace(caller_effect=scope),
+    )
+
+
+def test_interactive_effect_routes_require_a_signed_prepare_and_interactive_execute() -> None:
+    """A coordinator cannot infer or widen either half of its future effect."""
+
+    spec = INTERACTIVE_EFFECT_SPECS["shell_execute"]
+    prepare = _effect_edge(
+        operation_contract=spec.prepare_contract_id,
+        operation_id=spec.prepare_operation_id,
+        authority_mode="profile_grant",
+        target="prepare-principal",
+    )
+    execute = _effect_edge(
+        operation_contract=spec.execute_contract_id,
+        operation_id=spec.execute_operation_id,
+        authority_mode="interactive_only",
+        target="execute-principal",
+    )
+    domains = {
+        (
+            spec.execute_contract_id,
+            spec.execute_operation_id,
+            "execute-principal",
+        ): "domain-execute"
+    }
+
+    routes = production_v4._captured_interactive_effect_routes(
+        (prepare, execute),  # type: ignore[arg-type]
+        coordinator_principal=OpaqueAuthorityRef("coordinator-principal"),
+        dynamic_domain_ids=domains,
+    )
+
+    assert len(routes) == 1
+    assert routes[0].execute_target_principal.value == "execute-principal"
+
+
+@pytest.mark.parametrize(
+    "edges",
+    [
+        "missing_execute",
+        "wrong_execute_mode",
+        "duplicate_execute",
+    ],
+)
+def test_interactive_effect_route_misconfiguration_fails_closed(edges: str) -> None:
+    """Missing, noninteractive, or ambiguous execute routes reject activation."""
+
+    spec = INTERACTIVE_EFFECT_SPECS["shell_execute"]
+    prepare = _effect_edge(
+        operation_contract=spec.prepare_contract_id,
+        operation_id=spec.prepare_operation_id,
+        authority_mode="profile_grant",
+        target="prepare-principal",
+    )
+    execute = _effect_edge(
+        operation_contract=spec.execute_contract_id,
+        operation_id=spec.execute_operation_id,
+        authority_mode=("profile_grant" if edges == "wrong_execute_mode" else "interactive_only"),
+        target="execute-principal",
+    )
+    selected: tuple[object, ...] = (
+        (prepare,)
+        if edges == "missing_execute"
+        else (prepare, execute, execute)
+        if edges == "duplicate_execute"
+        else (prepare, execute)
+    )
+
+    with pytest.raises(AuthorityDenied, match="interactive effect route"):
+        production_v4._captured_interactive_effect_routes(
+            selected,  # type: ignore[arg-type]
+            coordinator_principal=OpaqueAuthorityRef("coordinator-principal"),
+            dynamic_domain_ids={
+                (
+                    spec.execute_contract_id,
+                    spec.execute_operation_id,
+                    "execute-principal",
+                ): "domain-execute"
+            },
+        )
+
+
+def test_interactive_effect_capture_allows_only_one_exact_coordinator_factory() -> None:
+    """A different or duplicate Host Provider cannot obtain the late-bound port."""
+
+    function_id = "test.interactive-effect-coordinator"
+    binding = _binding()
+    exact_binding = replace(
+        binding,
+        function=replace(
+            binding.function,
+            function_id=function_id,
+        ),
+        operation=replace(
+            binding.operation,
+            contract_id=INTERACTIVE_EFFECT_COORDINATOR_CONTRACT_ID,
+            operation_id=INTERACTIVE_EFFECT_COORDINATOR_OPERATION_ID,
+        ),
+    )
+    factory = SimpleNamespace(requires_interactive_effect_port=True)
+    exact = (
+        function_id,
+        (exact_binding,),
+        factory,
+        "host-backend",
+    )
+
+    assert production_v4._interactive_effect_coordinator_factory((exact,)) == exact
+    with pytest.raises(AuthorityDenied, match="ambiguous"):
+        production_v4._interactive_effect_coordinator_factory((exact, exact))
+
+
+def test_nested_host_provider_session_is_stable_across_requests_but_panel_bound() -> None:
+    """Prepare/status/resume share an owner session without sharing other panels."""
+
+    def envelope(request_id: str, panel_session: str) -> object:
+        return SimpleNamespace(
+            context=SimpleNamespace(
+                request_id=request_id,
+                caller_session_id=panel_session,
+                profile_id="profile-1",
+                activation_id="activation-1",
+                plan_digest=_digest("8"),
+            ),
+            target_principal=OpaqueAuthorityRef("coordinator-principal"),
+        )
+
+    prepare = production_v4._nested_host_provider_session_id(
+        envelope("request.prepare", "panel-session-a")
+    )
+    resume = production_v4._nested_host_provider_session_id(
+        envelope("request.resume", "panel-session-a")
+    )
+    foreign_panel = production_v4._nested_host_provider_session_id(
+        envelope("request.resume", "panel-session-b")
+    )
+
+    assert prepare == resume
+    assert prepare != foreign_panel
+
+
+def test_interactive_effect_recovery_completes_before_the_port_can_be_bound() -> None:
+    """Production activation fails closed rather than exposing crash-left effects."""
+
+    recovered: list[bool] = []
+
+    class Controller:
+        def recover(self) -> tuple[object, ...]:
+            recovered.append(True)
+            return ()
+
+    production_v4._recover_interactive_effect_controller(Controller())  # type: ignore[arg-type]
+    assert recovered == [True]
+
+    class BrokenController:
+        def recover(self) -> tuple[object, ...]:
+            raise OSError("store unavailable")
+
+    with pytest.raises(AuthorityDenied, match="recovery"):
+        production_v4._recover_interactive_effect_controller(
+            BrokenController()  # type: ignore[arg-type]
+        )
+
+
 def test_mixed_host_extension_variant_inventory_is_rejected_before_loader(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -189,3 +392,77 @@ def test_host_extension_principal_identity_mismatch_is_rejected_before_loader(
             (binding,),
         )
     assert loader_called is False
+
+
+def test_factory_mapping_may_omit_an_unrelated_function(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One source file can expose hooks for only some of its Functions."""
+
+    implementation_path = "runtime/provider.py"
+    source = b'HOST_PROVIDER_FACTORY = {"another.function": object()}\n'
+    path = tmp_path / implementation_path
+    path.parent.mkdir(parents=True)
+    path.write_bytes(source)
+    captured = SimpleNamespace(
+        files=(SimpleNamespace(path=implementation_path, content=source),),
+        implementation_path=implementation_path,
+        materialization_digest=_digest("8"),
+    )
+    monkeypatch.setattr(
+        host_provider_hooks_v4,
+        "capture_materialized_artifact",
+        lambda *_args: captured,
+    )
+
+    assert host_provider_hooks_v4.load_host_provider_factory(
+        tmp_path,
+        _binding(),
+    ) is None
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        b"def create_local_operation(client):\n    raise AssertionError\n",
+        b"def create_source_operation(client):\n    raise AssertionError\n",
+        b"def nested():\n    HOST_PROVIDER_FACTORY = object()\n",
+        (
+            Path(__file__).resolve().parents[1]
+            / "ecosystem/rumi_default_tool_projection_pack/runtime/projection.py"
+        ).read_bytes(),
+    ],
+    ids=["legacy-local", "legacy-source", "nested-export", "actual-legacy-projection"],
+)
+def test_unexported_legacy_factories_are_not_imported_or_discovered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: bytes
+) -> None:
+    """Legacy receipt adapters must not become hooks through name discovery.
+
+    Materialization is stubbed here; this tests the real loader's export gate,
+    not artifact verification or public HTTP reachability.
+    """
+    implementation_path = "runtime/provider.py"
+    captured = SimpleNamespace(
+        files=(SimpleNamespace(path=implementation_path, content=source),),
+        implementation_path=implementation_path,
+        materialization_digest=_digest("8"),
+    )
+    monkeypatch.setattr(
+        host_provider_hooks_v4,
+        "capture_materialized_artifact",
+        lambda *_args: captured,
+    )
+
+    def reject_import(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("unexported legacy implementation must not be imported")
+
+    monkeypatch.setattr(
+        host_provider_hooks_v4.importlib.util,
+        "spec_from_file_location",
+        reject_import,
+    )
+
+    assert host_provider_hooks_v4.load_host_provider_factory(
+        tmp_path, _binding()
+    ) is None

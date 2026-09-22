@@ -7,15 +7,17 @@
 //! launch fallback.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use anyhow::{bail, Context, Result as AnyResult};
+use anyhow::{anyhow, bail, Context, Result as AnyResult};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use log::{error, warn};
@@ -35,12 +37,17 @@ const SELECTION_SCHEMA: &str = "io.tobkiri.launcher.profile-selection.v4";
 const RELEASE_SCHEMA: &str = "io.tobkiri.shell.release.v4";
 const RELEASE_FILE: &str = "presentation_release.v4.json";
 const LAUNCHER_PANEL_PORT: u16 = 8765;
-// Both macOS waits stay below the Shell handoff's 60-second validity window.
-// A suspended or unresponsive Shell therefore cannot turn an expired handoff
-// into a successful Launcher response.
+// Runtime/guardian preparation is bounded separately from Shell admission.
+// Its internal ready and bootstrap retries each allow a cold activation to
+// settle, so keep this larger than either of those bounds.  The handoff is not
+// created until preparation completes, leaving every Shell the full receipt
+// window below.
+const SHELL_PREPARATION_TIMEOUT: Duration = Duration::from_secs(180);
 const MACOS_LAUNCH_COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
-const MACOS_HANDOFF_ACK_TIMEOUT: Duration = Duration::from_secs(15);
+const SHELL_RECEIPT_TIMEOUT: Duration = Duration::from_secs(45);
 const LAUNCH_POLL_INTERVAL: Duration = Duration::from_millis(25);
+static PRESENTATION_LAUNCH_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static SHELL_PREPARATION_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 const PRESENTATION_CALLER_DENIED: &str =
     "presentation access is unavailable from this Launcher window";
 
@@ -93,7 +100,16 @@ fn validate_presentation_caller_context(
     Ok(())
 }
 
-fn validate_presentation_caller(window: &WebviewWindow, config: &AppConfig) -> Result<(), String> {
+/// Reject IPC that does not originate from the live Launcher panel.
+///
+/// Tauri capabilities intentionally allow both loopback host spellings and a
+/// dynamic port so a restarted Kernel can continue to use IPC.  Callers must
+/// still pass this live-WebView check; a loopback capability pattern alone is
+/// not an authentication boundary.
+pub(crate) fn validate_presentation_caller(
+    window: &WebviewWindow,
+    config: &AppConfig,
+) -> Result<(), String> {
     let url = window.url().map_err(|error| {
         error!("presentation IPC caller inspection failed: {error}");
         PRESENTATION_CALLER_DENIED.to_string()
@@ -262,6 +278,25 @@ pub struct PresentationCatalog {
     pub release_binding: Option<PresentationReleaseBinding>,
 }
 
+impl PresentationCatalog {
+    /// Interpret the existing v4 default-profile fields strictly as bootstrap
+    /// compatibility metadata. Active launch authority always comes from the
+    /// verified Activation and ResolvedPlan.
+    pub(crate) fn bootstrap_profile_identity(&self) -> AnyResult<(&str, &str, &str)> {
+        if self.default_profile_id.trim().is_empty()
+            || self.default_profile_source.trim().is_empty()
+            || !is_sha256_digest(&self.default_profile_digest)
+        {
+            bail!("presentation catalog bootstrap Profile metadata is invalid");
+        }
+        Ok((
+            &self.default_profile_id,
+            &self.default_profile_source,
+            &self.default_profile_digest,
+        ))
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PresentationReleaseBinding {
     pub schema: String,
@@ -350,6 +385,8 @@ struct StoredProfileSelection {
     shell_artifact_digest: String,
     platform: String,
     architecture: String,
+    #[serde(default)]
+    execution_identity: Option<crate::host_contract::ExecutionProfileIdentity>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -371,6 +408,8 @@ pub struct PresentationState {
     pub catalog: PresentationCatalog,
     #[serde(default)]
     pub selection: Option<PresentationSelection>,
+    #[serde(default)]
+    pub execution_identity: Option<crate::host_contract::ExecutionProfileIdentity>,
     pub materialization: PresentationMaterialization,
 }
 
@@ -426,8 +465,22 @@ pub async fn launch_selected_presentation(
     })?;
     launch_result.map_err(|error| {
         error!("selected presentation launch blocked: {error:#}");
-        "selected presentation could not be launched".to_string()
+        presentation_launch_error_wire(&error)
     })
+}
+
+fn presentation_launch_error_wire(error: &anyhow::Error) -> String {
+    if error
+        .downcast_ref::<crate::defaultspack_authority::ProfileReresolutionRequired>()
+        .is_some()
+    {
+        return serde_json::json!({
+            "code": crate::defaultspack_authority::ProfileReresolutionRequired::CODE,
+            "action": crate::defaultspack_authority::ProfileReresolutionRequired::ACTION,
+        })
+        .to_string();
+    }
+    "selected presentation could not be launched".to_string()
 }
 
 fn select_presentation_impl(
@@ -448,68 +501,331 @@ pub(crate) fn launch_selected_presentation_impl(
     app: &AppHandle,
     config: &AppConfig,
 ) -> AnyResult<PresentationLaunchResponse> {
-    let state = build_state(config)?;
-    let selection = state
-        .selection
-        .as_ref()
-        .context("no Base Pack and Shell selection has been saved")?;
-    if state.materialization.status != "materialized" {
-        bail!(
-            "selected presentation launch is blocked: {}",
-            state
-                .materialization
-                .reason
-                .as_deref()
-                .unwrap_or("materialization did not complete")
-        );
-    }
+    with_presentation_launch_coordination(|| launch_selected_presentation_serialized(app, config))
+}
 
-    let shell = state
-        .catalog
+fn with_presentation_launch_coordination<T>(
+    operation: impl FnOnce() -> AnyResult<T>,
+) -> AnyResult<T> {
+    let launch_lock = PRESENTATION_LAUNCH_LOCK.get_or_init(|| Mutex::new(()));
+    with_presentation_launch_lock(launch_lock, SHELL_PREPARATION_TIMEOUT, operation)
+}
+
+fn with_presentation_launch_lock<T>(
+    launch_lock: &Mutex<()>,
+    timeout: Duration,
+    operation: impl FnOnce() -> AnyResult<T>,
+) -> AnyResult<T> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match launch_lock.try_lock() {
+            Ok(_guard) => return operation(),
+            Err(std::sync::TryLockError::Poisoned(error)) => {
+                return Err(anyhow!("presentation launch lock was poisoned: {error}"));
+            }
+            Err(std::sync::TryLockError::WouldBlock) if Instant::now() >= deadline => {
+                bail!(
+                    "another Shell launch is still preparing; retry after it finishes or restart Tobkiri Launcher"
+                );
+            }
+            Err(std::sync::TryLockError::WouldBlock) => {
+                thread::sleep(LAUNCH_POLL_INTERVAL);
+            }
+        }
+    }
+}
+
+fn launch_selected_presentation_serialized(
+    app: &AppHandle,
+    config: &AppConfig,
+) -> AnyResult<PresentationLaunchResponse> {
+    let target = run_shell_rotation_sequence(
+        || resolve_verified_presentation_target(config),
+        VerifiedPresentationTarget::same_security_binding,
+        |target| launch_verified_target_once(app, config, target),
+    )?;
+
+    Ok(successful_shell_launch_response(&target))
+}
+
+fn successful_shell_launch_response(
+    target: &VerifiedPresentationTarget,
+) -> PresentationLaunchResponse {
+    PresentationLaunchResponse {
+        // Preserve the existing command response discriminator. The message
+        // states the narrower admission guarantee introduced by the receipt.
+        status: "launched".to_string(),
+        provider_id: target.shell.provider_id.clone(),
+        artifact_id: target.artifact.artifact_id.clone(),
+        message: format!(
+            "{} admitted the verified Profile binding; bootstrap and page readiness are not asserted.",
+            target.shell.display_name
+        ),
+    }
+}
+
+fn run_shell_rotation_sequence<T, R, S, L>(
+    mut resolve: R,
+    same_security_binding: S,
+    mut launch: L,
+) -> AnyResult<T>
+where
+    R: FnMut() -> AnyResult<T>,
+    S: Fn(&T, &T) -> bool,
+    L: FnMut(&T) -> AnyResult<crate::shell_handoff::ShellHandoffReceiptStatus>,
+{
+    let target = resolve()?;
+    match launch(&target)? {
+        crate::shell_handoff::ShellHandoffReceiptStatus::BindingAdmitted => Ok(target),
+        crate::shell_handoff::ShellHandoffReceiptStatus::RotationRequired => {
+            let revalidated =
+                resolve().context("Shell rotation target could not be revalidated")?;
+            if !same_security_binding(&target, &revalidated) {
+                bail!("active Application, catalog, or Shell target changed during rotation");
+            }
+            match launch(&revalidated)? {
+                crate::shell_handoff::ShellHandoffReceiptStatus::BindingAdmitted => Ok(revalidated),
+                crate::shell_handoff::ShellHandoffReceiptStatus::RotationRequired => {
+                    bail!("replacement Shell requested another rotation")
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct VerifiedPresentationTarget {
+    execution_identity: crate::host_contract::ExecutionProfileIdentity,
+    catalog: PresentationCatalog,
+    catalog_revision: String,
+    selection: PresentationSelection,
+    shell: ShellProviderDescriptor,
+    artifact: PresentationArtifact,
+    artifact_path: PathBuf,
+    entrypoint_digest: String,
+    frontend_entry: crate::frontend_entry::VerifiedFrontendEntry,
+}
+
+impl VerifiedPresentationTarget {
+    fn same_security_binding(&self, other: &Self) -> bool {
+        self.execution_identity.matches(&other.execution_identity)
+            && self.catalog_revision == other.catalog_revision
+            && self.selection == other.selection
+            && self.shell.provider_id == other.shell.provider_id
+            && self.artifact.artifact_id == other.artifact.artifact_id
+            && self.artifact.sha256 == other.artifact.sha256
+            && self.artifact_path == other.artifact_path
+            && self.entrypoint_digest == other.entrypoint_digest
+            && self.frontend_entry == other.frontend_entry
+    }
+}
+
+fn resolve_verified_presentation_target(
+    config: &AppConfig,
+) -> AnyResult<VerifiedPresentationTarget> {
+    let authority = crate::defaultspack_authority::resolve(config)
+        .context("active Application authority could not be resolved")?;
+    let execution_identity = authority.execution_identity()?;
+    let launch_contribution = authority.runtime_launch_contribution()?;
+    let catalog = load_catalog(config)?;
+    let catalog_revision = catalog_revision(&catalog)?;
+    if authority.catalog_revision != catalog_revision {
+        bail!("active ResolvedPlan uses a stale presentation catalog");
+    }
+    let selection = PresentationSelection {
+        base_pack_id: authority.base_pack_id.clone(),
+        shell_provider_id: authority.shell_provider_id.clone(),
+    };
+    validate_selection(&catalog, &selection)?;
+    let shell = catalog
         .shell_providers
         .iter()
-        .find(|candidate| candidate.provider_id == selection.shell_provider_id)
-        .context("selected Shell Provider is no longer in the verified catalog")?;
-    let artifact = shell
-        .artifact
-        .as_ref()
-        .context("selected Shell Provider has no platform artifact")?;
-    validate_production_artifact(artifact)?;
-    let artifact_path = artifact_path(config, artifact)?;
-    let catalog_revision = catalog_revision(&state.catalog)?;
+        .find(|candidate| candidate.provider_id == authority.shell_provider_id)
+        .cloned()
+        .context("active Profile Shell Provider is not in the verified catalog")?;
+    let variant = shell
+        .artifact_variants
+        .iter()
+        .find(|variant| variant.artifact_id == authority.launch.artifact_id)
+        .context("active Profile Shell artifact handle is not in the verified catalog")?;
+    crate::defaultspack_authority::validate_active_shell_variant(
+        variant,
+        &launch_contribution,
+        &authority.launch.entrypoint_digest,
+        config.is_dev_workspace(),
+    )?;
+    if authority.launch.artifact_digest != launch_contribution.artifact_digest {
+        bail!("active Profile Shell artifact handle differs from its signed catalog");
+    }
+    let artifact = resolve_artifact(config, &shell)?;
+    if artifact.artifact_id != authority.launch.artifact_id
+        || artifact.sha256.as_deref() != Some(authority.launch.artifact_digest.as_str())
+    {
+        bail!("materialized Shell differs from the active ResolvedPlan artifact handle");
+    }
+    validate_production_artifact(&artifact)?;
+    let artifact_path = artifact_path(config, &artifact)?;
 
+    Ok(VerifiedPresentationTarget {
+        execution_identity,
+        catalog,
+        catalog_revision,
+        selection,
+        shell,
+        artifact,
+        artifact_path,
+        entrypoint_digest: authority.launch.entrypoint_digest.clone(),
+        frontend_entry: authority.launch.frontend_entry.clone(),
+    })
+}
+
+fn launch_verified_target_once(
+    app: &AppHandle,
+    config: &AppConfig,
+    target: &VerifiedPresentationTarget,
+) -> AnyResult<crate::shell_handoff::ShellHandoffReceiptStatus> {
     // Runtime readiness and local authentication are resolved only after the
     // exact verified Shell artifact has passed pre-admission. The authenticated
     // URL never crosses argv or the environment; only an owner-only one-shot
     // handoff path is passed to the presentation process.
-    let runtime_url =
-        crate::dock_registration::prepare_defaultspack_shell_runtime_url(app, config)?;
-    let handoff_path = crate::shell_handoff::create_shell_handoff(
+    let prepared_runtime =
+        prepare_defaultspack_shell_runtime_with_deadline(app, config, &target.frontend_entry)?;
+    if !target
+        .execution_identity
+        .matches(&prepared_runtime.identity)
+        || prepared_runtime.catalog_revision != target.catalog_revision
+        || prepared_runtime.base_pack_id != target.selection.base_pack_id
+        || prepared_runtime.shell.provider_id != target.shell.provider_id
+        || prepared_runtime.shell.artifact_id != target.artifact.artifact_id
+        || prepared_runtime.shell.artifact_digest
+            != target.artifact.sha256.as_deref().unwrap_or_default()
+        || prepared_runtime.shell.entrypoint_digest != target.entrypoint_digest
+    {
+        bail!("active Application or Shell binding changed during launch");
+    }
+    // A selection is a durable artifact preference until an active runtime is
+    // captured. Persisting the exact identity here makes a restart or a second
+    // Shell launch reject a stale selection instead of silently returning to
+    // the packaged bootstrap Profile.
+    write_selection_with_identity(
+        config,
+        &target.catalog,
+        &target.selection,
+        &target.artifact,
+        Some(&prepared_runtime.identity),
+    )?;
+    // Validate the optional CI-E2E Shell environment before creating a
+    // short-lived handoff file that contains the authenticated runtime URL.
+    let shell_environment = crate::ci_e2e_app_data::ci_e2e_shell_launch_environment(
+        &app.config().identifier,
+        &config.user_data_dir,
+    )?;
+    let ticket = crate::shell_handoff::create_shell_handoff(
         config,
         crate::shell_handoff::ShellHandoffBinding {
-            profile_id: &state.catalog.default_profile_id,
-            profile_digest: &state.catalog.default_profile_digest,
-            catalog_revision: &catalog_revision,
-            provider_id: &shell.provider_id,
-            artifact_id: &artifact.artifact_id,
+            identity: &prepared_runtime.identity,
+            catalog_revision: &target.catalog_revision,
+            provider_id: &target.shell.provider_id,
+            artifact_id: &target.artifact.artifact_id,
+            artifact_digest: &prepared_runtime.shell.artifact_digest,
+            entrypoint_digest: &prepared_runtime.shell.entrypoint_digest,
         },
-        &runtime_url,
+        &prepared_runtime.url,
     )?;
+    // Do not charge guardian lock/runtime preparation against admission. The
+    // handoff now exists, so the Shell gets the entire fixed receipt window.
+    let receipt_deadline = shell_receipt_deadline(Instant::now());
 
-    if let Err(error) = launch_verified_artifact(&artifact_path, &handoff_path) {
-        crate::shell_handoff::discard_shell_handoff(&handoff_path);
-        return Err(error);
+    match launch_verified_artifact(
+        &target.artifact_path,
+        &ticket,
+        receipt_deadline,
+        shell_environment.as_deref(),
+    ) {
+        Ok(status) => Ok(status),
+        Err(error) => {
+            crate::shell_handoff::discard_shell_handoff(&ticket);
+            Err(error)
+        }
+    }
+}
+
+struct ShellPreparationLease;
+
+impl Drop for ShellPreparationLease {
+    fn drop(&mut self) {
+        SHELL_PREPARATION_IN_FLIGHT.store(false, Ordering::Release);
+    }
+}
+
+/// Prepare the local Defaultspack runtime without letting a wedged guardian
+/// block the launch command forever.
+///
+/// The background preparation only starts or verifies the Launcher-owned
+/// local listener and creates a short-lived bootstrap code; it cannot launch a
+/// Shell.  If it outlives this deadline, keep the in-flight marker set until
+/// it actually exits so repeated clicks do not queue more potentially wedged
+/// preparation jobs.  The next launch revalidates the full binding before it
+/// can create a handoff.
+fn prepare_defaultspack_shell_runtime_with_deadline(
+    app: &AppHandle,
+    config: &AppConfig,
+    frontend_entry: &crate::frontend_entry::VerifiedFrontendEntry,
+) -> AnyResult<crate::dock_registration::PreparedShellRuntime> {
+    SHELL_PREPARATION_IN_FLIGHT
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .map_err(|_| {
+            anyhow!(
+                "Defaultspack Shell preparation is still running; retry after it finishes or restart Tobkiri Launcher"
+            )
+        })?;
+
+    let app = app.clone();
+    let config = config.clone();
+    let frontend_entry = frontend_entry.clone();
+    let (sender, receiver) = mpsc::sync_channel(1);
+    let spawn_result = thread::Builder::new()
+        .name("defaultspack-shell-preparation".to_string())
+        .spawn(move || {
+            let result = {
+                let _lease = ShellPreparationLease;
+                crate::dock_registration::prepare_defaultspack_shell_runtime_url(
+                    &app,
+                    &config,
+                    &frontend_entry,
+                )
+            };
+            // The requester can time out before the bounded worker exits. In
+            // that case there is no Shell handoff to act on, so discarding the
+            // result is intentional.
+            let _ = sender.send(result);
+        });
+    if let Err(error) = spawn_result {
+        SHELL_PREPARATION_IN_FLIGHT.store(false, Ordering::Release);
+        return Err(error).context("failed to start Defaultspack Shell preparation");
     }
 
-    Ok(PresentationLaunchResponse {
-        status: "launched".to_string(),
-        provider_id: shell.provider_id.clone(),
-        artifact_id: artifact.artifact_id.clone(),
-        message: format!(
-            "{} launched from its verified production artifact.",
-            shell.display_name
+    await_shell_preparation_result(receiver, SHELL_PREPARATION_TIMEOUT)
+}
+
+fn await_shell_preparation_result<T>(
+    receiver: mpsc::Receiver<AnyResult<T>>,
+    timeout: Duration,
+) -> AnyResult<T> {
+    match receiver.recv_timeout(timeout) {
+        Ok(result) => result.context("Defaultspack Shell preparation failed"),
+        Err(mpsc::RecvTimeoutError::Timeout) => bail!(
+            "Defaultspack Shell preparation timed out after {} seconds; retry after it finishes or restart Tobkiri Launcher",
+            timeout.as_secs()
         ),
-    })
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            bail!("Defaultspack Shell preparation stopped before it returned")
+        }
+    }
+}
+
+fn shell_receipt_deadline(now: Instant) -> Instant {
+    now + SHELL_RECEIPT_TIMEOUT
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -522,6 +838,7 @@ fn verified_launch_spec(
     platform: &str,
     artifact_path: &Path,
     handoff_path: &Path,
+    macos_environment: Option<&OsStr>,
 ) -> AnyResult<VerifiedLaunchSpec> {
     if !artifact_path.is_absolute() {
         bail!("verified Shell artifact launch path must be absolute");
@@ -536,22 +853,34 @@ fn verified_launch_spec(
         // guarantees that the handoff path reaches a process; the Shell's own
         // single-instance plugin forwards that path to an existing Shell when
         // needed. The authenticated URL itself never appears in argv.
-        "macos" => Ok(VerifiedLaunchSpec {
-            program: PathBuf::from("/usr/bin/open"),
-            args: vec![
-                OsString::from("-n"),
+        "macos" => {
+            let mut args = vec![OsString::from("-n")];
+            if let Some(environment) = macos_environment {
+                args.push(OsString::from("--env"));
+                args.push(environment.to_owned());
+            }
+            args.extend([
                 artifact_path.as_os_str().to_owned(),
                 OsString::from("--args"),
                 handoff_flag,
                 handoff_value,
-            ],
-        }),
+            ]);
+            Ok(VerifiedLaunchSpec {
+                program: PathBuf::from("/usr/bin/open"),
+                args,
+            })
+        }
         // Linux AppImages and Windows executables are the verified artifacts,
         // so execute their exact absolute paths without a shell or PATH lookup.
-        "linux" | "windows" => Ok(VerifiedLaunchSpec {
-            program: artifact_path.to_path_buf(),
-            args: vec![handoff_flag, handoff_value],
-        }),
+        "linux" | "windows" => {
+            if macos_environment.is_some() {
+                bail!("Shell launch environment is supported only on macOS");
+            }
+            Ok(VerifiedLaunchSpec {
+                program: artifact_path.to_path_buf(),
+                args: vec![handoff_flag, handoff_value],
+            })
+        }
         other => bail!("verified Shell artifact launch is unsupported on {other}"),
     }
 }
@@ -581,14 +910,9 @@ impl LaunchProcess for Child {
     }
 }
 
-fn wait_for_launch_success<P: LaunchProcess>(process: &mut P) -> AnyResult<()> {
+fn wait_for_launch_success<P: LaunchProcess>(process: &mut P, timeout: Duration) -> AnyResult<()> {
     let started = Instant::now();
-    wait_for_launch_success_with(
-        process,
-        MACOS_LAUNCH_COMMAND_TIMEOUT,
-        || started.elapsed(),
-        thread::sleep,
-    )
+    wait_for_launch_success_with(process, timeout, || started.elapsed(), thread::sleep)
 }
 
 fn wait_for_launch_success_with<P, C, S>(
@@ -626,64 +950,67 @@ where
     }
 }
 
-fn handoff_was_consumed(path: &Path) -> io::Result<bool> {
-    match fs::symlink_metadata(path) {
-        Ok(_) => Ok(false),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(true),
-        Err(error) => Err(error),
-    }
-}
-
-fn wait_for_handoff_consumed(path: &Path) -> AnyResult<()> {
-    let started = Instant::now();
-    wait_for_handoff_consumed_with(
-        path,
-        MACOS_HANDOFF_ACK_TIMEOUT,
-        handoff_was_consumed,
-        || started.elapsed(),
+fn wait_for_shell_receipt(
+    ticket: &crate::shell_handoff::ShellHandoffTicket,
+    deadline: Instant,
+) -> AnyResult<crate::shell_handoff::ShellHandoffReceiptStatus> {
+    wait_for_shell_receipt_with(
+        ticket,
+        |ticket| crate::shell_handoff::try_consume_shell_handoff_receipt(ticket),
+        || Instant::now() >= deadline,
         thread::sleep,
     )
 }
 
-fn wait_for_handoff_consumed_with<A, C, S>(
-    path: &Path,
-    timeout: Duration,
-    mut acknowledged: A,
-    mut elapsed: C,
+fn wait_for_shell_receipt_with<A, C, S>(
+    ticket: &crate::shell_handoff::ShellHandoffTicket,
+    mut read_receipt: A,
+    mut deadline_reached: C,
     mut sleep: S,
-) -> AnyResult<()>
+) -> AnyResult<crate::shell_handoff::ShellHandoffReceiptStatus>
 where
-    A: FnMut(&Path) -> io::Result<bool>,
-    C: FnMut() -> Duration,
+    A: FnMut(
+        &crate::shell_handoff::ShellHandoffTicket,
+    ) -> AnyResult<Option<crate::shell_handoff::ShellHandoffReceiptStatus>>,
+    C: FnMut() -> bool,
     S: FnMut(Duration),
 {
     loop {
-        if acknowledged(path).with_context(|| {
-            format!(
-                "failed to inspect verified Shell handoff acknowledgement at {}",
-                path.display()
-            )
-        })? {
-            return Ok(());
+        if let Some(status) =
+            read_receipt(ticket).context("failed to inspect verified Shell handoff receipt")?
+        {
+            return Ok(status);
         }
 
-        if elapsed() >= timeout {
-            bail!(
-                "timed out waiting for verified Shell to consume handoff after {} ms",
-                timeout.as_millis()
-            );
+        if deadline_reached() {
+            bail!("timed out waiting for verified Shell handoff receipt");
         }
         sleep(LAUNCH_POLL_INTERVAL);
     }
 }
 
-fn launch_verified_artifact(artifact_path: &Path, handoff_path: &Path) -> AnyResult<()> {
-    let spec = verified_launch_spec(current_platform(), artifact_path, handoff_path)?;
+fn launch_verified_artifact(
+    artifact_path: &Path,
+    ticket: &crate::shell_handoff::ShellHandoffTicket,
+    deadline: Instant,
+    macos_environment: Option<&OsStr>,
+) -> AnyResult<crate::shell_handoff::ShellHandoffReceiptStatus> {
+    let spec = verified_launch_spec(
+        current_platform(),
+        artifact_path,
+        &ticket.path,
+        macos_environment,
+    )?;
     let mut process = Command::new(&spec.program)
         .args(&spec.args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        // The Shell emits only fail-closed lifecycle diagnostics at the
+        // default log level. Preserve those in the Launcher's existing log
+        // sink so an early handoff rejection is actionable instead of being
+        // indistinguishable from a receipt timeout. Standard output remains
+        // closed because it is not part of the authenticated protocol.
+        .stderr(Stdio::inherit())
         .spawn()
         .with_context(|| {
             format!(
@@ -692,27 +1019,74 @@ fn launch_verified_artifact(artifact_path: &Path, handoff_path: &Path) -> AnyRes
             )
         })?;
 
-    if current_platform() == "macos" {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    finish_spawned_launch(
+        current_platform(),
+        &mut process,
+        remaining.min(MACOS_LAUNCH_COMMAND_TIMEOUT),
+        || wait_for_shell_receipt(ticket, deadline),
+    )
+}
+
+fn finish_spawned_launch<P, R>(
+    platform: &str,
+    process: &mut P,
+    macos_command_timeout: Duration,
+    wait_for_receipt: R,
+) -> AnyResult<crate::shell_handoff::ShellHandoffReceiptStatus>
+where
+    P: LaunchProcess,
+    R: FnOnce() -> AnyResult<crate::shell_handoff::ShellHandoffReceiptStatus>,
+{
+    if platform == "macos" {
         // `/usr/bin/open` is only a LaunchServices request. Its spawn result
         // does not say whether the request itself succeeded or whether the
         // Shell ever consumed the authenticated handoff.
-        wait_for_launch_success(&mut process)?;
-        wait_for_handoff_consumed(handoff_path)?;
+        wait_for_launch_success(process, macos_command_timeout)?;
     }
-
-    Ok(())
+    // Direct child exit, successful `/usr/bin/open`, and handoff disappearance
+    // are never binding admission. Only a nonce-bound owner-only receipt is.
+    wait_for_receipt()
 }
 
 fn build_state(config: &AppConfig) -> AnyResult<PresentationState> {
-    let catalog = load_catalog(config)?;
-    let selection = read_selection(config, &catalog)?;
-    build_state_from_catalog(config, catalog, selection)
+    let mut catalog = load_catalog(config)?;
+    // Saved development selections bind the digest computed from the staged
+    // checkout artifact, while the immutable source catalog intentionally has
+    // no production digest. Resolve it before validating persisted state.
+    if cfg!(debug_assertions) && config.is_dev_workspace() {
+        for shell in &mut catalog.shell_providers {
+            shell.artifact = Some(resolve_artifact(config, shell)?);
+        }
+    }
+    let stored = read_stored_selection(config, &catalog)?;
+    let selection = stored.as_ref().map(|stored| PresentationSelection {
+        base_pack_id: stored.base_pack_id.clone(),
+        shell_provider_id: stored.shell_provider_id.clone(),
+    });
+    let execution_identity = stored.and_then(|stored| stored.execution_identity);
+    build_state_from_catalog_with_identity(config, catalog, selection, execution_identity)
+}
+
+pub(crate) fn has_valid_saved_selection(config: &AppConfig) -> bool {
+    build_state(config)
+        .map(|state| state.selection.is_some())
+        .unwrap_or(false)
 }
 
 fn build_state_from_catalog(
     config: &AppConfig,
+    catalog: PresentationCatalog,
+    selection: Option<PresentationSelection>,
+) -> AnyResult<PresentationState> {
+    build_state_from_catalog_with_identity(config, catalog, selection, None)
+}
+
+fn build_state_from_catalog_with_identity(
+    config: &AppConfig,
     mut catalog: PresentationCatalog,
     selection: Option<PresentationSelection>,
+    execution_identity: Option<crate::host_contract::ExecutionProfileIdentity>,
 ) -> AnyResult<PresentationState> {
     catalog.generated_at = now_seconds();
     for shell in &mut catalog.shell_providers {
@@ -734,6 +1108,7 @@ fn build_state_from_catalog(
     Ok(PresentationState {
         catalog,
         selection,
+        execution_identity,
         materialization,
     })
 }
@@ -813,8 +1188,6 @@ fn verify_release_binding(
         || manifest.catalog_path != "bundled/presentation_catalog.json"
         || manifest.artifact_index_path != binding.artifact_index_path
         || manifest.profile_lock_path != binding.profile_lock_path
-        || manifest.default_profile_path != "ecosystem/defaultspack/v4/defaults.profile.v4.json"
-        || manifest.defaultspack_lock_path != "ecosystem/defaultspack/v4/bundle.lock.json"
         || manifest.artifact_id != binding.artifact_id
         || manifest.platform != binding.platform
         || manifest.architecture != binding.architecture
@@ -843,28 +1216,62 @@ fn verify_release_binding(
         read_verified_regular_file(&defaultspack_lock_path, "Defaults bundle lock")?;
     if byte_digest(&profile_raw) != manifest.default_profile_sha256
         || byte_digest(&defaultspack_lock_raw) != manifest.defaultspack_lock_sha256
-        || catalog.default_profile_digest != manifest.default_profile_sha256
     {
-        bail!("packaged Defaults Profile/lock identity differs from the signed release");
+        bail!("packaged Profile/lock identity differs from the signed release");
     }
+    let profile: serde_json::Value =
+        serde_json::from_slice(&profile_raw).context("signed Profile is malformed")?;
+    let profile_id =
+        json_string_field(&profile, "/profile_id").context("signed Profile identity is missing")?;
+    let base_pack_id = json_string_field(&profile, "/base/pack_id")
+        .context("signed Profile Base identity is missing")?;
+    let shell_provider_id = json_string_field(&profile, "/shell/provider_id")
+        .context("signed Profile Shell identity is missing")?;
+    let profile_selection = PresentationSelection {
+        base_pack_id: base_pack_id.to_owned(),
+        shell_provider_id: shell_provider_id.to_owned(),
+    };
+    if profile_id.trim().is_empty()
+        || profile_id.len() > 128
+        || json_string_field(&profile, "/profile_api_version") != Some("io.tobkiri.profile.v5")
+        || json_string_field(&profile, "/shell/pack_id").is_none()
+    {
+        bail!("signed Profile identity is invalid");
+    }
+    validate_selection(catalog, &profile_selection)
+        .context("signed Profile presentation selection is unavailable")?;
     let defaultspack_lock: serde_json::Value = serde_json::from_slice(&defaultspack_lock_raw)
         .context("Defaults bundle lock is malformed")?;
+    if json_string_field(&defaultspack_lock, "/schema")
+        != Some("io.tobkiri.defaultspack-bundle-lock.v1")
+    {
+        bail!("signed Profile bundle lock schema is unsupported");
+    }
     let entries = defaultspack_lock
         .get("entries")
         .and_then(serde_json::Value::as_array)
         .context("Defaults bundle lock entries are missing")?;
+    let profile_filename = profile_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .context("signed Profile path has no filename")?;
+    let lock_parent = defaultspack_lock_path
+        .parent()
+        .context("signed Profile bundle lock has no parent")?;
+    if profile_path.parent() != Some(lock_parent) {
+        bail!("signed Profile and bundle lock are not in the same authority root");
+    }
     let profile_bindings = entries
         .iter()
         .filter(|entry| {
-            entry.get("path").and_then(serde_json::Value::as_str)
-                == Some("defaults.profile.v4.json")
+            entry.get("path").and_then(serde_json::Value::as_str) == Some(profile_filename)
                 && entry.get("kind").and_then(serde_json::Value::as_str) == Some("profile")
                 && entry.get("digest").and_then(serde_json::Value::as_str)
                     == Some(manifest.default_profile_sha256.as_str())
         })
         .count();
     if profile_bindings != 1 {
-        bail!("Defaults bundle lock does not bind the signed default Profile");
+        bail!("Profile bundle lock does not bind the signed Profile");
     }
 
     let index_value: serde_json::Value =
@@ -909,8 +1316,8 @@ fn verify_release_binding(
     let selected_shell = catalog
         .shell_providers
         .iter()
-        .find(|shell| shell.provider_id == catalog.default_selection.shell_provider_id)
-        .context("default Profile Shell is missing from the catalog")?;
+        .find(|shell| shell.provider_id == profile_selection.shell_provider_id)
+        .context("signed Profile Shell is missing from the catalog")?;
     let variant = selected_shell
         .artifact_variants
         .iter()
@@ -922,8 +1329,12 @@ fn verify_release_binding(
         || variant.size != Some(index.size)
         || variant.source_identity.as_deref() != Some(index.source_identity.as_str())
         || variant.source_revision.as_deref() != Some(index.source_revision.as_str())
+        || json_string_field(&profile, "/shell/artifact_digest")
+            .is_some_and(|digest| digest != index.sha256)
+        || json_string_field(&profile, "/shell/executable_artifact_digest")
+            .is_some_and(|digest| digest != index.entrypoint_sha256)
     {
-        bail!("catalog variant differs from the signed Shell artifact index");
+        bail!("Profile/catalog Shell binding differs from the signed artifact index");
     }
 
     let embedded_key = option_env!("TOBKIRI_PRESENTATION_TRUST_KEY_B64").unwrap_or("");
@@ -1012,6 +1423,10 @@ fn byte_digest(bytes: &[u8]) -> String {
 fn canonical_value_digest(value: &serde_json::Value) -> AnyResult<String> {
     let bytes = serde_json::to_vec(value).context("failed to canonicalize release JSON")?;
     Ok(byte_digest(&bytes))
+}
+
+fn json_string_field<'a>(value: &'a serde_json::Value, pointer: &str) -> Option<&'a str> {
+    value.pointer(pointer).and_then(serde_json::Value::as_str)
 }
 
 fn validate_catalog_integrity(catalog: &PresentationCatalog) -> AnyResult<()> {
@@ -1424,6 +1839,35 @@ fn resolve_artifact(
         status_detail: "Artifact has not passed production verification.".to_string(),
     };
 
+    // Development builds materialize the Shell beneath the ignored checkout
+    // runtime. Verify those exact bytes at selection time instead of requiring
+    // a production signing key merely to exercise the Launcher locally.
+    if cfg!(debug_assertions)
+        && config.is_dev_workspace()
+        && artifact.path.is_none()
+        && artifact.sha256.is_none()
+    {
+        let relative = Path::new("bundled")
+            .join("dev-shell")
+            .join(&variant.artifact_ref);
+        let relative_string = relative.to_string_lossy().into_owned();
+        let path = safe_artifact_path(config, &relative_string)?;
+        if path.exists() {
+            let (digest, size) = artifact_integrity::digest_and_size(&path)
+                .context("development Shell artifact could not be hashed or measured")?;
+            artifact.path = Some(relative_string);
+            artifact.sha256 = Some(digest);
+            artifact.size = Some(size);
+            artifact.source_identity = Some("development-checkout".to_string());
+            artifact.source_revision = Some(variant.descriptor_digest.clone());
+            artifact.status = "verified".to_string();
+            artifact.status_detail =
+                "Unsigned development artifact verified against the current checkout bytes."
+                    .to_string();
+            return Ok(artifact);
+        }
+    }
+
     if artifact
         .development_command
         .as_deref()
@@ -1592,6 +2036,22 @@ fn write_selection(
     catalog: &PresentationCatalog,
     selection: &PresentationSelection,
 ) -> AnyResult<()> {
+    let artifact = catalog
+        .shell_providers
+        .iter()
+        .find(|shell| shell.provider_id == selection.shell_provider_id)
+        .and_then(|shell| shell.artifact.as_ref())
+        .context("selected Shell artifact was not materialized")?;
+    write_selection_with_identity(config, catalog, selection, artifact, None)
+}
+
+fn write_selection_with_identity(
+    config: &AppConfig,
+    catalog: &PresentationCatalog,
+    selection: &PresentationSelection,
+    artifact: &PresentationArtifact,
+    execution_identity: Option<&crate::host_contract::ExecutionProfileIdentity>,
+) -> AnyResult<()> {
     let base = catalog
         .base_packs
         .iter()
@@ -1602,11 +2062,17 @@ fn write_selection(
         .iter()
         .find(|item| item.provider_id == selection.shell_provider_id)
         .context("selected Shell disappeared before persistence")?;
-    let artifact = shell
-        .artifact
-        .as_ref()
-        .context("selected Shell artifact was not materialized")?;
     validate_production_artifact(artifact)?;
+    let expected_artifact = resolve_artifact(config, shell)?;
+    validate_production_artifact(&expected_artifact)?;
+    if expected_artifact.artifact_id != artifact.artifact_id
+        || expected_artifact.sha256 != artifact.sha256
+        || expected_artifact.platform != artifact.platform
+        || expected_artifact.architecture != artifact.architecture
+        || expected_artifact.path != artifact.path
+    {
+        bail!("verified Shell artifact does not match the selected catalog variant");
+    }
     let stored = StoredProfileSelection {
         schema: SELECTION_SCHEMA.to_string(),
         catalog_revision: catalog_revision(catalog)?,
@@ -1621,7 +2087,13 @@ fn write_selection(
             .context("verified Shell artifact has no digest")?,
         platform: artifact.platform.clone(),
         architecture: artifact.architecture.clone(),
+        execution_identity: execution_identity.cloned(),
     };
+    if let Some(identity) = stored.execution_identity.as_ref() {
+        identity
+            .validate()
+            .context("selected presentation execution identity is invalid")?;
+    }
     let directory = config.user_data_dir.join(SELECTION_DIR);
     fs::create_dir_all(&directory).with_context(|| {
         format!(
@@ -1682,6 +2154,18 @@ fn read_selection(
     config: &AppConfig,
     catalog: &PresentationCatalog,
 ) -> AnyResult<Option<PresentationSelection>> {
+    Ok(
+        read_stored_selection(config, catalog)?.map(|stored| PresentationSelection {
+            base_pack_id: stored.base_pack_id,
+            shell_provider_id: stored.shell_provider_id,
+        }),
+    )
+}
+
+fn read_stored_selection(
+    config: &AppConfig,
+    catalog: &PresentationCatalog,
+) -> AnyResult<Option<StoredProfileSelection>> {
     let path = config
         .user_data_dir
         .join(SELECTION_DIR)
@@ -1713,6 +2197,11 @@ fn read_selection(
                 .context("saved exact profile selection is malformed")?;
             if stored.schema != SELECTION_SCHEMA {
                 bail!("saved selection is not a Profile v4 selection");
+            }
+            if let Some(identity) = stored.execution_identity.as_ref() {
+                identity
+                    .validate()
+                    .context("saved selection execution identity is invalid")?;
             }
             // A previously valid v4 selection is an exact authority binding,
             // not a durable preference. If any authenticated catalog binding
@@ -1750,13 +2239,20 @@ fn read_selection(
             }) else {
                 return Ok(None);
             };
-            if variant.sha256.as_deref() != Some(stored.shell_artifact_digest.as_str()) {
+            let catalog_digest_matches =
+                variant.sha256.as_deref() == Some(stored.shell_artifact_digest.as_str());
+            let development_digest_matches = cfg!(debug_assertions)
+                && config.is_dev_workspace()
+                && variant.sha256.is_none()
+                && shell.artifact.as_ref().is_some_and(|artifact| {
+                    artifact.artifact_id == stored.shell_artifact_id
+                        && artifact.status == "verified"
+                        && artifact.sha256.as_deref() == Some(stored.shell_artifact_digest.as_str())
+                });
+            if !catalog_digest_matches && !development_digest_matches {
                 return Ok(None);
             }
-            Ok(Some(PresentationSelection {
-                base_pack_id: stored.base_pack_id,
-                shell_provider_id: stored.shell_provider_id,
-            }))
+            Ok(Some(stored))
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error).with_context(|| format!("failed to read {}", path.display())),
@@ -1827,7 +2323,22 @@ fn now_seconds() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::{Cell, RefCell};
     use std::collections::BTreeMap;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Barrier};
+
+    fn receipt_test_ticket() -> crate::shell_handoff::ShellHandoffTicket {
+        let root = std::env::temp_dir().join("tobkiri-receipt-test");
+        crate::shell_handoff::ShellHandoffTicket {
+            path: root.join(format!("handoff-{}.json", "H".repeat(40))),
+            receipt: crate::shell_handoff::ShellHandoffReceiptIdentity {
+                root,
+                handoff_nonce: "H".repeat(40),
+                receipt_nonce: "R".repeat(40),
+            },
+        }
+    }
 
     fn presentation_catalog_capability() -> serde_json::Value {
         serde_json::from_str(include_str!("../capabilities/presentation-catalog.json")).unwrap()
@@ -1835,6 +2346,13 @@ mod tests {
 
     fn presentation_control_capability() -> serde_json::Value {
         serde_json::from_str(include_str!("../capabilities/presentation-control.json")).unwrap()
+    }
+
+    fn panel_session_reauthorization_capability() -> serde_json::Value {
+        serde_json::from_str(include_str!(
+            "../capabilities/panel-session-reauthorization.json"
+        ))
+        .unwrap()
     }
 
     fn capability_allows_origin(
@@ -1904,6 +2422,72 @@ mod tests {
         assert_eq!(
             control["remote"]["urls"],
             serde_json::json!(["http://127.0.0.1:*/*", "http://localhost:*/*"])
+        );
+    }
+
+    #[test]
+    fn panel_session_reauthorization_acl_is_narrow_and_uses_live_caller_checks() {
+        // The broad port pattern deliberately survives an authenticated Kernel
+        // restart. It is safe only because the command shares the strict live
+        // Launcher-panel caller validation used by presentation commands.
+        let capability = panel_session_reauthorization_capability();
+        assert_eq!(capability["local"], false);
+        assert_eq!(capability["windows"], serde_json::json!(["main"]));
+        assert_eq!(
+            capability["remote"]["urls"],
+            serde_json::json!(["http://127.0.0.1:*/*", "http://localhost:*/*"])
+        );
+        assert_eq!(
+            capability_permissions(&capability),
+            vec!["allow-reauthorize-panel-session"]
+        );
+
+        for origin in [
+            "http://127.0.0.1:8765/panel/",
+            "http://localhost:8765/panel/setup",
+            "http://127.0.0.1:18772/panel/?code=after-restart",
+        ] {
+            assert!(capability_allows_origin(&capability, "main", origin));
+        }
+
+        for label in ["defaultspack-main", "authority-approval", "panel"] {
+            assert!(!capability_allows_origin(
+                &capability,
+                label,
+                "http://127.0.0.1:8765/panel/"
+            ));
+        }
+        for origin in [
+            "tauri://localhost/panel/",
+            "https://127.0.0.1:8765/panel/",
+            "http://example.invalid:8765/panel/",
+        ] {
+            assert!(!capability_allows_origin(&capability, "main", origin));
+        }
+
+        // A forged page can match the capability's loopback wildcard but
+        // cannot reauthorize: the Rust check binds it to the configured port
+        // and the /panel route before the command gets a session code.
+        let forged = Url::parse("http://127.0.0.1:8766/console").unwrap();
+        assert!(capability_allows_origin(
+            &capability,
+            "main",
+            forged.as_str()
+        ));
+        assert_eq!(
+            validate_presentation_caller_context("main", &forged, LAUNCHER_PANEL_PORT),
+            Err(PresentationCallerDenial::Port)
+        );
+
+        let wrong_route = Url::parse("http://127.0.0.1:8765/console").unwrap();
+        assert!(capability_allows_origin(
+            &capability,
+            "main",
+            wrong_route.as_str()
+        ));
+        assert_eq!(
+            validate_presentation_caller_context("main", &wrong_route, LAUNCHER_PANEL_PORT),
+            Err(PresentationCallerDenial::Route)
         );
     }
 
@@ -2528,6 +3112,7 @@ mod tests {
             shell_artifact_digest: bound_digest,
             platform,
             architecture,
+            execution_identity: None,
         };
         fs::write(&selection_path, serde_json::to_vec_pretty(&stored).unwrap()).unwrap();
         assert_eq!(
@@ -2669,6 +3254,50 @@ mod tests {
         let selection = catalog.default_selection.clone();
         let selected =
             build_state_from_catalog(&config, catalog.clone(), Some(selection.clone())).unwrap();
+        let verified_artifact = selected.materialization.artifact.as_ref().unwrap();
+        let identity = crate::host_contract::ExecutionProfileIdentity::new(
+            "defaults",
+            format!("sha256:{}", "1".repeat(64)),
+            "activation:defaults-launch-test",
+            format!("sha256:{}", "2".repeat(64)),
+        )
+        .unwrap();
+        // The launch resolver keeps its verified artifact separate from the raw
+        // catalog. Persist that exact artifact without relying on UI hydration.
+        assert!(catalog
+            .shell_providers
+            .iter()
+            .all(|shell| shell.artifact.is_none()));
+        write_selection_with_identity(
+            &config,
+            &catalog,
+            &selection,
+            verified_artifact,
+            Some(&identity),
+        )
+        .unwrap();
+        let selection_path = config
+            .user_data_dir
+            .join(SELECTION_DIR)
+            .join(SELECTION_FILE);
+        let persisted = fs::read(&selection_path).unwrap();
+        let stored: StoredProfileSelection = serde_json::from_slice(&persisted).unwrap();
+        assert_eq!(stored.execution_identity, Some(identity));
+        assert_eq!(
+            stored.shell_artifact_digest,
+            verified_artifact.sha256.clone().unwrap()
+        );
+        let mut mismatched_artifact = verified_artifact.clone();
+        mismatched_artifact.artifact_id = "unselected-shell".to_string();
+        assert!(write_selection_with_identity(
+            &config,
+            &catalog,
+            &selection,
+            &mismatched_artifact,
+            None,
+        )
+        .is_err());
+        assert_eq!(fs::read(&selection_path).unwrap(), persisted);
         write_selection(&config, &selected.catalog, &selection).unwrap();
         assert_eq!(selected.materialization.status, "materialized");
         assert_eq!(
@@ -2691,6 +3320,55 @@ mod tests {
             "digest_mismatch"
         );
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn development_selection_preserves_digest_and_rejects_changed_bytes() {
+        let root = std::env::temp_dir().join(format!(
+            "tobkiri-development-selection-{}",
+            std::process::id()
+        ));
+        let mut config = test_config(&root);
+        config.dev_workspace_root = Some(root.clone());
+        let catalog: PresentationCatalog =
+            serde_json::from_str(include_str!("../bundled/presentation_catalog.json")).unwrap();
+        let shell = catalog
+            .shell_providers
+            .iter()
+            .find(|shell| shell.provider_id == catalog.default_selection.shell_provider_id)
+            .unwrap();
+        let variant = shell
+            .artifact_variants
+            .iter()
+            .find(|variant| {
+                variant.platform == current_platform()
+                    && variant.architecture == current_architecture()
+            })
+            .unwrap();
+        let artifact_path = root.join("bundled/dev-shell").join(&variant.artifact_ref);
+        fs::create_dir_all(artifact_path.parent().unwrap()).unwrap();
+        fs::write(&artifact_path, b"verified development shell").unwrap();
+        let artifact = resolve_artifact(&config, shell).unwrap();
+        assert!(artifact.sha256.as_ref().unwrap().starts_with("sha256:"));
+        write_selection_with_identity(
+            &config,
+            &catalog,
+            &catalog.default_selection,
+            &artifact,
+            None,
+        )
+        .unwrap();
+        fs::write(&artifact_path, b"changed development shell").unwrap();
+        assert!(write_selection_with_identity(
+            &config,
+            &catalog,
+            &catalog.default_selection,
+            &artifact,
+            None,
+        )
+        .is_err());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -2740,7 +3418,7 @@ mod tests {
         } else {
             Path::new("/private/launcher/shell_handoff/handoff-ABC.json")
         };
-        let macos = verified_launch_spec("macos", artifact, handoff).unwrap();
+        let macos = verified_launch_spec("macos", artifact, handoff, None).unwrap();
         assert_eq!(macos.program, Path::new("/usr/bin/open"));
         assert_eq!(
             macos.args,
@@ -2754,7 +3432,7 @@ mod tests {
         );
 
         for platform in ["linux", "windows"] {
-            let direct = verified_launch_spec(platform, artifact, handoff).unwrap();
+            let direct = verified_launch_spec(platform, artifact, handoff, None).unwrap();
             assert_eq!(direct.program, artifact);
             assert_eq!(
                 direct.args,
@@ -2764,6 +3442,32 @@ mod tests {
                 ]
             );
         }
+        assert!(macos
+            .args
+            .iter()
+            .all(|arg| !arg.to_string_lossy().contains("rumi_local_auth")));
+    }
+
+    #[test]
+    fn macos_launch_spec_forwards_only_the_validated_ci_environment() {
+        let artifact = Path::new("/verified/release/Tobkiri Shell.app");
+        let handoff = Path::new("/private/launcher/shell_handoff/handoff-ABC.json");
+        let environment = OsStr::new("TOBKIRI_CI_E2E_APP_DATA_ROOT=/private/ci/ci-e2e-app-data");
+
+        let macos = verified_launch_spec("macos", artifact, handoff, Some(environment)).unwrap();
+        assert_eq!(
+            macos.args,
+            vec![
+                OsString::from("-n"),
+                OsString::from("--env"),
+                environment.to_owned(),
+                artifact.as_os_str().to_owned(),
+                OsString::from("--args"),
+                OsString::from(crate::shell_handoff::HANDOFF_ARGUMENT),
+                handoff.as_os_str().to_owned(),
+            ]
+        );
+        assert!(verified_launch_spec("linux", artifact, handoff, Some(environment)).is_err());
         assert!(macos
             .args
             .iter()
@@ -2828,17 +3532,260 @@ mod tests {
     }
 
     #[test]
-    fn injected_macos_handoff_without_ack_fails_closed() {
-        let error = wait_for_handoff_consumed_with(
-            Path::new("handoff-test.json"),
-            Duration::from_secs(1),
-            |_| Ok(false),
-            || Duration::from_secs(1),
+    fn handoff_disappearance_without_receipt_fails_closed() {
+        let ticket = receipt_test_ticket();
+        let error =
+            wait_for_shell_receipt_with(&ticket, |_| Ok(None), || true, |_| {}).unwrap_err();
+
+        assert!(error.to_string().contains("handoff receipt"));
+    }
+
+    #[test]
+    fn guardian_wait_does_not_consume_the_shell_receipt_window() {
+        // The injected monotonic timestamp represents a guardian wait longer
+        // than the former overall deadline without making this regression test
+        // sleep for 45 seconds.
+        const PREVIOUS_OVERALL_TIMEOUT: Duration = Duration::from_secs(45);
+        let launch_started = Instant::now();
+        let previous_deadline = launch_started + PREVIOUS_OVERALL_TIMEOUT;
+        let runtime_ready_at = previous_deadline + Duration::from_secs(1);
+        let guardian = Arc::new(Mutex::new(()));
+        let held_guard = guardian.lock().unwrap();
+        let preparation_waiting = Arc::new(Barrier::new(2));
+        let revalidated = Arc::new(AtomicUsize::new(0));
+
+        let worker = std::thread::spawn({
+            let guardian = Arc::clone(&guardian);
+            let preparation_waiting = Arc::clone(&preparation_waiting);
+            let revalidated = Arc::clone(&revalidated);
+            move || {
+                preparation_waiting.wait();
+                let _guardian = guardian.lock().unwrap();
+                revalidated.store(1, Ordering::SeqCst);
+                assert_eq!(revalidated.load(Ordering::SeqCst), 1);
+                let deadline = shell_receipt_deadline(runtime_ready_at);
+
+                assert_eq!(
+                    deadline.saturating_duration_since(runtime_ready_at),
+                    SHELL_RECEIPT_TIMEOUT
+                );
+            }
+        });
+
+        preparation_waiting.wait();
+        drop(held_guard);
+        worker.join().unwrap();
+        assert!(runtime_ready_at > previous_deadline);
+    }
+
+    #[test]
+    fn fresh_shell_receipt_window_still_fails_closed_on_timeout() {
+        let ticket = receipt_test_ticket();
+        let expired_start = Instant::now()
+            .checked_sub(SHELL_RECEIPT_TIMEOUT)
+            .expect("test instant must support subtraction");
+        let deadline = shell_receipt_deadline(expired_start);
+        let error = wait_for_shell_receipt_with(
+            &ticket,
+            |_| Ok(None),
+            || Instant::now() >= deadline,
             |_| {},
         )
         .unwrap_err();
 
-        assert!(error.to_string().contains("consume handoff"));
+        assert!(error
+            .to_string()
+            .contains("timed out waiting for verified Shell handoff receipt"));
+    }
+
+    #[test]
+    fn shell_preparation_returns_the_worker_result_before_its_deadline() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        sender.send(Ok("prepared")).unwrap();
+
+        assert_eq!(
+            await_shell_preparation_result(receiver, Duration::from_secs(1)).unwrap(),
+            "prepared"
+        );
+    }
+
+    #[test]
+    fn shell_preparation_deadline_is_independent_and_fails_closed() {
+        let (_sender, receiver) = mpsc::sync_channel::<AnyResult<()>>(1);
+        let error = await_shell_preparation_result(receiver, Duration::ZERO).unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("Defaultspack Shell preparation timed out"));
+        assert!(SHELL_PREPARATION_TIMEOUT > SHELL_RECEIPT_TIMEOUT);
+    }
+
+    #[test]
+    fn waiting_for_another_shell_preparation_is_bounded() {
+        let launch_lock = Mutex::new(());
+        let _held_launch = launch_lock.lock().unwrap();
+        let invoked = Cell::new(false);
+
+        let error = with_presentation_launch_lock(&launch_lock, Duration::ZERO, || {
+            invoked.set(true);
+            Ok(())
+        })
+        .unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("another Shell launch is still preparing"));
+        assert!(!invoked.get());
+    }
+
+    #[test]
+    fn successful_child_or_duplicate_exit_is_not_a_receipt() {
+        let mut process = FakeLaunchProcess {
+            observations: vec![Some(true)],
+            ..Default::default()
+        };
+        let error = finish_spawned_launch("linux", &mut process, Duration::from_secs(1), || {
+            bail!("injected missing receipt")
+        })
+        .unwrap_err();
+        assert!(error.to_string().contains("missing receipt"));
+        assert_eq!(process.observations, vec![Some(true)]);
+    }
+
+    #[test]
+    fn successful_shell_launch_response_preserves_exact_public_contract() {
+        let catalog = sample_catalog();
+        let mut shell = catalog.shell_providers[0].clone();
+        shell.display_name = "Tobkiri Shell".into();
+        let target = VerifiedPresentationTarget {
+            execution_identity: crate::host_contract::ExecutionProfileIdentity::new(
+                "defaults",
+                format!("sha256:{}", "1".repeat(64)),
+                "activation:test-fixture",
+                format!("sha256:{}", "2".repeat(64)),
+            )
+            .unwrap(),
+            catalog,
+            catalog_revision: format!("sha256:{}", "3".repeat(64)),
+            selection: PresentationSelection {
+                base_pack_id: "defaults-basepack".into(),
+                shell_provider_id: "shell.tauri.default".into(),
+            },
+            shell,
+            artifact: PresentationArtifact {
+                artifact_id: "shell.tauri.default.macos-arm64".into(),
+                variant: "macos-arm64".into(),
+                platform: "macos".into(),
+                architecture: "arm64".into(),
+                path: Some("bundled/Tobkiri Shell.app".into()),
+                sha256: Some(format!("sha256:{}", "4".repeat(64))),
+                size: Some(1),
+                source_identity: None,
+                source_revision: None,
+                prebuilt: true,
+                production: true,
+                development_command: None,
+                bundle_identifier: Some(crate::shell_handoff::SHELL_BUNDLE_IDENTIFIER.into()),
+                status: "verified".into(),
+                status_detail: "test fixture".into(),
+            },
+            artifact_path: PathBuf::from("/Applications/Tobkiri Shell.app"),
+            frontend_entry: crate::frontend_entry::test_binding(),
+            entrypoint_digest: format!("sha256:{}", "5".repeat(64)),
+        };
+        let response = successful_shell_launch_response(&target);
+        assert!(target.same_security_binding(&target));
+        let mut changed = target.clone();
+        changed.frontend_entry.entry.route = "/different".into();
+        assert!(!target.same_security_binding(&changed));
+        changed = target.clone();
+        changed.frontend_entry.map_digest = format!("sha256:{}", "6".repeat(64));
+        assert!(!target.same_security_binding(&changed));
+
+        assert_eq!(
+            serde_json::to_value(response).unwrap(),
+            serde_json::json!({
+                "status": "launched",
+                "provider_id": "shell.tauri.default",
+                "artifact_id": "shell.tauri.default.macos-arm64",
+                "message": "Tobkiri Shell admitted the verified Profile binding; bootstrap and page readiness are not asserted.",
+            })
+        );
+    }
+
+    #[test]
+    fn rotation_revalidates_and_launches_with_a_fresh_attempt() {
+        let resolves = Cell::new(0);
+        let launches = RefCell::new(Vec::new());
+        let target = run_shell_rotation_sequence(
+            || {
+                resolves.set(resolves.get() + 1);
+                Ok("verified-target".to_string())
+            },
+            |left, right| left == right,
+            |_| {
+                let attempt = launches.borrow().len();
+                launches.borrow_mut().push(attempt);
+                Ok(if attempt == 0 {
+                    crate::shell_handoff::ShellHandoffReceiptStatus::RotationRequired
+                } else {
+                    crate::shell_handoff::ShellHandoffReceiptStatus::BindingAdmitted
+                })
+            },
+        )
+        .unwrap();
+        assert_eq!(target, "verified-target");
+        assert_eq!(resolves.get(), 2);
+        assert_eq!(*launches.borrow(), vec![0, 1]);
+    }
+
+    #[test]
+    fn rotation_target_drift_fails_closed_before_relaunch() {
+        let resolves = Cell::new(0);
+        let launches = Cell::new(0);
+        let error = run_shell_rotation_sequence(
+            || {
+                resolves.set(resolves.get() + 1);
+                Ok(resolves.get())
+            },
+            |left, right| left == right,
+            |_| {
+                launches.set(launches.get() + 1);
+                Ok(crate::shell_handoff::ShellHandoffReceiptStatus::RotationRequired)
+            },
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("changed during rotation"));
+        assert_eq!(launches.get(), 1);
+    }
+
+    #[test]
+    fn presentation_launch_coordination_serializes_concurrent_callers() {
+        const CALLERS: usize = 8;
+        let barrier = Arc::new(Barrier::new(CALLERS));
+        let active = Arc::new(AtomicUsize::new(0));
+        let maximum = Arc::new(AtomicUsize::new(0));
+        let mut threads = Vec::new();
+        for _ in 0..CALLERS {
+            let barrier = Arc::clone(&barrier);
+            let active = Arc::clone(&active);
+            let maximum = Arc::clone(&maximum);
+            threads.push(std::thread::spawn(move || {
+                barrier.wait();
+                with_presentation_launch_coordination(|| {
+                    let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+                    maximum.fetch_max(current, Ordering::SeqCst);
+                    std::thread::yield_now();
+                    active.fetch_sub(1, Ordering::SeqCst);
+                    Ok(())
+                })
+                .unwrap();
+            }));
+        }
+        for thread in threads {
+            thread.join().unwrap();
+        }
+        assert_eq!(maximum.load(Ordering::SeqCst), 1);
     }
 
     #[test]
@@ -2853,21 +3800,26 @@ mod tests {
         } else {
             Path::new("/private/launcher/handoff.json")
         };
-        let relative =
-            verified_launch_spec("linux", Path::new("Tobkiri.AppImage"), absolute_handoff)
-                .unwrap_err()
-                .to_string();
+        let relative = verified_launch_spec(
+            "linux",
+            Path::new("Tobkiri.AppImage"),
+            absolute_handoff,
+            None,
+        )
+        .unwrap_err()
+        .to_string();
         assert!(relative.contains("artifact launch path must be absolute"));
 
         let relative_handoff =
-            verified_launch_spec("linux", absolute_shell, Path::new("handoff.json"))
+            verified_launch_spec("linux", absolute_shell, Path::new("handoff.json"), None)
                 .unwrap_err()
                 .to_string();
         assert!(relative_handoff.contains("handoff path must be absolute"));
 
-        let unsupported = verified_launch_spec("fixture-os", absolute_shell, absolute_handoff)
-            .unwrap_err()
-            .to_string();
+        let unsupported =
+            verified_launch_spec("fixture-os", absolute_shell, absolute_handoff, None)
+                .unwrap_err()
+                .to_string();
         assert!(unsupported.contains("unsupported"));
     }
 
@@ -2881,6 +3833,29 @@ mod tests {
         catalog.shell_providers[0].artifact_variants.push(duplicate);
         let error = validate_catalog_integrity(&catalog).unwrap_err();
         assert!(error.to_string().contains("invalid production variant"));
+    }
+
+    #[test]
+    fn presentation_launch_preserves_reresolution_code_and_action() {
+        let error = Err::<(), _>(crate::defaultspack_authority::ProfileReresolutionRequired)
+            .context("active Application authority could not be resolved")
+            .unwrap_err();
+        let wire: serde_json::Value =
+            serde_json::from_str(&presentation_launch_error_wire(&error)).unwrap();
+        assert_eq!(
+            wire["code"],
+            crate::defaultspack_authority::ProfileReresolutionRequired::CODE
+        );
+        assert_eq!(
+            wire["action"],
+            crate::defaultspack_authority::ProfileReresolutionRequired::ACTION
+        );
+
+        let malformed = anyhow::anyhow!("active ResolvedPlan launch selector is malformed");
+        assert_eq!(
+            presentation_launch_error_wire(&malformed),
+            "selected presentation could not be launched"
+        );
     }
 
     #[test]

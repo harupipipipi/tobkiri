@@ -15,6 +15,9 @@ from pathlib import Path
 from typing import TypeVar
 
 
+sys.dont_write_bytecode = True
+
+
 RESOURCE_RELATIVE = Path("Contents/Resources/app/python-runtime")
 MUTABLE_LOG_RELATIVE = Path("Contents/Resources/app/logs")
 BUILDER_RELATIVE = Path(".github/scripts/build_sealed_python_environment.py")
@@ -92,6 +95,7 @@ def _preseal_tauri_directories(root: Path, target: str, expected: str, builder) 
     records = builder._records(root, spec)
     if records != document["files"]:
         raise RuntimeError("packaged sealed Python file inventory changed")
+    sealed_files: dict[Path, int] = {}
     for entry in records:
         path = root / str(entry["path"])
         expected_mode = (
@@ -99,12 +103,20 @@ def _preseal_tauri_directories(root: Path, target: str, expected: str, builder) 
             if bool(entry["executable"])
             else builder.IMMUTABLE_FILE_MODE
         )
-        if stat.S_IMODE(path.lstat().st_mode) != expected_mode:
+        if stat.S_IMODE(path.lstat().st_mode) not in {
+            expected_mode,
+            expected_mode | stat.S_IWUSR,
+        }:
             raise RuntimeError(
                 f"packaged sealed Python file mode changed: {entry['path']}"
             )
-    if stat.S_IMODE(manifest_path.lstat().st_mode) != builder.IMMUTABLE_FILE_MODE:
+        sealed_files[path] = expected_mode
+    if stat.S_IMODE(manifest_path.lstat().st_mode) not in {
+        builder.IMMUTABLE_FILE_MODE,
+        builder.IMMUTABLE_FILE_MODE | stat.S_IWUSR,
+    }:
         raise RuntimeError("packaged sealed Python manifest mode changed")
+    sealed_files[manifest_path] = builder.IMMUTABLE_FILE_MODE
     if builder._actual_directories(root) != builder._expected_directories(records):
         raise RuntimeError("packaged sealed Python directory inventory changed")
     evidence = json.loads(
@@ -118,6 +130,7 @@ def _preseal_tauri_directories(root: Path, target: str, expected: str, builder) 
         for _relative, path, kind, _metadata in builder._walk_tree(root)
         if kind == "directory"
     ]
+    directory_set = set(directories)
     for path in (root, *directories):
         mode = stat.S_IMODE(path.lstat().st_mode)
         if mode not in {builder.IMMUTABLE_DIRECTORY_MODE, 0o755}:
@@ -127,8 +140,10 @@ def _preseal_tauri_directories(root: Path, target: str, expected: str, builder) 
             )
     identities = {
         path: (path.lstat().st_dev, path.lstat().st_ino)
-        for path in (root, *directories)
+        for path in (root, *directories, *sealed_files)
     }
+    for path, mode in sealed_files.items():
+        os.chmod(path, mode, follow_symlinks=False)
     for path in sorted(
         directories,
         key=lambda value: (len(value.relative_to(root).parts), value.as_posix()),
@@ -138,12 +153,21 @@ def _preseal_tauri_directories(root: Path, target: str, expected: str, builder) 
     os.chmod(root, builder.IMMUTABLE_DIRECTORY_MODE, follow_symlinks=False)
     for path, identity in identities.items():
         metadata = path.lstat()
+        expected_mode = (
+            builder.IMMUTABLE_DIRECTORY_MODE
+            if path == root or path in directory_set
+            else sealed_files[path]
+        )
         if (
             (metadata.st_dev, metadata.st_ino) != identity
-            or not stat.S_ISDIR(metadata.st_mode)
-            or stat.S_IMODE(metadata.st_mode) != builder.IMMUTABLE_DIRECTORY_MODE
+            or (
+                (path == root or path in directory_set)
+                and not stat.S_ISDIR(metadata.st_mode)
+            )
+            or (path in sealed_files and not stat.S_ISREG(metadata.st_mode))
+            or stat.S_IMODE(metadata.st_mode) != expected_mode
         ):
-            raise RuntimeError("packaged sealed Python directory changed during Host seal")
+            raise RuntimeError("packaged sealed Python entry changed during Host seal")
 
 
 def parse_args() -> argparse.Namespace:

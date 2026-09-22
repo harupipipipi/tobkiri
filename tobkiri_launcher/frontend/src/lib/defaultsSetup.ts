@@ -1,9 +1,10 @@
-import {apiFetch} from './api';
+import {hostApiFetch as apiFetch} from './hostClient';
 import {
   DEFAULTS_BASE_KEYS,
   DEFAULTS_BINDING_DOMAIN_KINDS,
   DEFAULTS_BINDING_EXECUTION_KINDS,
   DEFAULTS_BINDING_KEYS,
+  DEFAULTS_BINDING_OPTIONAL_KEYS,
   DEFAULTS_CONFIRMATION_KEYS,
   DEFAULTS_CONFIRMED_SHELL_KEYS,
   DEFAULTS_FUNCTION_PRINCIPAL_KEYS,
@@ -28,6 +29,7 @@ export type DefaultsBinding = {
   readonly runtime_abi: string;
   readonly backend: string;
   readonly execution_kind: string;
+  readonly authority_mode?: 'profile_grant' | 'interactive_only';
   readonly caller_function_id: string;
   readonly authority_reference: string;
   readonly requested_scope_digest: string;
@@ -103,7 +105,11 @@ export type DefaultsActivation = {
     readonly activation_id: string;
     readonly fencing_token: number;
   };
-  readonly restart_required: false;
+  /**
+   * The Host has durably committed the activation, then deliberately hands
+   * off to a cold process before it exposes the new runtime tuple.
+   */
+  readonly restart_required: true;
 };
 
 function object(value: unknown, label: string): Record<string, unknown> {
@@ -117,10 +123,15 @@ function exactString(value: unknown, expected: string, label: string): void {
   if (value !== expected) throw new Error(`${label} is unsupported`);
 }
 
-function exactKeys(value: Record<string, unknown>, keys: readonly string[], label: string): void {
+function exactKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  label: string,
+  optionalKeys: readonly string[] = [],
+): void {
   const actual = Object.keys(value).sort();
-  const expected = [...keys].sort();
-  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
+  const allowed = new Set([...keys, ...optionalKeys]);
+  if (keys.some((key) => !actual.includes(key)) || actual.some((key) => !allowed.has(key))) {
     throw new Error(`${label} has unknown or missing fields`);
   }
 }
@@ -237,7 +248,12 @@ export function parseDefaultsSetupState(value: unknown): DefaultsSetupState {
   const bindingIdentities = new Set<string>();
   const conversation = bindings.filter((item) => {
     const binding = object(item, 'Defaults binding');
-    exactKeys(binding, DEFAULTS_BINDING_KEYS, 'Defaults binding');
+    exactKeys(
+      binding,
+      DEFAULTS_BINDING_KEYS,
+      'Defaults binding',
+      DEFAULTS_BINDING_OPTIONAL_KEYS,
+    );
     for (const field of [
       'pack_id', 'contract_id', 'operation_id', 'caller_function_id',
       'variant_id', 'platform', 'architecture', 'runtime_abi', 'backend',
@@ -252,6 +268,13 @@ export function parseDefaultsSetupState(value: unknown): DefaultsSetupState {
       DEFAULTS_BINDING_EXECUTION_KINDS,
       'Defaults binding execution kind',
     );
+    if (binding.authority_mode !== undefined) {
+      enumString(
+        binding.authority_mode,
+        ['profile_grant', 'interactive_only'],
+        'Defaults binding authority mode',
+      );
+    }
     if (
       typeof binding.authority_reference !== 'string'
       || !/^authority-ref:[0-9a-f]{64}$/.test(binding.authority_reference)
@@ -343,8 +366,29 @@ export function parseDefaultsSetupState(value: unknown): DefaultsSetupState {
   return value as DefaultsSetupState;
 }
 
-export async function fetchDefaultsSetupState(): Promise<DefaultsSetupState> {
-  return parseDefaultsSetupState(await apiFetch<unknown>('/api/setup/packs'));
+export async function fetchDefaultsSetupState(
+  options: {waitForRestart?: boolean; includeSourceAdditions?: boolean} = {},
+): Promise<DefaultsSetupState> {
+  // Restart may close the connection before a response arrives. Retry only
+  // transport failures of this read; integrity/auth errors and POSTs are final.
+  const deadline = Date.now() + 60_000;
+  const needsExtendedRead = options.waitForRestart || options.includeSourceAdditions;
+  while (true) {
+    try {
+      return parseDefaultsSetupState(await apiFetch<unknown>(
+        options.includeSourceAdditions
+          ? '/api/setup/packs?include_source_additions=true' : '/api/setup/packs',
+        {}, needsExtendedRead
+          ? {timeoutMs: Math.max(1, deadline - Date.now())} : {},
+      ));
+    } catch (error) {
+      const disconnected = error instanceof TypeError && [
+        'Load failed', 'Failed to fetch', 'NetworkError when attempting to fetch resource.',
+      ].includes(error.message);
+      if (!options.waitForRestart || !disconnected || Date.now() + 500 >= deadline) throw error;
+      await new Promise<void>((resolve) => setTimeout(resolve, 500));
+    }
+  }
 }
 
 export function parseDefaultsActivationResponse(
@@ -392,7 +436,7 @@ export function parseDefaultsActivationResponse(
   if (audit.activation_id !== activation || audit.fencing_token !== fencingToken) {
     throw new Error('Defaults activation audit binding is invalid');
   }
-  if (response.restart_required !== false) throw new Error('Unexpected Defaults restart contract');
+  if (response.restart_required !== true) throw new Error('Unexpected Defaults restart contract');
   return {
     setup_api_version: response.setup_api_version as 'io.tobkiri.setup-state.v4',
     state: response.state as 'active',
@@ -409,15 +453,17 @@ export function parseDefaultsActivationResponse(
       activation_id: activation,
       fencing_token: fencingToken,
     },
-    restart_required: false,
+    restart_required: true,
   };
 }
 
 export async function activateDefaultsProfile(
   confirmation: DefaultsConfirmation,
+  options: {includeSourceAdditions?: boolean} = {},
 ): Promise<DefaultsActivation> {
   return parseDefaultsActivationResponse(
-    await apiFetch<unknown>('/api/setup/packs/install', {
+    await apiFetch<unknown>(options.includeSourceAdditions
+      ? '/api/setup/packs/install?include_source_additions=true' : '/api/setup/packs/install', {
       method: 'POST',
       body: JSON.stringify({
         setup_api_version: 'io.tobkiri.setup-state.v4',
@@ -425,7 +471,7 @@ export async function activateDefaultsProfile(
         confirmed: true,
         confirmation,
       }),
-    }),
+    }, {timeoutMs: 120_000}),
     confirmation,
   );
 }

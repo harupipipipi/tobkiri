@@ -103,68 +103,82 @@ struct PackVMVZHelperMain {
         replayGuard: NonceReplayGuard
     ) throws -> [String: Any] {
         let request = try DirectSupervisorRequest.parse(object, replayGuard: replayGuard)
-        let payload: [String: Any]
-        switch request.operation {
-        case "launch":
-            guard let bindingRaw = request.raw["launch_binding"],
-                  let guestChallenge = request.raw["guest_challenge"] as? String else {
-                throw HelperError.invalidRequest("INVALID_DIRECT_LAUNCH")
+        do {
+            let payload: [String: Any]
+            switch request.operation {
+            case "launch":
+                guard let bindingRaw = request.raw["launch_binding"],
+                      let guestChallenge = request.raw["guest_challenge"] as? String else {
+                    throw HelperError.invalidRequest("INVALID_DIRECT_LAUNCH")
+                }
+                payload = try supervisor.directLaunch(
+                    DirectLaunchBinding.parse(bindingRaw),
+                    hostNonce: request.hostNonce,
+                    guestChallenge: guestChallenge
+                )
+            case "invoke":
+                guard let invocation = request.raw["request"] as? [String: Any],
+                      let guestChallenge = request.raw["guest_challenge"] as? String else {
+                    throw HelperError.invalidRequest("INVALID_DIRECT_INVOKE")
+                }
+                payload = try supervisor.directInvoke(
+                    domainID: request.domainID,
+                    request: invocation,
+                    guestChallenge: guestChallenge
+                )
+            case "bridge_result":
+                guard let bridgeResult = request.raw["host_bridge_result"] as? [String: Any],
+                      let guestChallenge = request.raw["guest_challenge"] as? String else {
+                    throw HelperError.invalidRequest("INVALID_DIRECT_BRIDGE_RESULT")
+                }
+                payload = try supervisor.directBridgeResult(
+                    domainID: request.domainID,
+                    hostBridgeResult: bridgeResult,
+                    guestChallenge: guestChallenge
+                )
+            case "cancel":
+                guard let requestID = request.raw["request_id"] as? String,
+                      let requestDigest = request.raw["request_digest"] as? String,
+                      let guestChallenge = request.raw["guest_challenge"] as? String else {
+                    throw HelperError.invalidRequest("INVALID_DIRECT_CANCEL")
+                }
+                payload = try supervisor.directCancel(
+                    domainID: request.domainID,
+                    requestID: requestID,
+                    requestDigest: requestDigest,
+                    guestChallenge: guestChallenge
+                )
+            case "terminate":
+                guard let leaseID = request.raw["lease_id"] as? String,
+                      let reservationID = request.raw["reservation_id"] as? String else {
+                    throw HelperError.invalidRequest("INVALID_DIRECT_TERMINATE")
+                }
+                payload = try supervisor.directTerminate(
+                    domainID: request.domainID,
+                    leaseID: leaseID,
+                    reservationID: reservationID
+                )
+            default:
+                throw HelperError.invalidRequest("UNSUPPORTED_OPERATION")
             }
-            payload = try supervisor.directLaunch(
-                DirectLaunchBinding.parse(bindingRaw),
-                hostNonce: request.hostNonce,
-                guestChallenge: guestChallenge
+            return try DirectSupervisorAuthenticator.makeResponse(
+                request: request,
+                payload: payload,
+                key: key
             )
-        case "invoke":
-            guard let invocation = request.raw["request"] as? [String: Any],
-                  let guestChallenge = request.raw["guest_challenge"] as? String else {
-                throw HelperError.invalidRequest("INVALID_DIRECT_INVOKE")
-            }
-            payload = try supervisor.directInvoke(
-                domainID: request.domainID,
-                request: invocation,
-                guestChallenge: guestChallenge
+        } catch let error as HelperError {
+            return try DirectSupervisorAuthenticator.makeFailure(
+                request: request,
+                error: error,
+                key: key
             )
-        case "bridge_result":
-            guard let bridgeResult = request.raw["host_bridge_result"] as? [String: Any],
-                  let guestChallenge = request.raw["guest_challenge"] as? String else {
-                throw HelperError.invalidRequest("INVALID_DIRECT_BRIDGE_RESULT")
-            }
-            payload = try supervisor.directBridgeResult(
-                domainID: request.domainID,
-                hostBridgeResult: bridgeResult,
-                guestChallenge: guestChallenge
+        } catch {
+            return try DirectSupervisorAuthenticator.makeFailure(
+                request: request,
+                error: HelperError.invalidState("INTERNAL_ERROR"),
+                key: key
             )
-        case "cancel":
-            guard let requestID = request.raw["request_id"] as? String,
-                  let requestDigest = request.raw["request_digest"] as? String,
-                  let guestChallenge = request.raw["guest_challenge"] as? String else {
-                throw HelperError.invalidRequest("INVALID_DIRECT_CANCEL")
-            }
-            payload = try supervisor.directCancel(
-                domainID: request.domainID,
-                requestID: requestID,
-                requestDigest: requestDigest,
-                guestChallenge: guestChallenge
-            )
-        case "terminate":
-            guard let leaseID = request.raw["lease_id"] as? String,
-                  let reservationID = request.raw["reservation_id"] as? String else {
-                throw HelperError.invalidRequest("INVALID_DIRECT_TERMINATE")
-            }
-            payload = try supervisor.directTerminate(
-                domainID: request.domainID,
-                leaseID: leaseID,
-                reservationID: reservationID
-            )
-        default:
-            throw HelperError.invalidRequest("UNSUPPORTED_OPERATION")
         }
-        return try DirectSupervisorAuthenticator.makeResponse(
-            request: request,
-            payload: payload,
-            key: key
-        )
     }
 
     private static func unsignedFailure(_ error: HelperError) -> [String: Any] {

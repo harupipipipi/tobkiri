@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
+
+ROOT = Path(__file__).resolve().parent.parent
+DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
+for _root in (str(ROOT), str(DEFAULTSPACK_ROOT)):
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
 
 from ecosystem.defaultspack.domain.ai_client.providers import detect_available_providers
 from ecosystem.defaultspack.domain.ai_client.providers.openai_compatible_provider import (

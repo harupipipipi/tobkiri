@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:ba036ae4e668ab8339402dd095dccb5d1a8610284bcdf569f24e4f83693249c9",
+  "catalog_digest": "sha256:b877ddd76ab63e434a22ba1cd7ad27e4a21f200e42c6a9d9bddabca15e0ca4be",
   "pack_id": "rumi_email_connector_pack",
-  "source_identity": "sha256:f3b8613161123b871c4f5e3652003fc60e722754c0a7f17cc4c492144f0890d6",
+  "source_identity": "sha256:2584891a984887e35fa7e3e9194a366bdc78dae1c16a79a01367dfe738add922",
   "variants": [
     {
       "architecture": "any",
@@ -29,7 +29,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:2e20ec5fff93e52c1d8d053a373deb01469ce3c9151cf0137de5052ef1262aa5",
+          "revision_digest": "sha256:fa9f4c7c3c713f8b16802cdd6968cc6ef67ed57b97e2edf3a99f3e1017c4d018",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

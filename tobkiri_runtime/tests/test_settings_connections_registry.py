@@ -7,12 +7,16 @@ from core_runtime.connections.registry import (
 )
 from core_runtime.connections.oauth_service import InMemoryOAuthStateStore
 from core_runtime.connections.permission_resolver import resolve_connection_permissions
-from core_runtime.connections.providers.codex import CODEX_PROVIDER
-from core_runtime.connections.providers.cloudflare import CLOUDFLARE_PROVIDER
-from core_runtime.connections.providers.github import GITHUB_PROVIDER
-from core_runtime.connections.providers.google import GOOGLE_PROVIDER
+from ecosystem.rumi_provider_registry_pack.runtime.connection_catalog import (
+    CLOUDFLARE_PROVIDER,
+    CODEX_PROVIDER,
+    GITHUB_PROVIDER,
+    GOOGLE_PROVIDER,
+)
 from core_runtime.connections.templates import CredentialBundle
-from ecosystem.defaultspack.domain.connections.cloudflare import CloudflareConnectionAdapter
+from ecosystem.rumi_provider_registry_pack.runtime.connection_adapters import (
+    CloudflareConnectionAdapter,
+)
 
 
 def test_connections_registry_orders_providers():
@@ -23,6 +27,33 @@ def test_connections_registry_orders_providers():
     registry.register(CODEX_PROVIDER)
     providers = registry.list_providers()
     assert [provider["providerId"] for provider in providers][:4] == ["cloudflare", "google", "github", "codex"]
+
+
+def test_legacy_core_provider_catalog_is_pack_independent():
+    """Host compatibility imports expose provider identity without Pack code."""
+
+    from core_runtime.cloudflare import cloudflare_environment_status
+    from core_runtime.connections.providers import (
+        CLOUDFLARE_PROVIDER as legacy_cloudflare,
+    )
+    from core_runtime.connections.providers import CODEX_PROVIDER as legacy_codex
+    from core_runtime.connections.providers import GITHUB_PROVIDER as legacy_github
+    from core_runtime.connections.providers import GOOGLE_PROVIDER as legacy_google
+
+    assert legacy_cloudflare.provider_id == CLOUDFLARE_PROVIDER.provider_id
+    assert legacy_codex.provider_id == CODEX_PROVIDER.provider_id
+    assert legacy_github.provider_id == GITHUB_PROVIDER.provider_id
+    assert legacy_google.provider_id == GOOGLE_PROVIDER.provider_id
+    assert all(
+        not str(provider.adapter.get("python") or "").startswith("ecosystem.")
+        for provider in (
+            legacy_cloudflare,
+            legacy_codex,
+            legacy_github,
+            legacy_google,
+        )
+    )
+    assert cloudflare_environment_status()["schema"] == "rumi.cloudflare.environment.v1"
 
 
 def test_connection_manifest_discovery_is_bounded_and_skips_symlinks(tmp_path):
@@ -60,8 +91,11 @@ def test_provider_safe_payload_has_no_secret():
     assert payload["tokenImportSupported"] is True
     assert payload["scopeToCapability"][0]["capabilities"] == ["cloudflare.account.read"]
     assert payload["capabilities"][0]["displayName"] == "Read account metadata"
-    assert payload["metadata"]["pc_tunnel_scaffold_path"] == "tobkiri_runtime/ecosystem/defaultspack/cloudflare/pc_tunnel"
-    assert payload["metadata"]["pc_tool_bridge_scaffold_path"] == "tobkiri_runtime/ecosystem/defaultspack/cloudflare/pc_tool_bridge"
+    assert payload["metadata"]["connector_resources"] == {
+        "sandbox_bridge": "connector://cloudflare/sandbox_bridge",
+        "pc_tunnel": "connector://cloudflare/pc_tunnel",
+        "pc_tool_bridge": "connector://cloudflare/pc_tool_bridge",
+    }
     assert "not uploaded to Cloudflare" in payload["metadata"]["pc_tool_bridge_note"]
     assert payload["metadata"]["tool_coverage_surface"] == "/api/tools/catalog"
     assert payload["metadata"]["all_tools_cloudflare_native_supported"] is False

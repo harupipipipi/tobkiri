@@ -84,6 +84,7 @@
               "templates/artifact_card.template.md"
             ]
           },
+          "base_pack_promotion_eligible": false,
           "canonical_v4": {
             "artifact": "pack.v4.json",
             "artifact_digest": "sha256:9b87e30e1f08f998f37143b65c602c8ac76a95e99efd709b7270527d8f5afefb",
@@ -92,7 +93,6 @@
           },
           "consumes_existing_sources_only": true,
           "declarative_only": true,
-          "defaultspack_promotion_eligible": false,
           "executable_code": false,
           "integrity": {
             "artifact_manifest": "artifact-manifest.json"

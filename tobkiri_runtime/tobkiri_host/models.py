@@ -229,6 +229,10 @@ class RequestContext:
     profile_authority_digest: str
     fencing_token: int
     handle_namespace: str
+    # Kept distinct from ``profile_id`` and the activation/plan digests.  Old
+    # conformance callers may omit it; production capture always supplies the
+    # signed ResolvedPlan profile revision.
+    profile_revision: str = ""
     delegation_chain: tuple[OpaqueAuthorityRef, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
@@ -236,6 +240,8 @@ class RequestContext:
         require_digest(self.plan_digest, "plan")
         require_digest(self.profile_authority_digest, "profile authority")
         require_digest(self.target_backend_digest, "target backend")
+        if self.profile_revision:
+            require_digest(self.profile_revision, "profile revision")
         if (
             self.security_epoch <= 0
             or self.caller_boot_epoch <= 0
@@ -263,9 +269,13 @@ class RuntimeEvidence:
     attestation_digest: str | None = None
     domain_lease_id: str | None = None
     resource_reservation_id: str | None = None
+    guest_artifact_identity: str | None = None
+    guest_execution_boundary: str | None = None
 
     def __post_init__(self) -> None:
         require_digest(self.executable_digest, "evidence executable")
         require_digest(self.backend_digest, "evidence backend")
         if self.attestation_digest is not None:
             require_digest(self.attestation_digest, "evidence attestation")
+        if self.guest_artifact_identity is not None:
+            require_digest(self.guest_artifact_identity, "guest artifact identity")

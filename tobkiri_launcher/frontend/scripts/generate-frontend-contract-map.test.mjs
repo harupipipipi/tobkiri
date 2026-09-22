@@ -11,8 +11,74 @@ import {
 
 test("the checked-in generated map is deterministic and current", async () => {
   const result = await checkGeneratedFrontendContractMap();
-  assert.equal(result.rawDigest, "sha256:d216b97849485033b226f28b9eee0989f6db232034bb87f634b1818f792182d4");
-  assert.equal(result.runtimeMap.routes.length, 23);
+  assert.equal(result.rawDigest, "sha256:c4ed961160a56ea5d7ca5b6526473892f750a5f5819dd5c2e3df4753a9954249");
+  assert.equal(result.runtimeMap.routes.length, 62);
+  for (const path of ["/api/chat/approval/approve", "/api/chat/approval/resume"]) {
+    const continuation = result.runtimeMap.routes.find(
+      (route) => route.method === "POST" && route.path === path,
+    );
+    assert.equal(continuation?.presentation, "chat_continuation");
+    assert.ok(continuation?.targets[0].allowed_payload_keys.includes("turn_id"));
+  }
+  const stop = result.runtimeMap.routes.find(
+    (route) => route.method === "POST" && route.path === "/api/chat/turn/stop",
+  );
+  assert.deepEqual(stop?.targets, [{
+    contribution_id: "defaults.conversations.turn.stop",
+    contract_id: "tobkiri.action.turn.stop.v1",
+    operation_id: "rumi_turn_runtime_pack.turn-stop",
+    provider_id: "rumi_turn_runtime_pack.turn-runtime.stop",
+    function_id: "rumi_turn_runtime_pack.turn-runtime.stop",
+    allowed_payload_keys: ["turn_id"],
+  }]);
+  const reconcile = result.runtimeMap.routes.find(
+    (route) => route.method === "POST" && route.path === "/api/chat/turn/reconcile",
+  );
+  assert.deepEqual(reconcile?.targets, [{
+    contribution_id: "defaults.conversations.turn.reconcile",
+    contract_id: "tobkiri.action.turn.reconcile.v1",
+    operation_id: "rumi_turn_runtime_pack.turn-reconcile",
+    provider_id: "rumi_turn_runtime_pack.turn-runtime.reconcile",
+    function_id: "rumi_turn_runtime_pack.turn-runtime.reconcile",
+    allowed_payload_keys: ["turn_id"],
+  }]);
+  const saved = result.runtimeMap.routes.find(
+    (route) => route.method === "POST" && route.path === "/api/chat/turn",
+  );
+  assert.deepEqual(saved?.targets, [{
+    contribution_id: "defaults.conversations.send",
+    contract_id: "tobkiri.action.turn.saved.v1",
+    operation_id: "rumi_turn_runtime_pack.turn-saved",
+    provider_id: "rumi_turn_runtime_pack.turn-runtime.saved",
+    function_id: "rumi_turn_runtime_pack.turn-runtime.saved",
+    allowed_payload_keys: ["request"],
+  }]);
+  for (const method of ["PUT", "DELETE"]) {
+    const route = result.runtimeMap.routes.find((item) => item.method === method && item.path === "/api/chat/conversation");
+    assert.equal(route?.path, "/api/chat/conversation");
+    assert.equal(route?.targets[0].contract_id, "tobkiri.action.conversation.manage.v1");
+    assert.ok(route?.targets[0].allowed_payload_keys.includes("expected_conversation_revision"));
+  }
+  for (const path of [
+    "/api/ai/profiles", "/api/chat/conversations", "/api/ui/settings",
+    "/api/ui/full-catalog", "/api/command-protocol/v1/catalog",
+  ]) {
+    const read = result.runtimeMap.routes.find((route) => route.path === path);
+    assert.equal(read?.method, "GET");
+    assert.equal(read?.targets.length, 1);
+    assert.deepEqual(read?.targets[0].allowed_payload_keys, path === "/api/ui/settings" ? ["full"] : []);
+  }
+  const preferences = result.runtimeMap.routes.find(
+    (route) => route.method === "PUT" && route.path === "/api/ui/settings",
+  );
+  assert.deepEqual(preferences?.targets, [{
+    contribution_id: "defaults.ui.preferences.write",
+    contract_id: "tobkiri.action.ui.preferences.v1",
+    operation_id: "tobkiri_ui_settings_pack.preferences-write",
+    provider_id: "tobkiri.ui.preferences.write",
+    function_id: "tobkiri.ui.preferences.write",
+    allowed_payload_keys: ["changes", "expected_revision"],
+  }]);
   const capability = result.runtimeMap.routes.find(
     (route) => route.method === "POST" && route.path === "/api/ui/capability/invoke",
   );

@@ -98,8 +98,8 @@ def test_ai_input_trace_is_applied_to_chat_runtime_context(
 
     conversation = ChatStore().create_conversation(model="stub/default")
     monkeypatch.setattr("domain.chat.run_request.enrich_messages", _fake_enrich_messages)
-    monkeypatch.setattr("core_runtime.ai_input_segments.ToolRegistry", _FakeToolRegistry)
-    monkeypatch.setattr("core_runtime.ai_input_segments.resolve_effective_prompt", _fake_prompt)
+    monkeypatch.setattr("ecosystem.defaultspack.domain.ai_input.ai_input_segments.ToolRegistry", _FakeToolRegistry)
+    monkeypatch.setattr("ecosystem.defaultspack.domain.ai_input.ai_input_segments.resolve_effective_prompt", _fake_prompt)
     monkeypatch.setattr("domain.chat.run_request.route_model_request", lambda request: _Decision("stub/default"))
     monkeypatch.setattr(
         "domain.chat.run_request.get_model_capabilities",

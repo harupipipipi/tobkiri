@@ -33,6 +33,7 @@ def test_openai_compatible_requests_identify_the_client() -> None:
             return {
                 "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
                 "usage": {},
+                "provider_extension": {"trace": "adapter-owned"},
             }
 
     result = _openai_compatible(
@@ -56,6 +57,7 @@ def test_openai_compatible_requests_identify_the_client() -> None:
     assert captured["headers"]["Accept"] == "application/json"
     assert captured["headers"]["User-Agent"] == "RumiAI/1.0"
     assert captured["credential_handle"] == "opaque-handle"
+    assert "provider_extension" not in result
 
 
 @pytest.mark.parametrize(

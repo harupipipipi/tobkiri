@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol
 
+from tobkiri_host.artifact_materialization import MaterializedArtifactFile
 from tobkiri_host.backends import BackendStatus, REQUIRED_PRODUCTION_GATES
 from tobkiri_host.broker import RequestEnvelope
 from tobkiri_host.contracts import ResolvedOperationBinding
@@ -16,6 +17,15 @@ from tobkiri_host.models import (
     OpaqueAuthorityRef,
     RuntimeEvidence,
 )
+from tobkiri_host.ports import (
+    AuthorityApprovalWindowPort,
+    ChatApprovalContinuationPort,
+    InteractiveApprovalPort,
+    InteractiveEffectPort,
+    ModelSearchPort,
+    WorkspaceMutationPort,
+)
+from tobkiri_host.operation_cancellation import OwnedCancellationBinding
 from tobkiri_protocol.canonical import canonical_digest
 
 
@@ -26,13 +36,29 @@ class HostProviderInvocationContextV4(Protocol):
     def envelope(self) -> RequestEnvelope:
         """Return the Broker-authenticated envelope for this invocation."""
 
+    @property
+    def presentation_owner_principal_id(self) -> str:
+        """Return the Host-preserved principal which originated this call chain."""
+
+    @property
+    def presentation_owner_session_id(self) -> str:
+        """Return the Host-preserved session which originated this call chain."""
+
+    @property
+    def cancellation(self) -> OwnedCancellationBinding:
+        """Return only this verified factory's owner-scoped cancellation role."""
+
     def contract_client(
         self,
         *,
         allowed_contract_ids: frozenset[str],
         consumer_pack_id: str,
+        include_credentials: bool = True,
     ) -> Any:
         """Build a client restricted to declared contracts and this envelope."""
+
+    def assert_current(self) -> None:
+        """Reject cancelled, expired or stale captured invocations."""
 
 
 @dataclass(frozen=True)
@@ -58,6 +84,24 @@ class HostProviderContributionV4:
 
 
 @dataclass(frozen=True)
+class HostProviderDataRequestV4:
+    """Static data prefix requested by a verified factory, if its Pack is selected."""
+
+    pack_id: str
+    path_prefix: str
+
+
+@dataclass(frozen=True)
+class CapturedHostPackDataV4:
+    """Digest-bound bytes, without a Pack path or an execution capability."""
+
+    pack_id: str
+    artifact_digest: str
+    path_prefix: str
+    files: tuple[MaterializedArtifactFile, ...]
+
+
+@dataclass(frozen=True)
 class HostProviderCaptureContextV4:
     """Host-owned immutable inputs supplied to a built-in Provider hook."""
 
@@ -70,6 +114,18 @@ class HostProviderCaptureContextV4:
     catalog_bindings: tuple[ResolvedOperationBinding, ...]
     domain_ids: Mapping[tuple[str, str, str], str]
     user_data_root: Path | None = None
+    # Built-in providers receive only narrow Host ports.  The authority
+    # kernel/store and workspace coordinator/handle table remain Host-owned.
+    interactive_approval_port: InteractiveApprovalPort | None = None
+    chat_approval_continuation_port: ChatApprovalContinuationPort | None = None
+    authority_approval_window_port: AuthorityApprovalWindowPort | None = None
+    model_search_port: ModelSearchPort | None = None
+    # This late-bound port is supplied only to the one verified coordinator
+    # Function which declares it.  It is unavailable until production capture
+    # has built the single Broker for the active Profile.
+    interactive_effect_port: InteractiveEffectPort | None = None
+    workspace_mutation_port: WorkspaceMutationPort | None = None
+    declared_pack_data: tuple[CapturedHostPackDataV4, ...] = ()
 
 
 @dataclass(frozen=True)

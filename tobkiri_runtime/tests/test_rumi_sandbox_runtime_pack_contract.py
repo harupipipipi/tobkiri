@@ -101,10 +101,10 @@ def test_pack_setup_discoverable_and_validates_dependencies() -> None:
     assert setup["risk_level"] == "high"
     assert candidate.depends_on == []
     assert candidate.overlap_policy["code_execution"] == "requires_defaultspack_tool_grants"
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert "Sandbox Runtime" in candidate.defaultspack_promotion["reason"]
-    assert "secret_mounts_require_security_review" in candidate.defaultspack_promotion["promotion_blockers"]
-    assert "runtime_receipt_schema_cases" in candidate.defaultspack_promotion["promotion_evidence_required"]
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert "Sandbox Runtime" in candidate.base_pack_promotion["reason"]
+    assert "secret_mounts_require_security_review" in candidate.base_pack_promotion["promotion_blockers"]
+    assert "runtime_receipt_schema_cases" in candidate.base_pack_promotion["promotion_evidence_required"]
     assert candidate.marketplace["registry"] == "bundled"
     assert candidate.marketplace["publisher"] == "rumi-ai"
     assert candidate.marketplace["status"] == "verified"

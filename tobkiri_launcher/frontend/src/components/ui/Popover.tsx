@@ -113,9 +113,33 @@ const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentProps>(
     const rect = trigger.getBoundingClientRect()
     const gap = 8
     const viewportPadding = 8
+    const viewportHeight = window.innerHeight
+    const viewportWidth = window.innerWidth
+    const content = localRef.current
+    const contentHeight = content?.offsetHeight ?? 0
+    const contentWidth = content?.offsetWidth ?? 0
+
+    // Flip above the trigger when the menu would not fit below it. The sidebar
+    // profile menu is anchored at the bottom of the window, so without this it
+    // opens past the viewport edge and cannot be reached.
+    const spaceBelow = viewportHeight - rect.bottom - gap - viewportPadding
+    const openAbove = contentHeight > 0
+      && spaceBelow < contentHeight
+      && rect.top - gap - viewportPadding > spaceBelow
+    const top = openAbove
+      ? Math.max(viewportPadding, rect.top - gap - contentHeight)
+      : Math.max(viewportPadding, Math.min(rect.bottom + gap, viewportHeight - viewportPadding - contentHeight))
+
+    const rawLeft = align === "right" ? rect.right : rect.left
+    // `transform: translateX(-100%)` makes `left` the menu's right edge, so the
+    // clamp bounds differ per alignment.
+    const left = align === "right"
+      ? Math.min(viewportWidth - viewportPadding, Math.max(viewportPadding + contentWidth, rawLeft))
+      : Math.max(viewportPadding, Math.min(rawLeft, viewportWidth - viewportPadding - contentWidth))
+
     return {
-      top: Math.max(viewportPadding, rect.bottom + gap),
-      left: Math.max(viewportPadding, align === "right" ? rect.right : rect.left),
+      top,
+      left,
       transform: align === "right" ? "translateX(-100%)" : undefined,
     }
   }, [align, triggerRef])
@@ -167,7 +191,7 @@ const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentProps>(
         ...style,
       }}
       className={cn(
-        "min-w-[12rem] overflow-hidden rounded-xl border border-border bg-bg-card p-1 text-text-main shadow-xl animate-in fade-in zoom-in-95 duration-200 outline-none",
+        "min-w-[12rem] overflow-hidden rounded-xl border border-border bg-bg-card p-1 text-text-main shadow-[var(--shadow-lg)] outline-none",
         viewerLayers.popover,
         className
       )}

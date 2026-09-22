@@ -46,7 +46,7 @@ def test_model_evals_pack_required_docs_and_assets_exist():
         PACK_DIR / "specs" / "layered_eval_contract.yaml",
         PACK_DIR / "specs" / "metrics.schema.yaml",
         PACK_DIR / "specs" / "model_fit_matrix.schema.yaml",
-        PACK_DIR / "specs" / "defaultspack_promotion_gates.yaml",
+        PACK_DIR / "specs" / "base_pack_promotion_gates.yaml",
     ]
 
     missing = [str(path.relative_to(ROOT)) for path in required if not path.is_file()]
@@ -88,8 +88,8 @@ def test_model_evals_pack_setup_metadata_and_selector_discoverability():
     assert setup["overlap_policy"]["rumi_agent_services_pack"] == "feeds_service_routing_confidence"
     assert setup["overlap_policy"]["rumi_code_ide_pack"] == "feeds_coding_model_fit_and_smoke_results"
     assert setup["overlap_policy"]["rumi_data_analysis_pack"] == "feeds_analysis_model_fit_and_chart_or_sql_eval_results"
-    assert setup["defaultspack_promotion"]["eligible"] is False
-    assert "provider_smoke_success" in setup["defaultspack_promotion"]["gates"]
+    assert setup["base_pack_promotion"]["eligible"] is False
+    assert "provider_smoke_success" in setup["base_pack_promotion"]["gates"]
     assert legacy_annotations["runtime"]["type"] == "verified_hybrid_pack"
     assert "rumi.model_evals.fit_matrix_schema" in ecosystem["components"]["eval_specs"]["connectivity"]["provides"]
     assert "promotion_gate_review" not in capabilities["capabilities"]["model_fit_matrix"]["requires"]
@@ -103,7 +103,7 @@ def test_model_evals_pack_setup_metadata_and_selector_discoverability():
 
     assert candidate.pack_identity == f"rumi:ecosystem/{PACK_ID}"
     assert candidate.overlap_policy["defaultspack_provider_catalog"] == "overlay_with_evidence_only"
-    assert candidate.defaultspack_promotion["eligible"] is False
+    assert candidate.base_pack_promotion["eligible"] is False
     assert candidate.marketplace["id"] == "rumi.model_evals_pack"
     assert candidate.signing["mode"] == "repository_reviewed"
 

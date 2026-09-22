@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 from core_runtime.host_contract import bind_host_contract
+from tests.conformance_support.host_contract import host_contract
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
@@ -42,11 +43,10 @@ def test_p2p_http_routes_require_sensitive_auth():
 
     handler.headers = {"Origin": "http://localhost:8766", "Authorization": "Bearer local-secret"}
     with bind_host_contract(
-        {
-            "schema_version": "tobkiri.host-contract.v1",
-            "profile_id": "profile:test",
-            "values": {"desktop_api_token": "local-secret"},
-        }
+        host_contract(
+            profile_id="profile:test",
+            values={"desktop_api_token": "local-secret"},
+        )
     ):
         assert handler._sensitive_request_error("POST", "/api/integrations/p2p/events") == (
             403,
@@ -70,11 +70,10 @@ def test_prompt_routes_reject_token_authenticated_remote_clients():
     handler.client_address = ("203.0.113.7", 54321)
 
     with bind_host_contract(
-        {
-            "schema_version": "tobkiri.host-contract.v1",
-            "profile_id": "profile:test",
-            "values": {"desktop_api_token": "local-secret"},
-        }
+        host_contract(
+            profile_id="profile:test",
+            values={"desktop_api_token": "local-secret"},
+        )
     ):
         assert handler._sensitive_request_error("GET", "/api/prompts") == (
             403,

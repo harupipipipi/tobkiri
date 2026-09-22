@@ -138,7 +138,7 @@ class TestProductionGuard:
         import app
 
         kernel = MagicMock()
-        with patch.object(app, "Kernel", return_value=kernel):
+        with patch.object(app, "_create_defaultspack_kernel", return_value=kernel):
             assert app.main(["--headless"]) == 0
         kernel.run_startup.assert_called_once()
         kernel.shutdown.assert_called_once()

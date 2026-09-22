@@ -8,7 +8,6 @@ import { LAUNCHER_DISPLAY_NAME } from '@/src/lib/launcherBrand';
 import { preloadPanelRoute } from '@/src/lib/routeModules';
 import { Popover, PopoverContent, PopoverTrigger } from '@/src/components/ui/Popover';
 import {
-  BrainCircuit,
   Folder,
   FolderOpen,
   GitBranch,
@@ -16,6 +15,7 @@ import {
   Network,
   PanelLeft,
   Route,
+  TextCursorInput,
   Settings,
   Share2,
   UserRound,
@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 
 type NavGroup = {
-  id: 'workspace' | 'advanced';
+  id: 'workspace' | 'preferences' | 'devtools';
   label: string;
   items: { to: string; icon: LucideIcon; label: string; route: PanelRouteKey }[];
 };
@@ -41,7 +41,7 @@ const routeIcons: Record<PanelRouteKey, LucideIcon> = {
   profileFiles: FolderOpen,
   flow: Workflow,
   graph: GitBranch,
-  aiInput: BrainCircuit,
+  aiInput: TextCursorInput,
   apiMap: Route,
   nodeManager: Network,
 };
@@ -52,8 +52,9 @@ export function Sidebar() {
   const profile = useAppStore(state => state.profile);
   const isSidebarOpen = useAppStore(state => state.isSidebarOpen);
   const setSidebarOpen = useAppStore(state => state.setSidebarOpen);
+  const devtoolsEnabled = useAppStore(state => state.devtoolsEnabled);
 
-  const navGroups: NavGroup[] = viewerNavGroups.map((group) => ({
+  const navGroups: NavGroup[] = viewerNavGroups(devtoolsEnabled).map((group) => ({
     id: group.id,
     label: t(group.labelKey),
     items: group.routes.map((route) => {
@@ -85,9 +86,9 @@ export function Sidebar() {
       >
         <span
           className={cn(
-            "block min-w-0 overflow-hidden whitespace-nowrap text-base font-semibold tracking-tight text-text-main transition-[max-width,opacity,transform]",
+            "block min-w-0 truncate text-base font-semibold tracking-tight text-text-main transition-[max-width,opacity,transform]",
             sidebarAnimation,
-            isSidebarOpen ? "max-w-32 translate-x-0 opacity-100" : "max-w-0 -translate-x-2 opacity-0",
+            isSidebarOpen ? "max-w-full translate-x-0 opacity-100" : "max-w-0 -translate-x-2 opacity-0",
           )}
           aria-hidden={!isSidebarOpen}
         >
@@ -123,7 +124,11 @@ export function Sidebar() {
           )}
         >
           {navGroups.map((group, groupIndex) => (
-            <li key={group.id} className="flex flex-col gap-1">
+            <li
+              key={group.id}
+              className="flex flex-col gap-1"
+              aria-labelledby={`sidebar-group-${group.id}`}
+            >
               {groupIndex > 0 && (
                 <div
                   className={cn(
@@ -135,17 +140,17 @@ export function Sidebar() {
                 />
               )}
               <div
+                id={`sidebar-group-${group.id}`}
                 className={cn(
-                  "overflow-hidden px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted/70 transition-[max-height,padding,opacity,transform,border-color]",
+                  "overflow-hidden px-3 text-xs font-medium text-text-muted transition-[max-height,padding,opacity,transform,border-color]",
                   sidebarAnimation,
                   groupIndex > 0 && "border-t border-border/60",
                   isSidebarOpen
                     ? cn("max-h-10 translate-x-0 pt-1 opacity-100", groupIndex > 0 && "pt-3")
                     : "max-h-0 -translate-x-1 pt-0 opacity-0 border-transparent",
                 )}
-                aria-hidden={!isSidebarOpen}
               >
-                {group.label}
+                <span className={isSidebarOpen ? undefined : 'sr-only'}>{group.label}</span>
               </div>
               <ul
                 className={cn(
@@ -186,9 +191,9 @@ export function Sidebar() {
                         <link.icon className={cn("w-[18px] h-[18px] shrink-0", isActive ? "text-accent" : "text-text-muted group-hover:text-text-main")} />
                         <span
                           className={cn(
-                            "block min-w-0 overflow-hidden whitespace-nowrap transition-[max-width,opacity,transform]",
+                            "block min-w-0 truncate transition-[max-width,opacity,transform]",
                             sidebarAnimation,
-                            isSidebarOpen ? "max-w-40 translate-x-0 opacity-100" : "max-w-0 -translate-x-2 opacity-0",
+                            isSidebarOpen ? "max-w-full translate-x-0 opacity-100" : "max-w-0 -translate-x-2 opacity-0",
                           )}
                           aria-hidden={!isSidebarOpen}
                         >
@@ -229,7 +234,7 @@ export function Sidebar() {
                 className={cn(
                   "min-w-0 flex-1 overflow-hidden transition-[max-width,opacity,transform]",
                   sidebarAnimation,
-                  isSidebarOpen ? "max-w-32 translate-x-0 opacity-100" : "max-w-0 -translate-x-2 opacity-0",
+                  isSidebarOpen ? "max-w-full translate-x-0 opacity-100" : "max-w-0 -translate-x-2 opacity-0",
                 )}
                 aria-hidden={!isSidebarOpen}
               >

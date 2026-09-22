@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sys
 import threading
+import hashlib
+import json
 from pathlib import Path
 
 
@@ -12,6 +14,32 @@ for item in (str(ROOT), str(PACK)):
         sys.path.insert(0, item)
 
 from domain.tool.registry import ToolRegistrationError, ToolRegistry  # noqa: E402
+from domain.tool.registry import _first_party_memo_tool_manifests  # noqa: E402
+from domain.tool.security import is_safe_first_party_memo_tool  # noqa: E402
+
+
+def test_memo_descriptors_preserve_inline_definitions_and_deduplicate_pack_loading() -> None:
+    """The eight moved descriptors keep their original schemas and execution policy."""
+    manifests = _first_party_memo_tool_manifests()
+    original = "f697b1527bba64ed310bd1448477ecf5ec729af43901a110d99e46a71d42e1af"
+    encoded = json.dumps(manifests, sort_keys=True, separators=(",", ":")).encode()
+    assert hashlib.sha256(encoded).hexdigest() == original
+    registry = object.__new__(ToolRegistry)
+    registry._tools = {}
+    registry._diagnostics = []
+    registry._lock = threading.Lock()
+    assert registry._load_first_party_memo_tools() == 8
+    registry._load_tools_from_pack(PACK)
+    assert len(registry.list_tools()) == 119
+    assert registry.diagnostics() == []
+    for manifest in manifests:
+        tool = registry.get(manifest["id"])
+        assert is_safe_first_party_memo_tool(tool)
+        assert tool["metadata"]["first_party"] is True
+        assert tool["execution"] == manifest["config"]["execution"]
+        assert Path(tool["metadata"]["manifest_path"]) == (
+            PACK / "tools" / manifest["id"] / "manifest.json"
+        )
 
 
 def _manifest() -> dict:

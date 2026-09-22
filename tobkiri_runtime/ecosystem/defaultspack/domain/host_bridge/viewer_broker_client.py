@@ -164,6 +164,13 @@ class ViewerBrokerClient:
             },
         )
 
+    def open_authority_approval_window(self, request_id: str) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            "/api/host/authority-approval/open",
+            {"request_id": str(request_id)},
+        )
+
     def execute_intent(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         return self._request("POST", "/api/host/intent/execute", dict(payload or {}))
 

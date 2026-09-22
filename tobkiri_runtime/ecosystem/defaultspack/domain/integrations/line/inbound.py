@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 import base64
 import hashlib
 import hmac
@@ -21,7 +23,10 @@ from domain.external.response import RumiResponse
 from domain.external.response_planner import ResponsePlanner
 from domain.external.source_store import ExternalSourceStore
 from domain.external.targeting import origin_from_external_event
-from domain.frontend_settings import frontend_settings_path
+from domain.frontend_settings import (
+    frontend_settings_path,
+    read_optional_frontend_settings,
+)
 from domain.integrations.http_client import post_json
 from domain.integrations.secrets import get_integration_secret, load_integration_secrets_into_env
 from domain.integrations.line.addressing import decide_line_addressing
@@ -38,7 +43,7 @@ _LINE_REPLY_DEADLINE_PROMPT = (
 )
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None):
     load_integration_secrets_into_env()
     raw_body = raw_body_bytes(input_data)
     endpoint_input = {} if _has_raw_body(input_data) else input_data
@@ -73,6 +78,7 @@ def run(input_data, context):
             verified=bool(verification["verified"]),
             destination=destination,
             endpoint=endpoint,
+            settings_owner=settings_owner,
         )
         results.append(result)
     return ok({"verified": verification["verified"], "endpoint": endpoint.as_dict(), "events": results})
@@ -86,6 +92,7 @@ def _handle_event(
     verified: bool = False,
     destination: str = "",
     endpoint: WebhookEndpoint,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> Dict[str, Any]:
     if event.get("type") != "message":
         return {"ignored": True, "reason": "unsupported LINE event", "event_type": event.get("type")}
@@ -93,12 +100,13 @@ def _handle_event(
     if model:
         external_event.metadata["model"] = model
     mentioned = _line_message_mentions_bot(event, destination=destination)
-    require_group_mention = _require_line_group_mention(endpoint, external_event)
+    require_group_mention = _require_line_group_mention(endpoint, external_event, settings_owner=settings_owner)
     addressing = decide_line_addressing(
         event,
         external_event,
         endpoint=endpoint,
         mentioned=mentioned,
+        settings_owner=settings_owner,
     )
     addressed = bool(addressing.get("addressed"))
     external_event.metadata["line_mention"] = {
@@ -112,7 +120,7 @@ def _handle_event(
     external_event.metadata["origin"] = origin.as_dict()
     external_event.metadata["source_record"] = source_record
     runtime_context = dict(context or {})
-    _apply_external_output_context(runtime_context)
+    _apply_external_output_context(runtime_context, settings_owner=settings_owner)
     runtime_context.setdefault("webhook_endpoint", endpoint.as_dict())
     runtime_context.setdefault("output_profile_id", endpoint.response_profile_id)
     runtime_context.setdefault("response_profile_id", endpoint.response_profile_id)
@@ -141,6 +149,7 @@ def _handle_event(
             audience_decision=decision,
             context=runtime_context,
             mentioned=addressed if require_group_mention else mentioned,
+            settings_owner=settings_owner,
         ), acknowledgement)
     return _with_line_acknowledgement(_dispatch_line_event(
         external_event,
@@ -149,6 +158,7 @@ def _handle_event(
         audience_decision=decision,
         context=runtime_context,
         mentioned=addressed if require_group_mention else mentioned,
+        settings_owner=settings_owner,
     ), acknowledgement)
 
 
@@ -160,6 +170,7 @@ def _dispatch_line_event(
     audience_decision,
     context: dict[str, Any],
     mentioned: bool = False,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> Dict[str, Any]:
     result = dispatch_external_event(
         external_event,
@@ -169,6 +180,7 @@ def _dispatch_line_event(
         context=context,
         send_response=True,
         mentioned=mentioned,
+        settings_owner=settings_owner,
     )
     plan = result.get("response_plan") if isinstance(result.get("response_plan"), dict) else ResponsePlanner("line").plan(RumiResponse.from_result(result))
     reply = _send_response_plan(plan, external_event, context=context)
@@ -183,6 +195,7 @@ def _dispatch_line_event_in_background(
     audience_decision,
     context: dict[str, Any],
     mentioned: bool = False,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> Dict[str, Any]:
     event_id = str((external_event.event or {}).get("id") or "").strip()
     background_context = dict(context or {})
@@ -197,6 +210,7 @@ def _dispatch_line_event_in_background(
                 audience_decision=audience_decision,
                 context=background_context,
                 mentioned=mentioned,
+                settings_owner=settings_owner,
             )
         except Exception:
             _LOGGER.exception("LINE background event processing failed event_id=%s", event_id or "<missing>")
@@ -242,8 +256,8 @@ def _has_raw_body(input_data) -> bool:
     return isinstance(input_data, dict) and ("_raw_body_base64" in input_data or "_raw_body" in input_data)
 
 
-def _apply_external_output_context(runtime_context: dict[str, Any]) -> None:
-    output = _frontend_external_output_settings()
+def _apply_external_output_context(runtime_context: dict[str, Any], *, settings_owner: SettingsOwnerPort | None = None) -> None:
+    output = _frontend_external_output_settings(settings_owner=settings_owner)
     send_mode = str(output.get("output_send_mode") or output.get("send_mode") or "").strip()
     if send_mode:
         runtime_context.setdefault("send_mode", send_mode)
@@ -258,12 +272,8 @@ def _apply_external_output_context(runtime_context: dict[str, Any]) -> None:
         runtime_context.setdefault("line_target_id", target_id)
 
 
-def _frontend_external_output_settings() -> dict[str, Any]:
-    path = _frontend_settings_path()
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+def _frontend_external_output_settings(*, settings_owner: SettingsOwnerPort | None = None) -> dict[str, Any]:
+    data = read_optional_frontend_settings(settings_owner=settings_owner)
     if not isinstance(data, dict):
         return {}
     output = data.get("external_output") if isinstance(data.get("external_output"), dict) else {}
@@ -547,7 +557,7 @@ def _line_message_mentions_bot(event: dict[str, Any], *, destination: str = "") 
     return False
 
 
-def _require_line_group_mention(endpoint: WebhookEndpoint, external_event) -> bool:
+def _require_line_group_mention(endpoint: WebhookEndpoint, external_event, *, settings_owner: SettingsOwnerPort | None = None) -> bool:
     if getattr(external_event, "scope", None) is None or external_event.scope.type not in {"group", "room"}:
         return False
     response = endpoint.response if isinstance(endpoint.response, dict) else {}
@@ -562,18 +572,14 @@ def _require_line_group_mention(endpoint: WebhookEndpoint, external_event) -> bo
         if configured is not None:
             break
     if configured is None:
-        configured = _line_mention_policy_default()
+        configured = _line_mention_policy_default(settings_owner=settings_owner)
     if configured is None:
         configured = True
     return _truthy(configured)
 
 
-def _line_mention_policy_default() -> Any:
-    try:
-        path = _frontend_settings_path()
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return True
+def _line_mention_policy_default(*, settings_owner: SettingsOwnerPort | None = None) -> Any:
+    data = read_optional_frontend_settings(settings_owner=settings_owner)
     if not isinstance(data, dict):
         return True
     line_settings = data.get("line") if isinstance(data.get("line"), dict) else {}

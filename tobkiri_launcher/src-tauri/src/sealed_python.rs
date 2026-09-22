@@ -221,6 +221,7 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
         PythonRole::Kernel => [
             "RUMI_DEFAULTSPACK_SECRETS_DIR",
             "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
+            "RUMI_DEFAULTSPACK_COMMAND_STATE_DIR",
             "RUMI_PORT",
             "TOBKIRI_HOST_CONTRACT_PATH",
             "RUMI_VIEWER_HOST_BROKER_CONNECTION",
@@ -234,6 +235,7 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
         PythonRole::Defaultspack => [
             "RUMI_DEFAULTSPACK_SECRETS_DIR",
             "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
+            "RUMI_DEFAULTSPACK_COMMAND_STATE_DIR",
             "RUMI_VIEWER_HOST_BROKER_CONNECTION",
             "RUMI_VIEWER_BROKER_ATTESTATION_PUBLIC_KEY",
             "RUMI_VIEWER_BROKER_INSTANCE_NONCE",
@@ -247,6 +249,10 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
             "RUMI_DEFAULTSPACK_DEBUG_ISOLATION",
             "RUMI_DEFAULTSPACK_REQUIRE_OWN_BIND",
             "RUMI_DEFAULTSPACK_OPEN_BROWSER",
+            "TOBKIRI_CI_E2E_APP_DATA_ROOT",
+            "TOBKIRI_LAUNCHER_APP_IDENTIFIER",
+            "TOBKIRI_PACKVM_ACCEPTANCE_ENABLE",
+            "TOBKIRI_PACKVM_ACCEPTANCE_PACK_DIGEST",
         ]
         .contains(&key),
         PythonRole::HostHelper => ["RUMI_DEFAULTSPACK_CHAT_STORE_PATH"].contains(&key),
@@ -2046,7 +2052,7 @@ fn validate_manifest_contract(manifest: &SealedEnvironmentManifest) -> Result<()
         || normalize_architecture(&manifest.architecture)
             != normalize_architecture(std::env::consts::ARCH)
         || manifest.package_provenance.kind != required_package_provenance_kind()
-        || manifest.package_provenance.package_id != "dev.tobkiri.launcher"
+        || manifest.package_provenance.package_id != "dev.rumiai.app"
     {
         bail!("[PYTHON_SEALED_INVALID] sealed Python platform/package contract mismatch");
     }
@@ -2350,6 +2356,8 @@ fn read_attestation_file(path: &Path) -> Result<Vec<u8>> {
     if !same_attestation_identity(&before, &opened) {
         bail!("[PYTHON_SEALED_ATTESTATION_INVALID] attestation changed while opened");
     }
+    #[cfg(windows)]
+    let opened_file_identity = windows_file_identity(&file)?;
     let mut bytes = Vec::with_capacity(opened.len() as usize);
     (&mut file)
         .take(MAX_ATTESTATION_BYTES.saturating_add(1))
@@ -2365,6 +2373,10 @@ fn read_attestation_file(path: &Path) -> Result<Vec<u8>> {
     {
         bail!("[PYTHON_SEALED_ATTESTATION_INVALID] attestation changed after read");
     }
+    #[cfg(windows)]
+    verify_windows_path_identity(path, &file, &opened_file_identity).context(
+        "[PYTHON_SEALED_ATTESTATION_INVALID] attestation file identity changed after read",
+    )?;
     Ok(bytes)
 }
 
@@ -2384,12 +2396,58 @@ fn same_attestation_identity(left: &fs::Metadata, right: &fs::Metadata) -> bool 
 #[cfg(windows)]
 fn same_attestation_identity(left: &fs::Metadata, right: &fs::Metadata) -> bool {
     use std::os::windows::fs::MetadataExt;
-    left.volume_serial_number() == right.volume_serial_number()
-        && left.file_index() == right.file_index()
-        && left.number_of_links() == right.number_of_links()
-        && left.file_size() == right.file_size()
+    left.file_size() == right.file_size()
         && left.last_write_time() == right.last_write_time()
         && left.file_attributes() == right.file_attributes()
+}
+
+#[cfg(windows)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct WindowsFileIdentity {
+    volume_serial_number: u32,
+    file_index: u64,
+    number_of_links: u32,
+}
+
+#[cfg(windows)]
+fn windows_file_identity(file: &File) -> Result<WindowsFileIdentity> {
+    use std::mem::MaybeUninit;
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION,
+    };
+
+    let mut information = MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle(), information.as_mut_ptr()) } == 0 {
+        return Err(std::io::Error::last_os_error()).context("inspect sealed file identity");
+    }
+    let information = unsafe { information.assume_init() };
+    Ok(WindowsFileIdentity {
+        volume_serial_number: information.dwVolumeSerialNumber,
+        file_index: (u64::from(information.nFileIndexHigh) << 32)
+            | u64::from(information.nFileIndexLow),
+        number_of_links: information.nNumberOfLinks,
+    })
+}
+
+#[cfg(windows)]
+fn verify_windows_path_identity(
+    path: &Path,
+    opened_file: &File,
+    expected: &WindowsFileIdentity,
+) -> Result<()> {
+    if expected.number_of_links != 1 || windows_file_identity(opened_file)? != *expected {
+        bail!("sealed file handle identity changed");
+    }
+    let reopened = open_regular(path)?;
+    let metadata = reopened.metadata()?;
+    if !metadata.is_file()
+        || metadata.file_type().is_symlink()
+        || windows_file_identity(&reopened)? != *expected
+    {
+        bail!("sealed file path identity changed");
+    }
+    Ok(())
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -2662,6 +2720,8 @@ fn read_bounded_regular(path: &Path, limit: u64) -> Result<Vec<u8>> {
     if !same_attestation_identity(&before, &opened) {
         bail!("sealed file changed while opened {}", path.display());
     }
+    #[cfg(windows)]
+    let opened_file_identity = windows_file_identity(&file)?;
     let mut bytes = Vec::with_capacity(opened.len() as usize);
     (&mut file)
         .take(limit.saturating_add(1))
@@ -2674,6 +2734,13 @@ fn read_bounded_regular(path: &Path, limit: u64) -> Result<Vec<u8>> {
     {
         bail!("sealed file changed while reading {}", path.display());
     }
+    #[cfg(windows)]
+    verify_windows_path_identity(path, &file, &opened_file_identity).with_context(|| {
+        format!(
+            "sealed file identity changed while reading {}",
+            path.display()
+        )
+    })?;
     Ok(bytes)
 }
 
@@ -2841,19 +2908,10 @@ fn verify_macos_static_code(bundle: &Path) -> Result<()> {
 fn macos_code_requirement(policy: &str, identity: &str) -> Result<(&'static str, String)> {
     match policy {
         "production-v1" => {
-            if identity.len() != 10
-                || !identity
-                    .bytes()
-                    .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
-            {
-                bail!("[PYTHON_SEALED_PROVENANCE_UNAVAILABLE] production signing identity is not build-bound");
+            if !identity.is_empty() {
+                bail!("[PYTHON_SEALED_PROVENANCE_UNAVAILABLE] OSS production artifacts may not claim an Apple signing identity");
             }
-            Ok((
-                "dev.tobkiri.launcher",
-                format!(
-                    "identifier \"dev.tobkiri.launcher\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU] = \"{identity}\""
-                ),
-            ))
+            Ok(("dev.rumiai.app", "identifier \"dev.rumiai.app\"".to_owned()))
         }
         "ci-e2e-v1" => {
             require_sha256(identity).context(
@@ -3191,25 +3249,26 @@ fn verify_macos_static_code_for_policy(bundle: &Path, policy: &str, identity: &s
         bail!("[PYTHON_SEALED_PROVENANCE_INVALID] outer app signature rejected ({validity})");
     }
 
+    let mut signing_information = ptr::null();
+    let info_status =
+        unsafe { SecCodeCopySigningInformation(code, 1 << 1, &mut signing_information) };
+    if info_status != 0 || signing_information.is_null() {
+        unsafe { CFRelease(code) };
+        bail!("[PYTHON_SEALED_PROVENANCE_INVALID] signing certificate information unavailable ({info_status})");
+    }
+    let certificates = unsafe {
+        CFDictionaryGetValue(signing_information, kSecCodeInfoCertificates) as CFArrayRef
+    };
+    if !certificates.is_null() && unsafe { CFArrayGetCount(certificates) } != 0 {
+        unsafe {
+            CFRelease(signing_information);
+            CFRelease(code);
+        }
+        bail!("[PYTHON_SEALED_PROVENANCE_INVALID] outer signature must remain explicitly ad-hoc");
+    }
+    unsafe { CFRelease(signing_information) };
+
     if policy == "ci-e2e-v1" {
-        let mut signing_information = ptr::null();
-        let info_status =
-            unsafe { SecCodeCopySigningInformation(code, 1 << 1, &mut signing_information) };
-        if info_status != 0 || signing_information.is_null() {
-            unsafe { CFRelease(code) };
-            bail!("[PYTHON_SEALED_PROVENANCE_INVALID] signing certificate information unavailable ({info_status})");
-        }
-        let certificates = unsafe {
-            CFDictionaryGetValue(signing_information, kSecCodeInfoCertificates) as CFArrayRef
-        };
-        if !certificates.is_null() && unsafe { CFArrayGetCount(certificates) } != 0 {
-            unsafe {
-                CFRelease(signing_information);
-                CFRelease(code);
-            }
-            bail!("[PYTHON_SEALED_PROVENANCE_INVALID] CI outer signature must remain explicitly ad-hoc");
-        }
-        unsafe { CFRelease(signing_information) };
         let attestation = verify_macos_ci_attestation(bundle, identity);
         unsafe { CFRelease(code) };
         attestation?;
@@ -3360,7 +3419,7 @@ mod tests {
             python_version: "3.13.13".into(),
             package_provenance: PackageProvenance {
                 kind: required_package_provenance_kind().into(),
-                package_id: "dev.tobkiri.launcher".into(),
+                package_id: "dev.rumiai.app".into(),
                 release_digest: digest('b'),
             },
             sentinels: SentinelContract {
@@ -3757,7 +3816,21 @@ mod tests {
         {
             let mut role = RoleCommand::packaged(&mut command, PythonRole::Defaultspack);
             role.env("DEFAULTS_HTTP_PORT", "8766")
-                .env("RUMI_DEFAULTSPACK_SURFACE", "webview");
+                .env("RUMI_DEFAULTSPACK_SURFACE", "webview")
+                .env(
+                    "RUMI_DEFAULTSPACK_COMMAND_STATE_DIR",
+                    "/trusted/user-data/defaultspack/shared",
+                )
+                .env("TOBKIRI_PACKVM_ACCEPTANCE_ENABLE", "1")
+                .env("TOBKIRI_PACKVM_ACCEPTANCE_PACK_DIGEST", digest('a'))
+                .env(
+                    "TOBKIRI_CI_E2E_APP_DATA_ROOT",
+                    "/private/ci/ci-e2e-app-data",
+                )
+                .env(
+                    "TOBKIRI_LAUNCHER_APP_IDENTIFIER",
+                    "dev.tobkiri.launcher.ci-e2e",
+                );
             role.finish().unwrap();
         }
         let environment = command
@@ -3768,6 +3841,16 @@ mod tests {
         assert_eq!(
             environment.get(OsStr::new("DEFAULTS_HTTP_PORT")),
             Some(&Some(OsString::from("8766")))
+        );
+        assert_eq!(
+            environment.get(OsStr::new("RUMI_DEFAULTSPACK_COMMAND_STATE_DIR")),
+            Some(&Some(OsString::from(
+                "/trusted/user-data/defaultspack/shared"
+            )))
+        );
+        assert_eq!(
+            environment.get(OsStr::new("TOBKIRI_PACKVM_ACCEPTANCE_ENABLE")),
+            Some(&Some(OsString::from("1")))
         );
 
         for key in [
@@ -4252,13 +4335,12 @@ mod tests {
             random_nonce()
         ));
         fs::create_dir(&path).unwrap();
-        let error =
-            verify_macos_static_code_for_policy(&path, "production-v1", "ABC1234567").unwrap_err();
+        let error = verify_macos_static_code_for_policy(&path, "production-v1", "").unwrap_err();
         assert!(error
             .to_string()
             .contains("PYTHON_SEALED_PROVENANCE_INVALID"));
         let unavailable =
-            verify_macos_static_code_for_policy(&path, "production-v1", "").unwrap_err();
+            verify_macos_static_code_for_policy(&path, "production-v1", "ABC1234567").unwrap_err();
         assert!(unavailable
             .to_string()
             .contains("PYTHON_SEALED_PROVENANCE_UNAVAILABLE"));
@@ -4268,16 +4350,15 @@ mod tests {
     #[test]
     #[cfg(target_os = "macos")]
     fn macos_artifact_policy_rejects_identity_and_domain_swaps() {
-        let production = macos_code_requirement("production-v1", "ABC1234567").unwrap();
-        assert_eq!(production.0, "dev.tobkiri.launcher");
-        assert!(production.1.contains("anchor apple generic"));
-        assert!(production.1.contains("ABC1234567"));
+        let production = macos_code_requirement("production-v1", "").unwrap();
+        assert_eq!(production.0, "dev.rumiai.app");
+        assert_eq!(production.1, "identifier \"dev.rumiai.app\"");
 
         let ci = macos_code_requirement("ci-e2e-v1", &digest('a')).unwrap();
         assert_eq!(ci.0, "dev.tobkiri.launcher.ci-e2e");
-        assert!(!ci.1.contains("dev.tobkiri.launcher\" and anchor"));
+        assert!(!ci.1.contains("dev.rumiai.app\" and anchor"));
         for (policy, identity) in [
-            ("production-v1", &digest('b')[..]),
+            ("production-v1", "ABC1234567"),
             ("ci-e2e-v1", "ABC1234567"),
             ("ad-hoc", &digest('c')[..]),
         ] {
@@ -4372,11 +4453,19 @@ mod tests {
         let (root, mut manifest) = materialized_environment();
         #[cfg(unix)]
         make_test_tree_writable(&root);
+        #[cfg(not(windows))]
         let import_files = [
             "app/ecosystem/defaultspack/__init__.py",
             "runtime/lib/python3.13/os.py",
             "runtime/lib/python3.13/lib-dynload/_ssl.so",
             "venv/lib/python3.13/site-packages/fixture.py",
+        ];
+        #[cfg(windows)]
+        let import_files = [
+            "app/ecosystem/defaultspack/__init__.py",
+            "runtime/Lib/os.py",
+            "runtime/DLLs/_ssl.pyd",
+            "venv/Lib/site-packages/fixture.py",
         ];
         for relative in import_files {
             let path = root.join(relative);
@@ -4422,11 +4511,28 @@ mod tests {
                 .unwrap()
                 .to_string_lossy()
                 .into_owned(),
+            #[cfg(not(windows))]
             sys_path: [
                 "app",
                 "runtime/lib/python3.13",
                 "runtime/lib/python3.13/lib-dynload",
                 "venv/lib/python3.13/site-packages",
+            ]
+            .into_iter()
+            .map(|relative| {
+                fs::canonicalize(root.join(relative))
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect(),
+            #[cfg(windows)]
+            sys_path: [
+                "app",
+                "runtime",
+                "runtime/Lib",
+                "runtime/DLLs",
+                "venv/Lib/site-packages",
             ]
             .into_iter()
             .map(|relative| {

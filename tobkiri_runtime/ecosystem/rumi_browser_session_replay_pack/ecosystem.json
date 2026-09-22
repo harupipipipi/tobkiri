@@ -87,15 +87,15 @@
         "templates/ui_contract.template.md"
       ]
     },
+    "base_pack_promotion_eligible": false,
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:a027dbcd9a523ea85dc75b58246f7b1ac6f2c76ee484aaa18eafad6fd7fb1996",
+      "artifact_digest": "sha256:90196494b969f9f8029aa6757f60c6dec1a57ce1ebca605363d06866b38f61f5",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:26015ade2b38867bf6e757f68bb75cc1476dbbb2773261c5d4c3afd435bbbc36"
+      "source_identity": "sha256:08174d59d4e5ce403c2def4c4bea009b15c3721b1b39436061bd215147830f3e"
     },
     "consumes_existing_sources_only": true,
     "declarative_only": true,
-    "defaultspack_promotion_eligible": false,
     "executable_code": false,
     "format": "rumi.ecosystem.v1",
     "generated": true,
@@ -103,7 +103,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:26015ade2b38867bf6e757f68bb75cc1476dbbb2773261c5d4c3afd435bbbc36"
+      "source_content_hash": "sha256:08174d59d4e5ce403c2def4c4bea009b15c3721b1b39436061bd215147830f3e"
     },
     "legacy_annotations": {
       "runtime_dependency_aliases": [
@@ -165,7 +165,7 @@
   "pack_identity": "rumi:ecosystem/rumi_browser_session_replay_pack",
   "provenance": {
     "build_identity": "rumi_browser_session_replay_pack:1.0.0",
-    "content_hash": "sha256:a027dbcd9a523ea85dc75b58246f7b1ac6f2c76ee484aaa18eafad6fd7fb1996",
+    "content_hash": "sha256:90196494b969f9f8029aa6757f60c6dec1a57ce1ebca605363d06866b38f61f5",
     "signature": null,
     "trust_class": "local"
   },

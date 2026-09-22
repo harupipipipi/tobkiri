@@ -1,3 +1,5 @@
+import { ErrorNotice } from "./ErrorNotice";
+
 const assetBaseUrl = (
   import.meta as ImportMeta & { env?: { BASE_URL?: string } }
 ).env?.BASE_URL || "/static/";
@@ -63,9 +65,11 @@ export function TobkiriLoadingScreen({
         <p className="text-base font-semibold tracking-tight text-zinc-100">
           Tobkiri
         </p>
-        <p className="text-sm text-zinc-300">
-          {error ? TOBKIRI_STARTUP_ERROR_LABEL : activeStep?.label ?? TOBKIRI_LOADING_LABEL}
-        </p>
+        {!error ? (
+          <p className="text-sm text-zinc-300">
+            {activeStep?.label ?? TOBKIRI_LOADING_LABEL}
+          </p>
+        ) : null}
         {!error && steps.length > 0 ? (
           <ol
             aria-label="起動準備の進行状況"
@@ -106,9 +110,16 @@ export function TobkiriLoadingScreen({
         ) : null}
         {error ? (
           <div className="mt-1 flex w-full max-w-md flex-col items-center gap-3">
-            <p role="alert" className="text-xs leading-5 text-zinc-400">
-              Tobkiri Launcherから起動し直すか、しばらく待って再試行してください。
-            </p>
+            <ErrorNotice
+              className="w-full text-left text-xs leading-5"
+              copyLabel="起動エラーをコピー"
+              copyText={`Tobkiri Launcher startup error\n\n${error}`}
+              errorIcon="startup"
+              message="Tobkiri Launcherから起動し直すか、しばらく待って再試行してください。"
+              messageClassName="text-zinc-300"
+              title={TOBKIRI_STARTUP_ERROR_LABEL}
+              titleClassName="text-red-100"
+            />
             {onRetry ? (
               <button
                 className="rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2 text-xs font-semibold text-zinc-100 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"

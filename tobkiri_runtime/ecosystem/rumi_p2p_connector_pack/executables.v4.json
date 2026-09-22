@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:37839d2ace92311616ce4874a3b632adafcd6ac8bbf140a68f3ccd56d0a107d8",
+  "catalog_digest": "sha256:f9f6851547659f50ed1daace6b16d6267f09fd441e8bb1f8b776195e372f6192",
   "pack_id": "rumi_p2p_connector_pack",
-  "source_identity": "sha256:25a8069c5de442d25b55432884f35d1e9ade2f8b0c3e064ff116f332f84fef0b",
+  "source_identity": "sha256:69c6a8f891e305bc39132db358501c9423e575c934337df5e8820b3feb681fc3",
   "variants": [
     {
       "architecture": "any",
@@ -29,7 +29,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:d849d7823f6c554baa0e67ff56c05a29254c90dbf03ea4e7202211db9cf0c215",
+          "revision_digest": "sha256:e8c916567305b553c45587ebec10284c673e8a5fad8cf7232c21e93d902cc1cf",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

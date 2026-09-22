@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 import shutil
 import sqlite3
+import sys
+import tempfile
 import threading
 from typing import Any
 
@@ -333,6 +335,33 @@ def test_authority_rejects_non_regular_and_symlink_ancestor_paths(
         AuthorityStore(alias / "authority.sqlite3")
 
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="Darwin-only alias contract")
+def test_secure_parent_normalizes_os_alias_but_rejects_caller_symlink() -> None:
+    """Normalize macOS temporary aliases without weakening no-follow checks."""
+
+    with tempfile.TemporaryDirectory() as temporary:
+        requested_root = Path(temporary)
+        canonical_root = secure_paths.canonical_platform_path(requested_root)
+        if requested_root == canonical_root:
+            pytest.skip("temporary directory is already represented canonically")
+
+        alias_root = Path("/var") / canonical_root.relative_to("/private/var")
+        target = canonical_root / "nested" / "authority.sqlite3"
+        target.parent.mkdir()
+
+        with secure_paths.secure_parent(
+            alias_root / "nested" / target.name
+        ) as opened_parent:
+            assert opened_parent.path == target.parent
+            assert opened_parent.descriptor is not None
+
+        linked_parent = canonical_root / "caller-link"
+        linked_parent.symlink_to(target.parent, target_is_directory=True)
+        with pytest.raises(secure_paths.SecurePathError, match="unsafe"):
+            with secure_paths.secure_parent(alias_root / "caller-link" / target.name):
+                pass
+
+
 @pytest.mark.skipif(not hasattr(os, "getuid"), reason="requires POSIX ownership")
 def test_authority_rejects_file_not_owned_by_current_user(
     tmp_path: Path,
@@ -626,3 +655,75 @@ def test_authority_rejects_broad_sidecar_permissions_before_query(
     monkeypatch.setattr(AuthorityStore, "_pin_opened_database_files", broaden_wal)
     with pytest.raises(AuthorityStoreError, match="permissions"):
         AuthorityStore(path)
+
+
+def test_lifecycle_guard_thread_lock_wait_fails_closed_bounded(
+    tmp_path: Path,
+) -> None:
+    """A held lifecycle guard cannot park another operation forever.
+
+    The reported production wedge parked request threads on this acquisition
+    until their dispatch deadline expired; the wait is now bounded and fails
+    closed with a typed store error instead.
+    """
+
+    store = AuthorityStore(
+        tmp_path / "authority.sqlite3",
+        guard_acquire_timeout_seconds=0.3,
+    )
+    outcome: dict[str, Any] = {}
+    try:
+        with store._connection():
+            def read() -> None:
+                try:
+                    outcome["epoch"] = store.security_epoch
+                except AuthorityStoreError as exc:
+                    outcome["error"] = str(exc)
+
+            worker = threading.Thread(target=read, daemon=True)
+            worker.start()
+            worker.join(timeout=10.0)
+            assert not worker.is_alive(), "store read parked on held guard"
+            assert "epoch" not in outcome
+            assert "deadline" in str(outcome.get("error", ""))
+            assert store.security_epoch >= 1
+    finally:
+        store.close()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX flock lifecycle guard")
+def test_lifecycle_guard_flock_wait_fails_closed_bounded(
+    tmp_path: Path,
+) -> None:
+    """A cross-process flock holder cannot park a store operation forever."""
+
+    import fcntl
+
+    store = AuthorityStore(
+        tmp_path / "authority.sqlite3",
+        guard_acquire_timeout_seconds=0.3,
+    )
+    holder = os.open(store._guard_path, os.O_RDWR)
+    outcome: dict[str, Any] = {}
+    try:
+        fcntl.flock(holder, fcntl.LOCK_EX)
+
+        def read() -> None:
+            try:
+                outcome["epoch"] = store.security_epoch
+            except AuthorityStoreError as exc:
+                outcome["error"] = str(exc)
+
+        worker = threading.Thread(target=read, daemon=True)
+        worker.start()
+        worker.join(timeout=10.0)
+        assert not worker.is_alive(), "store read parked on held flock"
+        assert "epoch" not in outcome
+        assert "deadline" in str(outcome.get("error", ""))
+    finally:
+        try:
+            fcntl.flock(holder, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(holder)
+        store.close()

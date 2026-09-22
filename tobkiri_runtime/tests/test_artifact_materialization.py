@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -14,9 +15,15 @@ import pytest
 from ecosystem.defaultspack.backend.sandbox.isolation.resources import (
     packvm_guest_runner,
 )
+import ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner as vz_provisioner
 import tobkiri_host.artifact_materialization as materialization_module
 from tobkiri_host.artifact_compiler import compile_pack_root
-from tobkiri_host.artifact_materialization import capture_materialized_artifact
+from tobkiri_host.artifact_materialization import (
+    MaterializedArtifactFile,
+    MaterializedPackArtifact,
+    _materialization_digest,
+    capture_materialized_artifact,
+)
 from tobkiri_host.contracts import OperationCatalog, OperationRoute
 from tobkiri_host.errors import InvalidArtifactError
 from tobkiri_host.models import OpaqueAuthorityRef
@@ -68,6 +75,59 @@ def _copied_binding(tmp_path: Path):
     return root, binding
 
 
+def _seed_artifact(source: bytes) -> MaterializedPackArtifact:
+    """Create one compact artifact used by direct-VZ seed regressions."""
+
+    implementation_digest = "sha256:" + hashlib.sha256(source).hexdigest()
+    artifact_digest = "sha256:" + "a" * 64
+    files = (
+        MaterializedArtifactFile(
+            path="runtime/operation.py",
+            digest=implementation_digest,
+            executable=False,
+            content=source,
+        ),
+    )
+    materialization_digest = _materialization_digest(
+        "seed-pack",
+        artifact_digest,
+        "seed-pack.operation",
+        implementation_digest,
+        "runtime/operation.py",
+        files,
+    )
+    return MaterializedPackArtifact(
+        pack_id="seed-pack",
+        artifact_digest=artifact_digest,
+        function_id="seed-pack.operation",
+        implementation_digest=implementation_digest,
+        implementation_path="runtime/operation.py",
+        materialization_digest=materialization_digest,
+        root_device=1,
+        root_inode=1,
+        files=files,
+    )
+
+
+def _seed_bindings(artifact: MaterializedPackArtifact) -> dict[str, str]:
+    """Return the complete direct-VZ binding map for a seed test."""
+
+    return {
+        "domain": "sha256:" + "1" * 64,
+        "lease": "sha256:" + "2" * 64,
+        "reservation": "sha256:" + "3" * 64,
+        "image": "sha256:" + "4" * 64,
+        "agent": "sha256:" + "5" * 64,
+        "config": "sha256:" + "6" * 64,
+        "disk": "sha256:" + "7" * 64,
+        "guest_public_key": "sha256:" + "8" * 64,
+        "efi_variable_store": "sha256:" + "9" * 64,
+        "artifact": artifact.artifact_digest,
+        "executable": artifact.implementation_digest,
+        "materialization": artifact.materialization_digest,
+    }
+
+
 def test_capture_contains_only_digest_pinned_regular_files(tmp_path: Path) -> None:
     root, binding = _copied_binding(tmp_path)
     captured = capture_materialized_artifact(root, binding)
@@ -113,9 +173,9 @@ def test_capture_rejects_pack_root_swap(
     original_reader = materialization_module._read_regular_file
     swapped = False
 
-    def swap_after_first_read(descriptor: int, relative: str):
+    def swap_after_first_read(descriptor: int, relative: str, **kwargs):
         nonlocal swapped
-        result = original_reader(descriptor, relative)
+        result = original_reader(descriptor, relative, **kwargs)
         if not swapped:
             swapped = True
             root.rename(tmp_path / "original")
@@ -274,6 +334,221 @@ def test_guest_stage_is_read_only_replay_safe_and_reverified(
     target.chmod(0o555)
     with pytest.raises(ValueError, match="inventory changed"):
         packvm_guest_runner._verify_invocation_artifact(invoke)
+
+    target.chmod(0o700)
+    runtime.parent.chmod(0o700)
+    extra.unlink()
+    runtime.unlink()
+    outside = tmp_path / "same-bytes-outside-artifact.py"
+    outside.write_bytes(expected_runtime)
+    outside.chmod(0o444)
+    os.link(outside, runtime)
+    runtime.parent.chmod(0o555)
+    target.chmod(0o555)
+    with pytest.raises(ValueError, match="unsafe file"):
+        packvm_guest_runner._verify_invocation_artifact(invoke)
+
+
+def test_direct_vz_seed_materializes_before_the_first_real_invoke(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A direct VZ launch attests the exact pre-seeded invoke path."""
+
+    source = (
+        b"def tobkiri_packvm_invoke(operation_id, payload):\n"
+        b"    return {'operation': operation_id, 'message': payload['message']}\n"
+    )
+    artifact = _seed_artifact(source)
+    seed = tmp_path / "artifact-seed.v1.bin"
+    seed_binding = vz_provisioner._write_materialized_artifact_seed(seed, artifact)
+    guest_root = tmp_path / "guest-artifacts"
+    monkeypatch.setattr(packvm_guest_runner, "ARTIFACT_ROOT", guest_root)
+    monkeypatch.setattr(packvm_guest_runner, "REQUEST_ROOT", tmp_path / "requests")
+    monkeypatch.setattr(packvm_guest_runner.os, "geteuid", lambda: 0)
+    identity = packvm_guest_runner.materialize_seed_artifact(
+        seed,
+        seed_binding,
+        _seed_bindings(artifact),
+    )
+    assert packvm_guest_runner._seeded_artifact_identity(_seed_bindings(artifact)) == identity
+    monkeypatch.setattr(
+        packvm_guest_runner,
+        "_sandbox_argv",
+        lambda _target, implementation: (
+            sys.executable,
+            "-I",
+            "-S",
+            str(Path(packvm_guest_runner.__file__).resolve()),
+            "--execute",
+            str(implementation),
+        ),
+    )
+    result = packvm_guest_runner._invoke(
+        {
+            "operation": "invoke",
+            "request_id": "request.seeded",
+            "target_domain": "packvm:seeded",
+            "artifact_digest": artifact.artifact_digest,
+            "materialization_digest": artifact.materialization_digest,
+            "guest_artifact_identity": identity,
+            "contract_id": "example.contract.v1",
+            "contract_version": "1.0.0",
+            "operation_id": "seed-pack.inspect",
+            "payload": {"message": "seeded before boot"},
+            "request_digest": "sha256:" + "b" * 64,
+            # Direct-VZ envelopes use the Host's canonical JSON deadline
+            # string; first invoke must accept it after artifact seeding.
+            "deadline_monotonic": "100",
+            "cancel_token": "c" * 64,
+        }
+    )
+
+    assert result["payload"] == {
+        "kind": "tobkiri.packvm.invoke.result.v1",
+        "outcome": {
+            "operation": "seed-pack.inspect",
+            "message": "seeded before boot",
+        },
+    }
+
+
+def test_direct_vz_iso_seed_round_trip_preserves_framing_and_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CIDATA preserves the Host seed bytes consumed before the first invoke."""
+
+    artifact = _seed_artifact(
+        b"def tobkiri_packvm_invoke(*_): return {'seed': 'cidata'}\n"
+    )
+    host_seed = tmp_path / "host-artifact-seed.v1.bin"
+    seed_binding = vz_provisioner._write_materialized_artifact_seed(host_seed, artifact)
+    config_seed = tmp_path / "config-seed.iso"
+    vz_provisioner._write_iso_seed(
+        config_seed,
+        "cidata",
+        {"artifact-seed.v1.bin": host_seed},
+    )
+
+    image = config_seed.read_bytes()
+    directory_offset = 20 * 2048
+    entry_offset = directory_offset
+    artifact_bytes: bytes | None = None
+    while entry_offset < directory_offset + 2048:
+        record_length = image[entry_offset]
+        if record_length == 0:
+            break
+        identifier_length = image[entry_offset + 32]
+        identifier = image[
+            entry_offset + 33 : entry_offset + 33 + identifier_length
+        ]
+        if identifier == b"artifact-seed.v1.bin;1":
+            sector = int.from_bytes(image[entry_offset + 2 : entry_offset + 6], "little")
+            size = int.from_bytes(image[entry_offset + 10 : entry_offset + 14], "little")
+            artifact_bytes = image[sector * 2048 : sector * 2048 + size]
+            break
+        entry_offset += record_length
+
+    assert artifact_bytes == host_seed.read_bytes()
+    guest_seed = tmp_path / "artifact-seed.v1.bin"
+    guest_seed.write_bytes(artifact_bytes)
+    guest_seed.chmod(0o600)
+    monkeypatch.setattr(packvm_guest_runner, "ARTIFACT_ROOT", tmp_path / "guest-artifacts")
+    monkeypatch.setattr(packvm_guest_runner.os, "geteuid", lambda: 0)
+
+    identity = packvm_guest_runner.materialize_seed_artifact(
+        guest_seed,
+        seed_binding,
+        _seed_bindings(artifact),
+    )
+
+    assert identity == packvm_guest_runner._seeded_artifact_identity(
+        _seed_bindings(artifact)
+    )
+
+
+def test_direct_vz_seed_rejects_tampering_and_binding_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Seed bytes and their launch binding are independently fail-closed."""
+
+    artifact = _seed_artifact(b"def tobkiri_packvm_invoke(*_): return {}\n")
+    seed = tmp_path / "artifact-seed.v1.bin"
+    seed_binding = vz_provisioner._write_materialized_artifact_seed(seed, artifact)
+    monkeypatch.setattr(packvm_guest_runner, "ARTIFACT_ROOT", tmp_path / "guest-artifacts")
+    monkeypatch.setattr(packvm_guest_runner.os, "geteuid", lambda: 0)
+
+    mismatched = _seed_bindings(artifact)
+    mismatched["artifact"] = "sha256:" + "d" * 64
+    with pytest.raises(ValueError, match="binding mismatch"):
+        packvm_guest_runner.materialize_seed_artifact(seed, seed_binding, mismatched)
+
+    seed.chmod(0o600)
+    seed.write_bytes(seed.read_bytes() + b"tampered")
+    seed.chmod(0o600)
+    with pytest.raises(ValueError, match="unsafe|changed|trailing"):
+        packvm_guest_runner.materialize_seed_artifact(
+            seed,
+            seed_binding,
+            _seed_bindings(artifact),
+        )
+
+
+def test_direct_vz_seed_rejects_traversal_before_writing_guest_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A digest-valid archive still cannot select a path outside its target."""
+
+    artifact_digest = "sha256:" + "e" * 64
+    executable_digest = "sha256:" + "f" * 64
+    materialization_digest = "sha256:" + "0" * 64
+    manifest = {
+        "schema": packvm_guest_runner.ARTIFACT_SEED_SCHEMA,
+        "pack_id": "seed-pack",
+        "artifact_digest": artifact_digest,
+        "function_id": "seed-pack.operation",
+        "implementation_digest": executable_digest,
+        "implementation_path": "runtime/operation.py",
+        "materialization_digest": materialization_digest,
+        "files": [
+            {
+                "path": "../escape.py",
+                "digest": executable_digest,
+                "executable": False,
+                "size": 0,
+            }
+        ],
+    }
+    encoded = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    payload = (
+        packvm_guest_runner.ARTIFACT_SEED_MAGIC
+        + len(encoded).to_bytes(8, "big")
+        + encoded
+    )
+    seed = tmp_path / "artifact-seed.v1.bin"
+    seed.write_bytes(payload)
+    seed.chmod(0o600)
+    binding = {
+        **_seed_bindings(_seed_artifact(b"x")),
+        "artifact": artifact_digest,
+        "executable": executable_digest,
+        "materialization": materialization_digest,
+    }
+    seed_binding = {
+        "format": packvm_guest_runner.ARTIFACT_SEED_SCHEMA,
+        "digest": "sha256:" + hashlib.sha256(payload).hexdigest(),
+        "size_bytes": len(payload),
+    }
+    guest_root = tmp_path / "guest-artifacts"
+    monkeypatch.setattr(packvm_guest_runner, "ARTIFACT_ROOT", guest_root)
+    monkeypatch.setattr(packvm_guest_runner.os, "geteuid", lambda: 0)
+
+    with pytest.raises(ValueError, match="path is unsafe"):
+        packvm_guest_runner.materialize_seed_artifact(seed, seed_binding, binding)
+    assert not list(guest_root.glob("*/*"))
 
 
 def test_guest_materialization_rejects_storage_quota_overflow(
@@ -439,6 +714,9 @@ def test_guest_supervisor_materializes_and_invokes_the_exact_python_abi(
     )
     assert result["ok"] is True
     assert result["payload"] == {
-        "operation": "example-pack.inspect",
-        "message": "inside guest",
+        "kind": "tobkiri.packvm.invoke.result.v1",
+        "outcome": {
+            "operation": "example-pack.inspect",
+            "message": "inside guest",
+        },
     }

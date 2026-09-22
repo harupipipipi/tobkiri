@@ -151,7 +151,6 @@ def test_every_legacy_mutation_entrypoint_uses_canonical_guard() -> None:
         "file_delete.py": 1,
         "file_patch.py": 1,
         "file_write.py": 1,
-        "git_branch.py": 1,
         "git_commit.py": 1,
         "git_push.py": 1,
         "terminal_exec.py": 1,
@@ -174,6 +173,10 @@ def test_every_legacy_mutation_entrypoint_uses_canonical_guard() -> None:
             )
         else:
             assert source.count("mutation_guard=canonical_mutation_guard") == expected_calls
+
+    branch_source = (block_root / "git_branch.py").read_text(encoding="utf-8")
+    assert "authorize_legacy_coding_operation(" not in branch_source
+    assert "exclusive workspace mutation lease" in branch_source
 
 
 def test_git_commit_has_distinct_preflight_snapshot_and_one_shot_authorize_phases(
@@ -211,7 +214,7 @@ def test_git_commit_has_distinct_preflight_snapshot_and_one_shot_authorize_phase
     guard_calls: list[dict[str, Any]] = []
     preflight_calls: list[dict[str, Any]] = []
     authorize_calls: list[dict[str, Any]] = []
-    snapshot_calls: list[str] = []
+    snapshot_calls: list[dict[str, Any]] = []
     provider_calls: list[str] = []
 
     real_preflight = git_commit.preflight_legacy_coding_operation
@@ -262,9 +265,11 @@ def test_git_commit_has_distinct_preflight_snapshot_and_one_shot_authorize_phase
             return {"commit_hash": "commit-1"}
         raise AssertionError(f"unexpected coding contract: {contract_id} {operation}")
 
-    def read_snapshot(selected_workspace_id: str) -> dict[str, Any]:
+    def read_snapshot(selected_workspace_id: str, **kwargs: Any) -> dict[str, Any]:
         events.append("snapshot")
-        snapshot_calls.append(selected_workspace_id)
+        snapshot_calls.append(
+            {"workspace_id": selected_workspace_id, **kwargs}
+        )
         return dict(snapshot)
 
     monkeypatch.setattr(git_commit, "preflight_legacy_coding_operation", preflight)
@@ -297,7 +302,14 @@ def test_git_commit_has_distinct_preflight_snapshot_and_one_shot_authorize_phase
     assert guard_calls[0]["workspace_id"] == "workspace-1"
     assert guard_calls[0]["context"] == context
     assert guard_calls[0]["operation"] == "git.commit"
-    assert snapshot_calls == ["workspace-1"]
+    assert snapshot_calls == [
+        {
+            "workspace_id": "workspace-1",
+            "paths": ["src/app.py"],
+            "capture_commit": True,
+            "all_tracked": False,
+        }
+    ]
     assert authorize_calls[0]["selected_workspace_id"] == "workspace-1"
     assert authorize_calls[0]["context"] == context
     assert authorize_calls[0]["arguments"] == {
@@ -317,5 +329,5 @@ def test_git_commit_has_distinct_preflight_snapshot_and_one_shot_authorize_phase
     assert len(preflight_calls) == 2
     assert len(authorize_calls) == 1
     assert len(guard_calls) == 2
-    assert snapshot_calls == ["workspace-1"]
+    assert len(snapshot_calls) == 1
     assert provider_calls == ["host_authorize", "git_write"]

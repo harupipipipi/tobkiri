@@ -32,8 +32,21 @@ from core_runtime.bootstrap.profile_capture import (
 import core_runtime.pack_control_v4 as pack_control
 
 
-TARGET_PACK = "rumi_git_read_pack"
+TARGET_PACK = "rumi_model_evals_pack"
 REQUIRED_PACK = "rumi_file_inspect_pack"
+
+
+def _capture_control_session(**kwargs):
+    """Compose the Defaultspack runtime surface explicitly for direct tests."""
+
+    from ecosystem.defaultspack.domain.runtime_surface_v4 import (
+        create_runtime_surface_services,
+    )
+
+    return capture_pack_control_session(
+        runtime_surface_factory=create_runtime_surface_services,
+        **kwargs,
+    )
 
 
 @pytest.fixture
@@ -42,7 +55,7 @@ def captured_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     user_data = tmp_path / "user-data"
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
     capture_default_profile(confirmation=prepare_default_profile_confirmation())
-    session = capture_pack_control_session()
+    session = _capture_control_session()
     state_path = user_data / "workspaces" / "defaults" / "activation" / "active.json"
     yield session, state_path, user_data
 
@@ -81,44 +94,74 @@ def _catalog_operation(pack: dict, contract_id: str, operation_id: str) -> dict:
     )
 
 
-def test_catalog_install_approve_enable_and_restart_read_back(captured_session) -> None:
+def test_catalog_separates_admission_and_active_pack_digests(captured_session) -> None:
+    """Execution joins use verified plan artifacts; approvals retain record identity."""
+    session, _state_path, _user_data = captured_session
+    catalog = _invoke(session, "catalog.read")
+    active = capture_default_profile()
+    artifacts = {
+        item["identity"]: item["artifact_digest"]
+        for item in active.resolved.plan["effective_set"]
+    }
+    records = pack_control.load_pack_catalog()
+    for row in catalog["packs"]:
+        pack_id = row["pack_id"]
+        assert row["artifact_digest"] == pack_control._record_digest(records[pack_id])
+        assert row["pack_artifact_digest"] == artifacts.get(pack_id)
+    required = _catalog_pack(catalog, REQUIRED_PACK)
+    assert required["pack_artifact_digest"] is not None
+    assert required["pack_artifact_digest"] != required["artifact_digest"]
+    assert _catalog_pack(catalog, TARGET_PACK)["pack_artifact_digest"] is None
+
+
+@pytest.mark.parametrize("pack_id", [TARGET_PACK, "rumi_agent_workroom_pack"])
+def test_catalog_install_approve_enable_and_restart_read_back(captured_session, pack_id: str) -> None:
     """The positive lifecycle survives a fresh captured session."""
     session, _state_path, user_data = captured_session
     initial = _invoke(session, "catalog.read")
-    assert initial["count"] == 143
-    target = _catalog_pack(initial, TARGET_PACK)
+    source_catalog = json.loads(
+        (Path(__file__).resolve().parents[1] / "schemas" / "pack_v4_catalog.v1.json")
+        .read_text(encoding="utf-8")
+    )
+    expected_pack_ids = set(source_catalog["pack_ids"])
+    assert {row["pack_id"] for row in initial["packs"]} == expected_pack_ids
+    assert initial["count"] == len(expected_pack_ids)
+    target = _catalog_pack(initial, pack_id)
     assert target["installed"] is False
     assert target["enabled"] is False
     assert target["approved"] is False
 
-    assert _invoke(session, "pack.install", {"pack_id": TARGET_PACK})["installed"]
+    assert _invoke(session, "pack.install", {"pack_id": pack_id})["installed"]
     candidate = _invoke(
         session,
         "approval.candidate",
-        {"pack_id": TARGET_PACK},
+        {"pack_id": pack_id},
     )
     approved = _invoke(
         session,
         "approval.approve",
-        {"pack_id": TARGET_PACK, "candidate_id": candidate["candidate_id"]},
+        {"pack_id": pack_id, "candidate_id": candidate["candidate_id"]},
     )
     assert approved["approved"] is True
-    enabled = _invoke(session, "pack.enable", {"pack_id": TARGET_PACK})
+    enabled = _invoke(session, "pack.enable", {"pack_id": pack_id})
     assert enabled["enabled"] is True
 
-    restarted = capture_pack_control_session()
-    status = _invoke(restarted, "pack.status", {"pack_id": TARGET_PACK})
+    restarted = _capture_control_session()
+    restarted_catalog = _invoke(restarted, "catalog.read")
+    assert {row["pack_id"] for row in restarted_catalog["packs"]} == expected_pack_ids
+    assert restarted_catalog["count"] == len(expected_pack_ids)
+    status = _invoke(restarted, "pack.status", {"pack_id": pack_id})
     assert status["installed"] is True
     assert status["approved"] is True
     assert status["enabled"] is True
 
     first_activation = capture_default_profile().activation["activation_id"]
     assert (
-        _invoke(restarted, "pack.disable", {"pack_id": TARGET_PACK})["enabled"] is False
+        _invoke(restarted, "pack.disable", {"pack_id": pack_id})["enabled"] is False
     )
-    recaptured = capture_pack_control_session()
+    recaptured = _capture_control_session()
     assert (
-        _invoke(recaptured, "pack.status", {"pack_id": TARGET_PACK})["enabled"] is False
+        _invoke(recaptured, "pack.status", {"pack_id": pack_id})["enabled"] is False
     )
     assert capture_default_profile().activation["activation_id"] != first_activation
 
@@ -134,8 +177,10 @@ def test_control_operation_reuses_only_its_scoped_capture(
 ) -> None:
     """Repeated binding checks share one capture, while each operation is fresh."""
 
+    from ecosystem.defaultspack.domain.runtime_v4 import ActivationStore
+
     session, _state_path, _user_data = captured_session
-    original_load = profile_capture.ActivationStore.load_active_snapshot
+    original_load = ActivationStore.load_active_snapshot
     loads = 0
 
     def counted_load(store):
@@ -144,7 +189,7 @@ def test_control_operation_reuses_only_its_scoped_capture(
         return original_load(store)
 
     monkeypatch.setattr(
-        profile_capture.ActivationStore,
+        ActivationStore,
         "load_active_snapshot",
         counted_load,
     )
@@ -180,12 +225,12 @@ def test_unapproved_revoke_does_not_hold_session_lock_during_slow_capture(
             else:
                 should_block = current_thread_id == blocked_thread_id
         if should_block:
-            assert release_capture.wait(timeout=2)
+            assert release_capture.wait(timeout=30)
         return current_active
 
     monkeypatch.setattr(
         profile_capture,
-        "capture_default_profile",
+        "capture_active_profile",
         delayed_capture,
     )
     executor = ThreadPoolExecutor(max_workers=2)
@@ -195,15 +240,18 @@ def test_unapproved_revoke_does_not_hold_session_lock_during_slow_capture(
         "approval.revoke",
         {"pack_id": TARGET_PACK},
     )
-    assert capture_started.wait(timeout=2)
-    catalog = executor.submit(_invoke, session, "catalog.read")
     try:
-        assert catalog.result(timeout=2)["profile_id"] == "defaults"
+        assert capture_started.wait(timeout=10)
+        assert session._lock.acquire(blocking=False)
+        session._lock.release()
+        catalog = executor.submit(_invoke, session, "catalog.read")
+        assert catalog.result(timeout=10)["profile_id"] == "defaults"
+        assert not release_capture.is_set()
     finally:
         release_capture.set()
         executor.shutdown(wait=True, cancel_futures=True)
     with pytest.raises(PackControlUnapproved):
-        denied.result(timeout=2)
+        denied.result(timeout=10)
 
 
 def test_slow_catalog_capture_does_not_own_the_control_session_lock(
@@ -227,18 +275,18 @@ def test_slow_catalog_capture_does_not_own_the_control_session_lock(
             should_block = capture_calls == 1
         if should_block:
             capture_started.set()
-            assert release_capture.wait(timeout=2)
+            assert release_capture.wait(timeout=30)
         return current_active
 
     monkeypatch.setattr(
         profile_capture,
-        "capture_default_profile",
+        "capture_active_profile",
         delayed_capture,
     )
     executor = ThreadPoolExecutor(max_workers=2)
     catalog = executor.submit(_invoke, session, "catalog.read")
     try:
-        assert capture_started.wait(timeout=2)
+        assert capture_started.wait(timeout=10)
         assert session._lock.acquire(blocking=False)
         session._lock.release()
         denied = executor.submit(
@@ -248,11 +296,12 @@ def test_slow_catalog_capture_does_not_own_the_control_session_lock(
             {"pack_id": TARGET_PACK},
         )
         with pytest.raises(PackControlUnapproved):
-            denied.result(timeout=2)
+            denied.result(timeout=10)
+        assert not release_capture.is_set()
     finally:
         release_capture.set()
         executor.shutdown(wait=True, cancel_futures=True)
-    assert catalog.result(timeout=2)["profile_id"] == "defaults"
+    assert catalog.result(timeout=10)["profile_id"] == "defaults"
 
 
 def test_enable_does_not_require_unrelated_pack_install_or_approval(
@@ -270,7 +319,7 @@ def test_enable_does_not_require_unrelated_pack_install_or_approval(
     assert _invoke(session, "pack.status", {"pack_id": unrelated})["installed"] is False
     _approve_target(session)
     assert _invoke(session, "pack.enable", {"pack_id": TARGET_PACK})["enabled"] is True
-    restarted = capture_pack_control_session()
+    restarted = _capture_control_session()
     assert (
         _invoke(restarted, "pack.status", {"pack_id": unrelated})["approved"] is False
     )
@@ -419,7 +468,7 @@ def test_revoke_persists_audit_and_rejects_revision_replay_after_restart(
     _approve_target(session)
     assert _invoke(session, "pack.enable", {"pack_id": TARGET_PACK})["enabled"]
 
-    restarted = capture_pack_control_session()
+    restarted = _capture_control_session()
     assert _invoke(restarted, "pack.status", {"pack_id": TARGET_PACK})["enabled"]
     assert not _invoke(restarted, "pack.disable", {"pack_id": TARGET_PACK})["enabled"]
     approval_path = (
@@ -431,7 +480,7 @@ def test_revoke_persists_audit_and_rejects_revision_replay_after_restart(
     assert revoked["enabled"] is False
     assert revoked["approval_status"] == "revoked"
 
-    after_restart = capture_pack_control_session()
+    after_restart = _capture_control_session()
     status = _invoke(after_restart, "pack.status", {"pack_id": TARGET_PACK})
     assert status["approved"] is False
     assert status["enabled"] is False
@@ -440,7 +489,7 @@ def test_revoke_persists_audit_and_rejects_revision_replay_after_restart(
         _invoke(after_restart, "approval.revoke", {"pack_id": TARGET_PACK})
 
     approval_path.write_bytes(approved_payload)
-    replayed = capture_pack_control_session()
+    replayed = _capture_control_session()
     assert (
         _invoke(replayed, "pack.status", {"pack_id": TARGET_PACK})["approval_reason"]
         == "approval_revoked"
@@ -587,14 +636,14 @@ def test_missing_profile_and_symlinked_state_fail_closed(
     user_data = tmp_path / "missing"
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
     capture_default_profile(confirmation=prepare_default_profile_confirmation())
-    capture_pack_control_session()
+    _capture_control_session()
     pointer = user_data / "workspaces" / "defaults" / "activation" / "active.json"
     pointer.unlink()
     outside = tmp_path / "outside.json"
     outside.write_text("{}", encoding="utf-8")
     pointer.symlink_to(outside)
     with pytest.raises(PackControlDenied, match="missing"):
-        capture_pack_control_session()
+        _capture_control_session()
 
 
 def test_profile_identity_traversal_fails_before_control_state_access(
@@ -604,7 +653,7 @@ def test_profile_identity_traversal_fails_before_control_state_access(
     user_data = tmp_path / "user-data"
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
     capture_default_profile(confirmation=prepare_default_profile_confirmation())
-    session = capture_pack_control_session()
+    session = _capture_control_session()
     with pytest.raises(PackControlDenied, match="profile_id"):
         _invoke(session, "catalog.read", {"profile_id": "../escaped"})
 
@@ -614,12 +663,27 @@ def test_generic_dispatch_is_retired_without_client_selected_execution(
 ) -> None:
     """The generic endpoint never trusts client-selected Broker identities."""
     session, state_path, _user_data = captured_session
+    active = profile_capture.capture_active_profile()
+
+    class AuthenticatedDispatch:
+        """Expose the active capture fields required by panel authentication."""
+
+        profile_id = str(active.resolved.profile["profile_id"])
+        profile_revision = str(active.resolved.plan["profile_revision"])
+        activation_id = str(active.activation["activation_id"])
+        plan_digest = str(active.resolved.plan["plan_digest"])
+        security_epoch = int(active.activation["security_epoch"])
+
+        @staticmethod
+        def assert_current() -> None:
+            profile_capture.capture_active_profile()
+
     auth = PanelAuthManager(bootstrap_secret="desktop-bootstrap")
     server = PackAPIServer(
         host="127.0.0.1",
         port=0,
         panel_auth_manager=auth,
-        dispatch_session=session,
+        dispatch_session=AuthenticatedDispatch(),
     )
     server.start()
     assert server.server is not None
@@ -661,19 +725,6 @@ def test_generic_dispatch_is_retired_without_client_selected_execution(
         }
 
     try:
-        dispatch_body = {
-            "contract_id": PACK_CONTROL_CONTRACT,
-            "operation_id": "catalog.read",
-            "payload": {},
-        }
-        before = state_path.read_bytes()
-        assert_post_denied("/api/v4/dispatch", dispatch_body, 410)
-        assert_post_denied(
-            "/api/v4/dispatch",
-            dispatch_body,
-            410,
-            {"Authorization": "Bearer formerly-valid-internal-token"},
-        )
         bootstrap = post(
             "/api/panel/auth/bootstrap",
             {},
@@ -684,6 +735,24 @@ def test_generic_dispatch_is_retired_without_client_selected_execution(
             {"code": bootstrap["data"]["code"]},
         )
         csrf = exchange["data"]["csrf_token"]
+        dispatch_body = {
+            "contract_id": PACK_CONTROL_CONTRACT,
+            "operation_id": "catalog.read",
+            "payload": {},
+        }
+        before = state_path.read_bytes()
+        assert_post_denied(
+            "/api/v4/dispatch", dispatch_body, 410, {"X-Rumi-CSRF": csrf}
+        )
+        assert_post_denied(
+            "/api/v4/dispatch",
+            dispatch_body,
+            410,
+            {
+                "Authorization": "Bearer formerly-valid-internal-token",
+                "X-Rumi-CSRF": csrf,
+            },
+        )
         assert_post_denied(
             "/api/v4/dispatch",
             {

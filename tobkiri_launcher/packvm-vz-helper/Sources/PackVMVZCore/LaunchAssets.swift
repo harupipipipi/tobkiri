@@ -286,7 +286,8 @@ public struct DirectLaunchBinding: Equatable, Sendable {
               allocation["domain_id"] as? String == domainID,
               allocation["reservation_id"] as? String == reservationID,
               let leaseID = allocation["lease_id"] as? String,
-              ProtocolAuthenticator.isIdentifier(leaseID),
+              (ProtocolAuthenticator.isIdentifier(leaseID)
+                  || ProtocolAuthenticator.isSHA256Digest(leaseID)),
               let runRoot = allocation["run_root"] as? String,
               let agentSeedPath = allocation["agent_seed_path"] as? String,
               let agentSeedDigest = allocation["agent_seed_digest"] as? String,
@@ -582,7 +583,7 @@ public enum SecureLaunchAssetValidator {
         var statValue = stat()
         guard lstat(path, &statValue) == 0,
               (statValue.st_mode & S_IFMT) == S_IFDIR,
-              (statValue.st_mode & S_IFLNK) == 0,
+              (statValue.st_mode & S_IFMT) != S_IFLNK,
               statValue.st_uid == geteuid(),
               (statValue.st_mode & S_IWGRP) == 0,
               (statValue.st_mode & S_IWOTH) == 0 else {
@@ -664,7 +665,7 @@ public enum SecureLaunchAssetValidator {
             current += String(component)
             var statValue = stat()
             guard lstat(current, &statValue) == 0,
-                  (statValue.st_mode & S_IFLNK) == 0 else {
+                  (statValue.st_mode & S_IFMT) != S_IFLNK else {
                 throw HelperError.invalidAsset("SYMLINK_OR_MISSING_ASSET_COMPONENT")
             }
             current += "/"

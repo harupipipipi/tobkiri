@@ -267,10 +267,7 @@ def test_defaultspack_block_hides_router_exception_text(monkeypatch):
 
 
 def test_direct_http_owned_workspace_reaches_helper_as_allowed_artifact_root(tmp_path, monkeypatch):
-    from core_runtime.host_broker.computer_host_helper import (
-        _computer_result_envelope,
-        _validated_artifact_root,
-    )
+    from core_runtime.host_broker import computer_host_helper
     import ecosystem.defaultspack.blocks.tool.browser_computer as block
 
     chat_store = tmp_path / "chat" / "conversations.json"
@@ -279,17 +276,28 @@ def test_direct_http_owned_workspace_reaches_helper_as_allowed_artifact_root(tmp
     artifact_root.mkdir(parents=True)
     monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(chat_store))
     monkeypatch.setenv("RUMI_DEFAULTSPACK_DIRECT_CONVERSATION_WORKSPACE", str(workspace))
+    monkeypatch.setattr(
+        computer_host_helper,
+        "host_contract_value",
+        lambda name: str(chat_store.parent / "conversations")
+        if name == "computer_artifact_destination_root"
+        else "",
+    )
     captured = {}
 
     def fake_router(action, payload, context=None, *, artifact_root=None, **kwargs):
         captured["artifact_root"] = artifact_root
-        allowed_root = _validated_artifact_root(str(artifact_root))
+        allowed_root = computer_host_helper._validated_artifact_root(str(artifact_root))
         primary = allowed_root / "primary.png"
         model = allowed_root / "model.png"
         primary.write_bytes(b"primary")
         model.write_bytes(b"model")
         reported = _reported_screenshot(primary, model)
-        envelope = _computer_result_envelope(action, reported, artifact_root=allowed_root)
+        envelope = computer_host_helper._computer_result_envelope(
+            action,
+            reported,
+            artifact_root=allowed_root,
+        )
         assert envelope["ok"] is True
         return envelope["result"]
 

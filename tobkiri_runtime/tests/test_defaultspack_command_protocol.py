@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -19,17 +20,72 @@ from domain.frontend.command_protocol import (  # noqa: E402
     CommandProtocolSchemaError,
     validate_protocol_document,
 )
+from tests.conformance_support.command_protocol_activation import (  # noqa: E402
+    command_protocol_binding_findings,
+    load_current_signed_application_bindings,
+    route_pattern_exposes_command_protocol,
+)
 from transport.registry import (  # noqa: E402
     canonical_http_route_specs,
 )
 
 
-def test_resolved_catalog_projects_all_legacy_commands_to_v1() -> None:
-    catalog = CommandProtocolRegistry(DEFAULTSPACK_ROOT).catalog()
+def _owner_bound_protocol(tmp_path: Path) -> CommandProtocolRegistry:
+    """Bind the settings owner explicitly to this test's isolated location."""
+    from domain.frontend_settings_store import defaultspack_frontend_settings_path
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    path = defaultspack_frontend_settings_path(DEFAULTSPACK_ROOT)
+    # Existing tests choose a temporary compatibility path through the environment.
+    # Otherwise the test owns a new empty store; never read real user settings.
+    if not path.is_relative_to(tmp_path):
+        path = tmp_path / "frontend_settings.json"
+    return CommandProtocolRegistry(
+        DEFAULTSPACK_ROOT, settings_owner=FrontendSettingsStore(path),
+        command_state_dir=tmp_path / "command-state",
+    )
+
+
+def test_resolved_catalog_projects_all_legacy_commands_to_v1(tmp_path: Path) -> None:
+    catalog = _owner_bound_protocol(tmp_path).catalog()
 
     assert catalog["api_version"] == "tobkiri.commands/v1"
     assert len(catalog["commands"]) == 55
     assert len({item["canonical_id"] for item in catalog["commands"]}) == 55
+
+
+def test_command_state_binding_does_not_resolve_settings_path(tmp_path, monkeypatch):
+    """An explicit owner location takes precedence without opening either DB."""
+    from domain.frontend import command_protocol
+
+    def unexpected_path(*args):
+        raise AssertionError("settings location must not select command state")
+
+    monkeypatch.setattr(
+        command_protocol, "defaultspack_frontend_settings_path", unexpected_path,
+    )
+    configured = tmp_path / "configured"
+    explicit = tmp_path / "explicit"
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_COMMAND_STATE_DIR", str(configured))
+    registry = CommandProtocolRegistry(tmp_path, command_state_dir=explicit)
+    assert registry._event_store_path == explicit / "command_invocation_events.sqlite3"
+    assert registry._offline_queue_path == explicit / "command_offline_queue.sqlite3"
+    registry = CommandProtocolRegistry(tmp_path)
+    assert registry._event_store_path.parent == configured
+    assert registry._offline_queue_path.parent == configured
+    assert not explicit.exists()
+    assert not configured.exists()
+
+
+def test_command_state_legacy_location_is_preserved_without_binding(tmp_path, monkeypatch):
+    """Compatibility startup does not silently abandon existing command DBs."""
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_COMMAND_STATE_DIR", raising=False)
+    settings = tmp_path / "legacy" / "settings.json"
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(settings))
+    registry = CommandProtocolRegistry(tmp_path)
+    assert registry._event_store_path.parent == settings.parent
+    assert registry._offline_queue_path.parent == settings.parent
+    assert not settings.parent.exists()
 
 
 def test_pack_generation_reads_the_canonical_v4_manifest(tmp_path: Path) -> None:
@@ -63,7 +119,7 @@ def test_all_command_bindings_are_concretely_probed_and_pack_blocks_execute(
         "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
         str(tmp_path / "settings.json"),
     )
-    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    protocol = _owner_bound_protocol(tmp_path)
 
     catalog = protocol.catalog()
     matrix = protocol.conformance_matrix()
@@ -78,24 +134,31 @@ def test_all_command_bindings_are_concretely_probed_and_pack_blocks_execute(
     assert len(matrix) == 55
     assert all(item["verified_handler"] is True for item in matrix)
     assert all(item["concrete_binding"] for item in matrix)
-    assert fast["status"] == "succeeded"
-    assert {
-        item["execution"]["kind"] for item in catalog["commands"]
-    } <= {"state_mutation", "host_operation", "pack_operation"}
-    assert {
-        item["presentation"]["input"]["kind"] for item in catalog["commands"]
-    } <= {"search_select", "select", "toggle", "action", "form"}
-    assert all(
-        "legacy_type" not in item["execution"]
-        for item in catalog["commands"]
-    )
+    assert fast["status"] == "succeeded", fast
+    assert protocol._settings_store.read_snapshot()["models"]["fast_mode_enabled"] is True
+    assert {item["execution"]["kind"] for item in catalog["commands"]} <= {
+        "state_mutation",
+        "host_operation",
+        "pack_operation",
+    }
+    assert {item["presentation"]["input"]["kind"] for item in catalog["commands"]} <= {
+        "search_select",
+        "select",
+        "toggle",
+        "action",
+        "form",
+    }
+    assert all("legacy_type" not in item["execution"] for item in catalog["commands"])
     assert all("legacy" not in item for item in catalog["commands"])
 
     by_id = {item["identity"]["id"]: item for item in catalog["commands"]}
     assert by_id["deepthink"]["presentation"]["input"]["kind"] == "toggle"
     assert by_id["deepthink"]["execution"]["kind"] == "state_mutation"
     assert by_id["model"]["presentation"]["input"]["kind"] == "search_select"
-    assert by_id["model"]["presentation"]["input"]["datasource_ref"] == "tobkiri:model_catalog"
+    assert (
+        by_id["model"]["presentation"]["input"]["datasource_ref"]
+        == "tobkiri:model_catalog"
+    )
     assert by_id["home_title"]["execution"]["operation_ref"] == "host:set_home_title"
     assert by_id["home_title"]["presentation"]["input"]["kind"] == "form"
     assert by_id["home_title"]["presentation"]["input"]["fields"][0]["placeholder"] == {
@@ -106,10 +169,13 @@ def test_all_command_bindings_are_concretely_probed_and_pack_blocks_execute(
 def test_owner_scope_comes_only_from_trusted_context() -> None:
     registry = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
 
-    assert registry.owner_key(
-        {},
-        {"authenticated_principal_id": "alice", "authorized_profile_id": "work"},
-    ) == "alice:work"
+    assert (
+        registry.owner_key(
+            {},
+            {"authenticated_principal_id": "alice", "authorized_profile_id": "work"},
+        )
+        == "alice:work"
+    )
     with pytest.raises(ValueError, match="reserved transport fields"):
         registry.owner_key(
             {"_owner_key": "bob:default"},
@@ -130,36 +196,43 @@ def test_owner_scope_comes_only_from_trusted_context() -> None:
         )
 
 
-def test_resolved_catalog_never_silently_exposes_missing_frontend_handler() -> None:
-    catalog = CommandProtocolRegistry(DEFAULTSPACK_ROOT).catalog()
+def test_resolved_catalog_exposes_high_risk_commands_to_the_host_adapter(tmp_path: Path) -> None:
+    catalog = _owner_bound_protocol(tmp_path).catalog()
     unavailable = [
         item
         for item in catalog["commands"]
         if item["availability"]["status"] == "unavailable"
     ]
+    high_risk = [
+        item
+        for item in catalog["commands"]
+        if item["authorization"]["approval_required"]
+    ]
 
     assert unavailable == []
-    assert not any(
-        item["code"] == "handler_missing"
-        for item in catalog["diagnostics"]
-    )
+    assert {item["identity"]["id"] for item in high_risk} == {
+        "commit",
+        "patch",
+        "push",
+        "restore",
+        "terminal",
+    }
+    assert all(item["availability"] == {"status": "available"} for item in high_risk)
+    assert not any(item["code"] == "handler_missing" for item in catalog["diagnostics"])
 
 
-def test_all_55_commands_have_authority_and_completion_conformance() -> None:
-    matrix = CommandProtocolRegistry(DEFAULTSPACK_ROOT).conformance_matrix()
+def test_all_55_commands_have_authority_and_completion_conformance(tmp_path: Path) -> None:
+    matrix = _owner_bound_protocol(tmp_path).conformance_matrix()
 
     assert len(matrix) == 55
     assert len({item["command_id"] for item in matrix}) == 55
     assert all(item["operation_ref"] for item in matrix)
     assert all(item["completion_semantics"] != "noop" for item in matrix)
-    high_risk = [
-        item for item in matrix if item["authority"]["approval_required"]
-    ]
+    high_risk = [item for item in matrix if item["authority"]["approval_required"]]
     assert len(high_risk) == 5
     assert all(item["authority"]["permissions"] for item in high_risk)
     assert all(
-        item["completion_semantics"] == "backend_side_effect"
-        for item in high_risk
+        item["completion_semantics"] == "backend_side_effect" for item in high_risk
     )
 
 
@@ -170,7 +243,7 @@ def test_protocol_deepthink_invocation_returns_authoritative_state(
         "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
         str(tmp_path / "frontend_settings.json"),
     )
-    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    protocol = _owner_bound_protocol(tmp_path)
 
     enabled = protocol.invoke(
         {
@@ -200,8 +273,8 @@ def test_protocol_deepthink_invocation_returns_authoritative_state(
     assert disabled["state_changes"][0]["revision"] == 2
 
 
-def test_home_title_invocation_returns_frontend_action() -> None:
-    result = CommandProtocolRegistry(DEFAULTSPACK_ROOT).invoke(
+def test_home_title_invocation_returns_frontend_action(tmp_path: Path) -> None:
+    result = _owner_bound_protocol(tmp_path).invoke(
         {
             "command_ref": "defaultspack:home_title",
             "args": {"value": "My Tobkiri"},
@@ -223,7 +296,7 @@ def test_protocol_invocation_events_can_resume_after_last_event_id(
         "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
         str(tmp_path / "frontend_settings.json"),
     )
-    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    protocol = _owner_bound_protocol(tmp_path)
 
     result = protocol.invoke(
         {
@@ -262,8 +335,8 @@ def test_provider_datasource_uses_same_option_item_contract() -> None:
     assert all("model_count" in item["metadata"] for item in result["items"])
 
 
-def test_protocol_schema_rejects_unknown_normative_fields_and_major() -> None:
-    catalog = CommandProtocolRegistry(DEFAULTSPACK_ROOT).catalog()
+def test_protocol_schema_rejects_unknown_normative_fields_and_major(tmp_path: Path) -> None:
+    catalog = _owner_bound_protocol(tmp_path).catalog()
     catalog["unexpected"] = True
     try:
         validate_protocol_document(catalog)
@@ -303,13 +376,19 @@ def test_settings_registered_command_is_resolved_and_invoked_through_protocol(
         encoding="utf-8",
     )
     monkeypatch.setenv("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(settings_path))
-    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    protocol = _owner_bound_protocol(tmp_path)
 
     command = next(
-        item for item in protocol.catalog()["commands"] if item["identity"]["name"] == "go"
+        item
+        for item in protocol.catalog()["commands"]
+        if item["identity"]["name"] == "go"
     )
     result = protocol.invoke(
-        {"command_ref": command["canonical_id"], "args": {"enabled": True}, "mode": "chat"}
+        {
+            "command_ref": command["canonical_id"],
+            "args": {"enabled": True},
+            "mode": "chat",
+        }
     )
 
     legacy = next(
@@ -324,7 +403,7 @@ def test_settings_registered_command_is_resolved_and_invoked_through_protocol(
     assert result["legacy_result"]["action"] == "toggle_yolo"
 
 
-def test_high_risk_command_refuses_removed_runtime_authority(
+def test_high_risk_command_requires_the_captured_host_adapter(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -357,7 +436,7 @@ def test_high_risk_command_refuses_removed_runtime_authority(
         ["git", "-C", str(workspace), "commit", "-qm", "seed"],
         check=True,
     )
-    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    protocol = _owner_bound_protocol(tmp_path)
     durable_secret = "durable-raw-execution-secret-62e6099b"
     payload = {
         "command_ref": "defaultspack:terminal",
@@ -374,12 +453,12 @@ def test_high_risk_command_refuses_removed_runtime_authority(
     result = protocol.invoke(payload, trusted_context)
 
     assert result["status"] == "failed"
-    assert result["error"]["code"] == "AUTHORITY_UNAVAILABLE"
+    assert result["error"]["code"] == "HIGH_RISK_COMMAND_ADAPTER_REQUIRED"
     assert "approval" not in result
     assert durable_secret not in json.dumps(result, sort_keys=True)
 
 
-def test_high_risk_executor_policy_refuses_removed_runtime_authority(
+def test_high_risk_executor_policy_requires_the_captured_host_adapter(
     tmp_path: Path,
 ) -> None:
     protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
@@ -387,9 +466,7 @@ def test_high_risk_executor_policy_refuses_removed_runtime_authority(
         {
             "canonical_id": "defaultspack:terminal",
             "execution": {"operation_ref": "host:request_terminal_approval"},
-            "authorization": {
-                "executor_policy_ref": "tobkiri.command.human_approved"
-            },
+            "authorization": {"executor_policy_ref": "tobkiri.command.human_approved"},
         },
         {"invocation_id": "inv-1", "conversation_id": "conversation-1"},
         {},
@@ -403,7 +480,7 @@ def test_high_risk_executor_policy_refuses_removed_runtime_authority(
 
     assert result is not None
     assert result["status"] == "failed"
-    assert result["error"]["code"] == "AUTHORITY_UNAVAILABLE"
+    assert result["error"]["code"] == "HIGH_RISK_COMMAND_ADAPTER_REQUIRED"
 
 
 def test_high_risk_operation_plan_binds_workspace_and_git_state(
@@ -529,7 +606,7 @@ def test_high_risk_terminal_rejects_path_executable_swap_after_approval(
     )
     approved = operations.prepare_high_risk_plan(
         "request_terminal_approval",
-        {"cmd": 'python -c "open(\'ran.txt\', \'w\').write(\'ran\')"'},
+        {"cmd": "python -c \"open('ran.txt', 'w').write('ran')\""},
         context,
     )
     monkeypatch.setenv(
@@ -539,7 +616,7 @@ def test_high_risk_terminal_rejects_path_executable_swap_after_approval(
     result = operations._execute_high_risk_host_operation(
         {"id": "terminal"},
         "request_terminal_approval",
-        {"cmd": 'python -c "open(\'ran.txt\', \'w\').write(\'ran\')"'},
+        {"cmd": "python -c \"open('ran.txt', 'w').write('ran')\""},
         {**context, "_approved_operation_plan": approved},
     )
 
@@ -595,10 +672,7 @@ def test_high_risk_host_policy_requires_authoritative_roots_and_executable(
         argv=(
             "python",
             "-c",
-            (
-                "import os; "
-                "print(os.environ.get('UNTRUSTED_COMMAND_SECRET', 'absent'))"
-            ),
+            ("import os; print(os.environ.get('UNTRUSTED_COMMAND_SECRET', 'absent'))"),
         ),
         cwd=workspace,
         stdin=None,
@@ -647,15 +721,137 @@ def test_windows_host_process_gets_required_curated_environment(
     assert environment["system_root"] == str(Path(os.environ["SystemRoot"]).resolve())
     path_entries = environment["path"].split(os.pathsep)
     assert path_entries
-    assert all(entry and entry != "." and Path(entry).is_absolute() for entry in path_entries)
+    assert all(
+        entry and entry != "." and Path(entry).is_absolute() for entry in path_entries
+    )
 
 
-def test_command_protocol_routes_are_not_legacy_transport_routes() -> None:
-    specs = canonical_http_route_specs()
-    protocol_specs = [
-        item for item in specs if item.pattern.startswith("/api/command-protocol/v1/")
-    ]
-    assert protocol_specs == []
+def test_only_captured_command_protocol_route_is_not_legacy_transport() -> None:
+    legacy_specs = canonical_http_route_specs(include_always_available=True)
+    bindings = load_current_signed_application_bindings()
+
+    assert not any(
+        route_pattern_exposes_command_protocol(spec.pattern) for spec in legacy_specs
+    )
+    assert command_protocol_binding_findings(bindings) == []
+
+    high_risk = next(
+        binding for binding in bindings if binding.path == "/api/command-protocol/v1/high-risk"
+    )
+    assert command_protocol_binding_findings(
+        (replace(high_risk, path="/api/command-protocol/v1/invoke"),)
+    )
+    assert command_protocol_binding_findings(
+        (
+            replace(
+                high_risk,
+                targets=(
+                    replace(high_risk.targets[0], function_id="untrusted.function"),
+                ),
+            ),
+        )
+    )
+    invoke = next(
+        binding for binding in bindings if binding.path == "/api/command-protocol/v1/invoke"
+    )
+    assert command_protocol_binding_findings(
+        (
+            replace(
+                invoke,
+                targets=(
+                    replace(invoke.targets[0], function_id="untrusted.function"),
+                ),
+            ),
+        )
+    )
+    assert command_protocol_binding_findings(
+        (
+            replace(
+                invoke,
+                targets=(
+                    replace(
+                        invoke.targets[0],
+                        allowed_payload_keys=(
+                            invoke.targets[0].allowed_payload_keys | {"approved"}
+                        ),
+                    ),
+                ),
+            ),
+        )
+    )
+
+
+def test_command_catalog_route_policy_rejects_widening() -> None:
+    bindings = load_current_signed_application_bindings()
+    catalog = next(binding for binding in bindings
+                   if binding.path == "/api/command-protocol/v1/catalog")
+    for changed in (
+        replace(catalog, method="POST"),
+        replace(catalog, path="/api/command-protocol/v1/invoke"),
+        replace(catalog, targets=(replace(catalog.targets[0],
+                                         allowed_payload_keys=frozenset({"approved"})),)),
+        replace(catalog, targets=(replace(catalog.targets[0],
+                                         function_id="untrusted.function"),)),
+    ):
+        assert command_protocol_binding_findings((changed,))
+
+
+def test_interactive_command_routes_are_captured_host_contract_operations() -> None:
+    """The Composer's adapter calls resolve only through the signed map."""
+
+    bindings = load_current_signed_application_bindings()
+    expected = {
+        ("GET", "/api/interactive-approval/v1/list"): (
+            "tobkiri.service.interactive-approval.v1",
+            "interactive_approval.list",
+            "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+            frozenset(),
+        ),
+        ("POST", "/api/interactive-approval/v1/get"): (
+            "tobkiri.service.interactive-approval.v1",
+            "interactive_approval.get",
+            "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+            frozenset({"request_id"}),
+        ),
+        ("POST", "/api/interactive-approval/v1/approve"): (
+            "tobkiri.service.interactive-approval.v1",
+            "interactive_approval.approve",
+            "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+            frozenset({"request_id", "confirmation_text", "ui_operator"}),
+        ),
+        ("POST", "/api/interactive-approval/v1/deny"): (
+            "tobkiri.service.interactive-approval.v1",
+            "interactive_approval.deny",
+            "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+            frozenset({"request_id", "ui_operator"}),
+        ),
+        ("POST", "/api/command-protocol/v1/high-risk"): (
+            "tobkiri.service.command.high-risk.v1",
+            "high_risk_command.manage",
+            "rumi_command_protocol_pack.high-risk-command.service",
+            frozenset(
+                {"phase", "invocation_id", "command_ref", "arguments", "presentation"}
+            ),
+        ),
+    }
+
+    captured = {
+        (binding.method, binding.path): binding
+        for binding in bindings
+        if binding.path.startswith("/api/interactive-approval/")
+        or binding.path == "/api/command-protocol/v1/high-risk"
+    }
+
+    assert set(captured) == set(expected)
+    for key, (contract_id, operation_id, function_id, allowed_keys) in expected.items():
+        binding = captured[key]
+        assert binding.presentation == "broker_result"
+        assert len(binding.targets) == 1
+        target = binding.targets[0]
+        assert target.contract_id == contract_id
+        assert target.operation_id == operation_id
+        assert target.function_id == function_id
+        assert target.allowed_payload_keys == allowed_keys
 
 
 def test_invocation_id_is_idempotent_and_conflict_safe(
@@ -666,7 +862,7 @@ def test_invocation_id_is_idempotent_and_conflict_safe(
         "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
         str(tmp_path / "frontend_settings.json"),
     )
-    registry = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    registry = _owner_bound_protocol(tmp_path)
     payload = {
         "command_ref": "defaultspack:help",
         "invocation_id": "inv-idempotent",

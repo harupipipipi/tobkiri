@@ -14,10 +14,16 @@ from core_runtime.profile_catalog_v4 import (
     require_profile_catalog_binding,
 )
 from core_runtime.bootstrap.profile_capture import (
+    capture_active_profile,
     capture_default_profile,
+    host_profile_catalog,
     prepare_default_profile_confirmation,
 )
-from core_runtime.runtime_surface_v4 import (
+from core_runtime.active_profile_store_v4 import ActiveProfileStore
+from core_runtime.profile_definition_store_v4 import ProfileDefinitionStore
+from ecosystem.defaultspack.domain.runtime_surface_v4 import (
+    NO_ACTIVE_PLAN_DIGEST,
+    NO_ACTIVE_PROFILE_REVISION,
     RuntimeProfileChangeService,
     RuntimeSurfaceError,
     RuntimeSurfaceErrorCode,
@@ -259,7 +265,7 @@ def test_catalog_restores_session_candidate_and_pack_closure_after_restart(
     resolved_with_pack = _resolved_with_added_pack(active_runtime, catalog, pack_id)
     monkeypatch.setattr(
         "core_runtime.pack_control_v4.resolve_profile_pack_set",
-        lambda _pack_ids: resolved_with_pack,
+        lambda _pack_ids, **_bindings: resolved_with_pack,
     )
     first_surface = RuntimeSurfaceService(
         snapshot_loader=lambda: active_runtime,
@@ -420,3 +426,136 @@ def test_non_default_resolve_without_catalog_binding_fails_closed(
             session_id="session-a",
         )
     assert rejected.value.code is RuntimeSurfaceErrorCode.INVALID_REQUEST
+
+
+def test_fresh_active_none_named_profiles_activate_and_survive_restart(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_data = tmp_path / "user-data"
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    bundled = BundledCatalog.load(_bundle_root())
+    store = ProfileDefinitionStore(user_data)
+    for profile_id in ("profile-a", "profile-b"):
+        store.create_profile(
+            {
+                **bundled.profiles["defaults"],
+                "profile_id": profile_id,
+                "display_name": profile_id,
+            }
+        )
+
+    def load_catalog() -> BundledCatalog:
+        return host_profile_catalog(
+            bundle_root=_bundle_root(),
+            user_data_root=user_data,
+        )
+
+    def resolve(
+        profile_id: str,
+        session_id: str,
+    ) -> tuple[RuntimeProfileChangeService, dict[str, object]]:
+        catalog = load_catalog()
+        definition = catalog.profiles[profile_id]
+        predecessor = ActiveProfileStore(user_data).load(verify_snapshot=True)
+        service = RuntimeProfileChangeService(
+            surface_service=RuntimeSurfaceService(catalog_loader=load_catalog),
+            bundle_root=_bundle_root(),
+            user_data_root=user_data,
+        )
+        resolved = service.resolve(
+            {
+                "profile_id": profile_id,
+                "expected_profile_revision": (
+                    predecessor.profile_revision
+                    if predecessor
+                    else NO_ACTIVE_PROFILE_REVISION
+                ),
+                "expected_plan_digest": (
+                    predecessor.plan_digest if predecessor else NO_ACTIVE_PLAN_DIGEST
+                ),
+                "desired_pack_ids": [
+                    str(item["pack_id"])
+                    for item in definition["packs"]
+                    if item.get("role") != "application"
+                ],
+                "profile_definition_digest": canonical_digest(definition),
+                "profile_catalog_digest": profile_catalog_digest(catalog),
+                "bundle_lock_digest": bundle_lock_digest(catalog),
+            },
+            session_id=session_id,
+        )
+        assert ActiveProfileStore(user_data).load(verify_snapshot=True) == predecessor
+        return service, resolved
+
+    def activate(profile_id: str, session_id: str) -> dict[str, object]:
+        service, resolved = resolve(profile_id, session_id)
+        reviewed = service.review(
+            {
+                "candidate_id": resolved["candidate_id"],
+                "candidate_digest": resolved["candidate_digest"],
+            },
+            session_id=session_id,
+        )
+        approved = service.approve(
+            {
+                "candidate_id": reviewed["candidate_id"],
+                "candidate_digest": reviewed["candidate_digest"],
+            },
+            session_id=session_id,
+        )
+        return service.activate(
+            {
+                "approval_id": approved["approval_id"],
+                "approval_digest": approved["approval_digest"],
+            },
+            session_id=session_id,
+        )
+
+    assert {item.profile_id for item in store.list_profiles()} == {
+        "profile-a",
+        "profile-b",
+    }
+    assert ActiveProfileStore(user_data).load(verify_snapshot=True) is None
+    stale_catalog_service, stale_catalog_candidate = resolve(
+        "profile-a",
+        "session-stale-catalog",
+    )
+    store.create_profile(
+        {
+            **bundled.profiles["defaults"],
+            "profile_id": "profile-c",
+            "display_name": "profile-c",
+        }
+    )
+    with pytest.raises(RuntimeSurfaceError) as catalog_stale:
+        stale_catalog_service.review(
+            {
+                "candidate_id": stale_catalog_candidate["candidate_id"],
+                "candidate_digest": stale_catalog_candidate["candidate_digest"],
+            },
+            session_id="session-stale-catalog",
+        )
+    assert catalog_stale.value.code is RuntimeSurfaceErrorCode.DIGEST_MISMATCH
+
+    stale_pointer_service, stale_pointer_candidate = resolve(
+        "profile-a",
+        "session-stale-pointer",
+    )
+    assert activate("profile-a", "session-a")["profile_id"] == "profile-a"
+    with pytest.raises(RuntimeSurfaceError) as predecessor_stale:
+        stale_pointer_service.review(
+            {
+                "candidate_id": stale_pointer_candidate["candidate_id"],
+                "candidate_digest": stale_pointer_candidate["candidate_digest"],
+            },
+            session_id="session-stale-pointer",
+        )
+    assert predecessor_stale.value.code is RuntimeSurfaceErrorCode.STALE_REVISION
+    assert activate("profile-b", "session-b")["profile_id"] == "profile-b"
+    assert capture_active_profile().resolved.profile["profile_id"] == "profile-b"
+    third = activate("profile-a", "session-a-restart")
+    pointer = ActiveProfileStore(user_data).require(verify_snapshot=True)
+    assert third["profile_id"] == pointer.profile_id == "profile-a"
+    assert third["activation_id"] == pointer.activation_id
+    assert third["plan_digest"] == pointer.plan_digest

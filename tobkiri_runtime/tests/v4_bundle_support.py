@@ -31,7 +31,7 @@ def _verified_pack_entries(bundle: Path) -> tuple[tuple[str, str], ...]:
         kind = entry["kind"]
         digest = entry["digest"]
         assert isinstance(relative_path, str)
-        assert kind in {"pack", "base", "shell", "profile"}
+        assert kind in {"pack", "base", "shell", "profile", "executable_catalog"}
         assert isinstance(digest, str) and _SHA256_RE.fullmatch(digest)
         assert relative_path not in seen_paths
         seen_paths.add(relative_path)

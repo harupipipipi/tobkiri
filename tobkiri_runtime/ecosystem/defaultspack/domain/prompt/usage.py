@@ -3,10 +3,13 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from core_runtime.ai_input_graph_builder import MODEL_INPUT_NODE_ID, build_ai_input_graph_response
-from core_runtime.ai_input_models import normalize_ai_input_config
-from core_runtime.ai_input_tokenizer import apply_tokenizer_to_ai_input_response
-from core_runtime.ai_input_trace_store import AiInputTraceStore
+from ..ai_input.ai_input_graph_builder import (
+    MODEL_INPUT_NODE_ID,
+    build_ai_input_graph_response,
+)
+from ..ai_input.ai_input_models import normalize_ai_input_config
+from ..ai_input.ai_input_tokenizer import apply_tokenizer_to_ai_input_response
+from ..ai_input.ai_input_trace_store import AiInputTraceStore
 from core_runtime.resolved_profile_scope import persisted_resolved_profile
 from core_runtime.runtime_audit_helpers import redact_sensitive
 from domain.prompt.studio_client import (

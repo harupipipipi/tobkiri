@@ -17,6 +17,8 @@ if str(ROOT) not in sys.path:
 if str(DEFAULTSPACK_ROOT) not in sys.path:
     sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
+from tests.conformance_support.host_contract import host_contract  # noqa: E402
+
 
 def test_debug_status_rejects_fake_broker_with_same_bearer_token():
     import hashlib
@@ -147,14 +149,13 @@ def test_viewer_broker_client_reads_env_url_and_token(monkeypatch):
     monkeypatch.setenv("RUMI_VIEWER_HOST_BROKER_TOKEN", "ambient-token")
 
     with bind_host_contract(
-        {
-            "schema_version": "tobkiri.host-contract.v1",
-            "profile_id": "default",
-            "values": {
+        host_contract(
+            profile_id="default",
+            values={
                 "viewer_broker_url": "http://127.0.0.1:8770",
                 "viewer_broker_token": "secret-token",
             },
-        }
+        )
     ):
         client = ViewerBrokerClient.from_environment()
 
@@ -253,11 +254,10 @@ def test_viewer_broker_client_does_not_fallback_when_explicit_url_pair_is_incomp
     monkeypatch.setenv("RUMI_VIEWER_HOST_BROKER_CONNECTION", str(connection))
 
     with bind_host_contract(
-        {
-            "schema_version": "tobkiri.host-contract.v1",
-            "profile_id": "default",
-            "values": {"viewer_broker_url": "http://127.0.0.1:8771"},
-        }
+        host_contract(
+            profile_id="default",
+            values={"viewer_broker_url": "http://127.0.0.1:8771"},
+        )
     ):
         assert ViewerBrokerClient.from_environment().available() is False
 
@@ -524,7 +524,7 @@ def test_computer_router_skips_viewer_for_internal_host_execution(tmp_path, monk
 
     monkeypatch.setenv("RUMI_COMPUTER_HOST_INTERNAL", "1")
     monkeypatch.setattr(computer_router.platform, "system", lambda: "Darwin")
-    monkeypatch.setattr(computer_router, "run_host_contract_action", fake_run)
+    monkeypatch.setattr(computer_router, "_run_captured_host_contract_action", fake_run)
 
     def unexpected_viewer_call(cls):
         del cls
@@ -869,11 +869,29 @@ def test_computer_host_helper_accepts_workspace_artifact_root(monkeypatch, tmp_p
 
     chat_store_path = tmp_path / "chat" / "conversations.json"
     artifact_root = chat_store_path.parent / "conversations" / "conv-1" / "workspace" / "tools" / "computer"
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(chat_store_path))
+    monkeypatch.setattr(
+        computer_host_helper,
+        "host_contract_value",
+        lambda name: str(chat_store_path.parent / "conversations")
+        if name == "computer_artifact_destination_root"
+        else "",
+    )
 
     result = computer_host_helper._validated_artifact_root(str(artifact_root))
 
     assert result == artifact_root.resolve()
+
+
+def test_computer_host_helper_rejects_legacy_pack_environment_root(monkeypatch, tmp_path):
+    from core_runtime.host_broker import computer_host_helper
+
+    chat_store_path = tmp_path / "chat" / "conversations.json"
+    artifact_root = chat_store_path.parent / "conversations" / "conv-1" / "workspace" / "tools" / "computer"
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(chat_store_path))
+    monkeypatch.setattr(computer_host_helper, "host_contract_value", lambda name: "")
+
+    with pytest.raises(ValueError, match="outside the allowed"):
+        computer_host_helper._validated_artifact_root(str(artifact_root))
 
 
 def test_computer_host_helper_rejects_non_workspace_artifact_root(tmp_path):

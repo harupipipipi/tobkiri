@@ -11,8 +11,20 @@ sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 from blocks.ui.commands import run  # noqa: E402
 
 
-def test_legacy_command_catalog_is_read_only_v1_projection() -> None:
-    result = run({"_method": "GET"}, {})
+def _settings_owner(tmp_path: Path):
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import (
+        FrontendSettingsStore,
+    )
+
+    return FrontendSettingsStore(tmp_path / "frontend_settings.json")
+
+
+def test_legacy_command_catalog_is_read_only_v1_projection(
+    tmp_path: Path,
+) -> None:
+    result = run(
+        {"_method": "GET"}, {}, settings_owner=_settings_owner(tmp_path),
+    )
 
     assert result["status"] == "ok"
     assert result["data"]["deprecated"] is True

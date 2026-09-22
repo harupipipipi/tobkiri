@@ -1,11 +1,11 @@
-import sys
+
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 import os
 import base64
 import json
 import re
 import time
 from pathlib import Path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from blocks._common import ok, error, gen_id, timestamp
 
 from domain.ai_client.gateway import AIClient, LLMGateway
@@ -14,7 +14,7 @@ from domain.chat.store import ChatStore
 from domain.chat.message_converter import convert_to_standard
 from domain.chat.message_builder import build_assistant_message
 from domain.dev.inspector import Inspector
-from domain.frontend_settings import frontend_settings_path
+from domain.frontend_settings import read_optional_frontend_settings
 from domain.prompt.manager import get_manager
 from blocks.chat._context_helpers import extract_user_text, enrich_messages
 from domain.tool.registry import ToolRegistry
@@ -698,7 +698,13 @@ def _available_tools(context, input_data):
     return filtered, adapt_tool_definitions(filtered), resolved_context
 
 
-def _prefocus_computer_use_target_window(available_tools, base_context, *, call_handler=None):
+def _prefocus_computer_use_target_window(
+    available_tools,
+    base_context,
+    *,
+    call_handler=None,
+    settings_owner: SettingsOwnerPort | None = None,
+):
     if not isinstance(base_context, dict) or not base_context.get("user_requested_computer_use"):
         return None
     if not _computer_use_prefocus_is_preapproved(base_context):
@@ -741,7 +747,9 @@ def _prefocus_computer_use_target_window(available_tools, base_context, *, call_
 
     from domain.tool.executor import ToolExecutor
 
-    return ToolExecutor().execute(tool_name, arguments, invoke_context)
+    if settings_owner is None:
+        settings_owner = base_context.get("_settings_owner_port")
+    return ToolExecutor(settings_owner=settings_owner).execute(tool_name, arguments, invoke_context)
 
 
 def _computer_use_prefocus_is_preapproved(context):
@@ -1215,19 +1223,21 @@ def _truthy(value):
     return False
 
 
-def _frontend_debug_settings_enabled():
-    try:
-        settings_path = frontend_settings_path()
-        settings = json.loads(settings_path.read_text(encoding="utf-8"))
-    except Exception:
-        return False
+def _frontend_debug_settings_enabled(*, settings_owner: SettingsOwnerPort | None = None) -> bool:
+    settings = read_optional_frontend_settings(settings_owner=settings_owner)
     debug = settings.get("debug") if isinstance(settings, dict) else {}
     if not isinstance(debug, dict):
         return False
     return _truthy(debug.get("ai_request_logging") or debug.get("enabled"))
 
 
-def _ai_debug_enabled(input_data=None, params=None, context=None):
+def _ai_debug_enabled(
+    input_data=None,
+    params=None,
+    context=None,
+    *,
+    settings_owner: SettingsOwnerPort | None = None,
+):
     if _truthy(os.environ.get("RUMI_DEFAULTSPACK_AI_DEBUG")):
         return True
     for source in (context, params, input_data):
@@ -1236,7 +1246,7 @@ def _ai_debug_enabled(input_data=None, params=None, context=None):
         for key in ("ai_debug_enabled", "ai_debug", "debug_mode", "debug", "log_ai_requests"):
             if key in source and _truthy(source.get(key)):
                 return True
-    return _frontend_debug_settings_enabled()
+    return _frontend_debug_settings_enabled(settings_owner=settings_owner)
 
 
 def _ai_debug_log_dir(context):
@@ -1320,8 +1330,22 @@ def _write_debug_json(path, payload):
     tmp_path.replace(path)
 
 
-def _log_ai_debug_request(context, *, model, messages, tools, params, step_index, reason=""):
-    if not _ai_debug_enabled(params=params, context=context):
+def _log_ai_debug_request(
+    context,
+    *,
+    model,
+    messages,
+    tools,
+    params,
+    step_index,
+    reason="",
+    settings_owner: SettingsOwnerPort | None = None,
+):
+    if not _ai_debug_enabled(
+        params=params,
+        context=context,
+        settings_owner=settings_owner,
+    ):
         return None
     debug_dir = _ai_debug_log_dir(context)
     debug_dir.mkdir(parents=True, exist_ok=True)
@@ -1545,7 +1569,16 @@ def _tool_visibility_message(tools):
 
 # Compatibility helper retained for focused legacy tests and comparison only.
 # `send.run()` now routes through `ChatRunEngine` instead of this tool loop.
-def _complete_with_tools(model, messages, tools, context, call_handler, params):
+def _complete_with_tools(
+    model,
+    messages,
+    tools,
+    context,
+    call_handler,
+    params,
+    *,
+    settings_owner: SettingsOwnerPort | None = None,
+):
     events = []
     _append_event(events, context, _event("status", "{} が考えています".format(model), phase="thinking", model=model))
     tool_logs = []
@@ -1598,6 +1631,7 @@ def _complete_with_tools(model, messages, tools, context, call_handler, params):
             tools=tools,
             params=params,
             step_index=step_index + 1,
+            settings_owner=settings_owner,
         )
         if debug_request_path:
             debug_logs.append(debug_request_path)
@@ -1661,6 +1695,7 @@ def _complete_with_tools(model, messages, tools, context, call_handler, params):
                     params=retry_params,
                     step_index="{}-retry-no-thinking".format(step_index + 1),
                     reason="empty_response_retry_without_thinking",
+                    settings_owner=settings_owner,
                 )
                 if retry_debug_path:
                     debug_logs.append(retry_debug_path)
@@ -1858,7 +1893,13 @@ def _complete_with_tools(model, messages, tools, context, call_handler, params):
             else:
                 from domain.tool.executor import ToolExecutor
 
-                executed = ToolExecutor().execute(tool_name, arguments, invoke_context)
+                executed = ToolExecutor(
+                    settings_owner=(
+                        settings_owner
+                        if settings_owner is not None
+                        else (context or {}).get("_settings_owner_port")
+                    )
+                ).execute(tool_name, arguments, invoke_context)
                 result = {"status": "ok", "data": executed}
             _raise_if_cancelled(context)
             log = {
@@ -2089,7 +2130,7 @@ def _sanitize_attachment_metadata(attachments):
     return sanitized
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None):
     from domain.chat.run_request import validate_chat_run_input
     from domain.chat.idempotency import (
         IdempotencyConflictError,
@@ -2147,7 +2188,7 @@ def run(input_data, context):
             "task_failed",
         }
         engine_context.setdefault("run_source", "blocks.chat.send")
-        for event in ChatRunEngine().stream(input_data, engine_context, stream_mode=use_stream_adapter):
+        for event in ChatRunEngine(settings_owner=settings_owner).stream(input_data, engine_context, stream_mode=use_stream_adapter):
             if not isinstance(event, dict):
                 continue
             event_type = str(event.get("type") or "").strip()

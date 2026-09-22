@@ -8,7 +8,16 @@ from dataclasses import dataclass
 import pytest
 
 from core_runtime.pack_api_server import PackAPIHandler, RuntimeHTTPConfig
-from core_runtime.panel_auth import PanelAuthManager
+from core_runtime.panel_auth import PanelAuthBinding, PanelAuthManager
+
+
+TEST_BINDING = PanelAuthBinding(
+    profile_id="test-profile",
+    profile_revision="sha256:" + "1" * 64,
+    activation_id="activation:test-panel-auth",
+    plan_digest="sha256:" + "2" * 64,
+    security_epoch=1,
+)
 
 
 @dataclass
@@ -23,8 +32,8 @@ class _FakeClock:
 
 def _exchange(manager: PanelAuthManager) -> dict[str, object] | None:
     """Issue and consume one current panel login code."""
-    code = str(manager.issue_login_code()["code"])
-    return manager.exchange_code(code)
+    code = str(manager.issue_login_code(TEST_BINDING)["code"])
+    return manager.exchange_code(code, TEST_BINDING)
 
 
 class TestRateLimiterBasic:
@@ -39,9 +48,9 @@ class TestRateLimiterBasic:
     def test_exceed_limit(self):
         """A consumed login code cannot be replayed as an unbounded bypass."""
         manager = PanelAuthManager(bootstrap_secret="test", code_ttl_seconds=15)
-        code = str(manager.issue_login_code()["code"])
-        assert manager.exchange_code(code) is not None
-        assert manager.exchange_code(code) is None
+        code = str(manager.issue_login_code(TEST_BINDING)["code"])
+        assert manager.exchange_code(code, TEST_BINDING) is not None
+        assert manager.exchange_code(code, TEST_BINDING) is None
 
     def test_window_expiry(self, monkeypatch: pytest.MonkeyPatch):
         """Expired panel codes are rejected at the current session boundary."""
@@ -50,9 +59,9 @@ class TestRateLimiterBasic:
         clock = _FakeClock()
         monkeypatch.setattr(panel_auth, "time", type("Clock", (), {"time": clock}))
         manager = PanelAuthManager(bootstrap_secret="test", code_ttl_seconds=15)
-        code = str(manager.issue_login_code()["code"])
+        code = str(manager.issue_login_code(TEST_BINDING)["code"])
         clock.now += 16
-        assert manager.exchange_code(code) is None
+        assert manager.exchange_code(code, TEST_BINDING) is None
 
     def test_different_ips_independent(self):
         """Loopback client classification is finite and explicit per address."""
@@ -84,9 +93,9 @@ class TestRateLimiterCleanup:
         clock = _FakeClock()
         monkeypatch.setattr(panel_auth, "time", type("Clock", (), {"time": clock}))
         manager = PanelAuthManager(bootstrap_secret="test", code_ttl_seconds=15)
-        old_code = str(manager.issue_login_code()["code"])
+        old_code = str(manager.issue_login_code(TEST_BINDING)["code"])
         clock.now += 16
-        assert manager.exchange_code(old_code) is None
+        assert manager.exchange_code(old_code, TEST_BINDING) is None
         assert _exchange(manager) is not None
 
     def test_max_tracked_ips(self):
@@ -102,7 +111,7 @@ class TestRateLimiterCleanup:
         assert first is not None
         first_session = str(first["session_id"])
         manager.revoke_session(first_session)
-        assert manager.verify_session(first_session) is None
+        assert manager.verify_session(first_session, TEST_BINDING) is None
         assert _exchange(manager) is not None
 
 

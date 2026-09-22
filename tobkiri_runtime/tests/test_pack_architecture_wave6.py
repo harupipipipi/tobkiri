@@ -246,6 +246,32 @@ class _McpClient:
         return {"unexpected": [args, kwargs]}
 
 
+def test_legacy_projection_entrypoints_fail_closed_without_owner_access():
+    from ecosystem.rumi_default_tool_projection_pack.runtime import projection
+
+    class Client:
+        def invoke(self, *args, **kwargs):
+            raise AssertionError((args, kwargs))
+
+    for factory in (
+        projection.create_source_operation,
+        projection.create_local_operation,
+    ):
+        invoke = factory(Client())
+        with pytest.raises(
+            projection.LegacyToolProjectionRetired,
+            match="legacy default-tool projection is retired",
+        ):
+            invoke(
+                "invoke",
+                {
+                    "_contract_consumer_pack_id": "rumi_tool_local_executor_pack",
+                    "approved": True,
+                    "authorization": {"authorized": True, "consumed": True},
+                },
+            )
+
+
 def test_mcp_executor_rejects_missing_namespace_before_gateway_call() -> None:
     execute = create_mcp_execute_operation(_McpClient())
     with pytest.raises(ValueError, match="descriptor"):

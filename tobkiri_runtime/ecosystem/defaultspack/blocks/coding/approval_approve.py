@@ -1,7 +1,11 @@
 """Approve a pending local coding operation."""
 
 from blocks._common import error, ok
-from domain.safety.approval import approve, register_debug_resume_handle
+from domain.safety.approval import (
+    approve,
+    register_debug_resume_handle,
+    register_native_resume_handle,
+)
 from domain.safety.audit import record_approval
 from domain.safety.debug_cli_operator import DebugCliOperatorError, verify_debug_cli_decision
 from domain.safety.coding_ui_operator import CodingUiOperatorError, verify_coding_ui_operator
@@ -13,6 +17,10 @@ def run(input_data, context=None):
     if not request_id:
         return error("'approval_request_id' is required", code="INVALID_INPUT")
     operator = input_data.get("debug_cli_operator")
+    continuation_conversation_id = str(
+        input_data.get("continuation_conversation_id") or ""
+    ).strip()
+    request = None
     if operator is not None:
         if str(operator.get("decision") or "") != "approve":
             result = error("debug operator decision mismatch", code="DEBUG_CLI_OPERATOR_INVALID")
@@ -41,6 +49,22 @@ def run(input_data, context=None):
             result = error(str(exc), code="APPROVAL_OPERATOR_REQUIRED")
             result["_http_status"] = 403
             return result
+        if continuation_conversation_id:
+            request_map = request if isinstance(request, dict) else {}
+            raw_details = request_map.get("details")
+            details = raw_details if isinstance(raw_details, dict) else {}
+            request_conversation_id = str(
+                request_map.get("conversation_id")
+                or details.get("conversation_id")
+                or ""
+            ).strip()
+            if request_conversation_id != continuation_conversation_id:
+                result = error(
+                    "approval continuation conversation does not match",
+                    code="APPROVAL_RESUME_MISMATCH",
+                )
+                result["_http_status"] = 409
+                return result
     decision = approve(request_id, debug_operator=operator)
     record_approval(
         "coding.approval",
@@ -53,8 +77,9 @@ def run(input_data, context=None):
         result = error(str(decision.get("reason") or "approval failed"), code="APPROVAL_FAILED")
         result["_http_status"] = 403
         return result
+    token = str(decision.get("token", "") or "")
     if operator is not None:
-        token = str(decision.pop("token", "") or "")
+        decision.pop("token", None)
         if not token:
             result = error(
                 "approved debug request did not issue a resume credential",
@@ -67,4 +92,15 @@ def run(input_data, context=None):
             token,
             operator=operator,
         )
+    elif continuation_conversation_id:
+        try:
+            decision.pop("token", None)
+            decision["resume_id"] = register_native_resume_handle(
+                request or {},
+                token,
+            )
+        except ValueError as exc:
+            result = error(str(exc), code="APPROVAL_RESUME_UNAVAILABLE")
+            result["_http_status"] = 409
+            return result
     return ok(decision)

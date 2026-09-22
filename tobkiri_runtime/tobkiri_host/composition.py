@@ -33,11 +33,39 @@ class AuthorityCeilings:
     profile_admin: AuthorityScope
 
 
+# The activation identity is deliberately part of this key.  A caller and
+# target pair can be reused by a successor Profile or activation, but the
+# authority captured for one generation must never be reused implicitly.
+AuthorityEdgeKey = tuple[str, str, str, str, str, str]
+
+
+def _authority_edge_key(
+    *,
+    profile_id: str,
+    activation_id: str,
+    caller: FunctionPrincipal,
+    target: FunctionPrincipal,
+    contract_id: str,
+    operation_id: str,
+) -> AuthorityEdgeKey:
+    """Return the fully-qualified key for one signed operation edge."""
+
+    return (
+        profile_id,
+        activation_id,
+        caller.principal_id,
+        target.principal_id,
+        contract_id,
+        operation_id,
+    )
+
+
 class _CapturedResolver(PrincipalReferenceResolver):
     def __init__(
         self,
         principals: Mapping[str, FunctionPrincipal],
-        ceilings: Mapping[tuple[str, str], AuthorityCeilings],
+        ceilings: Mapping[AuthorityEdgeKey, AuthorityCeilings],
+        target_operation_keys: Mapping[str, tuple[str, str]],
         *,
         profile_id: str,
         activation_id: str,
@@ -49,6 +77,7 @@ class _CapturedResolver(PrincipalReferenceResolver):
     ) -> None:
         self._principals = dict(principals)
         self._ceilings = dict(ceilings)
+        self._target_operation_keys = dict(target_operation_keys)
         self._profile_id = profile_id
         self._activation_id = activation_id
         self._activation_digest = activation_digest
@@ -70,7 +99,20 @@ class _CapturedResolver(PrincipalReferenceResolver):
         caller: FunctionPrincipal,
         target: FunctionPrincipal,
     ) -> AuthorityBinding:
-        ceilings = self._ceilings.get((caller.principal_id, target.principal_id))
+        operation_key = self._target_operation_keys.get(target.principal_id)
+        if operation_key is None:
+            raise AuthorityDenied("target operation is outside the captured ResolvedPlan")
+        contract_id, operation_id = operation_key
+        ceilings = self._ceilings.get(
+            _authority_edge_key(
+                profile_id=self._profile_id,
+                activation_id=self._activation_id,
+                caller=caller,
+                target=target,
+                contract_id=contract_id,
+                operation_id=operation_id,
+            )
+        )
         if ceilings is None:
             raise AuthorityDenied("operation edge is outside the captured ResolvedPlan")
         binding = AuthorityBinding(
@@ -111,7 +153,7 @@ class HostV4Composition:
         activation: Mapping[str, Any],
         artifacts: Sequence[PackArtifact],
         routes: Sequence[OperationRoute],
-        authority_ceilings: Mapping[tuple[str, str], AuthorityCeilings],
+        authority_ceilings: Mapping[tuple[str, ...], AuthorityCeilings],
         effective_artifacts: Mapping[str, str] | None = None,
     ) -> "HostV4Composition":
         """Capture a complete v4 graph, rejecting missing, stale, or extra input."""
@@ -145,6 +187,7 @@ class HostV4Composition:
             )
 
         principals: dict[str, FunctionPrincipal] = {}
+        principals_by_function: dict[str, list[FunctionPrincipal]] = {}
         for artifact in artifacts:
             for function in artifact.functions:
                 for operation in function.operations:
@@ -158,49 +201,156 @@ class HostV4Composition:
                     if principal.principal_id in principals:
                         raise ResolutionError("duplicate Function principal in inventory")
                     principals[principal.principal_id] = principal
+                    principals_by_function.setdefault(function.function_id, []).append(
+                        principal
+                    )
 
-        catalog = OperationCatalog(artifacts, routes)
+        # Shared operation names are valid only when every selected edge still
+        # resolves to the same immutable target.  OperationCatalog has one
+        # route per Contract/operation, so collapse byte-for-byte duplicate
+        # routes after checking for conflicting identities.
+        unique_routes: list[OperationRoute] = []
+        route_by_operation: dict[tuple[str, str], OperationRoute] = {}
+        for route in routes:
+            operation_key = (route.contract_id, route.operation_id)
+            previous = route_by_operation.get(operation_key)
+            if previous is not None:
+                previous_identity = (
+                    previous.artifact_digest,
+                    previous.function_id,
+                    previous.variant_id,
+                    previous.target_principal_ref.value,
+                )
+                current_identity = (
+                    route.artifact_digest,
+                    route.function_id,
+                    route.variant_id,
+                    route.target_principal_ref.value,
+                )
+                if previous_identity != current_identity:
+                    raise ResolutionError(
+                        "one Contract operation has conflicting selected targets"
+                    )
+                continue
+            route_by_operation[operation_key] = route
+            unique_routes.append(route)
+
+        catalog = OperationCatalog(artifacts, unique_routes)
         expected_bindings: set[tuple[str, str, str, str, str]] = set()
+        expected_route_counts: dict[tuple[str, str, str, str, str], int] = {}
+        expected_authority_edges: set[AuthorityEdgeKey] = set()
+        target_operation_keys: dict[str, tuple[str, str]] = {}
+        seen_plan_edges: set[tuple[str, str, str]] = set()
+        profile_id = str(checked_profile["profile_id"])
+        activation_id = str(checked_activation["activation_id"])
         for item in checked_plan["bindings"]:
             principal = FunctionPrincipal.from_dict(item["function_principal"])
             if principals.get(principal.principal_id) != principal:
                 raise ResolutionError("ResolvedPlan principal is outside verified inventory")
-            expected_bindings.add(
-                (
-                    item["contract_id"],
-                    item["operation_id"],
-                    item["artifact_digest"],
-                    principal.function_id,
-                    principal.principal_id,
+            caller_candidates = tuple(
+                principals_by_function.get(str(item["caller_function_id"]), ())
+            )
+            if len(caller_candidates) != 1:
+                raise ResolutionError(
+                    "ResolvedPlan caller Function does not identify one principal"
+                )
+            operation_key = (str(item["contract_id"]), str(item["operation_id"]))
+            plan_edge_key = (str(item["caller_function_id"]), *operation_key)
+            if plan_edge_key in seen_plan_edges:
+                raise ResolutionError("ResolvedPlan contains a duplicate operation edge")
+            seen_plan_edges.add(plan_edge_key)
+            previous_operation = target_operation_keys.get(principal.principal_id)
+            if previous_operation is not None and previous_operation != operation_key:
+                raise ResolutionError(
+                    "one target principal is reused across Contract operations"
+                )
+            target_operation_keys[principal.principal_id] = operation_key
+            binding_identity = (
+                item["contract_id"],
+                item["operation_id"],
+                item["artifact_digest"],
+                principal.function_id,
+                principal.principal_id,
+            )
+            expected_bindings.add(binding_identity)
+            # OperationCatalog intentionally has one route per Contract/op.
+            # Multiple signed callers may share that exact target route; the
+            # caller distinction is retained by ``expected_authority_edges``
+            # and must not require duplicate catalog rows.
+            expected_route_counts[binding_identity] = 1
+            expected_authority_edges.add(
+                _authority_edge_key(
+                    profile_id=profile_id,
+                    activation_id=activation_id,
+                    caller=caller_candidates[0],
+                    target=principal,
+                    contract_id=operation_key[0],
+                    operation_id=operation_key[1],
                 )
             )
-        actual_bindings = {
-            (
+        actual_route_counts: dict[tuple[str, str, str, str, str], int] = {}
+        for route in unique_routes:
+            route_identity = (
                 route.contract_id,
                 route.operation_id,
                 route.artifact_digest,
                 route.function_id,
                 route.target_principal_ref.value,
             )
-            for route in routes
-        }
-        if actual_bindings != expected_bindings or len(actual_bindings) != len(routes):
+            actual_route_counts[route_identity] = (
+                actual_route_counts.get(route_identity, 0) + 1
+            )
+        actual_bindings = set(actual_route_counts)
+        if actual_bindings != expected_bindings or actual_route_counts != expected_route_counts:
             raise ResolutionError("OperationCatalog routes must exactly equal ResolvedPlan")
 
-        unknown_edges = {
-            edge
-            for edge in authority_ceilings
-            if edge[0] not in principals or edge[1] not in principals
-        }
-        target_ids = {item[-1] for item in expected_bindings}
-        covered_targets = {target for _caller, target in authority_ceilings}
-        if unknown_edges or covered_targets != target_ids:
+        normalized_ceilings: dict[AuthorityEdgeKey, AuthorityCeilings] = {}
+        for raw_key, ceilings in authority_ceilings.items():
+            if len(raw_key) == 6:
+                edge_key: AuthorityEdgeKey = (
+                    str(raw_key[0]),
+                    str(raw_key[1]),
+                    str(raw_key[2]),
+                    str(raw_key[3]),
+                    str(raw_key[4]),
+                    str(raw_key[5]),
+                )
+                if edge_key[:2] != (profile_id, activation_id):
+                    raise ResolutionError(
+                        "authority ceiling belongs to another Profile activation"
+                    )
+                if edge_key in normalized_ceilings and normalized_ceilings[edge_key] != ceilings:
+                    raise ResolutionError("duplicate authority ceiling edge")
+                normalized_ceilings[edge_key] = ceilings
+                continue
+
+            # Keep the old two-part conformance fixture readable while making
+            # production capture unambiguously six-part.  A legacy key is
+            # accepted only when it maps to exactly one signed edge; it is
+            # never used as a runtime lookup key.
+            if len(raw_key) != 2:
+                raise ResolutionError("authority ceiling key is not fully qualified")
+            matches = tuple(
+                edge
+                for edge in expected_authority_edges
+                if edge[2] == str(raw_key[0]) and edge[3] == str(raw_key[1])
+            )
+            if len(matches) != 1:
+                raise ResolutionError(
+                    "authority ceilings include an ambiguous or outside-plan legacy key"
+                )
+            if matches[0] in normalized_ceilings and normalized_ceilings[matches[0]] != ceilings:
+                raise ResolutionError("duplicate authority ceiling edge")
+            normalized_ceilings[matches[0]] = ceilings
+
+        if set(normalized_ceilings) != expected_authority_edges:
             raise ResolutionError(
-                "authority ceilings must cover exactly the ResolvedPlan targets"
+                "authority ceilings must cover exactly the ResolvedPlan edges"
             )
         resolver = _CapturedResolver(
             principals,
-            authority_ceilings,
+            normalized_ceilings,
+            target_operation_keys,
             profile_id=checked_profile["profile_id"],
             activation_id=checked_activation["activation_id"],
             activation_digest=canonical_digest(checked_activation),
@@ -296,4 +446,4 @@ class HostV4Composition:
             raise ResolutionError("ActivationRecord does not match the captured plan")
 
 
-__all__ = ["AuthorityCeilings", "HostV4Composition"]
+__all__ = ["AuthorityCeilings", "AuthorityEdgeKey", "HostV4Composition"]

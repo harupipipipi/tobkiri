@@ -182,6 +182,7 @@ test('runtime target and operation revisions fail closed on map or digest mismat
     invocation_reason: null,
     invokable: true,
     catalog_digest: digest('c'),
+    activation_id: 'activation:defaults-one',
     function_id: 'function-one',
     function_principal_id: 'principal.function-one',
     caller_function_id: 'caller.function-one',
@@ -227,7 +228,27 @@ test('generated Contract Map is pinned to the canonical raw artifact and include
     GENERATED_FRONTEND_CONTRACT_MAP.artifact_digest,
     PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST,
   );
-  assert.equal(GENERATED_FRONTEND_CONTRACT_MAP.routes.length, 23);
+  assert.equal(GENERATED_FRONTEND_CONTRACT_MAP.routes.length, 62);
+  for (const path of ['/api/ai/provider-key', '/api/ai/profiles', '/api/chat/turn/stop']) {
+    assert.ok(GENERATED_FRONTEND_CONTRACT_MAP.routes.some(
+      (route) => route.method === 'POST' && route.path === path,
+    ));
+  }
+  assert.ok(GENERATED_FRONTEND_CONTRACT_MAP.routes.some(
+    (route) => route.method === 'PUT' && route.path === '/api/ui/settings',
+  ));
+  const catalog = GENERATED_FRONTEND_CONTRACT_MAP.routes.find(
+    (route) => route.method === 'GET' && route.path === '/api/tools/catalog',
+  );
+  assert.equal(catalog?.presentation, 'tool_catalog');
+  assert.deepEqual(catalog?.targets, [{
+    contribution_id: 'defaults.tools.catalog',
+    contract_id: 'tobkiri.resource.tool.definition.v1',
+    operation_id: 'rumi_tool_registry_pack.tool-definition-resource',
+    provider_id: 'rumi_tool_registry_pack.tool-registry.definition',
+    function_id: 'rumi_tool_registry_pack.tool-registry.definition',
+    allowed_payload_keys: [],
+  }]);
   assert.doesNotThrow(() => validateGeneratedFrontendContractMap(GENERATED_FRONTEND_CONTRACT_MAP));
 
   const tampered = structuredClone(GENERATED_FRONTEND_CONTRACT_MAP);
@@ -326,6 +347,31 @@ test('Profile catalog tamper, unknown active marker, and extra fields fail close
   const extraField = structuredClone(fixture);
   (extraField.profiles[0] as Record<string, unknown>).untrusted_pack_ids = ['injected-pack'];
   assert.equal(extractExactProfileCatalog(extraField), null);
+});
+
+test('Host catalog selection and migrated local provenance survive projection validation', () => {
+  const fixture = {
+    ...profileCatalogData(),
+    selection: {state: 'active_execution', selected_profile_id: 'defaults', execution_profile_id: 'defaults'},
+  };
+  const definition = fixture.profiles[1].definition;
+  for (const sourcePath of ['/Users/example/Application Support/startup_profiles.json', 'C:\\Users\\example\\startup_profiles.json']) {
+    definition.source_path = sourcePath;
+    definition.provenance = {source_kind: 'migration', source_path: sourcePath} as typeof definition.provenance;
+    assert.doesNotThrow(() => validateRuntimeSurfaceEnvelope('profiles', envelope('profiles', fixture)));
+  }
+  fixture.selection = {state: 'browsing', selected_profile_id: 'alternate', execution_profile_id: 'defaults'};
+  assert.ok(extractExactProfileCatalog(fixture));
+  for (const selection of [
+    {...fixture.selection, state: 'active_execution'},
+    {...fixture.selection, execution_profile_id: 'alternate'},
+    {...fixture.selection, selected_profile_id: 'missing'},
+    {...fixture.selection, approved: true},
+  ]) assert.equal(extractExactProfileCatalog({...fixture, selection}), null);
+  definition.provenance = {source_kind: 'repository'};
+  assert.equal(extractExactProfileCatalog(fixture), null);
+  definition.provenance = {source_kind: 'migration', source_path: '/different/file'} as typeof definition.provenance;
+  assert.equal(extractExactProfileCatalog(fixture), null);
 });
 
 test('real v4 read fixture accepts evidence refs and full Profile records only in profile data', () => {
@@ -509,6 +555,37 @@ test('regex labels cannot classify a Pack as Flow or AI Input', () => {
   assert.deepEqual(extractExactOperationDescriptors({operations: [{label: 'AI Input', operation_id: 'operation.one'}]}), []);
 });
 
+test('Flow descriptors require exact caller/provider Contract edges', () => {
+  const flow = {
+    flow_id: 'caller.one',
+    state: 'ready',
+    operation_ids: ['operation.one'],
+    edges: [{
+      caller_function_id: 'caller.one',
+      target_provider_id: 'provider.one',
+      contract_id: 'contract.one',
+      operation_id: 'operation.one',
+    }],
+  };
+  assert.deepEqual(extractExactFlowDescriptors({flows: [flow]}), [flow]);
+  assert.deepEqual(
+    extractExactFlowDescriptors({flows: [{...flow, edges: [{...flow.edges[0], caller_function_id: 'caller.two'}]}]}),
+    [],
+  );
+  assert.deepEqual(
+    extractExactFlowDescriptors({flows: [{...flow, operation_ids: ['operation.other']}]}),
+    [],
+  );
+  assert.deepEqual(
+    extractExactFlowDescriptors({flows: [flow, {...flow, edges: [{...flow.edges[0], operation_id: 'operation.two'}]}]}),
+    [],
+  );
+  assert.deepEqual(
+    extractExactFlowDescriptors({flows: [{...flow, state: 'unexpected'}]}),
+    [],
+  );
+});
+
 test('Pack projection rejects artifact-reference drift and duplicate Pack identities', () => {
   const pack = {
     pack_id: 'provider-pack',
@@ -546,6 +623,7 @@ test('operation extraction normalizes the formal contract_invoke action and reje
     invocation_reason: 'not approved',
     invokable: false,
     catalog_digest: digest('c'),
+    activation_id: 'activation:defaults-one',
     function_id: 'function-one',
     function_principal_id: 'principal.function-one',
     caller_function_id: 'caller.function-one',
@@ -586,6 +664,7 @@ test('stale or mismatched profile/plan/catalog blocks every surface action', asy
     invocation_reason: null,
     invokable: true,
     catalog_digest: digest('c'),
+    activation_id: 'activation:defaults-one',
     function_id: 'function.one',
     function_principal_id: 'principal.function.one',
     caller_function_id: 'caller.function.one',
@@ -674,6 +753,7 @@ test('operation invocation fails before Broker dispatch on stale catalog, denial
     invocation_reason: null,
     invokable: true,
     catalog_digest: digest('4'),
+    activation_id: 'activation:defaults-one',
     function_id: 'function-one',
     function_principal_id: 'principal.function-one',
     caller_function_id: 'caller.function-one',

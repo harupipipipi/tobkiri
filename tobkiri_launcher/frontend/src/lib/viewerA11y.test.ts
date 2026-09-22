@@ -35,7 +35,7 @@ test('viewer shell has a mobile navigation fallback and persistent desktop sideb
   assert.doesNotMatch(header, /aria-haspopup="menu"/);
   assert.doesNotMatch(header, /role="menu(item)?"/);
   assert.match(header, /aria-label="Profile menu"/);
-  assert.match(header, /viewerNavGroups\.map/);
+  assert.match(header, /viewerNavGroups\(devtoolsEnabled\)\.map/);
   assert.match(header, /aria-label=\{t\('nav.mobile_navigation'\)\}/);
   assert.match(store, /SIDEBAR_STORAGE_KEY = 'tobkiri-launcher-sidebar-open'/);
   assert.match(

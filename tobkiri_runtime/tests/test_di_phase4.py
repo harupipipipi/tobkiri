@@ -7,13 +7,12 @@ only canonical support services.
 """
 from __future__ import annotations
 
-from pathlib import Path
 import threading
 import warnings
 
 import pytest
 
-from core_runtime.di_container import get_container
+from core_runtime.di_container import DIContainer, get_container
 
 pytestmark = pytest.mark.contract
 
@@ -37,7 +36,6 @@ CANONICAL_SERVICES = (
     "metrics_collector",
     "profiler",
     "desktop_capability_handler",
-    "managed_sandbox_supervisor",
 )
 
 RETIRED_DI_SERVICES = (
@@ -80,21 +78,22 @@ class TestCanonicalServiceResolutionPhase4:
         service_name: str,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        # ManagedSandboxSupervisor imports the pack's canonical top-level
-        # ``domain`` namespace, which is available when the pack is launched.
-        if service_name == "managed_sandbox_supervisor":
-            pack_root = (
-                Path(__file__).resolve().parents[1]
-                / "ecosystem"
-                / "defaultspack"
-            )
-            monkeypatch.syspath_prepend(str(pack_root))
-
         container = get_container()
         instance = container.get(service_name)
 
         assert instance is not None
         assert container.get_or_none(service_name) is instance
+
+    def test_pack_owned_sandbox_supervisor_requires_explicit_registration(self) -> None:
+        container = DIContainer()
+
+        assert not container.has("managed_sandbox_supervisor")
+        assert container.get_or_none("managed_sandbox_supervisor") is None
+
+        supervisor = object()
+        container.register("managed_sandbox_supervisor", lambda: supervisor)
+
+        assert container.get("managed_sandbox_supervisor") is supervisor
 
 
 # ===================================================================

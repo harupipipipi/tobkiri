@@ -1,8 +1,6 @@
 import {create} from 'zustand';
 import {
   approvePack as apiApprovePack,
-  checkHealth,
-  fetchPackVMDoctor as apiFetchPackVMDoctor,
   disablePack as apiDisablePack,
   enablePack as apiEnablePack,
   fetchFrontendCatalog,
@@ -10,11 +8,16 @@ import {
   installPack as apiInstallPack,
   invokeFrontendCapability,
   revokePackApproval as apiRevokePackApproval,
+} from './lib/defaultspackClient';
+import {
+  checkHealth,
+  fetchPackVMDoctor as apiFetchPackVMDoctor,
   parseHealthResponse,
-} from './lib/api';
+} from './lib/hostClient';
 import type {
   ApiDynamicFrontendCatalog,
   ApiPackVMDoctor,
+  PackControlBinding,
   ApiSupervisorDashboard,
   HealthResponseData,
   RuntimeStatus,
@@ -34,6 +37,7 @@ import {formatPackVMRecoveryError} from './lib/packvmLifecycle';
 import {
   beginMutation,
   completeMutation,
+  isLegacyAdoptedMutation,
   isMutationResultUnknown,
   listMutationJournal,
   markMutationUnknown,
@@ -45,6 +49,7 @@ import {
 } from './lib/mutationJournal';
 import {
   reconcileMutationStatus,
+  OperationStatusNotFoundError,
   type OperationStatus,
   type OperationStatusState,
 } from './lib/operationStatus';
@@ -55,9 +60,15 @@ import {
   readSafeStorageValue,
   writeSafeStorageValue,
 } from './lib/safeStorage';
+import {
+  DEVTOOLS_PREFERENCE_STORAGE_KEY,
+  normalizeDevtoolsEnabled,
+} from './lib/devtoolsPreference';
 
 export type {ColorMode, Theme} from './lib/appearance';
 export {AVATAR_OPTIONS} from './lib/avatar';
+
+const PACK_MUTATION_TIMEOUT_MS = 30_000;
 
 function readLocalStorage(key: string): string | null {
   return readSafeStorageValue(getBrowserStorage('local'), key);
@@ -101,6 +112,7 @@ export interface Pack {
   enabled: boolean;
   description: string;
   artifactDigest: string;
+  packArtifactDigest?: string | null;
   profileId: string;
   workspaceId: string;
   profileRevision: string;
@@ -164,6 +176,8 @@ interface AppState {
   setSetupDone: (done: boolean) => void;
   isSidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
+  devtoolsEnabled: boolean;
+  setDevtoolsEnabled: (enabled: boolean) => void;
   toasts: Toast[];
   addToast: (message: string, type: 'success' | 'error') => void;
   removeToast: (id: string) => void;
@@ -176,10 +190,16 @@ interface AppState {
   runtimeStatus: RuntimeStatus;
   runtimeError: string | null;
   runtimeDisconnected: boolean;
+  hostCatalogVerified: boolean;
+  profileCeremonyAvailable: boolean;
+  defaultsBootstrapRequired: boolean;
+  activeProfileReady: boolean;
+  launchReady: boolean;
   lastRuntimeHealthyAt: number | null;
   setRuntimeHealth: (health: HealthResponseData) => void;
   refreshRuntimeHealth: () => Promise<void>;
   packs: Pack[];
+  packCatalogBinding: PackControlBinding | null;
   packsLoading: boolean;
   packsError: string | null;
   packInstallPending: Record<string, boolean>;
@@ -190,6 +210,7 @@ interface AppState {
   frontendCatalogError: string | null;
   packOperationPending: Record<string, boolean>;
   packMutationUnknown: Record<string, MutationJournalRecord>;
+  packLegacyRecovery: Record<string, MutationJournalRecord>;
   packOperationUnknown: Record<string, MutationJournalRecord>;
   packVmDoctor: ApiPackVMDoctor | null;
   packVmDoctorLoading: boolean;
@@ -212,6 +233,8 @@ interface AppState {
   approvePack: (id: string) => Promise<void>;
   revokePackApproval: (id: string) => Promise<void>;
   togglePack: (id: string) => Promise<boolean>;
+  clearAbsentLegacyPackMutation: (key: string, requestId: string) => void;
+  verifyPackMutationStatus: (key: string) => Promise<void>;
   profile: Profile;
   updateLocalProfile: (profile: Partial<Pick<Profile, 'avatar' | 'username' | 'language' | 'job'>>) => void;
 }
@@ -378,7 +401,7 @@ async function invalidatePackMutationSurfaces(get: () => AppState): Promise<void
 const PACK_CONTROL_CONTRACT = 'tobkiri.host.pack-control.v4';
 interface HydratedPackStatusTask {
   controller: AbortController;
-  promise: Promise<void>;
+  promise: Promise<Awaited<ReturnType<typeof reconcilePackMutationStatus>> | null>;
 }
 
 const hydratedPackStatusRequests = new Map<string, HydratedPackStatusTask>();
@@ -474,6 +497,108 @@ function clearPackUnknownState(
   });
 }
 
+async function reconcileHydratedPackRecord(
+  record: MutationJournalRecord,
+  get: () => AppState,
+  set: (update: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void,
+  signal: AbortSignal,
+): Promise<Awaited<ReturnType<typeof reconcilePackMutationStatus>> | null> {
+  let reconciled: Awaited<ReturnType<typeof reconcilePackMutationStatus>>;
+  if (record.metadata.kind === 'pack.operation') {
+    const operationId = record.metadata.operation_id;
+    const contractId = record.metadata.contract_id;
+    if (typeof operationId !== 'string' || typeof contractId !== 'string') return null;
+    reconciled = await reconcilePackMutationStatus(
+      record,
+      get,
+      operationId,
+      () => true,
+      {contractId, signal},
+    );
+  } else if (record.metadata.kind === 'pack.approve') {
+    const approval = await reconcilePackApprovalStatus(record, get, signal);
+    if (approval.state === 'succeeded' || approval.state === 'failed') {
+      clearPackUnknownState(set, record);
+    }
+    return approval;
+  } else {
+    const operationId = record.metadata.operation_id;
+    if (typeof operationId !== 'string') return null;
+    reconciled = await reconcilePackMutationStatus(
+      record,
+      get,
+      operationId,
+      (status) => status.state === 'succeeded' && packMutationSuccess(record, get),
+      {signal},
+    );
+  }
+  if (reconciled.state === 'succeeded' || reconciled.state === 'failed') {
+    clearPackUnknownState(set, record);
+  }
+  return reconciled;
+}
+
+function schedulePackRecordReconciliation(
+  record: MutationJournalRecord,
+  get: () => AppState,
+  set: (update: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void,
+): HydratedPackStatusTask {
+  const existing = hydratedPackStatusRequests.get(record.key);
+  if (existing) return existing;
+  const controller = new AbortController();
+  const task: HydratedPackStatusTask = {
+    controller,
+    promise: Promise.resolve(null),
+  };
+  task.promise = (async () => {
+    try {
+      return await reconcileHydratedPackRecord(record, get, set, controller.signal);
+    } catch (error) {
+      if (error instanceof OperationStatusNotFoundError && isLegacyAdoptedMutation(record)) {
+        const current = listMutationJournal().find((candidate) => (
+          candidate.key === record.key && candidate.requestId === record.requestId
+        ));
+        const packId = current?.metadata.pack_id;
+        const pack = typeof packId === 'string'
+          ? get().packs.find((candidate) => candidate.id === packId)
+          : undefined;
+        if (
+          current
+          && current.state === 'unknown'
+          && isLegacyAdoptedMutation(current)
+          && pack
+          && !matchingPackMutation(current, pack)
+        ) {
+          set((state) => ({
+            packLegacyRecovery: {
+              ...state.packLegacyRecovery,
+              [current.key]: current,
+            },
+          }));
+          recordClientDiagnostic({
+            code: 'pack.mutation.legacy_absent_from_current_root',
+            operation: 'hydrate.pack.mutation',
+            error,
+          });
+          return null;
+        }
+      }
+      recordClientDiagnostic({
+        code: 'pack.mutation.reconciliation_failed',
+        operation: 'hydrate.pack.mutation',
+        error,
+      });
+      return null;
+    }
+  })().finally(() => {
+    if (hydratedPackStatusRequests.get(record.key) === task) {
+      hydratedPackStatusRequests.delete(record.key);
+    }
+  });
+  hydratedPackStatusRequests.set(record.key, task);
+  return task;
+}
+
 function scheduleHydratedPackStatusReconciliation(
   get: () => AppState,
   set: (update: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void,
@@ -484,59 +609,7 @@ function scheduleHydratedPackStatusReconciliation(
     && record.metadata.kind.startsWith('pack.')
   ));
   for (const record of records) {
-    if (hydratedPackStatusRequests.has(record.key)) continue;
-    const controller = new AbortController();
-    const task: HydratedPackStatusTask = {
-      controller,
-      promise: Promise.resolve(),
-    };
-    task.promise = (async () => {
-      try {
-        let reconciled: Awaited<ReturnType<typeof reconcilePackMutationStatus>>;
-        if (record.metadata.kind === 'pack.operation') {
-          const operationId = record.metadata.operation_id;
-          const contractId = record.metadata.contract_id;
-          if (typeof operationId !== 'string' || typeof contractId !== 'string') return;
-          reconciled = await reconcilePackMutationStatus(
-            record,
-            get,
-            operationId,
-            () => true,
-            {contractId, signal: controller.signal},
-          );
-        } else if (record.metadata.kind === 'pack.approve') {
-          const approval = await reconcilePackApprovalStatus(record, get, controller.signal);
-          if (approval.state === 'succeeded' || approval.state === 'failed') {
-            clearPackUnknownState(set, record);
-          }
-          return;
-        } else {
-          const operationId = record.metadata.operation_id;
-          if (typeof operationId !== 'string') return;
-          reconciled = await reconcilePackMutationStatus(
-            record,
-            get,
-            operationId,
-            (status) => status.state === 'succeeded' && packMutationSuccess(record, get),
-            {signal: controller.signal},
-          );
-        }
-        if (reconciled.state === 'succeeded' || reconciled.state === 'failed') {
-          clearPackUnknownState(set, record);
-        }
-      } catch (error) {
-        recordClientDiagnostic({
-          code: 'pack.mutation.reconciliation_failed',
-          operation: 'hydrate.pack.mutation',
-          error,
-        });
-      }
-    })().finally(() => {
-      if (hydratedPackStatusRequests.get(record.key) === task) {
-        hydratedPackStatusRequests.delete(record.key);
-      }
-    });
-    hydratedPackStatusRequests.set(record.key, task);
+    schedulePackRecordReconciliation(record, get, set);
   }
 }
 
@@ -612,6 +685,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({isSidebarOpen: open});
   },
 
+  devtoolsEnabled: normalizeDevtoolsEnabled(
+    readLocalStorage(DEVTOOLS_PREFERENCE_STORAGE_KEY),
+  ),
+  setDevtoolsEnabled: (enabled) => {
+    writeLocalStorage(DEVTOOLS_PREFERENCE_STORAGE_KEY, String(enabled));
+    set({devtoolsEnabled: enabled});
+  },
+
   toasts: [],
   addToast: (message, type) => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -633,6 +714,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   runtimeStatus: 'starting',
   runtimeError: null,
   runtimeDisconnected: false,
+  hostCatalogVerified: false,
+  profileCeremonyAvailable: false,
+  defaultsBootstrapRequired: false,
+  activeProfileReady: false,
+  launchReady: false,
   lastRuntimeHealthyAt: null,
   setRuntimeHealth: (health) => {
     let parsedHealth: HealthResponseData;
@@ -650,6 +736,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         runtimeStatus: 'error',
         runtimeError: 'Runtime health response failed validation.',
         runtimeDisconnected: state.lastRuntimeHealthyAt !== null,
+        hostCatalogVerified: false,
+        profileCeremonyAvailable: false,
       }));
       throw error;
     }
@@ -659,6 +747,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       runtimeStatus: parsedHealth.runtime_status,
       runtimeError: parsedHealth.runtime_error,
       runtimeDisconnected: false,
+      hostCatalogVerified: parsedHealth.runtime_status !== 'error'
+        && parsedHealth.host_catalog_verified,
+      profileCeremonyAvailable: parsedHealth.runtime_status !== 'error'
+        && parsedHealth.profile_ceremony_available,
+      defaultsBootstrapRequired: parsedHealth.defaults_bootstrap_required,
+      activeProfileReady: parsedHealth.active_profile_ready,
+      launchReady: parsedHealth.launch_ready,
       lastRuntimeHealthyAt: parsedHealth.runtime_ready ? Date.now() : state.lastRuntimeHealthyAt,
     }));
   },
@@ -674,11 +769,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         runtimeStatus: 'error',
         runtimeError: message,
         runtimeDisconnected: state.lastRuntimeHealthyAt !== null,
+        hostCatalogVerified: false,
+        profileCeremonyAvailable: false,
       }));
     }
   },
 
   packs: [],
+  packCatalogBinding: null,
   packsLoading: false,
   packsError: null,
   packInstallPending: {},
@@ -689,6 +787,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   frontendCatalogError: null,
   packOperationPending: {},
   packMutationUnknown: journalRecordsForKind(null),
+  packLegacyRecovery: {},
   packOperationUnknown: journalRecordsForKind('pack.operation'),
   packVmDoctor: null,
   packVmDoctorLoading: false,
@@ -745,7 +844,30 @@ export const useAppStore = create<AppState>((set, get) => ({
           ...get().packMutationUnknown,
         };
         const reconciledPackUnknown = reconcilePackMutationJournal(packs, durablePackUnknown);
-        set({packs, packsError: null, packMutationUnknown: reconciledPackUnknown});
+        set({
+          packs,
+          packCatalogBinding: {
+            profile_id: data.profile_id,
+            workspace_id: data.workspace_id,
+            profile_revision: data.profile_revision,
+            plan_digest: data.plan_digest,
+            catalog_revision: data.catalog_revision,
+          },
+          packsError: null,
+          packMutationUnknown: reconciledPackUnknown,
+          packLegacyRecovery: Object.fromEntries(
+            Object.entries(get().packLegacyRecovery).filter(([, record]) => {
+              const current = reconciledPackUnknown[record.key];
+              const packId = record.metadata.pack_id;
+              const pack = typeof packId === 'string'
+                ? packs.find((candidate) => candidate.id === packId)
+                : undefined;
+              return current?.requestId === record.requestId
+                && isLegacyAdoptedMutation(current)
+                && Boolean(pack && !matchingPackMutation(current, pack));
+            }),
+          ),
+        });
         if (!options.skipMutationReconciliation) {
           scheduleHydratedPackStatusReconciliation(get, set);
         }
@@ -793,6 +915,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
         if (
           !catalog.profile_id
+          || !catalog.profile_revision
+          || !catalog.activation_id
           || !catalog.plan_hash
           || !catalog.catalog_hash
           || !Array.isArray(catalog.contributions)
@@ -824,6 +948,71 @@ export const useAppStore = create<AppState>((set, get) => ({
             || 'PackVM catalog access is blocked until healthy attestation.',
         }),
     });
+  },
+
+  clearAbsentLegacyPackMutation: (key, requestId) => {
+    const eligible = get().packLegacyRecovery[key];
+    const current = listMutationJournal().find((record) => (
+      record.key === key && record.requestId === requestId
+    ));
+    const packId = current?.metadata.pack_id;
+    const pack = typeof packId === 'string'
+      ? get().packs.find((candidate) => candidate.id === packId)
+      : undefined;
+    if (
+      eligible?.requestId !== requestId
+      || !current
+      || current.state !== 'unknown'
+      || !isLegacyAdoptedMutation(current)
+      || !pack
+      || matchingPackMutation(current, pack)
+    ) {
+      get().addToast('The stale recovery lock could not be cleared safely.', 'error');
+      return;
+    }
+    completeMutation(key, requestId);
+    clearPackUnknownState(set, current);
+    set((state) => {
+      const next = {...state.packLegacyRecovery};
+      delete next[key];
+      return {packLegacyRecovery: next};
+    });
+    get().addToast('The stale local recovery lock was cleared. No Pack request was sent.', 'success');
+  },
+
+  // Explicitly re-read the server-owned outcome of one journaled unknown Pack
+  // mutation. The journal is released only after a verified terminal status;
+  // pending, indeterminate, stale-binding, and failed reads all keep the
+  // durable record so no duplicate request is ever sent.
+  verifyPackMutationStatus: async (key) => {
+    const record = listMutationJournal().find((candidate) => (
+      candidate.key === key
+      && candidate.state === 'unknown'
+      && typeof candidate.metadata.kind === 'string'
+      && candidate.metadata.kind.startsWith('pack.')
+    ));
+    if (!record) {
+      get().addToast('The Pack mutation status could not be verified safely.', 'error');
+      return;
+    }
+    const reconciled = await schedulePackRecordReconciliation(record, get, set).promise;
+    if (reconciled?.state === 'succeeded') {
+      get().addToast('The Host confirmed the Pack mutation result.', 'success');
+      return;
+    }
+    if (reconciled?.state === 'failed') {
+      const code = reconciled.status.safe_error_code;
+      get().addToast(
+        `The Host confirmed the Pack mutation failed${code ? ` (${code})` : ''}.`,
+        'error',
+      );
+      return;
+    }
+    if (!listMutationJournal().some((candidate) => candidate.key === key)) {
+      get().addToast('The Pack mutation recovery lock was released.', 'success');
+      return;
+    }
+    get().addToast(MUTATION_UNKNOWN_MESSAGE, 'error');
   },
 
   refreshPackVMDoctor: (options = {}) => {
@@ -928,6 +1117,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (
       !operation.invokable
       || contribution.action_contract !== operation.contractId
+      || contribution.resolved_profile_id !== catalog.profile_id
+      || contribution.resolved_profile_revision !== catalog.profile_revision
+      || contribution.resolved_activation_id !== catalog.activation_id
+      || contribution.resolved_plan_hash !== catalog.plan_hash
     ) {
       throw new Error('Tobkiri has not verified this Pack operation for invocation.');
     }
@@ -947,6 +1140,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const result = await invokeFrontendCapability({
         profileId: catalog.profile_id,
+        profileRevision: catalog.profile_revision,
+        activationId: catalog.activation_id,
         planHash: catalog.plan_hash,
         catalogHash: catalog.catalog_hash,
         contributionId: contribution.contribution_id,
@@ -1030,7 +1225,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((current) => ({packInstallPending: {...current.packInstallPending, [id]: true}}));
     let responseAccepted = false;
     try {
-      const response = await apiInstallPack(id);
+      const response = await apiInstallPack(id, {
+        requestId: mutation.requestId,
+        timeoutMs: PACK_MUTATION_TIMEOUT_MS,
+      });
       if (response.pack_id !== id || response.installed !== true) {
         throw new Error('Tobkiri did not confirm Pack installation.');
       }
@@ -1139,6 +1337,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const response = await apiApprovePack(id, {
         candidateRequestId: mutationRequestId(mutation, 'candidate'),
         approvalRequestId: mutationRequestId(mutation, 'approval'),
+        timeoutMs: PACK_MUTATION_TIMEOUT_MS,
       });
       if (
         response.pack_id !== id
@@ -1253,7 +1452,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
     let responseAccepted = false;
     try {
-      const response = await apiRevokePackApproval(id, {requestId: mutation.requestId});
+      const response = await apiRevokePackApproval(id, {
+        requestId: mutation.requestId,
+        timeoutMs: PACK_MUTATION_TIMEOUT_MS,
+      });
       if (
         response.pack_id !== id
         || response.approved
@@ -1371,8 +1573,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       const response = pack.enabled
-        ? await apiDisablePack(id, {requestId: mutation.requestId})
-        : await apiEnablePack(id, {requestId: mutation.requestId});
+        ? await apiDisablePack(id, {
+          requestId: mutation.requestId,
+          timeoutMs: PACK_MUTATION_TIMEOUT_MS,
+        })
+        : await apiEnablePack(id, {
+          requestId: mutation.requestId,
+          timeoutMs: PACK_MUTATION_TIMEOUT_MS,
+        });
       if (response.pack_id !== id || response.enabled !== expectedEnabled) {
         throw new Error('Tobkiri did not confirm the requested Pack state.');
       }

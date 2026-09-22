@@ -36,6 +36,7 @@ from core_runtime.global_contract_dispatch import (  # noqa: E402
     GlobalContractUnavailable,
     invoke_global_contract,
 )
+from core_runtime.host_contract import host_contract_value  # noqa: E402
 
 
 _HOST_ACTIONS: dict[str, tuple[str, str]] = {
@@ -592,23 +593,17 @@ def _validated_artifact_root(raw_value: object) -> Path | None:
 
 
 def _allowed_conversation_roots() -> list[Path]:
-    roots: list[Path] = []
-    override = str(os.environ.get("RUMI_DEFAULTSPACK_CHAT_STORE_PATH") or "").strip()
-    if override:
-        roots.append(Path(override).expanduser().resolve().parent / "conversations")
-    base = Path(__file__).resolve().parents[2]
-    roots.append(base / "ecosystem" / "defaultspack" / "user_data" / "shared" / "chat" / "conversations")
-
-    deduped: list[Path] = []
-    seen: set[str] = set()
-    for root in roots:
-        resolved = root.resolve()
-        key = str(resolved)
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(resolved)
-    return deduped
+    """Return the signed host-contract root for conversation artifacts."""
+    raw_root = host_contract_value("computer_artifact_destination_root")
+    if not raw_root:
+        return []
+    candidate = Path(raw_root).expanduser()
+    if not candidate.is_absolute():
+        return []
+    try:
+        return [candidate.resolve()]
+    except (OSError, RuntimeError):
+        return []
 
 
 if __name__ == "__main__":

@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-import hashlib
 import heapq
-import hmac
+import json
 import logging
+import os
 import re
 import threading
 import time
 import uuid
 from dataclasses import dataclass
+from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from pathlib import PurePosixPath
-from typing import Any, Callable, Mapping, Protocol, cast
-from urllib.parse import parse_qs, urlparse
+from typing import Any, Callable, Mapping, Protocol, cast, runtime_checkable
+from urllib.parse import parse_qs, parse_qsl, quote, urlencode, urlparse
 
 from .api.api_response import APIResponse
 from .api.auth_gate import AuthGateMixin
@@ -24,88 +24,150 @@ from .api.request_body import RequestBodyMixin
 from .api.setup_handlers import SetupHandlersMixin
 from .api.web_mounts import WebMountMixin
 from .api.web_mounts import WebMountEntry
-from .capability_bindings_v4 import (
-    CapabilityBindingSnapshot,
-    capture_capability_binding_snapshot,
-)
 from .control_reconciliation_v4 import (
     ControlReconciliationCapacityError,
     ControlReconciliationConflictError,
     ControlReconciliationError,
+    ControlReconciliationNotFoundError,
     ControlReconciliationStore,
     ControlReconciliationUnavailableError,
 )
-from .frontend_contract_routes import (
-    ContractRouteError,
-    FrontendContractBinding,
-    FrontendContractTarget,
+from .credential_transport import CredentialMaterialStoreFactory
+from .global_contracts.http_contract_dispatch import (
+    HTTPCapabilitySnapshot,
+    HTTPContractBinding,
+    HTTPContractRouteError,
+    HTTPContractTarget,
     contract_binding_map,
     is_contract_route_path,
     resolve_contract_route,
 )
 from tobkiri_protocol.canonical import canonical_digest
-from .host_contract import host_contract_value
-from .panel_auth import PanelAuthManager, get_panel_auth_manager
-from .runtime_surface_v4 import RuntimeSurfaceError, RuntimeSurfaceErrorCode
+from tobkiri_host.acceptance_receipts import AcceptanceReceipt, AcceptanceReceiptPort
+from tobkiri_host.backends import ExecutionBackend
+from .host_contract import (
+    ExecutionProfileIdentity,
+    HostContractError,
+    capture_host_contract,
+    capture_host_contract_from_file,
+    validate_host_contract,
+)
+from .panel_auth import PanelAuthBinding, PanelAuthManager, get_panel_auth_manager
+from .pack_control_v4 import RuntimeSurfaceFactory
 from .authority.v4_models import AuthorityDenied
+from .authority.v4 import AuthorityStore
 from tobkiri_host.errors import HostCoreError
-
 
 logger = logging.getLogger(__name__)
 
-THREAD_JOIN_TIMEOUT_SECONDS = 5
+# Leave the native Launcher enough of its five-second quit budget to reap the
+# Pack shell and kernel after a bounded HTTP drain. Chat cancellation remains a
+# separate acceptance path; a quit must not wait for that path indefinitely.
+THREAD_JOIN_TIMEOUT_SECONDS = 3
 MAX_CONCURRENT_REQUESTS = 32
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+# Startup capture assertions can collide with a writer's packaged-artifact
+# hash or a crash-recovery republish.  Each attempt keeps its bounded lock
+# wait, so transient holds are retried inside a budget sized past the
+# worst-case writer hold instead of exiting the surface before it serves.
+_ASSERT_CURRENT_RETRY_BUDGET_SECONDS = 45.0
+_ASSERT_CURRENT_RETRY_DELAY_SECONDS = 0.05
+_ASSERT_CURRENT_RETRY_DELAY_MAX_SECONDS = 0.5
+
+# A presenter-scoped session minted by the approval window's dedicated code
+# exchange may only present the one interactive approval request it was
+# issued for.  Contract dispatch performs the exact request-id check; this
+# fixed allowlist fences the session away from every other operation.
+_PRESENTER_SCOPED_CONTRACT_ID = "tobkiri.service.interactive-approval.v1"
+_PRESENTER_SCOPED_OPERATIONS = frozenset(
+    {
+        "interactive_approval.get",
+        "interactive_approval.approve",
+        "interactive_approval.deny",
+    }
+)
+
+
+def _is_activation_lock_timeout(error: BaseException) -> bool:
+    """Classify a bounded cross-process activation-lock wait when resolvable."""
+
+    try:
+        from .profile_runtime_port import require_profile_runtime
+
+        return bool(require_profile_runtime().is_activation_lock_timeout(error))
+    except Exception:
+        return False
+
+
+class HTTPRuntimeErrorCode(str, Enum):
+    """Stable Host error vocabulary for a captured HTTP operation."""
+
+    PROFILE_NOT_ACTIVE = "PROFILE_NOT_ACTIVE"
+    STALE_REVISION = "STALE_REVISION"
+    DIGEST_MISMATCH = "DIGEST_MISMATCH"
+    OPERATION_NOT_FOUND = "OPERATION_NOT_FOUND"
+    UNAPPROVED = "UNAPPROVED"
+    TIMEOUT = "TIMEOUT"
+    INVALID_REQUEST = "INVALID_REQUEST"
+    API_FAILURE = "API_FAILURE"
+
 
 _PUBLIC_ERROR_MESSAGES: Mapping[str, str] = {
-    RuntimeSurfaceErrorCode.INVALID_REQUEST.value: "The request is invalid",
-    RuntimeSurfaceErrorCode.PROFILE_NOT_ACTIVE.value: "The active Profile is unavailable",
-    RuntimeSurfaceErrorCode.STALE_REVISION.value: "The Profile revision is stale",
-    RuntimeSurfaceErrorCode.DIGEST_MISMATCH.value: "The request binding does not match",
-    RuntimeSurfaceErrorCode.UNAPPROVED.value: "Host approval is required",
-    RuntimeSurfaceErrorCode.TIMEOUT.value: "The runtime operation timed out",
-    RuntimeSurfaceErrorCode.API_FAILURE.value: "The runtime operation is unavailable",
+    HTTPRuntimeErrorCode.INVALID_REQUEST.value: "The request is invalid",
+    HTTPRuntimeErrorCode.PROFILE_NOT_ACTIVE.value: "The active Profile is unavailable",
+    HTTPRuntimeErrorCode.STALE_REVISION.value: "The Profile revision is stale",
+    HTTPRuntimeErrorCode.DIGEST_MISMATCH.value: "The request binding does not match",
+    HTTPRuntimeErrorCode.OPERATION_NOT_FOUND.value: (
+        "The operation is absent from the current data root"
+    ),
+    HTTPRuntimeErrorCode.UNAPPROVED.value: "Host approval is required",
+    HTTPRuntimeErrorCode.TIMEOUT.value: "The runtime operation timed out",
+    HTTPRuntimeErrorCode.API_FAILURE.value: "The runtime operation is unavailable",
 }
 
 _PUBLIC_ERROR_STATUS: Mapping[str, int] = {
-    RuntimeSurfaceErrorCode.INVALID_REQUEST.value: 400,
-    RuntimeSurfaceErrorCode.PROFILE_NOT_ACTIVE.value: 409,
-    RuntimeSurfaceErrorCode.STALE_REVISION.value: 409,
-    RuntimeSurfaceErrorCode.DIGEST_MISMATCH.value: 409,
-    RuntimeSurfaceErrorCode.UNAPPROVED.value: 403,
-    RuntimeSurfaceErrorCode.TIMEOUT.value: 504,
-    RuntimeSurfaceErrorCode.API_FAILURE.value: 503,
+    HTTPRuntimeErrorCode.INVALID_REQUEST.value: 400,
+    HTTPRuntimeErrorCode.PROFILE_NOT_ACTIVE.value: 409,
+    HTTPRuntimeErrorCode.STALE_REVISION.value: 409,
+    HTTPRuntimeErrorCode.DIGEST_MISMATCH.value: 409,
+    HTTPRuntimeErrorCode.OPERATION_NOT_FOUND.value: 404,
+    HTTPRuntimeErrorCode.UNAPPROVED.value: 403,
+    HTTPRuntimeErrorCode.TIMEOUT.value: 504,
+    HTTPRuntimeErrorCode.API_FAILURE.value: 503,
 }
 
+_HOST_CONTRACT_UNSET = object()
+
 _ERROR_CODE_ALIASES: Mapping[str, str] = {
-    "denied": RuntimeSurfaceErrorCode.UNAPPROVED.value,
-    "pack_control_denied": RuntimeSurfaceErrorCode.UNAPPROVED.value,
-    "pack_control_invalid_request": RuntimeSurfaceErrorCode.INVALID_REQUEST.value,
-    "pack_control_conflict": RuntimeSurfaceErrorCode.STALE_REVISION.value,
-    "pack_control_stale_revision": RuntimeSurfaceErrorCode.STALE_REVISION.value,
-    "pack_control_digest_mismatch": RuntimeSurfaceErrorCode.DIGEST_MISMATCH.value,
-    "pack_control_unapproved": RuntimeSurfaceErrorCode.UNAPPROVED.value,
-    "pack_control_unavailable": RuntimeSurfaceErrorCode.API_FAILURE.value,
-    "pack_control_timeout": RuntimeSurfaceErrorCode.TIMEOUT.value,
-    "timed_out": RuntimeSurfaceErrorCode.TIMEOUT.value,
-    "backend_unavailable": RuntimeSurfaceErrorCode.API_FAILURE.value,
-    "provider_failed": RuntimeSurfaceErrorCode.API_FAILURE.value,
-    "audit_unavailable": RuntimeSurfaceErrorCode.API_FAILURE.value,
-    "busy": RuntimeSurfaceErrorCode.API_FAILURE.value,
-    "resource_exhausted": RuntimeSurfaceErrorCode.API_FAILURE.value,
-    "host_core_error": RuntimeSurfaceErrorCode.API_FAILURE.value,
+    "denied": HTTPRuntimeErrorCode.UNAPPROVED.value,
+    "pack_control_denied": HTTPRuntimeErrorCode.UNAPPROVED.value,
+    "pack_control_invalid_request": HTTPRuntimeErrorCode.INVALID_REQUEST.value,
+    "pack_control_conflict": HTTPRuntimeErrorCode.STALE_REVISION.value,
+    "pack_control_stale_revision": HTTPRuntimeErrorCode.STALE_REVISION.value,
+    "pack_control_digest_mismatch": HTTPRuntimeErrorCode.DIGEST_MISMATCH.value,
+    "pack_control_operation_not_found": HTTPRuntimeErrorCode.OPERATION_NOT_FOUND.value,
+    "pack_control_unapproved": HTTPRuntimeErrorCode.UNAPPROVED.value,
+    "pack_control_unavailable": HTTPRuntimeErrorCode.API_FAILURE.value,
+    "pack_control_timeout": HTTPRuntimeErrorCode.TIMEOUT.value,
+    "timed_out": HTTPRuntimeErrorCode.TIMEOUT.value,
+    "backend_unavailable": HTTPRuntimeErrorCode.API_FAILURE.value,
+    "provider_failed": HTTPRuntimeErrorCode.API_FAILURE.value,
+    "audit_unavailable": HTTPRuntimeErrorCode.API_FAILURE.value,
+    "busy": HTTPRuntimeErrorCode.API_FAILURE.value,
+    "resource_exhausted": HTTPRuntimeErrorCode.API_FAILURE.value,
+    "host_core_error": HTTPRuntimeErrorCode.API_FAILURE.value,
 }
 
 
 def _public_error_code(value: object) -> str:
     """Return one stable public code without reflecting provider-controlled text."""
 
-    if isinstance(value, RuntimeSurfaceErrorCode):
+    if isinstance(value, HTTPRuntimeErrorCode):
         return value.value
     candidate = str(value or "").strip()
     if candidate in _PUBLIC_ERROR_STATUS:
         return candidate
-    return _ERROR_CODE_ALIASES.get(candidate.lower(), RuntimeSurfaceErrorCode.API_FAILURE.value)
+    return _ERROR_CODE_ALIASES.get(candidate.lower(), HTTPRuntimeErrorCode.API_FAILURE.value)
 
 
 def _public_error_result(code: object) -> dict[str, object]:
@@ -113,14 +175,14 @@ def _public_error_result(code: object) -> dict[str, object]:
 
     public_code = _public_error_code(code)
     return {
-        "runtime_surface_api_version": "io.tobkiri.launcher.runtime-surface.v4",
+        "host_operation_api_version": "io.tobkiri.host.operation.v1",
         "state": "error",
         "code": public_code,
         "message": _PUBLIC_ERROR_MESSAGES[public_code],
         "retryable": public_code
         in {
-            RuntimeSurfaceErrorCode.TIMEOUT.value,
-            RuntimeSurfaceErrorCode.API_FAILURE.value,
+            HTTPRuntimeErrorCode.TIMEOUT.value,
+            HTTPRuntimeErrorCode.API_FAILURE.value,
         },
         "write_set": [],
     }
@@ -134,38 +196,43 @@ def _exception_error_code(error: BaseException) -> str:
     host_code: str | None = None
     while current is not None and id(current) not in seen:
         seen.add(id(current))
-        if isinstance(current, RuntimeSurfaceError):
-            return _public_error_code(current.code)
+        captured_code = getattr(current, "code", None)
+        if captured_code is not None:
+            normalized = _public_error_code(captured_code)
+            if normalized != HTTPRuntimeErrorCode.API_FAILURE.value:
+                return normalized
+        if isinstance(current, ControlReconciliationNotFoundError):
+            return HTTPRuntimeErrorCode.OPERATION_NOT_FOUND.value
         if isinstance(current, ControlReconciliationConflictError):
-            return RuntimeSurfaceErrorCode.DIGEST_MISMATCH.value
+            return HTTPRuntimeErrorCode.DIGEST_MISMATCH.value
         if isinstance(current, ControlReconciliationUnavailableError):
-            return RuntimeSurfaceErrorCode.API_FAILURE.value
+            return HTTPRuntimeErrorCode.API_FAILURE.value
         if isinstance(current, AuthorityDenied):
             authority_codes = {
-                "authority_denied": RuntimeSurfaceErrorCode.UNAPPROVED.value,
-                "revoked": RuntimeSurfaceErrorCode.UNAPPROVED.value,
-                "stale_epoch": RuntimeSurfaceErrorCode.STALE_REVISION.value,
-                "stale_revision": RuntimeSurfaceErrorCode.STALE_REVISION.value,
-                "digest_mismatch": RuntimeSurfaceErrorCode.DIGEST_MISMATCH.value,
-                "backend_unavailable": RuntimeSurfaceErrorCode.API_FAILURE.value,
-                "timed_out": RuntimeSurfaceErrorCode.TIMEOUT.value,
+                "authority_denied": HTTPRuntimeErrorCode.UNAPPROVED.value,
+                "revoked": HTTPRuntimeErrorCode.UNAPPROVED.value,
+                "stale_epoch": HTTPRuntimeErrorCode.STALE_REVISION.value,
+                "stale_revision": HTTPRuntimeErrorCode.STALE_REVISION.value,
+                "digest_mismatch": HTTPRuntimeErrorCode.DIGEST_MISMATCH.value,
+                "backend_unavailable": HTTPRuntimeErrorCode.API_FAILURE.value,
+                "timed_out": HTTPRuntimeErrorCode.TIMEOUT.value,
             }
-            return authority_codes.get(str(current.code), RuntimeSurfaceErrorCode.UNAPPROVED.value)
+            return authority_codes.get(str(current.code), HTTPRuntimeErrorCode.UNAPPROVED.value)
         if isinstance(current, HostCoreError):
             candidate = str(current.code)
             if candidate in _ERROR_CODE_ALIASES:
                 mapped = _ERROR_CODE_ALIASES[candidate]
                 if candidate.startswith("pack_control_"):
                     return mapped
-                if mapped != RuntimeSurfaceErrorCode.API_FAILURE.value:
+                if mapped != HTTPRuntimeErrorCode.API_FAILURE.value:
                     return mapped
                 host_code = mapped
         if isinstance(current, (KeyError, ValueError)):
-            return RuntimeSurfaceErrorCode.INVALID_REQUEST.value
+            return HTTPRuntimeErrorCode.INVALID_REQUEST.value
         current = current.__cause__ or current.__context__
     if host_code is not None:
         return host_code
-    return RuntimeSurfaceErrorCode.API_FAILURE.value
+    return HTTPRuntimeErrorCode.API_FAILURE.value
 
 
 def _result_record_refs(result: Mapping[str, Any]) -> list[Mapping[str, str]]:
@@ -215,26 +282,6 @@ _RETIRED_API_ROOTS = frozenset(
     }
 )
 
-_CONVERSATION_CAPABILITY_TARGET = (
-    "defaults.conversation.complete",
-    "conversation.turn.v1",
-    "complete",
-    "defaultspack.conversation",
-    "defaultspack.conversation",
-)
-
-
-def _is_conversation_capability_target(target: FrontendContractTarget) -> bool:
-    """Return whether a target is the exact host-rendered Conversation binding."""
-
-    return (
-        target.contribution_id,
-        target.contract_id,
-        target.operation_id,
-        target.provider_id,
-        target.function_id,
-    ) == _CONVERSATION_CAPABILITY_TARGET
-
 
 class DispatchSession(Protocol):
     """Captured Broker session exposed to the HTTP adapter."""
@@ -266,29 +313,180 @@ class DispatchSession(Protocol):
     def plan_digest(self) -> str:
         """Return the exact captured ResolvedPlan digest."""
 
+    @property
+    def profile_revision(self) -> str:
+        """Return the exact captured Profile revision."""
 
-def _load_production_capture_inputs() -> tuple[
-    Path, Path, Any, tuple[FrontendContractBinding, ...]
-]:
-    """Load canonical inputs for one production runtime capture."""
+    @property
+    def activation_id(self) -> str:
+        """Return the exact captured activation identity."""
 
-    from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
+    @property
+    def security_epoch(self) -> int:
+        """Return the exact captured Authority security epoch."""
 
-    from .bootstrap.profile_capture import _bundle_root
-    from .frontend_contract_routes import load_frontend_contract_bindings
 
-    runtime_root = Path(__file__).resolve().parents[1]
-    bundle_root = _bundle_root()
-    catalog = BundledCatalog.load(bundle_root)
-    bindings = load_frontend_contract_bindings(
-        runtime_root
-        / "ecosystem"
-        / "defaultspack"
-        / "defaultspack"
-        / "frontend_contract_map.v4.json",
-        catalog.packs["runtime.tauri.application.default"],
-    )
-    return runtime_root, bundle_root, catalog, bindings
+@runtime_checkable
+class PackVMAcceptanceSession(Protocol):
+    """Dispatch session that can run finite PackVM QA acceptance scenarios."""
+
+    def run_packvm_acceptance(
+        self,
+        scenario: str,
+        nonce: str,
+        *,
+        session_id: str,
+    ) -> AcceptanceReceipt:
+        """Run one finite CI/E2E scenario and return its Broker-owned receipt."""
+
+
+@dataclass(frozen=True)
+class RuntimeCaptureInputs:
+    """App-supplied immutable inputs needed to recapture a HTTP runtime."""
+
+    bundle_root: Path
+    ecosystem_root: Path
+    contract_bindings: tuple[HTTPContractBinding, ...]
+    activation_snapshot_loader: ActivationSnapshotLoader | None = None
+    runtime_surface_factory: RuntimeSurfaceFactory | None = None
+    capability_binding_snapshot_factory: CapabilityBindingSnapshotFactory | None = None
+    capability_binding_selector: CapabilityBindingSelector | None = None
+    packvm_backend_factory: Callable[[], ExecutionBackend | None] | None = None
+    credential_store_factory: CredentialMaterialStoreFactory | None = None
+    acceptance_receipts: AcceptanceReceiptPort | None = None
+    chat_continuation_approve: Callable[..., Mapping[str, object]] | None = None
+    chat_continuation_resume: Callable[..., Mapping[str, object]] | None = None
+    authority_approval_window_open: (
+        Callable[[str], Mapping[str, object]] | None
+    ) = None
+    model_search: (
+        Callable[
+            [
+                Mapping[str, object],
+                list[Mapping[str, object]],
+                Mapping[str, object],
+            ],
+            Mapping[str, object],
+        ]
+        | None
+    ) = None
+
+
+class ActivationSnapshotLoader(Protocol):
+    """Application verification of an already-selected activation envelope."""
+
+    def __call__(
+        self,
+        *,
+        active: object,
+        workspace: Path,
+        profile_id: str,
+        authority_store: AuthorityStore,
+        catalog: object,
+    ) -> object:
+        """Return the persisted active snapshot for this Profile."""
+
+
+class CapabilityBindingSnapshotFactory(Protocol):
+    """Application serialization of capability capture facts."""
+
+    def __call__(
+        self,
+        binding: object,
+        *,
+        session: object,
+        catalog: Mapping[str, object],
+    ) -> Mapping[str, object]:
+        """Return capability facts for the app surface."""
+
+
+class CapabilityBindingSelector(Protocol):
+    """Application selection of one capability binding from its route map."""
+
+    def __call__(self, bindings: tuple[object, ...]) -> object | None:
+        """Return the capability binding or ``None`` when unavailable."""
+
+
+class RuntimeCaptureFactory(Protocol):
+    """Composition root for application-owned map and artifact selection."""
+
+    def __call__(self, active: object | None = None) -> RuntimeCaptureInputs:
+        """Return the exact app-selected inputs for one capture boundary."""
+
+
+class CapabilitySnapshotFactory(Protocol):
+    """App-owned contribution capture injected into the generic HTTP Host."""
+
+    def __call__(
+        self,
+        binding: HTTPContractBinding,
+        *,
+        session: DispatchSession,
+        catalog: Mapping[str, object],
+    ) -> HTTPCapabilitySnapshot:
+        """Return targets admitted for this exact application capture."""
+
+
+class CapabilitySnapshotReader(Protocol):
+    """Read one captured capability snapshot for a selected HTTP map entry."""
+
+    def __call__(
+        self,
+        binding: HTTPContractBinding,
+        *,
+        catalog: Mapping[str, object] | None = None,
+    ) -> HTTPCapabilitySnapshot:
+        """Return capture-verified static and dynamic targets."""
+
+
+@dataclass(frozen=True)
+class ApplicationHTTPContractRequest:
+    """An application-decoded dynamic request, still subject to Host checks."""
+
+    target: HTTPContractTarget
+    payload: Mapping[str, object]
+
+
+class HTTPApplicationPresentation(Protocol):
+    """Application-owned HTTP payload and result presentation rules."""
+
+    def decode_request(
+        self,
+        binding: HTTPContractBinding,
+        *,
+        body: Mapping[str, object],
+        query: Mapping[str, object],
+        session: DispatchSession,
+        snapshot: HTTPCapabilitySnapshot,
+    ) -> ApplicationHTTPContractRequest | None:
+        """Decode an application-specific multi-target request."""
+
+    def normalize_payload(
+        self,
+        target: HTTPContractTarget,
+        payload: Mapping[str, object],
+        *,
+        session: DispatchSession,
+        workspace_binding_resolver: WorkspaceBindingResolver | None,
+    ) -> Mapping[str, object]:
+        """Apply application-specific payload semantics after Host selection."""
+
+    def requires_operation_ready(self, target: HTTPContractTarget) -> bool:
+        """Return whether this UI target must be backend-ready at bind time."""
+
+    def startup_operation_requirements(self) -> tuple[tuple[str, str], ...]:
+        """Return exact additional operations required before chat opens."""
+
+    def present_result(
+        self,
+        binding: HTTPContractBinding,
+        result: Mapping[str, object],
+        *,
+        session: DispatchSession | None,
+        routes: Mapping[tuple[str, str], HTTPContractBinding],
+        capability_snapshot: CapabilitySnapshotReader,
+    ) -> Mapping[str, object]:
+        """Apply app UI projection to a Host-sanitized terminal result."""
 
 
 class WorkspaceBindingResolver(Protocol):
@@ -473,8 +671,7 @@ class _RequestReplayGuard:
     """Consume browser request identities once per authenticated server."""
 
     _REQUEST_ID = re.compile(
-        r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-"
-        r"[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-" r"[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
     )
 
     DEFAULT_CAPACITY = 100_000
@@ -588,12 +785,15 @@ class PackAPIHandler(
     )
     _panel_auth_manager: PanelAuthManager | None = None
     _dispatch_session: DispatchSession | None = None
-    _contract_routes: Mapping[tuple[str, str], FrontendContractBinding] = {}
+    _contract_routes: Mapping[tuple[str, str], HTTPContractBinding] = {}
+    _capability_snapshot_factory: CapabilitySnapshotFactory | None = None
+    _application_presentation: HTTPApplicationPresentation | None = None
     _contract_replay_guard: _RequestReplayGuard | None = None
     _operation_journal: ControlReconciliationStore | None = None
     _runtime_refresh: Callable[[DispatchSession | None], None] | None = None
     _packvm_lifecycle: PackVMLifecyclePort | None = None
     _workspace_binding_resolver: WorkspaceBindingResolver | None = None
+    _host_contract_snapshot: Mapping[str, Any] | None = None
     _instance_web_mounts: tuple[WebMountEntry, ...] | None = None
     app_lifecycle_manager: LifecyclePort | None = None
     _runtime_port = 8765
@@ -608,13 +808,16 @@ class PackAPIHandler(
         panel_auth_manager: PanelAuthManager,
         dispatch_session: DispatchSession | None,
         app_lifecycle_manager: LifecyclePort | None,
-        contract_routes: Mapping[tuple[str, str], FrontendContractBinding] | None = None,
+        contract_routes: (Mapping[tuple[str, str], HTTPContractBinding] | None) = None,
+        capability_snapshot_factory: CapabilitySnapshotFactory | None = None,
+        application_presentation: HTTPApplicationPresentation | None = None,
         replay_guard: _RequestReplayGuard | None = None,
         operation_journal: ControlReconciliationStore | None = None,
         web_mounts: tuple[WebMountEntry, ...] | None = None,
         runtime_refresh: Callable[[DispatchSession | None], None] | None = None,
         workspace_binding_resolver: WorkspaceBindingResolver | None = None,
         packvm_lifecycle: PackVMLifecyclePort | None = None,
+        host_contract: Mapping[str, Any] | None = None,
     ) -> type["PackAPIHandler"]:
         """Create an isolated handler bound to one captured runtime session."""
 
@@ -622,21 +825,43 @@ class PackAPIHandler(
         bound_dispatch = dispatch_session
         bound_lifecycle = app_lifecycle_manager
         bound_contract_routes = dict(contract_routes or {})
+        bound_capability_snapshot_factory = capability_snapshot_factory
+        bound_application_presentation = application_presentation
         bound_replay_guard = replay_guard
         bound_operation_journal = operation_journal
         bound_web_mounts = web_mounts
         bound_runtime_refresh = runtime_refresh
         bound_workspace_binding_resolver = workspace_binding_resolver
         bound_packvm_lifecycle = packvm_lifecycle
+        bound_host_contract = (
+            validate_host_contract(
+                host_contract,
+                expected_identity=(
+                    bound_dispatch
+                    if bound_dispatch is not None
+                    and getattr(bound_dispatch, "session_kind", None) != "host_profile_control"
+                    else None
+                ),
+            )
+            if host_contract is not None
+            else None
+        )
 
         class BoundPackAPIHandler(PackAPIHandler):
             _panel_auth_manager = bound_panel_auth
             _dispatch_session = bound_dispatch
             app_lifecycle_manager = bound_lifecycle
             _contract_routes = bound_contract_routes
+            _capability_snapshot_factory = (
+                staticmethod(bound_capability_snapshot_factory)
+                if bound_capability_snapshot_factory is not None
+                else None
+            )
+            _application_presentation = bound_application_presentation
             _contract_replay_guard = bound_replay_guard
             _operation_journal = bound_operation_journal
             _packvm_lifecycle = bound_packvm_lifecycle
+            _host_contract_snapshot = bound_host_contract
             _instance_web_mounts = bound_web_mounts
             _runtime_refresh = (
                 staticmethod(bound_runtime_refresh) if bound_runtime_refresh is not None else None
@@ -657,20 +882,23 @@ class PackAPIHandler(
                 self,
                 result: Mapping[str, object],
             ) -> None:
-                """Recapture committed setup state after flushing its receipt."""
+                """Request a cold Host recapture after flushing activation success.
 
-                if result.get("state") != "active" or bound_runtime_refresh is None:
+                A setup handler serves the HostProfileControl capture.  Once
+                activation commits, that capture is intentionally stale and
+                must not be replaced in-process from a mutable contract path.
+                The Launcher publishes the matching active contract before it
+                restarts the Host, which then captures one coherent pair.
+                """
+
+                if result.get("state") != "active" and not (
+                    result.get("state") == "activation_committed"
+                    and result.get("restart_required") is True
+                ):
                     return
-                try:
-                    bound_runtime_refresh(self.__class__._dispatch_session)
-                except Exception as error:
-                    from .app_lifecycle_manager import mark_runtime_failed
+                from .restart_control import request_kernel_restart
 
-                    mark_runtime_failed("canonical runtime capture failed")
-                    logger.warning(
-                        "Canonical runtime recapture failed after setup response",
-                        exc_info=error,
-                    )
+                request_kernel_restart()
 
             @staticmethod
             def _fixed_web_mounts() -> tuple[WebMountEntry, ...]:
@@ -680,6 +908,18 @@ class PackAPIHandler(
 
         BoundPackAPIHandler.__name__ = "PackAPIHandlerV4Instance"
         return BoundPackAPIHandler
+
+    def handle(self) -> None:
+        """Serve this connection from one immutable Host contract snapshot."""
+
+        snapshot = self._host_contract_snapshot
+        if snapshot is None:
+            super().handle()
+            return
+        from .host_contract import bind_host_contract
+
+        with bind_host_contract(snapshot):
+            super().handle()
 
     def log_message(self, format: str, *args: object) -> None:
         """Write request logs after removing bootstrap query material."""
@@ -703,7 +943,31 @@ class PackAPIHandler(
                 session_id,
                 session_ttl_seconds=self._panel_session_ttl_seconds(panel_session),
             )
+        request_scope = (
+            panel_session.get("request_scope") if panel_session else None
+        )
+        if (
+            isinstance(request_scope, str)
+            and request_scope
+            and not self._presenter_scope_request_allowed(method, path)
+        ):
+            return False
         return True
+
+    def _presenter_scope_request_allowed(self, method: str, path: str) -> bool:
+        """Confine a presenter-scoped session to its approval surface.
+
+        Static mounts stay readable so the dedicated approval window can
+        render its own shell.  Contract requests pass through here and are
+        pinned to the exact approval operation and request id at dispatch;
+        every other authenticated route denies.
+        """
+
+        if is_contract_route_path(path):
+            return True
+        return (
+            method.upper() == "GET" and self._match_web_mount(path) is not None
+        )
 
     @staticmethod
     def _redact_log_value(value: object) -> str:
@@ -759,6 +1023,68 @@ class PackAPIHandler(
     def _send_not_found(self) -> None:
         self._send_response(APIResponse(False, error="Not found"), 404)
 
+    def _handle_packvm_acceptance(self, method: str, path: str) -> bool:
+        """Run one authenticated, non-publishable native PackVM QA scenario."""
+
+        acceptance_path = "/api/internal/packvm-acceptance/run"
+        if path != acceptance_path:
+            return False
+        session = self._dispatch_session
+        broker = getattr(session, "broker", None)
+        if (
+            method != "POST"
+            or session is None
+            or getattr(broker, "acceptance_receipts_enabled", False) is not True
+        ):
+            self._discard_request_body()
+            self._send_not_found()
+            return True
+        if not self._check_auth("POST", path):
+            self._discard_request_body()
+            self._send_response(APIResponse(False, error="Unauthorized"), 401)
+            return True
+        body = self._parse_object_body()
+        if body is None:
+            return True
+        if set(body) != {"scenario", "nonce"}:
+            self._send_response(APIResponse(False, error="Invalid request"), 400)
+            return True
+        scenario = body.get("scenario")
+        nonce = body.get("nonce")
+        panel_session = self._panel_session or {}
+        session_id = panel_session.get("session_id")
+        if not (
+            isinstance(scenario, str)
+            and isinstance(nonce, str)
+            and isinstance(session_id, str)
+        ):
+            self._send_response(APIResponse(False, error="Invalid request"), 400)
+            return True
+        if not isinstance(session, PackVMAcceptanceSession):
+            self._send_response(
+                APIResponse(False, error="PackVM acceptance evidence is unavailable"),
+                503,
+            )
+            return True
+        try:
+            from tobkiri_host.acceptance_receipts import acceptance_receipt_mapping
+
+            receipt = session.run_packvm_acceptance(
+                scenario,
+                nonce,
+                session_id=session_id,
+            )
+            result = acceptance_receipt_mapping(receipt)
+        except Exception as error:
+            logger.warning("PackVM acceptance scenario failed closed", exc_info=error)
+            self._send_response(
+                APIResponse(False, error="PackVM acceptance evidence is unavailable"),
+                503,
+            )
+            return True
+        self._send_response(APIResponse(True, data=dict(result)))
+        return True
+
     def _refresh_setup_runtime_after_response(
         self,
         result: Mapping[str, object],
@@ -767,7 +1093,7 @@ class PackAPIHandler(
 
         del result
 
-    def _send_contract_error(self, error: ContractRouteError) -> None:
+    def _send_contract_error(self, error: HTTPContractRouteError) -> None:
         self._send_response(
             APIResponse(
                 False,
@@ -792,7 +1118,7 @@ class PackAPIHandler(
             return False
         try:
             resolved = resolve_contract_route(self, method, self.path)
-        except ContractRouteError as error:
+        except HTTPContractRouteError as error:
             self._discard_request_body()
             self._send_contract_error(error)
             return True
@@ -802,7 +1128,7 @@ class PackAPIHandler(
         if route_binding is None:
             self._discard_request_body()
             self._send_contract_error(
-                ContractRouteError(
+                HTTPContractRouteError(
                     "CONTRACT_OPERATION_UNKNOWN",
                     "Unknown frontend contract operation",
                     404,
@@ -817,6 +1143,8 @@ class PackAPIHandler(
         raw_session_id = panel_session.get("session_id") if panel_session else None
         session_id: str | None = raw_session_id if isinstance(raw_session_id, str) else None
         session_ttl_seconds = self._panel_session_ttl_seconds(panel_session)
+        raw_scope = panel_session.get("request_scope") if panel_session else None
+        request_scope = raw_scope if isinstance(raw_scope, str) else ""
         request_id = self.headers.get("X-Tobkiri-Request-ID", "").strip().lower()
         replay_guard = self._contract_replay_guard
         if (
@@ -837,27 +1165,44 @@ class PackAPIHandler(
                 409,
             )
             return True
-        outer_body: dict[str, object] = {}
+        session = self._dispatch_session
+        if session is None:
+            self._discard_request_body()
+            self._send_response(
+                APIResponse(False, error="Captured v4 dispatch session is unavailable"),
+                503,
+            )
+            return True
         if method.upper() == "GET":
             self._discard_request_body()
             payload: dict[str, object] = dict(resolved.query)
+            target = route_binding.targets[0] if len(route_binding.targets) == 1 else None
         else:
             body = self._parse_object_body()
             if body is None:
                 return True
             if len(route_binding.targets) == 1:
                 payload = {**resolved.query, **body}
+                target = route_binding.targets[0]
             else:
-                outer_body = body
-                nested = body.get("payload")
-                if not isinstance(nested, dict) or any(not isinstance(key, str) for key in nested):
-                    self._send_response(
-                        APIResponse(False, error="Contract payload must be an object"),
-                        400,
+                presentation = self._application_presentation
+                decoded = (
+                    presentation.decode_request(
+                        route_binding,
+                        body=body,
+                        query=resolved.query,
+                        session=session,
+                        snapshot=self._capability_snapshot(route_binding),
                     )
-                    return True
-                payload = {**resolved.query, **nested}
-        target = self._select_contract_target(route_binding, outer_body)
+                    if presentation is not None
+                    else None
+                )
+                if decoded is None:
+                    target = None
+                    payload = {}
+                else:
+                    target = decoded.target
+                    payload = dict(decoded.payload)
         if target is None:
             self._send_response(
                 APIResponse(
@@ -884,15 +1229,37 @@ class PackAPIHandler(
                 400,
             )
             return True
-        session = self._dispatch_session
-        if session is None:
+        if request_scope and (
+            target.contract_id != _PRESENTER_SCOPED_CONTRACT_ID
+            or target.operation_id not in _PRESENTER_SCOPED_OPERATIONS
+            or payload.get("request_id") != request_scope
+        ):
+            # A presenter-scoped session may present only the one interactive
+            # approval request its grant was issued for; every other
+            # operation and every other request id denies.
             self._send_response(
-                APIResponse(False, error="Captured v4 dispatch session is unavailable"),
-                503,
+                APIResponse(
+                    False,
+                    data={
+                        "state": "contract_dispatch_denied",
+                        "code": "session_request_scope",
+                    },
+                    error="Panel session is scoped to one approval request",
+                ),
+                403,
             )
             return True
         try:
-            payload = self._normalize_dynamic_payload(target, payload, session)
+            presentation = self._application_presentation
+            if presentation is not None:
+                payload = dict(
+                    presentation.normalize_payload(
+                        target,
+                        payload,
+                        session=session,
+                        workspace_binding_resolver=self._workspace_binding_resolver,
+                    )
+                )
         except (OSError, ValueError) as error:
             logger.warning("Contract payload normalization failed", exc_info=error)
             self._send_response(
@@ -989,9 +1356,7 @@ class PackAPIHandler(
             if operation_record is not None:
                 state = str(operation_record["state"])
                 prior_result = operation_record.get("result")
-                if state in {"succeeded", "failed"} and isinstance(
-                    prior_result, Mapping
-                ):
+                if state in {"succeeded", "failed"} and isinstance(prior_result, Mapping):
                     self._send_contract_outcome(route_binding, prior_result)
                     return True
             try:
@@ -1008,7 +1373,7 @@ class PackAPIHandler(
             ) as error:
                 public_result = _public_error_result(_exception_error_code(error))
                 self._send_contract_outcome(route_binding, public_result)
-                if public_result["code"] == RuntimeSurfaceErrorCode.UNAPPROVED.value:
+                if public_result["code"] == HTTPRuntimeErrorCode.UNAPPROVED.value:
                     self._defer_response_log(
                         logger,
                         logging.INFO,
@@ -1103,9 +1468,7 @@ class PackAPIHandler(
             if not created:
                 state = str(operation_record["state"])
                 prior_result = operation_record.get("result")
-                if state in {"succeeded", "failed"} and isinstance(
-                    prior_result, Mapping
-                ):
+                if state in {"succeeded", "failed"} and isinstance(prior_result, Mapping):
                     self._send_contract_outcome(route_binding, prior_result)
                 else:
                     self._send_response(
@@ -1134,7 +1497,6 @@ class PackAPIHandler(
                         else None
                     ),
                 )
-            self._refresh_after_operation(target.operation_id, safe_result)
         except (
             HostCoreError,
             KeyError,
@@ -1155,9 +1517,7 @@ class PackAPIHandler(
                     )
                 except ControlReconciliationError as reconciliation_error:
                     journal_error = reconciliation_error
-                    public_result = _public_error_result(
-                        RuntimeSurfaceErrorCode.API_FAILURE
-                    )
+                    public_result = _public_error_result(HTTPRuntimeErrorCode.API_FAILURE)
             self._send_contract_outcome(route_binding, public_result)
             # Write the bounded, sanitized response before diagnostic logging.
             # Logging a provider traceback can contend with suite-wide capture or
@@ -1171,7 +1531,7 @@ class PackAPIHandler(
                     target.operation_id,
                     exc_info=journal_error,
                 )
-            elif public_result["code"] == RuntimeSurfaceErrorCode.UNAPPROVED.value:
+            elif public_result["code"] == HTTPRuntimeErrorCode.UNAPPROVED.value:
                 self._defer_response_log(
                     logger,
                     logging.INFO,
@@ -1190,6 +1550,19 @@ class PackAPIHandler(
                     exc_info=error,
                 )
             return True
+        try:
+            self._refresh_after_operation(target.operation_id, safe_result)
+        except Exception as error:
+            # Activation has already committed. A stale Host contract must not
+            # change its durable outcome or cause the client to replay it.
+            self._defer_response_log(
+                logger,
+                logging.WARNING,
+                "Runtime capture refresh pending after %s/%s",
+                target.contract_id,
+                target.operation_id,
+                exc_info=error,
+            )
         self._send_contract_outcome(route_binding, safe_result)
         return True
 
@@ -1244,7 +1617,7 @@ class PackAPIHandler(
 
     def _send_contract_outcome(
         self,
-        binding: FrontendContractBinding,
+        binding: HTTPContractBinding,
         result: Mapping[str, object],
     ) -> None:
         """Send initial and replayed terminal outcomes through one mapping."""
@@ -1328,6 +1701,7 @@ class PackAPIHandler(
         if lifecycle is None:
             self._send_response(APIResponse(False, error="PackVM lifecycle is unavailable"), 503)
             return True
+        refresh_after_response = False
         try:
             if operation == "prepare":
                 if payload:
@@ -1348,11 +1722,10 @@ class PackAPIHandler(
                 result = lifecycle.cancel(payload, session_id=packvm_session_id)
             elif operation == "stop":
                 result = lifecycle.stop(payload)
+                refresh_after_response = self._runtime_refresh is not None
             else:
                 result = lifecycle.cleanup(payload, session_id=packvm_session_id)
             if operation == "doctor" and result.get("ready") is True and self._runtime_refresh:
-                self._runtime_refresh(None)
-            elif operation == "stop" and self._runtime_refresh:
                 self._runtime_refresh(None)
             elif (
                 operation == "progress"
@@ -1378,6 +1751,28 @@ class PackAPIHandler(
             )
             return True
         self._send_response(APIResponse(True, data=dict(result)))
+        if refresh_after_response:
+            refresh = self._runtime_refresh
+
+            def refresh_stopped_runtime() -> None:
+                if refresh is None:
+                    return
+                try:
+                    refresh(None)
+                except Exception:
+                    # The stop response is already committed. A refresh failure
+                    # must not turn a successful, audited stop into an HTTP
+                    # timeout or an unhandled daemon-thread exception.
+                    logger.warning(
+                        "PackVM stop runtime refresh failed",
+                        exc_info=True,
+                    )
+
+            threading.Thread(
+                target=refresh_stopped_runtime,
+                name="packvm-stop-runtime-refresh",
+                daemon=True,
+            ).start()
         return True
 
     def _refresh_after_operation(
@@ -1401,95 +1796,26 @@ class PackAPIHandler(
         }:
             refresh(None)
 
-    def _select_contract_target(
-        self,
-        binding: FrontendContractBinding,
-        body: Mapping[str, object],
-    ) -> FrontendContractTarget | None:
-        """Select only a contribution committed in the captured application map."""
-
-        if len(binding.targets) == 1 and not body:
-            return binding.targets[0]
-        expected_fields = {
-            "request_id",
-            "expires_at",
-            "profile_id",
-            "plan_hash",
-            "catalog_hash",
-            "contribution_id",
-            "owner_pack_id",
-            "contract_id",
-            "payload",
-        }
-        if set(body) != expected_fields:
-            return None
-        capability_request_id = body.get("request_id")
-        expires_at = body.get("expires_at")
-        try:
-            valid_request_id = (
-                isinstance(capability_request_id, str)
-                and str(uuid.UUID(capability_request_id)) == capability_request_id
-            )
-        except ValueError:
-            valid_request_id = False
-        now = time.time()
-        valid_expiry = (
-            isinstance(expires_at, (int, float))
-            and not isinstance(expires_at, bool)
-            and now < float(expires_at) <= now + 60
-        )
-        if not valid_request_id or not valid_expiry:
-            return None
-        session = self._dispatch_session
-        if session is None or (
-            body.get("profile_id") != session.profile_id
-            or body.get("plan_hash") != session.plan_digest
-            or body.get("catalog_hash") != self._frontend_catalog_hash(binding)
-        ):
-            return None
-        contribution_id = body.get("contribution_id")
-        contract_id = body.get("contract_id")
-        return next(
-            (
-                target
-                for target in self._capability_targets(binding)
-                if target.contribution_id == contribution_id
-                and target.contract_id == contract_id
-                and target.owner_pack_id == body.get("owner_pack_id")
-            ),
-            None,
-        )
-
-    def _frontend_catalog_hash(self, binding: FrontendContractBinding) -> str:
-        return self._capability_snapshot(binding).catalog_hash
-
-    def _capability_targets(
-        self,
-        binding: FrontendContractBinding,
-        catalog: Mapping[str, object] | None = None,
-    ) -> tuple[FrontendContractTarget, ...]:
-        """Return static map targets plus exact enabled Pack contributions."""
-
-        return self._capability_snapshot(binding, catalog).targets
-
     def _capability_snapshot(
         self,
-        binding: FrontendContractBinding,
+        binding: HTTPContractBinding,
         catalog: Mapping[str, object] | None = None,
-    ) -> CapabilityBindingSnapshot:
+    ) -> HTTPCapabilitySnapshot:
         """Capture the exact targets and hash used by selection and presentation."""
 
         session = self._dispatch_session
         if session is None:
-            return CapabilityBindingSnapshot(
+            return HTTPCapabilitySnapshot(
                 catalog_hash=canonical_digest(
                     {
                         "profile_id": "",
+                        "profile_revision": "",
+                        "activation_id": "",
                         "plan_digest": "",
                         "contributions": [],
                     }
                 ),
-                targets=binding.targets,
+                targets=(),
             )
         if catalog is None:
             catalog = getattr(self, "_capability_catalog_cache", None)
@@ -1506,181 +1832,41 @@ class PackAPIHandler(
                     catalog = {"packs": []}
         if not isinstance(catalog, Mapping):
             catalog = {"packs": []}
-        return capture_capability_binding_snapshot(
-            binding,
-            session=session,
-            catalog=catalog,
-        )
-
-    def _capability_diagnostics(
-        self,
-        catalog: Mapping[str, object],
-    ) -> list[dict[str, str]]:
-        """Expose stable fail-closed reasons for selected unavailable operations."""
-
-        session = self._dispatch_session
-        packs = catalog.get("packs")
-        if session is None or not isinstance(packs, list):
-            return []
-        diagnostics: list[dict[str, str]] = []
-        for pack in packs:
-            if not isinstance(pack, Mapping) or pack.get("enabled") is not True:
-                continue
-            pack_id = str(pack.get("pack_id") or "")
-            operations = pack.get("operations")
-            if not isinstance(operations, list):
-                continue
-            for operation in operations:
-                if not isinstance(operation, Mapping):
-                    continue
-                if operation.get("invokable") is not True:
-                    continue
-                contract_id = str(operation.get("contract_id") or "")
-                operation_id = str(operation.get("operation_id") or "")
-                provider_id = str(operation.get("provider_id") or "")
-                for provider in session.provider_metadata(contract_id):
-                    if (
-                        provider.get("provider_id") == provider_id
-                        and provider.get("operation_id") == operation_id
-                        and provider.get("backend_unavailable_reason")
-                    ):
-                        diagnostics.append(
-                            {
-                                "code": "production_backend_unavailable",
-                                "severity": "error",
-                                "owner_pack_id": pack_id,
-                                "contribution_id": f"pack.{pack_id}.{operation_id}",
-                                "message": str(provider["backend_unavailable_reason"]),
-                            }
-                        )
-        return diagnostics
+        factory = self._capability_snapshot_factory
+        if factory is None:
+            return HTTPCapabilitySnapshot(
+                catalog_hash=canonical_digest(
+                    {
+                        "profile_id": session.profile_id,
+                        "profile_revision": session.profile_revision,
+                        "activation_id": session.activation_id,
+                        "plan_digest": session.plan_digest,
+                        "contributions": [],
+                    }
+                ),
+                targets=(),
+            )
+        return factory(binding, session=session, catalog=catalog)
 
     def _present_contract_result(
         self,
-        binding: FrontendContractBinding,
+        binding: HTTPContractBinding,
         result: Mapping[str, object],
     ) -> dict[str, object]:
-        """Apply the presentation named by the committed application artifact."""
+        """Apply an injected application projection to a sanitized result."""
 
-        if binding.presentation != "dynamic_pack_catalog":
+        presentation = self._application_presentation
+        if presentation is None:
             return dict(result)
-        capability_binding = self._contract_routes.get(("POST", "/api/ui/capability/invoke"))
-        contributions = (
-            self._capability_targets(capability_binding, result) if capability_binding else ()
+        return dict(
+            presentation.present_result(
+                binding,
+                result,
+                session=self._dispatch_session,
+                routes=self._contract_routes,
+                capability_snapshot=self._capability_snapshot,
+            )
         )
-        diagnostics = self._capability_diagnostics(result)
-        session = self._dispatch_session
-        catalog_hash = (
-            self._frontend_catalog_hash(capability_binding)
-            if capability_binding is not None
-            else canonical_digest({"contributions": []})
-        )
-        return {
-            **dict(result),
-            "dynamic_host": {
-                "version": "rumi.ui.contribution.v1",
-                "profile_id": session.profile_id if session is not None else "",
-                "profile_revision": session.plan_digest if session is not None else "",
-                "plan_hash": session.plan_digest if session is not None else "",
-                "contributions": [
-                    self._capability_contribution(target, index, session)
-                    for index, target in enumerate(contributions)
-                ],
-                "diagnostics": diagnostics,
-                "quarantined_pack_ids": [],
-                "catalog_hash": catalog_hash,
-            },
-        }
-
-    @staticmethod
-    def _capability_contribution(
-        target: FrontendContractTarget,
-        priority: int,
-        session: DispatchSession | None,
-    ) -> dict[str, object]:
-        """Project one capture-verified capability as a frontend contribution."""
-
-        is_conversation = _is_conversation_capability_target(target)
-        contribution: dict[str, object] = {
-            "contribution_id": target.contribution_id,
-            "kind": "route" if is_conversation else "action",
-            "mode": "declarative" if is_conversation else "same_origin_builtin",
-            "label": (
-                "Tobkiri Conversation" if is_conversation else target.operation_id
-            ),
-            "priority": priority,
-            "owner_pack_id": target.owner_pack_id,
-            "owner_pack_hash": target.artifact_digest
-            or (session.plan_digest if session is not None else ""),
-            "build_identity": target.function_id,
-            "resolved_profile_revision": session.plan_digest if session is not None else "",
-            "resolved_plan_hash": session.plan_digest if session is not None else "",
-            "descriptor_hash": canonical_digest(
-                {
-                    "contribution_id": target.contribution_id,
-                    "operation_id": target.operation_id,
-                }
-            ),
-            "route": "/chat" if is_conversation else "/packs",
-            "action_contract": target.contract_id,
-            "operation_id": target.operation_id,
-            "provider_id": target.provider_id,
-            "function_id": target.function_id,
-            "localization": {},
-            "accessibility": {
-                "name": (
-                    "Tobkiri Conversation" if is_conversation else target.operation_id
-                ),
-                "keyboard": True,
-            },
-        }
-        if is_conversation:
-            contribution["view"] = {
-                "type": "conversation_v4",
-                "title": "Tobkiri Conversation",
-                "body": "Start a conversation with your active Tobkiri Profile.",
-            }
-        return contribution
-
-    @classmethod
-    def _normalize_dynamic_payload(
-        cls,
-        target: FrontendContractTarget,
-        payload: Mapping[str, object],
-        session: DispatchSession,
-    ) -> dict[str, object]:
-        """Bind dynamic Pack requests to Host identity and safe path semantics."""
-
-        if not target.contribution_id.startswith("pack."):
-            return dict(payload)
-        if target.contract_id != "tobkiri.service.media.inspect.v1":
-            raise ValueError("dynamic Pack operation is not an approved media contract")
-        if payload.get("name") not in {
-            "document.parse",
-            "image.inspect",
-            "audio.inspect",
-            "recording.inspect",
-        }:
-            raise ValueError("media inspection operation is not selected")
-        path = payload.get("path")
-        if not isinstance(path, str) or not path.strip() or "\x00" in path:
-            raise ValueError("a workspace-relative path is required")
-        if "\\" in path:
-            raise PermissionError("backslash paths are not accepted")
-        relative = PurePosixPath(path.strip())
-        if relative.is_absolute() or ".." in relative.parts or "." in relative.parts:
-            raise PermissionError("a workspace-relative path is required")
-        resolver = cls._workspace_binding_resolver
-        if resolver is None:
-            raise RuntimeError("Host workspace binding resolver is unavailable")
-        binding = dict(resolver(session.profile_id))
-        normalized = dict(payload)
-        normalized["path"] = relative.as_posix()
-        normalized["profile_id"] = session.profile_id
-        normalized["workspace_id"] = binding["workspace_id"]
-        normalized["require_selected"] = True
-        normalized["_workspace_binding"] = binding
-        return normalized
 
     def _parse_object_body(self) -> dict[str, object] | None:
         """Parse one JSON object and reject every other JSON root type."""
@@ -1763,14 +1949,71 @@ class PackAPIHandler(
             if hasattr(self, "headers")
             else ""
         )
-        bootstrap_secret = host_contract_value("panel_bootstrap_secret")
-        if challenge and bootstrap_secret:
-            health["desktop_challenge_response"] = hmac.new(
-                bootstrap_secret.encode("utf-8"),
-                challenge.encode("utf-8"),
-                hashlib.sha256,
-            ).hexdigest()
+        identity = self._current_health_execution_identity()
+        if identity is not None:
+            health.update(identity.as_mapping())
+        manager = self.__class__._panel_auth_manager
+        challenge_response = (
+            manager.desktop_challenge_response(challenge) if manager is not None else ""
+        )
+        if challenge_response:
+            health["desktop_challenge_response"] = challenge_response
         self._send_response(APIResponse(True, data=health))
+
+    @classmethod
+    def _current_health_execution_identity(cls) -> ExecutionProfileIdentity | None:
+        """Project only a current non-bootstrap execution capture on health."""
+
+        session = cls._dispatch_session
+        if (
+            session is None
+            or getattr(session, "session_kind", None) == "host_profile_control"
+        ):
+            return None
+        try:
+            session.assert_current()
+            return ExecutionProfileIdentity.from_source(session)
+        except (
+            AttributeError,
+            HostContractError,
+            HostCoreError,
+            KeyError,
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ):
+            return None
+
+    @classmethod
+    def _current_panel_auth_binding(cls) -> PanelAuthBinding | None:
+        """Capture the current host-owned identity for panel authentication."""
+
+        session = cls._dispatch_session
+        if session is None:
+            return None
+        try:
+            session.assert_current()
+            security_epoch = int(getattr(session, "security_epoch"))
+            if security_epoch < 1:
+                return None
+            return PanelAuthBinding(
+                profile_id=str(session.profile_id),
+                profile_revision=str(session.profile_revision),
+                activation_id=str(session.activation_id),
+                plan_digest=str(session.plan_digest),
+                security_epoch=security_epoch,
+            )
+        except (
+            AttributeError,
+            HostCoreError,
+            KeyError,
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ):
+            return None
 
     def _handle_panel_bootstrap(self) -> None:
         manager = self._panel_auth_manager
@@ -1783,8 +2026,43 @@ class PackAPIHandler(
             self._discard_request_body()
             self._send_response(APIResponse(False, error="Unauthorized"), 401)
             return
-        self._discard_request_body()
-        self._send_response(APIResponse(True, data=manager.issue_login_code()))
+        body = self._parse_object_body()
+        if body is None:
+            return
+        # The approval-window bootstrap names the request it is for so the
+        # issued code can be dedicated to that request's pending presenter
+        # grant.  The value only selects a live grant; it never creates one.
+        presenter_request = body.get("request_id")
+        presenter_request_id = (
+            presenter_request.strip() if isinstance(presenter_request, str) else ""
+        )
+        binding = self._current_panel_auth_binding()
+        if binding is None:
+            # Only the authenticated Launcher may trigger this recovery. It
+            # republishes a verified contract before requesting a fresh code.
+            # This request still belongs to the old capture; the Launcher's
+            # bootstrap retry will reach the newly published handler.
+            if self._runtime_refresh is not None:
+                try:
+                    self._runtime_refresh(None)
+                except Exception as error:
+                    self._defer_response_log(
+                        logger,
+                        logging.WARNING,
+                        "Authenticated panel runtime refresh failed",
+                        exc_info=error,
+                    )
+            self._send_response(APIResponse(False, error="Unauthorized"), 401)
+            return
+        self._send_response(
+            APIResponse(
+                True,
+                data=manager.issue_login_code(
+                    binding,
+                    presenter_request_id=presenter_request_id,
+                ),
+            )
+        )
 
     def _handle_panel_exchange(self, body: Mapping[str, object]) -> None:
         manager = self._panel_auth_manager
@@ -1793,7 +2071,21 @@ class PackAPIHandler(
             return
         code_value = body.get("code")
         code = code_value.strip() if isinstance(code_value, str) else ""
-        exchange = manager.exchange_code(code) if manager is not None else None
+        request_id_value = body.get("request_id")
+        presenter_request_id = (
+            request_id_value.strip() if isinstance(request_id_value, str) else ""
+        )
+        binding = self._current_panel_auth_binding()
+        exchange = (
+            manager.exchange_code(
+                code,
+                binding,
+                previous_session=self._parse_cookie_header().get("rumi_panel_session", ""),
+                presenter_request_id=presenter_request_id,
+            )
+            if manager is not None and binding is not None
+            else None
+        )
         if exchange is None:
             self._send_response(APIResponse(False, error="Invalid or expired code"), 401)
             return
@@ -1810,6 +2102,7 @@ class PackAPIHandler(
                 data={
                     "csrf_token": exchange["csrf_token"],
                     "expires_in": exchange["expires_in"],
+                    "journal_scope": exchange["journal_scope"],
                 },
             ),
             extra_headers=[("Set-Cookie", cookie)],
@@ -1837,40 +2130,39 @@ class PackAPIHandler(
         )
         self._send_response(APIResponse(True, data=state))
 
-    def _serve_panel_bootstrap_page(self) -> None:
-        document = b"""<!doctype html><meta charset=\"utf-8\"><title>Tobkiri</title>
-<script>
-const code=new URL(location.href).searchParams.get('code');
-if(!code){document.body.textContent='Tobkiri Launcher authentication required';}
-else fetch('/api/panel/auth/exchange',{method:'POST',credentials:'same-origin',
-headers:{'Content-Type':'application/json'},body:JSON.stringify({code})})
-.then(r=>{if(!r.ok)throw new Error('authentication failed');return r.json()})
-.then(v=>{sessionStorage.setItem('rumi-panel-csrf',v.data.csrf_token);location.replace('/panel/')})
-.catch(()=>{document.body.textContent='Tobkiri Launcher authentication failed';});
-</script>"""
-        try:
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Length", str(len(document)))
-            self.end_headers()
-            self.wfile.write(document)
-        except self._CLIENT_DISCONNECT_EXCEPTIONS:
-            self.close_connection = True
-
-    def _serve_mount_bootstrap_page(self, target: str) -> None:
+    def _serve_mount_bootstrap_page(
+        self,
+        target: str,
+        mount: WebMountEntry,
+    ) -> None:
         """Exchange a one-time desktop code before serving an authenticated mount."""
 
-        safe_target = target if target in {"/chat", "/panel/"} else "/panel/"
+        prefix = mount["path_prefix"]
+        index_path = f"{prefix}/{mount['index_file']}"
+        safe_target = target
+        if safe_target == index_path:
+            safe_target = f"{prefix}/"
+        kept_query = self._bootstrap_query_without_code()
+        if kept_query:
+            safe_target = f"{safe_target}?{kept_query}"
+        target_literal = json.dumps(safe_target)
         document = f"""<!doctype html><meta charset=\"utf-8\"><title>Tobkiri</title>
 <script>
-const code=new URL(location.href).searchParams.get('code');
+document.addEventListener('DOMContentLoaded',()=>{{
+const params=new URL(location.href).searchParams;
+const code=params.get('code');
+const requestId=params.get('request_id');
 if(!code){{document.body.textContent='Tobkiri Launcher authentication required';}}
 else fetch('/api/panel/auth/exchange',{{method:'POST',credentials:'same-origin',
-headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{code}})}})
+headers:{{'Content-Type':'application/json'}},
+body:JSON.stringify(requestId?{{code,request_id:requestId}}:{{code}})}})
 .then(r=>{{if(!r.ok)throw new Error('authentication failed');return r.json()}})
-.then(v=>{{sessionStorage.setItem('rumi-panel-csrf',v.data.csrf_token);location.replace('{safe_target}')}})
+.then(v=>{{if(!v.data?.csrf_token||!v.data?.journal_scope)throw new Error('authentication failed');
+sessionStorage.setItem('rumi-panel-csrf',v.data.csrf_token);
+sessionStorage.setItem('tobkiri-panel-journal-scope-v1',v.data.journal_scope);
+location.replace({target_literal})}})
 .catch(()=>{{document.body.textContent='Tobkiri Launcher authentication failed';}});
+}});
 </script>""".encode("utf-8")
         try:
             self.send_response(200)
@@ -1881,6 +2173,218 @@ headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{code}})}})
             self.wfile.write(document)
         except self._CLIENT_DISCONNECT_EXCEPTIONS:
             self.close_connection = True
+
+    def _bootstrap_query_without_code(self) -> str | None:
+        """Return the request query minus the consumed one-time `code` param."""
+        pairs = parse_qsl(urlparse(self.path).query, keep_blank_values=True)
+        if not any(key == "code" for key, _ in pairs):
+            return None
+        return urlencode([(key, value) for key, value in pairs if key != "code"])
+
+    @classmethod
+    def _mount_bootstrap_target(
+        cls,
+        target: str,
+        mount: WebMountEntry,
+    ) -> str | None:
+        """Return an exact route that may exchange a one-time panel code."""
+
+        prefix = mount["path_prefix"]
+        index_path = f"{prefix}/{mount['index_file']}"
+        if target in {prefix, f"{prefix}/", index_path}:
+            # A bare /p has no Profile identity and must not choose one.
+            return None if prefix == "/p" else target
+        if prefix != "/p":
+            return None
+        binding = cls._current_panel_auth_binding()
+        if binding is None:
+            return None
+        encoded_profile = quote(binding.profile_id, safe="-._~")
+        profile_root = f"/p/{encoded_profile}"
+        if target == profile_root or target.startswith(f"{profile_root}/"):
+            return target
+        return None
+
+    @classmethod
+    def _profile_registry_store(cls) -> Any:
+        """Return the Host-owned Named Profile registry for this process.
+
+        An active handler is created only after the Host has loaded the sealed
+        catalog, applied Profile migrations, and captured one exact activation.
+        Repeating that work for every registry projection delays the first
+        authenticated panel reads and can race the same cold-start checks.
+        Keep first-run/control handlers on the full preparation path, while an
+        active handler reuses only a capture that still passes its freshness
+        fence.  The registry and active pointer are independently verified by
+        the callers below.
+        """
+
+        from .bootstrap.profile_capture import (
+            host_profile_catalog,
+            runtime_user_data_root,
+        )
+        from .profile_definition_store_v4 import ProfileDefinitionStore
+
+        session = cls._dispatch_session
+        if session is None or getattr(session, "session_kind", None) == "host_profile_control":
+            host_profile_catalog()
+        else:
+            session.assert_current()
+        return ProfileDefinitionStore(runtime_user_data_root())
+
+    def _profile_registry_payload(self) -> dict[str, object]:
+        """Project all Named Profiles and the separate active execution pointer."""
+
+        from .active_profile_store_v4 import ActiveProfileStore
+        from .bootstrap.profile_capture import (
+            repair_legacy_active_profile_pointer,
+            runtime_user_data_root,
+        )
+
+        store = self._profile_registry_store()
+        state = store.snapshot()
+        repair_legacy_active_profile_pointer()
+        active = ActiveProfileStore(runtime_user_data_root()).load(verify_snapshot=True)
+        return {
+            "profile_registry_api_version": "io.tobkiri.profile-registry.v4",
+            "generation": int(state["generation"]),
+            "active_profile_id": active.profile_id if active is not None else None,
+            "active_profile_revision": (active.profile_revision if active is not None else None),
+            "profiles": store.list_profile_payloads(),
+        }
+
+    def _handle_profile_registry_read(self, path: str) -> None:
+        if not self._check_auth("GET", path):
+            self._send_response(APIResponse(False, error="Unauthorized"), 401)
+            return
+        try:
+            self._send_mapping_result(self._profile_registry_payload())
+        except Exception:
+            logger.exception("Named Profile registry read failed")
+            self._send_mapping_result(
+                {"error": "Named Profile registry is unavailable", "status_code": 503}
+            )
+
+    def _handle_profile_registry_mutation(
+        self,
+        path: str,
+        action: str,
+        body: Mapping[str, object],
+    ) -> None:
+        if not self._check_auth("POST", path):
+            self._send_response(APIResponse(False, error="Unauthorized"), 401)
+            return
+        allowed: dict[str, frozenset[str]] = {
+            "create": frozenset(
+                {
+                    "profile_id",
+                    "display_name",
+                    "source_profile_id",
+                    "expected_store_generation",
+                }
+            ),
+            "update": frozenset(
+                {
+                    "profile_id",
+                    "display_name",
+                    "expected_profile_revision",
+                    "expected_store_generation",
+                }
+            ),
+            "duplicate": frozenset(
+                {
+                    "profile_id",
+                    "new_profile_id",
+                    "display_name",
+                    "expected_profile_revision",
+                    "expected_store_generation",
+                }
+            ),
+            "delete": frozenset(
+                {
+                    "profile_id",
+                    "expected_profile_revision",
+                    "expected_store_generation",
+                }
+            ),
+        }
+        if action not in allowed or set(body) - allowed[action]:
+            self._send_mapping_result(
+                {"error": "Named Profile mutation shape is invalid", "status_code": 400}
+            )
+            return
+        from .active_profile_store_v4 import ActiveProfileStore
+        from .bootstrap.profile_capture import runtime_user_data_root
+        from .profile_definition_store_v4 import (
+            ProfileDefinitionNotFound,
+            ProfileDefinitionStoreConflict,
+        )
+
+        try:
+            store = self._profile_registry_store()
+            generation = body.get("expected_store_generation")
+            expected_generation = generation if isinstance(generation, int) else None
+            profile_id = str(body.get("profile_id") or "")
+            expected_revision = str(body.get("expected_profile_revision") or "") or None
+            display_name = str(body.get("display_name") or "").strip() or None
+            if action == "create":
+                source_id = str(body.get("source_profile_id") or "")
+                if not source_id:
+                    raise ValueError("source_profile_id is required")
+                source = store.get_profile(source_id)
+                if source is None:
+                    raise ProfileDefinitionNotFound(source_id)
+                changed = store.create_profile(
+                    source.profile,
+                    profile_id=profile_id,
+                    display_name=display_name,
+                    expected_store_generation=expected_generation,
+                )
+            elif action == "update":
+                changed = store.update_profile(
+                    profile_id,
+                    patch={"display_name": display_name or profile_id},
+                    expected_profile_revision=expected_revision,
+                    expected_store_generation=expected_generation,
+                )
+            elif action == "duplicate":
+                changed = store.duplicate_profile(
+                    profile_id,
+                    new_profile_id=str(body.get("new_profile_id") or "") or None,
+                    display_name=display_name,
+                    expected_profile_revision=expected_revision,
+                    expected_store_generation=expected_generation,
+                )
+            else:
+                active = ActiveProfileStore(runtime_user_data_root()).load(verify_snapshot=True)
+                if active is not None and active.profile_id == profile_id:
+                    self._send_mapping_result(
+                        {
+                            "error": "The active execution Profile cannot be deleted",
+                            "status_code": 409,
+                        }
+                    )
+                    return
+                changed = store.delete_profile(
+                    profile_id,
+                    expected_profile_revision=expected_revision,
+                    expected_store_generation=expected_generation,
+                )
+            result = self._profile_registry_payload()
+            result["changed_profile"] = changed.to_dict()
+            result["action"] = action
+            self._send_mapping_result(result)
+        except ProfileDefinitionNotFound:
+            self._send_mapping_result({"error": "Named Profile was not found", "status_code": 404})
+        except ProfileDefinitionStoreConflict:
+            self._send_mapping_result(
+                {"error": "Named Profile revision is stale", "status_code": 409}
+            )
+        except (OSError, RuntimeError, ValueError):
+            logger.exception("Named Profile registry mutation failed")
+            self._send_mapping_result(
+                {"error": "Named Profile mutation was rejected", "status_code": 400}
+            )
 
     def do_OPTIONS(self) -> None:
         """Answer local panel preflight without widening the origin set."""
@@ -1920,7 +2424,12 @@ headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{code}})}})
             self._handle_retired_setup_complete()
             return
         if path == "/health":
-            self._handle_health()
+            from .bootstrap.profile_capture import profile_capture_scope
+
+            # Readiness and the authenticated session identity must use the
+            # same request-local capture, just like canonical Contract reads.
+            with profile_capture_scope():
+                self._handle_health()
             return
         if path == "/":
             self.send_response(302)
@@ -1940,20 +2449,33 @@ headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{code}})}})
         if path == "/api/setup/migration/status":
             self._send_mapping_result(self._setup_get_migration_status())
             return
+        if path == "/api/v4/profiles":
+            from .bootstrap.profile_capture import profile_capture_scope
+
+            # Authentication and the registry projection both fence the same
+            # active session.  Share only this request's verified capture so a
+            # cold panel read does not repeat sealed catalog preparation.
+            with profile_capture_scope():
+                self._handle_profile_registry_read(path)
+            return
         mount = self._match_web_mount(path)
         if mount is not None:
             if mount["auth_required"] and not self._check_auth("GET", path):
-                if mount["path_prefix"] == "/chat" and path in {"/chat", "/chat/"}:
-                    self._serve_mount_bootstrap_page("/chat")
-                elif mount["path_prefix"] == "/panel" and path in {
-                    "/panel",
-                    "/panel/",
-                    "/panel/index.html",
-                }:
-                    self._serve_panel_bootstrap_page()
+                bootstrap_target = self._mount_bootstrap_target(path, mount)
+                if mount.get("auth_bootstrap", False) and bootstrap_target is not None:
+                    self._serve_mount_bootstrap_page(bootstrap_target, mount)
                 else:
                     self._send_response(APIResponse(False, error="Unauthorized"), 401)
                 return
+            if mount.get("auth_bootstrap", False):
+                kept_query = self._bootstrap_query_without_code()
+                if kept_query is not None:
+                    cleaned = f"{path}?{kept_query}" if kept_query else path
+                    self.send_response(302)
+                    self.send_header("Location", cleaned)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
             self._serve_static_file(path, mount)
             return
         if self._retired_api_path(path):
@@ -1966,6 +2488,8 @@ headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{code}})}})
 
         self._reset_request_state()
         path = urlparse(self.path).path
+        if self._handle_packvm_acceptance("POST", path):
+            return
         if self._handle_packvm_lifecycle("POST", path):
             return
         if self._handle_contract_request("POST"):
@@ -1981,6 +2505,43 @@ headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{code}})}})
             if body is not None:
                 self._handle_panel_exchange(body)
             return
+        if path == "/api/setup/runtime/reconcile":
+            if not self._check_auth("POST", path):
+                self._discard_request_body()
+                self._send_response(APIResponse(False, error="Unauthorized"), 401)
+                return
+            self._discard_request_body()
+            refresh = self.__class__._runtime_refresh
+            lifecycle = self.__class__.app_lifecycle_manager
+            if refresh is None or lifecycle is None:
+                self._send_mapping_result({
+                    "error": "Canonical runtime reconciliation is unavailable",
+                    "status_code": 503,
+                    "state": "runtime_unavailable",
+                })
+                return
+            try:
+                refresh(None)
+                health = lifecycle.get_health()
+            except Exception as error:
+                from .app_lifecycle_manager import mark_runtime_failed
+
+                mark_runtime_failed("canonical runtime capture failed")
+                logger.warning(
+                    "Canonical runtime reconciliation failed",
+                    exc_info=error,
+                )
+                self._send_mapping_result({
+                    "error": "Canonical runtime reconciliation failed",
+                    "status_code": 503,
+                    "state": "runtime_unavailable",
+                })
+                return
+            self._send_mapping_result({
+                "state": health.get("runtime_status", "starting"),
+                "runtime_ready": health.get("runtime_ready", False),
+            })
+            return
         if path == "/api/setup/packs/install":
             if not self._setup_pre_auth_allowed() and not self._check_auth("POST", path):
                 self._discard_request_body()
@@ -1989,12 +2550,27 @@ headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{code}})}})
             body = self._parse_object_body()
             if body is not None:
                 result = self._setup_install_pack(body)
-                self._send_mapping_result(result)
                 try:
-                    self.wfile.flush()
-                except self._CLIENT_DISCONNECT_EXCEPTIONS:
-                    self.close_connection = True
-                self._refresh_setup_runtime_after_response(result)
+                    self._send_mapping_result(result)
+                finally:
+                    # ``_send_response`` flushes its complete envelope. Once
+                    # activation committed, a later disconnect must not keep
+                    # this stale HostProfileControl process alive.
+                    self._refresh_setup_runtime_after_response(result)
+            return
+        profile_action = {
+            "/api/v4/profiles/create": "create",
+            "/api/v4/profiles/update": "update",
+            "/api/v4/profiles/duplicate": "duplicate",
+            "/api/v4/profiles/delete": "delete",
+        }.get(path)
+        if profile_action is not None:
+            body = self._parse_object_body()
+            if body is not None:
+                from .bootstrap.profile_capture import profile_capture_scope
+
+                with profile_capture_scope():
+                    self._handle_profile_registry_mutation(path, profile_action, body)
             return
         if path == "/api/v4/dispatch":
             self._discard_request_body()
@@ -2058,10 +2634,14 @@ class PackAPIServer:
         panel_auth_manager: PanelAuthManager | None = None,
         dispatch_session: DispatchSession | None = None,
         app_lifecycle_manager: LifecyclePort | None = None,
-        contract_bindings: tuple[FrontendContractBinding, ...] = (),
+        contract_bindings: tuple[HTTPContractBinding, ...] = (),
+        runtime_capture_factory: RuntimeCaptureFactory | None = None,
+        capability_snapshot_factory: CapabilitySnapshotFactory | None = None,
+        application_presentation: HTTPApplicationPresentation | None = None,
         web_mounts: tuple[WebMountEntry, ...] | None = None,
         workspace_binding_resolver: WorkspaceBindingResolver | None = None,
         packvm_lifecycle: PackVMLifecyclePort | None = None,
+        host_contract: Mapping[str, Any] | None = None,
     ) -> None:
         self.config = RuntimeHTTPConfig.verify(host, port)
         self.host = self.config.host
@@ -2072,14 +2652,18 @@ class PackAPIServer:
         # server captures itself become server-owned so their Broker,
         # authority store, and provider close callbacks have a bounded owner.
         self._dispatch_session_owned_by_server = False
+        self._retired_dispatch_sessions: list[DispatchSession] = []
+        self._dispatch_cleanup_lock = threading.RLock()
         self.app_lifecycle_manager = app_lifecycle_manager
         self._contract_routes = contract_binding_map(contract_bindings)
+        self._runtime_capture_factory = runtime_capture_factory
+        self._capability_snapshot_factory = capability_snapshot_factory
+        self._application_presentation = application_presentation
         self._web_mounts = web_mounts
         self._workspace_binding_resolver = workspace_binding_resolver
-        if packvm_lifecycle is None:
-            from .packvm_lifecycle_v4 import PackVMLifecycleV4
-
-            packvm_lifecycle = PackVMLifecycleV4()
+        self._host_contract_snapshot = (
+            validate_host_contract(host_contract) if host_contract is not None else None
+        )
         self._packvm_lifecycle = packvm_lifecycle
         self._replay_guard = _RequestReplayGuard()
         from .bootstrap.profile_capture import runtime_user_data_root
@@ -2092,6 +2676,8 @@ class PackAPIServer:
         self.thread: threading.Thread | None = None
         self.handler_class: type[PackAPIHandler] | None = None
         self._lifecycle_lock = threading.RLock()
+        self._runtime_capture_condition = threading.Condition(self._lifecycle_lock)
+        self._active_runtime_captures = 0
         self._lifecycle_generation = 0
         self._runtime_refresh_sequence = 0
         self._lifecycle_state = "stopped"
@@ -2105,7 +2691,9 @@ class PackAPIServer:
         with self._lifecycle_lock:
             if self._lifecycle_state == "stopping":
                 raise RuntimeError("Pack v4 API server is stopping")
-            if self._lifecycle_state == "drain_failed":
+            if self._lifecycle_state == "drain_failed" or (
+                self._retired_dispatch_sessions and not self.is_running()
+            ):
                 raise RuntimeError("Pack v4 API server teardown is incomplete")
             if self.is_running():
                 return
@@ -2121,12 +2709,15 @@ class PackAPIServer:
                     dispatch_session=self._dispatch_session,
                     app_lifecycle_manager=self.app_lifecycle_manager,
                     contract_routes=self._contract_routes,
+                    capability_snapshot_factory=self._capability_snapshot_factory,
+                    application_presentation=self._application_presentation,
                     replay_guard=self._replay_guard,
                     operation_journal=self._operation_journal,
                     web_mounts=self._web_mounts,
                     runtime_refresh=self._runtime_refresh_callback(lifecycle_generation),
                     workspace_binding_resolver=self._workspace_binding_resolver,
                     packvm_lifecycle=self._packvm_lifecycle,
+                    host_contract=self._host_contract_snapshot,
                 )
                 server = _PackThreadingHTTPServer((self.host, self.port), handler)
             except Exception:
@@ -2143,6 +2734,18 @@ class PackAPIServer:
             self._lifecycle_state = "running"
             thread.start()
         logger.info("Pack v4 API server started on http://%s:%s", self.host, self.port)
+
+    def issue_panel_login_code(self) -> Mapping[str, object]:
+        """Issue a desktop handoff code bound to the current server capture."""
+
+        with self._lifecycle_lock:
+            handler = self.handler_class
+            if self._lifecycle_state != "running" or handler is None:
+                raise RuntimeError("Pack v4 API server is not running")
+            binding = handler._current_panel_auth_binding()
+            if binding is None:
+                raise RuntimeError("current panel authentication capture is unavailable")
+            return self._panel_auth_manager.issue_login_code(binding)
 
     def _runtime_refresh_callback(
         self,
@@ -2173,22 +2776,148 @@ class PackAPIServer:
     def _validate_contract_runtime(self) -> None:
         """Verify the exact capture and route ownership before binding a socket."""
 
-        self._validate_contract_capture(self._dispatch_session, self._contract_routes)
+        self._host_contract_snapshot = self._validate_contract_capture(
+            self._dispatch_session,
+            self._contract_routes,
+        )
+
+    def assert_runtime_startup_ready(self) -> None:
+        """Require all captured runtime dependencies before declaring chat ready.
+
+        Application presentations may deliberately leave a route bindable while
+        its backend is unavailable, so its UI can render a recovery state. A
+        full runtime-ready transition is stricter: it must also prove the
+        presentation's declared route targets and finite exact requirements
+        can select their production backend. ``assert_operation_ready`` is a
+        read-only selection check; it neither invokes an operation nor
+        requests, grants, or provisions authority.
+        """
+
+        with self._lifecycle_lock:
+            session = self._dispatch_session
+            routes = dict(self._contract_routes)
+        self._validate_contract_capture(session, routes)
+        self._validate_startup_operations(session)
+
+    def _validate_startup_operations(
+        self,
+        session: DispatchSession | None,
+    ) -> None:
+        """Validate finite application startup dependencies without side effects."""
+
+        presentation = self._application_presentation
+        exact_requirements = getattr(
+            presentation,
+            "startup_operation_requirements",
+            None,
+        )
+        if not callable(exact_requirements):
+            return
+        if session is None:
+            raise RuntimeError("frontend contracts require a captured v4 session")
+        self._assert_session_current(session)
+        requirements = exact_requirements()
+        if not isinstance(requirements, tuple) or len(set(requirements)) != len(
+            requirements
+        ):
+            raise RuntimeError("startup operation requirements are invalid")
+        for requirement in requirements:
+            if (
+                not isinstance(requirement, tuple)
+                or len(requirement) != 2
+                or not all(isinstance(value, str) and value for value in requirement)
+            ):
+                raise RuntimeError("startup operation requirement is invalid")
+        for contract_id, operation_id in requirements:
+            session.assert_operation_ready(contract_id, operation_id)
+
+    def _assert_session_current(self, session: DispatchSession) -> None:
+        """Assert capture freshness through a transient activation-lock hold.
+
+        An activation commit or recovery republish can overlap startup
+        validation.  The per-attempt lock wait stays bounded, so a transient
+        ``ActivationLockTimeout`` is retried inside a budget sized past the
+        worst-case writer hold rather than exiting the surface before it can
+        serve.
+        """
+
+        deadline = time.monotonic() + _ASSERT_CURRENT_RETRY_BUDGET_SECONDS
+        delay = _ASSERT_CURRENT_RETRY_DELAY_SECONDS
+        while True:
+            try:
+                session.assert_current()
+                return
+            except Exception as error:
+                if not _is_activation_lock_timeout(error):
+                    raise
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise
+                time.sleep(min(delay, remaining))
+                delay = min(delay * 2.0, _ASSERT_CURRENT_RETRY_DELAY_MAX_SECONDS)
 
     def _validate_contract_capture(
         self,
         session: DispatchSession | None,
-        routes: Mapping[tuple[str, str], FrontendContractBinding],
-    ) -> None:
+        routes: Mapping[tuple[str, str], HTTPContractBinding],
+        *,
+        host_contract: object = _HOST_CONTRACT_UNSET,
+    ) -> Mapping[str, Any] | None:
         """Validate a complete session/map pair before publishing either value."""
 
+        snapshot = (
+            getattr(self, "_host_contract_snapshot", None)
+            if host_contract is _HOST_CONTRACT_UNSET
+            else host_contract
+        )
+        if snapshot is not None and not isinstance(snapshot, Mapping):
+            raise RuntimeError("Host contract snapshot is invalid")
         if not routes:
-            return
+            if snapshot is None:
+                return None
+            expected_session_identity: DispatchSession | None = None
+            if session is not None:
+                self._assert_session_current(session)
+                if getattr(session, "session_kind", None) != "host_profile_control":
+                    expected_session_identity = session
+            try:
+                return validate_host_contract(
+                    snapshot,
+                    expected_identity=expected_session_identity,
+                )
+            except HostContractError as error:
+                raise RuntimeError("Host contract snapshot is invalid") from error
         if session is None:
             raise RuntimeError("frontend contracts require a captured v4 session")
-        session.assert_current()
-        if session.profile_id != "defaults" or not session.plan_digest.startswith("sha256:"):
-            raise RuntimeError("frontend contracts require the exact Defaults Profile")
+        self._assert_session_current(session)
+        host_profile_control = getattr(session, "session_kind", None) == "host_profile_control"
+        expected_identity: DispatchSession | None = None if host_profile_control else session
+        try:
+            if snapshot is None and not host_profile_control:
+                snapshot = capture_host_contract(expected_identity=expected_identity)
+            elif snapshot is not None:
+                snapshot = validate_host_contract(
+                    snapshot,
+                    expected_identity=expected_identity,
+                )
+        except HostContractError as error:
+            raise RuntimeError(
+                "the captured execution requires a Host contract bound to the capture"
+            ) from error
+        if host_profile_control:
+            if (
+                getattr(session, "execution_profile_id", object()) is not None
+                or not str(getattr(session, "principal_id", ""))
+                or not session.plan_digest.startswith("sha256:")
+            ):
+                raise RuntimeError("Host Profile control identity is invalid")
+        elif (
+            not session.profile_id
+            or not session.profile_revision.startswith("sha256:")
+            or not session.activation_id.strip()
+            or not session.plan_digest.startswith("sha256:")
+        ):
+            raise RuntimeError("frontend contracts require an exact active Profile")
         for binding in routes.values():
             for target in binding.targets:
                 providers = session.provider_metadata(target.contract_id)
@@ -2197,12 +2926,27 @@ class PackAPIServer:
                     for provider in providers
                     if provider.get("provider_id") == target.provider_id
                     and provider.get("operation_id") == target.operation_id
-                    and provider.get("profile_id") == session.profile_id
-                    and provider.get("plan_digest") == session.plan_digest
+                    and (
+                        (
+                            host_profile_control
+                            and provider.get("principal_id")
+                            == getattr(session, "principal_id", None)
+                            and provider.get("execution_profile_id") is None
+                            and provider.get("catalog_digest") == session.plan_digest
+                        )
+                        or (
+                            not host_profile_control
+                            and provider.get("profile_id") == session.profile_id
+                            and provider.get("profile_revision") == session.profile_revision
+                            and provider.get("activation_id") == session.activation_id
+                            and provider.get("plan_digest") == session.plan_digest
+                        )
+                    )
                 )
                 if len(exact) != 1 or target.function_id != target.provider_id:
                     raise RuntimeError("frontend contract Provider identity is unavailable")
-                if not _is_conversation_capability_target(target):
+                presentation = self._application_presentation
+                if presentation is None or presentation.requires_operation_ready(target):
                     session.assert_operation_ready(
                         target.contract_id,
                         target.operation_id,
@@ -2212,6 +2956,7 @@ class PackAPIServer:
                 root = mount["web_root"]
                 if not root.is_dir() or not (root / mount["index_file"]).is_file():
                     raise RuntimeError("frontend contract web mount is unavailable")
+        return snapshot
 
     def _refresh_runtime_capture(
         self,
@@ -2230,45 +2975,111 @@ class PackAPIServer:
             self._runtime_refresh_sequence += 1
             refresh_sequence = self._runtime_refresh_sequence
             base_session = self._dispatch_session
+            self._active_runtime_captures += 1
+
+        try:
+            self._build_runtime_capture(
+                activated_session,
+                lifecycle_generation=lifecycle_generation,
+                refresh_sequence=refresh_sequence,
+                base_session=base_session,
+            )
+        finally:
+            with self._runtime_capture_condition:
+                self._active_runtime_captures -= 1
+                self._runtime_capture_condition.notify_all()
+
+    def _build_runtime_capture(
+        self,
+        activated_session: DispatchSession | None,
+        *,
+        lifecycle_generation: int,
+        refresh_sequence: int,
+        base_session: DispatchSession | None,
+    ) -> None:
+        """Build, publish or close one candidate before releasing its drain slot."""
 
         from tobkiri_host.runtime import install_dispatch_session
 
         from .authority.v4 import AuthorityStore
         from .bootstrap.production_v4 import capture_production_dispatch
         from .bootstrap.profile_capture import (
-            capture_default_profile,
+            capture_active_profile,
             runtime_user_data_root,
         )
         from .di_container import get_container
 
         session = activated_session
         server_captured_session = session is None
+        host_contract = getattr(self, "_host_contract_snapshot", None)
         try:
-            runtime_root, bundle_root, _catalog, bindings = (
-                _load_production_capture_inputs()
-            )
+            factory = self._runtime_capture_factory
+            if factory is None:
+                raise RuntimeError("application runtime capture composition is unavailable")
             if session is None:
-                active = capture_default_profile()
-                authority = AuthorityStore(
-                    runtime_user_data_root() / "authority" / "v4.sqlite3"
-                )
+                active = capture_active_profile()
+                inputs = factory(active)
+                authority = AuthorityStore(runtime_user_data_root() / "authority" / "v4.sqlite3")
                 try:
                     session = capture_production_dispatch(
                         active,
-                        bundle_root=bundle_root,
-                        ecosystem_root=runtime_root / "ecosystem",
+                        bundle_root=inputs.bundle_root,
+                        ecosystem_root=inputs.ecosystem_root,
                         authority_store=authority,
-                        packvm_provisioner=self._packvm_lifecycle,
+                        packvm_provisioner=inputs.packvm_backend_factory,
                         packvm_readiness_reader=(
                             self._packvm_lifecycle.readiness_snapshot
+                            if self._packvm_lifecycle is not None
+                            else None
                         ),
-                        frontend_contract_bindings=bindings,
+                        http_contract_bindings=inputs.contract_bindings,
+                        activation_snapshot_loader=inputs.activation_snapshot_loader,
+                        runtime_surface_factory=inputs.runtime_surface_factory,
+                        capability_binding_snapshot_factory=(
+                            inputs.capability_binding_snapshot_factory
+                        ),
+                        capability_binding_selector=inputs.capability_binding_selector,
+                        credential_store_factory=inputs.credential_store_factory,
+                        acceptance_receipts=inputs.acceptance_receipts,
+                        chat_continuation_approve=inputs.chat_continuation_approve,
+                        chat_continuation_resume=inputs.chat_continuation_resume,
+                        authority_approval_window_open=(
+                            inputs.authority_approval_window_open
+                        ),
+                        model_search=inputs.model_search,
                     )
                 except Exception:
                     authority.close()
                     raise
-            routes = contract_binding_map(bindings)
-            self._validate_contract_capture(session, routes)
+            else:
+                inputs = factory()
+            routes = contract_binding_map(inputs.contract_bindings)
+            if routes:
+                host_profile_control = (
+                    getattr(session, "session_kind", None) == "host_profile_control"
+                )
+                expected_identity = None if host_profile_control else session
+                if not host_profile_control and os.getenv("TOBKIRI_HOST_CONTRACT_PATH", "").strip():
+                    # A lifecycle refresh is an explicit authority boundary:
+                    # capture the Launcher-published replacement once, then
+                    # bind the resulting snapshot to the new handler.
+                    host_contract = capture_host_contract_from_file(
+                        expected_identity=expected_identity
+                    )
+                elif not host_profile_control and host_contract is None:
+                    host_contract = capture_host_contract_from_file(
+                        expected_identity=expected_identity
+                    )
+                elif host_contract is not None:
+                    host_contract = validate_host_contract(
+                        host_contract,
+                        expected_identity=expected_identity,
+                    )
+            host_contract = self._validate_contract_capture(
+                session,
+                routes,
+                host_contract=host_contract,
+            )
         except Exception:
             self._close_unpublished_session(session, base_session=base_session)
             raise
@@ -2288,31 +3099,66 @@ class PackAPIServer:
                     dispatch_session=session,
                     app_lifecycle_manager=self.app_lifecycle_manager,
                     contract_routes=routes,
+                    capability_snapshot_factory=self._capability_snapshot_factory,
+                    application_presentation=self._application_presentation,
                     replay_guard=self._replay_guard,
                     operation_journal=self._operation_journal,
                     web_mounts=self._web_mounts,
                     runtime_refresh=self._runtime_refresh_callback(published_generation),
                     workspace_binding_resolver=self._workspace_binding_resolver,
                     packvm_lifecycle=self._packvm_lifecycle,
+                    host_contract=host_contract,
                 )
                 handler._runtime_port = self.port
                 self._dispatch_session = session
                 self._dispatch_session_owned_by_server = server_captured_session
                 self._contract_routes = routes
+                self._host_contract_snapshot = host_contract
                 self.handler_class = handler
                 if self.server is not None:
                     self.server.RequestHandlerClass = handler
                 install_dispatch_session(get_container(), session)
+                if previous is not None and previous is not session:
+                    self._retired_dispatch_sessions.append(previous)
         if stale_refresh:
             self._close_unpublished_session(session, base_session=base_session)
             return
         if previous is not None and previous is not session:
-            close = getattr(previous, "close", None)
-            if callable(close):
-                close()
+            self._close_retired_session(previous)
+        from .app_lifecycle_manager import mark_runtime_ready
 
-    @staticmethod
+        with self._lifecycle_lock:
+            if (
+                self._lifecycle_state == "running"
+                and lifecycle_generation == self._lifecycle_generation
+                and refresh_sequence == self._runtime_refresh_sequence
+            ):
+                mark_runtime_ready()
+
+    def _close_retired_session(self, session: DispatchSession) -> None:
+        """Release a retired capture, retaining ownership until close succeeds."""
+
+        with self._dispatch_cleanup_lock:
+            with self._lifecycle_lock:
+                if not any(item is session for item in self._retired_dispatch_sessions):
+                    return
+            close = getattr(session, "close", None)
+            try:
+                if callable(close):
+                    close()
+            except Exception:
+                with self._lifecycle_lock:
+                    if self._lifecycle_state == "stopped":
+                        self._lifecycle_state = "drain_failed"
+                        self._stop_failed = True
+                raise
+            with self._lifecycle_lock:
+                self._retired_dispatch_sessions = [
+                    item for item in self._retired_dispatch_sessions if item is not session
+                ]
+
     def _close_unpublished_session(
+        self,
         session: DispatchSession | None,
         *,
         base_session: DispatchSession | None,
@@ -2321,12 +3167,15 @@ class PackAPIServer:
 
         if session is None or session is base_session:
             return
-        close = getattr(session, "close", None)
-        if callable(close):
-            try:
-                close()
-            except Exception:
-                logger.exception("failed to close an unpublished dispatch session")
+        with self._lifecycle_lock:
+            if session is self._dispatch_session:
+                return
+            if not any(item is session for item in self._retired_dispatch_sessions):
+                self._retired_dispatch_sessions.append(session)
+        try:
+            self._close_retired_session(session)
+        except Exception:
+            logger.exception("failed to close an unpublished dispatch session")
 
     def stop(self) -> None:
         """Stop the server and discard its captured handler bindings."""
@@ -2334,7 +3183,7 @@ class PackAPIServer:
         owned_dispatch_session: DispatchSession | None = None
 
         with self._lifecycle_lock:
-            if self._lifecycle_state == "stopped":
+            if self._lifecycle_state == "stopped" and not self._retired_dispatch_sessions:
                 return
             if self._lifecycle_state == "stopping":
                 stop_complete = self._stop_complete
@@ -2381,6 +3230,14 @@ class PackAPIServer:
         if server is not None:
             drained = server.wait_for_request_drain(max(0.0, deadline - time.monotonic()))
             diagnostics.update(server.teardown_snapshot())
+        with self._runtime_capture_condition:
+            while self._active_runtime_captures:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                self._runtime_capture_condition.wait(remaining)
+            drained = drained and self._active_runtime_captures == 0
+            diagnostics["active_runtime_captures"] = self._active_runtime_captures
 
         with self._lifecycle_lock:
             if drained and not serving_thread_alive:
@@ -2395,11 +3252,6 @@ class PackAPIServer:
                 self.handler_class = None
                 if self._dispatch_session_owned_by_server:
                     owned_dispatch_session = self._dispatch_session
-                    self._dispatch_session = None
-                    self._dispatch_session_owned_by_server = False
-                self._lifecycle_state = "stopped"
-                self._stop_failed = False
-                self._stop_complete.set()
             else:
                 self._lifecycle_state = "drain_failed"
                 self._stop_failed = True
@@ -2408,6 +3260,13 @@ class PackAPIServer:
         if not drained or serving_thread_alive:
             logger.error("Pack v4 API server teardown incomplete: %s", diagnostics)
             raise RuntimeError(f"Pack v4 API server teardown incomplete: {diagnostics}")
+        with self._lifecycle_lock:
+            retired_sessions = tuple(self._retired_dispatch_sessions)
+        for retired in retired_sessions:
+            try:
+                self._close_retired_session(retired)
+            except Exception:
+                logger.exception("failed to close a retired dispatch session")
         if owned_dispatch_session is not None:
             close = getattr(owned_dispatch_session, "close", None)
             if callable(close):
@@ -2415,6 +3274,25 @@ class PackAPIServer:
                     close()
                 except Exception:
                     logger.exception("failed to close server-owned dispatch session")
+                    with self._lifecycle_lock:
+                        self._lifecycle_state = "drain_failed"
+                        self._stop_failed = True
+                        self._stop_complete.set()
+                    raise RuntimeError(
+                        "Pack v4 API server teardown incomplete"
+                    ) from None
+        with self._lifecycle_lock:
+            if owned_dispatch_session is not None:
+                self._dispatch_session = None
+                self._dispatch_session_owned_by_server = False
+            if self._retired_dispatch_sessions:
+                self._lifecycle_state = "drain_failed"
+                self._stop_failed = True
+                self._stop_complete.set()
+                raise RuntimeError("Pack v4 API server teardown incomplete")
+            self._lifecycle_state = "stopped"
+            self._stop_failed = False
+            self._stop_complete.set()
         logger.info("Pack v4 API server stopped")
 
     def is_running(self) -> bool:
@@ -2439,10 +3317,14 @@ def initialize_pack_api_server(
     panel_auth_manager: PanelAuthManager | None = None,
     dispatch_session: DispatchSession | None = None,
     app_lifecycle_manager: LifecyclePort | None = None,
-    contract_bindings: tuple[FrontendContractBinding, ...] = (),
+    contract_bindings: tuple[HTTPContractBinding, ...] = (),
+    runtime_capture_factory: RuntimeCaptureFactory | None = None,
+    capability_snapshot_factory: CapabilitySnapshotFactory | None = None,
+    application_presentation: HTTPApplicationPresentation | None = None,
     web_mounts: tuple[WebMountEntry, ...] | None = None,
     workspace_binding_resolver: WorkspaceBindingResolver | None = None,
     packvm_lifecycle: PackVMLifecyclePort | None = None,
+    host_contract: Mapping[str, Any] | None = None,
 ) -> PackAPIServer:
     """Replace the process-local server with one verified v4 instance."""
 
@@ -2456,9 +3338,13 @@ def initialize_pack_api_server(
         dispatch_session=dispatch_session,
         app_lifecycle_manager=app_lifecycle_manager,
         contract_bindings=contract_bindings,
+        runtime_capture_factory=runtime_capture_factory,
+        capability_snapshot_factory=capability_snapshot_factory,
+        application_presentation=application_presentation,
         web_mounts=web_mounts,
         workspace_binding_resolver=workspace_binding_resolver,
         packvm_lifecycle=packvm_lifecycle,
+        host_contract=host_contract,
     )
     server.start()
     _api_server = server

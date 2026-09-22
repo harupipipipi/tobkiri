@@ -8,10 +8,19 @@ canonical types in ``core_runtime.authority``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping, Protocol
+from typing import Any, Literal, Mapping, Protocol
 
 from .contracts import ResolvedOperationBinding
 from .models import OpaqueAuthorityRef, RequestContext, RuntimeEvidence
+from .resources import (
+    MAX_BATCH_BYTES,
+    MAX_BATCH_MUTATIONS,
+    OpaqueResourceHandle,
+)
+from .workspace_mutation import WorkspaceMutationBinding
+
+WORKSPACE_BATCH_MAX_BYTES = MAX_BATCH_BYTES
+WORKSPACE_BATCH_MAX_MUTATIONS = MAX_BATCH_MUTATIONS
 
 
 @dataclass(frozen=True)
@@ -99,6 +108,354 @@ class OpaqueAuditReservation:
     value: str
 
 
+@dataclass(frozen=True)
+class InteractiveApprovalRequestCommand:
+    """Host-captured inputs for one explicit interactive approval decision.
+
+    The caller and target remain opaque Host references until the authority
+    adapter resolves them.  ``typed_confirmation_phrase`` is accepted only to
+    derive a one-way binding; it is never returned or persisted by this port.
+    """
+
+    context: RequestContext
+    target_principal: OpaqueAuthorityRef
+    request_digest: str
+    base_scope: Mapping[str, Any]
+    invocation_owner_id: str
+    presentation_owner_principal_id: str
+    presentation_owner_session_id: str
+    caller_publisher_lineage: str
+    target_publisher_lineage: str
+    expires_at: float
+    redacted_metadata: Mapping[str, str]
+    typed_confirmation_phrase: str | None = None
+
+
+@dataclass(frozen=True)
+class InteractiveApprovalDecisionCommand:
+    """One locally mediated human decision; it carries no Grant material."""
+
+    context: RequestContext
+    request_id: str
+    actor_id: str
+    confirmation_text: str = ""
+    ui_operator: Mapping[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class InteractiveApprovalGetQuery:
+    """An authenticated owner-scoped request for one redacted approval view."""
+
+    context: RequestContext
+    request_id: str
+
+
+@dataclass(frozen=True)
+class InteractiveApprovalListQuery:
+    """An authenticated owner-scoped request for redacted approval views."""
+
+    context: RequestContext
+    state: str | None = None
+
+
+@dataclass(frozen=True)
+class InteractiveApprovalStatus:
+    """Secret-free status projection returned by the narrow approval port."""
+
+    request_id: str
+    state: str
+    expires_at: float
+    typed_confirmation_required: bool
+    request_snapshot_digest: str
+    typed_confirmation_digest: str | None
+    redacted_metadata: Mapping[str, str]
+    target_principal_id: str | None = None
+    base_scope: Mapping[str, Any] | None = None
+    max_uses: int | None = None
+    remaining_uses: int | None = None
+
+
+@dataclass(frozen=True)
+class InteractiveApprovalGrantAttestation:
+    """Host-only expected binding for an approved interactive one-shot Grant.
+
+    This assertion carries no Grant, receipt, or lease material.  It lets the
+    durable PendingEffect TCB prove that the completed human decision belongs
+    to its exact future invocation before it is eligible for execution.
+    """
+
+    request_id: str
+    context: RequestContext
+    target_principal: OpaqueAuthorityRef
+    request_digest: str
+    base_scope: Mapping[str, Any]
+    invocation_owner_id: str
+    caller_publisher_lineage: str
+    target_publisher_lineage: str
+    expires_at: float
+
+
+class InteractiveApprovalPort(Protocol):
+    """Host-owned interactive approval boundary with no token return path."""
+
+    def request_interactive_approval(
+        self,
+        command: InteractiveApprovalRequestCommand,
+    ) -> InteractiveApprovalStatus:
+        """Persist one Host-bound approval request without granting authority."""
+
+    def approve_interactive_approval(
+        self,
+        command: InteractiveApprovalDecisionCommand,
+    ) -> InteractiveApprovalStatus:
+        """Settle a request with one atomic ApprovalRecord and one-shot Grant."""
+
+    def deny_interactive_approval(
+        self,
+        command: InteractiveApprovalDecisionCommand,
+    ) -> InteractiveApprovalStatus:
+        """Settle a request with one denial decision and no authority material."""
+
+    def get_interactive_approval(
+        self,
+        query: InteractiveApprovalGetQuery,
+    ) -> InteractiveApprovalStatus:
+        """Return one owner-authorized redacted approval status."""
+
+    def list_interactive_approvals(
+        self,
+        query: InteractiveApprovalListQuery,
+    ) -> tuple[InteractiveApprovalStatus, ...]:
+        """Return owner-authorized redacted statuses, optionally by state."""
+
+    def interactive_approval_status(self, request_id: str) -> InteractiveApprovalStatus:
+        """Return the redacted lifecycle view of one approval request."""
+
+    def assert_interactive_approval_grant(
+        self,
+        attestation: InteractiveApprovalGrantAttestation,
+    ) -> None:
+        """Fail closed unless an unused one-shot Grant matches this exact Host view."""
+
+
+@dataclass(frozen=True)
+class ChatApprovalContinuationCommand:
+    """Exact presentation-owned identity for one legacy chat continuation phase.
+
+    ``turn_id`` is the canonical saved turn the presentation owner declares
+    for this continuation, or ``""`` when the operation is not turn-bound.
+    The declared value is bound into the one-shot Host handle, so a later
+    phase presenting a different turn is rejected; when the approval request
+    record itself carries a canonical turn the declared value must match it.
+    """
+
+    context: RequestContext
+    request_id: str
+    conversation_id: str
+    turn_id: str
+    presentation_owner_principal_id: str
+    presentation_owner_session_id: str
+    ui_operator: Mapping[str, Any] | None = None
+    resume_id: str = ""
+
+
+class ChatApprovalContinuationPort(Protocol):
+    """Host-owned opaque continuation handles over narrow execution callbacks."""
+
+    def approve_chat_continuation(
+        self,
+        command: ChatApprovalContinuationCommand,
+    ) -> Mapping[str, Any]:
+        """Approve one exact pending request and retain its token inside Host state."""
+
+    def resume_chat_continuation(
+        self,
+        command: ChatApprovalContinuationCommand,
+    ) -> Mapping[str, Any]:
+        """Atomically claim and execute one exact approved continuation."""
+
+
+@dataclass(frozen=True)
+class AuthorityApprovalWindowOpenCommand:
+    """Host-authenticated request to surface one authority approval window.
+
+    ``request_id`` names the pending approval request the Launcher window must
+    present.  The command carries no authority material: opening the window is
+    presentation only and the approval decision still requires the operator
+    gesture inside that window.
+    """
+
+    context: RequestContext
+    request_id: str
+    presentation_owner_principal_id: str
+    presentation_owner_session_id: str
+
+
+class AuthorityApprovalWindowPort(Protocol):
+    """Narrow Host port which opens only the authority approval window."""
+
+    def open_authority_approval_window(
+        self,
+        command: AuthorityApprovalWindowOpenCommand,
+    ) -> Mapping[str, Any]:
+        """Open the Launcher approval window for one exact request."""
+
+
+@dataclass(frozen=True)
+class ModelSearchCommand:
+    """Host-authenticated request to search the assembled model catalog.
+
+    ``profile_id`` is the captured signed Profile identity copied from the
+    verified Provider envelope, never a client-supplied value.  ``filters``
+    carries only the bounded filter fields admitted by the operation schema;
+    it contains no authority, credential, or settings-owner material.
+    ``profiles`` is the model-registry snapshot the verified Provider read
+    through its declared nested contract edge.  ``runtime_settings`` is a
+    non-secret projection of owner-read model settings supplied by the
+    settings Pack; it contains no owner object, path, credentials, or
+    authority material.
+    """
+
+    context: RequestContext
+    profile_id: str
+    filters: Mapping[str, Any]
+    profiles: tuple[Mapping[str, Any], ...]
+    runtime_settings: Mapping[str, Any]
+
+
+class ModelSearchPort(Protocol):
+    """Narrow Host port which runs one bounded model catalog search."""
+
+    def search_models(
+        self,
+        command: ModelSearchCommand,
+    ) -> Mapping[str, Any]:
+        """Return the model-search projection for one exact request."""
+
+
+@dataclass(frozen=True)
+class InteractiveEffectPrepareCommand:
+    """Narrow request to prepare one Host-owned future effect.
+
+    ``coordinator_principal`` is copied from the authenticated Host Provider
+    envelope, never from the Pack payload.  The implementation selects every
+    target identity, scope, timeout, and presentation field from the captured
+    signed Profile graph.
+    """
+
+    context: RequestContext
+    coordinator_principal: OpaqueAuthorityRef
+    presentation_owner_principal_id: str
+    presentation_owner_session_id: str
+    effect_kind: str
+    payload: Mapping[str, Any]
+    prepared_result: Mapping[str, Any]
+    correlation_id: str | None = None
+
+
+@dataclass(frozen=True)
+class InteractiveEffectLookupQuery:
+    """Find a prepare receipt within one authenticated owner and effect kind."""
+
+    context: RequestContext
+    coordinator_principal: OpaqueAuthorityRef
+    presentation_owner_principal_id: str
+    presentation_owner_session_id: str
+    effect_kind: str
+    correlation_id: str
+
+
+@dataclass(frozen=True)
+class InteractiveEffectOwnerQuery:
+    """Owner-scoped access to one redacted pending-effect projection."""
+
+    context: RequestContext
+    coordinator_principal: OpaqueAuthorityRef
+    presentation_owner_principal_id: str
+    presentation_owner_session_id: str
+    effect_id: str
+
+
+@dataclass(frozen=True)
+class InteractiveEffectStatus:
+    """Secret-free pending-effect result safe for a Pack presentation layer."""
+
+    effect_id: str
+    approval_request_id: str
+    state: str
+    expires_at: float
+    redacted_metadata: Mapping[str, str]
+
+
+class InteractiveEffectPort(Protocol):
+    """Host-only coordinator port for approval-gated future effects.
+
+    The port deliberately contains no Provider invocation, Grant, receipt,
+    lease, scope, or raw prepared payload transport.  ``resume`` reaches the
+    already-captured Broker only after an owner check and the durable approval
+    state machine's compare-and-swap claim.
+    """
+
+    def prepare_interactive_effect(
+        self,
+        command: InteractiveEffectPrepareCommand,
+    ) -> InteractiveEffectStatus:
+        """Prepare a selected future effect and open one interactive approval."""
+
+    def find_interactive_effect(
+        self,
+        query: InteractiveEffectLookupQuery,
+    ) -> InteractiveEffectStatus:
+        """Read an owned prepare receipt without replaying a lost request."""
+
+    def get_interactive_effect(
+        self,
+        query: InteractiveEffectOwnerQuery,
+    ) -> InteractiveEffectStatus:
+        """Return one owner-authorized redacted status."""
+
+    def resume_interactive_effect(
+        self,
+        query: InteractiveEffectOwnerQuery,
+    ) -> InteractiveEffectStatus:
+        """Resume one approved owner-authorized future effect exactly once."""
+
+    def cancel_interactive_effect(
+        self,
+        query: InteractiveEffectOwnerQuery,
+    ) -> InteractiveEffectStatus:
+        """Cancel one owner-authorized future effect before its dispatch edge."""
+
+
+class PendingEffectPersistencePort(Protocol):
+    """Encrypted Host-only persistence for a durable PendingEffect state machine."""
+
+    def create_host_pending_effect(
+        self,
+        effect_id: str,
+        payload: Mapping[str, Any],
+    ) -> int:
+        """Create an encrypted pending-effect snapshot and return revision one."""
+
+    def get_host_pending_effect(
+        self,
+        effect_id: str,
+    ) -> tuple[int, Mapping[str, Any]] | None:
+        """Return an authenticated Host snapshot, unavailable to Packs."""
+
+    def compare_and_swap_host_pending_effect(
+        self,
+        effect_id: str,
+        *,
+        expected_revision: int,
+        payload: Mapping[str, Any],
+    ) -> int:
+        """Advance a Host snapshot only from one exact revision."""
+
+    def list_host_pending_effects(self) -> list[tuple[int, Mapping[str, Any]]]:
+        """Return Host snapshots for recovery without an owner index."""
+
+
 class AuditPort(Protocol):
     """Fail-closed authoritative audit interface expected by the broker."""
 
@@ -127,3 +484,156 @@ class AuditPort(Protocol):
         ambiguous: bool,
     ) -> None:
         """Durably record failure or uncertainty without provider strings."""
+
+
+@dataclass(frozen=True)
+class WorkspaceMutationIdentity:
+    """Broker-authenticated identity required for every workspace mutation."""
+
+    context: RequestContext
+    target_principal: OpaqueAuthorityRef
+    target_domain_id: str
+    target_boot_epoch: int
+    target_namespace: str
+
+    def __post_init__(self) -> None:
+        if not self.target_domain_id or not self.target_namespace:
+            raise ValueError("workspace mutation target binding must be non-empty")
+        if self.target_boot_epoch <= 0:
+            raise ValueError("workspace mutation target boot epoch must be positive")
+        if self.target_domain_id != self.context.target_domain_id:
+            raise ValueError("workspace mutation target domain mismatch")
+        if self.target_boot_epoch != self.context.target_boot_epoch:
+            raise ValueError("workspace mutation target boot epoch mismatch")
+        if self.target_namespace != self.context.handle_namespace:
+            raise ValueError("workspace mutation target namespace mismatch")
+
+
+@dataclass(frozen=True)
+class WorkspaceMutationLeaseRequest:
+    """Host-captured mount binding and authenticated invocation identity."""
+
+    identity: WorkspaceMutationIdentity
+    binding: WorkspaceMutationBinding
+
+
+@dataclass(frozen=True)
+class OpaqueWorkspaceMutationLease:
+    """Opaque lease reference which exposes no descriptor or filesystem path."""
+
+    value: str
+
+    def __post_init__(self) -> None:
+        if not self.value or len(self.value) > 512:
+            raise ValueError("workspace mutation lease reference is invalid")
+
+
+@dataclass(frozen=True)
+class WorkspaceBatchMutation:
+    """One opaque-handle mutation in a single Host-published batch."""
+
+    operation: Literal["replace", "create", "delete"]
+    handle: OpaqueResourceHandle
+    data: bytes = b""
+    mode: int = 0o600
+
+    def __post_init__(self) -> None:
+        if self.operation not in {"replace", "create", "delete"}:
+            raise ValueError("workspace batch operation is invalid")
+        if self.operation == "delete" and self.data:
+            raise ValueError("workspace delete cannot carry content")
+        if self.mode < 0 or self.mode & ~0o777:
+            raise ValueError("workspace batch mode is invalid")
+
+
+@dataclass(frozen=True)
+class WorkspaceBatchResult:
+    """Deterministic, content-free outcome of a committed Host batch."""
+
+    transaction_id: str
+    status: Literal["committed"]
+    mutation_count: int
+    total_bytes: int
+
+
+class WorkspaceMutationPort(Protocol):
+    """Narrow Host boundary for descriptor-backed workspace file mutation."""
+
+    def acquire_lease(
+        self,
+        request: WorkspaceMutationLeaseRequest,
+    ) -> OpaqueWorkspaceMutationLease:
+        """Acquire one request- and mount-bound exclusive mutation lease."""
+
+    def bind_existing(
+        self,
+        lease: OpaqueWorkspaceMutationLease,
+        identity: WorkspaceMutationIdentity,
+        *,
+        relative_path: str,
+        ttl_seconds: float,
+        max_uses: int,
+        max_bytes: int,
+    ) -> OpaqueResourceHandle:
+        """Bind an existing regular file without exposing its path or fd."""
+
+    def bind_absent(
+        self,
+        lease: OpaqueWorkspaceMutationLease,
+        identity: WorkspaceMutationIdentity,
+        *,
+        relative_path: str,
+        ttl_seconds: float,
+        max_uses: int,
+        max_bytes: int,
+    ) -> OpaqueResourceHandle:
+        """Bind an absent destination for compare-and-create."""
+
+    def replace_file(
+        self,
+        lease: OpaqueWorkspaceMutationLease,
+        identity: WorkspaceMutationIdentity,
+        handle: OpaqueResourceHandle,
+        data: bytes,
+    ) -> int:
+        """Replace an exact existing preimage under the bound lease."""
+
+    def create_file(
+        self,
+        lease: OpaqueWorkspaceMutationLease,
+        identity: WorkspaceMutationIdentity,
+        handle: OpaqueResourceHandle,
+        data: bytes,
+        *,
+        mode: int = 0o600,
+    ) -> int:
+        """Create a file at an exact absent preimage under the bound lease."""
+
+    def delete_file(
+        self,
+        lease: OpaqueWorkspaceMutationLease,
+        identity: WorkspaceMutationIdentity,
+        handle: OpaqueResourceHandle,
+    ) -> None:
+        """Delete an exact existing preimage under the bound lease."""
+
+    def publish_batch(
+        self,
+        lease: OpaqueWorkspaceMutationLease,
+        identity: WorkspaceMutationIdentity,
+        mutations: tuple[WorkspaceBatchMutation, ...],
+    ) -> WorkspaceBatchResult:
+        """Publish one bounded all-or-rollback file mutation batch."""
+
+    def close_lease(
+        self,
+        lease: OpaqueWorkspaceMutationLease,
+        identity: WorkspaceMutationIdentity,
+    ) -> None:
+        """Release one exact lease and every resource handle it created."""
+
+    def close_namespace(self, namespace: str) -> None:
+        """Release all leases and handles owned by one execution namespace."""
+
+    def close(self) -> None:
+        """Release all Host workspace leases and handles during shutdown."""

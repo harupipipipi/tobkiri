@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:147a99324b278458c274ed1b211bbafa3452b34d7089ca2ca2b23f71915cbb2d",
+      "digest": "sha256:2e0d7db143577687807ae8886c1233c50a34a95f0509aa0ac94f747df063842a",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -17,12 +17,12 @@
       "operations": [
         "rumi_connector_turn_adapter_pack.connector-turn-route"
       ],
-      "revision_digest": "sha256:167234533d7a186c52c03304bd4c336a212d4d8ecf6c816feb0fb51acf9de2db"
+      "revision_digest": "sha256:33d2789fcd1a5bf1ff4b52597daeef29f1692a7fe1e9e0c7764ddc37295b9d9d"
     }
   ],
   "functions": [
     {
-      "contract_revision_digest": "sha256:167234533d7a186c52c03304bd4c336a212d4d8ecf6c816feb0fb51acf9de2db",
+      "contract_revision_digest": "sha256:33d2789fcd1a5bf1ff4b52597daeef29f1692a7fe1e9e0c7764ddc37295b9d9d",
       "id": "rumi_connector_turn_adapter_pack.connector-route.turn",
       "implementation_digest": "sha256:d3a22819c65248246b22b225fb9a1d268e89321cf7a624cefa1e36c00bd0472b",
       "isolation": "dedicated_process",
@@ -33,9 +33,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:82b678e022f3b3df5f6f19ec5f7f3c74866ed7b5185b47ee3e73e889fdc2a29f",
-    "contract_catalog_digest": "sha256:0f202f951d3bc0ed12f0d05094cfe6fcdd9d706c6aeb80e612001d91939af5a7",
-    "source_identity": "sha256:3a4b03628fe3282c4a122d3b5e50d5c723d3d1818ab9d8f86673247741fad6ef"
+    "artifact_set_digest": "sha256:40f9e3fbfdc6c3fa14add5a27a85df03451808e07eaed50e59be6b608fe3951e",
+    "contract_catalog_digest": "sha256:39ebe87a65a0a73fe7cadc8bc6cb18787b4dfa02246aefcc12e387a9b9e54f9d",
+    "source_identity": "sha256:18e1d6aed69d192c9baa13b1d9281616741be83ce17a6cc0c386a9f431fcd33d"
   },
   "migration": {
     "compatibility": "read_only",
@@ -60,7 +60,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:82b678e022f3b3df5f6f19ec5f7f3c74866ed7b5185b47ee3e73e889fdc2a29f",
+    "artifact_digest": "sha256:40f9e3fbfdc6c3fa14add5a27a85df03451808e07eaed50e59be6b608fe3951e",
     "display_name": "Rumi Connector Turn Adapter",
     "id": "rumi_connector_turn_adapter_pack",
     "kind": "normal_sandbox",
@@ -70,7 +70,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:3a4b03628fe3282c4a122d3b5e50d5c723d3d1818ab9d8f86673247741fad6ef",
+        "digest": "sha256:18e1d6aed69d192c9baa13b1d9281616741be83ce17a6cc0c386a9f431fcd33d",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -81,7 +81,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:3a4b03628fe3282c4a122d3b5e50d5c723d3d1818ab9d8f86673247741fad6ef",
+    "source_digest": "sha256:18e1d6aed69d192c9baa13b1d9281616741be83ce17a6cc0c386a9f431fcd33d",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_connector_turn_adapter_pack"
   },

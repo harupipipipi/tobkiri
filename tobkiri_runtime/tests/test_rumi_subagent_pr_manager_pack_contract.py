@@ -117,17 +117,17 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     assert candidate.overlap_policy["code_edits"] == "handoff_to_rumi_code_ide_pack"
     assert candidate.overlap_policy["subagent_routing_matrix"] == "owned_by_rumi_subagent_pr_manager_pack"
     assert candidate.overlap_policy["pr_acceptance_rubric"] == "owned_by_rumi_subagent_pr_manager_pack"
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert "governance overlay" in candidate.defaultspack_promotion["reason"]
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert "governance overlay" in candidate.base_pack_promotion["reason"]
     assert {
         "no_executable_runtime",
         "governance_only_pack",
         "requires_external_owner_for_code_edits",
-    } <= set(candidate.defaultspack_promotion["promotion_blockers"])
+    } <= set(candidate.base_pack_promotion["promotion_blockers"])
     assert {
         "multiple_successful_pack_pr_cycles",
         "observability_evidence_for_review_outcomes",
-    } <= set(candidate.defaultspack_promotion["promotion_evidence_required"])
+    } <= set(candidate.base_pack_promotion["promotion_evidence_required"])
     assert candidate.marketplace["id"].startswith("rumi.")
     assert candidate.marketplace["registry"] == "bundled"
     assert candidate.marketplace["publisher"] == "rumi-ai"
@@ -160,7 +160,7 @@ def test_pack_quality_assets_have_subagent_and_merge_semantics() -> None:
     assert {"scope_control", "declarative_depth", "subagent_repetition", "setup_policy", "verification"} <= set(
         rubric["criteria"]
     )
-    assert "defaultspack_promotion_eligible" in rubric["criteria"]["setup_policy"]["blocking_failures"]
+    assert "base_pack_promotion_eligible" in rubric["criteria"]["setup_policy"]["blocking_failures"]
 
     ledger = yaml.safe_load((PACK_DIR / "ledgers/pr_evidence_ledger.schema.yaml").read_text(encoding="utf-8"))[
         "pr_evidence_ledger_schema"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 
@@ -86,13 +87,25 @@ def test_provider_catalog_concrete_data_lives_outside_defaultspack_loader() -> N
     assert "_CATALOG_MODELS" not in provider_catalog
 
 
-def test_required_starter_packs_exist() -> None:
+def test_required_starter_capabilities_have_canonical_owners() -> None:
+    """Starter content is either a v4 Pack or a read-only Profile projection."""
+
     for pack_id in [
         "rumi_default_tools_pack",
-        "rumi_local_agent_pack",
         "rumi_operations_company_pack",
-        "rumi_reference_ui_pack",
         "rumi_model_catalog_pack",
     ]:
         pack_root = ROOT / "ecosystem" / pack_id
-        assert (pack_root / "ecosystem.json").is_file(), pack_id
+        assert (pack_root / "pack.v4.json").is_file(), pack_id
+
+    retired_starter_content = {
+        "rumi_local_agent_pack": "profile_projections/local-agent",
+        "rumi_reference_ui_pack": "profile_projections/reference-ui",
+    }
+    for legacy_pack_id, artifact_root in retired_starter_content.items():
+        alias_path = ROOT / "ecosystem" / legacy_pack_id / "compatibility-alias.v1.json"
+        alias = json.loads(alias_path.read_text(encoding="utf-8"))
+        assert alias["legacy_pack_id"] == legacy_pack_id
+        assert alias["runtime_authority"] is False
+        assert alias["artifact_root"] == artifact_root
+        assert (ROOT / artifact_root).is_dir()

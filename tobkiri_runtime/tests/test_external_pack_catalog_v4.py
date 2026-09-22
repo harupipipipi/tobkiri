@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import shutil
+import hashlib
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -15,6 +16,8 @@ from core_runtime.bootstrap.profile_capture import (
     prepare_default_profile_confirmation,
 )
 from core_runtime.pack_boundary import load_pack_catalog
+from core_runtime.pack_artifact_integrity import write_host_install_record
+import core_runtime.pack_artifact_integrity as pack_integrity
 from core_runtime.pack_control_v4 import (
     PACK_CONTROL_CONTRACT,
     capture_pack_control_session,
@@ -36,6 +39,19 @@ CONTRACT_ID = "io.tobkiri.conformance.echo.v1"
 OPERATION_ID = "echo"
 
 
+def _capture_control_session(**kwargs):
+    """Compose the Defaultspack runtime surface explicitly for direct tests."""
+
+    from ecosystem.defaultspack.domain.runtime_surface_v4 import (
+        create_runtime_surface_services,
+    )
+
+    return capture_pack_control_session(
+        runtime_surface_factory=create_runtime_surface_services,
+        **kwargs,
+    )
+
+
 def _write_json(path: Path, value: object) -> None:
     path.write_text(
         json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n",
@@ -43,22 +59,82 @@ def _write_json(path: Path, value: object) -> None:
     )
 
 
+def _file_digest(path: Path) -> str:
+    """Return the exact digest used by the Pack v4 artifact metadata."""
+
+    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _refresh_fixture_artifacts(root: Path) -> None:
+    """Rebuild the finite v4 authority chain after a fixture mutation."""
+
+    manifest_path = root / "pack.v4.json"
+    executable_path = root / "executables.v4.json"
+    index_path = root / "artifact-index.v4.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    executable = json.loads(executable_path.read_text(encoding="utf-8"))
+    runtime_digest = _file_digest(root / "runtime" / "echo.py")
+    for function in manifest["functions"]:
+        function["implementation_digest"] = runtime_digest
+    for variant in executable["variants"]:
+        variant["implementation_digest"] = runtime_digest
+    executable["catalog_digest"] = canonical_digest(
+        {key: value for key, value in executable.items() if key != "catalog_digest"}
+    )
+    _write_json(executable_path, executable)
+
+    for artifact in manifest["artifacts"]:
+        artifact["digest"] = _file_digest(root / artifact["path"])
+    artifact_digest = canonical_digest(manifest["artifacts"])
+    manifest["pack"]["artifact_digest"] = artifact_digest
+    manifest["integrity"]["artifact_set_digest"] = artifact_digest
+    _write_json(manifest_path, manifest)
+
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    for artifact in index["artifacts"]:
+        artifact["digest"] = _file_digest(root / artifact["path"])
+    index["artifact_set_digest"] = artifact_digest
+    unsigned = {key: value for key, value in index.items() if key != "integrity_seal"}
+    index["integrity_seal"]["signed_digest"] = canonical_digest(unsigned)
+    _write_json(index_path, index)
+
+
 def _signed_external_pack(
     tmp_path: Path,
     *,
     kind: str | None = None,
-    artifact_digest: str | None = None,
+    runtime_suffix: str | None = None,
+    materialization_catalog_digest: str | None = None,
 ) -> tuple[Path, Path]:
     source = tmp_path / PACK_ID
     shutil.copytree(FIXTURE, source)
-    if kind is not None or artifact_digest is not None:
+    if kind is not None:
         pack_manifest_path = source / "pack.v4.json"
         pack_manifest = json.loads(pack_manifest_path.read_text(encoding="utf-8"))
-        if kind is not None:
-            pack_manifest["pack"]["kind"] = kind
-        if artifact_digest is not None:
-            pack_manifest["pack"]["artifact_digest"] = artifact_digest
+        pack_manifest["pack"]["kind"] = kind
         _write_json(pack_manifest_path, pack_manifest)
+        executable_path = source / "executables.v4.json"
+        executable = json.loads(executable_path.read_text(encoding="utf-8"))
+        for variant in executable["variants"]:
+            variant["execution_kind"] = "host_extension"
+        _write_json(executable_path, executable)
+    if runtime_suffix is not None:
+        runtime = source / "runtime" / "echo.py"
+        runtime.write_text(
+            runtime.read_text(encoding="utf-8") + runtime_suffix,
+            encoding="utf-8",
+        )
+    if materialization_catalog_digest is not None:
+        executable_path = source / "executables.v4.json"
+        executable = json.loads(executable_path.read_text(encoding="utf-8"))
+        executable["materialization_catalog_digest"] = materialization_catalog_digest
+        _write_json(executable_path, executable)
+    if (
+        kind is not None
+        or runtime_suffix is not None
+        or materialization_catalog_digest is not None
+    ):
+        _refresh_fixture_artifacts(source)
     private_key = Ed25519PrivateKey.generate()
     manifest = build_signed_manifest(
         source,
@@ -83,17 +159,6 @@ def _signed_external_pack(
     _write_json(
         trust_store,
         {
-            "install_records": {
-                PACK_ID: {
-                    "signature_required": True,
-                    "publisher_id": "publisher.conformance",
-                    "key_id": signed["signature"]["key_id"],
-                    "installed_version": "1.0.0",
-                    "signed_manifest_path": ".tobkiri/signed-pack.json",
-                    "contract_versions": {CONTRACT_ID: "1.0.0"},
-                    "requested_capabilities": [],
-                }
-            },
             "publishers": {
                 "publisher.conformance": {
                     "public_key_pem": public_pem,
@@ -104,6 +169,20 @@ def _signed_external_pack(
         },
     )
     trust_store.chmod(0o600)
+    write_host_install_record(
+        trust_store,
+        pack_id=PACK_ID,
+        install_path=source,
+        record={
+            "signature_required": True,
+            "publisher_id": "publisher.conformance",
+            "key_id": signed["signature"]["key_id"],
+            "installed_version": "1.0.0",
+            "signed_manifest_path": ".tobkiri/signed-pack.json",
+            "contract_versions": {CONTRACT_ID: "1.0.0"},
+            "requested_capabilities": [],
+        },
+    )
     return source, trust_store
 
 
@@ -137,7 +216,7 @@ def test_signed_external_pack_install_approve_enable_creates_profile_revision(
         confirmation=prepare_default_profile_confirmation()
     )
     initial_revision = canonical_digest(initial.resolved.profile)
-    session = capture_pack_control_session()
+    session = _capture_control_session()
     catalog = _invoke(session, "catalog.read")
     assert catalog["count"] == len(load_pack_catalog()) + 1
     external = next(item for item in catalog["packs"] if item["pack_id"] == PACK_ID)
@@ -157,6 +236,13 @@ def test_signed_external_pack_install_approve_enable_creates_profile_revision(
     assert _invoke(session, "pack.status", {"pack_id": PACK_ID})["enabled"] is False
     assert _invoke(session, "pack.enable", {"pack_id": PACK_ID})["enabled"] is True
 
+    from core_runtime.bootstrap.profile_capture import prepare_bootstrap_profile_review
+
+    review_catalog, _ = prepare_bootstrap_profile_review()
+    assert PACK_ID in review_catalog.packs
+    assert PACK_ID in {
+        item["pack_id"] for item in review_catalog.profiles["defaults"]["packs"]
+    }
     active = capture_default_profile()
     enabled_profile = json.loads(json.dumps(active.resolved.profile))
     assert canonical_digest(active.resolved.profile) != initial_revision
@@ -167,7 +253,7 @@ def test_signed_external_pack_install_approve_enable_creates_profile_revision(
         item["contract_id"] == CONTRACT_ID and item["operation_id"] == OPERATION_ID
         for item in active.resolved.plan["bindings"]
     )
-    restarted = capture_pack_control_session()
+    restarted = _capture_control_session()
     assert _invoke(restarted, "pack.status", {"pack_id": PACK_ID})["enabled"] is True
     assert _invoke(restarted, "pack.disable", {"pack_id": PACK_ID})["enabled"] is False
     disabled = capture_default_profile()
@@ -177,7 +263,7 @@ def test_signed_external_pack_install_approve_enable_creates_profile_revision(
     revoked = _invoke(restarted, "approval.revoke", {"pack_id": PACK_ID})
     assert revoked["approval_status"] == "revoked"
     assert revoked["enabled"] is False
-    after_revoke = capture_pack_control_session()
+    after_revoke = _capture_control_session()
     status = _invoke(after_revoke, "pack.status", {"pack_id": PACK_ID})
     assert status["approved"] is False
     assert status["enabled"] is False
@@ -207,6 +293,45 @@ def test_unsigned_wrong_digest_and_symlink_sources_fail_closed(
     source.rename(target)
     source.symlink_to(target, target_is_directory=True)
     with pytest.raises(ExternalPackCatalogDenied, match="real directory"):
+        admit_signed_external_pack(source, trust_store_path=trust_store)
+
+
+@pytest.mark.parametrize("relocate", ["copy", "rename"])
+def test_host_install_record_rejects_relocated_signed_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    relocate: str,
+) -> None:
+    """A valid publisher signature cannot authorize an unselected path."""
+
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user-data"))
+    source, trust_store = _signed_external_pack(tmp_path)
+    relocated = tmp_path / "relocated" / PACK_ID
+    relocated.parent.mkdir()
+    if relocate == "copy":
+        shutil.copytree(source, relocated)
+    else:
+        source.rename(relocated)
+
+    with pytest.raises(ExternalPackCatalogDenied, match="Host install binding"):
+        admit_signed_external_pack(relocated, trust_store_path=trust_store)
+
+
+def test_signed_external_pack_cannot_claim_bundle_materialization_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An external Pack cannot impersonate a sealed bundle projection."""
+
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user-data"))
+    source, trust_store = _signed_external_pack(
+        tmp_path,
+        materialization_catalog_digest="sha256:" + "a" * 64,
+    )
+    with pytest.raises(
+        ExternalPackCatalogDenied,
+        match="cannot replace its executable catalog identity",
+    ):
         admit_signed_external_pack(source, trust_store_path=trust_store)
 
 
@@ -259,6 +384,43 @@ def test_catalog_poison_cas_tamper_and_partial_transaction_are_invisible(
         load_external_pack_catalog()
 
 
+def test_revocation_during_admission_cannot_commit_stale_trust(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Admission rechecks the captured trust generation immediately before commit."""
+
+    user_data = tmp_path / "user-data"
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    source, trust_store = _signed_external_pack(tmp_path)
+    key_id = json.loads(
+        (source / ".tobkiri" / "signed-pack.json").read_text(encoding="utf-8")
+    )["signature"]["key_id"]
+
+    def revoke_after_promotion(point: str) -> None:
+        if point != "promoted":
+            return
+        policy = json.loads(trust_store.read_text(encoding="utf-8"))
+        policy["publishers"]["publisher.conformance"]["revoked_key_ids"] = [
+            key_id
+        ]
+        policy["policy_generation"] += 1
+        policy["policy_digest"] = pack_integrity._policy_digest(policy)
+        trust_store.write_text(json.dumps(policy), encoding="utf-8")
+        trust_store.chmod(0o600)
+
+    with pytest.raises(
+        ExternalPackCatalogDenied,
+        match="trust policy changed during admission",
+    ):
+        admit_signed_external_pack(
+            source,
+            trust_store_path=trust_store,
+            fault_injector=revoke_after_promotion,
+        )
+    assert PACK_ID not in load_external_pack_catalog().records
+
+
 def test_read_only_cas_rejects_pack_root_swap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -302,7 +464,7 @@ def test_admission_is_idempotent_but_pack_id_digest_rebinding_is_denied(
     conflicting_parent.mkdir()
     conflicting_source, conflicting_trust = _signed_external_pack(
         conflicting_parent,
-        artifact_digest=f"sha256:{'1' * 64}",
+        runtime_suffix="\n# different signed artifact\n",
     )
     with pytest.raises(ExternalPackCatalogDenied, match="different digest"):
         admit_signed_external_pack(

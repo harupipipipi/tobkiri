@@ -9,6 +9,7 @@ const pack = {
   id: 'provider-pack',
   version: '1.2.3',
   artifactDigest: digest('a'),
+  packArtifactDigest: digest('e'),
   installed: true,
   enabled: true,
   approved: true,
@@ -20,7 +21,7 @@ const pack = {
 const activeRow = {
   pack_id: pack.id,
   version: pack.version,
-  artifact_digest: pack.artifactDigest,
+  artifact_digest: pack.packArtifactDigest,
   installed: pack.installed,
   enabled: pack.enabled,
   approved: pack.approved,
@@ -47,4 +48,7 @@ test('Node Manager locks an active lifecycle control on artifact or state drift'
   assert.equal(exactActivePackJoin(pack, {...activeRow, artifact_digest: digest('d')}), false);
   assert.equal(exactActivePackJoin(pack, {...activeRow, enabled: false}), false);
   assert.equal(exactActivePackJoin(pack, undefined), false);
+  assert.equal(exactActivePackJoin({...pack, packArtifactDigest: undefined}, activeRow), false);
+  assert.equal(exactActivePackJoin({...pack, packArtifactDigest: 'invalid'}, activeRow), false);
+  assert.equal(exactActivePackJoin({...pack, packArtifactDigest: null}, activeRow), false);
 });

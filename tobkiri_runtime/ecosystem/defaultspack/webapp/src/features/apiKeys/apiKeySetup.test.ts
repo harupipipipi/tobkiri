@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  apiKeySaveResource,
   buildApiKeySavePayload,
   collectApiProviderOptions,
   collectExternalProviderOptions,
@@ -12,6 +13,7 @@ import {
   normalizeApiProviderScope,
   normalizeCustomProviderId,
   parseAllowedModels,
+  requiresExplicitApiProviderProtocol,
   summarizeApiKeySetupForDiagnostics,
 } from "./apiKeySetup";
 
@@ -80,6 +82,8 @@ test("API provider scope keeps AI and non-AI credential surfaces separate", () =
     filterRegisteredApiRowsByScope(rows, options, "non_llm").map((row) => row.provider_id),
     ["cloudflare"],
   );
+  assert.equal(apiKeySaveResource("llm"), "provider");
+  assert.equal(apiKeySaveResource("custom"), "external_token");
 });
 
 test("normalizeApiProviderScope accepts declarative template aliases", () => {
@@ -119,6 +123,22 @@ test("buildApiKeySavePayload parses form metadata while keeping secret only in s
   assert.equal(payload?.value, "sk-secret");
   assert.deepEqual(payload?.options.allowedModels, ["gpt-4.1", "o4-mini"]);
   assert.equal(payload?.options.baseUrl, "https://example.test");
+});
+
+test("custom LLM payload preserves the selected supported protocol", () => {
+  const payload = buildApiKeySavePayload({
+    provider_id: "acme-ai",
+    name: "main",
+    value: "private-key",
+    kind: "llm",
+    protocol: "anthropic",
+    base_url: "https://models.example.test",
+  });
+
+  assert.equal(requiresExplicitApiProviderProtocol("acme-ai", "llm"), true);
+  assert.equal(requiresExplicitApiProviderProtocol("anthropic", "llm"), false);
+  assert.equal(requiresExplicitApiProviderProtocol("acme-search", "custom"), false);
+  assert.equal(payload?.options.protocol, "anthropic");
 });
 
 test("buildApiKeySavePayload accepts an explicit loopback no-key connection", () => {

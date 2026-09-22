@@ -7,6 +7,12 @@ const modelSearchResources = createModelSearchResources(api);
 const providerApiKeyResources = createProviderApiKeyResources<Parameters<typeof api.saveProviderApiKey>[2]>(api);
 
 export const settingsApiResources = {
+  createModelProfile(input: Parameters<typeof api.createModelProfile>[0]) {
+    return api.createModelProfile(input);
+  },
+  listProviderConnections() {
+    return api.listProviderConnections();
+  },
   canonicalRouteKey(apiPath: string) {
     return defaultspackCanonicalRouteKey(apiPath);
   },

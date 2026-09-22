@@ -180,7 +180,7 @@ def test_operating_profile_activate_honors_route_id_without_body_profile(
         ),
     )
     monkeypatch.setattr(
-        "core_runtime.bootstrap.profile_capture.capture_default_profile",
+        "core_runtime.bootstrap.profile_capture.capture_active_profile",
         lambda: active,
     )
 

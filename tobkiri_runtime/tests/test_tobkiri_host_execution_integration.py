@@ -11,9 +11,10 @@ import sqlite3
 import subprocess
 import sys
 from concurrent.futures import Future
-from threading import Barrier, Lock, Thread
+from threading import Barrier, Event, Lock, Thread
+from types import SimpleNamespace
 import time
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 import pytest
 
@@ -26,7 +27,12 @@ from tobkiri_host.backends import (
     BackendRegistry,
     BackendStatus,
 )
-from tobkiri_host.broker import AdmissionTicket, RequestBroker, RequestEnvelope
+from tobkiri_host.broker import (
+    AdmissionTicket,
+    NestedCancellationProof,
+    RequestBroker,
+    RequestEnvelope,
+)
 from tobkiri_host.contracts import AdapterPlanner, OperationCatalog, OperationRoute
 from tobkiri_host.effects import (
     EffectDisposition,
@@ -39,6 +45,7 @@ from tobkiri_host.errors import (
     AuthorizationError,
     ProviderExecutionError,
     RequestTimedOutError,
+    RequestCancellationRequestedError,
 )
 from tobkiri_host.materialization import (
     MaterializationCoordinator,
@@ -56,6 +63,10 @@ from tobkiri_host.models import (
     PackageKind,
     RequestContext,
     RuntimeEvidence,
+)
+from tobkiri_host.operation_cancellation import (
+    OwnedCancellationHandles,
+    nested_cancellation_proof_for,
 )
 from tobkiri_host.ports import (
     OpaqueAuditReservation,
@@ -315,6 +326,7 @@ def make_broker(
     fail_static: bool = False,
     fail_audit: bool = False,
     backend: FakeBackend | None = None,
+    max_workers: int = 16,
 ) -> BrokerFixture:
     events: list[str] = []
     item = fixture_artifact(effect, timeout_ms)
@@ -334,6 +346,7 @@ def make_broker(
         authority=authority,
         audit=audit,
         reconciliation=reconciliation,
+        max_workers=max_workers,
     )
     return BrokerFixture(
         broker,
@@ -439,6 +452,724 @@ def test_external_timeout_is_fenced_persisted_and_never_auto_retried() -> None:
     assert fixture.backend.cancelled == ["request-1"]
     assert fixture.authority.fenced == ["request-1"]
     assert fixture.audit.failures == [("ambiguous_effect", True)]
+
+
+def test_read_timeout_finishes_cleanup_and_later_unique_request_recovers() -> None:
+    """A late first result is fenced and does not poison a normal retry."""
+
+    release_first = Event()
+    first_finished = Event()
+
+    class RecoveringBackend(FakeBackend):
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            self.invocations += 1
+            self.events.append(f"provider_invoked:{request.context.request_id}")
+            if request.context.request_id == "request-1":
+                assert release_first.wait(timeout=10)
+                first_finished.set()
+            return self.outcome
+
+        def cancel(self, request_id: str) -> None:
+            super().cancel(request_id)
+            if request_id == "request-1":
+                release_first.set()
+
+    fixture = make_broker(
+        effect=EffectClass.READ,
+        timeout_ms=20,
+        backend=RecoveringBackend([]),
+    )
+    try:
+        with pytest.raises(RequestTimedOutError):
+            fixture.broker.invoke(frame(20), context(), effect_scope={})
+        assert first_finished.wait(timeout=2)
+        recovered = fixture.broker.invoke(
+            replace(frame(20), idempotency_key="notification:request-2"),
+            replace(context(), request_id="request-2", trace_id="trace-2"),
+            effect_scope={},
+        )
+    finally:
+        release_first.set()
+        fixture.broker.close()
+
+    assert recovered == {"delivered": True}
+    assert fixture.backend.cancelled == ["request-1"]
+    assert fixture.authority.fenced == ["request-1"]
+    assert fixture.backend.invocations == 2
+    assert fixture.audit.failures == [("provider_failed", False)]
+
+
+def test_queued_read_timeout_never_enters_backend_and_later_request_recovers() -> None:
+    """A queued timeout is removed before backend ownership and cannot run late."""
+
+    first_entered = Event()
+    release_first = Event()
+
+    class SaturatedBackend(FakeBackend):
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            self.invocations += 1
+            self.events.append(f"provider_invoked:{request.context.request_id}")
+            if request.context.request_id == "request-1":
+                first_entered.set()
+                assert release_first.wait(timeout=10)
+            return self.outcome
+
+    fixture = make_broker(
+        effect=EffectClass.READ,
+        timeout_ms=1000,
+        backend=SaturatedBackend([]),
+        max_workers=1,
+    )
+    first_result: list[Mapping[str, Any]] = []
+    first_error: list[BaseException] = []
+
+    def invoke_first() -> None:
+        try:
+            first_result.append(fixture.broker.invoke(frame(1000), context(), effect_scope={}))
+        except BaseException as exc:
+            first_error.append(exc)
+
+    first_thread = Thread(target=invoke_first)
+    first_thread.start()
+    try:
+        assert first_entered.wait(timeout=2)
+        with pytest.raises(RequestTimedOutError):
+            fixture.broker.invoke(
+                replace(frame(20), idempotency_key="notification:request-2"),
+                replace(context(), request_id="request-2", trace_id="trace-2"),
+                effect_scope={},
+            )
+        assert fixture.backend.cancelled == []
+        assert fixture.backend.invocations == 1
+
+        release_first.set()
+        first_thread.join(timeout=2)
+        assert not first_thread.is_alive()
+        assert first_error == []
+        assert first_result == [{"delivered": True}]
+
+        recovered = fixture.broker.invoke(
+            replace(frame(1000), idempotency_key="notification:request-3"),
+            replace(context(), request_id="request-3", trace_id="trace-3"),
+            effect_scope={},
+        )
+    finally:
+        release_first.set()
+        first_thread.join(timeout=2)
+        fixture.broker.close()
+
+    assert recovered == {"delivered": True}
+    assert fixture.backend.invocations == 2
+    assert fixture.authority.fenced == ["request-2"]
+    assert fixture.audit.failures == [("provider_failed", False)]
+
+
+def test_slow_effect_boundary_recheck_never_dispatches_expired_request() -> None:
+    """A final gate which overruns the deadline cannot create a side effect."""
+
+    fixture = make_broker(timeout_ms=25)
+    recheck = fixture.authority.recheck_effect_boundary
+
+    def slow_recheck(context_arg, target, lease) -> None:
+        time.sleep(0.08)
+        recheck(context_arg, target, lease)
+
+    fixture.authority.recheck_effect_boundary = slow_recheck
+    try:
+        with pytest.raises(RequestTimedOutError):
+            fixture.broker.invoke(frame(25), context(), effect_scope={})
+    finally:
+        fixture.broker.close()
+    assert fixture.backend.invocations == 0
+    assert "provider_invoked" not in fixture.events
+    assert "audit_dispatched" not in fixture.events
+    assert fixture.audit.failures == [("provider_failed", False)]
+    assert fixture.authority.fenced == ["request-1"]
+    assert fixture.admission.released
+
+
+def test_dispatch_marker_delay_past_deadline_never_enters_provider() -> None:
+    """An executed-marker which overruns the deadline still cannot dispatch."""
+
+    fixture = make_broker(timeout_ms=25)
+    marks: list[str] = []
+
+    def slow_marker() -> None:
+        time.sleep(0.08)
+        marks.append("executed_marker")
+
+    try:
+        with pytest.raises(RequestTimedOutError):
+            fixture.broker.invoke(
+                frame(25),
+                context(),
+                effect_scope={},
+                before_dispatch=slow_marker,
+            )
+    finally:
+        fixture.broker.close()
+    assert marks == ["executed_marker"]
+    assert "audit_dispatched" in fixture.events
+    assert fixture.backend.invocations == 0
+    assert "provider_invoked" not in fixture.events
+    assert fixture.audit.failures == [("provider_failed", False)]
+    assert fixture.authority.fenced == ["request-1"]
+
+
+def test_executor_entry_past_deadline_never_invokes_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A worker which reaches the provider gate after expiry cannot invoke."""
+
+    fixture = make_broker(timeout_ms=25)
+    real_submit = fixture.broker._executor.submit
+
+    def delayed_submit(function, *arguments):
+        time.sleep(0.08)
+        return real_submit(function, *arguments)
+
+    monkeypatch.setattr(fixture.broker._executor, "submit", delayed_submit)
+    try:
+        with pytest.raises(RequestTimedOutError):
+            fixture.broker.invoke(frame(25), context(), effect_scope={})
+    finally:
+        fixture.broker.close()
+    assert "audit_dispatched" in fixture.events
+    assert fixture.backend.invocations == 0
+    assert "provider_invoked" not in fixture.events
+    assert fixture.audit.failures == [("provider_failed", False)]
+    assert fixture.authority.fenced == ["request-1"]
+    assert fixture.admission.released
+
+
+def test_cancellation_after_effect_recheck_never_dispatches() -> None:
+    """A cancel observed after the final gate terminates unexecuted."""
+
+    cancelled = Event()
+    fixture = make_broker(timeout_ms=1000)
+    recheck = fixture.authority.recheck_effect_boundary
+
+    def cancelling_recheck(context_arg, target, lease) -> None:
+        cancelled.set()
+        recheck(context_arg, target, lease)
+
+    fixture.authority.recheck_effect_boundary = cancelling_recheck
+    try:
+        with pytest.raises(RequestCancellationRequestedError):
+            fixture.broker.invoke(
+                frame(),
+                context(),
+                effect_scope={},
+                parent_cancellation=cancelled,
+            )
+    finally:
+        fixture.broker.close()
+    assert fixture.backend.invocations == 0
+    assert "provider_invoked" not in fixture.events
+    assert "audit_dispatched" not in fixture.events
+    assert fixture.audit.failures == [("provider_failed", False)]
+    assert fixture.authority.fenced == ["request-1"]
+
+
+def test_queued_external_timeout_is_unexecuted_not_ambiguous() -> None:
+    """A queued external work item cancelled before start never executed."""
+
+    first_entered = Event()
+    release_first = Event()
+
+    class SaturatedBackend(FakeBackend):
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            self.invocations += 1
+            self.events.append(f"provider_invoked:{request.context.request_id}")
+            if request.context.request_id == "request-1":
+                first_entered.set()
+                assert release_first.wait(timeout=10)
+            return self.outcome
+
+    fixture = make_broker(
+        effect=EffectClass.EXTERNAL_EFFECT,
+        timeout_ms=1000,
+        backend=SaturatedBackend([]),
+        max_workers=1,
+    )
+    first_result: list[Mapping[str, Any]] = []
+    first_error: list[BaseException] = []
+
+    def invoke_first() -> None:
+        try:
+            first_result.append(
+                fixture.broker.invoke(frame(1000), context(), effect_scope={})
+            )
+        except BaseException as exc:
+            first_error.append(exc)
+
+    first_thread = Thread(target=invoke_first)
+    first_thread.start()
+    try:
+        assert first_entered.wait(timeout=2)
+        with pytest.raises(RequestTimedOutError):
+            fixture.broker.invoke(
+                replace(frame(20), idempotency_key="notification:request-2"),
+                replace(context(), request_id="request-2", trace_id="trace-2"),
+                effect_scope={},
+            )
+        assert fixture.backend.cancelled == []
+        assert fixture.backend.invocations == 1
+
+        release_first.set()
+        first_thread.join(timeout=2)
+        assert not first_thread.is_alive()
+        assert first_error == []
+        assert first_result == [{"delivered": True}]
+    finally:
+        release_first.set()
+        first_thread.join(timeout=2)
+        fixture.broker.close()
+
+    assert fixture.authority.fenced == ["request-2"]
+    assert fixture.audit.failures == [("provider_failed", False)]
+
+
+@pytest.mark.parametrize("effect", [EffectClass.READ, EffectClass.EXTERNAL_EFFECT])
+@pytest.mark.parametrize("cancel_fails", [False, True])
+def test_parent_cancellation_targets_inner_request_without_claiming_termination(
+    effect: EffectClass, cancel_fails: bool,
+) -> None:
+    """A shared Host signal reaches the selected backend's exact inner ID."""
+    cancelled = Event()
+    release_provider = Event()
+
+    class CancellableBackend(FakeBackend):
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            assert request.cancellation_requested is cancelled
+            self.invocations += 1
+            cancelled.set()
+            assert release_provider.wait(timeout=10)
+            return self.outcome
+
+        def cancel(self, request_id: str) -> None:
+            super().cancel(request_id)
+            release_provider.set()
+            if cancel_fails:
+                raise RuntimeError("test cancellation was not acknowledged")
+
+    fixture = make_broker(effect=effect, timeout_ms=10000, backend=CancellableBackend([]))
+    expected_error = (
+        AmbiguousEffectError if effect is EffectClass.EXTERNAL_EFFECT
+        else ProviderExecutionError if cancel_fails
+        else RequestCancellationRequestedError
+    )
+    try:
+        with pytest.raises(expected_error):
+            fixture.broker.invoke(
+                frame(), replace(context(), request_id="inner-request"),
+                effect_scope={}, parent_cancellation=cancelled,
+            )
+    finally:
+        release_provider.set()
+        fixture.broker.close()
+    assert fixture.backend.cancelled == ["inner-request"]
+    assert fixture.backend.invocations == 1
+    assert fixture.authority.fenced == ["inner-request"]
+    assert "audit_committed" not in fixture.events
+
+
+@pytest.mark.parametrize(
+    ("cancel_fails", "release_on_cancel", "confirmed"),
+    [(False, True, True), (True, True, False), (False, False, False)],
+)
+def test_broker_nested_cancellation_proof_requires_acknowledged_exact_future_exit(
+    cancel_fails: bool,
+    release_on_cancel: bool,
+    confirmed: bool,
+) -> None:
+    """Broker wiring cannot turn a late result into a stopped confirmation."""
+
+    parent = RequestEnvelope(
+        context=context(),
+        target_principal=OpaqueAuthorityRef("provider"),
+        target_domain=OpaqueAuthorityRef("domain"),
+        contract_id="contract",
+        contract_version="1.0.0",
+        operation_id="operation",
+        payload={},
+        request_digest=digest("outer-request"),
+        deadline_monotonic=time.monotonic() + 2,
+        lease=OpaqueInvocationLease(b"outer-lease"),
+        idempotency_key=None,
+    )
+    stop = replace(parent, cancellation_requested=Event())
+    handles = OwnedCancellationHandles()
+    execute = handles.bind(
+        group=("pack", "saved-turn"),
+        role="execute",
+        envelope=parent,
+        owner_principal="presentation-owner",
+        owner_session="presentation-session",
+        guard=lambda: None,
+    )
+    cancel = handles.bind(
+        group=("pack", "saved-turn"),
+        role="stop",
+        envelope=stop,
+        owner_principal="presentation-owner",
+        owner_session="presentation-session",
+        guard=lambda: None,
+    )
+    entered, release, child_exited, worker_completed = (Event() for _ in range(4))
+
+    class CancellableBackend(FakeBackend):
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            assert request.cancellation_requested is parent.cancellation_requested
+            assert not hasattr(request, "nested_cancellation_proof")
+            self.invocations += 1
+            entered.set()
+            assert parent.cancellation_requested.wait(timeout=2)
+            try:
+                assert release.wait()
+                # A late successful value must remain fenced by Broker cancellation.
+                return self.outcome
+            finally:
+                child_exited.set()
+
+        def cancel(self, request_id: str) -> None:
+            super().cancel(request_id)
+            if release_on_cancel:
+                release.set()
+            if cancel_fails:
+                raise RuntimeError("test cancellation failed")
+
+    fixture = make_broker(
+        effect=EffectClass.READ,
+        timeout_ms=1000,
+        backend=CancellableBackend([]),
+    )
+    worker_errors: list[BaseException] = []
+    observation = None
+    worker: Thread | None = None
+    try:
+        with execute.track("turn"):
+            proof = nested_cancellation_proof_for(
+                parent, "presentation-owner", "presentation-session"
+            )
+            assert proof is not None
+
+            def invoke_child() -> None:
+                try:
+                    fixture.broker.invoke(
+                        frame(1000),
+                        context(),
+                        effect_scope={},
+                        parent_deadline_monotonic=parent.deadline_monotonic,
+                        parent_cancellation=parent.cancellation_requested,
+                        parent_cancellation_proof=proof,
+                    )
+                except BaseException as exc:
+                    worker_errors.append(exc)
+                finally:
+                    worker_completed.set()
+
+            worker = Thread(target=invoke_child)
+            worker.start()
+            assert entered.wait(timeout=2)
+            observation = cancel.request("turn")
+            assert worker_completed.wait(timeout=2)
+            if not release_on_cancel:
+                assert not child_exited.is_set()
+            assert not observation.wait_for_verified_drain(time.monotonic() + 0.01)
+        assert observation is not None
+        assert observation.wait_for_verified_drain(time.monotonic() + 0.1) is confirmed
+    finally:
+        release.set()
+        assert child_exited.wait(timeout=2)
+        if worker is not None:
+            worker.join(timeout=2)
+        fixture.broker.close()
+
+    expected = (
+        ProviderExecutionError
+        if cancel_fails
+        else RequestCancellationRequestedError
+    )
+    assert len(worker_errors) == 1
+    assert isinstance(worker_errors[0], expected)
+    assert fixture.backend.cancelled == ["request-1"]
+    assert "audit_committed" not in fixture.events
+
+
+def test_already_cancelled_parent_never_starts_inner_work() -> None:
+    """No admission, authority exercise or provider call follows a prior cancel."""
+    cancelled = Event()
+    cancelled.set()
+    fixture = make_broker()
+    try:
+        with pytest.raises(RequestCancellationRequestedError):
+            fixture.broker.invoke(
+                frame(), context(), effect_scope={}, parent_cancellation=cancelled,
+            )
+        assert fixture.events == []
+    finally:
+        fixture.broker.close()
+
+
+def test_forged_parent_cancellation_proof_is_rejected_before_resolution() -> None:
+    """Only a concrete Host-owned cancellation proof may enter dispatch."""
+
+    fixture = make_broker()
+    try:
+        with pytest.raises(ValueError, match="cancellation proof is invalid"):
+            fixture.broker.invoke(
+                frame(),
+                context(),
+                effect_scope={},
+                parent_cancellation=Event(),
+                parent_cancellation_proof=cast(
+                    NestedCancellationProof,
+                    object(),
+                ),
+            )
+        assert fixture.events == []
+    finally:
+        fixture.broker.close()
+
+
+def test_foreign_and_stale_parent_proofs_are_rejected_before_resolution() -> None:
+    """A real proof is useful only with its exact live outer signal."""
+
+    parent = RequestEnvelope(
+        context=context(),
+        target_principal=OpaqueAuthorityRef("provider"),
+        target_domain=OpaqueAuthorityRef("domain"),
+        contract_id="contract",
+        contract_version="1.0.0",
+        operation_id="operation",
+        payload={},
+        request_digest=digest("outer-proof-parent"),
+        deadline_monotonic=time.monotonic() + 2,
+        lease=OpaqueInvocationLease(b"outer-proof-lease"),
+        idempotency_key=None,
+    )
+    handles = OwnedCancellationHandles()
+    execute = handles.bind(
+        group=("pack", "saved-turn"),
+        role="execute",
+        envelope=parent,
+        owner_principal="presentation-owner",
+        owner_session="presentation-session",
+        guard=lambda: None,
+    )
+    fixture = make_broker()
+    try:
+        with execute.track("turn"):
+            proof = nested_cancellation_proof_for(
+                parent,
+                "presentation-owner",
+                "presentation-session",
+            )
+            assert proof is not None
+            with pytest.raises(ValueError, match="cancellation proof is invalid"):
+                fixture.broker.invoke(
+                    frame(),
+                    context(),
+                    effect_scope={},
+                    parent_cancellation=Event(),
+                    parent_cancellation_proof=proof,
+                )
+            assert fixture.events == []
+        with pytest.raises(ValueError, match="cancellation proof is invalid"):
+            fixture.broker.invoke(
+                frame(),
+                context(),
+                effect_scope={},
+                parent_cancellation=parent.cancellation_requested,
+                parent_cancellation_proof=proof,
+            )
+        assert fixture.events == []
+    finally:
+        fixture.broker.close()
+
+
+def test_unstopped_cancelled_provider_keeps_admission_charged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A no-op cancel cannot free capacity while the provider still runs."""
+    cancelled = Event()
+    release_provider = Event()
+    resources_released = Event()
+
+    class UnstoppableBackend(FakeBackend):
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            self.invocations += 1
+            cancelled.set()
+            assert release_provider.wait(timeout=10)
+            return self.outcome
+
+    fixture = make_broker(
+        effect=EffectClass.READ, timeout_ms=10000, backend=UnstoppableBackend([])
+    )
+    original_release = fixture.admission.release
+
+    def release(ticket) -> None:
+        original_release(ticket)
+        resources_released.set()
+
+    monkeypatch.setattr(fixture.admission, "release", release)
+    try:
+        with pytest.raises(RequestCancellationRequestedError):
+            fixture.broker.invoke(
+                frame(), context(), effect_scope={}, parent_cancellation=cancelled,
+            )
+        assert fixture.backend.cancelled == ["request-1"]
+        assert "reservation_released" not in fixture.events
+    finally:
+        release_provider.set()
+        fixture.broker.close()
+    assert resources_released.wait(timeout=10)
+    assert fixture.events.count("reservation_released") == 1
+    assert "audit_committed" not in fixture.events
+
+
+def test_broker_close_cancels_concurrent_requests_and_waits_for_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shutdown drains exact active invocations before ledger release."""
+    entered = Barrier(3)
+
+    class ShutdownBackend(FakeBackend):
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            self.invocations += 1
+            entered.wait(timeout=2)
+            assert request.cancellation_requested.wait(timeout=2)
+            return self.outcome
+
+    fixture = make_broker(
+        effect=EffectClass.READ,
+        timeout_ms=10000,
+        backend=ShutdownBackend([]),
+    )
+    released = []
+    original_release = fixture.admission.release
+
+    def release(ticket) -> None:
+        original_release(ticket)
+        released.append(ticket.reservation.reservation_id)
+
+    monkeypatch.setattr(fixture.admission, "release", release)
+    errors = []
+
+    def invoke(request_id: str) -> None:
+        try:
+            fixture.broker.invoke(
+                replace(frame(), idempotency_key=request_id),
+                replace(context(), request_id=request_id, trace_id=request_id),
+                effect_scope={},
+            )
+        except RequestCancellationRequestedError:
+            return
+        except BaseException as exc:
+            errors.append(exc)
+
+    workers = [Thread(target=invoke, args=(f"request-{index}",)) for index in (1, 2)]
+    for worker in workers:
+        worker.start()
+    entered.wait(timeout=2)
+
+    started = time.monotonic()
+    fixture.broker.close()
+    elapsed = time.monotonic() - started
+    for worker in workers:
+        worker.join(timeout=2)
+
+    assert errors == []
+    assert all(not worker.is_alive() for worker in workers)
+    assert sorted(fixture.backend.cancelled) == ["request-1", "request-2"]
+    assert len(released) == 2
+    assert elapsed < 1.0
+
+
+def test_broker_close_does_not_release_unstopped_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A bounded shutdown timeout cannot claim a hostile provider exited."""
+    entered = Event()
+    release_provider = Event()
+    resources_released = Event()
+
+    class UnstoppableBackend(FakeBackend):
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            self.invocations += 1
+            entered.set()
+            assert release_provider.wait(timeout=10)
+            return self.outcome
+
+    fixture = make_broker(
+        effect=EffectClass.READ,
+        timeout_ms=10000,
+        backend=UnstoppableBackend([]),
+    )
+    original_release = fixture.admission.release
+
+    def release(ticket) -> None:
+        original_release(ticket)
+        resources_released.set()
+
+    monkeypatch.setattr(fixture.admission, "release", release)
+    errors = []
+
+    def invoke() -> None:
+        try:
+            fixture.broker.invoke(frame(), context(), effect_scope={})
+        except RequestCancellationRequestedError:
+            return
+        except BaseException as exc:
+            errors.append(exc)
+
+    worker = Thread(target=invoke)
+    worker.start()
+    assert entered.wait(timeout=2)
+
+    fixture.broker.close()
+
+    assert not resources_released.is_set()
+    release_provider.set()
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    assert errors == []
+    assert resources_released.wait(timeout=2)
+
+
+@pytest.mark.parametrize("effect", [EffectClass.READ, EffectClass.EXTERNAL_EFFECT])
+def test_completed_future_cannot_publish_a_late_result(
+    monkeypatch: pytest.MonkeyPatch, effect: EffectClass,
+) -> None:
+    """A result ready before observation still cannot outlive its deadline."""
+    import tobkiri_host.broker as broker_module
+
+    clock = [100.0]
+    monkeypatch.setattr(
+        broker_module, "time", SimpleNamespace(monotonic=lambda: clock[0])
+    )
+    fixture = make_broker(effect=effect)
+
+    def submit(function, *arguments):
+        future = Future()
+        future.set_result(function(*arguments))
+        # Model the Host being scheduled only after the deadline. The Future
+        # is already done, so Future.result(timeout=0) cannot enforce expiry.
+        clock[0] += 1.0
+        return future
+
+    monkeypatch.setattr(fixture.broker._executor, "submit", submit)
+    error_type = AmbiguousEffectError if effect is EffectClass.EXTERNAL_EFFECT else RequestTimedOutError
+    try:
+        with pytest.raises(error_type):
+            fixture.broker.invoke(frame(), context(), effect_scope={})
+    finally:
+        fixture.broker.close()
+    assert fixture.backend.invocations == 1
+    assert fixture.backend.cancelled == ["request-1"]
+    assert fixture.authority.fenced == ["request-1"]
+    assert "audit_committed" not in fixture.events
 
 
 def test_local_timeout_kills_process_group_before_side_effect(tmp_path: Path) -> None:
@@ -570,7 +1301,12 @@ def test_provider_rejection_always_releases_submitted_future() -> None:
         def __init__(self) -> None:
             self.future = CancelTrackedFuture()
 
-        def submit(self, _callable, _request) -> CancelTrackedFuture:
+        def submit(
+            self,
+            _callable: object,
+            *_args: object,
+            **_kwargs: object,
+        ) -> CancelTrackedFuture:
             self.future.set_exception(RuntimeError("provider-private-detail"))
             return self.future
 
@@ -590,6 +1326,105 @@ def test_provider_rejection_always_releases_submitted_future() -> None:
     assert executor.future.cancel_calls == 1
     assert fixture.admission.released
     assert fixture.audit.failures == [("provider_failed", False)]
+
+
+@pytest.mark.parametrize("failure_at", (None, "materialize", "authorize", "release"))
+@pytest.mark.parametrize("worker_memory", (1, 1024 * 1024))
+def test_request_scoped_worker_cleanup_precedes_resource_release(
+    failure_at: str | None,
+    worker_memory: int,
+) -> None:
+    class WorkerBackend(FakeBackend):
+        memory_reservation_bytes = worker_memory
+
+        def materialize(self, binding, reservation_id) -> RuntimeEvidence:
+            evidence = super().materialize(binding, reservation_id)
+            if failure_at == "materialize":
+                raise RuntimeError("partial worker start failed")
+            return evidence
+
+        def release_materialization(self, reservation_id: str) -> None:
+            assert reservation_id == "reservation-1"
+            self.events.append("worker_cleanup")
+            if failure_at == "release":
+                raise RuntimeError("worker exit could not be confirmed")
+
+    fixture = make_broker(backend=WorkerBackend([]))
+    acquire = fixture.admission.acquire
+
+    def acquire_worker(scope, estimate, wait_timeout_seconds):
+        assert estimate.charge().memory_bytes == max(10, worker_memory)
+        return acquire(scope, estimate, wait_timeout_seconds)
+
+    fixture.admission.acquire = acquire_worker
+    if failure_at == "authorize":
+
+        def deny(query: object) -> None:
+            raise PermissionError("final authorization denied")
+
+        fixture.authority.authorize_and_issue_lease = deny
+    try:
+        if failure_at:
+            expected = AuthorizationError if failure_at == "authorize" else RuntimeError
+            with pytest.raises(expected):
+                fixture.broker.invoke(frame(), context(), effect_scope={"user": "u1"})
+        else:
+            fixture.broker.invoke(frame(), context(), effect_scope={"user": "u1"})
+    finally:
+        fixture.broker.close()
+    assert fixture.events.count("worker_cleanup") == 1
+    if failure_at == "release":
+        assert not fixture.admission.released
+        assert "request-1" in fixture.authority.fenced
+    else:
+        assert fixture.events.index("worker_cleanup") < fixture.events.index("reservation_released")
+    if failure_at in ("materialize", "authorize"):
+        assert fixture.backend.invocations == 0
+
+
+@pytest.mark.parametrize("worker_memory", (0, -1, True, "1024"))
+def test_invalid_worker_memory_reservation_never_starts_or_charges(worker_memory) -> None:
+    from tobkiri_host.errors import AdmissionError
+
+    class WorkerBackend(FakeBackend):
+        memory_reservation_bytes = worker_memory
+
+        def release_materialization(self, reservation_id: str) -> None:
+            raise AssertionError("no worker or reservation should exist")
+
+    fixture = make_broker(backend=WorkerBackend([]))
+    try:
+        with pytest.raises(AdmissionError, match="memory reservation is invalid"):
+            fixture.broker.invoke(frame(), context(), effect_scope={"user": "u1"})
+    finally:
+        fixture.broker.close()
+    assert fixture.backend.starts == 0
+    assert "queue_reserved" not in fixture.events
+
+
+@pytest.mark.parametrize("overhead", [-1, True, False, 1.5, "1", None, float("nan")])
+def test_worker_floor_cannot_hide_invalid_backend_estimate(overhead: object) -> None:
+    """Reject the original estimate before max() can turn it into valid input."""
+    from tobkiri_host.errors import AdmissionError
+
+    class WorkerBackend(FakeBackend):
+        memory_reservation_bytes = 1024
+
+        def release_materialization(self, reservation_id: str) -> None:
+            raise AssertionError("no worker or reservation should exist")
+
+    fixture = make_broker(backend=WorkerBackend([]))
+    estimate = fixture.admission.estimate
+    fixture.admission.estimate = lambda *args: replace(
+        estimate(*args), backend_overhead_bytes=overhead,
+    )
+    try:
+        with pytest.raises(AdmissionError, match="backend estimate is invalid"):
+            fixture.broker.invoke(frame(), context(), effect_scope={})
+    finally:
+        fixture.broker.close()
+    assert fixture.backend.starts == 0
+    assert "queue_reserved" not in fixture.events
 
 
 def test_singleflight_materialization_never_merges_distinct_principals() -> None:
@@ -631,6 +1466,38 @@ def test_singleflight_materialization_never_merges_distinct_principals() -> None
         target_principal=OpaqueAuthorityRef("authority:different-operation"),
     )
     coordinator.materialize(other_key, backend, binding, "reservation-2")
+    assert backend.starts == 2
+
+
+def test_singleflight_keeps_concurrent_resource_reservations_separate() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    barrier = Barrier(2)
+
+    class ReservedBackend(FakeBackend):
+        def materialize(self, binding, reservation_id) -> RuntimeEvidence:
+            barrier.wait(timeout=2)
+            evidence = super().materialize(binding, reservation_id)
+            return replace(evidence, resource_reservation_id=reservation_id)
+
+    backend = ReservedBackend([])
+    coordinator = MaterializationCoordinator()
+    binding = fixture_catalog(fixture_artifact()).resolve(
+        "io.tobkiri.notification.v1", "send", ">=1"
+    )
+    key = WorkloadInstanceKey(
+        "profile-1", "activation-1", binding.principal_ref, "wasm.effect.v1", 9
+    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(coordinator.materialize, key, backend, binding, reservation)
+            for reservation in ("first-reservation", "second-reservation")
+        ]
+        evidence = [future.result(timeout=3) for future in futures]
+    assert [item.resource_reservation_id for item in evidence] == [
+        "first-reservation",
+        "second-reservation",
+    ]
     assert backend.starts == 2
 
 

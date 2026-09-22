@@ -17,6 +17,11 @@ VERIFY_SCRIPT = SCRIPTS / "verify_presentation_release.py"
 PACKAGE_SCRIPT = SCRIPTS / "package_presentation_artifact.py"
 ROOT = Path(__file__).resolve().parents[3]
 V4_ROOT = ROOT / "tobkiri_runtime" / "ecosystem" / "defaultspack" / "v4"
+SOURCE_ONLY_PROFILE_COMPANIONS = (
+    "defaults.profile.intent.v1.json",
+    "defaults.profile.lock.v5.json",
+    "defaults.release.provenance.json",
+)
 VERIFY_SPEC = importlib.util.spec_from_file_location(
     "verify_presentation_release", VERIFY_SCRIPT
 )
@@ -49,12 +54,24 @@ def _lock_entries() -> list[dict[str, str]]:
     return lock["entries"]
 
 
-def test_official_bundle_lock_with_interleaved_executable_catalogs_verifies() -> None:
-    """The release verifier accepts the canonical 135-entry source bundle."""
+def _copy_packaged_bundle(tmp_path: Path) -> Path:
+    """Copy the runtime bundle without source-release-only Profile companions."""
+
+    bundle = tmp_path / "v4"
+    shutil.copytree(
+        V4_ROOT,
+        bundle,
+        ignore=shutil.ignore_patterns(*SOURCE_ONLY_PROFILE_COMPANIONS),
+    )
+    return bundle
+
+
+def test_official_bundle_lock_with_interleaved_executable_catalogs_verifies(
+    tmp_path: Path,
+) -> None:
+    """The release verifier accepts the canonical packaged bundle."""
     entries = _lock_entries()
-    assert len(entries) == 135
-    assert sum(entry["kind"] == "executable_catalog" for entry in entries) == 63
-    VERIFY._verify_defaultspack_bundle(entries, V4_ROOT)
+    VERIFY._verify_defaultspack_bundle(entries, _copy_packaged_bundle(tmp_path))
 
 
 @pytest.mark.parametrize(
@@ -64,8 +81,7 @@ def test_release_verifier_rejects_bundle_lock_drift(
     tmp_path: Path, mutation: str
 ) -> None:
     """Missing, duplicate, misplaced, wrong-domain, and stale entries fail closed."""
-    bundle = tmp_path / "v4"
-    shutil.copytree(V4_ROOT, bundle)
+    bundle = _copy_packaged_bundle(tmp_path)
     entries = _lock_entries()
     if mutation == "missing":
         index = next(

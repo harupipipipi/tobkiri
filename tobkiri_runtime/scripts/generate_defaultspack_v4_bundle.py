@@ -36,16 +36,71 @@ from tobkiri_protocol.provenance import (  # noqa: E402
     normative_generated_provenance,
 )
 from tobkiri_protocol.validation import validate_document  # noqa: E402
-from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog  # noqa: E402
+from tobkiri_protocol.bundle_catalog import BundledCatalog  # noqa: E402
+from scripts.profile_compatibility_provenance import (  # noqa: E402
+    compatibility_profile_provenance,
+    validate_compatibility_profile,
+)
 
 
-BUNDLE = ROOT / "ecosystem" / "defaultspack" / "v4"
+PROFILE_BUNDLE_POLICY_PATH = ROOT / "schemas" / "profile_bundle_generation.v1.json"
+
+
+def _load_profile_bundle_policy() -> dict[str, Any]:
+    """Load strict, finite build inputs without embedding Pack branches in Host code."""
+    policy = json.loads(PROFILE_BUNDLE_POLICY_PATH.read_text(encoding="utf-8"))
+    required = {
+        "schema",
+        "bundle_root",
+        "desktop_entrypoint",
+        "frontend_contract_map",
+        "legacy_pack_id_aliases",
+        "legacy_provider_edge_aliases",
+    }
+    if set(policy) != required or policy.get("schema") != (
+        "io.tobkiri.profile-bundle-generation-policy.v1"
+    ):
+        raise ValueError("Profile bundle generation policy is invalid")
+    for field in ("bundle_root", "desktop_entrypoint", "frontend_contract_map"):
+        value = policy.get(field)
+        if (
+            not isinstance(value, str)
+            or not value
+            or Path(value).is_absolute()
+            or ".." in Path(value).parts
+        ):
+            raise ValueError(f"Profile bundle generation {field} is invalid")
+    pack_aliases = policy.get("legacy_pack_id_aliases")
+    provider_aliases = policy.get("legacy_provider_edge_aliases")
+    if (
+        not isinstance(pack_aliases, dict)
+        or not all(isinstance(key, str) and key and isinstance(value, str) and value
+                   for key, value in pack_aliases.items())
+        or not isinstance(provider_aliases, dict)
+        or not all(
+            isinstance(key, str)
+            and key
+            and isinstance(value, dict)
+            and set(value) == {"target_provider_id", "contract_id", "operation_id"}
+            and all(isinstance(item, str) and item for item in value.values())
+            for key, value in provider_aliases.items()
+        )
+    ):
+        raise ValueError("Profile bundle generation aliases are invalid")
+    return policy
+
+
+PROFILE_BUNDLE_POLICY = _load_profile_bundle_policy()
+BUNDLE = ROOT / PROFILE_BUNDLE_POLICY["bundle_root"]
 PACKS = BUNDLE / "packs"
 PACK_SOURCE_CATALOG = ROOT / "schemas" / "pack_v4_catalog.v1.json"
 CANONICAL_PACK_FILES = {
     "defaultspack.pack.v4.json": ROOT / "ecosystem" / "defaultspack" / "pack.v4.json",
     "rumi-file-inspect.pack.v4.json": (
         ROOT / "ecosystem" / "rumi_file_inspect_pack" / "pack.v4.json"
+    ),
+    "rumi_media_inspect_service_pack.pack.v4.json": (
+        ROOT / "ecosystem" / "rumi_media_inspect_service_pack" / "pack.v4.json"
     ),
     "rumi-host-authority-bridge.pack.v4.json": (
         ROOT / "ecosystem" / "rumi_host_authority_bridge_pack" / "pack.v4.json"
@@ -105,12 +160,55 @@ TAURI_ROLE_PACKS = {
         "isolation": "dedicated_process",
     },
 }
-DEFAULTSPACK_DESKTOP_ENTRYPOINT = "defaultspack/desktop_app.py"
-DEFAULTSPACK_FRONTEND_CONTRACT_MAP = "defaultspack/frontend_contract_map.v4.json"
+DEFAULTSPACK_DESKTOP_ENTRYPOINT = PROFILE_BUNDLE_POLICY["desktop_entrypoint"]
+DEFAULTSPACK_FRONTEND_CONTRACT_MAP = PROFILE_BUNDLE_POLICY["frontend_contract_map"]
+PROFILE_ARTIFACT_COMPANIONS = (
+    Path("defaults.profile.intent.v1.json"),
+    Path("defaults.profile.lock.v5.json"),
+    Path("defaults.release.provenance.json"),
+)
 
 
-def _canonical_optional_host_extension_ids() -> tuple[str, ...]:
-    """Return the deterministic Host Extension catalog selection and closure."""
+def _render_profile_release(
+    bundle_root: Path,
+    *,
+    source_bundle_root: Path,
+) -> dict[Path, bytes]:
+    """Render the complete Profile source-release closure for one bundle tree."""
+
+    from scripts import generate_profile_artifacts as profile_artifact_generator
+
+    return profile_artifact_generator.render(
+        bundle_root=bundle_root,
+        intent_path=bundle_root / "defaults.profile.intent.v1.json",
+        compatibility_path=bundle_root / "defaults.profile.v5.json",
+        lock_path=bundle_root / "defaults.profile.lock.v5.json",
+        provenance_path=bundle_root / "defaults.release.provenance.json",
+        source_bundle_root=source_bundle_root,
+    )
+
+
+def _render_staged_profile_release(rendered: Mapping[Path, bytes]) -> dict[Path, bytes]:
+    """Render Profile artifacts against the candidate bundle publication.
+
+    A newly added Pack cannot be resolved from the current bundle.  Build the
+    same candidate tree used by publication so ``--check`` compares the whole
+    prospective release rather than rejecting that valid transition early.
+    """
+
+    stage = _stage_candidate_bundle(rendered, prefix=".defaultspack-v4-check-")
+    try:
+        staged = _render_profile_release(stage, source_bundle_root=BUNDLE)
+        return {
+            BUNDLE / path.relative_to(stage): raw for path, raw in staged.items()
+        }
+    finally:
+        if stage.exists():
+            shutil.rmtree(stage)
+
+
+def _canonical_catalog_pack_ids() -> tuple[str, ...]:
+    """Return optional catalog Packs; Base and Shell use their role projections."""
 
     payload = json.loads(PACK_SOURCE_CATALOG.read_text(encoding="utf-8"))
     records = payload.get("packs")
@@ -125,15 +223,7 @@ def _canonical_optional_host_extension_ids() -> tuple[str, ...]:
             raise ValueError(f"canonical Pack source catalog has an invalid Pack ID: {pack_id!r}")
         by_id[pack_id] = record
 
-    selected = {
-        pack_id
-        for pack_id, record in by_id.items()
-        if record.get("kind") == "host_extension"
-    }
-    pending = sorted(selected)
-    while pending:
-        pack_id = pending.pop(0)
-        record = by_id[pack_id]
+    for pack_id, record in by_id.items():
         dependencies = record.get("dependencies")
         if not isinstance(dependencies, dict):
             raise ValueError(f"Pack dependencies are malformed: {pack_id}")
@@ -143,11 +233,10 @@ def _canonical_optional_host_extension_ids() -> tuple[str, ...]:
                     f"canonical Pack source catalog has an unknown dependency: "
                     f"{pack_id} -> {dependency_id}"
                 )
-            if dependency_id not in selected:
-                selected.add(dependency_id)
-                pending.append(dependency_id)
-        pending.sort()
-    return tuple(sorted(selected))
+    return tuple(sorted(
+        pack_id for pack_id, record in by_id.items()
+        if record.get("kind") not in {"base", "shell"}
+    ))
 
 
 def _canonical_pack_sources() -> dict[Path, Path]:
@@ -156,11 +245,9 @@ def _canonical_pack_sources() -> dict[Path, Path]:
     sources = {path: path for path in PACKS.glob("*.pack.v4.json")}
     sources.update({PACKS / name: source for name, source in CANONICAL_PACK_FILES.items()})
     canonical_names = {
-        source.parent.name: output.name
-        for output, source in sources.items()
-        if source.parent.name
+        source.parent.name: output.name for output, source in sources.items() if source.parent.name
     }
-    for pack_id in _canonical_optional_host_extension_ids():
+    for pack_id in _canonical_catalog_pack_ids():
         output_name = canonical_names.get(pack_id, f"{pack_id}.pack.v4.json")
         sources[PACKS / output_name] = ROOT / "ecosystem" / pack_id / "pack.v4.json"
     return sources
@@ -250,8 +337,8 @@ def _normalize_pack(document: dict[str, Any]) -> dict[str, Any]:
                 }
             )
     document["requirements"] = _requirements(document["pack"]["kind"], document.get("requirements"))
-    document["operation_catalog"] = operations
-    document["provider_catalog"] = providers
+    document["operation_catalog"] = sorted(operations, key=lambda item: item["operation_id"])
+    document["provider_catalog"] = sorted(providers, key=lambda item: item["provider_id"])
     identity_source = {
         key: document[key]
         for key in (
@@ -295,6 +382,192 @@ def _generated_provenance(
         generator_version="2.0.0",
         generator_path=(generator_path or Path(__file__)).relative_to(ROOT.parent).as_posix(),
         generator_payload=(generator_path or Path(__file__)).read_bytes(),
+    )
+
+
+def _sha256_digest(payload: bytes) -> str:
+    """Return the protocol digest for exact input bytes."""
+
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def _canonical_pack_projection_provenance(
+    source: Path,
+    source_bytes: bytes,
+    source_document: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Bind a bundled Pack derivative to one canonical Pack input.
+
+    A Defaultspack bundle is a generated distribution closure, not a second
+    canonical Pack registry.  Its provenance therefore identifies the exact
+    canonical Pack bytes and this generator, while carrying forward the
+    canonical Pack's reviewed source commit as an informational value.
+    """
+
+    source_provenance = source_document.get("provenance")
+    if not isinstance(source_provenance, Mapping):
+        raise ValueError(f"canonical Pack has no provenance: {source}")
+    repository_commit = source_provenance.get("repository_commit")
+    if not isinstance(repository_commit, str) or len(repository_commit) != 40:
+        raise ValueError(f"canonical Pack has no trusted repository commit: {source}")
+    if repository_commit == "working-tree" or any(
+        character not in "0123456789abcdef" for character in repository_commit
+    ):
+        raise ValueError(f"canonical Pack has no trusted repository commit: {source}")
+
+    source_path = source.relative_to(ROOT).as_posix()
+    source_digest = _sha256_digest(source_bytes)
+    generator_path = Path(__file__).relative_to(ROOT.parent).as_posix()
+    generator_digest = _sha256_digest(Path(__file__).read_bytes())
+    input_inventory = {source_path: source_digest}
+    input_inventory_digest = canonical_digest(
+        [{"path": path, "digest": input_inventory[path]} for path in sorted(input_inventory)]
+    )
+    content_root_digest = canonical_digest(
+        {
+            "source_path": source_path,
+            "source_digest": source_digest,
+            "generator_path": generator_path,
+            "generator_digest": generator_digest,
+            "input_inventory_digest": input_inventory_digest,
+        }
+    )
+    return {
+        "schema": "io.tobkiri.provenance.v2",
+        "source_kind": "generated",
+        "source_path": source_path,
+        "source_digest": source_digest,
+        # This is retained from the canonical Pack.  The generated derivative
+        # does not itself make a Git-trust assertion, hence the v2 false flag.
+        "repository_commit": repository_commit,
+        "repository_commit_trusted": False,
+        "content_root_digest": content_root_digest,
+        "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+        "generator_version": "2.1.0",
+        "generator_path": generator_path,
+        "generator_digest": generator_digest,
+        "input_inventory_digest": input_inventory_digest,
+        "normative": True,
+        "evidence": [
+            {
+                "path": generator_path,
+                "rule_id": "normative-generator-bytes",
+                "digest": generator_digest,
+            },
+            {
+                "path": source_path,
+                "rule_id": "normative-input-bytes",
+                "digest": source_digest,
+            },
+        ],
+    }
+
+
+def _render_projection_executable_catalog(
+    source: Path,
+    document: Mapping[str, Any],
+    *,
+    materialization_catalog: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Regenerate a projection catalog and pin its canonical materialization."""
+
+    from scripts.generate_executable_catalogs_v4 import _render_document
+
+    pack_id = str(document["pack"]["id"])
+    contracts_path = source.parent / "contracts.v4.json"
+    artifact_index_path = source.parent / "artifact-index.v4.json"
+    if not contracts_path.is_file() or not artifact_index_path.is_file():
+        raise ValueError(f"canonical runnable Pack has no executable catalog inputs: {pack_id}")
+    contracts = validate_document(
+        json.loads(contracts_path.read_text(encoding="utf-8")),
+        "pack_contract_catalog",
+    )
+    artifact_index = validate_document(
+        json.loads(artifact_index_path.read_text(encoding="utf-8")),
+        "pack_artifact_index",
+    )
+    materialization_manifest = validate_document(source.read_bytes(), "pack")
+    materialization_catalog_path = source.parent / "executables.v4.json"
+    materialization_catalog_raw_digest = _sha256_digest(materialization_catalog_path.read_bytes())
+    manifest_catalog_entries = [
+        item
+        for item in materialization_manifest["artifacts"]
+        if item.get("path") == "executables.v4.json"
+    ]
+    index_catalog_entries = [
+        item for item in artifact_index["artifacts"] if item.get("path") == "executables.v4.json"
+    ]
+    expected_materialization_digest = canonical_digest(
+        {key: value for key, value in materialization_catalog.items() if key != "catalog_digest"}
+    )
+    if (
+        materialization_catalog["pack_id"] != pack_id
+        or materialization_catalog["source_identity"]
+        != materialization_manifest["integrity"]["source_identity"]
+        or materialization_catalog["catalog_digest"] != expected_materialization_digest
+        or len(manifest_catalog_entries) != 1
+        or len(index_catalog_entries) != 1
+        or manifest_catalog_entries[0].get("digest") != materialization_catalog_raw_digest
+        or index_catalog_entries[0].get("digest") != materialization_catalog_raw_digest
+    ):
+        raise ValueError(f"canonical executable catalog is stale or mismatched: {pack_id}")
+    projected = _render_document(
+        pack_id,
+        source.parent,
+        dict(document),
+        contracts,
+        artifact_index,
+    )
+    if projected["variants"] != materialization_catalog["variants"]:
+        raise ValueError(
+            f"projection executable variants differ from canonical materialization: {pack_id}"
+        )
+    unsigned = {key: value for key, value in projected.items() if key != "catalog_digest"}
+    unsigned["materialization_catalog_digest"] = materialization_catalog["catalog_digest"]
+    return validate_document(
+        {**unsigned, "catalog_digest": canonical_digest(unsigned)},
+        "executable_catalog",
+    )
+
+
+def _projection_pack_identity(
+    document: dict[str, Any],
+    *,
+    source_identity: str,
+) -> dict[str, Any]:
+    """Refresh projection integrity without making the catalog pin recursive."""
+
+    document["integrity"] = {
+        # A Pack's source identity identifies the canonical Pack input.  The
+        # executable catalog is an output of this same identity, so including
+        # its output digest here would create a self-referential hash cycle.
+        "source_identity": source_identity,
+        "artifact_set_digest": canonical_digest(document["artifacts"]),
+        "contract_catalog_digest": canonical_digest(document["contracts"]),
+    }
+    return validate_document(document, "pack")
+
+
+def _pin_projection_executable_catalog(
+    document: dict[str, Any],
+    catalog_raw: bytes,
+) -> dict[str, Any]:
+    """Bind a generated executable catalog byte stream into its Pack artifact set."""
+
+    catalog_entries = [
+        artifact
+        for artifact in document["artifacts"]
+        if artifact.get("path") == "executables.v4.json"
+    ]
+    if len(catalog_entries) != 1:
+        raise ValueError(
+            "canonical runnable Pack must pin exactly one executable catalog: "
+            f"{document['pack']['id']}"
+        )
+    catalog_entries[0]["digest"] = _sha256_digest(catalog_raw)
+    return _projection_pack_identity(
+        document,
+        source_identity=str(document["integrity"]["source_identity"]),
     )
 
 
@@ -551,55 +824,90 @@ def _render(source_commit: str | None = None) -> dict[Path, bytes]:
     source_commit = informational_source_commit(ROOT.parent, source_commit)
     rendered: dict[Path, bytes] = {}
     pack_sources = _canonical_pack_sources()
-    pack_sources.update(
-        {
-            PACKS / name: PACKS / name
-            for name in TAURI_ROLE_PACKS
-        }
-    )
+    pack_sources.update({PACKS / name: PACKS / name for name in TAURI_ROLE_PACKS})
     for path in sorted(pack_sources):
         source = pack_sources[path]
-        canonical = CANONICAL_PACK_FILES.get(path.name)
         role_spec = TAURI_ROLE_PACKS.get(path.name)
-        canonical_source = canonical is not None or source.parent.parent == ROOT / "ecosystem"
+        is_canonical_projection = role_spec is None and source != path
+        source_bytes = source.read_bytes() if role_spec is None else b""
         document = (
             _tauri_role_pack(role_spec, source_commit)
             if role_spec is not None
-            else json.loads(source.read_text(encoding="utf-8"))
+            else json.loads(source_bytes)
         )
         if str(document["pack"]["id"]).startswith("shell."):
             document = _unavailable_shell_pack(document, source_commit)
         elif document["pack"]["id"] == "defaults-basepack":
             document = _declarative_base_pack(document, source_commit)
-        rendered[path] = _pretty(
-            validate_document(document, "pack")
-            if canonical_source or role_spec is not None
-            else _normalize_pack(document)
-        )
-        if role_spec is None:
+        elif is_canonical_projection:
+            document["provenance"] = _canonical_pack_projection_provenance(
+                source,
+                source_bytes,
+                document,
+            )
+            document = _normalize_pack(document)
+            document = _projection_pack_identity(
+                document,
+                source_identity=_sha256_digest(source_bytes),
+            )
+
+        if is_canonical_projection:
+            source_catalog = _executable_catalog_source(source, document)
+            if source_catalog is None:
+                raise ValueError(
+                    "canonical projection is missing its executable catalog: "
+                    f"{document['pack']['id']}"
+                )
+            catalog_path = path.with_name(f"{document['pack']['id']}.executables.v4.json")
+            materialization_catalog = validate_document(
+                source_catalog.read_bytes(),
+                "executable_catalog",
+            )
+            catalog = _render_projection_executable_catalog(
+                source,
+                document,
+                materialization_catalog=materialization_catalog,
+            )
+            catalog_raw = _pretty(catalog)
+            document = _pin_projection_executable_catalog(document, catalog_raw)
+            # Re-render from the fully pinned Pack rather than copying the
+            # canonical sidecar.  The catalog's identity must be the derived
+            # Pack identity, not the canonical source Pack identity.
+            catalog_raw = _pretty(
+                _render_projection_executable_catalog(
+                    source,
+                    document,
+                    materialization_catalog=materialization_catalog,
+                )
+            )
+            rendered[catalog_path] = catalog_raw
+        elif role_spec is None:
             source_catalog = _executable_catalog_source(source, document)
             if source_catalog is not None:
-                catalog_path = path.with_name(
-                    f"{document['pack']['id']}.executables.v4.json"
-                )
+                catalog_path = path.with_name(f"{document['pack']['id']}.executables.v4.json")
                 catalog = validate_document(
                     json.loads(source_catalog.read_text(encoding="utf-8")),
                     "executable_catalog",
                 )
                 if (
                     catalog["pack_id"] != document["pack"]["id"]
-                    or catalog["source_identity"]
-                    != document["integrity"]["source_identity"]
+                    or catalog["source_identity"] != document["integrity"]["source_identity"]
                 ):
                     raise ValueError(
-                        "canonical executable catalog identity is stale: "
-                        f"{document['pack']['id']}"
+                        f"canonical executable catalog identity is stale: {document['pack']['id']}"
                     )
                 rendered[catalog_path] = source_catalog.read_bytes()
+        rendered[path] = _pretty(
+            validate_document(document, "pack")
+            if is_canonical_projection or role_spec is not None
+            else _normalize_pack(document)
+        )
 
     base_path = BUNDLE / "defaults-basepack.base.v1.json"
     shell_paths = sorted(BUNDLE.glob("*.shell.v1.json"))
-    profile_paths = sorted(BUNDLE.glob("*.profile.v4.json"))
+    profile_paths = sorted(
+        [*BUNDLE.glob("*.profile.v4.json"), *BUNDLE.glob("*.profile.v5.json")]
+    )
     if not profile_paths:
         raise ValueError("defaultspack v4 bundle has no Profile definitions")
     base_source = json.loads(base_path.read_text(encoding="utf-8"))
@@ -623,14 +931,11 @@ def _render(source_commit: str | None = None) -> dict[Path, bytes]:
         shells.append((path, validate_document(shell, "shell")))
     for profile_path in profile_paths:
         profile = _normalize_profile(json.loads(profile_path.read_text(encoding="utf-8")))
-        profile["provenance"] = _generated_provenance(
-            profile,
-            profile_path.relative_to(ROOT).as_posix(),
-            source_commit,
-        )
+        pack_aliases = PROFILE_BUNDLE_POLICY["legacy_pack_id_aliases"]
         for pack in profile["packs"]:
-            if pack["pack_id"] == "rumi-file-inspect":
-                pack["pack_id"] = "rumi_file_inspect_pack"
+            replacement = pack_aliases.get(pack["pack_id"])
+            if replacement is not None:
+                pack["pack_id"] = replacement
         if not any(
             pack["pack_id"] == "runtime.tauri.application.default" for pack in profile["packs"]
         ):
@@ -643,15 +948,11 @@ def _render(source_commit: str | None = None) -> dict[Path, bytes]:
             )
         if any(pack["pack_id"].startswith("dev.tauri.") for pack in profile["packs"]):
             raise ValueError("Development Realm Tauri toolchain cannot enter production Profile")
+        provider_aliases = PROFILE_BUNDLE_POLICY["legacy_provider_edge_aliases"]
         for edge in profile["requested_edges"]:
-            if edge["target_provider_id"] == "defaultspack.file.inspect":
-                edge.update(
-                    {
-                        "target_provider_id": ("rumi_file_inspect_pack.file-inspect.service"),
-                        "contract_id": "tobkiri.service.file.inspect.v1",
-                        "operation_id": "rumi_file_inspect_pack.file-inspect",
-                    }
-                )
+            replacement = provider_aliases.get(edge["target_provider_id"])
+            if replacement is not None:
+                edge.update(replacement)
             template = edge["requested_scope_template"]
             if template and "dimensions" not in template:
                 template = {
@@ -684,13 +985,32 @@ def _render(source_commit: str | None = None) -> dict[Path, bytes]:
                 operation_id=edge["operation_id"],
                 semantics_digest=contract_digests[0],
             )
-        rendered[profile_path] = _pretty(validate_document(profile, "profile"))
+        from scripts import generate_profile_artifacts as profile_artifact_generator
+
+        profile["provenance"] = compatibility_profile_provenance(
+            root=ROOT,
+            profile=profile,
+            source_path=profile_path.relative_to(ROOT).as_posix(),
+            generator=profile_artifact_generator.GENERATOR_NAME,
+            generator_version=profile_artifact_generator.GENERATOR_VERSION,
+            generator_path=Path(profile_artifact_generator.__file__),
+            input_paths=profile_artifact_generator.COMPATIBILITY_PROVENANCE_INPUTS,
+        )
+        profile = validate_document(profile, "profile")
+        validate_compatibility_profile(profile)
+        rendered[profile_path] = _pretty(profile)
     rendered[base_path] = _pretty(base)
     for shell_path, shell in shells:
         rendered[shell_path] = _pretty(shell)
 
     entries: list[dict[str, str]] = []
-    kinds = {"packs": "pack", "base.v1": "base", "shell.v1": "shell", "profile.v4": "profile"}
+    kinds = {
+        "packs": "pack",
+        "base.v1": "base",
+        "shell.v1": "shell",
+        "profile.v4": "profile",
+        "profile.v5": "profile",
+    }
     paths = [
         *sorted(path for path in rendered if path.parent == PACKS),
         base_path,
@@ -826,12 +1146,12 @@ def _validate_catalog(catalog: BundledCatalog) -> None:
             raise ValueError(f"Profile contains duplicate requested edges: {profile_id}")
 
 
-def _publish(
-    rendered: dict[Path, bytes],
+def _stage_candidate_bundle(
+    rendered: Mapping[Path, bytes],
     *,
-    fault: Any | None = None,
-) -> None:
-    """Validate and publish the complete bundle as one rollback-safe transaction."""
+    prefix: str,
+) -> Path:
+    """Materialize a candidate bundle without following existing symlinks."""
 
     if BUNDLE.is_symlink() or not BUNDLE.is_dir():
         raise ValueError("defaultspack v4 bundle root must be a real directory")
@@ -844,18 +1164,60 @@ def _publish(
         current = BUNDLE
         for part in relative.parts:
             current /= part
-            if current.exists() and current.is_symlink():
+            if current.is_symlink():
                 raise ValueError(f"rendered path contains a symlink: {relative}")
 
-    stage = Path(tempfile.mkdtemp(prefix=".defaultspack-v4-stage-", dir=BUNDLE.parent))
-    backup = Path(tempfile.mkdtemp(prefix=".defaultspack-v4-backup-", dir=BUNDLE.parent))
-    backup.rmdir()
-    moved_original = False
+    stage = Path(tempfile.mkdtemp(prefix=prefix, dir=BUNDLE.parent))
     try:
+        for relative in PROFILE_ARTIFACT_COMPANIONS:
+            source = BUNDLE / relative
+            if not source.exists():
+                continue
+            if source.is_symlink() or not source.is_file():
+                raise ValueError(f"Profile artifact companion must be a regular file: {relative}")
+            target = stage / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(source.read_bytes())
         for path, raw in sorted(rendered.items(), key=lambda item: item[0].as_posix()):
             target = stage / path.relative_to(BUNDLE)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(raw)
+    except BaseException:
+        shutil.rmtree(stage)
+        raise
+    return stage
+
+
+def _publish(
+    rendered: dict[Path, bytes],
+    *,
+    fault: Any | None = None,
+) -> None:
+    """Validate and publish the complete bundle as one rollback-safe transaction."""
+
+    from scripts import generate_profile_artifacts as profile_artifact_generator
+
+    stage = _stage_candidate_bundle(rendered, prefix=".defaultspack-v4-stage-")
+    try:
+        backup = Path(tempfile.mkdtemp(prefix=".defaultspack-v4-backup-", dir=BUNDLE.parent))
+        backup.rmdir()
+    except BaseException:
+        shutil.rmtree(stage)
+        raise
+    moved_original = False
+    try:
+        profile_release = _render_profile_release(
+            stage,
+            source_bundle_root=BUNDLE,
+        )
+        for path, raw in sorted(profile_release.items(), key=lambda item: item[0].as_posix()):
+            path.write_bytes(raw)
+        profile_artifact_generator._validate_staged_release(
+            stage,
+            stage,
+            profile_release,
+            source_bundle_root=BUNDLE,
+        )
         _validate_catalog(BundledCatalog.load(stage))
         if fault is not None:
             fault("before_publish")
@@ -894,10 +1256,18 @@ def main() -> int:
     parser.add_argument("--source-commit")
     args = parser.parse_args()
     rendered = _render(args.source_commit)
-    stale = [
-        path for path, raw in rendered.items() if not path.exists() or path.read_bytes() != raw
-    ]
     if args.check:
+        # A normal publication renders Profile artifacts from a stage that
+        # already contains ``rendered``.  Do not resolve them from the current
+        # bundle here: a newly added Profile Pack is intentionally absent from
+        # that old bundle until the transaction is published.
+        profile_release = _render_staged_profile_release(rendered)
+        expected = {**rendered, **profile_release}
+        stale = [
+            path
+            for path, raw in expected.items()
+            if not path.exists() or path.read_bytes() != raw
+        ]
         if stale:
             for path in stale:
                 print(path.relative_to(ROOT))

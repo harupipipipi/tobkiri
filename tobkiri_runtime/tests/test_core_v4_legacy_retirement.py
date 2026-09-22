@@ -54,20 +54,25 @@ def test_manifest_authority_catalog_classifies_all_direct_pack_roots() -> None:
     roots = {
         path.name
         for path in ecosystem.iterdir()
-        if path.is_dir() and path.name != "setup_pack" and not path.name.startswith(".")
+        if (
+            path.is_dir()
+            and path.name != "setup_pack"
+            and not path.name.startswith(".")
+            and (path / "pack.v4.json").is_file()
+        )
     }
     catalog = json.loads(
         (RUNTIME / "schemas" / "manifest_authority.v1.json").read_text(encoding="utf-8")
     )["packs"]
     assert set(catalog) == roots
-    assert len(catalog) == 143
+    assert len(catalog) == 141
     assert set(catalog.values()) == {"v4-authoritative"}
-    assert catalog["defaults"] == "v4-authoritative"
     assert catalog["defaultspack"] == "v4-authoritative"
+    assert catalog["tobkiri_workflow_pack"] == "v4-authoritative"
     assert all((ecosystem / pack_id / "pack.v4.json").is_file() for pack_id in roots)
     assert not any(
         (ecosystem / pack_id / legacy_name).exists()
-        for pack_id in ("defaults", "defaultspack")
+        for pack_id in ("defaultspack",)
         for legacy_name in ("ecosystem.json", "rumi.pack.v3.json")
     )
     from backend_core.ecosystem.registry import (
@@ -182,12 +187,15 @@ def test_canonical_startup_never_reads_or_writes_legacy_state(
 ) -> None:
     """A real v4 startup ignores all pre-v4 Profile and setup authorities."""
 
+    from core_runtime.bootstrap import profile_capture
     from core_runtime.bootstrap.profile_capture import (
         capture_default_profile,
         prepare_default_profile_confirmation,
     )
     from core_runtime.di_container import reset_container
+    from core_runtime.host_contract import bind_host_contract
     from core_runtime.pack_api_server import shutdown_pack_api_server
+    from tests.conformance_support.host_contract import host_contract
 
     user_data = tmp_path / "user-data"
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
@@ -201,7 +209,15 @@ def test_canonical_startup_never_reads_or_writes_legacy_state(
     for path in legacy_paths:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('{"legacy":true}\n', encoding="utf-8")
-    capture_default_profile(confirmation=prepare_default_profile_confirmation())
+    active = capture_default_profile(
+        confirmation=prepare_default_profile_confirmation()
+    )
+    contract = host_contract(
+        profile_id=str(active.resolved.profile["profile_id"]),
+        profile_revision=str(active.resolved.plan["profile_revision"]),
+        activation_id=str(active.activation["activation_id"]),
+        plan_digest=str(active.resolved.plan["plan_digest"]),
+    )
 
     forbidden_names = {
         "active_ecosystem.json",
@@ -227,13 +243,17 @@ def test_canonical_startup_never_reads_or_writes_legacy_state(
         monkeypatch.setattr(Path, method_name, guard(getattr(Path, method_name)))
 
     import core_runtime.bootstrap.runtime as runtime_bootstrap
+    from ecosystem.defaultspack.defaultspack.runtime_composition import (
+        create_defaultspack_kernel,
+    )
 
     shutdown_pack_api_server()
     reset_container()
     monkeypatch.setattr(runtime_bootstrap, "resolve_runtime_port", lambda: 0)
-    kernel = runtime_bootstrap.Kernel()
+    kernel = create_defaultspack_kernel(bundle_root=profile_capture._bundle_root())
     try:
-        result = kernel.run_startup()
+        with bind_host_contract(contract):
+            result = kernel.run_startup()
         assert result["runtime_ready"] is True
     finally:
         kernel.shutdown()

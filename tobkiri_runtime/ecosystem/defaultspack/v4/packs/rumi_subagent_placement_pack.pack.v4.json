@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:528a12b517e0aab09961d86d7f23b876ec01ebeceab4b0f6b82eceb6b44a9dd4",
+      "digest": "sha256:1d5c46998fe774e8e62d0987dd9c0aa1abb674c47c62bbaced5a78653e7e5940",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -123,9 +123,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:31ec471fe94ea6537bf0083d6f940a5a5620d61b8ecd8b54d7fea0b3f3e25a5e",
-    "contract_catalog_digest": "sha256:dd8920292a74ce1f07285427fe18af5424218579ac15dce8050c8f4b719fc7b6",
-    "source_identity": "sha256:8eb11e971bb380b7a80568f9a18c1bf9258c44d54b94d65e69335f670f20e48b"
+    "source_identity": "sha256:8c3a955044bdb6753c5503a86b9b98b7f0dfe08db858ef13734910fb599ff066",
+    "artifact_set_digest": "sha256:83eeed1e3313572775185fad70b518fec9b9ac7365beb76b49f25d4397d5c296",
+    "contract_catalog_digest": "sha256:afc5c704c3d8640be4bf41ee19950e5a9fc101d0a3b4038ccad2d0cf2efa5872"
   },
   "migration": {
     "compatibility": "read_only",
@@ -144,70 +144,52 @@
   },
   "operation_catalog": [
     {
-      "contract_reference": "tobkiri.service.subagent.runtime.assignment.v1",
-      "effect_ceiling": [
-        "capability:subagent.runtime.assign",
-        "host:brokered-execution"
-      ],
       "operation_id": "rumi_subagent_placement_pack.subagent-placement-assignment",
       "owner": "rumi_subagent_placement_pack",
+      "contract_reference": "tobkiri.service.subagent.runtime.assignment.v1",
       "provider_id": "rumi_subagent_placement_pack.subagent-placement.assignment",
-      "source_kind": "canonical_v4_contract"
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
     },
     {
-      "contract_reference": "tobkiri.service.subagent.placement.compile.v1",
-      "effect_ceiling": [
-        "capability:subagent.placement.compile",
-        "host:brokered-execution"
-      ],
       "operation_id": "rumi_subagent_placement_pack.subagent-placement-compiler",
       "owner": "rumi_subagent_placement_pack",
+      "contract_reference": "tobkiri.service.subagent.placement.compile.v1",
       "provider_id": "rumi_subagent_placement_pack.subagent-placement.compiler",
-      "source_kind": "canonical_v4_contract"
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
     },
     {
-      "contract_reference": "tobkiri.service.subagent.placement.stage.v1",
-      "effect_ceiling": [
-        "capability:subagent.placement.compile",
-        "host:brokered-execution"
-      ],
       "operation_id": "rumi_subagent_placement_pack.subagent-placement-core-stage",
       "owner": "rumi_subagent_placement_pack",
+      "contract_reference": "tobkiri.service.subagent.placement.stage.v1",
       "provider_id": "rumi_subagent_placement_pack.subagent-placement.core-stage",
-      "source_kind": "canonical_v4_contract"
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
     },
     {
-      "contract_reference": "tobkiri.service.subagent.placement.patch.v1",
-      "effect_ceiling": [
-        "capability:subagent.placement.patch",
-        "host:brokered-execution"
-      ],
       "operation_id": "rumi_subagent_placement_pack.subagent-placement-patch",
       "owner": "rumi_subagent_placement_pack",
+      "contract_reference": "tobkiri.service.subagent.placement.patch.v1",
       "provider_id": "rumi_subagent_placement_pack.subagent-placement.patch",
-      "source_kind": "canonical_v4_contract"
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
     },
     {
-      "contract_reference": "tobkiri.service.subagent.protocol.v1",
-      "effect_ceiling": [
-        "capability:subagent.placement.read",
-        "host:brokered-execution"
-      ],
       "operation_id": "rumi_subagent_placement_pack.subagent-placement-protocols",
       "owner": "rumi_subagent_placement_pack",
+      "contract_reference": "tobkiri.service.subagent.protocol.v1",
       "provider_id": "rumi_subagent_placement_pack.subagent-placement.builtin-protocols",
-      "source_kind": "canonical_v4_contract"
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
     },
     {
-      "contract_reference": "tobkiri.service.subagent.topology.compile.v1",
-      "effect_ceiling": [
-        "capability:subagent.topology.compile",
-        "host:brokered-execution"
-      ],
       "operation_id": "rumi_subagent_placement_pack.subagent-placement-topology",
       "owner": "rumi_subagent_placement_pack",
+      "contract_reference": "tobkiri.service.subagent.topology.compile.v1",
       "provider_id": "rumi_subagent_placement_pack.subagent-placement.topology",
-      "source_kind": "canonical_v4_contract"
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
     }
   ],
   "pack": {
@@ -219,71 +201,80 @@
   },
   "pack_api_version": "io.tobkiri.pack.v4",
   "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_subagent_placement_pack/pack.v4.json",
+    "source_digest": "sha256:8c3a955044bdb6753c5503a86b9b98b7f0dfe08db858ef13734910fb599ff066",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:99eef0d72162492a87369ab72ed41b048d655781e79654c361ecd30096fec8e5",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
+    "input_inventory_digest": "sha256:1463badff749cc3017434968c9eac5c4245e4c838b29128a5d57b7c611cc4ea5",
+    "normative": true,
     "evidence": [
       {
-        "digest": "sha256:8eb11e971bb380b7a80568f9a18c1bf9258c44d54b94d65e69335f670f20e48b",
-        "path": "schemas/pack_v4_catalog.v1.json",
-        "rule_id": "canonical-pack-v4-source-record"
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
+      },
+      {
+        "path": "ecosystem/rumi_subagent_placement_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:8c3a955044bdb6753c5503a86b9b98b7f0dfe08db858ef13734910fb599ff066"
       }
-    ],
-    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
-    "generator_version": "1.0.0",
-    "normative": true,
-    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
-    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
-    "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:8eb11e971bb380b7a80568f9a18c1bf9258c44d54b94d65e69335f670f20e48b",
-    "source_kind": "migration",
-    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_subagent_placement_pack"
+    ]
   },
   "provider_catalog": [
     {
+      "provider_id": "rumi_subagent_placement_pack.subagent-placement.assignment",
+      "owner": "rumi_subagent_placement_pack",
       "contract_reference": "tobkiri.service.subagent.runtime.assignment.v1",
       "operations": [
         "rumi_subagent_placement_pack.subagent-placement-assignment"
-      ],
-      "owner": "rumi_subagent_placement_pack",
-      "provider_id": "rumi_subagent_placement_pack.subagent-placement.assignment"
+      ]
     },
     {
+      "provider_id": "rumi_subagent_placement_pack.subagent-placement.builtin-protocols",
+      "owner": "rumi_subagent_placement_pack",
       "contract_reference": "tobkiri.service.subagent.protocol.v1",
       "operations": [
         "rumi_subagent_placement_pack.subagent-placement-protocols"
-      ],
-      "owner": "rumi_subagent_placement_pack",
-      "provider_id": "rumi_subagent_placement_pack.subagent-placement.builtin-protocols"
+      ]
     },
     {
+      "provider_id": "rumi_subagent_placement_pack.subagent-placement.compiler",
+      "owner": "rumi_subagent_placement_pack",
       "contract_reference": "tobkiri.service.subagent.placement.compile.v1",
       "operations": [
         "rumi_subagent_placement_pack.subagent-placement-compiler"
-      ],
-      "owner": "rumi_subagent_placement_pack",
-      "provider_id": "rumi_subagent_placement_pack.subagent-placement.compiler"
+      ]
     },
     {
+      "provider_id": "rumi_subagent_placement_pack.subagent-placement.core-stage",
+      "owner": "rumi_subagent_placement_pack",
       "contract_reference": "tobkiri.service.subagent.placement.stage.v1",
       "operations": [
         "rumi_subagent_placement_pack.subagent-placement-core-stage"
-      ],
-      "owner": "rumi_subagent_placement_pack",
-      "provider_id": "rumi_subagent_placement_pack.subagent-placement.core-stage"
+      ]
     },
     {
+      "provider_id": "rumi_subagent_placement_pack.subagent-placement.patch",
+      "owner": "rumi_subagent_placement_pack",
       "contract_reference": "tobkiri.service.subagent.placement.patch.v1",
       "operations": [
         "rumi_subagent_placement_pack.subagent-placement-patch"
-      ],
-      "owner": "rumi_subagent_placement_pack",
-      "provider_id": "rumi_subagent_placement_pack.subagent-placement.patch"
+      ]
     },
     {
+      "provider_id": "rumi_subagent_placement_pack.subagent-placement.topology",
+      "owner": "rumi_subagent_placement_pack",
       "contract_reference": "tobkiri.service.subagent.topology.compile.v1",
       "operations": [
         "rumi_subagent_placement_pack.subagent-placement-topology"
-      ],
-      "owner": "rumi_subagent_placement_pack",
-      "provider_id": "rumi_subagent_placement_pack.subagent-placement.topology"
+      ]
     }
   ],
   "requirements": {

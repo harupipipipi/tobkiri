@@ -14,7 +14,7 @@ import {
   type CustomGroupInfo,
 } from "./HistoryBoard";
 import { droppedWidgetFromHistoryChat, historyChatDragPayload, parseHistoryChatDrop } from "../lib/historyComposer";
-import { filterProjects, newProjectId, projectTaskContext } from "../features/projects/projectStorage";
+import { filterProjects, newProjectId, projectFromStorageItem, projectTaskContext } from "../features/projects/projectStorage";
 
 test("buildGroupsFromChats places LINE conversations into a dedicated group", () => {
   const chats: ChatItem[] = [
@@ -173,7 +173,7 @@ test("buildGroupsFromChats keeps reserved bucket ids unique when custom metadata
   assert.equal(new Set(railGroupIds).size, railGroupIds.length);
 });
 
-test("loadCustomGroups migrates legacy and snake_case workspace records", () => {
+test("Project state never exposes legacy localStorage before owner acknowledgement", () => {
   const previousDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
   const values = new Map<string, string>();
   values.set("rumi-history-custom-groups", JSON.stringify([
@@ -190,10 +190,14 @@ test("loadCustomGroups migrates legacy and snake_case workspace records", () => 
   });
 
   try {
-    assert.deepEqual(loadCustomGroups(), [
-      { id: "legacy", title: "Legacy", workspaceId: null, workspaceLabel: null, workspaceRoot: null, rumiDataPath: null },
-      { id: "snake", title: "Snake", workspaceId: "ws1", workspaceLabel: "Repo", workspaceRoot: "/repo", rumiDataPath: "/repo/.rumiDP" },
-    ]);
+    assert.deepEqual(loadCustomGroups(), []);
+    assert.deepEqual(projectFromStorageItem({
+      id: "snake", title: "Snake", workspace_id: "ws1", workspace_label: "Repo",
+      workspace_root: "/repo", rumi_data_path: "/repo/.rumiDP",
+    }), {
+      id: "snake", title: "Snake", workspaceId: "ws1", workspaceLabel: "Repo",
+      workspaceRoot: "/repo", rumiDataPath: "/repo/.rumiDP",
+    });
   } finally {
     if (previousDescriptor) {
       Object.defineProperty(globalThis, "localStorage", previousDescriptor);

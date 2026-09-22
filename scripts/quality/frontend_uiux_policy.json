@@ -30,11 +30,17 @@
     "vendor"
   ],
   "exclude_globs": [
-    "tobkiri_runtime/core_runtime/core_pack/core_control_panel/web/assets/**"
+    "tobkiri_runtime/core_runtime/core_pack/core_control_panel/web/assets/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.test.js",
+    "**/*.test.jsx",
+    "**/*.test.mjs"
   ],
   "notes": [
     "Pull requests are checked against added/modified lines, not every legacy line in a touched file.",
     "Hashed control-panel build assets are excluded; their authored frontend source remains in scope.",
+    "Unit-test fixtures are excluded from production UI checks; component implementations remain in scope.",
     "A full repository scan is available for scheduled/manual reporting.",
     "Heuristics are guardrails, not proof of runtime accessibility, visual quality, or security."
   ]

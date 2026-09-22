@@ -1,5 +1,9 @@
+import {AlertCircle, Clock3, ShieldAlert} from 'lucide-react';
+
 import {Button} from '@/src/components/ui/Button';
+import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
 import type {DefaultsSetupState} from '@/src/lib/defaultsSetup';
+import {DefaultsConfirmationDetails} from './DefaultsConfirmationDetails';
 
 type Props = {
   readonly setup: DefaultsSetupState | null;
@@ -8,6 +12,7 @@ type Props = {
   readonly activationCommitted?: boolean;
   readonly error: string | null;
   readonly reconfirmationRequired?: boolean;
+  readonly activationAllowed?: boolean;
   readonly onRecover?: () => void;
   readonly onReviewedChange: (reviewed: boolean) => void;
   readonly onActivate: () => void;
@@ -20,13 +25,16 @@ export function DefaultsReview({
   activationCommitted = false,
   error,
   reconfirmationRequired = false,
+  activationAllowed = true,
   onRecover = () => undefined,
   onReviewedChange,
   onActivate,
 }: Props) {
-  const canActivate = setup?.state === 'review_required' && !activationCommitted;
+  const canActivate = setup?.state === 'review_required'
+    && !activationCommitted
+    && activationAllowed;
   return <section className="rounded-[18px] border border-border bg-bg-card p-7 shadow-lg" aria-labelledby="defaults-review-title">
-    <p className="text-xs font-medium uppercase tracking-wider text-text-muted">Defaults v4 bootstrap</p>
+    <p className="text-xs font-medium text-text-muted">Defaults v4 bootstrap</p>
     <h1 id="defaults-review-title" className="mt-3 text-2xl font-semibold text-text-main">
       {reconfirmationRequired ? 'Profile reconfirmation required' : 'Activate Defaults Profile'}
     </h1>
@@ -35,15 +43,21 @@ export function DefaultsReview({
         ? 'The Host has withheld the verified dispatch map. Review the exact Defaults v4 transaction below to restore local operations.'
         : 'Review the finite local composition. Activation occurs only after this exact confirmation.'}
     </p>
-    {activationCommitted && setup?.state !== 'active' && <div role="alert" className="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-text-main">
-      <p className="font-medium">Activation was submitted; verification is required.</p>
-      <p className="mt-2 text-text-muted">Tobkiri will re-read the Host-owned Setup state. The previous confirmation will not be submitted again.</p>
-      <div className="mt-4"><Button variant="outline" onClick={onRecover} loading={activating}>Verify activation</Button></div>
+    {activationCommitted && setup?.state !== 'active' && <div role="alert" className="mt-6 flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-text-main">
+      <Clock3 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" data-error-icon="activation-verification-required" />
+      <div className="min-w-0 flex-1">
+        <p className="font-medium">Activation was submitted; verification is required.</p>
+        <p className="mt-2 text-text-muted">Tobkiri will re-read the Host-owned Setup state. The previous confirmation will not be submitted again.</p>
+        <div className="mt-4"><Button variant="outline" onClick={onRecover} loading={activating}>Verify activation</Button></div>
+      </div>
+      <CopyErrorButton label="Copy activation verification status" text={'Activation was submitted; verification is required.\nTobkiri will re-read the Host-owned Setup state. The previous confirmation will not be submitted again.'} />
     </div>}
     {!setup && !error && <p role="status" className="mt-6 text-sm text-text-muted">Loading verified catalog…</p>}
-    {setup?.state === 'activation_denied' && <p role="alert" className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500">
-      {setup.denial_diagnostic}
-    </p>}
+    {setup?.state === 'activation_denied' && <div role="alert" className="mt-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500">
+      <ShieldAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" data-error-icon="activation-denied" />
+      <p className="min-w-0 flex-1 break-words">{setup.denial_diagnostic}</p>
+      <CopyErrorButton label="Copy activation denial" text={setup.denial_diagnostic} />
+    </div>}
     {setup && <div className="mt-6 space-y-3 text-sm">
       <Identity label="Base" value={setup.recommended_default_profile.base_pack} />
       <Identity label="Shell" value={setup.recommended_default_profile.shell.provider_id} />
@@ -61,6 +75,10 @@ export function DefaultsReview({
           Resolve, review, approve, activate, and capture are performed by the Host-owned transaction. This screen only submits the exact confirmation it issued.
         </p>
       </div>
+      <DefaultsConfirmationDetails confirmation={setup.recommended_default_profile.confirmation} />
+      {!activationAllowed && <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-text-main">
+        Select “Include new bundled Profile Packs and operation bindings” above to review a complete successor before activation.
+      </p>}
       <label className="flex items-start gap-3 rounded-lg border border-border p-4 text-text-main">
         <input
           type="checkbox"
@@ -74,7 +92,7 @@ export function DefaultsReview({
       </label>
       <Button size="lg" className="w-full" disabled={!reviewed || activating || !canActivate} loading={activating} onClick={onActivate}>Activate Defaults Profile</Button>
     </div>}
-    {error && <p role="alert" className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500">{error}</p>}
+    {error && <div role="alert" className="mt-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500"><AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" data-error-icon="setup" /><p className="min-w-0 flex-1 break-words">{error}</p><CopyErrorButton label="Copy setup error" text={error} /></div>}
   </section>;
 }
 

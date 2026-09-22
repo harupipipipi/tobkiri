@@ -6,6 +6,7 @@ import {
   ALERT_AUTO_DISMISS_MS,
   alertPlacementForComposerPosition,
   alertPresentation,
+  alertSemantics,
 } from "./TransientAlert";
 
 test("transient alert template has a finite default lifetime", () => {
@@ -28,4 +29,22 @@ test("transient alert follows the declarative composer position", () => {
   assert.equal(alertPlacementForComposerPosition("inline"), "viewport-bottom");
   assert.equal(alertPlacementForComposerPosition("bottom"), "above-composer");
   assert.equal(ALERT_ANCHOR_GAP_PX, 12);
+});
+
+test("only warning and error alerts expose copying, with error urgency preserved", () => {
+  assert.deepEqual(alertSemantics("error"), {
+    canCopy: true,
+    live: "assertive",
+    role: "alert",
+  });
+  assert.deepEqual(alertSemantics("warning"), {
+    canCopy: true,
+    live: "polite",
+    role: "status",
+  });
+  assert.deepEqual(alertSemantics("success"), {
+    canCopy: false,
+    live: "polite",
+    role: "status",
+  });
 });

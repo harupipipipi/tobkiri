@@ -11,7 +11,15 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping
+
+if TYPE_CHECKING:
+    from core_runtime.host_provider_backend_v4 import (
+        CapturedHostProviderV4,
+        HostProviderCaptureContextV4,
+        HostProviderContributionV4,
+        HostProviderInvocationContextV4,
+    )
 
 CATALOG_REVISION = "sha256:23cd323554cef32f891827a9a6ddd9c75b7fd3c898d0b501c7e62b091a5001cd"
 _ROOT = Path(__file__).resolve().parents[1] / "catalog" / "providers"
@@ -50,6 +58,17 @@ def create_model_catalog_operation(client: Any):
             models = [item for item in models if item["provider_id"] == provider_id]
         if model_id:
             models = [item for item in models if item["model_id"] == model_id]
+        # v4 pins generation and streaming as distinct executable providers.
+        # The old unsuffixed instance cannot resolve either captured binding.
+        execution_provider = (
+            "provider.compatibility.stream"
+            if name == "rumi_model_catalog_pack.bundled-model-catalog.stream"
+            else "provider.compatibility.generate"
+        )
+        models = [
+            {**item, "execution_provider_instance_id": execution_provider}
+            for item in models
+        ]
         return {
             "catalog_revision": CATALOG_REVISION,
             "providers": providers,
@@ -600,3 +619,86 @@ def _number(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+_PACK_ID = "rumi_model_catalog_pack"
+_FUNCTION_ID = "rumi_model_catalog_pack.model-catalog.bundled"
+
+
+class ModelCatalogHostFactoryV4:
+    """Bind the verified bundled catalog to exact Host dispatch edges."""
+
+    function_id = _FUNCTION_ID
+
+    def capture(
+        self,
+        context: HostProviderCaptureContextV4,
+    ) -> CapturedHostProviderV4:
+        """Capture all and only operations resolved to the catalog Function."""
+
+        # The standalone PackVM catalog has no Host modules. Import these
+        # only when the Host explicitly captures its own provider factory.
+        from core_runtime.host_provider_backend_v4 import (
+            CapturedHostProviderV4,
+        )
+
+        if not context.provider_bindings or any(
+            binding.function.function_id != self.function_id
+            for binding in context.provider_bindings
+        ):
+            raise PermissionError("model catalog bindings are incomplete")
+
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            client = invocation.contract_client(
+                allowed_contract_ids=frozenset(),
+                consumer_pack_id=_PACK_ID,
+            )
+            del client
+            return create_model_catalog_operation(None)(operation_id, payload)
+
+        return CapturedHostProviderV4(
+            tuple(_host_contributions(context, invoke)),
+            lambda: None,
+        )
+
+
+def _host_contributions(
+    context: HostProviderCaptureContextV4,
+    invoke: Callable[
+        [str, Mapping[str, Any], HostProviderInvocationContextV4], Mapping[str, Any]
+    ],
+) -> list[HostProviderContributionV4]:
+    """Project exact catalog bindings into immutable Host contributions."""
+
+    from core_runtime.host_provider_backend_v4 import HostProviderContributionV4
+
+    contributions: list[HostProviderContributionV4] = []
+    for binding in context.provider_bindings:
+        key = (
+            binding.operation.contract_id,
+            binding.operation.operation_id,
+            binding.principal_ref.value,
+        )
+        domain_id = context.domain_ids.get(key)
+        if domain_id is None:
+            raise PermissionError("model catalog domain binding is unavailable")
+        contributions.append(
+            HostProviderContributionV4(
+                contract_id=binding.operation.contract_id,
+                contract_version=binding.operation.contract_version,
+                operation_id=binding.operation.operation_id,
+                principal_id=binding.principal_ref.value,
+                artifact_digest=binding.artifact.digest,
+                implementation_digest=binding.function.implementation_digest,
+                domain_id=domain_id,
+                invoke=invoke,
+            )
+        )
+    return contributions
+
+
+HOST_PROVIDER_FACTORY = ModelCatalogHostFactoryV4()

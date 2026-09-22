@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import threading
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -19,6 +20,7 @@ from core_runtime.authority.v4 import (
 )
 from core_runtime.global_contract_dispatch import GlobalContractInvocationError
 from core_runtime.bootstrap.production_v4 import capture_production_dispatch
+from core_runtime.packvm_lifecycle_v4 import PackVMLifecycleV4
 from core_runtime import credential_transport as credential_transport_module
 from core_runtime.credential_transport import CredentialMaterialStoreBinding
 from core_runtime.bootstrap.profile_capture import (
@@ -26,6 +28,12 @@ from core_runtime.bootstrap.profile_capture import (
     prepare_default_profile_confirmation,
 )
 from ecosystem.defaultspack.domain.runtime_v4 import ProfileResolutionDenied
+from ecosystem.defaultspack.defaultspack.runtime_composition import (
+    defaultspack_activation_snapshot_loader,
+)
+from ecosystem.defaultspack.domain.runtime_surface_v4 import (
+    create_runtime_surface_services,
+)
 from ecosystem.rumi_credential_broker_pack.runtime.service import (
     CredentialBrokerService,
 )
@@ -85,6 +93,11 @@ class _CapturedBackend:
         self.artifact_resolver = None
         self.target_domain_resolver = None
         self.capability_bridge = None
+        self.saved_callbacks = None
+
+    def bind_saved_capability_bridge(self, callback, preflight) -> None:
+        assert self.saved_callbacks is None
+        self.saved_callbacks = (callback, preflight)
 
     def bind_artifact_resolver(self, resolver) -> None:
         assert self.artifact_resolver is None
@@ -148,6 +161,26 @@ class _ProviderResponse:
         return value[:amount]
 
 
+def _ai_bridge_request(request: dict[str, object]) -> dict[str, object]:
+    """Build the test guest ABI frame; Host still binds the actual caller."""
+    target = {
+        "contract_id": "tobkiri.service.ai.generate.v1",
+        "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+    }
+    digest = canonical_digest(request)
+    return {
+        "kind": "tobkiri.packvm.bridge.request.v1",
+        "protocol": "io.tobkiri.packvm.bridge.v1", "version": 1,
+        "target": target, "request": request, "request_digest": digest,
+        "continuation": {
+            "kind": "tobkiri.packvm.continuation.v1",
+            "protocol": "io.tobkiri.packvm.bridge.v1", "version": 1,
+            "operation_id": "complete", "nonce": "a" * 48,
+            "target": target, "request_digest": digest,
+        },
+    }
+
+
 def test_production_dispatch_executes_credentialed_provider_request(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -179,8 +212,53 @@ def test_production_dispatch_executes_credentialed_provider_request(
         expected_revision=0,
     )
     observed: list[tuple[str | None, float]] = []
+    from core_runtime.host_provider_backend_v4 import ExactHostProviderBackendV4
 
-    def open_request(request, *, timeout: float) -> _ProviderResponse:
+    original_invoke = ExactHostProviderBackendV4.invoke
+    checked_invocations = []
+
+    def check_invocation(backend, envelope):
+        if envelope.contract_id == "tobkiri.service.ai.provider.generate.v1":
+            invocation = backend._invocation_context(envelope)
+            invocation.assert_current()
+            client = invocation.contract_client(
+                allowed_contract_ids=frozenset(),
+                consumer_pack_id="rumi_provider_adapters_pack",
+                include_credentials=False,
+            )
+            assert client.host_credential_transport is None
+            assert invocation.contract_client(
+                allowed_contract_ids=frozenset(),
+                consumer_pack_id="rumi_provider_adapters_pack",
+                include_credentials=False,
+            ) is client
+            with pytest.raises(AuthorityDenied, match="binding changed"):
+                invocation.contract_client(
+                    allowed_contract_ids=frozenset(),
+                    consumer_pack_id="rumi_provider_adapters_pack",
+                )
+            cancelled = backend._invocation_context(replace(
+                envelope, cancellation_requested=threading.Event(),
+            ))
+            cancelled.envelope.cancellation_requested.set()
+            with pytest.raises(AuthorityDenied, match="no longer active"):
+                cancelled.assert_current()
+            expired = backend._invocation_context(replace(envelope, deadline_monotonic=0))
+            with pytest.raises(AuthorityDenied, match="no longer active"):
+                expired.assert_current()
+            def stale_capture(_session):
+                raise AuthorityDenied("stale captured Profile")
+
+            with monkeypatch.context() as scoped:
+                scoped.setattr(V4DispatchSession, "assert_current", stale_capture)
+                with pytest.raises(AuthorityDenied, match="stale captured Profile"):
+                    invocation.assert_current()
+            checked_invocations.append(envelope.context.request_id)
+        return original_invoke(backend, envelope)
+
+    monkeypatch.setattr(ExactHostProviderBackendV4, "invoke", check_invocation)
+
+    def open_request(request, *, timeout: float, **lifetime) -> _ProviderResponse:
         observed.append((request.headers.get("Authorization"), timeout))
         return _ProviderResponse()
 
@@ -189,30 +267,66 @@ def test_production_dispatch_executes_credentialed_provider_request(
         "_open_pinned_request",
         open_request,
     )
+    # Model the guest transport only. The real outer Broker envelope and
+    # Host continuation bind Defaults to the AI gateway; a panel session
+    # must not invoke the Provider-only gateway edge directly.
+    conversation_binding = next(
+        item for item in active.resolved.plan["bindings"]
+        if item["contract_id"] == "conversation.turn.v1" and item["operation_id"] == "complete"
+    )
+    target = FunctionPrincipal.from_dict(conversation_binding["function_principal"])
+    backend = _CapturedBackend(_digest("credentialed-bridge-backend"))
+    backend.target_executable_digest = target.function_implementation_digest
+
+    def invoke_guest(envelope) -> ProviderOutcome:
+        ai_request = {
+            "profile_id": envelope.context.profile_id,
+            "messages": envelope.payload["messages"],
+            "requirements": {
+                "preferred_model_id": envelope.payload["model"],
+                "preferred_provider_instance_id": "provider.compatibility.generate",
+            },
+            "deadline": int(time.time()) + 30,
+        }
+        response = backend.capability_bridge(
+            envelope, _ai_bridge_request(ai_request),
+        )
+        assert response["result"]["status"] == "ok", response
+        return ProviderOutcome(response["result"]["value"])
+
+    monkeypatch.setattr(backend, "invoke", invoke_guest)
     session = capture_production_dispatch(
         active,
         bundle_root=_bundle_root(),
         ecosystem_root=Path(__file__).resolve().parents[1] / "ecosystem",
         authority_store=AuthorityStore(user_data / "authority" / "v4.sqlite3"),
+        activation_snapshot_loader=defaultspack_activation_snapshot_loader,
+        runtime_surface_factory=create_runtime_surface_services,
         credential_store_factory=_credential_store_factory,
+        backends=BackendRegistry((backend,)),
+        target_backend_digests={target.principal_id: backend.status.backend_digest},
     )
     try:
+        adapter_metadata = session.provider_metadata(
+            "tobkiri.service.ai.provider.generate.v1"
+        )
+        assert {
+            item["provider_instance_id"] for item in adapter_metadata
+        } == {"provider.compatibility.generate"}
         result = session.invoke(
-            "tobkiri.service.ai.provider.generate.v1",
-            "rumi_provider_adapters_pack.provider-generate",
+            "conversation.turn.v1",
+            "complete",
             {
                 "_session_id": "session.panel.provider-production",
-                "profile_id": "defaults",
-                "provider_id": "production-test",
-                "model_id": "production-test/model",
                 "messages": [{"role": "user", "content": "hello"}],
-                "deadline": time.time() + 30.0,
+                "model": "production-test/model",
             },
         )
     finally:
         session.close()
 
     assert result["output"] == "production-ok"
+    assert len(checked_invocations) == 1
     assert observed and observed[0][0] == "Bearer production-secret-sentinel"
     assert 0 < observed[0][1] <= 30.0
     assert "production-secret-sentinel" not in json.dumps(result)
@@ -238,6 +352,8 @@ def test_clean_home_broker_dispatches_then_revocation_fails_closed(
         bundle_root=_bundle_root(),
         ecosystem_root=Path(__file__).resolve().parents[1] / "ecosystem",
         authority_store=store,
+        activation_snapshot_loader=defaultspack_activation_snapshot_loader,
+        runtime_surface_factory=create_runtime_surface_services,
         backends=BackendRegistry((backend,)),
         target_backend_digests={target.principal_id: backend.status.backend_digest},
     )
@@ -279,11 +395,7 @@ def test_clean_home_broker_dispatches_then_revocation_fails_closed(
     assert approval is not None
     assert approval.caller == current_caller
     assert approval.target == target
-    provider = next(
-        item
-        for item in store.list_provider_authorities()
-        if item.provider == target
-    )
+    provider = next(item for item in store.list_provider_authorities() if item.provider == target)
     assert provider.execution_domain_id == target_domain.domain_id
     assert provider.execution_domain_identity_digest == target_domain.identity_digest
     translated, translated_scope = control._translate_query(
@@ -317,7 +429,24 @@ def test_clean_home_broker_dispatches_then_revocation_fails_closed(
             artifact_digest=target.parent_artifact_digest,
             reason="test exact Pack approval revoke",
         )
-        assert revoked_grants == (persisted_grant.grant_id,)
+        expected_revoked = {
+            grant.grant_id
+            for grant in persisted
+            if grant.target.parent_artifact_digest == target.parent_artifact_digest
+            and grant.profile_id == current_context.profile_id
+            and grant.activation_id == current_context.activation_id
+        }
+        # Two conversation edges and three application-presentation edges now
+        # share this Pack approval; revocation must fence every one of them.
+        assert len(expected_revoked) == 5
+        assert persisted_grant.grant_id in expected_revoked
+        assert set(revoked_grants) == expected_revoked
+        assert all(store.is_revoked("grant", grant_id) for grant_id in expected_revoked)
+        assert all(
+            not store.is_revoked("grant", grant.grant_id)
+            for grant in persisted
+            if grant.grant_id not in expected_revoked
+        )
         with pytest.raises(AuthorizationError, match="static authorization failed"):
             session.invoke(
                 "conversation.turn.v1",
@@ -332,6 +461,8 @@ def test_clean_home_broker_dispatches_then_revocation_fails_closed(
             bundle_root=_bundle_root(),
             ecosystem_root=Path(__file__).resolve().parents[1] / "ecosystem",
             authority_store=store,
+            activation_snapshot_loader=defaultspack_activation_snapshot_loader,
+            runtime_surface_factory=create_runtime_surface_services,
             backends=BackendRegistry((_CapturedBackend(_digest("backend")),)),
             target_backend_digests={target.principal_id: _digest("backend")},
         )
@@ -353,20 +484,32 @@ def test_clean_home_broker_dispatches_then_revocation_fails_closed(
     assert not (user_data / "settings" / "startup_profiles.json").exists()
 
 
-def test_unavailable_packvm_does_not_mint_baseline_conversation_authority(
+def test_direct_vz_auth_failure_never_falls_back_to_path_lima_or_mints_authority(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The required baseline remains hidden until an exact PackVM is live."""
+    """Production exposes direct-VZ failure and leaves baseline authority absent."""
+
+    import ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner as vz
 
     user_data = tmp_path / "unavailable-packvm"
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    invocation_marker = tmp_path / "limactl-invoked"
+    limactl = tmp_path / "limactl"
+    limactl.write_text(
+        f"#!/bin/sh\ntouch '{invocation_marker}'\nexit 0\n",
+        encoding="utf-8",
+    )
+    limactl.chmod(0o700)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.setattr(vz, "_default_state_dir", lambda: user_data / "packvm-vz")
+    monkeypatch.setattr(vz, "_packaged_packvm_bundle_binding", lambda: None)
+    lifecycle = PackVMLifecycleV4(vz.default_packvm_provisioner())
     active = capture_default_profile(confirmation=prepare_default_profile_confirmation())
     binding = next(
         item
         for item in active.resolved.plan["bindings"]
-        if item["contract_id"] == "conversation.turn.v1"
-        and item["operation_id"] == "complete"
+        if item["contract_id"] == "conversation.turn.v1" and item["operation_id"] == "complete"
     )
     target = FunctionPrincipal.from_dict(binding["function_principal"])
     store = AuthorityStore(user_data / "authority" / "v4.sqlite3")
@@ -375,8 +518,16 @@ def test_unavailable_packvm_does_not_mint_baseline_conversation_authority(
         bundle_root=_bundle_root(),
         ecosystem_root=Path(__file__).resolve().parents[1] / "ecosystem",
         authority_store=store,
+        activation_snapshot_loader=defaultspack_activation_snapshot_loader,
+        runtime_surface_factory=create_runtime_surface_services,
+        packvm_provisioner=lifecycle,
     )
     try:
+        readiness = lifecycle.readiness_snapshot()
+        assert readiness["ready"] is False
+        assert "PackVM VZ" in str(readiness["reason"])
+        assert "backend_substrate" not in readiness
+        assert not invocation_marker.exists()
         context = session.context_for(
             "conversation.turn.v1",
             "complete",
@@ -384,14 +535,15 @@ def test_unavailable_packvm_does_not_mint_baseline_conversation_authority(
         )
         assert store.get_domain(context.target_domain_id) is None
         assert all(item.target != target for item in store.list_grants())
+        assert all(item.provider != target for item in store.list_provider_authorities())
         assert all(
-            item.provider != target for item in store.list_provider_authorities()
+            target.principal_id not in json.dumps(event, sort_keys=True)
+            for event in store.audit_events()
         )
         metadata = session.provider_metadata("conversation.turn.v1")
         assert len(metadata) == 1
-        assert "authenticated PackVM supervisor" in metadata[0][
-            "backend_unavailable_reason"
-        ]
+        assert "authenticated PackVM supervisor" in metadata[0]["backend_unavailable_reason"]
+        assert not invocation_marker.exists()
     finally:
         session.broker.close()
 
@@ -408,8 +560,7 @@ def test_packvm_bridge_uses_only_the_captured_ai_capability(
     conversation_binding = next(
         item
         for item in active.resolved.plan["bindings"]
-        if item["contract_id"] == "conversation.turn.v1"
-        and item["operation_id"] == "complete"
+        if item["contract_id"] == "conversation.turn.v1" and item["operation_id"] == "complete"
     )
     target = FunctionPrincipal.from_dict(conversation_binding["function_principal"])
     backend = _CapturedBackend(_digest("bridge-backend"))
@@ -419,6 +570,8 @@ def test_packvm_bridge_uses_only_the_captured_ai_capability(
         bundle_root=_bundle_root(),
         ecosystem_root=Path(__file__).resolve().parents[1] / "ecosystem",
         authority_store=store,
+        activation_snapshot_loader=defaultspack_activation_snapshot_loader,
+        runtime_surface_factory=create_runtime_surface_services,
         backends=BackendRegistry((backend,)),
         target_backend_digests={target.principal_id: backend.status.backend_digest},
     )
@@ -433,34 +586,16 @@ def test_packvm_bridge_uses_only_the_captured_ai_capability(
             "messages": [{"role": "user", "content": "hello"}],
             "requirements": {"request_surface": "defaultspack.conversation"},
         }
-        bridge_request = {
-            "kind": "tobkiri.packvm.bridge.request.v1",
-            "protocol": "io.tobkiri.packvm.bridge.v1",
-            "version": 1,
-            "target": {
-                "contract_id": "tobkiri.service.ai.generate.v1",
-                "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
-            },
-            "request": request,
-            "request_digest": canonical_digest(request),
-            "continuation": {
-                "kind": "tobkiri.packvm.continuation.v1",
-                "protocol": "io.tobkiri.packvm.bridge.v1",
-                "version": 1,
-                "operation_id": "complete",
-                "nonce": "a" * 48,
-                "target": {
-                    "contract_id": "tobkiri.service.ai.generate.v1",
-                    "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
-                },
-                "request_digest": canonical_digest(request),
-            },
-        }
+        bridge_request = _ai_bridge_request(request)
+        nested_cancellation_proof = object()
         outer = SimpleNamespace(
+            deadline_monotonic=time.monotonic() + 30,
+            cancellation_requested=threading.Event(),
             context=context,
             target_principal=OpaqueAuthorityRef(target.principal_id),
             target_domain=OpaqueAuthorityRef(context.target_domain_id),
             contract_id="conversation.turn.v1",
+            contract_version="1.0.0",
             operation_id="complete",
         )
         invocations: list[tuple[str, str, dict[str, object]]] = []
@@ -472,14 +607,24 @@ def test_packvm_bridge_uses_only_the_captured_ai_capability(
             payload: dict[str, object],
             *,
             version_range: str | None = None,
+            parent_deadline_monotonic: float | None = None,
+            parent_cancellation: threading.Event | None = None,
+            parent_cancellation_proof: object | None = None,
         ) -> dict[str, object]:
             assert self is session
             assert version_range is None
+            assert parent_deadline_monotonic == outer.deadline_monotonic
+            assert parent_cancellation is outer.cancellation_requested
+            assert parent_cancellation_proof is nested_cancellation_proof
             invocations.append((contract_id, operation_id, dict(payload)))
             return {"content": "verified completion"}
 
         monkeypatch.setattr(V4DispatchSession, "invoke", captured_ai_dispatch)
-        result = backend.capability_bridge(outer, bridge_request)
+        result = backend.capability_bridge(
+            outer,
+            bridge_request,
+            nested_cancellation_proof,
+        )
         assert len(invocations) == 1
         contract_id, operation_id, payload = invocations[0]
         assert (contract_id, operation_id) == (
@@ -491,15 +636,57 @@ def test_packvm_bridge_uses_only_the_captured_ai_capability(
         assert set(payload) == {"messages", "requirements", "_session_id"}
         host_session_id = payload["_session_id"]
         assert isinstance(host_session_id, str)
-        assert host_session_id.startswith(
-            f"session.packvm-bridge.{context.request_id}."
-        )
+        assert host_session_id.startswith(f"session.packvm-bridge.{context.request_id}.")
         assert bridge_request["continuation"]["nonce"] not in host_session_id
         assert result["result"] == {
             "status": "ok",
             "value": {"content": "verified completion"},
         }
         assert result["result_digest"] == canonical_digest(result["result"])
+        # The authenticated outer request, not guest framing, selects authority.
+        # Rejected requests must not reach even the controlled Provider adapter.
+        context_changes = {
+            "profile_id": "profile.other",
+            "profile_revision": _digest("other-profile-revision"),
+            "activation_id": "activation.other",
+            "activation_digest": _digest("other-activation"),
+            "plan_digest": _digest("other-plan"),
+            "security_epoch": context.security_epoch + 1,
+            "fencing_token": context.fencing_token + 1,
+            "profile_authority_digest": _digest("other-authority"),
+            "target_domain_id": "domain.other",
+            "target_backend_digest": _digest("other-backend"),
+            "caller_principal": OpaqueAuthorityRef(_digest("other-caller")),
+        }
+        for field, changed in context_changes.items():
+            forged = SimpleNamespace(**{
+                **vars(outer), "context": replace(context, **{field: changed}),
+            })
+            with pytest.raises(AuthorityDenied, match="bridge outer"):
+                backend.capability_bridge(forged, bridge_request)
+            assert len(invocations) == 1, field
+        cancelled = threading.Event()
+        cancelled.set()
+        outer_changes = [
+            ("contract_id", "conversation.saved-turn.v1"),
+            ("contract_version", "2.0.0"),
+            ("contract_version", None),
+            ("operation_id", "saved_complete"),
+            ("target_principal", OpaqueAuthorityRef(_digest("other-target"))),
+            ("target_domain", OpaqueAuthorityRef("domain.other")),
+            ("deadline_monotonic", None),
+            ("deadline_monotonic", True),
+            ("deadline_monotonic", float("inf")),
+            ("deadline_monotonic", float("nan")),
+            ("deadline_monotonic", time.monotonic() - 1),
+            ("cancellation_requested", None),
+            ("cancellation_requested", cancelled),
+        ]
+        for field, changed in outer_changes:
+            forged = SimpleNamespace(**{**vars(outer), field: changed})
+            with pytest.raises(AuthorityDenied, match="bridge outer"):
+                backend.capability_bridge(forged, bridge_request)
+            assert len(invocations) == 1, field
         with pytest.raises(AuthorityDenied, match="bridge request is invalid"):
             backend.capability_bridge(
                 outer,
@@ -513,8 +700,20 @@ def test_packvm_bridge_uses_only_the_captured_ai_capability(
             payload: dict[str, object],
             *,
             version_range: str | None = None,
+            parent_deadline_monotonic: float | None = None,
+            parent_cancellation: threading.Event | None = None,
+            parent_cancellation_proof: object | None = None,
         ) -> dict[str, object]:
-            del self, contract_id, operation_id, payload, version_range
+            del (
+                self,
+                contract_id,
+                operation_id,
+                payload,
+                version_range,
+                parent_deadline_monotonic,
+                parent_cancellation,
+                parent_cancellation_proof,
+            )
             raise GlobalContractInvocationError(
                 "missing_provider",
                 "no selected provider",
@@ -562,6 +761,8 @@ def test_pack_catalog_read_is_profile_bound_audited_and_restart_safe(
             bundle_root=_bundle_root(),
             ecosystem_root=Path(__file__).resolve().parents[1] / "ecosystem",
             authority_store=store,
+            activation_snapshot_loader=defaultspack_activation_snapshot_loader,
+            runtime_surface_factory=create_runtime_surface_services,
         )
 
     session = capture()
@@ -585,7 +786,12 @@ def test_pack_catalog_read_is_profile_bound_audited_and_restart_safe(
         "catalog.read",
         {"_session_id": "session.panel.first-start"},
     )
-    assert result["count"] == 143
+    source_catalog = json.loads((
+        Path(__file__).resolve().parents[1] / "schemas" / "pack_v4_catalog.v1.json"
+    ).read_text(encoding="utf-8"))
+    expected_pack_ids = set(source_catalog["pack_ids"])
+    assert {pack["pack_id"] for pack in result["packs"]} == expected_pack_ids
+    assert result["count"] == len(expected_pack_ids)
     assert result["profile_id"] == "defaults"
     assert result["plan_digest"] == active.resolved.plan["plan_digest"]
     assert [event["event_state"] for event in store.audit_events()][-3:] == [
@@ -650,7 +856,7 @@ def test_pack_catalog_read_is_profile_bound_audited_and_restart_safe(
             "catalog.read",
             {"_session_id": "session.panel.restart"},
         )["count"]
-        == 143
+        == len(expected_pack_ids)
     )
 
     catalog_grant = next(
@@ -681,9 +887,7 @@ def test_dispatch_rejects_authority_store_from_another_state_root(
     user_data = tmp_path / "canonical-home"
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
     active = capture_default_profile(confirmation=prepare_default_profile_confirmation())
-    alternate_store = AuthorityStore(
-        tmp_path / "alternate-home" / "authority" / "v4.sqlite3"
-    )
+    alternate_store = AuthorityStore(tmp_path / "alternate-home" / "authority" / "v4.sqlite3")
 
     try:
         with pytest.raises(AuthorityDenied, match="not bound to the captured"):
@@ -692,6 +896,8 @@ def test_dispatch_rejects_authority_store_from_another_state_root(
                 bundle_root=_bundle_root(),
                 ecosystem_root=Path(__file__).resolve().parents[1] / "ecosystem",
                 authority_store=alternate_store,
+                activation_snapshot_loader=defaultspack_activation_snapshot_loader,
+                runtime_surface_factory=create_runtime_surface_services,
             )
     finally:
         alternate_store.close()

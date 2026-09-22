@@ -45,13 +45,49 @@ test('Packs retains cached data and marks it stale after a refresh failure', asy
   const dispatchError = "('tobkiri.host.pack-control.v4', 'catalog.read')";
   globalThis.fetch = (async () => new Response(JSON.stringify({success: false, data: null, error: dispatchError}), {status: 409})) as typeof fetch;
   const {dom, root} = await renderPage(<MemoryRouter><Packs /></MemoryRouter>);
-  assert.match(document.body.textContent ?? '', /Packs could not be loaded/);
-  assert.match(document.body.textContent ?? '', /tobkiri\.host\.pack-control\.v4/);
-  assert.match(document.body.textContent ?? '', /catalog\.read/);
-  assert.match(document.body.textContent ?? '', /Showing the last successfully loaded data/);
-  assert.match(document.body.textContent ?? '', /Cached Pack/);
-  await act(async () => root.unmount());
-  dom.window.close();
+  const previousNavigator = globalThis.navigator;
+  let copied = '';
+
+  try {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: dom.window.navigator,
+      configurable: true,
+    });
+    Object.defineProperty(dom.window.navigator, 'clipboard', {
+      configurable: true,
+      value: {writeText: async (text: string) => { copied = text; }},
+    });
+    assert.match(document.body.textContent ?? '', /Packs could not be loaded/);
+    assert.match(document.body.textContent ?? '', /tobkiri\.host\.pack-control\.v4/);
+    assert.match(document.body.textContent ?? '', /catalog\.read/);
+    assert.match(document.body.textContent ?? '', /Showing the last successfully loaded data/);
+    assert.match(document.body.textContent ?? '', /Cached Pack/);
+    const errorIcon = document.querySelector<SVGElement>('[data-error-icon="load"]');
+    assert.ok(errorIcon);
+    assert.ok(errorIcon.classList.contains('lucide-circle-alert'));
+    const copyButton = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Copy Packs could not be loaded error"]',
+    );
+    assert.ok(copyButton);
+    assert.ok(copyButton.querySelector('svg.lucide-copy'));
+    assert.equal(copyButton.querySelector('svg.lucide-circle-alert'), null);
+    await act(async () => {
+      copyButton.click();
+      await Promise.resolve();
+    });
+    assert.equal(copied, [
+      'Packs could not be loaded',
+      dispatchError,
+      'Showing the last successfully loaded data.',
+    ].join('\n'));
+  } finally {
+    await act(async () => root.unmount());
+    dom.window.close();
+    Object.defineProperty(globalThis, 'navigator', {
+      value: previousNavigator,
+      configurable: true,
+    });
+  }
 });
 
 test('PackDetail does not mislabel a failed catalog request as an unknown id', async () => {

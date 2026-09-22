@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import re
 
 import pytest
 
@@ -15,6 +16,27 @@ pytestmark = pytest.mark.contract
 
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
 TREE = "89abcdef0123456789abcdef0123456789abcdef"
+
+
+def test_packaged_source_contains_every_declared_pack_artifact() -> None:
+    """Sparse relocated packaging retains the exact data sealed by the Pack."""
+    root = Path(__file__).resolve().parents[1]
+    pack_root = root / "ecosystem/defaultspack"
+    pack = json.loads((pack_root / "pack.v4.json").read_bytes())
+    declared = {
+        item["path"]: item["digest"]
+        for item in pack["artifacts"]
+    }
+    assert declared
+    manifest = generator_source_manifest.load_source_manifest(root)
+    captured = {item["path"]: item for item in manifest["files"]}
+    for relative, digest in declared.items():
+        item = captured[f"ecosystem/defaultspack/{relative}"]
+        assert f"sha256:{item['sha256']}" == digest
+        assert item["type"] == "regular-file"
+        assert hashlib.sha256((pack_root / relative).read_bytes()).hexdigest() == item[
+            "sha256"
+        ]
 
 
 def _provenance_bytes(manifest_digest: str, fields: list[tuple[str, object]]) -> bytes:
@@ -143,9 +165,7 @@ def test_provenance_exact_keys_types_and_digests_are_strict(
 
 
 @pytest.mark.parametrize("relative", ["scripts/__pycache__/attack.pyc", "scripts/attack.pyo"])
-def test_source_manifest_rejects_generated_python_bytecode(
-    tmp_path: Path, relative: str
-) -> None:
+def test_source_manifest_rejects_generated_python_bytecode(tmp_path: Path, relative: str) -> None:
     """Ignored bytecode is a structural closure violation, never an input."""
     root = tmp_path / "runtime"
     for directory in generator_source_manifest.SOURCE_ROOTS:
@@ -164,6 +184,34 @@ def test_source_manifest_rejects_generated_python_bytecode(
 def test_source_manifest_declares_root_executable_catalog_sidecar() -> None:
     """The packaged source closure must copy the root v4 catalog into staging."""
     relative = "ecosystem/defaultspack/executables.v4.json"
+    assert relative in generator_source_manifest.SOURCE_FILES
+    manifest = generator_source_manifest.load_source_manifest()
+    assert any(entry["path"] == relative for entry in manifest["files"])
+
+
+def test_source_manifest_declares_profile_bundle_generation_policy() -> None:
+    """Relocated generators retain the policy that selects their v4 bundle root."""
+    relative = "schemas/profile_bundle_generation.v1.json"
+    assert relative in generator_source_manifest.SOURCE_FILES
+    manifest = generator_source_manifest.load_source_manifest()
+    assert any(entry["path"] == relative for entry in manifest["files"])
+
+
+def test_rust_sealed_source_exact_files_match_the_canonical_generator() -> None:
+    """Desktop packaging accepts every canonical sparse exact-file grant."""
+    root = Path(__file__).resolve().parents[2]
+    rust_source = (
+        root / "tobkiri_launcher/src-tauri/src/packaged_source.rs"
+    ).read_text(encoding="utf-8")
+    files_block = rust_source.split("const FILES: &[&str] = &[", 1)[1].split("];", 1)[0]
+    rust_files = set(re.findall(r'"([^"\\]+)"', files_block))
+    assert rust_files == set(generator_source_manifest.SOURCE_FILES)
+
+
+def test_source_manifest_declares_moved_runtime_surface_module() -> None:
+    """The sparse Rust closure must receive the Pack-owned runtime surface."""
+
+    relative = "ecosystem/defaultspack/domain/runtime_surface_v4.py"
     assert relative in generator_source_manifest.SOURCE_FILES
     manifest = generator_source_manifest.load_source_manifest()
     assert any(entry["path"] == relative for entry in manifest["files"])

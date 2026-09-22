@@ -34,6 +34,9 @@ SCHEMA_ALIASES = {
     "request_envelope": "request_envelope_v1.schema.json",
     "profile": "profile_v5.schema.json",
     "profile_lock": "profile_lock_v5.schema.json",
+    "profile_artifact_lock": "profile_artifact_lock_v1.schema.json",
+    "profile_intent": "profile_intent_v1.schema.json",
+    "profile_release_provenance": "profile_release_provenance_v1.schema.json",
     "composition_catalog": "composition_catalog_v4.schema.json",
     "resolved_plan": "resolved_plan_v2.schema.json",
     "base": "base_definition_v4.schema.json",
@@ -49,6 +52,7 @@ SCHEMA_ALIASES = {
     "executable_catalog": "executable_catalog_v4.schema.json",
     "external_pack_catalog": "external_normal_pack_catalog_v4.schema.json",
     "defaults_setup": "defaults_setup_v4.schema.json",
+    "saved_conversation_input": "saved_conversation_input_v1.schema.json",
 }
 
 _ID_FIELDS = {

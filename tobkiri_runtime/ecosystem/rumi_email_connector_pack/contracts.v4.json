@@ -21,11 +21,11 @@
           "scope_semantics": "host_broker"
         }
       ],
-      "owner": "rumi_discord_connector_pack",
+      "owner": "rumi_email_connector_pack",
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:f3b8613161123b871c4f5e3652003fc60e722754c0a7f17cc4c492144f0890d6",
+            "digest": "sha256:2584891a984887e35fa7e3e9194a366bdc78dae1c16a79a01367dfe738add922",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -36,7 +36,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:f3b8613161123b871c4f5e3652003fc60e722754c0a7f17cc4c492144f0890d6",
+        "source_digest": "sha256:2584891a984887e35fa7e3e9194a366bdc78dae1c16a79a01367dfe738add922",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_email_connector_pack"
       },
@@ -56,7 +56,7 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:2e20ec5fff93e52c1d8d053a373deb01469ce3c9151cf0137de5052ef1262aa5",
+      "revision_digest": "sha256:fa9f4c7c3c713f8b16802cdd6968cc6ef67ed57b97e2edf3a99f3e1017c4d018",
       "schema_catalog": {
         "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
           "type": "object"
@@ -67,5 +67,5 @@
     }
   ],
   "pack_id": "rumi_email_connector_pack",
-  "source_identity": "sha256:f3b8613161123b871c4f5e3652003fc60e722754c0a7f17cc4c492144f0890d6"
+  "source_identity": "sha256:2584891a984887e35fa7e3e9194a366bdc78dae1c16a79a01367dfe738add922"
 }

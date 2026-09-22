@@ -62,6 +62,8 @@ def _install_captured_chat_session(monkeypatch: pytest.MonkeyPatch) -> _Captured
         },
         profile_id="profile:captured",
         plan_digest="sha256:" + "1" * 64,
+        profile_revision="sha256:" + "2" * 64,
+        activation_id="activation:route-test",
     )
     broker.session = session
     container = DIContainer()

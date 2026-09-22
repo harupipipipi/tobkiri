@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 import pytest
 
 from core_runtime.app_lifecycle_manager import AppLifecycleManager
 from core_runtime.bootstrap.profile_capture import (
+    _bundle_root,
     capture_default_profile,
     prepare_default_profile_confirmation,
 )
+from core_runtime.profile_definition_store_v4 import ProfileDefinitionStore
+from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
 
 
 def test_legacy_profile_json_is_not_setup_authority(
@@ -39,7 +43,32 @@ def test_legacy_profile_json_is_not_setup_authority(
     status = AppLifecycleManager(base_dir=tmp_path).check_setup_status()
 
     assert status["needs_setup"] is True
-    assert status["reason"] == "explicit_defaults_confirmation_required"
+    assert status["reason"] == "explicit_bootstrap_confirmation_required"
+    assert status["defaults_bootstrap_required"] is True
+    assert status["host_catalog_verified"] is True
+    assert status["profile_ceremony_available"] is False
+
+
+def test_existing_named_catalog_needs_activation_not_defaults_setup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_data = tmp_path / "user-data"
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    template = dict(BundledCatalog.load(_bundle_root()).profiles["defaults"])
+    template["profile_id"] = "existing-profile"
+    template["display_name"] = "Existing Profile"
+    ProfileDefinitionStore(user_data).create_profile(template)
+
+    status = AppLifecycleManager(base_dir=tmp_path).check_setup_status()
+
+    assert status["needs_setup"] is False
+    assert status["reason"] == "profile_activation_required"
+    assert status["host_catalog_verified"] is True
+    assert status["profile_ceremony_available"] is True
+    assert status["defaults_bootstrap_required"] is False
+    assert status["active_profile_ready"] is False
+    assert status["launch_ready"] is False
 
 
 def test_committed_v4_activation_is_the_only_setup_completion(
@@ -60,6 +89,96 @@ def test_committed_v4_activation_is_the_only_setup_completion(
     assert status["profile_id"] == active.resolved.profile["profile_id"]
     assert status["plan_digest"] == active.resolved.plan["plan_digest"]
     assert status["activation_id"] == active.activation["activation_id"]
+
+
+def test_setup_status_retries_only_transient_activation_lock_collisions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cold-start readers do not expose a recoverable lock race as setup loss."""
+
+    user_data = tmp_path / "user-data"
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    active = capture_default_profile(confirmation=prepare_default_profile_confirmation())
+    from core_runtime.bootstrap import profile_capture
+    from ecosystem.defaultspack.domain.runtime_v4 import ActivationLockTimeout
+
+    attempts = 0
+
+    def transient_capture(*, base_dir=None):
+        del base_dir
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise ActivationLockTimeout("activation process lock deadline exceeded")
+        return active
+
+    monkeypatch.setattr(profile_capture, "capture_active_profile", transient_capture)
+    status = AppLifecycleManager(base_dir=tmp_path).check_setup_status()
+
+    assert attempts == 2
+    assert status["needs_setup"] is False
+    assert status["activation_id"] == active.activation["activation_id"]
+
+
+def test_setup_status_activation_lock_retry_is_finite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A wedged writer cannot make the authenticated health request unbounded."""
+
+    user_data = tmp_path / "user-data"
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    capture_default_profile(confirmation=prepare_default_profile_confirmation())
+    from core_runtime.bootstrap import profile_capture
+    from ecosystem.defaultspack.domain.runtime_v4 import ActivationLockTimeout
+
+    attempts = 0
+
+    def wedged_capture(*, base_dir=None):
+        del base_dir
+        nonlocal attempts
+        attempts += 1
+        raise ActivationLockTimeout("activation process lock deadline exceeded")
+
+    monkeypatch.setattr(profile_capture, "capture_active_profile", wedged_capture)
+    started = time.monotonic()
+    status = AppLifecycleManager(base_dir=tmp_path).check_setup_status()
+    elapsed = time.monotonic() - started
+
+    assert attempts == 3
+    assert elapsed < 1
+    assert status["reason"] == "canonical_v4_profile_unavailable"
+    assert status["error_type"] == "ActivationLockTimeout"
+
+
+def test_setup_status_does_not_retry_non_lock_profile_denials(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Digest, authority, and schema failures remain immediately fail-closed."""
+
+    user_data = tmp_path / "user-data"
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    capture_default_profile(confirmation=prepare_default_profile_confirmation())
+    from core_runtime.bootstrap import profile_capture
+    from ecosystem.defaultspack.domain.runtime_v4 import ProfileResolutionDenied
+
+    attempts = 0
+
+    def deny(*, base_dir=None):
+        del base_dir
+        nonlocal attempts
+        attempts += 1
+        raise ProfileResolutionDenied("activation digest mismatch")
+
+    monkeypatch.setattr(profile_capture, "capture_active_profile", deny)
+
+    status = AppLifecycleManager(base_dir=tmp_path).check_setup_status()
+
+    assert attempts == 1
+    assert status["reason"] == "canonical_v4_profile_unavailable"
+    assert status["host_catalog_verified"] is False
 
 
 def test_complete_setup_never_creates_legacy_profile(

@@ -93,9 +93,9 @@
           "authoritative_owner": false,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:ac8d258e3ed2603dd077627ea682a7789b2d6997804ab44a2c57cea46fbaae4b",
+            "artifact_digest": "sha256:ce6cf26ceec620851acabf7e34a2fbcd63d57880912c48c317ec626790250067",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:25a8069c5de442d25b55432884f35d1e9ade2f8b0c3e064ff116f332f84fef0b"
+            "source_identity": "sha256:69c6a8f891e305bc39132db358501c9423e575c934337df5e8820b3feb681fc3"
           },
           "owner_surfaces": [],
           "projection_owner": "scripts/migrate_manifest_authority.py"
@@ -134,7 +134,7 @@
       "owner": "rumi_p2p_connector_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:25a8069c5de442d25b55432884f35d1e9ade2f8b0c3e064ff116f332f84fef0b"
+      "source_identity": "sha256:69c6a8f891e305bc39132db358501c9423e575c934337df5e8820b3feb681fc3"
     }
   },
   "migration": {

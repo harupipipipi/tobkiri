@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {afterEach, beforeEach, test} from 'node:test';
 import {JSDOM} from 'jsdom';
 
@@ -10,6 +11,13 @@ import {
 } from '@/src/store';
 import type {ApiPackVMDoctor} from '@/src/lib/apiTypes';
 import {setRuntimeDispatchStatus} from '@/src/lib/runtimeDispatchGate';
+import {setPanelJournalScope} from '@/src/lib/panelJournalScope';
+import {
+  beginMutation,
+  listMutationJournal,
+  markMutationUnknown,
+} from '@/src/lib/mutationJournal';
+import {PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST} from '@/src/lib/generatedFrontendContractMap';
 
 const samplePack: Pack = {
   id: 'research-pack',
@@ -138,6 +146,7 @@ function dynamicCatalog() {
     version: 'rumi.ui.contribution.v1',
     profile_id: samplePack.profileId,
     profile_revision: samplePack.profileRevision,
+    activation_id: 'activation:profile-a',
     plan_hash: samplePack.planDigest,
     contributions: [],
     diagnostics: [],
@@ -359,8 +368,11 @@ test('install remains indeterminate while PackVM doctor readiness is unknown', a
     approvalReason: 'install_required',
     approvalIssues: ['install_required'],
   };
-  const routes = installFetch(async (route) => {
+  let installRequestId = '';
+  const routes = installFetch(async (route, init) => {
     if (route === 'POST /api/pack-control/install') {
+      installRequestId = String(new Headers(init?.headers).get('X-Tobkiri-Request-ID') ?? '');
+      assert.match(installRequestId, /^[0-9a-f-]{36}$/i);
       return new Response(JSON.stringify({
         success: true,
         data: {...binding(), pack_id: samplePack.id, installed: true},
@@ -373,6 +385,10 @@ test('install remains indeterminate while PackVM doctor readiness is unknown', a
       }), {headers: {'Content-Type': 'application/json'}});
     }
     if (route.startsWith('GET /api/runtime-surface/operation-status?')) {
+      assert.equal(
+        new URLSearchParams(route.split('?', 2)[1]).get('request_id'),
+        installRequestId,
+      );
       return operationStatusResponse(route, 'pack.install');
     }
     assert.equal(route, 'GET /api/ui/catalog');
@@ -588,6 +604,72 @@ test('delayed restart reconciliation is quiescent before jsdom cleanup', async (
   ]);
 });
 
+test('an adopted legacy lock is recoverable only after typed current-root absence', async () => {
+  const scope = `sha256:${'c'.repeat(64)}`;
+  const requestId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const key = `pack:toggle:${samplePack.id}:disable`;
+  setPanelJournalScope(scope);
+  localStorage.setItem('tobkiri-launcher-mutation-journal-v1', JSON.stringify([{
+    key,
+    requestId,
+    state: 'unknown',
+    createdAt: 1,
+    metadata: {
+      kind: 'pack.toggle',
+      pack_id: samplePack.id,
+      expected_enabled: false,
+      operation_id: 'pack.disable',
+      contract_id: 'tobkiri.host.pack-control.v4',
+      contract_map_digest: PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST,
+      request_ids: {primary: requestId},
+    },
+  }]));
+  const routes = installFetch(async (route) => {
+    if (route === 'GET /api/pack-control/catalog') {
+      return new Response(JSON.stringify({
+        success: true,
+        data: {...binding(), packs: [catalogPack(true)], count: 1},
+      }), {headers: {'Content-Type': 'application/json'}});
+    }
+    assert.match(route, /^GET \/api\/runtime-surface\/operation-status\?/);
+    return new Response(JSON.stringify({
+      success: false,
+      data: {
+        host_operation_api_version: 'io.tobkiri.host.operation.v1',
+        state: 'error',
+        code: 'OPERATION_NOT_FOUND',
+        message: 'The operation is absent from the current data root',
+        retryable: false,
+        write_set: [],
+      },
+      error: 'The operation is absent from the current data root',
+    }), {status: 404, headers: {'Content-Type': 'application/json'}});
+  });
+  const errors: string[] = [];
+  setStore(errors);
+  useAppStore.setState({packMutationUnknown: {}, packLegacyRecovery: {}});
+
+  await useAppStore.getState().loadPacks(true);
+  await waitForPackMutationReconciliation();
+
+  const recovery = useAppStore.getState().packLegacyRecovery[key];
+  assert.ok(recovery);
+  assert.equal(recovery.requestId, requestId);
+  assert.equal(recovery.metadata.journal_migration, 'legacy-unscoped-v1');
+  assert.deepEqual(routes.map(normalizeOperationStatusRoute), [
+    'GET /api/pack-control/catalog',
+    'GET /api/runtime-surface/operation-status',
+  ]);
+  useAppStore.getState().clearAbsentLegacyPackMutation(key, requestId);
+  assert.equal(useAppStore.getState().packMutationUnknown[key], undefined);
+  assert.equal(useAppStore.getState().packLegacyRecovery[key], undefined);
+  assert.equal(
+    localStorage.getItem(`tobkiri-launcher-mutation-journal-v2:${scope}`),
+    '[]',
+  );
+  assert.deepEqual(errors, []);
+});
+
 test('disable ignores a response for the wrong Pack or requested state', async () => {
   const routes = installFetch(async (route) => {
     assert.equal(route, 'POST /api/pack-control/disable');
@@ -664,4 +746,208 @@ test('required Profile Pack is rejected before a disable request is sent', async
   assert.deepEqual(routes, []);
   assert.equal(useAppStore.getState().packs[0].enabled, true);
   assert.deepEqual(useAppStore.getState().packTogglePending, {});
+});
+
+function seedUnknownToggleMutation(): string {
+  const scope = `sha256:${'d'.repeat(64)}`;
+  setPanelJournalScope(scope);
+  const mutationKey = `pack:toggle:${samplePack.id}:disable`;
+  const mutation = beginMutation(mutationKey, {
+    kind: 'pack.toggle',
+    pack_id: samplePack.id,
+    expected_enabled: false,
+    operation_id: 'pack.disable',
+    contract_id: 'tobkiri.host.pack-control.v4',
+    contract_map_digest: PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST,
+  });
+  markMutationUnknown(mutationKey, mutation.requestId);
+  return mutationKey;
+}
+
+function operationStatusTerminalResponse(
+  route: string,
+  state: 'succeeded' | 'failed',
+  result: Record<string, unknown>,
+): Response {
+  const requestId = route.match(/[?&]request_id=([^&]+)/)?.[1];
+  assert.ok(requestId);
+  const resultJson = JSON.stringify(result);
+  return new Response(JSON.stringify({
+    success: true,
+    data: {
+      runtime_surface_api_version: 'io.tobkiri.launcher.runtime-surface.v4',
+      operation_status_api_version: 'io.tobkiri.control-operation-status.v1',
+      request_id: requestId,
+      operation_id: 'pack.disable',
+      contract_id: 'tobkiri.host.pack-control.v4',
+      request_digest: `sha256:${'a'.repeat(64)}`,
+      state,
+      result,
+      result_digest: `sha256:${createHash('sha256').update(resultJson).digest('hex')}`,
+      record_refs: [],
+      safe_error_code: state === 'failed' ? 'PACK_DISABLE_DENIED' : null,
+      created_at: 1,
+      updated_at: 2,
+    },
+  }), {headers: {'Content-Type': 'application/json'}});
+}
+
+test('verify status reconciles a current-root unknown toggle and releases the lock', async () => {
+  const mutationKey = seedUnknownToggleMutation();
+  const routes = installFetch(async (route) => {
+    if (route.startsWith('GET /api/runtime-surface/operation-status?')) {
+      return operationStatusTerminalResponse(route, 'succeeded', {enabled: false});
+    }
+    if (route === 'GET /api/pack-control/catalog') {
+      return new Response(JSON.stringify({
+        success: true,
+        data: {...binding(), packs: [catalogPack(false)], count: 1},
+      }), {headers: {'Content-Type': 'application/json'}});
+    }
+    assert.equal(route, 'GET /api/ui/catalog');
+    return new Response(JSON.stringify({success: true, data: {dynamic_host: dynamicCatalog()}}), {
+      headers: {'Content-Type': 'application/json'},
+    });
+  });
+  const errors: string[] = [];
+  const successes: string[] = [];
+  setStore(errors);
+  const unknown = listMutationJournal().find((record) => record.key === mutationKey);
+  assert.ok(unknown);
+  useAppStore.setState({
+    packMutationUnknown: {[mutationKey]: unknown},
+    addToast: (message, type) => {
+      if (type === 'success') successes.push(message);
+      if (type === 'error') errors.push(message);
+    },
+  });
+
+  await useAppStore.getState().verifyPackMutationStatus(mutationKey);
+
+  assert.deepEqual(routes.map(normalizeOperationStatusRoute).sort(), [
+    'GET /api/pack-control/catalog',
+    'GET /api/runtime-surface/operation-status',
+    'GET /api/ui/catalog',
+  ].sort());
+  assert.equal(
+    listMutationJournal().some((record) => record.key === mutationKey),
+    false,
+  );
+  assert.deepEqual(useAppStore.getState().packMutationUnknown, {});
+  assert.deepEqual(successes, ['The Host confirmed the Pack mutation result.']);
+  assert.deepEqual(errors, []);
+});
+
+test('verify status keeps a current-root unknown lock while the Host result is indeterminate', async () => {
+  const mutationKey = seedUnknownToggleMutation();
+  const routes = installFetch(async (route) => {
+    if (route.startsWith('GET /api/runtime-surface/operation-status?')) {
+      return operationStatusResponse(route, 'pack.disable');
+    }
+    if (route === 'GET /api/pack-control/catalog') {
+      return new Response(JSON.stringify({
+        success: true,
+        data: {...binding(), packs: [catalogPack(true)], count: 1},
+      }), {headers: {'Content-Type': 'application/json'}});
+    }
+    assert.equal(route, 'GET /api/ui/catalog');
+    return new Response(JSON.stringify({success: true, data: {dynamic_host: dynamicCatalog()}}), {
+      headers: {'Content-Type': 'application/json'},
+    });
+  });
+  const errors: string[] = [];
+  setStore(errors);
+  const unknown = listMutationJournal().find((record) => record.key === mutationKey);
+  assert.ok(unknown);
+  useAppStore.setState({packMutationUnknown: {[mutationKey]: unknown}});
+
+  await useAppStore.getState().verifyPackMutationStatus(mutationKey);
+
+  assert.deepEqual(routes.map(normalizeOperationStatusRoute).sort(), [
+    'GET /api/pack-control/catalog',
+    'GET /api/runtime-surface/operation-status',
+    'GET /api/ui/catalog',
+  ].sort());
+  const persisted = listMutationJournal().find((record) => record.key === mutationKey);
+  assert.equal(persisted?.state, 'unknown');
+  assert.equal(useAppStore.getState().packMutationUnknown[mutationKey]?.key, mutationKey);
+  assert.deepEqual(errors, [
+    'The request result is unknown. Refresh the authoritative projection before trying again; no new request will be sent automatically.',
+  ]);
+});
+
+test('verify status keeps a current-root unknown lock when the status read fails', async () => {
+  const mutationKey = seedUnknownToggleMutation();
+  const routes = installFetch(async (route) => {
+    if (route.startsWith('GET /api/runtime-surface/operation-status?')) {
+      throw new Error('GET request timed out after 30000ms: /api/runtime-surface/operation-status');
+    }
+    if (route === 'GET /api/pack-control/catalog') {
+      return new Response(JSON.stringify({
+        success: true,
+        data: {...binding(), packs: [catalogPack(true)], count: 1},
+      }), {headers: {'Content-Type': 'application/json'}});
+    }
+    assert.equal(route, 'GET /api/ui/catalog');
+    return new Response(JSON.stringify({success: true, data: {dynamic_host: dynamicCatalog()}}), {
+      headers: {'Content-Type': 'application/json'},
+    });
+  });
+  const errors: string[] = [];
+  setStore(errors);
+  const unknown = listMutationJournal().find((record) => record.key === mutationKey);
+  assert.ok(unknown);
+  useAppStore.setState({packMutationUnknown: {[mutationKey]: unknown}});
+
+  await useAppStore.getState().verifyPackMutationStatus(mutationKey);
+
+  assert.deepEqual(routes.map(normalizeOperationStatusRoute), [
+    'GET /api/runtime-surface/operation-status',
+  ]);
+  const persisted = listMutationJournal().find((record) => record.key === mutationKey);
+  assert.equal(persisted?.state, 'unknown');
+  assert.equal(useAppStore.getState().packMutationUnknown[mutationKey]?.key, mutationKey);
+  assert.deepEqual(errors, [
+    'The request result is unknown. Refresh the authoritative projection before trying again; no new request will be sent automatically.',
+  ]);
+});
+
+test('verify status releases a current-root unknown lock when the Host reports failure', async () => {
+  const mutationKey = seedUnknownToggleMutation();
+  const routes = installFetch(async (route) => {
+    if (route.startsWith('GET /api/runtime-surface/operation-status?')) {
+      return operationStatusTerminalResponse(route, 'failed', {code: 'PACK_DISABLE_DENIED'});
+    }
+    if (route === 'GET /api/pack-control/catalog') {
+      return new Response(JSON.stringify({
+        success: true,
+        data: {...binding(), packs: [catalogPack(true)], count: 1},
+      }), {headers: {'Content-Type': 'application/json'}});
+    }
+    assert.equal(route, 'GET /api/ui/catalog');
+    return new Response(JSON.stringify({success: true, data: {dynamic_host: dynamicCatalog()}}), {
+      headers: {'Content-Type': 'application/json'},
+    });
+  });
+  const errors: string[] = [];
+  setStore(errors);
+  const unknown = listMutationJournal().find((record) => record.key === mutationKey);
+  assert.ok(unknown);
+  useAppStore.setState({packMutationUnknown: {[mutationKey]: unknown}});
+
+  await useAppStore.getState().verifyPackMutationStatus(mutationKey);
+
+  assert.deepEqual(routes.map(normalizeOperationStatusRoute).sort(), [
+    'GET /api/pack-control/catalog',
+    'GET /api/runtime-surface/operation-status',
+    'GET /api/ui/catalog',
+  ].sort());
+  assert.equal(
+    listMutationJournal().some((record) => record.key === mutationKey),
+    false,
+  );
+  assert.deepEqual(useAppStore.getState().packMutationUnknown, {});
+  assert.deepEqual(errors, [
+    'The Host confirmed the Pack mutation failed (PACK_DISABLE_DENIED).',
+  ]);
 });

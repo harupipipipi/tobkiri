@@ -47,6 +47,8 @@ export interface ApiPack extends PackControlBinding {
   installed: boolean;
   enabled: boolean;
   artifact_digest: string;
+  /** Pack artifact in the verified active snapshot; distinct from the admission record digest. */
+  pack_artifact_digest?: string | null;
   approval_status?: string;
   approval_reason?: string | null;
   approved?: boolean;
@@ -74,7 +76,9 @@ export interface ApiFrontendContribution {
   route?: string;
   owner_pack_hash?: string;
   build_identity?: string;
+  resolved_profile_id?: string;
   resolved_profile_revision?: string;
+  resolved_activation_id?: string;
   resolved_plan_hash?: string;
   descriptor_hash?: string;
   view?: {type?: string} | null;
@@ -94,6 +98,7 @@ export interface ApiDynamicFrontendCatalog {
   version: string;
   profile_id: string;
   profile_revision: string;
+  activation_id: string;
   plan_hash: string;
   contributions: ApiFrontendContribution[];
   diagnostics: ApiFrontendDiagnostic[];
@@ -109,12 +114,33 @@ export interface ApiUiCatalogData {
 
 export interface FrontendCapabilityInvocation {
   profileId: string;
+  profileRevision: string;
+  activationId: string;
   planHash: string;
   catalogHash: string;
   contributionId: string;
   ownerPackId: string;
   contractId: string;
   payload: Record<string, unknown>;
+}
+
+export interface ApiPackVMRegistrationUpdate {
+  previous_attestation_digest: string;
+  previous_config_digest: string;
+  previous_guest_runner_digest: string;
+  previous_host_build_digest: string;
+  asset_manifest_digest: string;
+}
+
+export interface ApiPackVMStorageRebind {
+  digest: string;
+  previous_attestation_digest: string;
+  state_root: string;
+  instance_root: string;
+  previous_device: number;
+  current_device: number;
+  state_root_inode: number;
+  instance_root_inode: number;
 }
 
 export interface ApiPackVMProvisioningPlan {
@@ -127,12 +153,16 @@ export interface ApiPackVMProvisioningPlan {
   image_digest: string;
   image_size_bytes: number;
   image_download_required: boolean;
+  /** Exact host capacity the Host checked for this immutable plan. */
+  host_free_space_required_bytes: number;
   config_digest: string;
   guest_runner_digest: string;
   host_build_digest: string;
   ceremony_nonce: string;
   plan_digest: string;
   confirmation: string;
+  registration_update?: ApiPackVMRegistrationUpdate | null;
+  storage_rebind?: ApiPackVMStorageRebind | null;
 }
 
 export interface ApiPackVMConsent {
@@ -142,6 +172,8 @@ export interface ApiPackVMConsent {
   image_digest: string;
   image_size_bytes: number;
   image_download_approved: boolean;
+  previous_attestation_digest?: string | null;
+  storage_rebind_digest?: string | null;
 }
 
 export type ApiPackVMOperationState =
@@ -323,6 +355,12 @@ export interface DesktopSystemInfo {
   permission_subject?: string;
   host_broker?: HostBrokerStatus;
   permissions: DesktopPermissionStatus[];
+}
+
+export interface LauncherUpdateStatus {
+  state: 'available' | 'up_to_date';
+  current_version: string;
+  latest_version: string | null;
 }
 
 export type DebugApprovalState =
@@ -558,6 +596,11 @@ export interface HealthResponseData {
   runtime_ready: boolean;
   runtime_status: RuntimeStatus;
   runtime_error: string | null;
+  host_catalog_verified: boolean;
+  profile_ceremony_available: boolean;
+  active_profile_ready: boolean;
+  launch_ready: boolean;
+  defaults_bootstrap_required: boolean;
 }
 
 export interface WindowRuntimeSnapshot {

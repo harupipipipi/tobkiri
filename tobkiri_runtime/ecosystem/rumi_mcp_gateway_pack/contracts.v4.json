@@ -23,7 +23,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:99eedbd309d55d19cb992ca0cfff49f04b4c8a40ddd658289637b2648a8a2cda",
+            "digest": "sha256:3af5e73a9fdd3afdaec7ee7ccfe4e2e6bf2a26e71665684fa7330a9f1a5b985d",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -34,7 +34,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:99eedbd309d55d19cb992ca0cfff49f04b4c8a40ddd658289637b2648a8a2cda",
+        "source_digest": "sha256:3af5e73a9fdd3afdaec7ee7ccfe4e2e6bf2a26e71665684fa7330a9f1a5b985d",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_mcp_gateway_pack"
       },
@@ -43,7 +43,7 @@
         "failure": "fail_closed",
         "isolation": "in_process",
         "lifecycle": {
-          "data_owner": "defaultspack-mcp-compat",
+          "data_owner": "none",
           "deprecated": false,
           "introduced": "1.1.0"
         },
@@ -56,7 +56,7 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:8ef6ff26343e457a1b65180c49f61f975a0a3c026198ccef77448058a73810f8",
+      "revision_digest": "sha256:d1117f854fadb21187afcade4c13675587b2b129f71237c2a689bf6a791e333e",
       "schema_catalog": {
         "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
           "type": "object"
@@ -67,5 +67,5 @@
     }
   ],
   "pack_id": "rumi_mcp_gateway_pack",
-  "source_identity": "sha256:99eedbd309d55d19cb992ca0cfff49f04b4c8a40ddd658289637b2648a8a2cda"
+  "source_identity": "sha256:3af5e73a9fdd3afdaec7ee7ccfe4e2e6bf2a26e71665684fa7330a9f1a5b985d"
 }

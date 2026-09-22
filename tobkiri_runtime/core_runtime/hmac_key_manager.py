@@ -262,6 +262,11 @@ def _load_secure_signing_key(key_path: Path) -> bytes:
         raise SigningKeyError("signing-key material is missing or weak")
     return key_data.encode("utf-8")
 
+def load_signing_key(key_path: Path) -> bytes:
+    """Verify an existing signing key without creating or recovering it."""
+    return _load_secure_signing_key(key_path)
+
+
 def generate_or_load_signing_key(
     key_path: Path,
     env_var: Optional[str] = None,
