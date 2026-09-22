@@ -478,6 +478,25 @@ def _reject_collisions(
     for identity, candidates in sorted(by_identity.items()):
         if len(candidates) < 2:
             continue
+        if identity[0] == "component-id":
+            # Components are executable same-origin extensions.  Unlike
+            # route contributions, priority must never turn an existing
+            # component ID into a shadowable override: callers can otherwise
+            # resolve a different implementation merely by activating a
+            # higher-priority Pack.  Reject every conflicting registration.
+            for item in candidates:
+                rejected.add((item.owner_pack_id, item.contribution_id))
+                diagnostics.append(
+                    _diagnostic(
+                        "frontend_component_collision",
+                        "error",
+                        "Conflicting frontend component ID: "
+                        f"{identity[1]}",
+                        item.owner_pack_id,
+                        item.contribution_id,
+                    )
+                )
+            continue
         highest = max(item.priority for item in candidates)
         winners = [item for item in candidates if item.priority == highest]
         if len(winners) == 1:

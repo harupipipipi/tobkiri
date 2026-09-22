@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -153,6 +154,35 @@ def test_frontend_component_schema_validates_registry_and_binding_contracts() ->
     invalid_binding = dict(binding)
     invalid_binding["view"] = {**binding["view"], "slot": "../overlay"}
     assert list(validator.iter_errors(invalid_binding))
+
+
+def test_component_id_collision_rejects_higher_priority_shadow() -> None:
+    first = SimpleNamespace(
+        kind="component",
+        contribution_id="pack-a.component.card",
+        component_id="pack.ui.card",
+        owner_pack_id="pack-a",
+        priority=0,
+        route=None,
+    )
+    higher_priority = SimpleNamespace(
+        kind="component",
+        contribution_id="pack-b.component.card",
+        component_id="pack.ui.card",
+        owner_pack_id="pack-b",
+        priority=100,
+        route=None,
+    )
+
+    accepted, diagnostics = frontend_host_module._reject_collisions(
+        [first, higher_priority]
+    )
+
+    assert accepted == []
+    assert [item.code for item in diagnostics] == [
+        "frontend_component_collision",
+        "frontend_component_collision",
+    ]
 
 
 def _plan(
