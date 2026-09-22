@@ -184,6 +184,10 @@ def test_profile_without_a_valid_default_omits_thinking_parameters(
     assert service.apply_thinking_control(
         "example/numeric", {"temperature": 0.2, "thinking_level": None}
     ) == {"temperature": 0.2}
+    with pytest.raises(ValueError, match="optional k"):
+        service.apply_thinking_control(
+            "example/numeric", {"temperature": 0.2, "thinking_level": "high"}
+        )
 
 
 def test_legacy_profiles_remain_enum_compatible(tmp_path: Path) -> None:

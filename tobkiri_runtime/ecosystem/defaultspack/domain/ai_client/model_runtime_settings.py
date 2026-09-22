@@ -409,26 +409,27 @@ class ModelRuntimeSettingsService:
         """Apply an explicit profile binding without provider-specific branching."""
         result = deepcopy(params)
         raw_value = str(result.get("thinking_level") or "").strip()
+        contract = self.get_thinking_control(profile_id)
+        if contract.get("source") == "profile":
+            if not raw_value:
+                result.pop("thinking_level", None)
+                return result
+            if "thinking_level" not in result:
+                return result
+            serialized = self.serialize_thinking_control(profile_id, raw_value)
+            provider_params = serialized["provider_params"]
+            if not provider_params:
+                return result
+            result.pop("thinking_level", None)
+            return self._deep_merge(result, provider_params)
+
         stored_controls = self.get_settings().get("thinking_control_by_profile")
         has_stored_control = isinstance(stored_controls, dict) and isinstance(
             stored_controls.get(profile_id), dict
         )
         if raw_value in VALID_THINKING_LEVELS and not has_stored_control:
             return result
-        contract = self.get_thinking_control(profile_id)
-        if contract.get("source") == "profile" and not raw_value:
-            result.pop("thinking_level", None)
-            return result
-        if contract.get("source") != "profile" or "thinking_level" not in result:
-            return result
-        serialized = self.serialize_thinking_control(
-            profile_id, raw_value
-        )
-        provider_params = serialized["provider_params"]
-        if not provider_params:
-            return result
-        result.pop("thinking_level", None)
-        return self._deep_merge(result, provider_params)
+        return result
 
     def normalize_for_provider(self, provider_id: str, model_id: str, level: str) -> dict[str, Any]:
         profile_id = f"{str(provider_id or '').strip()}/{str(model_id or '').strip()}"
