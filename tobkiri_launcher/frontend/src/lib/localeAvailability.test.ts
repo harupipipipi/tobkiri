@@ -39,12 +39,52 @@ test('retired partial locale values fail closed to the generally available local
 
 test('profile updates cannot persist an unadvertised locale', () => {
   const previousState = useAppStore.getState();
+  const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const values = new Map<string, string>();
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value); },
+      removeItem: (key: string) => { values.delete(key); },
+    },
+  });
   try {
     useAppStore.setState({profile: {...previousState.profile, language: 'ja'}});
-    useAppStore.getState().updateLocalProfile({language: 'ar'});
+    assert.equal(useAppStore.getState().updateLocalProfile({language: 'ar'}), true);
     assert.equal(useAppStore.getState().profile.language, 'en');
   } finally {
     useAppStore.setState(previousState, true);
+    if (previousStorage) {
+      Object.defineProperty(globalThis, 'localStorage', previousStorage);
+    } else {
+      delete (globalThis as {localStorage?: unknown}).localStorage;
+    }
+  }
+});
+
+test('a storage failure leaves the current language in place for a truthful restart state', () => {
+  const previousState = useAppStore.getState();
+  const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: () => null,
+      setItem: () => { throw new Error('storage denied'); },
+      removeItem: () => undefined,
+    },
+  });
+  try {
+    useAppStore.setState({profile: {...previousState.profile, language: 'en'}});
+    assert.equal(useAppStore.getState().updateLocalProfile({language: 'ja'}), false);
+    assert.equal(useAppStore.getState().profile.language, 'en');
+  } finally {
+    useAppStore.setState(previousState, true);
+    if (previousStorage) {
+      Object.defineProperty(globalThis, 'localStorage', previousStorage);
+    } else {
+      delete (globalThis as {localStorage?: unknown}).localStorage;
+    }
   }
 });
 

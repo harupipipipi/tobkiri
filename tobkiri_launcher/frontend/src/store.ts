@@ -237,7 +237,7 @@ interface AppState {
   clearAbsentLegacyPackMutation: (key: string, requestId: string) => void;
   verifyPackMutationStatus: (key: string) => Promise<void>;
   profile: Profile;
-  updateLocalProfile: (profile: Partial<Pick<Profile, 'avatar' | 'username' | 'language' | 'job'>>) => void;
+  updateLocalProfile: (profile: Partial<Pick<Profile, 'avatar' | 'username' | 'language' | 'job'>>) => boolean;
 }
 
 const defaultProfile: Profile = {
@@ -1667,18 +1667,26 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   profile: readLocalProfile(),
   updateLocalProfile: (profileUpdate) => {
-    set((state) => {
-      const normalizedUpdate = profileUpdate.language === undefined
-        ? profileUpdate
-        : {...profileUpdate, language: resolveUiLocale(profileUpdate.language)};
-      const profile = {...state.profile, ...normalizedUpdate, connected: state.profile.connected};
-      writeLocalStorage(PROFILE_STORAGE_KEY, JSON.stringify({
+    const currentProfile = get().profile;
+    const normalizedUpdate = profileUpdate.language === undefined
+      ? profileUpdate
+      : {...profileUpdate, language: resolveUiLocale(profileUpdate.language)};
+    const profile = {
+      ...currentProfile,
+      ...normalizedUpdate,
+      connected: currentProfile.connected,
+    };
+    const saved = writeSafeStorageValue(
+      getBrowserStorage('local'),
+      PROFILE_STORAGE_KEY,
+      JSON.stringify({
         avatar: profile.avatar,
         username: profile.username,
         language: profile.language,
         job: profile.job,
-      }));
-      return {profile};
-    });
+      }),
+    );
+    if (saved) set({profile});
+    return saved;
   },
 }));

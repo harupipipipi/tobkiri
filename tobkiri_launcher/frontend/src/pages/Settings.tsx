@@ -210,7 +210,11 @@ export function Settings() {
               <select
                 className="min-h-11 rounded-lg border border-border bg-bg-main px-3 py-2 text-sm text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
                 value={language}
-                onChange={(event) => updateLocalProfile({language: event.target.value})}
+                onChange={(event) => {
+                  if (!updateLocalProfile({language: event.target.value})) {
+                    addToast(t('settings.language_save_failed'), 'error');
+                  }
+                }}
                 aria-label={t('settings.language')}
               >
                 {UI_LOCALE_OPTIONS.map((option) => (
