@@ -851,23 +851,15 @@ class ChatStore:
         ChatStore._normalize_message_sequence_numbers(conversation.get("messages", []))
 
     @staticmethod
-    def _coerce_positive_int(value):
-        try:
-            number = int(value)
-        except (TypeError, ValueError):
-            return None
-        return number if number > 0 else None
-
-    @staticmethod
-    def _normalize_message_sequence_numbers(messages):
+    def _normalize_message_sequence_numbers(messages: object) -> bool:
         if not isinstance(messages, list):
             return False
         needs_repair = False
         for index, message in enumerate(messages, start=1):
             if not isinstance(message, dict):
                 continue
-            sequence = ChatStore._coerce_positive_int(message.get("sequence_number"))
-            if sequence != index or message.get("sequence_number") != index:
+            sequence = message.get("sequence_number")
+            if type(sequence) is not int or sequence != index:
                 needs_repair = True
                 break
         if not needs_repair:

@@ -7,6 +7,8 @@ import sys
 import threading
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
@@ -242,3 +244,50 @@ def test_chat_store_load_repairs_duplicate_and_out_of_order_sequences_in_append_
     assert [message["id"] for message in conversation["messages"]] == ["m1", "m2", "m3", "m4"]
     assert [message["sequence_number"] for message in conversation["messages"]] == [1, 2, 3, 4]
     ChatStore._instance = None
+
+
+@pytest.mark.parametrize(
+    "raw_sequence",
+    ["1e309", "-1e309", "true", "false", "1.0", '"1"', "null", "0", "[]", "{}"],
+)
+def test_chat_store_repairs_invalid_sequence_types_across_restart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, raw_sequence: str
+) -> None:
+    from domain.chat.store import ChatStore
+
+    storage_path = tmp_path / "chat" / "conversations.json"
+    storage_path.parent.mkdir()
+    payload = {
+        "conversations": {
+            "conv-1": {
+                "id": "conv-1",
+                "model": "stub/default",
+                "messages": [
+                    {
+                        "id": "m1",
+                        "role": "user",
+                        "content": "Keep this message",
+                        "sequence_number": "BAD_SEQUENCE",
+                    }
+                ],
+            }
+        }
+    }
+    storage_path.write_text(
+        json.dumps(payload).replace('"BAD_SEQUENCE"', raw_sequence), encoding="utf-8"
+    )
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(storage_path))
+    monkeypatch.setattr(ChatStore, "_instance", None)
+
+    store = ChatStore()
+    recovered = store.get_conversation("conv-1")["messages"][0]
+    assert type(recovered["sequence_number"]) is int
+    assert recovered["sequence_number"] == 1
+    assert recovered["content"] == "Keep this message"
+
+    appended = store.add_message("conv-1", {"role": "assistant", "content": "Reply"})
+    assert appended["sequence_number"] == 2
+    monkeypatch.setattr(ChatStore, "_instance", None)
+    restarted = ChatStore().get_conversation("conv-1")["messages"]
+    assert [message["sequence_number"] for message in restarted] == [1, 2]
+    assert all(type(message["sequence_number"]) is int for message in restarted)
