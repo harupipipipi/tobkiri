@@ -115,6 +115,8 @@ def test_browser_companion_uses_optional_site_access_and_visible_controls() -> N
     assert 'import "./browser_access_policy.js"' in background
     assert "TobkiriBrowserAccessPolicy.canPoll(settings)" in background
     assert "authorizeTargetTab" in background
+    assert "advanceSearchHomeRouteState(" in background
+    assert "await authorizeUrl(url, settings, { incognito: tab.incognito === true });" in background
     assert "recordActivity" in background
     assert "chrome.action.setBadgeText" in background
     assert "chrome.permissions.onRemoved.addListener" in background

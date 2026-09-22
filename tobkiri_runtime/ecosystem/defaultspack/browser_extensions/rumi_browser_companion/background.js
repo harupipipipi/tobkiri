@@ -122,8 +122,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse(await getSearchHomeRouteState(sender?.tab?.id));
         return;
       case "rumi:search-home:advance-candidate":
-        await requireControlSettings();
-        sendResponse(await advanceSearchHomeRouteState(sender?.tab?.id, message.action));
+        {
+          const settings = await requireControlSettings();
+          sendResponse(
+            await advanceSearchHomeRouteState(
+              sender?.tab?.id,
+              message.action,
+              settings,
+            ),
+          );
+        }
         return;
       default:
         sendResponse({ ok: false, error: `Unknown message type: ${message.type}` });
@@ -1109,7 +1117,7 @@ async function getSearchHomeRouteState(tabId) {
   };
 }
 
-async function advanceSearchHomeRouteState(tabId, action) {
+async function advanceSearchHomeRouteState(tabId, action, settings) {
   if (!Number.isInteger(tabId)) {
     return { ok: false, error: "Active tab is required for Search Home navigation." };
   }
@@ -1135,6 +1143,8 @@ async function advanceSearchHomeRouteState(tabId, action) {
   if (!url) {
     return { ok: false, error: "No destination URL was available for the requested Search Home action." };
   }
+  const tab = await chrome.tabs.get(tabId);
+  await authorizeUrl(url, settings, { incognito: tab.incognito === true });
   delete states[String(tabId)];
   await saveSearchHomeRouteStates(states);
   await chrome.tabs.update(tabId, { url });
