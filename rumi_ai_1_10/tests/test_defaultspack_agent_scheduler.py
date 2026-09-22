@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
@@ -108,3 +112,49 @@ def test_manual_trigger_clears_running_execution_for_approval_required_result(tm
 
     scheduler.delete_schedule(schedule["id"])
     _reset_scheduler_singleton()
+
+
+def test_overlapping_trigger_keeps_older_execution_visible_until_it_finishes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _reset_scheduler_singleton()
+    scheduler = Scheduler()
+    first_started = threading.Event()
+    release_first = threading.Event()
+    first_id = []
+
+    def fake_chat_send(payload: dict, context: dict) -> dict:
+        execution_id = payload["message"]["metadata"]["schedule_execution_id"]
+        if not first_id:
+            first_id.append(execution_id)
+            first_started.set()
+            assert release_first.wait(timeout=5)
+        return {"status": "ok", "data": {"content": "done"}}
+
+    monkeypatch.setattr("blocks.chat.send.run", fake_chat_send)
+    schedule = scheduler.create_schedule(
+        "interval",
+        {"message": "heartbeat", "model": "stub/default", "conversation_id": "conv"},
+        {"value": 30, "unit": "minutes"},
+    )
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            first = executor.submit(scheduler.trigger_now, schedule["id"])
+            try:
+                assert first_started.wait(timeout=5)
+                second = scheduler.trigger_now(schedule["id"])
+                assert second["status"] == "completed"
+                persisted = load_schedule(schedule["id"])
+                assert persisted["running_execution"]["execution_id"] == first_id[0]
+                assert persisted["execution_count"] == 1
+            finally:
+                release_first.set()
+            assert first.result(timeout=5)["status"] == "completed"
+        persisted = load_schedule(schedule["id"])
+        assert "running_execution" not in persisted
+        assert persisted["execution_count"] == 2
+        assert scheduler.get_history(schedule["id"])["total"] == 2
+    finally:
+        scheduler.delete_schedule(schedule["id"])
+        _reset_scheduler_singleton()

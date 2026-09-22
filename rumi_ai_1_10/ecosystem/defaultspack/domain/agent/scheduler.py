@@ -250,6 +250,7 @@ class Scheduler:
         self._lock = threading.Lock()
         self._timers = {}        # schedule_id -> threading.Timer
         self._schedules = {}     # schedule_id -> schedule dict (in-memory cache)
+        self._active_executions = {}  # schedule_id -> execution_id -> running metadata
         self._loaded = False
 
     # ---- public API ----
@@ -584,41 +585,54 @@ class Scheduler:
         if timer is not None:
             timer.cancel()
 
-    def _mark_running_execution(self, schedule_id, history_entry):
+    def _mark_running_execution(self, schedule_id: str, history_entry: dict) -> None:
         with self._lock:
             sched = self._schedules.get(schedule_id)
-        if sched is None:
-            return
-        updated = dict(sched)
-        updated["running_execution"] = {
-            "execution_id": history_entry.get("execution_id"),
-            "started_at": history_entry.get("started_at"),
-            "trigger": history_entry.get("trigger"),
-            "status": "running",
-        }
-        updated["updated_at"] = timestamp()
-        save_schedule(updated)
-        with self._lock:
-            self._schedules[schedule_id] = updated
-
-    def _finish_execution(self, schedule_id, exec_id, history_entry):
-        with self._lock:
-            sched = self._schedules.get(schedule_id)
-        if sched is not None:
+            if sched is None:
+                return
             updated = dict(sched)
-            running = updated.get("running_execution")
-            if not isinstance(running, dict) or running.get("execution_id") == exec_id:
-                updated.pop("running_execution", None)
-            updated["execution_count"] = updated.get("execution_count", 0) + 1
-            updated["last_executed_at"] = history_entry["completed_at"]
-            updated["last_execution_status"] = history_entry.get("status")
-            if history_entry.get("error"):
-                updated["last_execution_error"] = history_entry.get("error")
-            else:
-                updated.pop("last_execution_error", None)
+            running = {
+                "execution_id": history_entry.get("execution_id"),
+                "started_at": history_entry.get("started_at"),
+                "trigger": history_entry.get("trigger"),
+                "status": "running",
+            }
+            updated["running_execution"] = running
             updated["updated_at"] = timestamp()
             save_schedule(updated)
-            with self._lock:
+            self._active_executions.setdefault(schedule_id, {})[
+                running["execution_id"]
+            ] = running
+            self._schedules[schedule_id] = updated
+
+    def _finish_execution(
+        self, schedule_id: str, exec_id: str, history_entry: dict
+    ) -> None:
+        with self._lock:
+            sched = self._schedules.get(schedule_id)
+            active = self._active_executions.get(schedule_id, {})
+            active.pop(exec_id, None)
+            if not active:
+                self._active_executions.pop(schedule_id, None)
+            if sched is not None:
+                updated = dict(sched)
+                running = updated.get("running_execution")
+                if active:
+                    updated["running_execution"] = next(reversed(active.values()))
+                elif (
+                    not isinstance(running, dict)
+                    or running.get("execution_id") == exec_id
+                ):
+                    updated.pop("running_execution", None)
+                updated["execution_count"] = updated.get("execution_count", 0) + 1
+                updated["last_executed_at"] = history_entry["completed_at"]
+                updated["last_execution_status"] = history_entry.get("status")
+                if history_entry.get("error"):
+                    updated["last_execution_error"] = history_entry.get("error")
+                else:
+                    updated.pop("last_execution_error", None)
+                updated["updated_at"] = timestamp()
+                save_schedule(updated)
                 self._schedules[schedule_id] = updated
         append_history(schedule_id, history_entry)
 
