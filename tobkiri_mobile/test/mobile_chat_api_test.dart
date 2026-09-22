@@ -153,6 +153,71 @@ void main() {
     expect(error.message, isNot(contains('internal-secret-detail')));
   });
 
+  test('structured API errors do not expose backend response messages', () {
+    final client = MockClient((_) async {
+      return http.Response(
+        jsonEncode({
+          'status': 'error',
+          'error': {'message': 'private-host.example:19400/internal-secret'},
+        }),
+        403,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final gateway = HttpMobileChatGateway(
+      baseUrl: 'https://tobkiri.example',
+      bearerToken: 'test-token',
+      httpClient: client,
+    );
+
+    expect(
+      gateway.listConversations,
+      throwsA(
+        isA<MobileChatApiException>()
+            .having((error) => error.message, 'message', contains('HTTP 403'))
+            .having(
+              (error) => error.message,
+              'message',
+              isNot(contains('private-host.example')),
+            ),
+      ),
+    );
+  });
+
+  test('SSE error events do not expose backend messages', () async {
+    final client = MockClient.streaming((_, __) async {
+      return http.StreamedResponse(
+        Stream.value(
+          utf8.encode(
+            'data: {"type":"error","message":"private-host.example '
+            'token=internal-secret"}\n\n',
+          ),
+        ),
+        200,
+        headers: {'content-type': 'text/event-stream'},
+      );
+    });
+    final gateway = HttpMobileChatGateway(
+      baseUrl: 'https://tobkiri.example',
+      bearerToken: 'test-token',
+      httpClient: client,
+    );
+
+    final events = await gateway
+        .streamMessage(
+          conversationId: 'c-1',
+          text: '質問',
+          clientMessageId: 'client-1',
+          expectedRevision: 0,
+        )
+        .toList();
+
+    final error = events.whereType<MobileChatFailed>().single;
+    expect(error.message, 'Tobkiri API でエラーが発生しました。');
+    expect(error.message, isNot(contains('private-host.example')));
+    expect(error.message, isNot(contains('internal-secret')));
+  });
+
   test('transport errors do not expose endpoint details', () async {
     final client = MockClient((_) async {
       throw Exception('private-host.example:19400/internal/path');

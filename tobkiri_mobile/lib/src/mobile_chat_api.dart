@@ -338,9 +338,10 @@ class HttpMobileChatGateway implements MobileChatGateway {
             pending: event['pending'] as bool? ?? true,
           );
         case 'error':
-          return MobileChatFailed(
-            '${event['message'] ?? data['message'] ?? '不明なエラー'}',
-          );
+          // Stream payloads originate outside the mobile UI boundary.  Do not
+          // render a backend error message because it can contain endpoint,
+          // provider, or internal execution details.
+          return const MobileChatFailed('Tobkiri API でエラーが発生しました。');
         default:
           return null;
       }
@@ -405,9 +406,11 @@ class HttpMobileChatGateway implements MobileChatGateway {
       throw const MobileChatApiException('Tobkiri API の応答形式が不正です。');
     }
     if (decoded['status'] == 'error' || decoded['success'] == false) {
-      final error = decoded['error'];
-      final message = error is Map ? error['message'] : error;
-      throw MobileChatApiException('${message ?? 'Tobkiri API エラー'}');
+      // A structured response is still untrusted server content.  Preserve a
+      // safe HTTP status for recovery without exposing its message or body.
+      throw MobileChatApiException(
+        'Tobkiri API エラー (HTTP ${response.statusCode})',
+      );
     }
     final data = decoded['data'];
     return data is Map<String, dynamic> ? data : decoded;
