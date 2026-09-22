@@ -1620,6 +1620,13 @@
       "executable": false
     },
     {
+      "path": "tobkiri_protocol/schemas/worktree_team_task_v1.schema.json",
+      "type": "regular-file",
+      "size": 4122,
+      "sha256": "03c3b3af529c2974dac536e64d4dc3f85ea01644cc0a5df07337109cfaceaa1a",
+      "executable": false
+    },
+    {
       "path": "tobkiri_protocol/secure_persistence.py",
       "type": "regular-file",
       "size": 35315,
@@ -1636,8 +1643,8 @@
     {
       "path": "tobkiri_protocol/validation.py",
       "type": "regular-file",
-      "size": 20127,
-      "sha256": "d9359b13b939298d91114d33ccc06805f9029341f03b3316cdf12e1d2288adf7",
+      "size": 20256,
+      "sha256": "7ec660015c290482048f2e6a3a0ec9f768269da177a3e196b5c6e8cb80a54435",
       "executable": false
     }
   ]

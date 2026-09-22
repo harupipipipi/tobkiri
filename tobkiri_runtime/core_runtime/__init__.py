@@ -28,6 +28,10 @@ _PUBLIC_EXPORTS: Dict[str, _ExportTarget] = {
     "get_approval_manager": (".approval_manager", "get_approval_manager"),
     "AuditLogger": (".audit_logger", "AuditLogger"),
     "get_audit_logger": (".audit_logger", "get_audit_logger"),
+    "WorktreeContractError": (".worktree_team_contract", "WorktreeContractError"),
+    "WorktreeTeamLedger": (".worktree_team_contract", "WorktreeTeamLedger"),
+    "normalize_task_request": (".worktree_team_contract", "normalize_task_request"),
+    "worktree_task_preset": (".worktree_team_contract", "worktree_task_preset"),
     "L": (".lang", "L"),
 }
 
