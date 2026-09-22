@@ -531,7 +531,10 @@ class AgentEngine:
 
     def _execute_tool(self, tool_name, tool_args, context):
         from domain.tool_policy.orchestrator import ToolOrchestrator
-        from domain.tool_policy.internal_context import mark_trusted_profile_policy_context
+        from domain.tool_policy.internal_context import (
+            mark_trusted_profile_policy_context,
+            mark_trusted_review_gate_context,
+        )
 
         trusted_context = mark_trusted_profile_policy_context(dict(context or {}))
         return ToolOrchestrator(settings_owner=self._settings_owner).run(

@@ -7,6 +7,9 @@ SENSITIVE_TOOL_CONTEXT_KEYS = {
     "approval_granted",
     "_agent_approval_granted",
     "_trusted_profile_policy_internal",
+    "_trusted_review_gate_internal",
+    "_review_gate_execution_mode",
+    "_review_gate_mode_context_id",
     "tool_policy_decision",
     "_tool_permission_decision",
     "_tool_permission_internal",
@@ -47,6 +50,7 @@ UNTRUSTED_TOOL_CONTEXT_KEYS = SENSITIVE_TOOL_CONTEXT_KEYS | {
 _INTERNAL_TOOL_PERMISSION = object()
 _TOOL_SERVER_APPROVAL_INTERNAL = object()
 _TRUSTED_PROFILE_POLICY_INTERNAL = object()
+_TRUSTED_REVIEW_GATE_INTERNAL = object()
 
 
 def sanitize_tool_context(context: dict[str, Any] | None) -> dict[str, Any]:
@@ -74,6 +78,34 @@ def profile_policy_context_is_trusted(context: dict[str, Any] | None) -> bool:
     if not isinstance(context, dict):
         return False
     return context.get("_trusted_profile_policy_internal") is _TRUSTED_PROFILE_POLICY_INTERNAL
+
+
+def mark_trusted_review_gate_context(
+    context: dict[str, Any],
+    *,
+    execution_mode: str,
+    mode_context_id: str,
+) -> dict[str, Any]:
+    """Bind server-derived orchestration identity to a tool execution."""
+    context["_trusted_review_gate_internal"] = _TRUSTED_REVIEW_GATE_INTERNAL
+    context["_review_gate_execution_mode"] = str(execution_mode or "").strip()
+    context["_review_gate_mode_context_id"] = str(mode_context_id or "").strip()
+    return context
+
+
+def trusted_review_gate_context(
+    context: dict[str, Any] | None,
+) -> tuple[str, str] | None:
+    """Return the server-bound orchestration identity, when present."""
+    if not isinstance(context, dict):
+        return None
+    if context.get("_trusted_review_gate_internal") is not _TRUSTED_REVIEW_GATE_INTERNAL:
+        return None
+    execution_mode = str(context.get("_review_gate_execution_mode") or "").strip()
+    mode_context_id = str(context.get("_review_gate_mode_context_id") or "").strip()
+    if not execution_mode or not mode_context_id:
+        return None
+    return execution_mode, mode_context_id
 
 
 def seal_tool_context(context: dict[str, Any] | None, decision: dict[str, Any]) -> dict[str, Any]:
