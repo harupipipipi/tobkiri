@@ -244,7 +244,7 @@ export function ProfileCard({
             <Link
               aria-label={`Edit Packs for ${displayName}`}
               className="rounded px-1 py-1 text-text-muted underline-offset-2 hover:text-text-main hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
-              to={browseHref}
+              to={`${browseHref}#profile-packs`}
             >
               Edit Packs
             </Link>

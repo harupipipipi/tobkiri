@@ -359,7 +359,7 @@ test('Home keeps the Profile catalog visible while gating ceremony in unresolved
         );
         assert.equal(
           container.querySelector<HTMLAnchorElement>('a[aria-label="Edit Packs for Research Profile"]')?.getAttribute('href'),
-          '/profile?profile_id=research',
+          '/profile?profile_id=research#profile-packs',
         );
 
         await act(async () => { buttonByLabel(container, 'Open actions for Defaults Profile').click(); });
@@ -781,7 +781,7 @@ test('Home keeps a verified catalog writable after a rejected Profile mutation',
       assert.equal(buttonByLabel(container, 'Add Profile').disabled, false);
       assert.equal(
         linkByLabel(container, 'Edit Packs for Research Profile').getAttribute('href'),
-        '/profile?profile_id=research',
+        '/profile?profile_id=research#profile-packs',
       );
       await act(async () => {
         buttonByLabel(container, 'Open actions for Research Profile').click();
