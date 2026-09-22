@@ -76,9 +76,10 @@ def _runtime(tmp_path: Path, *, trusted: bool = True, enabled: bool = True):
     from domain.coding.workspace_store import WorkspaceStore
 
     root = tmp_path / "workspace"
-    root.mkdir()
+    root.mkdir(exist_ok=True)
     store = WorkspaceStore(tmp_path / "workspaces.json")
-    store.create(root, workspace_id="workspace-1", trusted=trusted)
+    if store.get("workspace-1") is None:
+        store.create(root, workspace_id="workspace-1", trusted=trusted)
     client = FakeClient()
     calls: list[dict[str, Any]] = []
     runtime = CodexAppServerRuntime(
