@@ -243,6 +243,7 @@ function dynamicHostCatalog() {
     profile_revision: profileRevision,
     activation_id: activationId,
     plan_hash: planHash,
+    selected_entry_route: "/chat",
     contributions: [{
       contribution_id: "defaults.conversation.complete",
       kind: "route" as const,
@@ -263,6 +264,44 @@ function dynamicHostCatalog() {
       view: { type: "conversation_v4" },
       localization: {},
       accessibility: { name: "Tobkiri Conversation", keyboard: true },
+    }, {
+      contribution_id: "defaultspack.application.compatibility",
+      kind: "route" as const,
+      mode: "application_builtin" as const,
+      label: "Tobkiri Application",
+      description: "Open the full Tobkiri Application compatibility surface.",
+      priority: 0,
+      owner_pack_id: "defaultspack",
+      owner_pack_hash: `sha256:${"c".repeat(64)}`,
+      build_identity: "runtime.tauri.application.default",
+      resolved_profile_id: profileId,
+      resolved_profile_revision: profileRevision,
+      resolved_activation_id: activationId,
+      resolved_plan_hash: planHash,
+      descriptor_hash: `sha256:${"f".repeat(64)}`,
+      route: "/defaultspack",
+      implementation: "defaultspack.application",
+      localization: {},
+      accessibility: { name: "Tobkiri Application", keyboard: true },
+    }, {
+      contribution_id: "defaultspack.application.coding",
+      kind: "route" as const,
+      mode: "application_builtin" as const,
+      label: "Tobkiri Coding",
+      description: "Open the coding workspace in the full Tobkiri Application.",
+      priority: 0,
+      owner_pack_id: "defaultspack",
+      owner_pack_hash: `sha256:${"c".repeat(64)}`,
+      build_identity: "runtime.tauri.application.default",
+      resolved_profile_id: profileId,
+      resolved_profile_revision: profileRevision,
+      resolved_activation_id: activationId,
+      resolved_plan_hash: planHash,
+      descriptor_hash: `sha256:${"a".repeat(64)}`,
+      route: "/coding",
+      implementation: "defaultspack.application",
+      localization: {},
+      accessibility: { name: "Tobkiri Coding", keyboard: true },
     }],
     diagnostics: [],
     quarantined_pack_ids: [],
@@ -723,6 +762,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       ...(options.initialSettingsValues?.general ?? {}),
     },
   }));
+  let settingsDocumentRevision = 1;
   let conversationToolPreferences: Record<string, unknown> = {};
   let codingApprovalRequest: Record<string, unknown> | null = null;
   let interactiveApprovalRequest: InteractiveApprovalFixture | null = options.interactiveApproval
@@ -738,6 +778,12 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
   const mcpServers = [
     { server_id: "filesystem", name: "Filesystem MCP", transport: "stdio", connected: true, permissions: { approved: true }, tools: ["mcp_fs_read_file"] },
   ];
+
+  await page.route("**/health", async (route) => fulfill(route, {
+    status: "ok",
+    pack: "defaultspack",
+    ts: "2026-05-20T00:00:00Z",
+  }));
 
   await page.route("**/api/contracts/defaultspack/**", async (route) => {
     const request = route.request();
@@ -773,7 +819,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       return fulfill(route, { status: "ok", pack: "defaultspack", ts: "2026-05-20T00:00:00Z" });
     }
 
-    if (path === routeKey("api/ui/catalog")) {
+    if (path === routeKey("api/ui/catalog") || path === routeKey("api/ui/full-catalog")) {
       return fulfill(route, {
         dynamic_host: dynamicHostCatalog(),
         app: { id: "defaultspack", name: "Rumi", account: { display_name: "Smoke User", plan_label: "Local" } },
@@ -814,24 +860,50 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
 
     if (path === routeKey("api/ui/settings") && method === "PUT") {
       const payload = request.postDataJSON() as {
+        changes?: Record<string, Record<string, unknown>>;
+        expected_revision?: number;
         values?: Record<string, Record<string, unknown>>;
         patches?: Array<{ section: string; field: string; value: unknown }>;
       };
+      const acknowledgementValues: Record<string, Record<string, unknown>> = {};
+      if (payload.changes) {
+        for (const [section, fields] of Object.entries(payload.changes)) {
+          currentSettingsValues[section] = {
+            ...(currentSettingsValues[section] ?? {}),
+            ...fields,
+          };
+          acknowledgementValues[section] = { ...fields };
+        }
+      }
       if (payload.values) {
         currentSettingsValues = JSON.parse(JSON.stringify(payload.values));
+        Object.assign(acknowledgementValues, currentSettingsValues);
       } else {
         for (const patch of payload.patches ?? []) {
           currentSettingsValues[patch.section] = {
             ...(currentSettingsValues[patch.section] ?? {}),
             [patch.field]: patch.value,
           };
+          acknowledgementValues[patch.section] = {
+            ...(acknowledgementValues[patch.section] ?? {}),
+            [patch.field]: patch.value,
+          };
         }
       }
-      return fulfill(route, { sections: settingsSections, values: currentSettingsValues });
+      settingsDocumentRevision += 1;
+      return fulfill(route, {
+        sections: settingsSections,
+        values: acknowledgementValues,
+        document_revision: settingsDocumentRevision,
+      });
     }
 
     if (path === routeKey("api/ui/settings")) {
-      return fulfill(route, { sections: settingsSections, values: currentSettingsValues });
+      return fulfill(route, {
+        sections: settingsSections,
+        values: currentSettingsValues,
+        document_revision: settingsDocumentRevision,
+      });
     }
 
     if (path === routeKey("api/command-protocol/v1/catalog")) {
@@ -1048,7 +1120,10 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       return fulfillStream(route, message);
     }
 
-    if (path === routeKey("api/chat/conversations/c-smoke")) {
+    if (
+      path === routeKey("api/chat/conversation")
+      || path === routeKey("api/chat/conversations/c-smoke")
+    ) {
       return fulfill(route, conversation);
     }
 
@@ -1353,7 +1428,10 @@ async function openDefaultspack(page: Page, path = "/chat", options: ApiMockOpti
   await installDefaultspackApiMocks(page, options);
   // Existing dense-shell interactions remain compatibility tests. The real
   // /chat route is asserted separately through the verified Pack v4 catalog.
-  const compatibilityPath = path === "/chat" ? "/static/chat" : path;
+  const applicationPath = path === "/chat" || path === "/static/chat"
+    ? "/defaultspack"
+    : path;
+  const compatibilityPath = `/p/defaults${applicationPath}`;
   await page.goto(compatibilityPath);
   await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
 }
