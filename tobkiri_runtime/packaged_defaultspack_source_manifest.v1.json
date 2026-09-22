@@ -308,8 +308,8 @@
     {
       "path": "ecosystem/defaultspack/tools/artifact_export/manifest.json",
       "type": "regular-file",
-      "size": 1438,
-      "sha256": "8ceb447b89fefa7a64c9388ee1222ad6316db805fe9bc28169c3bb1c1d1ff337",
+      "size": 1384,
+      "sha256": "857bd3c51ce39378d4bfe16abbf4cabaed31339199c861cfe52a0a297900348f",
       "executable": false
     },
     {
