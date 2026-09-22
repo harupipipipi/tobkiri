@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-import os
-import sys
 from collections.abc import Sized
 from typing import Protocol
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 """
 rumi_provider.py — RumiProvider (スケルトン)

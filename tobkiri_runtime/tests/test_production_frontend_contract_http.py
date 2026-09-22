@@ -419,6 +419,7 @@ def _captured_production_server(
         catalog.packs["runtime.tauri.application.default"],
     )
     composition = defaultspack_runtime_capture_inputs(active)
+    panel_auth = PanelAuthManager(bootstrap_secret="desktop-bootstrap")
     session = capture_production_dispatch(
         active,
         bundle_root=bundle_root,
@@ -435,11 +436,12 @@ def _captured_production_server(
         chat_continuation_approve=composition.chat_continuation_approve,
         chat_continuation_resume=composition.chat_continuation_resume,
         authority_approval_window_open=composition.authority_approval_window_open,
+        panel_auth_manager=panel_auth,
         model_search=composition.model_search,
     )
     server = PackAPIServer(
         port=0,
-        panel_auth_manager=PanelAuthManager(bootstrap_secret="desktop-bootstrap"),
+        panel_auth_manager=panel_auth,
         dispatch_session=session,
         contract_bindings=bindings,
         runtime_capture_factory=runtime_capture_inputs,
@@ -771,6 +773,273 @@ def test_authority_approval_window_fails_closed_without_broker(
     )
     assert status in {403, 503}
     assert result["success"] is False
+
+
+def test_authority_approval_window_session_presents_the_verified_owner(
+    production_server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Launcher approval window joins the request's presentation owner.
+
+    The packaged shell app and the Launcher approval window are separate
+    webview surfaces with separate cookie stores, so the window's one-time
+    ``?code=`` exchange mints a fresh panel session whose journal differs
+    from the session that prepared the request.  While the verified
+    presentation owner invokes ``authority_approval.open``, the Host records
+    a request-scoped presenter grant; only the exchange carrying that exact
+    ``request_id`` inherits the owner journal and can pass
+    ``_validate_interactive_presentation_context``.  Foreign sessions,
+    ungranted exchanges, and forged request ids stay denied.
+    """
+
+    from core_runtime.authority.ui_operator import sign_ui_operator
+    from ecosystem.defaultspack.domain.host_bridge.viewer_broker_client import (
+        ViewerBrokerClient,
+    )
+
+    server, _session, _authority = production_server
+    opened: list[str] = []
+    monkeypatch.setattr(ViewerBrokerClient, "available", lambda _self: True)
+
+    def fake_open(self: ViewerBrokerClient, request_id: str) -> dict[str, object]:
+        opened.append(str(request_id))
+        return {"ok": True, "request_id": request_id}
+
+    monkeypatch.setattr(
+        ViewerBrokerClient, "open_authority_approval_window", fake_open
+    )
+
+    cookie, csrf, origin = _authenticate(server)
+    shell_headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+
+    def post(
+        path: str,
+        body: Mapping[str, object],
+        *,
+        headers: Mapping[str, str] = shell_headers,
+    ) -> tuple[int, dict[str, object]]:
+        status, payload, _ = _request(
+            server,
+            "POST",
+            _contract("POST", path),
+            body=body,
+            headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        return status, payload
+
+    def prepare_effect(connection_name: str) -> dict[str, object]:
+        status, prepared = post(
+            "/api/ai/provider-key",
+            {
+                "phase": "prepare",
+                "effect_kind": "provider_configure",
+                "correlation_id": str(uuid.uuid4()),
+                "request": {
+                    "connection_name": connection_name,
+                    "protocol": "openai-compatible",
+                    "endpoint": "https://provider.example/v1",
+                    "key_value": "approval-window-secret",
+                },
+            },
+        )
+        assert status == 200, prepared
+        return prepared["data"]
+
+    def presenter_session(request_id: str) -> tuple[str, str]:
+        """Mint the dedicated approval window's one-time-code session."""
+
+        status, bootstrap, _ = _request(
+            server,
+            "POST",
+            "/api/panel/auth/bootstrap",
+            body={},
+            headers={"X-Rumi-Desktop-Bootstrap": "desktop-bootstrap"},
+        )
+        assert status == 200, bootstrap
+        status, exchange, exchange_headers = _request(
+            server,
+            "POST",
+            "/api/panel/auth/exchange",
+            body={
+                "code": bootstrap["data"]["code"],
+                "request_id": request_id,
+            },
+            headers={"Origin": origin},
+        )
+        assert status == 200, exchange
+        window_cookie = next(
+            value
+            for key, value in exchange_headers
+            if key.lower() == "set-cookie"
+        ).split(";", 1)[0]
+        return window_cookie, str(exchange["data"]["csrf_token"])
+
+    effect = prepare_effect("approval-window-owner")
+    approval_id = str(effect["approval_request_id"])
+    assert effect["state"] == "approval_pending"
+
+    status, opened_result = post(
+        "/api/authority/approval-window",
+        {"request_id": approval_id},
+    )
+    assert status == 200, opened_result
+    assert opened == [approval_id]
+
+    window_cookie, window_csrf = presenter_session(approval_id)
+    window_headers = {
+        "Cookie": window_cookie,
+        "Origin": origin,
+        "X-Rumi-CSRF": window_csrf,
+    }
+    binding = server.handler_class._current_panel_auth_binding()
+    owner_session = server._panel_auth_manager.verify_session(
+        cookie.split("=", 1)[1], binding
+    )
+    window_session = server._panel_auth_manager.verify_session(
+        window_cookie.split("=", 1)[1], binding
+    )
+    assert owner_session is not None and window_session is not None
+    assert window_session["session_id"] == owner_session["session_id"]
+
+    status, approval = post(
+        "/api/interactive-approval/v1/get",
+        {"request_id": approval_id},
+        headers=window_headers,
+    )
+    assert status == 200, approval
+    data = approval["data"]
+    assert data["request_id"] == approval_id
+    assert data["state"] == "pending"
+    assert "approval-window-secret" not in json.dumps(approval)
+
+    status, forged = post(
+        "/api/interactive-approval/v1/get",
+        {"request_id": "interactive-effect-" + "0" * 32},
+        headers=window_headers,
+    )
+    assert status in {401, 403}, forged
+
+    status, approved = post(
+        "/api/interactive-approval/v1/approve",
+        {
+            "request_id": approval_id,
+            "confirmation_text": "EXECUTE",
+            "ui_operator": sign_ui_operator(
+                approval_id,
+                nonce="approval-window-approval",
+                decision="approve",
+                request_snapshot_digest=data["request_snapshot_digest"],
+                typed_confirmation_digest=data["typed_confirmation_digest"],
+            ),
+        },
+        headers=window_headers,
+    )
+    assert status == 200, approved
+
+    status, resumed = post(
+        "/api/ai/provider-key",
+        {"phase": "resume", "effect_id": effect["effect_id"]},
+    )
+    assert status == 200, resumed
+    assert resumed["data"]["state"] == "succeeded"
+
+    # A second pending request stays unreachable for a window session whose
+    # exchange was never granted by the verified owner, and for sessions that
+    # merely know the request id.
+    second = prepare_effect("approval-window-foreign")
+    second_approval_id = str(second["approval_request_id"])
+    foreign_cookie, foreign_csrf, _ = _authenticate(server)
+    foreign_headers = {
+        "Cookie": foreign_cookie,
+        "Origin": origin,
+        "X-Rumi-CSRF": foreign_csrf,
+    }
+    status, foreign_opened = post(
+        "/api/authority/approval-window",
+        {"request_id": second_approval_id},
+        headers=foreign_headers,
+    )
+    assert status == 200, foreign_opened
+    assert opened[-1] == second_approval_id
+
+    ungranted_cookie, ungranted_csrf = presenter_session(second_approval_id)
+    ungranted_headers = {
+        "Cookie": ungranted_cookie,
+        "Origin": origin,
+        "X-Rumi-CSRF": ungranted_csrf,
+    }
+    ungranted_session = server._panel_auth_manager.verify_session(
+        ungranted_cookie.split("=", 1)[1], binding
+    )
+    assert ungranted_session is not None
+    assert ungranted_session["session_id"] != owner_session["session_id"]
+    status, denied = post(
+        "/api/interactive-approval/v1/get",
+        {"request_id": second_approval_id},
+        headers=ungranted_headers,
+    )
+    assert status in {401, 403}, denied
+    status, denied = post(
+        "/api/interactive-approval/v1/get",
+        {"request_id": second_approval_id},
+        headers=foreign_headers,
+    )
+    assert status in {401, 403}, denied
+
+    # Once the owner opens the window for the second request its presenter
+    # session may still only deny-or-approve that exact request once.
+    status, opened_result = post(
+        "/api/authority/approval-window",
+        {"request_id": second_approval_id},
+    )
+    assert status == 200, opened_result
+    second_cookie, second_csrf = presenter_session(second_approval_id)
+    second_headers = {
+        "Cookie": second_cookie,
+        "Origin": origin,
+        "X-Rumi-CSRF": second_csrf,
+    }
+    status, second_view = post(
+        "/api/interactive-approval/v1/get",
+        {"request_id": second_approval_id},
+        headers=second_headers,
+    )
+    assert status == 200, second_view
+    second_data = second_view["data"]
+    status, denied_decision = post(
+        "/api/interactive-approval/v1/deny",
+        {
+            "request_id": second_approval_id,
+            "ui_operator": sign_ui_operator(
+                second_approval_id,
+                nonce="approval-window-denial",
+                decision="deny",
+                request_snapshot_digest=second_data["request_snapshot_digest"],
+                typed_confirmation_digest=None,
+            ),
+        },
+        headers=second_headers,
+    )
+    assert status == 200, denied_decision
+    assert denied_decision["data"]["state"] == "denied"
+    status, replayed = post(
+        "/api/interactive-approval/v1/approve",
+        {
+            "request_id": second_approval_id,
+            "confirmation_text": "EXECUTE",
+            "ui_operator": sign_ui_operator(
+                second_approval_id,
+                nonce="approval-window-replay",
+                decision="approve",
+                request_snapshot_digest=second_data["request_snapshot_digest"],
+                typed_confirmation_digest=second_data[
+                    "typed_confirmation_digest"
+                ],
+            ),
+        },
+        headers=second_headers,
+    )
+    assert status in {401, 403, 409}, replayed
 
 
 def test_desktop_restore_capture_binds_real_approval_window_delegate(

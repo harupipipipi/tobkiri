@@ -6,26 +6,22 @@ AIClient 自体は変更しない。
 """
 
 import copy
-import os
-import sys
 import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-
-from domain.ai_client.model_pack_router import select_model_pack  # noqa: E402
-from domain.ai_client.model_pack_store import ModelPackStore  # noqa: E402
-from domain.ai_client.model_profiles import ModelProfileManager  # noqa: E402
-from domain.ai_client.model_roles import (  # noqa: E402
+from domain.ai_client.model_pack_router import select_model_pack
+from domain.ai_client.model_pack_store import ModelPackStore
+from domain.ai_client.model_profiles import ModelProfileManager
+from domain.ai_client.model_roles import (
     normalize_utility_model_policy,
     normalize_utility_models,
 )
-from domain.ai_client.model_search import (  # noqa: E402
+from domain.ai_client.model_search import (
     get_model_capabilities,
     models_for_group,
 )
-from domain.ai_client.task_analyzer import analyze_fast, analyze_heavy  # noqa: E402
+from domain.ai_client.task_analyzer import analyze_fast, analyze_heavy
 
 
 @dataclass

@@ -7,6 +7,8 @@ import json
 from dataclasses import dataclass
 from typing import Mapping
 
+import pytest
+
 from core_runtime.pack_api_server import PackAPIHandler, PackAPIServer
 from core_runtime.panel_auth import PanelAuthBinding, PanelAuthManager
 
@@ -452,5 +454,122 @@ def test_http_exchange_carries_cookie_ownership_across_capture_refresh() -> None
         renewed = manager.verify_session(cookie.split(";", 1)[0].split("=", 1)[1], second)
         assert renewed is not None and owner is not None
         assert renewed["session_id"] == owner["session_id"]
+    finally:
+        server.stop()
+
+
+def test_approval_presenter_grant_binds_window_session_to_owner_journal() -> None:
+    """The verified-owner grant lets the approval window join the owner."""
+
+    manager = PanelAuthManager(bootstrap_secret="desktop-bootstrap")
+    binding = _binding(activation_id="activation:presenter", security_epoch=7)
+    owner = manager.exchange_code(
+        str(manager.issue_login_code(binding)["code"]), binding
+    )
+    assert owner is not None
+    owner_session = manager.verify_session(str(owner["session_id"]), binding)
+    assert owner_session is not None
+    owner_journal = str(owner_session["session_id"])
+
+    manager.record_approval_presenter_grant("req-presenter", owner_journal)
+    window = manager.exchange_code(
+        str(manager.issue_login_code(binding)["code"]),
+        binding,
+        presenter_request_id="req-presenter",
+    )
+    assert window is not None
+    assert window["session_id"] != owner["session_id"]
+    resolved = manager.verify_session(str(window["session_id"]), binding)
+    assert resolved is not None
+    assert resolved["session_id"] == owner_journal
+    assert resolved["csrf_token"] != owner["csrf_token"]
+    # The granted exchange must not consume the owner's own session.
+    assert manager.verify_session(str(owner["session_id"]), binding) is not None
+
+
+def test_approval_presenter_grant_stays_scoped_and_bounded() -> None:
+    """Absent, unrelated, and expired grants never inherit the owner journal."""
+
+    for case in ("absent", "other-request", "expired"):
+        manager = PanelAuthManager(bootstrap_secret="desktop-bootstrap")
+        binding = _binding(activation_id="activation:presenter", security_epoch=7)
+        owner = manager.exchange_code(
+            str(manager.issue_login_code(binding)["code"]), binding
+        )
+        assert owner is not None
+        owner_session = manager.verify_session(str(owner["session_id"]), binding)
+        assert owner_session is not None
+        owner_journal = str(owner_session["session_id"])
+
+        if case == "other-request":
+            manager.record_approval_presenter_grant("req-other", owner_journal)
+        elif case == "expired":
+            manager.record_approval_presenter_grant("req-target", owner_journal)
+            manager._presenter_grants["req-target"]["expires_at"] = 0
+        exchanged = manager.exchange_code(
+            str(manager.issue_login_code(binding)["code"]),
+            binding,
+            presenter_request_id="req-target",
+        )
+        assert exchanged is not None, case
+        resolved = manager.verify_session(str(exchanged["session_id"]), binding)
+        assert resolved is not None
+        assert resolved["session_id"] != owner_journal, case
+
+
+def test_approval_presenter_grant_rejects_malformed_bindings() -> None:
+    """Grant recording accepts only request-id-shaped keys and raw journals."""
+
+    manager = PanelAuthManager(bootstrap_secret="desktop-bootstrap")
+    for request_id in ("", "has space", "has/slash", "x" * 161):
+        with pytest.raises(ValueError, match="presenter grant"):
+            manager.record_approval_presenter_grant(request_id, "journal")
+    for journal in ("", "owner.session", "x" * 513):
+        with pytest.raises(ValueError, match="presenter grant"):
+            manager.record_approval_presenter_grant("req-ok", journal)
+    assert manager._presenter_grants == {}
+
+
+def test_http_exchange_passes_the_presenter_request_id() -> None:
+    """The real HTTP exchange path forwards the mounted request id."""
+
+    binding = _binding(activation_id="activation:presenter", security_epoch=7)
+    current = [binding]
+    manager = PanelAuthManager(bootstrap_secret="desktop-bootstrap")
+    owner = manager.exchange_code(
+        str(manager.issue_login_code(binding)["code"]), binding
+    )
+    assert owner is not None
+    owner_session = manager.verify_session(str(owner["session_id"]), binding)
+    assert owner_session is not None
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=manager,
+        dispatch_session=_CapturedDispatch(binding, current),
+    )
+    server.start()
+    try:
+        manager.record_approval_presenter_grant(
+            "req-presenter", str(owner_session["session_id"])
+        )
+        status, response, headers = _request(
+            server,
+            "POST",
+            "/api/panel/auth/exchange",
+            body={
+                "code": manager.issue_login_code(binding)["code"],
+                "request_id": "req-presenter",
+            },
+            headers={"Origin": f"http://127.0.0.1:{server.port}"},
+        )
+        assert status == 200, response
+        cookie = next(
+            value for key, value in headers if key.lower() == "set-cookie"
+        )
+        window = manager.verify_session(
+            cookie.split(";", 1)[0].split("=", 1)[1], binding
+        )
+        assert window is not None
+        assert window["session_id"] == owner_session["session_id"]
     finally:
         server.stop()

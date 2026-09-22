@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import time
 import tracemalloc
 from pathlib import Path
 
 import pytest
 
+from tobkiri_protocol.errors import ProtocolError
 from tobkiri_protocol.platform_artifact import artifact_digest, verify_platform_artifact
 
 
@@ -109,3 +111,28 @@ def test_large_sparse_artifact_digest_uses_bounded_memory(tmp_path: Path) -> Non
     _current, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
     assert peak < 8 * 1024 * 1024
+
+
+def test_artifact_digest_fails_closed_after_deadline(tmp_path: Path) -> None:
+    """An expired verification deadline aborts the tree hash instead of hanging."""
+
+    executable = _pe_fixture(tmp_path / "shell.exe", machine=0x8664)
+    expired = time.monotonic() - 1
+    with pytest.raises(ProtocolError, match="deadline exceeded"):
+        artifact_digest(executable, deadline_monotonic=expired)
+    # Without a deadline the same bytes still verify normally.
+    assert artifact_digest(executable).startswith("sha256:")
+
+
+def test_verify_platform_artifact_fails_closed_after_deadline(
+    tmp_path: Path,
+) -> None:
+    """Request-path verification aborts bounded rather than pinning a caller."""
+
+    executable = _pe_fixture(tmp_path / "shell.exe", machine=0x8664)
+    variant = _variant(tmp_path, executable, "x86_64")
+    with pytest.raises(ProtocolError, match="deadline exceeded"):
+        verify_platform_artifact(
+            tmp_path, variant, deadline_monotonic=time.monotonic() - 1
+        )
+    verify_platform_artifact(tmp_path, variant)

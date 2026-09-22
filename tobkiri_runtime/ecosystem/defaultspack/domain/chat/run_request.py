@@ -9,13 +9,11 @@ import json
 from functools import lru_cache
 import os
 import re
-import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import gen_id
 from core_runtime.authority.principal import build_principal_id
