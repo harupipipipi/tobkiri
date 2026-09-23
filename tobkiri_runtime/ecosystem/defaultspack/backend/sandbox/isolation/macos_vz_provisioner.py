@@ -289,6 +289,7 @@ class _MacOSVZHelperProcess:
         self._domain_id: str | None = None
         self._launch_binding_digest: str | None = None
         self._pending: dict[str, _PendingHelperExchange] = {}
+        self._reader_failure: str | None = None
         self._reader = threading.Thread(
             target=self._reader_loop,
             name="packvm-vz-helper-reader",
@@ -347,7 +348,11 @@ class _MacOSVZHelperProcess:
         """
 
         with self._lock:
-            if self._closed or self._process.poll() is not None:
+            if (
+                self._closed
+                or self._reader_failure is not None
+                or self._process.poll() is not None
+            ):
                 raise ValueError("PackVM VZ helper process is unavailable")
             if (
                 self._domain_id is None
@@ -355,7 +360,7 @@ class _MacOSVZHelperProcess:
                 or envelope.get("launch_binding_digest") != self._launch_binding_digest
             ):
                 raise ValueError("PackVM VZ helper transport binding is invalid")
-            key = envelope.get("host_nonce")
+            key = envelope.get("host_nonce") or envelope.get("request_id")
             if not isinstance(key, str) or not key:
                 raise ValueError("PackVM VZ helper request identity is invalid")
             pending = _PendingHelperExchange()
@@ -430,7 +435,11 @@ class _MacOSVZHelperProcess:
         self, key: str, payload: Mapping[str, object]
     ) -> dict[str, object]:
         with self._lock:
-            if self._closed or self._process.poll() is not None:
+            if (
+                self._closed
+                or self._reader_failure is not None
+                or self._process.poll() is not None
+            ):
                 raise ValueError("PackVM VZ helper process is unavailable")
             pending = _PendingHelperExchange()
             self._pending[key] = pending
@@ -492,6 +501,9 @@ class _MacOSVZHelperProcess:
         except (OSError, ValueError):
             failure = "PackVM VZ helper transport failed"
         with self._lock:
+            # Late exchanges must observe the dead channel instead of
+            # registering a waiter no response can ever reach.
+            self._reader_failure = failure or "PackVM VZ helper transport closed"
             pending_all = list(self._pending.values())
             self._pending.clear()
         for exchange in pending_all:

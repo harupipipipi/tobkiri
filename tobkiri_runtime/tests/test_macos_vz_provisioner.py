@@ -1587,8 +1587,11 @@ def _bound_bundle_fixture(
 def test_transport_requires_explicit_fd_key_binding_before_exchange() -> None:
     """A domain helper cannot accept an outer request before enrollment."""
 
-    process = _helper_process_for_test(b'{"ok":true}\n')
+    process = _helper_process_for_test(
+        b'{"request_id":"req-test","ok":true}\n'
+    )
     request = {
+        "request_id": "req-test",
         "operation": "launch",
         "domain_id": "domain.test",
         "launch_binding_digest": _digest(b"launch"),
@@ -1602,19 +1605,24 @@ def test_transport_requires_explicit_fd_key_binding_before_exchange() -> None:
         launch_binding_digest=_digest(b"launch"),
         secret=b"k" * 32,
     )
-    assert process.exchange(request) == {"ok": True}
+    assert process.exchange(request) == {"request_id": "req-test", "ok": True}
 
 
 def test_transport_accepts_one_mebibyte_protocol_lines_not_state_limit() -> None:
     """Helper protocol frames may carry bounded bridge payloads above 128 KiB."""
 
-    valid = json.dumps({"payload": "x" * (200 * 1024)}).encode() + b"\n"
+    valid = json.dumps(
+        {"request_id": "req-1", "payload": "x" * (200 * 1024)}
+    ).encode() + b"\n"
     process = _helper_process_for_test(valid)
-    assert len(process._exchange_line({"request": "ok"})["payload"]) == 200 * 1024
+    response = process._send_and_wait("req-1", {"request_id": "req-1"})
+    assert len(response["payload"]) == 200 * 1024
 
-    oversized = b"x" * (1024 * 1024 + 1)
+    oversized = b"x" * (2 * 1024 * 1024 + 1)
     with pytest.raises(ValueError, match="response exceeds"):
-        _helper_process_for_test(oversized)._exchange_line({"request": "ok"})
+        _helper_process_for_test(oversized)._send_and_wait(
+            "req-1", {"request_id": "req-1"}
+        )
 
 
 @pytest.mark.parametrize(
@@ -1739,27 +1747,41 @@ def test_production_ignores_development_packvm_bundle_override(
 
 
 def _helper_process_for_test(response: bytes) -> _MacOSVZHelperProcess:
-    """Construct a process-free transport shell for framing tests."""
+    """Construct a process-free transport shell for framing tests.
+
+    The gated stdout only produces the scripted response once a request has
+    been written, so the background reader cannot consume it before the
+    exchange registers its pending waiter.
+    """
+
+    gate = threading.Event()
+
+    class _GatedStdin(io.BytesIO):
+        def write(self, data: bytes) -> int:
+            gate.set()
+            return super().write(data)
+
+    class _GatedStdout:
+        def readline(self, _limit: int) -> bytes:
+            gate.wait()
+            return response
 
     instance = object.__new__(_MacOSVZHelperProcess)
     instance._process = SimpleNamespace(
-        stdin=io.BytesIO(),
-        stdout=_Readline(response),
+        stdin=_GatedStdin(),
+        stdout=_GatedStdout(),
         poll=lambda: None,
     )
     instance._key = bytearray(b"k" * 32)
     instance._lock = threading.RLock()
+    instance._send_lock = threading.Lock()
     instance._closed = False
     instance._domain_id = None
     instance._launch_binding_digest = None
+    instance._pending = {}
+    instance._reader_failure = None
+    instance._reader = threading.Thread(
+        target=instance._reader_loop, daemon=True
+    )
+    instance._reader.start()
     return instance
-
-
-class _Readline:
-    """Bound-aware binary stdout fixture for a helper process."""
-
-    def __init__(self, response: bytes) -> None:
-        self._response = response
-
-    def readline(self, _limit: int) -> bytes:
-        return self._response
