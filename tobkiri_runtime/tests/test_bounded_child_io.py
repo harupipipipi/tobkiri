@@ -237,7 +237,7 @@ def _local_stop(monkeypatch: pytest.MonkeyPatch, process: subprocess.Popen[bytes
     # separate boundary, not something this macOS/Windows Host test emulates.
     stopped = []
 
-    def stop(pid: int) -> list[str]:
+    def stop(pid: int, *_args: object) -> list[str]:
         assert pid == process.pid
         stopped.append(pid)
         process.kill()
@@ -250,7 +250,7 @@ def _local_stop(monkeypatch: pytest.MonkeyPatch, process: subprocess.Popen[bytes
 def test_failed_termination_still_closes_pipes_without_claiming_success(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def denied(pid: int) -> None:
+    def denied(pid: int, *_args: object) -> None:
         raise PermissionError("termination denied")
 
     monkeypatch.setattr(runner, "_terminate_process_group", denied)

@@ -298,7 +298,7 @@ def test_guest_cancel_requires_exact_owned_identity_and_token(
     monkeypatch.setattr(
         packvm_guest_runner,
         "_terminate_process_group",
-        lambda process_group: ["TERM"] if process_group == 1234 else [],
+        lambda process_group, *_args: ["TERM"] if process_group == 1234 else [],
     )
     assert packvm_guest_runner._cancel(request) == {
         "ok": True,
@@ -653,7 +653,11 @@ def test_child_abi_request_limit_stays_within_the_sandbox_memory_limit(
             pytest.fail("oversized child input must be rejected before spawn I/O")
 
     stopped = []
-    monkeypatch.setattr(packvm_guest_runner, "_terminate_process_group", stopped.append)
+    monkeypatch.setattr(
+        packvm_guest_runner,
+        "_terminate_process_group",
+        lambda process_group, *_args: stopped.append(process_group),
+    )
     with pytest.raises(ValueError, match="payload exceeds size limit"):
         packvm_guest_runner._communicate_staged_implementation(
             Child(),  # type: ignore[arg-type]
