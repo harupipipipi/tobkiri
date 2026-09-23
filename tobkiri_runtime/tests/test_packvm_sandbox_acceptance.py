@@ -15,6 +15,9 @@ from acceptance.packvm_sandbox_acceptance import run_live_acceptance
 from scripts.generate_packvm_sandbox_qa_pack import build_documents
 from tobkiri_host.artifact_compiler import compile_pack_root
 from acceptance.packvm_sandbox_qa_pack.runtime import probe
+from ecosystem.defaultspack.backend.sandbox.isolation.resources import (
+    packvm_guest_runner,
+)
 from core_runtime.pack_signature import (
     build_signed_manifest,
     sign_manifest,
@@ -137,6 +140,24 @@ def test_acceptance_pack_accepts_namespaced_canonical_operation(
         probe.OPERATION_PREFIX + "probe_isolation",
         {"nonce": "a" * 64},
     ) == {"scenario": "probe_isolation", "nonce": "a" * 64}
+
+
+def test_probe_result_survives_guest_control_frame_guard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The probe's terminal kind stays outside the reserved control namespace."""
+    denied = {"denied": True, "reason": "permission_denied", "errno": errno.EPERM}
+    monkeypatch.setattr(probe, "_probe_host_filesystem", lambda: dict(denied))
+    monkeypatch.setattr(probe, "_probe_agent_key", lambda: dict(denied))
+    monkeypatch.setattr(
+        probe, "_expect_errno", lambda name, operation: dict(denied)
+    )
+    result = probe._probe_isolation("a" * 64)
+    wrapped = packvm_guest_runner._host_invoke_result(result)
+    assert wrapped == {
+        "kind": packvm_guest_runner.PACKVM_INVOKE_RESULT_KIND,
+        "outcome": result,
+    }
 
 
 def test_acceptance_pack_source_stays_outside_production_catalog() -> None:

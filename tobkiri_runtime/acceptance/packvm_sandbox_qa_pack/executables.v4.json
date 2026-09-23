@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:78473ebba7ba14ed0847ffb31311f3ad5801d06ed5f121debbf7568071270f29",
+  "catalog_digest": "sha256:3f9861dd5a2437f79c6da872435d703d331e1ba47ba7a2b342d8fef05f15e5a6",
   "pack_id": "tobkiri_packvm_sandbox_qa_pack",
-  "source_identity": "sha256:12cd5c925a813a11f8d49cb072c611e0d6e3dd039c63c5e67516716ff77f9df0",
+  "source_identity": "sha256:54ce48c04b49b82e1f5d077d0d18b8e8d563866f7515259dc7fd259ff3d365a3",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "tobkiri_packvm_sandbox_qa_pack.probe",
-      "implementation_digest": "sha256:5b9c1a4a8697d123e81bd0b91cb8976b850cb323ec69b43096f149463302bee3",
+      "implementation_digest": "sha256:8f385093e9551b8b2a2c953b96a4a6524caf7014d3227e324ac3e0fb0235207f",
       "implementation_path": "runtime/probe.py",
       "materialization_mode": "on_demand",
       "operations": [

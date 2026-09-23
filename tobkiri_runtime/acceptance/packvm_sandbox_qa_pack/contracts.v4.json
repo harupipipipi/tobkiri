@@ -115,7 +115,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:5b9c1a4a8697d123e81bd0b91cb8976b850cb323ec69b43096f149463302bee3",
+            "digest": "sha256:8f385093e9551b8b2a2c953b96a4a6524caf7014d3227e324ac3e0fb0235207f",
             "path": "runtime/probe.py",
             "rule_id": "packvm-sandbox-qa-runtime"
           }
@@ -126,7 +126,7 @@
         "repository_commit": "working-tree",
         "repository_tree": "0000000000000000000000000000000000000000000000000000000000000000",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:12cd5c925a813a11f8d49cb072c611e0d6e3dd039c63c5e67516716ff77f9df0",
+        "source_digest": "sha256:54ce48c04b49b82e1f5d077d0d18b8e8d563866f7515259dc7fd259ff3d365a3",
         "source_kind": "generated",
         "source_path": "acceptance/packvm_sandbox_qa_pack"
       },
@@ -200,5 +200,5 @@
     }
   ],
   "pack_id": "tobkiri_packvm_sandbox_qa_pack",
-  "source_identity": "sha256:12cd5c925a813a11f8d49cb072c611e0d6e3dd039c63c5e67516716ff77f9df0"
+  "source_identity": "sha256:54ce48c04b49b82e1f5d077d0d18b8e8d563866f7515259dc7fd259ff3d365a3"
 }

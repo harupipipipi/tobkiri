@@ -89,7 +89,7 @@ def _probe_isolation(nonce: str) -> dict[str, Any]:
     if not all(item["denied"] is True for item in checks.values()):
         raise RuntimeError("PackVM sandbox acceptance boundary is open")
     return {
-        "kind": "tobkiri.packvm.sandbox-observation.v1",
+        "kind": "dev.tobkiri.acceptance.sandbox-observation.v1",
         "scenario": "probe_isolation",
         "nonce": nonce,
         "platform": "linux",
