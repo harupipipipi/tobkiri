@@ -344,6 +344,67 @@ def test_guest_cancel_confirms_delayed_process_group_exit_after_sigkill(
     assert post_kill_probes[0] == 2
 
 
+def test_termination_reaps_zombie_leader_before_group_exit_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A reaped-but-zombie leader must not pin the group liveness probe."""
+
+    class ZombieLeader:
+        pid = 1234
+        reaped = False
+
+        def poll(self) -> int:
+            self.reaped = True
+            return 0
+
+    leader = ZombieLeader()
+    signals: list[int] = []
+
+    def killpg(process_group: int, value: int) -> None:
+        assert process_group == 1234
+        if value == 0:
+            if not leader.reaped:
+                return
+            raise ProcessLookupError
+        signals.append(value)
+
+    monkeypatch.setattr(packvm_guest_runner.os, "killpg", killpg)
+    assert (
+        packvm_guest_runner._terminate_process_group(1234, leader) == ["TERM"]  # type: ignore[arg-type]
+    )
+    assert signals == [packvm_guest_runner.signal.SIGTERM]
+    assert leader.reaped
+
+
+def test_termination_without_popen_reaps_via_waitpid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The cancel path has no Popen; waitpid must drain the zombie leader."""
+
+    signals: list[int] = []
+    waits: list[int] = []
+
+    def killpg(process_group: int, value: int) -> None:
+        assert process_group == 1234
+        if value == 0:
+            if not waits:
+                return
+            raise ProcessLookupError
+        signals.append(value)
+
+    def waitpid(pid: int, flags: int) -> tuple[int, int]:
+        assert pid == 1234
+        assert flags == packvm_guest_runner.os.WNOHANG
+        waits.append(pid)
+        return (pid, 0)
+
+    monkeypatch.setattr(packvm_guest_runner.os, "killpg", killpg)
+    monkeypatch.setattr(packvm_guest_runner.os, "waitpid", waitpid)
+    assert packvm_guest_runner._terminate_process_group(1234) == ["TERM"]
+    assert signals == [packvm_guest_runner.signal.SIGTERM]
+    assert waits
+
+
 def test_guest_cancel_refuses_ack_when_process_group_survives_sigkill(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

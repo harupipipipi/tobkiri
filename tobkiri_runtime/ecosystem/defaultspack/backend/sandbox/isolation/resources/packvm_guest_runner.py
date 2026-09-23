@@ -378,6 +378,8 @@ def _execute_invocation_step(
             result = _communicate_staged_implementation(
                 process, child_request, guest_deadline=guest_deadline,
             )
+        except _GuestOperationError:
+            raise
         except TimeoutError as exc:
             raise _GuestOperationError("DEADLINE_EXPIRED") from exc
         except (OSError, ValueError, json.JSONDecodeError) as exc:
@@ -488,7 +490,7 @@ def _stop_staged_implementation(process: subprocess.Popen[bytes]) -> None:
     """Stop and reap a failed child without reading artifact-controlled pipes."""
 
     try:
-        _terminate_process_group(process.pid)
+        _terminate_process_group(process.pid, process)
     finally:
         for stream in (process.stdin, process.stdout, process.stderr):
             if stream is not None:
@@ -2171,30 +2173,50 @@ def _cancel(request: dict[str, object]) -> dict[str, object]:
     }
 
 
-def _terminate_process_group(process_group: int) -> list[str]:
+def _terminate_process_group(
+    process_group: int,
+    process: subprocess.Popen[bytes] | None = None,
+) -> list[str]:
     signals: list[str] = []
     try:
         os.killpg(process_group, signal.SIGTERM)
         signals.append("TERM")
     except ProcessLookupError:
         return signals
-    if _wait_for_process_group_exit(process_group, CANCEL_GRACE_SECONDS):
+    if _wait_for_process_group_exit(process_group, CANCEL_GRACE_SECONDS, process):
         return signals
     try:
         os.killpg(process_group, signal.SIGKILL)
         signals.append("KILL")
     except ProcessLookupError:
         return signals
-    if not _wait_for_process_group_exit(process_group, CANCEL_KILL_CONFIRM_SECONDS):
+    if not _wait_for_process_group_exit(
+        process_group, CANCEL_KILL_CONFIRM_SECONDS, process
+    ):
         raise TimeoutError("PackVM cancellation process group survived SIGKILL")
     return signals
 
 
-def _wait_for_process_group_exit(process_group: int, timeout: float) -> bool:
+def _wait_for_process_group_exit(
+    process_group: int,
+    timeout: float,
+    process: subprocess.Popen[bytes] | None = None,
+) -> bool:
     """Wait a bounded interval for a cancelled process group to disappear."""
 
     deadline = time.monotonic() + timeout
     while True:
+        # A killed direct child lingers as a zombie until its parent reaps it,
+        # and a zombie still answers killpg probes.  Reap here so an already
+        # dead leader cannot pin the group for the full timeout and force a
+        # spurious termination failure.
+        if process is not None:
+            process.poll()
+        else:
+            try:
+                os.waitpid(process_group, os.WNOHANG)
+            except (ChildProcessError, OSError):
+                pass
         try:
             os.killpg(process_group, 0)
         except ProcessLookupError:

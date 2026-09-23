@@ -52,6 +52,46 @@ def test_bidirectional_pipe_pressure_drains_stderr_and_preserves_exact_stdout() 
         assert all(stream.closed for stream in (process.stdin, process.stdout, process.stderr))
 
 
+def test_classified_guest_operation_error_is_not_flattened(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A classified boundary rejection must survive the caller's broad except.
+
+    _GuestOperationError subclasses ValueError; without an explicit
+    pass-through the caller's ``except (OSError, ValueError, ...)`` remaps it
+    to EXECUTION_FAILED and the typed limit rejection never reaches the Host.
+    """
+    digest = "sha256:" + "a" * 64
+    request = {"request_id": "classified", "artifact_digest": digest,
+               "materialization_digest": digest, "contract_id": "test.contract",
+               "operation_id": "test.operation", "payload": {},
+               "cancel_token": "b" * 64}
+    monkeypatch.setattr(runner.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(runner, "ARTIFACT_ROOT", tmp_path)
+    monkeypatch.setattr(runner, "_verify_invocation_artifact", lambda request: digest)
+    monkeypatch.setattr(runner, "_load_manifest", lambda target: {
+        "implementation_path": "runtime/test.py",
+    })
+    monkeypatch.setattr(runner, "_register_request", lambda *args: True)
+    monkeypatch.setattr(runner, "_unregister_request", lambda *args: True)
+    with _child("import time; time.sleep(30)") as process:
+        stopped = _local_stop(monkeypatch, process)
+        monkeypatch.setattr(runner, "_spawn_staged_implementation", lambda *args: process)
+
+        def classified(*args: object, **kwargs: object) -> None:
+            raise runner._GuestOperationError("INPUT_LIMIT_REJECTED")
+
+        monkeypatch.setattr(
+            runner, "_communicate_staged_implementation", classified
+        )
+        with pytest.raises(runner._GuestOperationError) as error:
+            runner._execute_invocation_step(
+                request, {}, runner.time.monotonic() + 60,
+            )
+        assert error.value.code == "INPUT_LIMIT_REJECTED"
+        assert stopped == []
+
+
 def test_saved_cancel_after_registration_stops_before_sending_abi_input(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
