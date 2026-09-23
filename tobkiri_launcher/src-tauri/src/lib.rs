@@ -38,7 +38,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{fs, io};
 
 use anyhow::{anyhow, bail, Context, Result as AnyResult};
@@ -2808,67 +2808,100 @@ fn spawn_kernel_exit_monitor(
     shutdown_flag: Arc<AtomicBool>,
     panel_bootstrap_secret: String,
 ) {
-    thread::spawn(move || loop {
-        if shutdown_flag.load(Ordering::SeqCst) {
-            break;
-        }
+    thread::spawn(move || {
+        // A transient `start()` failure must not consume restart eligibility:
+        // `wait_and_handle_restart` leaves the debt on the manager, and this
+        // loop retries with a bounded backoff before declaring the handoff
+        // failed.
+        let mut next_restart_attempt_at: Option<Instant> = None;
+        loop {
+            if shutdown_flag.load(Ordering::SeqCst) {
+                break;
+            }
 
-        let mut restarted = false;
-        match km.lock() {
-            Ok(mut kernel) => {
-                if !kernel.is_running() {
-                    match kernel.wait_and_handle_restart() {
-                        Ok(true) => match kernel.start() {
-                            Ok(()) => {
-                                restarted = true;
-                                info!("Kernel restart handoff completed");
-                            }
-                            Err(error) => {
-                                error!("Failed to restart Kernel after handoff: {error:#}");
-                            }
-                        },
-                        Ok(false) => {}
-                        Err(error) => {
+            let mut restarted = false;
+            match km.lock() {
+                Ok(mut kernel) => {
+                    if kernel.is_running() {
+                        next_restart_attempt_at = None;
+                    } else {
+                        if let Err(error) = kernel.wait_and_handle_restart() {
                             warn!("Failed to inspect Kernel exit status: {error}");
                         }
-                    }
-                }
-            }
-            Err(error) => {
-                error!("Failed to lock kernel manager for exit monitor: {error}");
-            }
-        }
-
-        if restarted {
-            match health_check::wait_for_healthy(config.kernel_port, 60).and_then(|_| {
-                request_panel_bootstrap_code_with_retry(config.kernel_port, &panel_bootstrap_secret)
-            }) {
-                Ok(panel_code) => {
-                    if let Some(win) = app.get_webview_window("main") {
-                        if let Err(error) =
-                            navigate_window_to_panel_session(&win, config.kernel_port, &panel_code)
-                        {
-                            error!("Failed to refresh panel after Kernel restart: {error}");
+                        let restart_due = next_restart_attempt_at
+                            .map_or(true, |attempt_at| attempt_at <= Instant::now());
+                        if kernel.restart_owed() && restart_due {
+                            match kernel.start() {
+                                Ok(()) => {
+                                    restarted = true;
+                                    next_restart_attempt_at = None;
+                                    info!("Kernel restart handoff completed");
+                                }
+                                Err(error) => {
+                                    let failures = kernel.record_restart_start_failure();
+                                    if failures >= kernel_manager::MAX_KERNEL_RESTART_START_ATTEMPTS
+                                    {
+                                        error!(
+                                            "Failed to restart Kernel after {failures} start attempts; abandoning the supervised restart: {error:#}"
+                                        );
+                                        kernel.abandon_restart_owed();
+                                        next_restart_attempt_at = None;
+                                    } else {
+                                        let delay =
+                                            kernel_manager::kernel_restart_start_backoff(failures);
+                                        next_restart_attempt_at = Some(Instant::now() + delay);
+                                        warn!(
+                                            "Failed to restart Kernel after handoff (attempt {failures}/{}); retrying in {} ms: {error:#}",
+                                            kernel_manager::MAX_KERNEL_RESTART_START_ATTEMPTS,
+                                            delay.as_millis()
+                                        );
+                                    }
+                                }
+                            }
                         }
                     }
-                    // Exit 42 is a contract-transition handoff.  The new
-                    // Kernel has been given a freshly projected authority and
-                    // the old WebView cookie is intentionally not reused.
-                    // Restart guardian preparation only after the new panel
-                    // code was minted from that fresh authenticated process.
-                    prepare_defaultspack_guardian_in_background(
-                        app.clone(),
-                        config.clone(),
-                        panel_bootstrap_secret.clone(),
-                    );
                 }
                 Err(error) => {
-                    warn!("Kernel restarted, but panel session refresh failed: {error}");
+                    error!("Failed to lock kernel manager for exit monitor: {error}");
                 }
             }
-        }
 
-        thread::sleep(Duration::from_millis(500));
+            if restarted {
+                match health_check::wait_for_healthy(config.kernel_port, 60).and_then(|_| {
+                    request_panel_bootstrap_code_with_retry(
+                        config.kernel_port,
+                        &panel_bootstrap_secret,
+                    )
+                }) {
+                    Ok(panel_code) => {
+                        if let Some(win) = app.get_webview_window("main") {
+                            if let Err(error) = navigate_window_to_panel_session(
+                                &win,
+                                config.kernel_port,
+                                &panel_code,
+                            ) {
+                                error!("Failed to refresh panel after Kernel restart: {error}");
+                            }
+                        }
+                        // Exit 42 is a contract-transition handoff.  The new
+                        // Kernel has been given a freshly projected authority and
+                        // the old WebView cookie is intentionally not reused.
+                        // Restart guardian preparation only after the new panel
+                        // code was minted from that fresh authenticated process.
+                        prepare_defaultspack_guardian_in_background(
+                            app.clone(),
+                            config.clone(),
+                            panel_bootstrap_secret.clone(),
+                        );
+                    }
+                    Err(error) => {
+                        warn!("Kernel restarted, but panel session refresh failed: {error}");
+                    }
+                }
+            }
+
+            thread::sleep(Duration::from_millis(500));
+        }
     });
 }
 
@@ -2943,6 +2976,41 @@ fn guardian_kernel_generation_is_current(app: &AppHandle, generation: u64) -> bo
     is_current
 }
 
+/// A cold Kernel can take minutes to finish runtime activation after the
+/// panel session is minted. The guardian preparation polls the authenticated
+/// readiness probe inside this budget instead of returning permanently on
+/// the first `runtime_ready:false`.
+const GUARDIAN_RUNTIME_READY_TIMEOUT: Duration = Duration::from_secs(300);
+const GUARDIAN_RUNTIME_READY_POLL_INTERVAL: Duration = Duration::from_secs(2);
+
+/// Poll the authenticated runtime-readiness probe until the Kernel reports
+/// `runtime_ready`, the deadline elapses, or `still_current` rejects the
+/// captured launch context. Returns `true` only on a positive probe.
+fn wait_for_authenticated_runtime_ready(
+    port: u16,
+    bootstrap_secret: &str,
+    timeout: Duration,
+    poll_interval: Duration,
+    mut still_current: impl FnMut() -> bool,
+) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match health_check::check_authenticated_runtime_ready(port, bootstrap_secret) {
+            Ok(true) => return true,
+            Ok(false) => {}
+            Err(error) => {
+                warn!(
+                    "Runtime readiness probe failed while preparing Defaultspack guardian: {error:#}"
+                );
+            }
+        }
+        if Instant::now() >= deadline || !still_current() {
+            return false;
+        }
+        thread::sleep(poll_interval.min(deadline.saturating_duration_since(Instant::now())));
+    }
+}
+
 fn prepare_defaultspack_guardian_in_background(
     app: AppHandle,
     config: AppConfig,
@@ -2951,33 +3019,36 @@ fn prepare_defaultspack_guardian_in_background(
     let Some(expected_generation) = capture_guardian_kernel_generation(&app) else {
         return;
     };
+    let shutdown_flag = Arc::clone(&app.state::<ShutdownState>().inner().0);
     thread::spawn(move || {
-        if !guardian_kernel_generation_is_current(&app, expected_generation) {
+        let still_current = |app: &AppHandle| {
+            !shutdown_flag.load(Ordering::SeqCst)
+                && guardian_kernel_generation_is_current(app, expected_generation)
+        };
+        if !still_current(&app) {
             info!(
                 "Skipping stale Defaultspack guardian task for Kernel generation {expected_generation}"
             );
             return;
         }
-        match health_check::check_authenticated_runtime_ready(
+        let runtime_ready = wait_for_authenticated_runtime_ready(
             config.kernel_port,
             &panel_bootstrap_secret,
-        ) {
-            Ok(true) => {}
-            Ok(false) => {
-                info!("Deferring Launcher-owned Defaultspack guardian until runtime activation");
-                return;
-            }
-            Err(error) => {
+            GUARDIAN_RUNTIME_READY_TIMEOUT,
+            GUARDIAN_RUNTIME_READY_POLL_INTERVAL,
+            || still_current(&app),
+        );
+        if !runtime_ready {
+            if still_current(&app) {
                 error!(
-                    "Failed to verify runtime readiness before preparing Defaultspack guardian: {error:#}"
+                    "Kernel did not report runtime readiness within {} s; Launcher-owned Defaultspack guardian was not prepared",
+                    GUARDIAN_RUNTIME_READY_TIMEOUT.as_secs()
                 );
-                return;
+            } else {
+                info!(
+                    "Skipping stale Defaultspack guardian task for Kernel generation {expected_generation}"
+                );
             }
-        }
-        if !guardian_kernel_generation_is_current(&app, expected_generation) {
-            info!(
-                "Skipping stale Defaultspack guardian task after readiness for Kernel generation {expected_generation}"
-            );
             return;
         }
         if let Err(error) = dock_registration::prepare_defaultspack_guardian_impl(&app, &config) {
@@ -5599,5 +5670,125 @@ mod tests {
         assert!(error
             .to_string()
             .contains("port 8765 is already in use by pid 999"));
+    }
+
+    /// Serve authenticated `/health` responses whose `runtime_ready` flag
+    /// turns true after `ready_after` requests (`None` keeps it false).
+    fn spawn_authenticated_health_fixture(
+        secret: &'static str,
+        ready_after: Option<u32>,
+    ) -> (
+        u16,
+        std::sync::Arc<std::sync::atomic::AtomicBool>,
+        std::thread::JoinHandle<()>,
+    ) {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stop_flag = std::sync::Arc::clone(&stop);
+        let server = std::thread::spawn(move || {
+            let mut served: u32 = 0;
+            while !stop_flag.load(Ordering::SeqCst) {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        stream.set_nonblocking(false).unwrap();
+                        stream
+                            .set_read_timeout(Some(Duration::from_secs(1)))
+                            .unwrap();
+                        let mut request = Vec::new();
+                        let mut byte = [0u8; 1];
+                        while !request.ends_with(b"\r\n\r\n") && request.len() < 8192 {
+                            if stream.read_exact(&mut byte).is_err() {
+                                break;
+                            }
+                            request.push(byte[0]);
+                        }
+                        if !request.ends_with(b"\r\n\r\n") {
+                            continue;
+                        }
+                        let request = String::from_utf8_lossy(&request);
+                        let Some(challenge) = request.lines().find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            name.eq_ignore_ascii_case("X-Rumi-Desktop-Health-Challenge")
+                                .then(|| value.trim().to_owned())
+                        }) else {
+                            continue;
+                        };
+                        let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+                        mac.update(challenge.as_bytes());
+                        let challenge_response = mac
+                            .finalize()
+                            .into_bytes()
+                            .iter()
+                            .map(|byte| format!("{byte:02x}"))
+                            .collect::<String>();
+                        served += 1;
+                        let runtime_ready = ready_after.is_some_and(|after| served >= after);
+                        let body = format!(
+                            r#"{{"success":true,"data":{{"panel_ready":true,"runtime_ready":{runtime_ready},"desktop_challenge_response":"{challenge_response}"}}}}"#
+                        );
+                        let _ = write!(
+                            stream,
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        );
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+        (port, stop, server)
+    }
+
+    #[test]
+    fn guardian_runtime_ready_polls_until_the_kernel_reports_ready() {
+        let (port, stop, server) =
+            spawn_authenticated_health_fixture("test-bootstrap-secret", Some(3));
+
+        let ready = super::wait_for_authenticated_runtime_ready(
+            port,
+            "test-bootstrap-secret",
+            Duration::from_secs(10),
+            Duration::from_millis(20),
+            || true,
+        );
+
+        stop.store(true, Ordering::SeqCst);
+        server.join().unwrap();
+        assert!(ready);
+    }
+
+    #[test]
+    fn guardian_runtime_ready_is_bounded_by_timeout_and_stale_context() {
+        let (port, stop, server) =
+            spawn_authenticated_health_fixture("test-bootstrap-secret", None);
+
+        let timed_out = super::wait_for_authenticated_runtime_ready(
+            port,
+            "test-bootstrap-secret",
+            Duration::from_millis(150),
+            Duration::from_millis(20),
+            || true,
+        );
+        assert!(!timed_out);
+
+        let calls = std::sync::atomic::AtomicU32::new(0);
+        let stale = super::wait_for_authenticated_runtime_ready(
+            port,
+            "test-bootstrap-secret",
+            Duration::from_secs(10),
+            Duration::from_millis(20),
+            || calls.fetch_add(1, Ordering::SeqCst) < 2,
+        );
+        assert!(!stale);
+
+        stop.store(true, Ordering::SeqCst);
+        server.join().unwrap();
     }
 }

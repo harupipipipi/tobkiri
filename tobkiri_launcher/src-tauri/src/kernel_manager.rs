@@ -26,6 +26,26 @@ const RESTART_EXIT_CODE: i32 = 42;
 /// Maximum consecutive non-42 restarts before giving up.
 const MAX_AUTO_RESTARTS: u32 = 3;
 
+/// Maximum consecutive `start()` failures while a restart is still owed
+/// before the exit monitor abandons the supervised restart.
+pub(crate) const MAX_KERNEL_RESTART_START_ATTEMPTS: u32 = 5;
+
+/// Initial delay between failed restart `start()` attempts.
+const KERNEL_RESTART_START_INITIAL_BACKOFF: Duration = Duration::from_millis(500);
+
+/// Cap for the delay between failed restart `start()` attempts.
+const KERNEL_RESTART_START_MAX_BACKOFF: Duration = Duration::from_secs(30);
+
+/// Bounded exponential backoff for a failed restart `start()` attempt.
+pub(crate) fn kernel_restart_start_backoff(consecutive_failures: u32) -> Duration {
+    let exponent = consecutive_failures.saturating_sub(1).min(6);
+    let multiplier = 1_u32 << exponent;
+    KERNEL_RESTART_START_INITIAL_BACKOFF
+        .checked_mul(multiplier)
+        .unwrap_or(KERNEL_RESTART_START_MAX_BACKOFF)
+        .min(KERNEL_RESTART_START_MAX_BACKOFF)
+}
+
 /// Seconds to wait after SIGTERM before sending SIGKILL.
 const KILL_TIMEOUT_SECS: u64 = 5;
 
@@ -178,6 +198,13 @@ pub struct KernelManager {
     last_exit_code: Option<i32>,
     /// Counter for consecutive non-42 restarts.
     restart_count: u32,
+    /// Set when a supervised exit requested a restart that has not yet
+    /// produced a running Kernel. It survives transient `start()` failures so
+    /// the exit monitor cannot lose restart eligibility by consuming the
+    /// exit status before the Kernel is running again.
+    restart_owed: bool,
+    /// Consecutive `start()` failures while `restart_owed` was set.
+    restart_start_failures: u32,
     /// Monotonically increasing successful-start generation used to fence
     /// background work from a Kernel process that has since restarted.
     launch_generation: u64,
@@ -191,6 +218,8 @@ impl KernelManager {
             panel_bootstrap_secret,
             last_exit_code: None,
             restart_count: 0,
+            restart_owed: false,
+            restart_start_failures: 0,
             launch_generation: 0,
         }
     }
@@ -204,6 +233,8 @@ impl KernelManager {
     pub fn start(&mut self) -> Result<()> {
         if self.is_running() {
             info!("Kernel already running, skipping start");
+            self.restart_owed = false;
+            self.restart_start_failures = 0;
             return Ok(());
         }
 
@@ -308,7 +339,29 @@ impl KernelManager {
         self.child = Some(child);
         self.launch_generation = next_launch_generation;
         self.last_exit_code = None;
+        self.restart_owed = false;
+        self.restart_start_failures = 0;
         Ok(())
+    }
+
+    /// Return whether a supervised exit requested a restart that has not yet
+    /// produced a running Kernel.
+    pub(crate) fn restart_owed(&self) -> bool {
+        self.restart_owed
+    }
+
+    /// Record a failed `start()` while a restart is owed and return the
+    /// consecutive failure count for the monitor's bounded retry budget.
+    pub(crate) fn record_restart_start_failure(&mut self) -> u32 {
+        self.restart_start_failures = self.restart_start_failures.saturating_add(1);
+        self.restart_start_failures
+    }
+
+    /// Abandon a restart whose `start()` attempts exhausted the monitor's
+    /// retry budget.
+    pub(crate) fn abandon_restart_owed(&mut self) {
+        self.restart_owed = false;
+        self.restart_start_failures = 0;
     }
 
     fn next_launch_generation(&self) -> Result<u64> {
@@ -409,7 +462,9 @@ impl KernelManager {
 
     /// Consume the last exit status and decide whether to auto-restart.
     ///
-    /// Returns `true` if the caller should call `start()` again.
+    /// Returns `true` if the caller should call `start()` again. The decision
+    /// is retained as `restart_owed` until `start()` produces a running
+    /// Kernel, so a transient `start()` failure cannot consume it.
     pub fn wait_and_handle_restart(&mut self) -> Result<bool> {
         if let Some(child) = self.child.as_mut() {
             let status = child.wait().context("failed to wait on Kernel")?;
@@ -418,15 +473,15 @@ impl KernelManager {
             self.child = None;
         }
 
-        match self.last_exit_code.take() {
+        let restart = match self.last_exit_code.take() {
             Some(RESTART_EXIT_CODE) => {
                 info!("Kernel exited with code 42 -- restart requested");
                 self.restart_count = 0;
-                Ok(true)
+                true
             }
             Some(0) => {
                 info!("Kernel exited normally (code 0)");
-                Ok(false)
+                false
             }
             Some(code) => {
                 self.restart_count += 1;
@@ -435,17 +490,21 @@ impl KernelManager {
                         "Kernel exited with code {code} -- auto-restart {}/{}",
                         self.restart_count, MAX_AUTO_RESTARTS
                     );
-                    Ok(true)
+                    true
                 } else {
                     error!(
                         "Kernel exited with code {code} -- max restarts ({}) exceeded, giving up",
                         MAX_AUTO_RESTARTS
                     );
-                    Ok(false)
+                    false
                 }
             }
-            None => Ok(false),
-        }
+            // No new exit status: keep reporting the still-owed restart so a
+            // failed `start()` cannot consume restart eligibility.
+            None => self.restart_owed,
+        };
+        self.restart_owed = restart;
+        Ok(restart)
     }
 
     /// Returns `true` if the child process exists and has not yet exited.
@@ -1185,5 +1244,84 @@ mod tests {
         };
 
         assert_eq!(identify_owned_listener(&listener, &config), None);
+    }
+
+    #[test]
+    fn restart_start_backoff_is_bounded() {
+        assert_eq!(kernel_restart_start_backoff(1), Duration::from_millis(500));
+        assert_eq!(kernel_restart_start_backoff(2), Duration::from_secs(1));
+        assert_eq!(kernel_restart_start_backoff(4), Duration::from_secs(4));
+        assert_eq!(kernel_restart_start_backoff(7), Duration::from_secs(30));
+        assert_eq!(
+            kernel_restart_start_backoff(u32::MAX),
+            Duration::from_secs(30)
+        );
+    }
+
+    #[test]
+    fn restart_debt_survives_a_consumed_exit_status() {
+        let config = test_config();
+        let mut km = KernelManager::new(&config, "test-bootstrap".into());
+
+        km.last_exit_code = Some(RESTART_EXIT_CODE);
+        assert!(km.wait_and_handle_restart().unwrap());
+        assert!(km.restart_owed());
+
+        // A failed start attempt leaves no child and no new exit status, but
+        // the monitor must still observe the owed restart.
+        assert!(km.wait_and_handle_restart().unwrap());
+        assert!(km.restart_owed());
+    }
+
+    #[test]
+    fn clean_exit_clears_the_restart_debt() {
+        let config = test_config();
+        let mut km = KernelManager::new(&config, "test-bootstrap".into());
+        km.restart_owed = true;
+        km.last_exit_code = Some(0);
+
+        assert!(!km.wait_and_handle_restart().unwrap());
+        assert!(!km.restart_owed());
+    }
+
+    #[test]
+    fn restart_start_failures_feed_a_bounded_retry_budget() {
+        let config = test_config();
+        let mut km = KernelManager::new(&config, "test-bootstrap".into());
+        km.restart_owed = true;
+
+        for expected in 1..MAX_KERNEL_RESTART_START_ATTEMPTS {
+            assert_eq!(km.record_restart_start_failure(), expected);
+            assert!(km.restart_owed());
+        }
+
+        km.abandon_restart_owed();
+        assert!(!km.restart_owed());
+        assert_eq!(km.restart_start_failures, 0);
+        assert!(!km.wait_and_handle_restart().unwrap());
+    }
+
+    #[test]
+    fn failed_start_preserves_restart_eligibility() {
+        let (root, mut config) = temporary_packaged_config("kernel-restart-debt");
+        config.kernel_port = 0;
+        fs::write(
+            config
+                .app_dir
+                .join(crate::runtime_resource_integrity::MANIFEST_NAME),
+            b"not a resource manifest",
+        )
+        .unwrap();
+        let mut km = KernelManager::new(&config, "test-bootstrap".into());
+        km.restart_owed = true;
+
+        let error = km.start().unwrap_err().to_string();
+
+        assert!(error.contains("failed to verify and spawn Kernel process"));
+        assert!(
+            km.restart_owed(),
+            "a failed start must not consume restart eligibility"
+        );
+        fs::remove_dir_all(root).ok();
     }
 }

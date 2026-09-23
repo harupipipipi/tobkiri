@@ -26,6 +26,11 @@ const DEFAULTSPACK_MONITOR_INTERVAL: Duration = Duration::from_millis(250);
 const DEFAULTSPACK_RESTART_INITIAL_BACKOFF: Duration = Duration::from_millis(250);
 const DEFAULTSPACK_RESTART_MAX_BACKOFF: Duration = Duration::from_secs(5);
 const DEFAULTSPACK_STABLE_RUN_WINDOW: Duration = Duration::from_secs(30);
+// Resolution failures retry with the standard restart backoff for roughly
+// the same ~5-minute budget a cold Kernel needs to commit runtime authority,
+// then the pending launch is abandoned with a terminal log instead of
+// retrying silently forever.
+const DEFAULTSPACK_MAX_RESOLUTION_FAILURES: u32 = 60;
 // Leave enough of the product's five-second quit budget for the desktop
 // shells to observe the stopped listeners and terminate after this group.
 const DEFAULTSPACK_STOP_TIMEOUT: Duration = Duration::from_secs(2);
@@ -114,6 +119,10 @@ struct ApplicationProcessState {
     restart_in_progress: bool,
     stop_requested: bool,
     consecutive_failures: u32,
+    /// Consecutive authority-resolution failures while a restart was
+    /// pending. Bounded separately so an unresolvable active Profile cannot
+    /// retry silently forever.
+    consecutive_resolve_failures: u32,
     next_restart_at: Option<Instant>,
     started_at: Option<Instant>,
     active_run_id: Option<String>,
@@ -292,6 +301,7 @@ impl ApplicationProcessManager {
             state.next_restart_at = None;
             state.restart_in_progress = false;
             state.consecutive_failures = 0;
+            state.consecutive_resolve_failures = 0;
             state.started_at = None;
             state.active_guardian_pid = None;
             (
@@ -392,23 +402,37 @@ impl ApplicationProcessManager {
         // a Profile rotation (pack enable/disable, recapture) commits a new
         // execution identity, and respawning the stale one would publish a
         // Host contract the restored session cannot match.
-        let metadata = match crate::dock_registration::read_defaultspack_desktop_metadata(
-            &self.config,
-        ) {
-            Ok(metadata) => metadata,
-            Err(error) => {
-                warn!(
-                    "Defaultspack restart deferred; the active execution Profile cannot be resolved: {error:#}"
+        let metadata =
+            match crate::dock_registration::read_defaultspack_desktop_metadata(&self.config) {
+                Ok(metadata) => metadata,
+                Err(error) => {
+                    self.defer_restart_for_resolution_failure(&error)?;
+                    return Ok(());
+                }
+            };
+
+        // The authority can rotate while a resolution is in flight. Read it
+        // once more before this result may overwrite an identity adopted by a
+        // concurrent launch, so an older in-flight resolution can never
+        // displace a newer one.
+        match crate::dock_registration::read_defaultspack_desktop_metadata(&self.config) {
+            Ok(current) if application_metadata_matches(&current, &metadata) => {}
+            Ok(_) => {
+                info!(
+                    "Defaultspack execution Profile rotated while restart metadata was in flight; deferring to the next monitor pass"
                 );
-                let mut state = self.lock_state()?;
-                state.restart_in_progress = false;
-                let _ = state.record_restart_failure();
+                self.clear_restart_in_progress()?;
                 return Ok(());
             }
-        };
+            Err(error) => {
+                self.defer_restart_for_resolution_failure(&error)?;
+                return Ok(());
+            }
+        }
 
         {
             let mut state = self.lock_state()?;
+            state.consecutive_resolve_failures = 0;
             if state.stop_requested
                 || self.shutdown_requested.load(Ordering::SeqCst)
                 || state.child.is_some()
@@ -436,6 +460,28 @@ impl ApplicationProcessManager {
 
     fn spawn_and_track(&self, metadata: DefaultspackDesktopMetadata, reason: &str) -> Result<()> {
         let run_id = managed_defaultspack_run_id();
+        // The authority can rotate between the caller's resolution and this
+        // spawn. Re-verify the resolved identity immediately before the Host
+        // contract is written so a superseded execution identity is never
+        // bound into a new child.
+        match crate::dock_registration::read_defaultspack_desktop_metadata(&self.config) {
+            Ok(current) if application_metadata_matches(&current, &metadata) => {}
+            Ok(_) => {
+                info!(
+                    "Defaultspack {reason} aborted; the active execution Profile rotated before the Host contract was written"
+                );
+                self.clear_restart_in_progress()?;
+                return Err(anyhow!(
+                    "Defaultspack {reason} used a superseded execution Profile"
+                ));
+            }
+            Err(error) => {
+                self.defer_restart_for_resolution_failure(&error)?;
+                return Err(error).context(format!(
+                    "Defaultspack {reason} could not re-verify the active execution Profile"
+                ));
+            }
+        }
         let mut child = match spawn_defaultspack_local_server(
             &self.config,
             &metadata,
@@ -455,6 +501,28 @@ impl ApplicationProcessManager {
         };
         let pid = child.id();
         self.drain_child_output(&mut child, pid);
+
+        // The authority may also have rotated while the child was being
+        // created; confirm the spawned identity once more before it is
+        // registered as the guardian and allowed to own `state.child`.
+        let spawned_identity_is_current =
+            match crate::dock_registration::read_defaultspack_desktop_metadata(&self.config) {
+                Ok(current) => application_metadata_matches(&current, &metadata),
+                Err(error) => {
+                    warn!(
+                        "Defaultspack {reason} could not re-verify the active execution Profile after spawn: {error:#}"
+                    );
+                    if let Err(stop_error) = stop_child(&mut child) {
+                        warn!(
+                            "Failed to stop the unverifiable Defaultspack child {pid}: {stop_error:#}"
+                        );
+                    }
+                    self.defer_restart_for_resolution_failure(&error)?;
+                    return Err(anyhow!(
+                        "Defaultspack {reason} discarded a child whose execution Profile could not be re-verified"
+                    ));
+                }
+            };
         let mut registration_error = None;
 
         let should_stop_child = {
@@ -465,6 +533,10 @@ impl ApplicationProcessManager {
             } else if state.child.is_some() {
                 // Another launcher action won the race while this process was
                 // being created. Keep the existing child and avoid duplication.
+                true
+            } else if !spawned_identity_is_current {
+                // The authority rotated while this process was being created;
+                // registering it would pin a superseded identity.
                 true
             } else if state
                 .launch_metadata
@@ -492,11 +564,19 @@ impl ApplicationProcessManager {
                     metadata.execution_identity().clone(),
                 ) {
                     registration_error = Some(error);
+                    // Registration failures share the restart backoff so a
+                    // persistently rejected guardian cannot loop unaccounted.
+                    let delay = state.record_restart_failure();
+                    info!(
+                        "Defaultspack guardian registration failed; retry is scheduled after {} ms",
+                        delay.as_millis()
+                    );
                     true
                 } else {
                     state.child = Some(child);
                     state.launch_metadata = Some(metadata);
                     state.next_restart_at = None;
+                    state.consecutive_resolve_failures = 0;
                     state.started_at = Some(Instant::now());
                     state.active_run_id = Some(run_id.clone());
                     state.active_guardian_pid = Some(pid);
@@ -578,6 +658,44 @@ impl ApplicationProcessManager {
         let mut state = self.lock_state()?;
         state.restart_in_progress = false;
         Ok(state.record_restart_failure())
+    }
+
+    /// Defer the pending restart after an authority-resolution failure.
+    ///
+    /// Resolution failures share the restart backoff so the monitor cannot
+    /// spin on a persistently unresolvable Profile. After
+    /// `DEFAULTSPACK_MAX_RESOLUTION_FAILURES` consecutive failures the
+    /// pending launch is abandoned with a terminal log; a later launch
+    /// request can still re-seed `launch_metadata` and retry.
+    fn defer_restart_for_resolution_failure(&self, error: &anyhow::Error) -> Result<()> {
+        let mut state = self.lock_state()?;
+        state.restart_in_progress = false;
+        state.consecutive_resolve_failures = state.consecutive_resolve_failures.saturating_add(1);
+        let delay = state.record_restart_failure();
+        if state.consecutive_resolve_failures >= DEFAULTSPACK_MAX_RESOLUTION_FAILURES {
+            error!(
+                "Defaultspack restart abandoned after {} consecutive execution-Profile resolution failures; a new launch request is required (last error: {error:#})",
+                state.consecutive_resolve_failures
+            );
+            state.launch_metadata = None;
+            state.next_restart_at = None;
+        } else {
+            warn!(
+                "Defaultspack restart deferred for {} ms; the active execution Profile cannot be resolved ({}/{}): {error:#}",
+                delay.as_millis(),
+                state.consecutive_resolve_failures,
+                DEFAULTSPACK_MAX_RESOLUTION_FAILURES
+            );
+        }
+        Ok(())
+    }
+
+    /// Release the in-progress restart marker without scheduling a penalty
+    /// so the next monitor pass re-resolves the current authority.
+    fn clear_restart_in_progress(&self) -> Result<()> {
+        let mut state = self.lock_state()?;
+        state.restart_in_progress = false;
+        Ok(())
     }
 
     fn drain_child_output(&self, child: &mut crate::python_env::PythonChild, pid: u32) {
@@ -1175,9 +1293,7 @@ mod tests {
         }
 
         manager
-            .start_or_reuse(DefaultspackDesktopMetadata::test_metadata(
-                identity.clone(),
-            ))
+            .start_or_reuse(DefaultspackDesktopMetadata::test_metadata(identity.clone()))
             .unwrap();
 
         let state = manager.lock_state().unwrap();
@@ -1506,5 +1622,127 @@ mod tests {
             !descendant_alive,
             "orphaned Defaultspack descendant {descendant_pid} survived shutdown"
         );
+    }
+
+    fn pending_restart_metadata() -> DefaultspackDesktopMetadata {
+        DefaultspackDesktopMetadata::test_metadata(test_execution_identity(
+            "profile-a",
+            &"a".repeat(64),
+            "profile-a-active",
+            &"b".repeat(64),
+        ))
+    }
+
+    #[test]
+    fn resolution_failures_back_off_and_eventually_abandon_the_restart() {
+        let manager = test_manager();
+        let error = anyhow!("authority unavailable");
+        {
+            let mut state = manager.lock_state().unwrap();
+            state.restart_in_progress = true;
+            state.launch_metadata = Some(pending_restart_metadata());
+        }
+
+        manager
+            .defer_restart_for_resolution_failure(&error)
+            .unwrap();
+
+        {
+            let state = manager.lock_state().unwrap();
+            assert!(!state.restart_in_progress);
+            assert_eq!(state.consecutive_resolve_failures, 1);
+            assert!(state.next_restart_at.is_some());
+            assert!(state.launch_metadata.is_some());
+        }
+
+        {
+            let mut state = manager.lock_state().unwrap();
+            state.consecutive_resolve_failures = DEFAULTSPACK_MAX_RESOLUTION_FAILURES - 1;
+            state.restart_in_progress = true;
+        }
+        manager
+            .defer_restart_for_resolution_failure(&error)
+            .unwrap();
+
+        let state = manager.lock_state().unwrap();
+        assert_eq!(
+            state.consecutive_resolve_failures,
+            DEFAULTSPACK_MAX_RESOLUTION_FAILURES
+        );
+        assert!(state.launch_metadata.is_none());
+        assert!(state.next_restart_at.is_none());
+    }
+
+    #[test]
+    fn monitor_once_defers_an_unresolvable_restart_with_backoff() {
+        let manager = test_manager();
+        {
+            let mut state = manager.lock_state().unwrap();
+            state.launch_metadata = Some(pending_restart_metadata());
+        }
+
+        // The test fixture has no signed catalog, so resolution fails and the
+        // monitor must defer with a recorded failure instead of spinning.
+        manager.monitor_once().unwrap();
+
+        let state = manager.lock_state().unwrap();
+        assert!(!state.restart_in_progress);
+        assert_eq!(state.consecutive_resolve_failures, 1);
+        assert!(state.next_restart_at.is_some());
+        assert!(state.launch_metadata.is_some());
+    }
+
+    #[test]
+    fn monitor_once_abandons_the_restart_after_bounded_resolution_failures() {
+        let manager = test_manager();
+        {
+            let mut state = manager.lock_state().unwrap();
+            state.launch_metadata = Some(pending_restart_metadata());
+            state.consecutive_resolve_failures = DEFAULTSPACK_MAX_RESOLUTION_FAILURES - 1;
+        }
+
+        manager.monitor_once().unwrap();
+
+        let state = manager.lock_state().unwrap();
+        assert!(!state.restart_in_progress);
+        assert!(state.launch_metadata.is_none());
+        assert!(state.next_restart_at.is_none());
+    }
+
+    #[test]
+    fn spawn_and_track_re_verifies_authority_before_writing_the_contract() {
+        let manager = test_manager();
+        let metadata = pending_restart_metadata();
+        {
+            let mut state = manager.lock_state().unwrap();
+            state.restart_in_progress = true;
+            state.launch_metadata = Some(metadata.clone());
+        }
+
+        let error = manager
+            .spawn_and_track(metadata, "test launch")
+            .unwrap_err();
+
+        assert!(format!("{error:#}").contains("could not re-verify"));
+        let state = manager.lock_state().unwrap();
+        assert!(!state.restart_in_progress);
+        assert_eq!(state.consecutive_resolve_failures, 1);
+        assert!(state.next_restart_at.is_some());
+    }
+
+    #[test]
+    fn clear_restart_in_progress_releases_without_a_penalty() {
+        let manager = test_manager();
+        {
+            let mut state = manager.lock_state().unwrap();
+            state.restart_in_progress = true;
+        }
+
+        manager.clear_restart_in_progress().unwrap();
+
+        let state = manager.lock_state().unwrap();
+        assert!(!state.restart_in_progress);
+        assert!(state.next_restart_at.is_none());
+        assert_eq!(state.consecutive_failures, 0);
     }
 }
