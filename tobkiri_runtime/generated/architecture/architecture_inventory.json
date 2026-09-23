@@ -82,14 +82,14 @@
       },
       {
         "evidence": "pack_api_server",
-        "line": 244,
+        "line": 249,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/bootstrap/runtime.py",
         "rule_id": "legacy_direct_pack_route"
       },
       {
         "evidence": "pack_api_server",
-        "line": 310,
+        "line": 315,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/bootstrap/runtime.py",
         "rule_id": "legacy_direct_pack_route"
@@ -5997,14 +5997,14 @@
       },
       {
         "evidence": "permissive",
-        "line": 617,
+        "line": 667,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/hmac_key_manager.py",
         "rule_id": "legacy_permissive_mode"
       },
       {
         "evidence": "permissive",
-        "line": 692,
+        "line": 742,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/hmac_key_manager.py",
         "rule_id": "legacy_permissive_mode"
@@ -10025,26 +10025,26 @@
         "rule_id": "legacy_direct_pack_route"
       },
       {
-        "evidence_digest": "sha256:1c0d2c262d5acd00d9f1ae491b0d5ab386655b5962a2b2fc2f4bd8e0e5580d01",
+        "evidence_digest": "sha256:bf19cd3634021198bccc4a0385691f96bb92c4b68838cc218a866fd5e181277f",
         "line": 25,
         "path": "tobkiri_runtime/core_runtime/bootstrap/runtime.py",
         "rule_id": "legacy_direct_pack_route"
       },
       {
-        "evidence_digest": "sha256:1c0d2c262d5acd00d9f1ae491b0d5ab386655b5962a2b2fc2f4bd8e0e5580d01",
+        "evidence_digest": "sha256:bf19cd3634021198bccc4a0385691f96bb92c4b68838cc218a866fd5e181277f",
         "line": 30,
         "path": "tobkiri_runtime/core_runtime/bootstrap/runtime.py",
         "rule_id": "legacy_direct_pack_route"
       },
       {
-        "evidence_digest": "sha256:1c0d2c262d5acd00d9f1ae491b0d5ab386655b5962a2b2fc2f4bd8e0e5580d01",
-        "line": 244,
+        "evidence_digest": "sha256:bf19cd3634021198bccc4a0385691f96bb92c4b68838cc218a866fd5e181277f",
+        "line": 249,
         "path": "tobkiri_runtime/core_runtime/bootstrap/runtime.py",
         "rule_id": "legacy_direct_pack_route"
       },
       {
-        "evidence_digest": "sha256:1c0d2c262d5acd00d9f1ae491b0d5ab386655b5962a2b2fc2f4bd8e0e5580d01",
-        "line": 310,
+        "evidence_digest": "sha256:bf19cd3634021198bccc4a0385691f96bb92c4b68838cc218a866fd5e181277f",
+        "line": 315,
         "path": "tobkiri_runtime/core_runtime/bootstrap/runtime.py",
         "rule_id": "legacy_direct_pack_route"
       },
@@ -15107,14 +15107,14 @@
         "rule_id": "legacy_permissive_mode"
       },
       {
-        "evidence_digest": "sha256:b5c398bde592e008dd7d0d20e6ad989ba5871a50baa87ceb13548b8442ed8060",
-        "line": 617,
+        "evidence_digest": "sha256:efe99d1da4edf777f2b5ca847df6259280d1a52009be064f06cb8c1014f3420a",
+        "line": 667,
         "path": "tobkiri_runtime/core_runtime/hmac_key_manager.py",
         "rule_id": "legacy_permissive_mode"
       },
       {
-        "evidence_digest": "sha256:b5c398bde592e008dd7d0d20e6ad989ba5871a50baa87ceb13548b8442ed8060",
-        "line": 692,
+        "evidence_digest": "sha256:efe99d1da4edf777f2b5ca847df6259280d1a52009be064f06cb8c1014f3420a",
+        "line": 742,
         "path": "tobkiri_runtime/core_runtime/hmac_key_manager.py",
         "rule_id": "legacy_permissive_mode"
       },
@@ -18411,7 +18411,7 @@
     ]
   },
   "repository": {
-    "commit": "eccbf853324a407b373d2276cde597a05d284a07",
+    "commit": "375736e1772a2a0c827bff540eb85f5cb8873e39",
     "tree_digest": "f855487fa9f577fd9f4869a73cee770e7e3617c264de1477d19d36a6ef443408"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",

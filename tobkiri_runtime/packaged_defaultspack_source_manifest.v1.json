@@ -238,8 +238,8 @@
     {
       "path": "ecosystem/defaultspack/domain/runtime_v4/service.py",
       "type": "regular-file",
-      "size": 125034,
-      "sha256": "a57bbcd564265a8bbecbef20627c7757ea4f4f4fcf87fb7020ce2b311da35e1f",
+      "size": 129126,
+      "sha256": "9745231b871875ee7cd2c187125a604cac3206698250306797fbdff5fbfd921e",
       "executable": false
     },
     {

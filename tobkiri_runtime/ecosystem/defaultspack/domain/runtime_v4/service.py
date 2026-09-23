@@ -204,6 +204,30 @@ class _PendingRepublishRequired(BaseException):
         self.republish = republish
 
 
+@dataclass(frozen=True)
+class _PendingMigrationVerify:
+    """One resolved migration successor awaiting its unlocked artifact check."""
+
+    resolved: "ResolvedDefaultProfile"
+    activation_id: str
+    created_at: str
+
+
+class _PendingMigrationVerifyRequired(BaseException):
+    """Unwind an activation lock hold for a migration artifact verification.
+
+    A legacy activation resolved its successor while the bounded process lock
+    was held; only the packaged-tree hash remains.  The public entry point
+    that owns the lock catches this, verifies the successor's selected bytes
+    outside the lock, then retries the load so the fenced commit consumes the
+    verified identity.
+    """
+
+    def __init__(self, pending: _PendingMigrationVerify) -> None:
+        super().__init__("legacy activation migration needs unlocked verification")
+        self.pending = pending
+
+
 def _application_launch_identity(
     manifest: Mapping[str, Any],
 ) -> tuple[str, str, str]:
@@ -1198,6 +1222,9 @@ class ActivationStore:
         except SecurePersistenceError as exc:
             raise ProfileResolutionDenied("activation state root is unsafe") from exc
         self._workspace_digest = canonical_digest({"workspace_root": str(self.workspace_root)})
+        self._pending_migration_verified: (
+            tuple[str, str, _ArtifactTreeIdentity] | None
+        ) = None
 
     def _write_state(self, relative: str | Path, payload: Mapping[str, Any]) -> None:
         """Write canonical activation state below the pinned state root."""
@@ -1308,6 +1335,8 @@ class ActivationStore:
                     )
             except _PendingRepublishRequired as pending:
                 self._republish_pending(pending.republish)
+            except _PendingMigrationVerifyRequired as pending:
+                self._verify_migration_pending(pending.pending)
 
     def _activate_locked(
         self,
@@ -1696,6 +1725,41 @@ class ActivationStore:
             )
             self._unlink_state("pending.json", missing_ok=True)
 
+    def _verify_migration_pending(self, pending: _PendingMigrationVerify) -> None:
+        """Verify a migration successor's selected artifact unlocked.
+
+        The packaged-tree hash runs without the cross-process lock so readers
+        keep their bounded wait.  The verified identity is staged for the next
+        locked load: the migration only commits when its re-resolved successor
+        still matches the activation and plan this identity was proven for.
+        """
+
+        profile = pending.resolved.profile
+        artifact_identity = self._capture_selected_artifact_identity(
+            profile,
+            deadline_monotonic=(
+                self._monotonic_clock() + self._lock_timeout_seconds
+            ),
+        )
+        self._verify_selected_artifact(
+            profile,
+            deadline_monotonic=(
+                self._monotonic_clock() + self._lock_timeout_seconds
+            ),
+        )
+        self._require_selected_artifact_identity(
+            profile,
+            artifact_identity,
+            deadline_monotonic=(
+                self._monotonic_clock() + self._lock_timeout_seconds
+            ),
+        )
+        self._pending_migration_verified = (
+            pending.activation_id,
+            str(pending.resolved.plan["plan_digest"]),
+            artifact_identity,
+        )
+
     def _revalidate_publish_reservation(
         self,
         *,
@@ -1927,6 +1991,8 @@ class ActivationStore:
                 return active
             except _PendingRepublishRequired as pending:
                 self._republish_pending(pending.republish)
+            except _PendingMigrationVerifyRequired as pending:
+                self._verify_migration_pending(pending.pending)
 
     def _activation_read_gate(self) -> threading.Lock:
         """Queue same-process readers before their bounded process-lock wait."""
@@ -2038,18 +2104,25 @@ class ActivationStore:
                 # The predecessor's reconfirmation proof and the successor's
                 # artifact check both hash outside the bounded process lock;
                 # the fenced commit still re-reads the predecessor it proves.
+                # A predecessor that itself demands reconfirmation is exactly
+                # what this ceremony replaces, so its load must not abort the
+                # confirmed reconcile it is meant to authorize.
                 with self._activation_lock():
-                    predecessor = self._load_active_snapshot_locked(
-                        verify_selected_artifact=False
-                    )
-                try:
-                    self._verify_selected_artifact_coalesced(predecessor)
-                except ProfileReconfirmationRequired:
-                    pass
-                else:
-                    raise ProfileResolutionDenied(
-                        "activation confirmation was replayed"
-                    )
+                    try:
+                        predecessor = self._load_active_snapshot_locked(
+                            verify_selected_artifact=False
+                        )
+                    except ProfileReconfirmationRequired:
+                        predecessor = None
+                if predecessor is not None:
+                    try:
+                        self._verify_selected_artifact_coalesced(predecessor)
+                    except ProfileReconfirmationRequired:
+                        pass
+                    else:
+                        raise ProfileResolutionDenied(
+                            "activation confirmation was replayed"
+                        )
                 artifact_identity = self._capture_selected_artifact_identity(
                     profile,
                     deadline_monotonic=(
@@ -2070,9 +2143,12 @@ class ActivationStore:
                     ),
                 )
                 with self._activation_lock():
-                    current = self._load_active_snapshot_locked(
-                        verify_selected_artifact=False
-                    )
+                    try:
+                        current = self._load_active_snapshot_locked(
+                            verify_selected_artifact=False
+                        )
+                    except ProfileReconfirmationRequired:
+                        current = None
                     if current != predecessor:
                         raise ProfileResolutionDenied(
                             "active Profile changed during artifact verification"
@@ -2088,6 +2164,8 @@ class ActivationStore:
                     )
             except _PendingRepublishRequired as pending:
                 self._republish_pending(pending.republish)
+            except _PendingMigrationVerifyRequired as pending:
+                self._verify_migration_pending(pending.pending)
 
     def _load_active_snapshot_locked(
         self, *, verify_selected_artifact: bool = True
@@ -2448,6 +2526,25 @@ class ActivationStore:
             f"activation:{self.profile_id}-migration-"
             + successor.plan["plan_digest"].removeprefix("sha256:")[:16]
         )
+        staged = self._pending_migration_verified
+        verified_identity: _ArtifactTreeIdentity | None = None
+        if (
+            staged is not None
+            and staged[0] == successor_id
+            and staged[1] == str(successor.plan["plan_digest"])
+        ):
+            verified_identity = staged[2]
+        self._pending_migration_verified = None
+        if verified_identity is None:
+            raise _PendingMigrationVerifyRequired(
+                _PendingMigrationVerify(
+                    resolved=successor,
+                    activation_id=successor_id,
+                    created_at=str(
+                        activation.get("committed_at") or activation["created_at"]
+                    ),
+                )
+            )
         self._activate_locked(
             successor,
             activation_id=successor_id,
@@ -2455,6 +2552,7 @@ class ActivationStore:
             expected_predecessor_profile_revision=None,
             expected_predecessor_plan_digest=None,
             expected_predecessor_activation_id=None,
+            verified_artifact_identity=verified_identity,
         )
 
     def _verified_shell_successor_is_available(
