@@ -7,6 +7,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -18,6 +20,9 @@ from tobkiri_host.admission import (
     QueueScope,
     ResourceAmount,
     ResourceLedger,
+    ResourceReservation,
+    dead_owner_reservation_ids,
+    process_is_alive,
 )
 from tobkiri_host.errors import (
     QueueFullError,
@@ -519,3 +524,236 @@ def test_queue_round_robins_across_bindings() -> None:
     assert queue.pop() == second
     for item in (first, second, third):
         queue.complete(item)
+
+
+def _dead_pid() -> int:
+    """Return a pid that is provably no longer a live process."""
+    process = subprocess.Popen([sys.executable, "-c", "pass"])
+    process.wait()
+    return process.pid
+
+
+def _ledger_row(
+    reservation_id: str,
+    *,
+    owner_pid: int,
+    detached: bool,
+    memory_bytes: int = 100,
+) -> dict[str, object]:
+    return {
+        "reservation_id": reservation_id,
+        "profile_id": "p1",
+        "amount": {
+            "memory_bytes": memory_bytes,
+            "disk_bytes": 0,
+            "process_slots": 1,
+            "start_slots": 1,
+        },
+        "expires_at": 1.0,
+        "owner_pid": owner_pid,
+        "detached": detached,
+    }
+
+
+def _write_ledger(
+    state_path: Path,
+    identity: dict[str, str],
+    rows: list[dict[str, object]],
+) -> None:
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema": "io.tobkiri.admission-ledger.v1",
+                "identity": identity,
+                "reservations": rows,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _durable_options(state_path: Path) -> dict[str, object]:
+    return {
+        "runtime_limit": ResourceAmount(1000, 100, 8, 8),
+        "host_free_guard": ResourceAmount(100, 0, 0, 0),
+        "profile_limits": {"p1": ResourceAmount(800, 100, 8, 8)},
+        "state_path": state_path,
+    }
+
+
+def test_process_is_alive_only_accepts_live_positive_pids() -> None:
+    assert process_is_alive(os.getpid()) is True
+    assert process_is_alive(_dead_pid()) is False
+    for invalid in (0, -1, True, "1", None, 1.5):
+        assert process_is_alive(invalid) is False
+
+
+def test_dead_owner_reservation_ids_release_only_proven_rows() -> None:
+    dead = _dead_pid()
+    rows = (
+        ResourceReservation(
+            "dead", "p1", ResourceAmount(1), owner_pid=dead,
+        ),
+        ResourceReservation(
+            "live", "p1", ResourceAmount(1), owner_pid=os.getpid(),
+        ),
+        ResourceReservation("unrecorded", "p1", ResourceAmount(1)),
+        ResourceReservation(
+            "detached", "p1", ResourceAmount(1),
+            owner_pid=dead, detached=True,
+        ),
+    )
+    assert dead_owner_reservation_ids(rows) == ("dead",)
+
+
+def test_durable_ledger_persists_owner_pid_and_detached_flag(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "reservations.json"
+    identity = {"profile_id": "p1", "activation_id": "a"}
+    ledger = DurableResourceLedger(identity=identity, **_durable_options(state_path))
+    detached = ledger.reserve("p1", ResourceAmount(10), detached=True)
+    plain = ledger.reserve("p1", ResourceAmount(20))
+
+    rows = {
+        item["reservation_id"]: item
+        for item in json.loads(state_path.read_text(encoding="utf-8"))[
+            "reservations"
+        ]
+    }
+    assert rows[detached.reservation_id]["owner_pid"] == os.getpid()
+    assert rows[detached.reservation_id]["detached"] is True
+    assert rows[plain.reservation_id]["owner_pid"] == os.getpid()
+    assert rows[plain.reservation_id]["detached"] is False
+
+
+def test_durable_ledger_releases_dead_owner_rows_on_identity_change(
+    tmp_path: Path,
+) -> None:
+    """A journaled owner that is provably dead releases its own charge."""
+    state_path = tmp_path / "reservations.json"
+    _write_ledger(
+        state_path,
+        {"profile_id": "p1", "activation_id": "a"},
+        [_ledger_row("stale", owner_pid=_dead_pid(), detached=False)],
+    )
+    ledger = DurableResourceLedger(
+        identity={"profile_id": "p1", "activation_id": "b"},
+        confirmed_supervisor_release=(
+            lambda _saved, rows: dead_owner_reservation_ids(rows)
+        ),
+        **_durable_options(state_path),
+    )
+    assert ledger.runtime_used == ResourceAmount(0, 0, 0, 0)
+    saved = json.loads(state_path.read_text(encoding="utf-8"))
+    assert saved["identity"]["activation_id"] == "b"
+    assert saved["reservations"] == []
+
+
+def test_durable_ledger_retains_detached_row_with_dead_owner(
+    tmp_path: Path,
+) -> None:
+    """A dead owner never releases a charge that may back a live domain."""
+    state_path = tmp_path / "reservations.json"
+    _write_ledger(
+        state_path,
+        {"profile_id": "p1", "activation_id": "a"},
+        [_ledger_row("pack", owner_pid=_dead_pid(), detached=True)],
+    )
+    with pytest.raises(AdmissionError, match="confirmed supervisor release"):
+        DurableResourceLedger(
+            identity={"profile_id": "p1", "activation_id": "b"},
+            confirmed_supervisor_release=(
+                lambda _saved, rows: dead_owner_reservation_ids(rows)
+            ),
+            **_durable_options(state_path),
+        )
+
+
+def test_durable_ledger_retains_row_whose_recorded_owner_is_alive(
+    tmp_path: Path,
+) -> None:
+    """A live recorded owner keeps its reservations across identity change."""
+    state_path = tmp_path / "reservations.json"
+    _write_ledger(
+        state_path,
+        {"profile_id": "p1", "activation_id": "a"},
+        [_ledger_row("owned", owner_pid=os.getpid(), detached=False)],
+    )
+    with pytest.raises(AdmissionError, match="confirmed supervisor release"):
+        DurableResourceLedger(
+            identity={"profile_id": "p1", "activation_id": "b"},
+            confirmed_supervisor_release=(
+                lambda _saved, rows: dead_owner_reservation_ids(rows)
+            ),
+            **_durable_options(state_path),
+        )
+
+
+def test_durable_ledger_retains_row_without_recorded_owner(
+    tmp_path: Path,
+) -> None:
+    """Rows written before owner journaling remain unproven and fail closed."""
+    state_path = tmp_path / "reservations.json"
+    row = _ledger_row("legacy", owner_pid=_dead_pid(), detached=False)
+    del row["owner_pid"]
+    del row["detached"]
+    _write_ledger(state_path, {"profile_id": "p1", "activation_id": "a"}, [row])
+    with pytest.raises(AdmissionError, match="confirmed supervisor release"):
+        DurableResourceLedger(
+            identity={"profile_id": "p1", "activation_id": "b"},
+            confirmed_supervisor_release=(
+                lambda _saved, rows: dead_owner_reservation_ids(rows)
+            ),
+            **_durable_options(state_path),
+        )
+
+
+def test_durable_ledger_sweeps_dead_owner_rows_on_same_identity_restart(
+    tmp_path: Path,
+) -> None:
+    """Restarting one activation reclaims only provably dead non-detached rows."""
+    state_path = tmp_path / "reservations.json"
+    identity = {"profile_id": "p1", "activation_id": "a"}
+    dead = _dead_pid()
+    _write_ledger(
+        state_path,
+        identity,
+        [
+            _ledger_row("stale", owner_pid=dead, detached=False),
+            _ledger_row("pack", owner_pid=dead, detached=True),
+            _ledger_row("owned", owner_pid=os.getpid(), detached=False),
+        ],
+    )
+    ledger = DurableResourceLedger(identity=identity, **_durable_options(state_path))
+    assert ledger.runtime_used == ResourceAmount(200, 0, 2, 2)
+    saved = json.loads(state_path.read_text(encoding="utf-8"))
+    assert [item["reservation_id"] for item in saved["reservations"]] == [
+        "owned",
+        "pack",
+    ]
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("owner_pid", -1),
+        ("owner_pid", "7"),
+        ("owner_pid", True),
+        ("owner_pid", 1.5),
+        ("detached", "yes"),
+        ("detached", 1),
+    ],
+)
+def test_durable_ledger_rejects_invalid_owner_metadata(
+    tmp_path: Path, field: str, value: object,
+) -> None:
+    state_path = tmp_path / "reservations.json"
+    row = _ledger_row("row", owner_pid=_dead_pid(), detached=False)
+    row[field] = value
+    _write_ledger(state_path, {"profile_id": "p1", "activation_id": "a"}, [row])
+    with pytest.raises(AdmissionError, match="durable admission ledger is invalid"):
+        DurableResourceLedger(
+            identity={"profile_id": "p1", "activation_id": "a"},
+            **_durable_options(state_path),
+        )

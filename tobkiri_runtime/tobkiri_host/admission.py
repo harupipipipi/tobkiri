@@ -11,7 +11,7 @@ from pathlib import Path
 import secrets
 from threading import RLock
 import time
-from typing import Callable, Mapping
+from typing import Callable, Iterable, Mapping
 
 from .errors import AdmissionError, QueueFullError, ResourceExhaustedError
 
@@ -72,6 +72,7 @@ class AdmissionEstimate:
     concurrency: int = 1
     disk_bytes: int = 0
     declared_upper_bound_bytes: int | None = None
+    detached: bool = False
 
     def charge(self) -> ResourceAmount:
         """Calculate the admission charge without trusting a low declaration."""
@@ -104,11 +105,20 @@ class AdmissionEstimate:
 
 @dataclass(frozen=True)
 class ResourceReservation:
-    """Opaque reservation owned by an accepted queue item or workload."""
+    """Opaque reservation owned by an accepted queue item or workload.
+
+    ``owner_pid`` records the supervisor process that journaled the
+    reservation; ``0`` means the owner was never recorded. ``detached`` marks
+    charges that may back an out-of-process allocation (for example a PackVM
+    domain) able to outlive the owner, so owner death alone cannot prove the
+    charge is reusable.
+    """
 
     reservation_id: str
     profile_id: str
     amount: ResourceAmount
+    owner_pid: int = 0
+    detached: bool = False
 
 
 class ResourceLedger:
@@ -135,6 +145,8 @@ class ResourceLedger:
         self,
         profile_id: str,
         amount: ResourceAmount,
+        *,
+        detached: bool = False,
     ) -> ResourceReservation:
         """Reserve resources or reject before materialization."""
         with self._lock:
@@ -154,6 +166,8 @@ class ResourceLedger:
                 reservation_id=secrets.token_urlsafe(24),
                 profile_id=profile_id,
                 amount=amount,
+                owner_pid=os.getpid(),
+                detached=detached,
             )
             self._reservations[reservation.reservation_id] = reservation
             self._runtime_used = next_runtime
@@ -184,6 +198,43 @@ def _strict_nonnegative_int(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ValueError("persisted resource values must be non-negative integers")
     return value
+
+
+def process_is_alive(pid: object) -> bool:
+    """Return whether a recorded owner pid still names a live process."""
+
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
+def dead_owner_reservation_ids(
+    reservations: Iterable[ResourceReservation],
+) -> tuple[str, ...]:
+    """Return IDs of non-detached reservations whose owner process is dead.
+
+    A reservation's owner is the supervisor process that journaled it. Once
+    that process is dead the charge it covered cannot outlive it unless the
+    reservation was marked detached, in which case an out-of-process
+    allocation may still hold the capacity and an exact supervisor proof is
+    required instead. Reservations without a recorded owner fail closed.
+    """
+
+    return tuple(
+        sorted(
+            item.reservation_id
+            for item in reservations
+            if not item.detached
+            and item.owner_pid > 0
+            and not process_is_alive(item.owner_pid)
+        )
+    )
 
 
 class DurableResourceLedger(ResourceLedger):
@@ -235,10 +286,12 @@ class DurableResourceLedger(ResourceLedger):
         self,
         profile_id: str,
         amount: ResourceAmount,
+        *,
+        detached: bool = False,
     ) -> ResourceReservation:
         """Reserve and durably journal resources before queue acceptance."""
         with self._lock:
-            reservation = super().reserve(profile_id, amount)
+            reservation = super().reserve(profile_id, amount, detached=detached)
             # Keep the v1 timestamp for persisted-format compatibility and
             # diagnostics; it must not authorize automatic reclamation.
             self._expires_at[reservation.reservation_id] = (
@@ -314,10 +367,21 @@ class DurableResourceLedger(ResourceLedger):
                     raise ValueError("ledger contains duplicate reservation IDs")
                 if profile_id not in self._profile_limits:
                     raise ValueError("ledger reservation targets an unknown Profile")
+                owner_pid = row.get("owner_pid", 0)
+                detached = row.get("detached", False)
+                if (
+                    isinstance(owner_pid, bool)
+                    or not isinstance(owner_pid, int)
+                    or owner_pid < 0
+                    or not isinstance(detached, bool)
+                ):
+                    raise ValueError("ledger reservation owner metadata is invalid")
                 reservation = ResourceReservation(
                     reservation_id=reservation_id,
                     profile_id=profile_id,
                     amount=amount,
+                    owner_pid=owner_pid,
+                    detached=detached,
                 )
                 loaded.append((reservation, float(expires_at)))
             if saved_identity != self._identity:
@@ -361,13 +425,26 @@ class DurableResourceLedger(ResourceLedger):
                         "outstanding admission reservations require confirmed supervisor release"
                     )
                 return
+            swept = False
             for reservation, expires_at in loaded:
+                if (
+                    not reservation.detached
+                    and reservation.owner_pid > 0
+                    and not process_is_alive(reservation.owner_pid)
+                ):
+                    # A dead journaled owner proves the non-detached charge
+                    # is reusable; swept rows stay durable on disk only until
+                    # the next persist below.
+                    swept = True
+                    continue
                 self._reservations[reservation.reservation_id] = reservation
                 self._expires_at[reservation.reservation_id] = expires_at
                 self._runtime_used = self._runtime_used + reservation.amount
                 self._profile_used[reservation.profile_id] = (
                     self._profile_used[reservation.profile_id] + reservation.amount
                 )
+            if swept:
+                self._persist_locked()
             if not self._runtime_used.fits(self._runtime_limit - self._guard):
                 raise ValueError("ledger exceeds the Host runtime ceiling")
             for profile_id, used in self._profile_used.items():
@@ -397,6 +474,8 @@ class DurableResourceLedger(ResourceLedger):
                     "start_slots": reservation.amount.start_slots,
                 },
                 "expires_at": self._expires_at[reservation.reservation_id],
+                "owner_pid": reservation.owner_pid,
+                "detached": reservation.detached,
             }
             for reservation in sorted(
                 self._reservations.values(),
@@ -485,13 +564,16 @@ class FairAdmissionQueue:
         amount: ResourceAmount,
         *,
         wait_timeout_seconds: float,
+        detached: bool = False,
     ) -> QueueItem:
         """Atomically check all bounds and reserve before accepting an item."""
         if wait_timeout_seconds <= 0:
             raise AdmissionError("queue wait timeout must be positive")
         with self._lock:
             self._check_bounds(scope)
-            reservation = self._ledger.reserve(scope.profile_id, amount)
+            reservation = self._ledger.reserve(
+                scope.profile_id, amount, detached=detached
+            )
             now = self._clock()
             item = QueueItem(
                 item_id=secrets.token_urlsafe(24),
@@ -514,6 +596,7 @@ class FairAdmissionQueue:
         amount: ResourceAmount,
         *,
         wait_timeout_seconds: float,
+        detached: bool = False,
     ) -> ResourceReservation:
         """Reserve one request without exposing a racy intermediate queue pop.
 
@@ -529,6 +612,7 @@ class FairAdmissionQueue:
                 scope,
                 amount,
                 wait_timeout_seconds=wait_timeout_seconds,
+                detached=detached,
             )
             queue = self._by_binding[item.scope.binding_id]
             queue.remove(item.item_id)

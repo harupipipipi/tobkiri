@@ -23,6 +23,7 @@ from tobkiri_host.admission import (
     QueueScope,
     ResourceAmount,
     ResourceReservation,
+    dead_owner_reservation_ids,
 )
 from tobkiri_host.artifact_materialization import capture_materialized_artifact
 from tobkiri_host.backends import BackendRegistry, BackendStatus, ExecutionBackend
@@ -438,6 +439,7 @@ class _PlanAdmission(RequestAdmissionPort):
             declared_upper_bound_bytes=upper_bound,
             concurrency=_positive_int(policy.get("concurrency"), default=1),
             disk_bytes=_nonnegative_int(policy.get("disk_bytes"), default=0),
+            detached=binding.variant.execution_kind is ExecutionKind.PACK_VM,
         )
 
     def acquire(
@@ -452,6 +454,7 @@ class _PlanAdmission(RequestAdmissionPort):
             scope,
             estimate.charge(),
             wait_timeout_seconds=wait_timeout_seconds,
+            detached=estimate.detached,
         )
         return AdmissionTicket(reservation)
 
@@ -2767,8 +2770,15 @@ def capture_production_dispatch(
         saved_identity: Mapping[str, str],
         reservations: tuple[ResourceReservation, ...],
     ) -> tuple[str, ...]:
-        """Return only reservations with exact PackVM reconciliation proof."""
+        """Return only reservations with an exact supervisor release proof.
 
+        Non-detached charges are owned by the supervisor process that
+        journaled them, so a dead recorded owner proves the charge is
+        reusable. Detached PackVM charges can outlive their owner and still
+        require exact interrupted-allocation reconciliation.
+        """
+
+        released: set[str] = set(dead_owner_reservation_ids(reservations))
         recover = getattr(packvm_provisioner, "recover_interrupted_allocation", None)
         current_fencing = int(active.activation["fencing_token"])
         saved_activation_id = saved_identity.get("activation_id", "")
@@ -2780,14 +2790,14 @@ def capture_production_dispatch(
             or not reservations
             or any(item.profile_id != profile_id for item in reservations)
         ):
-            return ()
+            return tuple(sorted(released))
         activation_name = saved_activation_id.removeprefix("activation:")
         if (
             not activation_name
             or len(activation_name) > 255
             or Path(activation_name).name != activation_name
         ):
-            return ()
+            return tuple(sorted(released))
         try:
             envelope = json.loads(
                 (
@@ -2800,7 +2810,7 @@ def capture_production_dispatch(
             saved_activation = envelope["activation"]
             saved_fencing = saved_activation["fencing_token"]
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
-            return ()
+            return tuple(sorted(released))
         if (
             not isinstance(saved_activation, Mapping)
             or type(saved_fencing) is not int
@@ -2816,7 +2826,7 @@ def capture_production_dispatch(
                 )
             )
         ):
-            return ()
+            return tuple(sorted(released))
         candidates = {
             (
                 f"domain.provider."
@@ -2829,7 +2839,6 @@ def capture_production_dispatch(
             for binding in catalog_bindings
             if binding.variant.execution_kind is ExecutionKind.PACK_VM
         }
-        released: set[str] = set()
         for domain_id, reservation_id, executable_digest in sorted(candidates):
             if recover(
                 domain_id=domain_id,
