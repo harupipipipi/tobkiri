@@ -46,7 +46,7 @@ struct DirectRequestLedgerTests {
     func cancelPreventsLateResultResurrectionAndOldCleanupCannotRemoveNewRequest() throws {
         let ledger = DirectRequestLedger()
         let initial = try ledger.begin("turn", maximumBridges: 4, now: 0)
-        try ledger.cancel("turn")
+        ledger.cancel("turn")
         #expect(throws: HelperError.self) { try ledger.settle(initial, pending: true, now: 1) }
         let replacement = try ledger.begin("turn", maximumBridges: 4, now: 2)
         ledger.abandon(initial)
@@ -71,6 +71,45 @@ struct DirectRequestLedgerTests {
         let ticket = try ledger.begin("turn", maximumBridges: 4, now: 0)
         ledger.abandon(ticket)
         #expect(throws: HelperError.self) { try ledger.resume("turn", now: 1) }
+    }
+
+    @Test
+    func cancelBeforeBeginTombstonesTheIdentity() throws {
+        let ledger = DirectRequestLedger()
+        // A cancel dispatched concurrently with invoke may arrive before the
+        // request registers; the tombstone must still win the later begin.
+        ledger.cancel("racing", now: 0)
+        #expect(throws: HelperError.self) {
+            try ledger.begin("racing", maximumBridges: 1, now: 0)
+        }
+        // The tombstone expires so unrelated future identities are unaffected.
+        let ticket = try ledger.begin("racing", maximumBridges: 1, now: 61)
+        try ledger.settle(ticket, pending: false, now: 62)
+    }
+
+    @Test
+    func cancelAfterAbandonStillRecordsATombstone() throws {
+        let ledger = DirectRequestLedger()
+        let ticket = try ledger.begin("turn", maximumBridges: 1, now: 0)
+        ledger.abandon(ticket)
+        // A deadline/cancel arriving after the exchange was abandoned must
+        // still succeed so its guest cancellation can proceed.
+        ledger.cancel("turn", now: 1)
+        #expect(throws: HelperError.self) {
+            try ledger.begin("turn", maximumBridges: 1, now: 2)
+        }
+    }
+
+    @Test
+    func requestDeadlineExtendsTheTicket() throws {
+        let ledger = DirectRequestLedger()
+        let ticket = try ledger.begin(
+            "long", maximumBridges: 1, deadline: 1000, now: 0
+        )
+        #expect(ticket.deadline == 1000)
+        #expect(throws: HelperError.self) { try ledger.resume("long", now: 59) }
+        try ledger.settle(ticket, pending: true, now: 900)
+        #expect(throws: HelperError.self) { try ledger.resume("long", now: 1001) }
     }
 
     @Test

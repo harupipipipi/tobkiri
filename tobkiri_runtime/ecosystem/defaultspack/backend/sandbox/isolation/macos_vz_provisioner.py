@@ -284,9 +284,17 @@ class _MacOSVZHelperProcess:
         self._process = process
         self._key = bytearray(channel_key)
         self._lock = threading.RLock()
+        self._send_lock = threading.Lock()
         self._closed = False
         self._domain_id: str | None = None
         self._launch_binding_digest: str | None = None
+        self._pending: dict[str, _PendingHelperExchange] = {}
+        self._reader = threading.Thread(
+            target=self._reader_loop,
+            name="packvm-vz-helper-reader",
+            daemon=True,
+        )
+        self._reader.start()
 
     def prepare_efi_store(
         self, *, domain_id: str, run_root: Path, efi_path: Path
@@ -331,7 +339,12 @@ class _MacOSVZHelperProcess:
             self._launch_binding_digest = launch_binding_digest
 
     def exchange(self, envelope: Mapping[str, Any]) -> Mapping[str, Any]:
-        """Forward one direct envelope without adding trust or credentials."""
+        """Forward one direct envelope without adding trust or credentials.
+
+        Exchanges are concurrent: a blocking invoke must not prevent a
+        bounded cancel for the same domain from reaching the helper.
+        Responses are routed back by their echoed ``host_nonce``.
+        """
 
         with self._lock:
             if self._closed or self._process.poll() is not None:
@@ -342,7 +355,18 @@ class _MacOSVZHelperProcess:
                 or envelope.get("launch_binding_digest") != self._launch_binding_digest
             ):
                 raise ValueError("PackVM VZ helper transport binding is invalid")
-            return self._exchange_line(dict(envelope))
+            key = envelope.get("host_nonce")
+            if not isinstance(key, str) or not key:
+                raise ValueError("PackVM VZ helper request identity is invalid")
+            pending = _PendingHelperExchange()
+            self._pending[key] = pending
+        try:
+            with self._send_lock:
+                self._write_line(dict(envelope))
+            return pending.take()
+        finally:
+            with self._lock:
+                self._pending.pop(key, None)
 
     def close(self) -> None:
         """Close the sole helper process for this allocation without shelling out."""
@@ -351,6 +375,8 @@ class _MacOSVZHelperProcess:
             if self._closed:
                 return
             self._closed = True
+            pending = list(self._pending.values())
+            self._pending.clear()
             try:
                 if self._process.stdin is not None:
                     self._process.stdin.close()
@@ -361,6 +387,8 @@ class _MacOSVZHelperProcess:
                     self._process.wait(timeout=5)
                 except (OSError, subprocess.SubprocessError):
                     pass
+            for exchange in pending:
+                exchange.fail("PackVM VZ helper process closed")
             self._key[:] = b"\0" * len(self._key)
 
     def _legacy_request(self, operation: str, extra: Mapping[str, object]) -> Mapping[str, object]:
@@ -378,7 +406,7 @@ class _MacOSVZHelperProcess:
         request["request_hmac"] = hmac.new(
             self._key, _canonical_bytes(request), hashlib.sha256
         ).hexdigest()
-        response = self._exchange_line(request)
+        response = self._send_and_wait(request_id, request)
         received = response.pop("response_hmac", None)
         if not isinstance(received, str) or not hmac.compare_digest(
             received,
@@ -398,24 +426,102 @@ class _MacOSVZHelperProcess:
             raise ValueError("PackVM VZ helper prelaunch response is invalid")
         return dict(data)
 
-    def _exchange_line(self, payload: Mapping[str, object]) -> dict[str, object]:
-        if self._process.stdin is None or self._process.stdout is None:
+    def _send_and_wait(
+        self, key: str, payload: Mapping[str, object]
+    ) -> dict[str, object]:
+        with self._lock:
+            if self._closed or self._process.poll() is not None:
+                raise ValueError("PackVM VZ helper process is unavailable")
+            pending = _PendingHelperExchange()
+            self._pending[key] = pending
+        try:
+            with self._send_lock:
+                self._write_line(dict(payload))
+            return pending.take()
+        finally:
+            with self._lock:
+                self._pending.pop(key, None)
+
+    def _write_line(self, payload: dict[str, object]) -> None:
+        if self._process.stdin is None:
             raise ValueError("PackVM VZ helper pipes are unavailable")
         encoded = _canonical_bytes(payload)
         if len(encoded) > _MAX_HELPER_PROTOCOL_BYTES:
             raise ValueError("PackVM VZ helper request exceeds its bound")
         self._process.stdin.write(encoded + b"\n")
         self._process.stdin.flush()
-        response_line = self._process.stdout.readline(_MAX_HELPER_PROTOCOL_BYTES + 1)
-        if not response_line or len(response_line) > _MAX_HELPER_PROTOCOL_BYTES:
-            raise ValueError("PackVM VZ helper response exceeds its bound")
+
+    def _reader_loop(self) -> None:
+        """Route each bounded response to the exchange which owns its nonce.
+
+        A response which cannot be attributed is a protocol violation, so it
+        fails every pending exchange rather than being silently dropped.
+        """
+
+        failure: str | None = None
         try:
-            response = json.loads(response_line)
-        except json.JSONDecodeError as exc:
-            raise ValueError("PackVM VZ helper response is invalid") from exc
-        if not isinstance(response, dict):
-            raise ValueError("PackVM VZ helper response is invalid")
-        return response
+            while True:
+                if self._process.stdout is None:
+                    failure = "PackVM VZ helper pipes are unavailable"
+                    break
+                line = self._process.stdout.readline(
+                    _MAX_HELPER_PROTOCOL_BYTES + 1
+                )
+                if not line or len(line) > _MAX_HELPER_PROTOCOL_BYTES:
+                    failure = "PackVM VZ helper response exceeds its bound"
+                    break
+                try:
+                    response = json.loads(line)
+                except json.JSONDecodeError:
+                    failure = "PackVM VZ helper response is invalid"
+                    break
+                if not isinstance(response, dict):
+                    failure = "PackVM VZ helper response is invalid"
+                    break
+                key = response.get("host_nonce") or response.get("request_id")
+                with self._lock:
+                    pending = (
+                        self._pending.get(key)
+                        if isinstance(key, str) and key in self._pending
+                        else None
+                    )
+                    if pending is None:
+                        failure = "PackVM VZ helper response is unbound"
+                        break
+                    pending.complete(dict(response))
+        except (OSError, ValueError):
+            failure = "PackVM VZ helper transport failed"
+        with self._lock:
+            pending_all = list(self._pending.values())
+            self._pending.clear()
+        for exchange in pending_all:
+            exchange.fail(failure or "PackVM VZ helper transport closed")
+
+
+class _PendingHelperExchange:
+    """One in-flight helper request waiting on its keyed response."""
+
+    __slots__ = ("_event", "_response", "_failure")
+
+    def __init__(self) -> None:
+        self._event = threading.Event()
+        self._response: dict[str, object] | None = None
+        self._failure: str | None = None
+
+    def complete(self, response: dict[str, object]) -> None:
+        self._response = response
+        self._event.set()
+
+    def fail(self, reason: str) -> None:
+        self._failure = reason
+        self._event.set()
+
+    def take(self) -> dict[str, object]:
+        self._event.wait()
+        if self._failure is not None:
+            raise ValueError(self._failure)
+        assert self._response is not None
+        return self._response
 
 
 class MacOSVZProvisioner:

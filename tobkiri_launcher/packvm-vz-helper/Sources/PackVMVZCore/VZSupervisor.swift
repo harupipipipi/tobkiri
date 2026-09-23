@@ -24,6 +24,15 @@ private let directGuestMaximumRetryDelay: TimeInterval = 1
 // become ready without unbounded blocked worker accumulation.
 private let directGuestMaximumPendingConnects = 2
 private let directSerialDiagnosticsMaximumBytes = 128 * 1024
+// A request's ledger ticket and guest budget must outlive its declared Host
+// deadline so a deadline-triggered Broker cancellation can still arrive and
+// be acknowledged; the hard cap bounds ledger retention for absurd inputs.
+private let directRequestTicketGraceSeconds: TimeInterval = 30
+private let directGuestBudgetGraceSeconds: TimeInterval = 30
+private let directRequestTicketHardCapSeconds: TimeInterval = 900
+// Mirrors MAX_GUEST_EXECUTION_BUDGET_SECONDS in packvm_guest_runner.py; the
+// guest rejects larger budgets outright so the helper clamps instead.
+private let directGuestBudgetHardCapSeconds: TimeInterval = 600
 
 public final class VZSupervisor {
     private struct Domain {
@@ -329,7 +338,20 @@ public final class VZSupervisor {
         let savedTurn = request["contract_id"] as? String == "conversation.saved-turn.v1"
             && request["contract_version"] as? String == "1.0.0"
             && request["operation_id"] as? String == "saved_complete"
-        let ticket = try domain.activeRequests.begin(requestID, maximumBridges: savedTurn ? 4 : 1)
+        let requestDeadline = try Self.parseRequestDeadline(request["deadline_monotonic"])
+        // The request's own Host deadline bounds its ledger ticket and guest
+        // wait. A blocking operation must stay owned until the Broker's
+        // deadline-triggered cancellation can arrive, so both budgets receive
+        // a small grace beyond the declared deadline.
+        let ticketDeadline = requestDeadline.map {
+            min($0 + directRequestTicketGraceSeconds,
+                ProcessInfo.processInfo.systemUptime + directRequestTicketHardCapSeconds)
+        }
+        let ticket = try domain.activeRequests.begin(
+            requestID,
+            maximumBridges: savedTurn ? 4 : 1,
+            deadline: ticketDeadline
+        )
         var completed = false
         defer {
             // A transport or schema failure must not leave an unowned request
@@ -337,7 +359,7 @@ public final class VZSupervisor {
             // outer invocation and will not be permitted to resume it.
             if !completed { domain.activeRequests.abandon(ticket) }
         }
-        let guestPayload: [String: Any] = [
+        var guestPayload: [String: Any] = [
             "operation": "invoke",
             "request_id": requestID,
             "target_domain": domainID,
@@ -352,6 +374,17 @@ public final class VZSupervisor {
             "deadline_monotonic": request["deadline_monotonic"] as Any,
             "cancel_token": Self.freshGuestChallenge(),
         ]
+        if let requestDeadline {
+            // The guest cannot compare a Host monotonic deadline with its own
+            // clock; send the remaining budget it may keep the operation alive
+            // for, including the grace which lets a deadline cancellation win.
+            let budget = min(
+                max(0, requestDeadline - ProcessInfo.processInfo.systemUptime)
+                    + directGuestBudgetGraceSeconds,
+                directGuestBudgetHardCapSeconds
+            )
+            guestPayload["budget_seconds"] = String(format: "%.17g", budget)
+        }
         let response = try callDirectGuest(
             machine: domain.machine,
             queue: domain.queue,
@@ -425,7 +458,7 @@ public final class VZSupervisor {
         guestChallenge: String
     ) throws -> [String: Any] {
         let domain = try activeDirectDomain(domainID)
-        try domain.activeRequests.cancel(requestID)
+        domain.activeRequests.cancel(requestID)
         let response = try callDirectGuest(
             machine: domain.machine,
             queue: domain.queue,
@@ -1078,7 +1111,7 @@ public final class VZSupervisor {
             expectedRequestID: expectedRequestID,
             expectedChallenge: expectedChallenge,
             attestationNonce: attestationNonce,
-            timeout: min(remaining, directGuestOperationTimeout),
+            timeout: remaining,
             timeoutErrorCode: "GUEST_AGENT_TIMEOUT",
             connectionAttempts: connectionAttempts
         )
@@ -1340,6 +1373,27 @@ public final class VZSupervisor {
         var bytes = [UInt8](repeating: 0, count: 32)
         _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
         return bytes.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Parse the Host's ``.17g`` monotonic deadline. Both clocks share the
+    /// host boot epoch (``systemUptime`` and Python ``monotonic``), so the
+    /// value is directly comparable here even though the guest cannot use it.
+    private static func parseRequestDeadline(_ value: Any?) throws -> TimeInterval? {
+        guard let value, !(value is NSNull) else {
+            return nil
+        }
+        let parsed: Double?
+        if let text = value as? String {
+            parsed = Double(text)
+        } else if let number = value as? NSNumber {
+            parsed = number.doubleValue
+        } else {
+            parsed = nil
+        }
+        guard let deadline = parsed, deadline.isFinite, deadline > 0 else {
+            throw HelperError.invalidRequest("INVALID_DIRECT_INVOKE")
+        }
+        return deadline
     }
 
     private static func validateGuestResponse(

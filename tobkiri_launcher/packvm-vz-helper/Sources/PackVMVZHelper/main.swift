@@ -8,6 +8,11 @@ private enum StartupError: Error {
     case invalidAgentKey
 }
 
+// In-flight exchanges are bounded so a hostile or stalled request stream
+// cannot accumulate unbounded worker state; the Host only keeps a handful
+// of requests open per domain.
+private let maximumInFlightRequests = 8
+
 @main
 struct PackVMVZHelperMain {
     static func main() {
@@ -17,10 +22,37 @@ struct PackVMVZHelperMain {
             let supervisor = VZSupervisor()
             let replayGuard = NonceReplayGuard()
             let reader = BoundedLineReader(handle: .standardInput)
+            // Requests are dispatched concurrently so a bounded cancel can
+            // reach the guest while a blocking invoke is still in flight.
+            // Responses are signed self-contained envelopes keyed by
+            // host_nonce, so completion order is intentionally not forced.
+            let requestQueue = DispatchQueue(
+                label: "io.tobkiri.packvm-vz-helper.requests",
+                attributes: .concurrent
+            )
+            let writeLock = NSLock()
+            let inFlight = DispatchSemaphore(value: maximumInFlightRequests)
             defer { supervisor.cleanupAll() }
             while let line = try reader.nextLine() {
-                let response = handle(line: line, key: key, supervisor: supervisor, replayGuard: replayGuard)
-                try writeCanonicalLine(response, to: .standardOutput)
+                inFlight.wait()
+                requestQueue.async {
+                    defer { inFlight.signal() }
+                    let response = handle(
+                        line: line,
+                        key: key,
+                        supervisor: supervisor,
+                        replayGuard: replayGuard
+                    )
+                    writeLock.lock()
+                    defer { writeLock.unlock() }
+                    do {
+                        try writeCanonicalLine(response, to: .standardOutput)
+                    } catch {
+                        // A broken response channel cannot report anything;
+                        // exiting fails every pending exchange fail-closed.
+                        exit(EXIT_FAILURE)
+                    }
+                }
                 if supervisor.shouldExit {
                     break
                 }

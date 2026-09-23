@@ -18,9 +18,11 @@ final class DirectRequestLedger {
 
     private let lock = NSLock()
     private var entries: [String: Entry] = [:]
+    private var cancelled: [String: TimeInterval] = [:]
 
     func begin(
         _ requestID: String, maximumBridges: Int,
+        deadline: TimeInterval? = nil,
         now: TimeInterval = ProcessInfo.processInfo.systemUptime
     ) throws -> Ticket {
         lock.lock()
@@ -29,6 +31,13 @@ final class DirectRequestLedger {
             throw HelperError.invalidRequest("INVALID_BRIDGE_LIMIT")
         }
         entries = entries.filter { $0.value.ticket.deadline > now }
+        cancelled = cancelled.filter { $0.value > now }
+        // A cancellation delivered before this request registered must still
+        // win: concurrent dispatch means ordering between invoke and cancel is
+        // not guaranteed, and a tombstoned identity can never become active.
+        if cancelled.removeValue(forKey: requestID) != nil {
+            throw HelperError.invalidState("REQUEST_CANCELLED")
+        }
         guard entries[requestID] == nil else {
             throw HelperError.invalidState("REQUEST_ALREADY_ACTIVE")
         }
@@ -36,7 +45,10 @@ final class DirectRequestLedger {
             throw HelperError.invalidState("ACTIVE_REQUEST_LIMIT")
         }
         let ticket = Ticket(
-            requestID: requestID, generation: UUID(), exchange: UUID(), deadline: now + 60
+            requestID: requestID,
+            generation: UUID(),
+            exchange: UUID(),
+            deadline: deadline ?? (now + 60)
         )
         entries[requestID] = Entry(
             ticket: ticket, remainingBridges: maximumBridges, inFlight: true
@@ -102,11 +114,21 @@ final class DirectRequestLedger {
     }
 
     /// Retire before sending cancellation; late transport completions stay retired.
-    func cancel(_ requestID: String) throws {
+    /// A request which already finished or has not registered yet leaves a
+    /// tombstone so cancellation remains idempotent and still wins a later
+    /// racing ``begin`` for the same identity.
+    func cancel(
+        _ requestID: String,
+        now: TimeInterval = ProcessInfo.processInfo.systemUptime
+    ) {
         lock.lock()
         defer { lock.unlock() }
-        guard entries.removeValue(forKey: requestID) != nil else {
-            throw HelperError.invalidState("REQUEST_NOT_ACTIVE")
+        if entries.removeValue(forKey: requestID) != nil {
+            return
+        }
+        cancelled = cancelled.filter { $0.value > now }
+        if cancelled.count < 128 {
+            cancelled[requestID] = now + 60
         }
     }
 }

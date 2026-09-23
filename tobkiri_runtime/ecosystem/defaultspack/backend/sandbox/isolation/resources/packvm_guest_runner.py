@@ -88,7 +88,11 @@ PACKVM_GUEST_AGENT_RESPONSE_PROTOCOL = "io.tobkiri.macos-vz-supervisor.v1"
 PACKVM_GUEST_AGENT_RESPONSE_KIND = "tobkiri.packvm.guest.response.v1"
 PACKVM_GUEST_AGENT_RESPONSE_VERSION = 1
 PACKVM_GUEST_AGENT_VERSION = 1
-MAX_AGENT_REQUEST_BYTES = 1024 * 1024
+# The vsock line must carry the helper's maximum legal invoke payload
+# (``maxInvokePayloadBytes`` = 1280 KiB) plus guest-envelope headroom so the
+# guest-side child-request bound — not this transport bound — decides
+# oversized inputs and can report INPUT_LIMIT_REJECTED with a bound response.
+MAX_AGENT_REQUEST_BYTES = 1280 * 1024 + 64 * 1024
 MAX_AGENT_RESPONSE_BYTES = MAX_RESULT_BYTES
 AGENT_IO_TIMEOUT_SECONDS = 30.0
 MAX_ACTIVE_AGENT_REQUESTS = 8
@@ -96,6 +100,10 @@ MAX_DEADLINE_TEXT_BYTES = 32
 MAX_PENDING_BRIDGES = 64
 MAX_SEEN_AGENT_CHALLENGES = 256
 PENDING_BRIDGE_TTL_SECONDS = 60.0
+# Backstop for one guest invocation when the Host supplies a relative
+# ``budget_seconds``. Contracts may declare up to 300s today; the bound stays
+# finite so an abandoned op can never own the guest forever.
+MAX_GUEST_EXECUTION_BUDGET_SECONDS = 600.0
 _DIGEST = re.compile(r"^sha256:[a-f0-9]{64}$")
 _IDENTIFIER = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 _BRIDGE_NONCE = re.compile(r"^[a-f0-9]{48}$")
@@ -265,7 +273,7 @@ def _invoke(
         "deadline_monotonic",
         "cancel_token",
     }
-    if set(request) != required:
+    if not required <= set(request) <= required | {"budget_seconds"}:
         raise ValueError("PackVM invocation fields are invalid")
     for field in ("request_id", "target_domain", "contract_version"):
         if not isinstance(request[field], str) or not request[field]:
@@ -495,10 +503,46 @@ def _local_guest_deadline(value: float | None) -> float:
         return now + PENDING_BRIDGE_TTL_SECONDS
     if type(value) not in (int, float) or not math.isfinite(value):
         raise ValueError("PackVM guest deadline is invalid")
-    if value > now + PENDING_BRIDGE_TTL_SECONDS:
+    if value > now + MAX_GUEST_EXECUTION_BUDGET_SECONDS:
         raise ValueError("PackVM guest deadline exceeds its budget")
     _remaining_guest_budget(value)
     return value
+
+
+def _local_guest_deadline_from_budget(value: object) -> float:
+    """Apply the Host-supplied relative budget to the guest-local clock.
+
+    The helper derives ``budget_seconds`` from the Host's monotonic request
+    deadline because the guest clock cannot be compared with it. An absent
+    budget keeps the legacy pending-bridge TTL for compatibility.
+    """
+
+    if value is None:
+        return _local_guest_deadline(None)
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ValueError("PackVM guest execution budget is invalid")
+    if isinstance(value, str):
+        if (
+            not value
+            or len(value.encode("utf-8")) > MAX_DEADLINE_TEXT_BYTES
+            or _CANONICAL_DEADLINE.fullmatch(value) is None
+        ):
+            raise ValueError("PackVM guest execution budget is invalid")
+        try:
+            seconds = float(value)
+        except ValueError as exc:
+            raise ValueError(
+                "PackVM guest execution budget is invalid"
+            ) from exc
+    else:
+        seconds = float(value)
+    if (
+        not math.isfinite(seconds)
+        or seconds <= 0
+        or seconds > MAX_GUEST_EXECUTION_BUDGET_SECONDS
+    ):
+        raise ValueError("PackVM guest execution budget is invalid")
+    return time.monotonic() + seconds
 
 
 def _remaining_guest_budget(deadline: float) -> float:
@@ -1404,7 +1448,9 @@ def _dispatch_agent_request(
             or payload.get("target_domain") != config.domain_id
         ):
             raise ValueError("PackVM guest agent invocation binding is invalid")
-        guest_deadline = _local_guest_deadline(None)
+        guest_deadline = _local_guest_deadline_from_budget(
+            payload.get("budget_seconds")
+        )
         if payload.get("contract_id") == "conversation.saved-turn.v1":
             def initial_step(
                 captured: dict[str, Any], arguments: dict[str, Any], deadline: float,
