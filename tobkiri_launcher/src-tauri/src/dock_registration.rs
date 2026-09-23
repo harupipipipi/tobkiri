@@ -101,6 +101,40 @@ impl DefaultspackDesktopMetadata {
     }
 }
 
+#[cfg(test)]
+impl DefaultspackDesktopMetadata {
+    pub(crate) fn test_metadata(
+        execution_identity: crate::host_contract::ExecutionProfileIdentity,
+    ) -> Self {
+        Self {
+            entrypoint: PathBuf::from("/tmp/rumi/defaultspack/defaultspack/desktop_app.py"),
+            argv: Vec::new(),
+            app_working_dir: PathBuf::from("/tmp/rumi/defaultspack"),
+            env_vars: Vec::new(),
+            port: DEFAULTSPACK_DEFAULT_PORT,
+            execution_identity,
+            bootstrap_profile_digest: format!("sha256:{}", "a".repeat(64)),
+            catalog_revision: "sha256:test".into(),
+            artifact_digest: "sha256:test".into(),
+            function_id: "runtime.tauri.application.default".into(),
+            provider_id: "runtime.tauri.application.default".into(),
+            contract_namespace: "fixture.application".into(),
+            application_id: "runtime.tauri.application.default".into(),
+            base_pack_id: "fixture.base".into(),
+            shell_provider_id: "fixture.shell".into(),
+            shell_artifact_id: "fixture.shell.macos-arm64".into(),
+            shell_artifact_digest: format!("sha256:{}", "b".repeat(64)),
+            shell_entrypoint_digest: format!("sha256:{}", "c".repeat(64)),
+            frontend_entry: crate::frontend_entry::test_binding(),
+            host_contract_contributions:
+                crate::host_contract_contributions::HostContractContributionValues {
+                    system_pack_descriptors: "[]".into(),
+                    update_target_descriptors: "[]".into(),
+                },
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct PreparedShellRuntime {
     pub(crate) url: String,
@@ -788,7 +822,7 @@ fn process_is_descendant_of(mut process_id: u32, ancestor_id: u32) -> AnyResult<
     Ok(false)
 }
 
-fn read_defaultspack_desktop_metadata(
+pub(crate) fn read_defaultspack_desktop_metadata(
     config: &AppConfig,
 ) -> AnyResult<DefaultspackDesktopMetadata> {
     let authority = crate::defaultspack_authority::resolve(config)?;

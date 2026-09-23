@@ -207,14 +207,18 @@ impl ApplicationProcessManager {
             }
 
             if state.restart_in_progress {
-                if state
-                    .launch_metadata
-                    .as_ref()
-                    .is_some_and(|current| !application_metadata_matches(current, &metadata))
-                {
-                    return Err(anyhow!(
-                        "Defaultspack restart is in progress for a different execution Profile"
-                    ));
+                if state.launch_metadata.as_ref().map_or(true, |current| {
+                    !application_metadata_matches(current, &metadata)
+                }) {
+                    // A restart for a superseded execution Profile can never
+                    // satisfy this request. Adopt the freshly resolved
+                    // metadata so the in-flight spawn is discarded and the
+                    // next respawn publishes the active Host contract.
+                    state.launch_metadata = Some(metadata.clone());
+                    info!(
+                        "Defaultspack restart is in progress for a superseded execution Profile; adopting the active one"
+                    );
+                    return Ok(());
                 }
                 info!("Defaultspack restart is already in progress; reusing it");
                 return Ok(());
@@ -336,7 +340,7 @@ impl ApplicationProcessManager {
     }
 
     fn monitor_once(&self) -> Result<()> {
-        let restart_metadata = {
+        let restart_needed = {
             let mut state = self.lock_state()?;
             if state.stop_requested || self.shutdown_requested.load(Ordering::SeqCst) {
                 return Ok(());
@@ -373,17 +377,59 @@ impl ApplicationProcessManager {
                 return Ok(());
             }
 
-            let Some(metadata) = state.launch_metadata.clone() else {
+            if state.launch_metadata.is_none() {
                 return Ok(());
-            };
+            }
             state.restart_in_progress = true;
-            Some(metadata)
+            true
         };
 
-        if let Some(metadata) = restart_metadata {
-            if let Err(error) = self.spawn_and_track(metadata, "automatic restart") {
-                error!("Failed to restart Defaultspack: {error:#}");
+        if !restart_needed {
+            return Ok(());
+        }
+
+        // Re-resolve the launch metadata instead of replaying the stored copy:
+        // a Profile rotation (pack enable/disable, recapture) commits a new
+        // execution identity, and respawning the stale one would publish a
+        // Host contract the restored session cannot match.
+        let metadata = match crate::dock_registration::read_defaultspack_desktop_metadata(
+            &self.config,
+        ) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                warn!(
+                    "Defaultspack restart deferred; the active execution Profile cannot be resolved: {error:#}"
+                );
+                let mut state = self.lock_state()?;
+                state.restart_in_progress = false;
+                let _ = state.record_restart_failure();
+                return Ok(());
             }
+        };
+
+        {
+            let mut state = self.lock_state()?;
+            if state.stop_requested
+                || self.shutdown_requested.load(Ordering::SeqCst)
+                || state.child.is_some()
+            {
+                state.restart_in_progress = false;
+                return Ok(());
+            }
+            if state
+                .launch_metadata
+                .as_ref()
+                .is_some_and(|current| !application_metadata_matches(current, &metadata))
+            {
+                info!(
+                    "Defaultspack execution Profile rotated; restarting under the refreshed identity"
+                );
+            }
+            state.launch_metadata = Some(metadata.clone());
+        }
+
+        if let Err(error) = self.spawn_and_track(metadata, "automatic restart") {
+            error!("Failed to restart Defaultspack: {error:#}");
         }
         Ok(())
     }
@@ -419,6 +465,15 @@ impl ApplicationProcessManager {
             } else if state.child.is_some() {
                 // Another launcher action won the race while this process was
                 // being created. Keep the existing child and avoid duplication.
+                true
+            } else if state
+                .launch_metadata
+                .as_ref()
+                .is_some_and(|current| !application_metadata_matches(current, &metadata))
+            {
+                // A newer execution Profile was adopted while this process was
+                // being created; registering it would pin stale identity and
+                // Host-contract state onto a superseded child.
                 true
             } else {
                 if !state.owned_process_groups.contains(&pid) {
@@ -1045,6 +1100,92 @@ mod tests {
         );
         assert!(!execution_identity_matches(&current, &requested));
         assert!(execution_identity_matches(&current, &current));
+    }
+
+    #[test]
+    fn start_or_reuse_supersedes_a_restart_for_a_rotated_profile() {
+        let manager = test_manager();
+        let stale = DefaultspackDesktopMetadata::test_metadata(test_execution_identity(
+            "profile-a",
+            &"a".repeat(64),
+            "profile-a-stale",
+            &"b".repeat(64),
+        ));
+        let requested = DefaultspackDesktopMetadata::test_metadata(test_execution_identity(
+            "profile-a",
+            &"a".repeat(64),
+            "profile-a-active",
+            &"b".repeat(64),
+        ));
+        {
+            let mut state = manager.lock_state().unwrap();
+            state.restart_in_progress = true;
+            state.launch_metadata = Some(stale.clone());
+        }
+
+        manager.start_or_reuse(requested.clone()).unwrap();
+
+        let state = manager.lock_state().unwrap();
+        assert!(state.restart_in_progress);
+        assert!(application_metadata_matches(
+            state.launch_metadata.as_ref().unwrap(),
+            &requested
+        ));
+    }
+
+    #[test]
+    fn start_or_reuse_supersedes_a_restart_without_recorded_metadata() {
+        let manager = test_manager();
+        let requested = DefaultspackDesktopMetadata::test_metadata(test_execution_identity(
+            "profile-a",
+            &"a".repeat(64),
+            "profile-a-active",
+            &"b".repeat(64),
+        ));
+        {
+            let mut state = manager.lock_state().unwrap();
+            state.restart_in_progress = true;
+            state.launch_metadata = None;
+        }
+
+        manager.start_or_reuse(requested.clone()).unwrap();
+
+        let state = manager.lock_state().unwrap();
+        assert!(state.restart_in_progress);
+        assert!(application_metadata_matches(
+            state.launch_metadata.as_ref().unwrap(),
+            &requested
+        ));
+    }
+
+    #[test]
+    fn start_or_reuse_reuses_a_restart_for_the_same_profile() {
+        let manager = test_manager();
+        let identity = test_execution_identity(
+            "profile-a",
+            &"a".repeat(64),
+            "profile-a-active",
+            &"b".repeat(64),
+        );
+        let in_flight = DefaultspackDesktopMetadata::test_metadata(identity.clone());
+        {
+            let mut state = manager.lock_state().unwrap();
+            state.restart_in_progress = true;
+            state.launch_metadata = Some(in_flight);
+        }
+
+        manager
+            .start_or_reuse(DefaultspackDesktopMetadata::test_metadata(
+                identity.clone(),
+            ))
+            .unwrap();
+
+        let state = manager.lock_state().unwrap();
+        assert!(state.restart_in_progress);
+        assert!(application_metadata_matches(
+            state.launch_metadata.as_ref().unwrap(),
+            &DefaultspackDesktopMetadata::test_metadata(identity)
+        ));
     }
 
     #[test]
