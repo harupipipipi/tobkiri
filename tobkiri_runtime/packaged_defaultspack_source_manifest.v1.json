@@ -3269,8 +3269,8 @@
     {
       "path": "scripts/generate_packvm_sandbox_qa_pack.py",
       "type": "regular-file",
-      "size": 12223,
-      "sha256": "9f6f7baa2330853b1fe6bb15332208371ab8d87b9fd81d04eb792f8725518f61",
+      "size": 12565,
+      "sha256": "4e59ca5c359fe8df0f88faed27ab18ac18c4bb81f2fe872244e192fffc3ff5ea",
       "executable": false
     },
     {
@@ -3472,8 +3472,8 @@
     {
       "path": "scripts/run_packvm_sandbox_acceptance.py",
       "type": "regular-file",
-      "size": 3688,
-      "sha256": "5aede02dd56bd73a179883b4499231a492a8f08cee94f2a1c58942708d268ff7",
+      "size": 3689,
+      "sha256": "8bee05d4d9277d354a71c3275fadacf66559bba5e475466d8146cf1b44fbc3a1",
       "executable": false
     },
     {

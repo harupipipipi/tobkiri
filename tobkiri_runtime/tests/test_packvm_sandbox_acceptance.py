@@ -174,9 +174,12 @@ def _swift_protocol_bounds() -> tuple[int, int]:
     ).read_text(encoding="utf-8")
 
     def _bound(name: str) -> int:
-        match = re.search(rf"{name} = (\d+) \* (\d+)", source)
+        match = re.search(rf"{name} = (\d+(?: \* \d+)*)", source)
         assert match is not None, name
-        return int(match.group(1)) * int(match.group(2))
+        product = 1
+        for factor in match.group(1).split(" * "):
+            product *= int(factor)
+        return product
 
     return _bound("maxProtocolLineBytes"), _bound("maxInvokePayloadBytes")
 
