@@ -3,8 +3,11 @@ import Darwin
 import Foundation
 
 public let helperProtocol = "io.tobkiri.packvm-supervisor.v1"
-public let maxProtocolLineBytes = 1024 * 1024
-public let maxInvokePayloadBytes = 768 * 1024
+// One protocol line must carry any payload the guest runner can legally stage
+// (MAX_CHILD_REQUEST_BYTES) plus envelope headroom, so the guest-side input
+// bound — not this transport bound — decides oversized inputs.
+public let maxProtocolLineBytes = 2 * 1024 * 1024
+public let maxInvokePayloadBytes = 1280 * 1024
 
 public enum HelperError: Error, Equatable, LocalizedError {
     case invalidRequest(String)

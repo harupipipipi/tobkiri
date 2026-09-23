@@ -113,7 +113,12 @@ def build_documents(root: Path) -> dict[str, dict[str, Any]]:
         schema_catalog[input_digest] = input_schema
         schema_catalog[output_digest] = output_schema
         schema_catalog[error_digest] = error_schema
-        timeout_default_ms = 1000 if operation == "deadline_hold" else 30000
+        # The Host deadline bounds the whole invoke, including guest-domain
+        # materialization.  A cold PackVM boot takes tens of seconds, so the
+        # budget must exceed it by a wide margin for dispatch to ever start.
+        # ``deadline_hold`` children hold forever, so the original deadline
+        # still fires deterministically while the guest holds the operation.
+        timeout_default_ms = 120000
         timeout_hard_max_ms = timeout_default_ms
         operation_id = f"{PACK_ID}.{operation}"
         contract_operations.append(

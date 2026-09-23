@@ -24,7 +24,7 @@ _MAX_RESPONSE_BYTES = 1024 * 1024
 class NativeSocketAcceptancePort:
     """Exchange finite acceptance requests with a native Broker adapter."""
 
-    def __init__(self, path: Path, *, timeout_seconds: float = 90.0) -> None:
+    def __init__(self, path: Path, *, timeout_seconds: float = 300.0) -> None:
         self._path = path.resolve(strict=True)
         metadata = self._path.stat()
         if not stat.S_ISSOCK(metadata.st_mode):

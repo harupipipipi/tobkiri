@@ -17,8 +17,8 @@
           "operation_id": "tobkiri_packvm_sandbox_qa_pack.probe_isolation",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "host_broker",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 30000
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 120000
         },
         {
           "effect_ceiling": [
@@ -32,8 +32,8 @@
           "operation_id": "tobkiri_packvm_sandbox_qa_pack.stdin_overflow",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "host_broker",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 30000
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 120000
         },
         {
           "effect_ceiling": [
@@ -47,8 +47,8 @@
           "operation_id": "tobkiri_packvm_sandbox_qa_pack.stdout_overflow",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "host_broker",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 30000
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 120000
         },
         {
           "effect_ceiling": [
@@ -62,8 +62,8 @@
           "operation_id": "tobkiri_packvm_sandbox_qa_pack.stderr_overflow",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "host_broker",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 30000
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 120000
         },
         {
           "effect_ceiling": [
@@ -77,8 +77,8 @@
           "operation_id": "tobkiri_packvm_sandbox_qa_pack.deadline_hold",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "host_broker",
-          "timeout_default_ms": 1000,
-          "timeout_hard_max_ms": 1000
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 120000
         },
         {
           "effect_ceiling": [
@@ -92,8 +92,8 @@
           "operation_id": "tobkiri_packvm_sandbox_qa_pack.cancel_hold",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "host_broker",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 30000
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 120000
         },
         {
           "effect_ceiling": [
@@ -107,8 +107,8 @@
           "operation_id": "tobkiri_packvm_sandbox_qa_pack.abnormal_exit",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "host_broker",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 30000
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 120000
         }
       ],
       "owner": "tobkiri_packvm_sandbox_qa_pack",

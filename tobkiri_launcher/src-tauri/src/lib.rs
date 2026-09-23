@@ -1378,7 +1378,9 @@ fn maybe_start_packvm_acceptance_adapter(
     let exact_digest = expected_digest;
     let handler: Arc<packvm_acceptance::AcceptanceHandler> = Arc::new(move |request| {
         let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(90))
+            // An acceptance scenario pays one cold guest-domain boot plus the
+            // operation's declared Host deadline inside a single POST.
+            .timeout(Duration::from_secs(300))
             .build()
             .context("PackVM acceptance HTTP client is unavailable")?;
         let session = debug_panel_session(&client, &base_url, &secret)?;

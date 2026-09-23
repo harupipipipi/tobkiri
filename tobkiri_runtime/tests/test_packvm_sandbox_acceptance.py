@@ -5,6 +5,7 @@ from __future__ import annotations
 import errno
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -158,6 +159,79 @@ def test_probe_result_survives_guest_control_frame_guard(
         "kind": packvm_guest_runner.PACKVM_INVOKE_RESULT_KIND,
         "outcome": result,
     }
+
+
+def _swift_protocol_bounds() -> tuple[int, int]:
+    """Parse the signed helper's line and invoke-payload bounds."""
+
+    launcher_root = Path(__file__).resolve().parents[2] / "tobkiri_launcher"
+    source = (
+        launcher_root
+        / "packvm-vz-helper"
+        / "Sources"
+        / "PackVMVZCore"
+        / "CanonicalJSON.swift"
+    ).read_text(encoding="utf-8")
+
+    def _bound(name: str) -> int:
+        match = re.search(rf"{name} = (\d+) \* (\d+)", source)
+        assert match is not None, name
+        return int(match.group(1)) * int(match.group(2))
+
+    return _bound("maxProtocolLineBytes"), _bound("maxInvokePayloadBytes")
+
+
+def test_stdin_overflow_payload_reaches_guest_child_bound() -> None:
+    """The oversized input must fit transport yet trip the guest bound."""
+
+    from ecosystem.defaultspack.backend.sandbox.isolation import (
+        macos_vz_provisioner,
+    )
+
+    root = Path(__file__).resolve().parents[1]
+    fixture = root / "acceptance" / "packvm_sandbox_qa_pack"
+    documents = build_documents(fixture)
+    schema_catalog = documents["contracts.v4.json"]["contracts"][0][
+        "schema_catalog"
+    ]
+    stdin_schema = next(
+        schema
+        for schema in schema_catalog.values()
+        if schema.get("properties", {}).get("fill")
+    )
+    fill_min = stdin_schema["properties"]["fill"]["minLength"]
+
+    payload = {"nonce": "a" * 64, "fill": "x" * fill_min}
+    payload_bytes = len(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    )
+    child_request = {
+        "contract_id": "tobkiri.acceptance.packvm.sandbox.v1",
+        "operation_id": "tobkiri_packvm_sandbox_qa_pack.stdin_overflow",
+        "payload": payload,
+    }
+    child_bytes = len(
+        json.dumps(child_request, sort_keys=True, separators=(",", ":")).encode()
+    )
+    envelope = {
+        "request_id": "request." + "a" * 32,
+        "request_digest": "sha256:" + "a" * 64,
+        "contract_id": child_request["contract_id"],
+        "contract_version": "1.0.0",
+        "operation_id": child_request["operation_id"],
+        "payload": payload,
+        "deadline_monotonic": 1,
+    }
+    envelope_bytes = len(
+        json.dumps(envelope, sort_keys=True, separators=(",", ":")).encode()
+    )
+
+    max_line_bytes, max_invoke_payload_bytes = _swift_protocol_bounds()
+    # The guest child bound — not a transport bound — must reject the input.
+    assert child_bytes > packvm_guest_runner.MAX_CHILD_REQUEST_BYTES
+    assert payload_bytes <= max_invoke_payload_bytes
+    assert envelope_bytes <= max_line_bytes
+    assert envelope_bytes <= macos_vz_provisioner._MAX_HELPER_PROTOCOL_BYTES
 
 
 def test_acceptance_pack_source_stays_outside_production_catalog() -> None:

@@ -92,7 +92,10 @@ VZ_RAW_EFI_IMAGE_DECLARED_BYTES = 3 * 1024 * 1024 * 1024
 VZ_HOST_STORAGE_RESERVE_BYTES = 512 * 1024 * 1024
 _MAX_STATE_BYTES = 128 * 1024
 _MAX_MANIFEST_BYTES = 128 * 1024
-_MAX_HELPER_PROTOCOL_BYTES = 1024 * 1024
+# One helper request line must carry any payload the guest runner can legally
+# stage (``MAX_CHILD_REQUEST_BYTES``) plus envelope headroom, so the guest-side
+# input bound — not this transport bound — decides oversized inputs.
+_MAX_HELPER_PROTOCOL_BYTES = 2 * 1024 * 1024
 _MAX_ARTIFACT_SEED_MANIFEST_BYTES = 16 * 1024 * 1024
 _MAX_ARTIFACT_SEED_PAYLOAD_BYTES = 512 * 1024 * 1024
 _ARTIFACT_SEED_MAGIC = b"tobkiri-packvm-artifact-seed.v1\0"
