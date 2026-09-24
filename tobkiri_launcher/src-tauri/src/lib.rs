@@ -2782,7 +2782,13 @@ fn spawn_signal_shutdown_watcher(app: &AppHandle, set: libc::sigset_t) {
                     return;
                 }
             }
-            let shutdown_state = handle.state::<ShutdownState>();
+            let Some(shutdown_state) = handle.try_state::<ShutdownState>() else {
+                // A signal landing before setup registers managed state
+                // means no runtimes can exist yet — exiting immediately is
+                // the complete cleanup, and keeps the watcher alive for
+                // signals that arrive after setup.
+                std::process::exit(0);
+            };
             let shutdown_flag = Arc::clone(&shutdown_state.inner().0);
             let completion = Arc::clone(&shutdown_state.inner().1);
             if claim_shutdown(&shutdown_flag) {
@@ -2791,15 +2797,20 @@ fn spawn_signal_shutdown_watcher(app: &AppHandle, set: libc::sigset_t) {
                         let _ = window.hide();
                     }
                 }
-                let defaultspack = handle.state::<Arc<DefaultspackManager>>();
-                let kernel_manager = handle.state::<Arc<Mutex<KernelManager>>>();
+                // Managers are registered one by one during setup; a signal
+                // in that window must stop whichever already exist rather
+                // than panic mid-claim and leave the flag claimed forever.
+                let defaultspack =
+                    handle.try_state::<Arc<DefaultspackManager>>();
+                let kernel_manager =
+                    handle.try_state::<Arc<Mutex<KernelManager>>>();
                 // A wedged runtime stop (for example a kernel-manager mutex
                 // held by a deadlocked thread) must not turn the signal
                 // handler into the next hang: bound the cleanup, then exit
                 // regardless so the signal always terminates the launcher.
                 stop_managed_runtimes_bounded(
-                    Arc::clone(defaultspack.inner()),
-                    Arc::clone(kernel_manager.inner()),
+                    defaultspack.map(|state| Arc::clone(state.inner())),
+                    kernel_manager.map(|state| Arc::clone(state.inner())),
                 );
                 complete_shutdown(&completion);
             } else {
@@ -2832,7 +2843,7 @@ pub(crate) fn request_app_exit(app: &AppHandle) {
     std::thread::spawn(move || {
         // The same bound as the signal path: a wedged runtime stop must not
         // leave the launcher hidden-but-alive with windows already closed.
-        stop_managed_runtimes_bounded(defaultspack, km);
+        stop_managed_runtimes_bounded(Some(defaultspack), Some(km));
         complete_shutdown(&completion);
         handle.exit(0);
     });
@@ -2872,35 +2883,39 @@ fn wait_for_shutdown_completion(completion: &ShutdownCompletion) {
 }
 
 fn stop_managed_runtimes(
-    defaultspack: &DefaultspackManager,
-    kernel_manager: &Mutex<KernelManager>,
+    defaultspack: Option<&DefaultspackManager>,
+    kernel_manager: Option<&Mutex<KernelManager>>,
 ) {
     // Both runtimes own independent process groups and each preserves its own
     // bounded graceful-stop window. Stop them concurrently so application
     // shutdown waits for the slower runtime once instead of adding both
     // deadlines together.
     thread::scope(|scope| {
-        let _defaultspack_stop = scope.spawn(|| {
-            if let Err(error) = defaultspack.stop() {
-                error!("Failed to stop Defaultspack during shutdown: {error:#}");
-            }
-        });
-        let _kernel_stop = scope.spawn(|| match kernel_manager.lock() {
-            Ok(mut kernel) => {
-                if let Err(error) = kernel.stop() {
-                    error!("Failed to stop kernel during shutdown: {error}");
+        if let Some(defaultspack) = defaultspack {
+            let _defaultspack_stop = scope.spawn(|| {
+                if let Err(error) = defaultspack.stop() {
+                    error!("Failed to stop Defaultspack during shutdown: {error:#}");
                 }
-            }
-            Err(error) => {
-                error!("Failed to lock kernel manager during shutdown: {error}");
-            }
-        });
+            });
+        }
+        if let Some(kernel_manager) = kernel_manager {
+            let _kernel_stop = scope.spawn(|| match kernel_manager.lock() {
+                Ok(mut kernel) => {
+                    if let Err(error) = kernel.stop() {
+                        error!("Failed to stop kernel during shutdown: {error}");
+                    }
+                }
+                Err(error) => {
+                    error!("Failed to lock kernel manager during shutdown: {error}");
+                }
+            });
+        }
     });
 }
 
 fn stop_managed_runtimes_bounded(
-    defaultspack: Arc<DefaultspackManager>,
-    kernel_manager: Arc<Mutex<KernelManager>>,
+    defaultspack: Option<Arc<DefaultspackManager>>,
+    kernel_manager: Option<Arc<Mutex<KernelManager>>>,
 ) {
     // Every shutdown path bounds the graceful stop behind one watchdog so a
     // wedged manager lock can never outlast the launcher itself.
@@ -2908,7 +2923,10 @@ fn stop_managed_runtimes_bounded(
     let _ = std::thread::Builder::new()
         .name("tobkiri-runtime-cleanup".into())
         .spawn(move || {
-            stop_managed_runtimes(&defaultspack, &kernel_manager);
+            stop_managed_runtimes(
+                defaultspack.as_deref(),
+                kernel_manager.as_deref(),
+            );
             let _ = done_tx.send(());
         });
     if done_rx
@@ -3637,7 +3655,7 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             // infallible: surface recoverable init failures and exit cleanly
             // instead of returning `Err`.
             if let Err(error) = launcher_setup(app, &setup_context) {
-                exit_after_setup_failure(&setup_context, &error);
+                exit_after_setup_failure(app, &setup_context, &error);
             }
             Ok(())
         })
@@ -3729,8 +3747,8 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
                 let defaultspack = app_handle.state::<Arc<DefaultspackManager>>();
                 let kernel_manager = app_handle.state::<Arc<Mutex<KernelManager>>>();
                 stop_managed_runtimes_bounded(
-                    Arc::clone(defaultspack.inner()),
-                    Arc::clone(kernel_manager.inner()),
+                    Some(Arc::clone(defaultspack.inner())),
+                    Some(Arc::clone(kernel_manager.inner())),
                 );
                 complete_shutdown(&shutdown_state.inner().1);
             } else {
@@ -3778,12 +3796,27 @@ struct LauncherSetupContext {
 /// `std::process::exit` performs no unwinding, so calling it inside the
 /// event-loop `Ready` callback is safe — unlike returning `Err`, which Tauri
 /// turns into a panic that aborts across the macOS FFI boundary.
-fn exit_after_setup_failure(ctx: &LauncherSetupContext, error: &anyhow::Error) -> ! {
+fn exit_after_setup_failure(
+    app: &mut tauri::App,
+    ctx: &LauncherSetupContext,
+    error: &anyhow::Error,
+) -> ! {
     error!(
         "Viewer startup failed at stage={}: {error:#}; exiting nonzero",
         startup_stage_name(&ctx.startup_stage)
     );
     eprintln!("Tobkiri Launcher could not start: {error:#}");
+    // The background bootstrap thread may already have spawned managed
+    // children before the late setup step failed; stop whichever runtime
+    // state was registered so they cannot outlive the process.
+    let defaultspack = app.try_state::<Arc<DefaultspackManager>>();
+    let kernel_manager = app.try_state::<Arc<Mutex<KernelManager>>>();
+    if defaultspack.is_some() || kernel_manager.is_some() {
+        stop_managed_runtimes_bounded(
+            defaultspack.map(|state| Arc::clone(state.inner())),
+            kernel_manager.map(|state| Arc::clone(state.inner())),
+        );
+    }
     std::process::exit(1);
 }
 

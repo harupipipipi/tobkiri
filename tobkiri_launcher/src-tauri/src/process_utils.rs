@@ -6,6 +6,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 pub fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
     let mut command = Command::new(program);
     hide_console_window(&mut command);
+    unblock_shutdown_signals(&mut command);
     command
 }
 
@@ -14,7 +15,6 @@ pub fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
 pub fn isolated_python(program: impl AsRef<std::ffi::OsStr>) -> Command {
     let mut command = command(program);
     command.args(["-I", "-B"]);
-    unblock_shutdown_signals(&mut command);
     command
 }
 
@@ -34,7 +34,13 @@ fn unblock_shutdown_signals(command: &mut Command) {
             libc::sigaddset(&mut set, libc::SIGTERM);
             libc::sigaddset(&mut set, libc::SIGINT);
             libc::sigaddset(&mut set, libc::SIGHUP);
-            libc::pthread_sigmask(libc::SIG_UNBLOCK, &set, std::ptr::null_mut());
+            // pthread_sigmask returns the errno value directly rather than
+            // setting errno; fail the spawn instead of leaving the child with
+            // the parent's blocked shutdown mask.
+            let error = libc::pthread_sigmask(libc::SIG_UNBLOCK, &set, std::ptr::null_mut());
+            if error != 0 {
+                return Err(std::io::Error::from_raw_os_error(error));
+            }
             Ok(())
         });
     }

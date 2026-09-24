@@ -11,7 +11,7 @@ use std::ffi::{OsStr, OsString};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Mutex, OnceLock};
 use std::thread;
@@ -1001,7 +1001,7 @@ fn launch_verified_artifact(
         &ticket.path,
         macos_environment,
     )?;
-    let mut process = Command::new(&spec.program)
+    let mut process = crate::process_utils::command(&spec.program)
         .args(&spec.args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
