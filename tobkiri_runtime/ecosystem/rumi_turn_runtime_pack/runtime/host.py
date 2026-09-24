@@ -79,9 +79,23 @@ class TurnHostFactoryV4:
                 if operation_id != self.operation_id or set(values) != {"turn_id"}:
                     raise PermissionError("stop requires only an existing turn ID")
                 turn_id = _identifier(values["turn_id"])
-                observation = invocation.cancellation.request(turn_id)
+                try:
+                    observation = invocation.cancellation.request(turn_id)
+                except PermissionError:
+                    observation = None
                 store.request_saved_cancellation(turn_id)
                 invocation.assert_current()
+                if observation is None:
+                    # The tracked execution is already gone (for example a
+                    # durable turn parked in waiting after its owner lost the
+                    # outcome). The stop intent is still recorded so a later
+                    # reconcile can surface it; only a live handle can prove
+                    # the nested drain required for the cancelled terminal.
+                    return {
+                        "status": "cancellation_requested",
+                        "turn_id": turn_id,
+                        "stopped": False,
+                    }
                 deadline = getattr(
                     getattr(invocation, "envelope", None), "deadline_monotonic", None
                 )

@@ -2268,7 +2268,12 @@ def test_saved_stop_http_signals_only_the_original_owner(tmp_path, monkeypatch) 
         assert server._dispatch_session is not previous_capture
         cookie, csrf, origin = _authenticate(server)
         status, lost_handle, _ = post("/api/chat/turn/stop", {"turn_id": "turn-stop-1"})
-        assert status != 200, lost_handle
+        assert status == 200, lost_handle
+        assert lost_handle["data"] == {
+            "status": "cancellation_requested",
+            "turn_id": "turn-stop-1",
+            "stopped": False,
+        }
         # A fresh capture is not permission to claim the durable turn again.
         for path, payload in (
             ("/api/chat/turn/reconcile", {"turn_id": "turn-stop-1"}),

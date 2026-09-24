@@ -339,6 +339,16 @@ class _MacOSVZHelperProcess:
             self._domain_id = domain_id
             self._launch_binding_digest = launch_binding_digest
 
+    def alive(self) -> bool:
+        """Report whether the helper process can still produce a response."""
+
+        with self._lock:
+            return (
+                not self._closed
+                and self._reader_failure is None
+                and self._process.poll() is None
+            )
+
     def exchange(self, envelope: Mapping[str, Any]) -> Mapping[str, Any]:
         """Forward one direct envelope without adding trust or credentials.
 

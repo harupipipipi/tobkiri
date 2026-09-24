@@ -292,7 +292,12 @@ class _Transport:
         self.helper_failure: str | None = None
         self.replay_host_nonce: str | None = None
         self.closed = False
+        self.dead = False
+        self.transport_error = False
         self.enrollment: tuple[str, str, str] | None = None
+
+    def alive(self) -> bool:
+        return not self.dead and not self.closed
 
     def enroll_launch_secret(
         self,
@@ -350,6 +355,8 @@ class _Transport:
         return {**core, "agent_signature": _b64(signature)}
 
     def exchange(self, envelope: Mapping[str, Any]) -> Mapping[str, Any]:
+        if self.dead or self.transport_error:
+            raise ValueError("PackVM VZ helper process is unavailable")
         request = dict(envelope)
         assert self.enrollment == (
             request["domain_id"],
@@ -594,6 +601,25 @@ def test_direct_driver_uses_dynamic_assets_and_per_domain_helper(tmp_path: Path)
     assert driver.invoke(_request("domain.provider.conversation")).payload == {"text": "request-1"}
     driver.terminate("domain.provider.conversation")
     assert transport.closed and allocator.released == [transport.allocation]
+
+
+def test_terminate_reclaims_domain_when_helper_process_is_dead(tmp_path: Path) -> None:
+    driver, allocator = _driver(tmp_path / "dead")
+    _launch(driver)
+    transport = allocator.transports["domain.provider.conversation"]
+    transport.dead = True
+    driver.terminate("domain.provider.conversation")
+    assert "domain.provider.conversation" not in driver._domains
+    assert transport.closed and allocator.released == [transport.allocation]
+
+    live_driver, live_allocator = _driver(tmp_path / "live")
+    _launch(live_driver)
+    live_transport = live_allocator.transports["domain.provider.conversation"]
+    live_transport.transport_error = True
+    with pytest.raises(BackendUnavailableError):
+        live_driver.terminate("domain.provider.conversation")
+    assert "domain.provider.conversation" in live_driver._domains
+    assert live_allocator.released == []
 
 
 def test_hmac_and_nested_guest_signature_tamper_fail_closed(tmp_path: Path) -> None:

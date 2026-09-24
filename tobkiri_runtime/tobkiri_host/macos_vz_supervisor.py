@@ -899,25 +899,35 @@ class MacOSVZSupervisorDriver:
         if session is None:
             return
         host_nonce = self._new_host_nonce()
-        response = self._exchange(
-            {
-                "kind": _REQUEST_KIND,
-                "protocol": _SUPERVISOR_PROTOCOL,
-                "version": 1,
-                "operation": "terminate",
-                "host_nonce": host_nonce,
-                "domain_id": domain_id,
-                "launch_binding_digest": session.launch_binding_digest,
-                "lease_id": session.attestation.lease_id,
-                "reservation_id": session.attestation.reservation_id,
-            },
-            transport=session.transport,
-            channel_key=session.channel_key,
-            expected_operation="terminate",
-            expected_host_nonce=host_nonce,
-            expected_domain_id=domain_id,
-            expected_binding_digest=session.launch_binding_digest,
-        )
+        try:
+            response = self._exchange(
+                {
+                    "kind": _REQUEST_KIND,
+                    "protocol": _SUPERVISOR_PROTOCOL,
+                    "version": 1,
+                    "operation": "terminate",
+                    "host_nonce": host_nonce,
+                    "domain_id": domain_id,
+                    "launch_binding_digest": session.launch_binding_digest,
+                    "lease_id": session.attestation.lease_id,
+                    "reservation_id": session.attestation.reservation_id,
+                },
+                transport=session.transport,
+                channel_key=session.channel_key,
+                expected_operation="terminate",
+                expected_host_nonce=host_nonce,
+                expected_domain_id=domain_id,
+                expected_binding_digest=session.launch_binding_digest,
+            )
+        except BackendUnavailableError:
+            probe = getattr(session.transport, "alive", None)
+            if not callable(probe) or probe():
+                raise
+            # The guest cannot outlive its helper process, so the signed
+            # cleanup acknowledgement can never arrive. Reclaim the session
+            # and its on-disk allocation instead of wedging the domain.
+            self._release_dead_helper_session(domain_id, session)
+            return
         payload = response["payload"]
         expected_cleanup = {
             "state": "terminated",
@@ -947,6 +957,32 @@ class MacOSVZSupervisorDriver:
         except Exception as exc:
             self._compromise("macOS VZ allocation cleanup failed")
             raise BackendUnavailableError("macOS VZ allocation cleanup failed") from exc
+        self._drop_domain_session(domain_id, session)
+
+    def _release_dead_helper_session(
+        self, domain_id: str, session: _DomainSession
+    ) -> None:
+        """Reclaim a domain whose helper process is already gone.
+
+        A dead helper means a dead guest: the VM, channel, and cleanup
+        acknowledgement are gone with the process. Retaining the session
+        would wedge the domain and leak the on-disk allocation forever, so
+        remaining teardown is best-effort and the bookkeeping is always
+        dropped.
+        """
+
+        try:
+            session.transport.close()
+        except Exception:
+            pass
+        try:
+            if self._domain_allocator is not None:
+                self._domain_allocator.release(session.allocation)
+        except Exception:
+            pass
+        self._drop_domain_session(domain_id, session)
+
+    def _drop_domain_session(self, domain_id: str, session: _DomainSession) -> None:
         with self._lock:
             self._domains.pop(domain_id, None)
             self._transport_domains.pop(id(session.transport), None)
