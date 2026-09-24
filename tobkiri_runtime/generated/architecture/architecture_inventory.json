@@ -6235,7 +6235,7 @@
       },
       {
         "evidence": "python_file_call",
-        "line": 136,
+        "line": 196,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/kernel_flow_execution.py",
         "rule_id": "legacy_python_file_call"
@@ -14981,7 +14981,7 @@
         "rule_id": "legacy_interface_registry"
       },
       {
-        "evidence_digest": "sha256:608d3a22476a5a091c89b143bd5744b5b626c4c785ea9116fb1b5349bde59b29",
+        "evidence_digest": "sha256:78a97c773e80a28855874a2b4fd58a88d781d77b767abdc286c73b72ca11df74",
         "line": 20,
         "path": "tobkiri_runtime/core_runtime/kernel_flow_execution.py",
         "rule_id": "legacy_interface_registry"
@@ -15311,8 +15311,8 @@
         "rule_id": "legacy_python_file_call"
       },
       {
-        "evidence_digest": "sha256:608d3a22476a5a091c89b143bd5744b5b626c4c785ea9116fb1b5349bde59b29",
-        "line": 136,
+        "evidence_digest": "sha256:78a97c773e80a28855874a2b4fd58a88d781d77b767abdc286c73b72ca11df74",
+        "line": 196,
         "path": "tobkiri_runtime/core_runtime/kernel_flow_execution.py",
         "rule_id": "legacy_python_file_call"
       },
@@ -18411,7 +18411,7 @@
     ]
   },
   "repository": {
-    "commit": "f26cb9ab3deff9731ba1226338d0cdff918b35f2",
+    "commit": "0b6f98127abeb460ce89346a19a5a604af105eb6",
     "tree_digest": "4aaf43ebd16d720709b2a377300bea7f7ee91bac7453b59937e10860529dacda"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",
