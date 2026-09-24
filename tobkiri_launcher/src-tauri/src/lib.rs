@@ -2371,16 +2371,30 @@ fn existing_kernel_accepts_bootstrap(port: u16, bootstrap_secret: &str) -> bool 
         && request_panel_bootstrap_code(port, bootstrap_secret).is_ok()
 }
 
-fn resolve_available_kernel_port_with_checks<PortAvailable, ExistingKernelReusable>(
+fn resolve_available_kernel_port_with_checks<
+    PortAvailable,
+    ExistingKernelReusable,
+    ReclaimPreferred,
+>(
     preferred_port: u16,
     mut port_available: PortAvailable,
     mut existing_kernel_reusable: ExistingKernelReusable,
+    mut reclaim_preferred: ReclaimPreferred,
 ) -> u16
 where
     PortAvailable: FnMut(u16) -> bool,
     ExistingKernelReusable: FnMut(u16) -> bool,
+    ReclaimPreferred: FnMut(u16) -> bool,
 {
     if port_available(preferred_port) || existing_kernel_reusable(preferred_port) {
+        return preferred_port;
+    }
+
+    // The preferred port is occupied by something that is not a healthy
+    // reusable Kernel. Before shifting this session onto another port, try
+    // to reclaim it from a stale Launcher-owned listener so the new Kernel
+    // and its state directories keep the expected port.
+    if reclaim_preferred(preferred_port) {
         return preferred_port;
     }
 
@@ -2403,6 +2417,19 @@ fn resolve_available_kernel_port(config: &AppConfig, bootstrap_secret: &str) -> 
         preferred_port,
         is_loopback_port_available,
         |candidate| existing_kernel_accepts_bootstrap(candidate, bootstrap_secret),
+        |candidate| match crate::kernel_manager::reclaim_stale_kernel_port(config, candidate) {
+            Ok(true) => true,
+            Ok(false) => {
+                warn!(
+                    "Kernel port {candidate} is held by a process that is not provably Launcher-owned; leaving it alone and scanning alternate ports"
+                );
+                false
+            }
+            Err(error) => {
+                warn!("Failed to recover stale Kernel listener on port {candidate}: {error:#}");
+                false
+            }
+        },
     );
 
     if port != preferred_port {
@@ -5452,6 +5479,7 @@ mod tests {
             8765,
             |candidate| candidate == 8765,
             |_| false,
+            |_| false,
         );
 
         assert_eq!(port, 8765);
@@ -5461,6 +5489,19 @@ mod tests {
     fn resolve_kernel_port_reuses_existing_kernel_when_bootstrap_matches() {
         let port = resolve_available_kernel_port_with_checks(
             8765,
+            |_| false,
+            |candidate| candidate == 8765,
+            |_| false,
+        );
+
+        assert_eq!(port, 8765);
+    }
+
+    #[test]
+    fn resolve_kernel_port_reclaims_stale_owned_listener_before_falling_back() {
+        let port = resolve_available_kernel_port_with_checks(
+            8765,
+            |_| false,
             |_| false,
             |candidate| candidate == 8765,
         );
@@ -5473,6 +5514,7 @@ mod tests {
         let port = resolve_available_kernel_port_with_checks(
             8765,
             |candidate| candidate == 8767,
+            |_| false,
             |_| false,
         );
 

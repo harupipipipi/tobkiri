@@ -49,9 +49,6 @@ pub(crate) fn kernel_restart_start_backoff(consecutive_failures: u32) -> Duratio
 /// Seconds to wait after SIGTERM before sending SIGKILL.
 const KILL_TIMEOUT_SECS: u64 = 5;
 
-/// Grace period used specifically during application shutdown.
-const KERNEL_STOP_TIMEOUT: Duration = Duration::from_secs(2);
-
 fn python_runtime_env_vars() -> [(&'static str, &'static str); 4] {
     [
         ("PYTHONUTF8", "1"),
@@ -168,6 +165,7 @@ enum ListenerIdentity {
     WorkingDirectory,
     EntrypointPath,
     VenvPython,
+    SealedEnvironment,
 }
 
 impl ListenerIdentity {
@@ -176,6 +174,7 @@ impl ListenerIdentity {
             Self::WorkingDirectory => "matched the configured RUMI_HOME working directory",
             Self::EntrypointPath => "matched the configured Kernel entrypoint path",
             Self::VenvPython => "matched the configured venv Python path",
+            Self::SealedEnvironment => "matched the sealed Python environment root",
         }
     }
 }
@@ -330,6 +329,10 @@ impl KernelManager {
                     )
                     .stdout(Stdio::from(log_file))
                     .stderr(Stdio::from(log_stderr));
+                // Own process group so shutdown can terminate the Kernel and
+                // any runtime descendants together (mirrors Defaultspack).
+                #[cfg(unix)]
+                command.new_process_group();
                 Ok(())
             },
         )
@@ -528,25 +531,11 @@ impl KernelManager {
 
     #[cfg(unix)]
     fn unix_stop(child: &mut crate::python_env::PythonChild) -> Result<()> {
-        use std::thread;
-
-        let pid = child.id() as i32;
-        let _ = process_utils::command("kill")
-            .args(["-TERM", &pid.to_string()])
-            .status();
-
-        let deadline = Instant::now() + KERNEL_STOP_TIMEOUT;
-        while Instant::now() < deadline {
-            if let Ok(Some(_)) = child.try_wait() {
-                return Ok(());
-            }
-            thread::sleep(Duration::from_millis(100));
-        }
-
-        warn!("Kernel did not exit after SIGTERM, sending SIGKILL");
-        child.kill().ok();
-        child.wait().ok();
-        Ok(())
+        // The Kernel leads its own process group so runtime descendants exit
+        // with it; children spawned without a group are still reached by the
+        // routine's direct-pid fallback. Shares the zombie-aware group stop
+        // used for Defaultspack.
+        crate::defaultspack_manager::stop_unix_process_group(child, "Kernel")
     }
 }
 
@@ -570,10 +559,12 @@ pub(crate) fn detect_port_listener(port: u16) -> Result<Option<PortListener>> {
 
 #[cfg(unix)]
 fn detect_port_listener_unix(port: u16) -> Result<Option<PortListener>> {
-    let output = match process_utils::command("lsof")
-        .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN", "-Fpc"])
-        .output()
-    {
+    let mut command = process_utils::command("lsof");
+    command.args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN", "-Fpc"]);
+    let output = match process_utils::bounded_output(
+        &mut command,
+        process_utils::INSPECTION_COMMAND_TIMEOUT,
+    ) {
         Ok(output) => output,
         Err(error) if error.kind() == ErrorKind::NotFound => {
             warn!("`lsof` is not available; port-conflict recovery is disabled");
@@ -616,10 +607,11 @@ fn detect_port_listener_unix(port: u16) -> Result<Option<PortListener>> {
 
 #[cfg(windows)]
 fn detect_port_listener_windows(port: u16) -> Result<Option<PortListener>> {
-    let output = process_utils::command("netstat")
-        .args(["-ano", "-p", "tcp"])
-        .output()
-        .context("failed to run netstat")?;
+    let mut command = process_utils::command("netstat");
+    command.args(["-ano", "-p", "tcp"]);
+    let output =
+        process_utils::bounded_output(&mut command, process_utils::INSPECTION_COMMAND_TIMEOUT)
+            .context("failed to run netstat")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -656,10 +648,11 @@ fn detect_port_listener_windows(port: u16) -> Result<Option<PortListener>> {
 
 #[cfg(unix)]
 fn unix_process_command(pid: u32) -> Option<String> {
-    let output = process_utils::command("ps")
-        .args(["-p", &pid.to_string(), "-o", "command="])
-        .output()
-        .ok()?;
+    let mut command = process_utils::command("ps");
+    command.args(["-p", &pid.to_string(), "-o", "command="]);
+    let output =
+        process_utils::bounded_output(&mut command, process_utils::INSPECTION_COMMAND_TIMEOUT)
+            .ok()?;
     if !output.status.success() {
         return None;
     }
@@ -669,10 +662,11 @@ fn unix_process_command(pid: u32) -> Option<String> {
 
 #[cfg(unix)]
 fn unix_process_cwd(pid: u32) -> Option<String> {
-    let output = process_utils::command("lsof")
-        .args(["-a", "-p", &pid.to_string(), "-d", "cwd", "-Fn"])
-        .output()
-        .ok()?;
+    let mut command = process_utils::command("lsof");
+    command.args(["-a", "-p", &pid.to_string(), "-d", "cwd", "-Fn"]);
+    let output =
+        process_utils::bounded_output(&mut command, process_utils::INSPECTION_COMMAND_TIMEOUT)
+            .ok()?;
     if !output.status.success() {
         return None;
     }
@@ -691,10 +685,11 @@ fn unix_process_cwd(pid: u32) -> Option<String> {
 
 #[cfg(windows)]
 fn windows_process_command(pid: u32) -> Option<String> {
-    let output = process_utils::command("tasklist")
-        .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
-        .output()
-        .ok()?;
+    let mut command = process_utils::command("tasklist");
+    command.args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"]);
+    let output =
+        process_utils::bounded_output(&mut command, process_utils::INSPECTION_COMMAND_TIMEOUT)
+            .ok()?;
     if !output.status.success() {
         return None;
     }
@@ -729,12 +724,50 @@ fn identify_owned_listener(
         return Some(ListenerIdentity::VenvPython);
     }
 
+    if sealed_kernel_listener(&listener) {
+        return Some(ListenerIdentity::SealedEnvironment);
+    }
+
     None
 }
 
 fn is_python_app_command(command: &str) -> bool {
     let command = normalize_for_match(command);
-    command.contains("python") && (command.contains("app.py") || command.contains("-m app"))
+    command.contains("python")
+        && (command.contains("app.py")
+            || command.contains("-m app")
+            || is_sealed_kernel_command(&command))
+}
+
+/// Whether a normalized command line is the sealed Kernel launch
+/// (`python3 -I -B -m tobkiri_sealed.bootstrap --role typed ...`). Other
+/// sealed roles (defaultspack, host_helper) are deliberately rejected so an
+/// unrelated Launcher child is never reaped as a stale Kernel.
+fn is_sealed_kernel_command(normalized_command: &str) -> bool {
+    crate::sealed_python_protocol::sealed_bootstrap_role(normalized_command)
+        == Some(crate::sealed_python_protocol::ROLE_TYPED)
+}
+
+/// A sealed Kernel runs from the verified environment root named by its own
+/// `--environment-root` argument (on macOS that root is the private
+/// `.tobkiri-sealed-python-*` snapshot copy).
+fn sealed_kernel_listener(listener: &PortListener) -> bool {
+    let command = normalize_for_match(&listener.command);
+    if !is_sealed_kernel_command(&command) {
+        return false;
+    }
+    let Some(cwd) = listener.cwd.as_deref() else {
+        return false;
+    };
+    let cwd = normalize_for_match(cwd);
+    command.contains(&format!(
+        "{} {}",
+        crate::sealed_python_protocol::ARG_ENVIRONMENT_ROOT,
+        cwd
+    )) || cwd
+        .rsplit('/')
+        .next()
+        .is_some_and(crate::sealed_python::is_sealed_snapshot_dir_name)
 }
 
 fn command_mentions_path(command: &str, path: &Path) -> bool {
@@ -764,13 +797,23 @@ fn normalize_for_match(value: &str) -> String {
     }
 }
 
+/// Signal the listener's whole process group when it leads one so sealed
+/// descendants cannot keep the port; signal the process directly otherwise.
+/// The group-existence check keeps the common non-leader case quiet instead
+/// of logging a failed group signal first.
+#[cfg(unix)]
+fn signal_listener_process_tree(pid: u32, signal: &str) {
+    if crate::defaultspack_manager::process_group_exists(pid) {
+        let _ = crate::defaultspack_manager::send_process_group_signal(pid, signal);
+    } else {
+        let _ = crate::defaultspack_manager::send_unix_process_signal(pid, signal);
+    }
+}
+
 pub(crate) fn terminate_external_listener(pid: u32, port: u16) -> Result<()> {
     #[cfg(unix)]
     {
-        let pid_str = pid.to_string();
-        let _ = process_utils::command("kill")
-            .args(["-TERM", &pid_str])
-            .status();
+        signal_listener_process_tree(pid, "-TERM");
         wait_for_port_to_clear(port, pid, Duration::from_secs(KILL_TIMEOUT_SECS))?;
         Ok(())
     }
@@ -816,9 +859,7 @@ fn wait_for_port_to_clear(port: u16, expected_pid: u32, timeout: Duration) -> Re
     #[cfg(unix)]
     {
         warn!("Port {port} is still occupied after SIGTERM; sending SIGKILL to pid {expected_pid}");
-        let _ = process_utils::command("kill")
-            .args(["-KILL", &expected_pid.to_string()])
-            .status();
+        signal_listener_process_tree(expected_pid, "-KILL");
         let kill_deadline = Instant::now() + Duration::from_secs(2);
         while Instant::now() < kill_deadline {
             match detect_port_listener(port)? {
@@ -846,6 +887,32 @@ impl Drop for KernelManager {
             }
         }
     }
+}
+
+/// Reap a stale Launcher-owned Kernel listener on `port` when its identity
+/// can be proven from its argv and working directory.
+///
+/// Returns `true` when the port was already free or was recovered, and
+/// `false` when the occupant is not provably Launcher-owned. This is the
+/// port-resolution counterpart of `KernelManager::recover_port_conflict`:
+/// without it a still-initializing previous Kernel silently pushes the new
+/// session onto a shifted port and two Kernels end up owning the same state
+/// directories.
+pub(crate) fn reclaim_stale_kernel_port(config: &AppConfig, port: u16) -> Result<bool> {
+    let Some(listener) = detect_port_listener(port)? else {
+        return Ok(true);
+    };
+    let Some(identity) = identify_owned_listener(&listener, config) else {
+        return Ok(false);
+    };
+    warn!(
+        "Detected stale Rumi listener on port {port}: pid {} ({}; {})",
+        listener.pid,
+        listener.summary(),
+        identity.description(),
+    );
+    terminate_external_listener(listener.pid, port)?;
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -1244,6 +1311,52 @@ mod tests {
         };
 
         assert_eq!(identify_owned_listener(&listener, &config), None);
+    }
+
+    #[test]
+    fn sealed_kernel_argv_is_recoverable_from_its_environment_root() {
+        let config = test_config();
+        let root = format!(
+            "/private/tmp/.tobkiri-sealed-python-4321-{}",
+            "a".repeat(64)
+        );
+        let listener = PortListener {
+            pid: 105,
+            command: format!(
+                "python3 -I -B -m tobkiri_sealed.bootstrap --role typed --nonce {} --environment-root {}",
+                "b".repeat(64),
+                root
+            ),
+            cwd: Some(root),
+        };
+
+        assert_eq!(
+            identify_owned_listener(&listener, &config),
+            Some(ListenerIdentity::SealedEnvironment),
+        );
+    }
+
+    #[test]
+    fn sealed_non_kernel_roles_are_never_flagged_as_stale_kernels() {
+        let config = test_config();
+        for role in ["defaultspack", "host_helper"] {
+            let listener = PortListener {
+                pid: 106,
+                command: format!(
+                    "python3 -I -B -m tobkiri_sealed.bootstrap --role {role} --nonce {}",
+                    "b".repeat(64)
+                ),
+                cwd: Some(
+                    "/private/tmp/.tobkiri-sealed-python-4321-".to_string() + &"a".repeat(64),
+                ),
+            };
+
+            assert_eq!(
+                identify_owned_listener(&listener, &config),
+                None,
+                "sealed role {role} must not be reaped as a stale Kernel"
+            );
+        }
     }
 
     #[test]

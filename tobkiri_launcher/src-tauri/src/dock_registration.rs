@@ -434,7 +434,41 @@ fn identify_defaultspack_listener(
     // A generic Python process is never enough. Ownership requires both the
     // Defaultspack identity and the configured pack working directory, either
     // as the process cwd or as an explicit pack-shell argument.
-    command_mentions_defaultspack && (cwd_matches || command_mentions_working_dir)
+    if command_mentions_defaultspack && (cwd_matches || command_mentions_working_dir) {
+        return true;
+    }
+
+    // Sealed roles run the fixed bootstrap argv from the verified
+    // environment root instead of the pack working directory, so ownership
+    // then rests on the exact `--role defaultspack` pair plus a cwd the
+    // launch itself named.
+    identify_sealed_defaultspack_listener(listener, &command)
+}
+
+/// Whether the listener is a sealed Defaultspack role running from the
+/// environment root its own argv declares (on macOS that root is the
+/// private `.tobkiri-sealed-python-*` snapshot copy).
+fn identify_sealed_defaultspack_listener(
+    listener: &PortListener,
+    normalized_command: &str,
+) -> bool {
+    if crate::sealed_python_protocol::sealed_bootstrap_role(normalized_command)
+        != Some(crate::sealed_python_protocol::ROLE_DEFAULTSPACK)
+    {
+        return false;
+    }
+    let Some(cwd) = listener.cwd.as_deref() else {
+        return false;
+    };
+    let cwd = normalized_process_value(cwd);
+    normalized_command.contains(&format!(
+        "{} {}",
+        crate::sealed_python_protocol::ARG_ENVIRONMENT_ROOT,
+        cwd
+    )) || cwd
+        .rsplit('/')
+        .next()
+        .is_some_and(crate::sealed_python::is_sealed_snapshot_dir_name)
 }
 
 fn identify_authenticated_stale_defaultspack_listener(
@@ -774,10 +808,11 @@ fn process_is_descendant_of(mut process_id: u32, ancestor_id: u32) -> AnyResult<
         if process_id == ancestor_id {
             return Ok(true);
         }
-        let output = process_utils::command("/bin/ps")
-            .args(["-p", &process_id.to_string(), "-o", "ppid="])
-            .output()
-            .context("failed to inspect Defaultspack process ancestry")?;
+        let mut command = process_utils::command("/bin/ps");
+        command.args(["-p", &process_id.to_string(), "-o", "ppid="]);
+        let output =
+            process_utils::bounded_output(&mut command, process_utils::INSPECTION_COMMAND_TIMEOUT)
+                .context("failed to inspect Defaultspack process ancestry")?;
         if !output.status.success() {
             return Ok(false);
         }
@@ -803,10 +838,11 @@ fn process_is_descendant_of(mut process_id: u32, ancestor_id: u32) -> AnyResult<
             "$p=Get-CimInstance Win32_Process -Filter \\\"ProcessId = {process_id}\\\";\
              if($null -eq $p){{exit 3}};[Console]::Write($p.ParentProcessId)"
         );
-        let output = process_utils::command("powershell.exe")
-            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-            .output()
-            .context("failed to inspect Defaultspack process ancestry")?;
+        let mut command = process_utils::command("powershell.exe");
+        command.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
+        let output =
+            process_utils::bounded_output(&mut command, process_utils::INSPECTION_COMMAND_TIMEOUT)
+                .context("failed to inspect Defaultspack process ancestry")?;
         if !output.status.success() {
             return Ok(false);
         }
@@ -1450,10 +1486,30 @@ mod tests {
             command: "python -m tobkiri_sealed.bootstrap --role defaultspack".into(),
             cwd: Some("/private/tmp/.tobkiri-sealed-python-snapshot".into()),
         };
+        let sealed_root = format!(
+            "/private/tmp/.tobkiri-sealed-python-4321-{}",
+            "a".repeat(64)
+        );
+        let sealed_owned = PortListener {
+            pid: 404,
+            command: format!(
+                "python3 -I -B -m tobkiri_sealed.bootstrap --role defaultspack --nonce {} --environment-root {}",
+                "b".repeat(64),
+                sealed_root
+            ),
+            cwd: Some(sealed_root),
+        };
+        let sealed_kernel = PortListener {
+            pid: 505,
+            command: "python3 -I -B -m tobkiri_sealed.bootstrap --role typed".into(),
+            cwd: Some("/private/tmp/.tobkiri-sealed-python-4321-".to_string() + &"a".repeat(64)),
+        };
 
         assert!(identify_defaultspack_listener(&owned, &metadata));
         assert!(!identify_defaultspack_listener(&foreign, &metadata));
         assert!(!identify_defaultspack_listener(&managed_sealed, &metadata));
+        assert!(identify_defaultspack_listener(&sealed_owned, &metadata));
+        assert!(!identify_defaultspack_listener(&sealed_kernel, &metadata));
         assert!(listener_matches_launcher_owned_defaultspack(
             &managed_sealed,
             &metadata,

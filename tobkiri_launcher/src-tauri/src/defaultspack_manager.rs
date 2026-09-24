@@ -31,6 +31,14 @@ const DEFAULTSPACK_STABLE_RUN_WINDOW: Duration = Duration::from_secs(30);
 // then the pending launch is abandoned with a terminal log instead of
 // retrying silently forever.
 const DEFAULTSPACK_MAX_RESOLUTION_FAILURES: u32 = 60;
+// Recheck cadence while an adopted Launcher-owned listener still owns the
+// port. A respawn against it can only fail with EADDRINUSE, so the monitor
+// defers instead of churning spawn attempts.
+const DEFAULTSPACK_ADOPTED_LISTENER_RECHECK_INTERVAL: Duration = Duration::from_secs(5);
+// Bound the restart churn while an unowned process squats on the port.
+// After this many consecutive failures the pending launch is abandoned; an
+// explicit launch request re-seeds the metadata and may retry.
+const DEFAULTSPACK_MAX_OCCUPIED_PORT_RESTARTS: u32 = 60;
 // Leave enough of the product's five-second quit budget for the desktop
 // shells to observe the stopped listeners and terminate after this group.
 const DEFAULTSPACK_STOP_TIMEOUT: Duration = Duration::from_secs(2);
@@ -134,6 +142,16 @@ pub(crate) type DefaultspackManager = ApplicationProcessManager;
 
 /// Compatibility alias for focused lifecycle tests and old internal names.
 type DefaultspackState = ApplicationProcessState;
+
+/// Who currently holds the Defaultspack port when a restart comes due.
+enum PendingRestartPort {
+    /// The port is free or owned by the still-managed child.
+    Free,
+    /// An adopted Launcher-owned listener still owns the port.
+    AdoptedListener(u32),
+    /// A process outside Launcher ownership holds the port.
+    Occupied { pid: u32, port: u16 },
+}
 
 impl ApplicationProcessManager {
     pub(crate) fn new(
@@ -294,20 +312,26 @@ impl ApplicationProcessManager {
 
     /// Stop the managed child and disable all automatic restart paths.
     pub(crate) fn stop(&self) -> Result<()> {
-        let (child, owned_process_groups, active_run_id) = {
+        let (child, owned_process_groups, active_run_id, adopted_listener) = {
             let mut state = self.lock_state()?;
             state.stop_requested = true;
+            let adopted_listener = state.active_guardian_pid.take().and_then(|pid| {
+                state
+                    .launch_metadata
+                    .as_ref()
+                    .map(|metadata| (pid, metadata.port()))
+            });
             state.launch_metadata = None;
             state.next_restart_at = None;
             state.restart_in_progress = false;
             state.consecutive_failures = 0;
             state.consecutive_resolve_failures = 0;
             state.started_at = None;
-            state.active_guardian_pid = None;
             (
                 state.child.take(),
                 std::mem::take(&mut state.owned_process_groups),
                 state.active_run_id.take(),
+                adopted_listener,
             )
         };
         if let Some(run_id) = active_run_id.as_deref() {
@@ -315,6 +339,7 @@ impl ApplicationProcessManager {
         }
 
         let had_live_child = child.is_some();
+        let child_pid = child.as_ref().map(crate::python_env::PythonChild::id);
 
         #[cfg(unix)]
         stop_owned_unix_process_groups(child, owned_process_groups)?;
@@ -325,6 +350,16 @@ impl ApplicationProcessManager {
             if let Some(mut child) = child {
                 info!("Stopping managed Defaultspack (pid {})", child.id());
                 stop_child(&mut child)?;
+            }
+        }
+
+        // A guardian adopted outside the managed child is only covered by the
+        // owned groups when it happens to lead one; reap it by pid otherwise.
+        if let Some((pid, port)) = adopted_listener {
+            if Some(pid) != child_pid {
+                if let Err(error) = stop_adopted_defaultspack_listener(pid, port) {
+                    warn!("Failed to stop adopted Defaultspack listener {pid}: {error:#}");
+                }
             }
         }
 
@@ -396,6 +431,56 @@ impl ApplicationProcessManager {
 
         if !restart_needed {
             return Ok(());
+        }
+
+        // A respawn can only claim the port when it is free. Defer while an
+        // adopted Launcher-owned listener still serves it, and bound the
+        // churn while an unowned process squats on it. An inspection failure
+        // takes the standard backoff so `restart_in_progress` never wedges.
+        let port_gate = match self.pending_restart_port_gate() {
+            Ok(gate) => gate,
+            Err(error) => {
+                let delay = self.record_spawn_failure()?;
+                warn!(
+                    "Defaultspack restart deferred for {} ms; port ownership could not be inspected: {error:#}",
+                    delay.as_millis()
+                );
+                return Ok(());
+            }
+        };
+        match port_gate {
+            PendingRestartPort::AdoptedListener(pid) => {
+                info!(
+                    "Defaultspack restart deferred: adopted listener pid {pid} still owns the port"
+                );
+                let mut state = self.lock_state()?;
+                state.restart_in_progress = false;
+                state.next_restart_at =
+                    Some(Instant::now() + DEFAULTSPACK_ADOPTED_LISTENER_RECHECK_INTERVAL);
+                return Ok(());
+            }
+            PendingRestartPort::Occupied { pid, port } => {
+                let mut state = self.lock_state()?;
+                state.restart_in_progress = false;
+                if state.consecutive_failures >= DEFAULTSPACK_MAX_OCCUPIED_PORT_RESTARTS {
+                    error!(
+                        "Defaultspack restart abandoned after {} consecutive failures; port {port} is held by unowned listener pid {pid} and must be freed before the next launch request",
+                        state.consecutive_failures
+                    );
+                    state.launch_metadata = None;
+                    state.next_restart_at = None;
+                } else {
+                    let delay = state.record_restart_failure();
+                    warn!(
+                        "Defaultspack restart deferred for {} ms; port {port} is held by unowned listener pid {pid} ({}/{})",
+                        delay.as_millis(),
+                        state.consecutive_failures,
+                        DEFAULTSPACK_MAX_OCCUPIED_PORT_RESTARTS
+                    );
+                }
+                return Ok(());
+            }
+            PendingRestartPort::Free => {}
         }
 
         // Re-resolve the launch metadata instead of replaying the stored copy:
@@ -649,6 +734,11 @@ impl ApplicationProcessManager {
         let mut state = self.lock_state()?;
         state.active_run_id = Some(run_id);
         state.active_guardian_pid = Some(process_id);
+        if !state.owned_process_groups.contains(&process_id) {
+            // A listener adopted outside the managed child may still lead its
+            // own process group; recording it lets stop() reap that group.
+            state.owned_process_groups.push(process_id);
+        }
         state.launch_metadata = Some(metadata.clone());
         state.stop_requested = false;
         Ok(())
@@ -696,6 +786,33 @@ impl ApplicationProcessManager {
         let mut state = self.lock_state()?;
         state.restart_in_progress = false;
         Ok(())
+    }
+
+    /// Inspect the configured port before a pending respawn.
+    ///
+    /// The port check runs outside the state lock and is only reached when a
+    /// restart is actually due, so it cannot slow the common monitor path.
+    fn pending_restart_port_gate(&self) -> Result<PendingRestartPort> {
+        let (guardian_pid, port) = {
+            let state = self.lock_state()?;
+            if state.child.is_some() {
+                return Ok(PendingRestartPort::Free);
+            }
+            let Some(metadata) = state.launch_metadata.as_ref() else {
+                return Ok(PendingRestartPort::Free);
+            };
+            (state.active_guardian_pid, metadata.port())
+        };
+        match crate::kernel_manager::detect_port_listener(port)? {
+            None => Ok(PendingRestartPort::Free),
+            Some(listener) if Some(listener.pid) == guardian_pid => {
+                Ok(PendingRestartPort::AdoptedListener(listener.pid))
+            }
+            Some(listener) => Ok(PendingRestartPort::Occupied {
+                pid: listener.pid,
+                port,
+            }),
+        }
     }
 
     fn drain_child_output(&self, child: &mut crate::python_env::PythonChild, pid: u32) {
@@ -752,6 +869,17 @@ fn stop_owned_unix_process_groups(
         }
         Ok(())
     })
+}
+
+/// Stop a guardian listener that was adopted outside the managed child.
+/// The pid+port check fences signal delivery against pid reuse.
+fn stop_adopted_defaultspack_listener(pid: u32, port: u16) -> Result<()> {
+    match crate::kernel_manager::detect_port_listener(port)? {
+        Some(listener) if listener.pid == pid => {
+            crate::kernel_manager::terminate_external_listener(pid, port)
+        }
+        _ => Ok(()),
+    }
 }
 
 fn managed_defaultspack_run_id() -> String {
@@ -849,65 +977,86 @@ fn spawn_output_drain<R>(
 
 fn stop_child(child: &mut crate::python_env::PythonChild) -> Result<()> {
     #[cfg(unix)]
-    return stop_unix_process_group(child);
+    return stop_unix_process_group(child, "Defaultspack");
 
     #[cfg(not(unix))]
     stop_non_unix_child(child)
 }
 
+/// Graceful Unix shutdown: TERM -> bounded wait -> KILL -> zombie-aware
+/// confirmation. `label` identifies the process in logs and errors. The
+/// child normally leads its own process group so descendants exit with it;
+/// a child spawned without a group falls back to direct-pid signalling.
 #[cfg(unix)]
-fn stop_unix_process_group(child: &mut crate::python_env::PythonChild) -> Result<()> {
+pub(crate) fn stop_unix_process_group(
+    child: &mut crate::python_env::PythonChild,
+    label: &str,
+) -> Result<()> {
     let pid = child.id();
     let _ = child
         .try_wait()
-        .context("failed to inspect Defaultspack process before stopping")?;
+        .with_context(|| format!("failed to inspect {label} process before stopping"))?;
 
     // The pack-shell wrapper can exit before the desktop app it spawned. Wait
-    // for the entire group, not only the direct child, so its 8766 listener
-    // cannot survive Launcher shutdown.
-    let _ = send_process_group_signal(pid, "-TERM");
+    // for the entire group, not only the direct child, so its listener cannot
+    // survive Launcher shutdown.
+    let group_leader = process_group_exists(pid);
+    if group_leader {
+        let _ = send_process_group_signal(pid, "-TERM");
+    } else {
+        let _ = send_unix_process_signal(pid, "-TERM");
+    }
 
     let deadline = Instant::now() + DEFAULTSPACK_STOP_TIMEOUT;
     while Instant::now() < deadline {
-        let _ = child
+        let child_status = child
             .try_wait()
-            .context("failed to wait for Defaultspack after SIGTERM")?;
-        if !process_group_exists(pid) {
+            .with_context(|| format!("failed to wait for {label} after SIGTERM"))?;
+        let exited = if group_leader {
+            !process_group_exists(pid)
+        } else {
+            child_status.is_some()
+        };
+        if exited {
             return Ok(());
         }
         thread::sleep(Duration::from_millis(100));
     }
 
-    let sent_kill = send_process_group_signal(pid, "-KILL");
+    let sent_kill = if group_leader {
+        send_process_group_signal(pid, "-KILL")
+    } else {
+        send_unix_process_signal(pid, "-KILL")
+    };
     if child
         .try_wait()
-        .context("failed to inspect Defaultspack after process-group kill")?
+        .with_context(|| format!("failed to inspect {label} after process-group kill"))?
         .is_none()
         && !sent_kill
     {
         if let Err(error) = child.kill() {
             if child
                 .try_wait()
-                .context("failed to inspect Defaultspack after kill race")?
+                .with_context(|| format!("failed to inspect {label} after kill race"))?
                 .is_none()
             {
-                return Err(error).context("failed to kill Defaultspack process");
+                return Err(error).with_context(|| format!("failed to kill {label} process"));
             }
             return Ok(());
         }
     }
     if child
         .try_wait()
-        .context("failed to inspect killed Defaultspack child")?
+        .with_context(|| format!("failed to inspect killed {label} child"))?
         .is_none()
     {
         child
             .wait()
-            .context("failed to wait for killed Defaultspack process group")?;
+            .with_context(|| format!("failed to wait for killed {label} process group"))?;
     }
-    if !wait_for_process_group_exit(pid, DEFAULTSPACK_FORCE_KILL_TIMEOUT) {
+    if group_leader && !wait_for_process_group_exit(pid, DEFAULTSPACK_FORCE_KILL_TIMEOUT) {
         return Err(anyhow!(
-            "Defaultspack process group {pid} remained live after SIGKILL"
+            "{label} process group {pid} remained live after SIGKILL"
         ));
     }
     Ok(())
@@ -982,8 +1131,10 @@ fn stop_non_unix_child(child: &mut crate::python_env::PythonChild) -> Result<()>
     Ok(())
 }
 
+/// Signal every member of the Unix process group led by `pid`. Returns
+/// false when the group is already gone or the signal could not be sent.
 #[cfg(unix)]
-fn send_process_group_signal(pid: u32, signal: &str) -> bool {
+pub(crate) fn send_process_group_signal(pid: u32, signal: &str) -> bool {
     let process_group = format!("-{pid}");
     let sent = match process_utils::command(SYSTEM_KILL)
         // `--` is required by GNU kill so a negative process-group id is not
@@ -1010,8 +1161,34 @@ fn send_process_group_signal(pid: u32, signal: &str) -> bool {
     sent
 }
 
+/// Signal a single Unix process by pid. Returns false when the process is
+/// already gone or the signal could not be sent.
 #[cfg(unix)]
-fn process_group_exists(process_group: u32) -> bool {
+pub(crate) fn send_unix_process_signal(pid: u32, signal: &str) -> bool {
+    match process_utils::command(SYSTEM_KILL)
+        // `--` keeps a signal-looking argument shape identical to the
+        // process-group variant.
+        .args([signal, "--", &pid.to_string()])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+    {
+        Ok(status) if status.success() => true,
+        Ok(_) if signal == "-0" => false,
+        Ok(status) => {
+            warn!("Failed to send {signal} to process {pid}: {status}");
+            false
+        }
+        Err(_) if signal == "-0" => false,
+        Err(error) => {
+            warn!("Failed to invoke kill for process {pid}: {error}");
+            false
+        }
+    }
+}
+
+#[cfg(unix)]
+pub(crate) fn process_group_exists(process_group: u32) -> bool {
     if !send_process_group_signal(process_group, "-0") {
         return false;
     }

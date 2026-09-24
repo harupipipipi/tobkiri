@@ -2463,6 +2463,10 @@ fn run_computer_helper(
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
+            // Own process group so a timed-out helper cannot strand its
+            // subprocesses (mirrors the Defaultspack launch).
+            #[cfg(unix)]
+            command.new_process_group();
             Ok(())
         },
     )
@@ -2559,12 +2563,23 @@ fn wait_for_helper_status(
             return Ok(status);
         }
         if started.elapsed() >= timeout {
-            let _ = child.kill();
-            let _ = child.wait();
+            terminate_helper_process(child);
             return Err(ComputerHelperError::Timeout);
         }
         thread::sleep(Duration::from_millis(25));
     }
+}
+
+/// Kill a timed-out host helper. On Unix the helper leads its own process
+/// group, so the group is signalled first to reclaim any helper
+/// subprocesses; the direct kill covers helpers that never became leaders.
+fn terminate_helper_process(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        let _ = crate::defaultspack_manager::send_process_group_signal(child.id(), "-KILL");
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 fn join_output(handle: Option<thread::JoinHandle<Vec<u8>>>) -> Vec<u8> {

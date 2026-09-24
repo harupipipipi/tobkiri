@@ -91,6 +91,25 @@ pub fn launch_arguments(
     .into()
 }
 
+/// Return the `--role` value of a sealed Python launch command, or `None`
+/// when `command` does not invoke `-m tobkiri_sealed.bootstrap`.
+///
+/// The match is token-based: the module flag and the role pair must appear
+/// as whole arguments, so a path or value merely containing the same text
+/// cannot forge a role identity.
+pub fn sealed_bootstrap_role(command: &str) -> Option<&str> {
+    let tokens = command.split_whitespace().collect::<Vec<_>>();
+    if !tokens
+        .windows(2)
+        .any(|pair| pair[0] == "-m" && pair[1] == BOOTSTRAP_MODULE)
+    {
+        return None;
+    }
+    tokens
+        .windows(2)
+        .find_map(|pair| (pair[0] == ARG_ROLE).then_some(pair[1]))
+}
+
 /// Reject a packaging bootstrap that does not implement the complete v3 wire.
 pub fn validate_bootstrap_template(template: &str) -> Result<(), String> {
     let missing = REQUIRED_TEMPLATE_FRAGMENTS

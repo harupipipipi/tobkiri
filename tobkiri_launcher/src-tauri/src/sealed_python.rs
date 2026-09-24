@@ -1267,6 +1267,23 @@ fn canonical_private_temp_root() -> Result<PathBuf> {
         .context("[PYTHON_SEALED_SNAPSHOT_INVALID] canonicalize private temp root")
 }
 
+/// Parse the launcher pid out of a private snapshot-root directory name
+/// (`.tobkiri-sealed-python-<launcher pid>-<64-hex nonce>`).
+fn sealed_snapshot_owner_pid(name: &str) -> Option<i32> {
+    let suffix = name.strip_prefix(".tobkiri-sealed-python-")?;
+    let (pid, nonce) = suffix.split_once('-')?;
+    if nonce.len() != 64 || !nonce.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    pid.parse::<i32>().ok().filter(|pid| *pid > 0)
+}
+
+/// Whether `name` matches the private snapshot-root directory contract used
+/// as the working directory of sealed roles on macOS.
+pub(crate) fn is_sealed_snapshot_dir_name(name: &str) -> bool {
+    sealed_snapshot_owner_pid(name).is_some()
+}
+
 /// Reclaim snapshots whose owning launcher is provably dead.
 ///
 /// Snapshot cleanup is lifetime-bound to the in-process reaper: a launcher
@@ -1282,15 +1299,6 @@ fn canonical_private_temp_root() -> Result<PathBuf> {
 pub(crate) fn sweep_stale_macos_snapshots() {
     use std::os::fd::AsRawFd;
     use std::os::unix::fs::MetadataExt;
-
-    fn owner_pid(name: &str) -> Option<i32> {
-        let suffix = name.strip_prefix(".tobkiri-sealed-python-")?;
-        let (pid, nonce) = suffix.split_once('-')?;
-        if nonce.len() != 64 || !nonce.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            return None;
-        }
-        pid.parse::<i32>().ok().filter(|pid| *pid > 0)
-    }
 
     fn owner_is_dead(pid: i32) -> bool {
         let result = unsafe { libc::kill(pid, 0) };
@@ -1329,7 +1337,7 @@ pub(crate) fn sweep_stale_macos_snapshots() {
         let Some(name) = file_name.to_str() else {
             continue;
         };
-        let Some(pid) = owner_pid(name) else {
+        let Some(pid) = sealed_snapshot_owner_pid(name) else {
             continue;
         };
         let Ok(metadata) = entry.metadata() else {
