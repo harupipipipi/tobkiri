@@ -4379,12 +4379,14 @@ export const api = {
   streamCommandInvocationEvents,
 
   commandOfflineQueue(payload: {
-    action: "enqueue" | "pending" | "replay";
+    action: "enqueue" | "pending" | "replay" | "cancel";
+    queue_id?: string;
     command_ref?: string;
     args?: Record<string, unknown>;
     idempotency_key?: string;
     expected_revision?: number;
     limit?: number;
+    include_inflight?: boolean;
   }) {
     return request<Record<string, unknown>>(defaultspackContractRoute("api/command-protocol/v1/offline"), {
       method: "POST",

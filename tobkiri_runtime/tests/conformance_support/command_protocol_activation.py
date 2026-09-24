@@ -82,6 +82,11 @@ COMMAND_PROTOCOL_HTTP_CASES = (
     ("POST", "/api/command-protocol/v1/resume", {"invocation_id": "test"}),
     ("POST", "/api/command-protocol/v1/%72esume", {}),
     ("POST", "/api/command-protocol/v1/offline", {"action": "pending"}),
+    (
+        "POST",
+        "/api/command-protocol/v1/offline",
+        {"action": "cancel", "queue_id": "offline-http-probe"},
+    ),
     ("POST", "/api/%2563ommand-protocol/v1/offline", {}),
     (
         "POST",

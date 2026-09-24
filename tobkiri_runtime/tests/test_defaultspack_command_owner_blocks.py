@@ -143,6 +143,84 @@ def test_command_http_routes_retain_the_setup_owner(tmp_path, monkeypatch):
     assert not request_owner.path.exists()
 
 
+def test_offline_http_route_enqueue_cancel_replay_dispatches_nothing(
+    tmp_path,
+    monkeypatch,
+):
+    """The registered offline route handler honours cancel before dispatch."""
+    setup = importlib.import_module("blocks.ui.setup")
+    from domain.frontend.command_protocol import CommandProtocolRegistry
+
+    monkeypatch.setenv(
+        "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
+        str(tmp_path / "settings.json"),
+    )
+    monkeypatch.setenv(
+        "RUMI_DEFAULTSPACK_COMMAND_STATE_DIR",
+        str(tmp_path / "command-state"),
+    )
+    owner = FrontendSettingsStore(tmp_path / "owned.json")
+    invocations = []
+    real_invoke = CommandProtocolRegistry.invoke
+
+    def observed_invoke(self, payload, context=None):
+        invocations.append(payload)
+        return real_invoke(self, payload, context)
+
+    monkeypatch.setattr(CommandProtocolRegistry, "invoke", observed_invoke)
+
+    class Registry:
+        def __init__(self):
+            self.routes = []
+
+        def register(self, kind, value, meta=None):
+            if kind == "io.http.route":
+                self.routes.append(value)
+
+    registry = Registry()
+    setup.run(
+        {
+            "interface_registry": registry,
+            "_settings_owner_port": owner,
+        }
+    )
+    handler = next(
+        item["handler"]
+        for item in registry.routes
+        if item["pattern"] == "/api/command-protocol/v1/offline"
+    )
+
+    enqueued = handler(
+        {
+            "action": "enqueue",
+            "command_ref": "defaultspack:deepthink",
+            "args": {"enabled": True},
+            "idempotency_key": "http-offline-cancel-1",
+            "expected_revision": 0,
+        },
+        {},
+    )
+    assert enqueued["status"] == "ok", enqueued
+    assert enqueued["data"]["status"] == "queued"
+    queue_id = enqueued["data"]["queue"]["queue_id"]
+
+    cancelled = handler({"action": "cancel", "queue_id": queue_id}, {})
+    assert cancelled["status"] == "ok", cancelled
+    assert cancelled["data"]["status"] == "cancelled"
+    assert cancelled["data"]["too_late"] is False
+
+    replayed = handler({"action": "replay"}, {})
+    assert replayed["status"] == "ok", replayed
+    assert replayed["data"]["status"] == "succeeded"
+    assert replayed["data"]["results"] == []
+    assert invocations == []
+
+    pending = handler({"action": "pending"}, {})
+    assert pending["status"] == "ok", pending
+    assert pending["data"]["queue"] == []
+    assert owner.read_snapshot().get("models", {}).get("deepthink_enabled") is not True
+
+
 @pytest.mark.parametrize(
     ("pattern", "module_name"),
     [

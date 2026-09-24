@@ -438,3 +438,129 @@ def test_expired_effect_requires_reconciliation_without_auto_retry(
             owner_key="alice",
             lease_id=lease_id,
         )
+
+
+def test_pending_include_inflight_exposes_replaying_and_effect_commits(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    commands = _commands(tmp_path, monkeypatch)
+    queue = OfflineOperationQueue(tmp_path / "offline.sqlite3")
+    record = queue.enqueue(
+        command=commands["defaultspack:deepthink"],
+        args={"enabled": True},
+        idempotency_key="offline-inflight-1",
+        expected_revision=0,
+        owner_key="alice",
+    )
+
+    assert [item["queue_id"] for item in queue.pending(owner_key="alice")] == [
+        record["queue_id"]
+    ]
+    claimed = queue.claim_pending(owner_key="alice", worker_id="worker-a")
+    assert queue.pending(owner_key="alice") == []
+    inflight = queue.pending(owner_key="alice", include_inflight=True)
+    assert [item["queue_id"] for item in inflight] == [record["queue_id"]]
+    assert inflight[0]["state"] == "replaying"
+
+    queue.begin_effect_commit(
+        record["queue_id"],
+        owner_key="alice",
+        lease_id=claimed[0]["lease_id"],
+    )
+    inflight = queue.pending(owner_key="alice", include_inflight=True)
+    assert [item["queue_id"] for item in inflight] == [record["queue_id"]]
+    assert inflight[0]["state"] == "effect_committing"
+    assert queue.pending(owner_key="alice") == []
+
+
+def test_cancel_of_unclaimed_queued_row_skips_replay_dispatch(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(
+        "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
+        str(tmp_path / "settings.json"),
+    )
+    protocol = CommandProtocolRegistry(
+        DEFAULTSPACK_ROOT,
+        settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
+    )
+    queued = protocol.enqueue_offline(
+        {
+            "command_ref": "defaultspack:deepthink",
+            "args": {"enabled": True},
+            "idempotency_key": "offline-cancel-queued-1",
+            "expected_revision": 0,
+        }
+    )
+    owner_key = protocol._owner_key({}, None)
+    queue_id = queued["queue"]["queue_id"]
+    cancelled = protocol.offline.cancel(queue_id, owner_key=owner_key)
+
+    invocations = []
+    real_invoke = protocol.invoke
+
+    def observed_invoke(payload, context=None):
+        invocations.append(payload)
+        return real_invoke(payload, context)
+
+    monkeypatch.setattr(protocol, "invoke", observed_invoke)
+    replayed = protocol.replay_offline(owner_key=owner_key)
+
+    assert cancelled["status"] == "cancelled"
+    assert cancelled["too_late"] is False
+    assert replayed["status"] == "succeeded"
+    assert replayed["results"] == []
+    assert invocations == []
+    assert protocol.offline.get(queue_id, owner_key=owner_key)["state"] == "cancelled"
+    assert protocol.query_states(
+        ["defaultspack:models.deepthink_enabled"]
+    )["states"][0]["value"] is False
+
+
+def test_lease_expired_mid_invoke_returns_structured_outcome(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A >lease invoke reconciled mid-flight must not crash the replay call."""
+    monkeypatch.setenv(
+        "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
+        str(tmp_path / "settings.json"),
+    )
+    protocol = CommandProtocolRegistry(
+        DEFAULTSPACK_ROOT,
+        settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
+    )
+    queued = protocol.enqueue_offline(
+        {
+            "command_ref": "defaultspack:deepthink",
+            "args": {"enabled": True},
+            "idempotency_key": "offline-expired-invoke-1",
+            "expected_revision": 0,
+        }
+    )
+    owner_key = protocol._owner_key({}, None)
+    queue_id = queued["queue"]["queue_id"]
+    real_invoke = protocol.invoke
+
+    def slow_invoke(payload, context=None):
+        # The invoke outlives its lease; a concurrent reconcile owns the
+        # expired effect_committing row before record_result runs.
+        with sqlite3.connect(protocol.offline.path) as connection:
+            connection.execute(
+                "UPDATE offline_operations SET lease_expires_at = ? WHERE queue_id = ?",
+                ("2000-01-01T00:00:00+00:00", queue_id),
+            )
+        protocol.offline.reconcile_expired_effect_commits(owner_key=owner_key)
+        return real_invoke(payload, context)
+
+    monkeypatch.setattr(protocol, "invoke", slow_invoke)
+    replayed = protocol.replay_offline(owner_key=owner_key)
+
+    assert replayed["status"] == "succeeded"
+    assert len(replayed["results"]) == 1
+    outcome = replayed["results"][0]
+    assert outcome["queue_id"] == queue_id
+    assert outcome["state"] == "reconciliation_required"
+    assert outcome["result"]["error"]["code"] == "EFFECT_OUTCOME_UNKNOWN"

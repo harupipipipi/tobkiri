@@ -24,6 +24,9 @@ def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None)
                     "queue": registry.offline.pending(
                         limit=limit,
                         owner_key=owner_key,
+                        include_inflight=bool(
+                            payload.get("include_inflight")
+                        ),
                     ),
                 }
             )

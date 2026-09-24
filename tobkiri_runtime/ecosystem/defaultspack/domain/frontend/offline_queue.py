@@ -194,23 +194,53 @@ class OfflineOperationQueue:
         *,
         limit: int = 100,
         owner_key: str = "local",
+        include_inflight: bool = False,
     ) -> list[dict[str, Any]]:
-        """Return queued operations in deterministic replay order."""
+        """Return queued operations in deterministic replay order.
+
+        ``include_inflight`` additionally exposes leased ``replaying`` and
+        effect-barrier ``effect_committing`` records so a caller can discover
+        queue_ids that are mid-flight, e.g. before requesting cancellation.
+        """
 
         if isinstance(limit, bool) or limit < 1 or limit > 1000:
             raise OfflineQueueError("limit must be between 1 and 1000")
+        states: tuple[str, ...] = ("queued",)
+        if include_inflight:
+            states = ("queued", "replaying", "effect_committing")
+        placeholders = ", ".join("?" for _ in states)
         with self._connect() as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT queue_id, request_hash, state, request_json, created_at, updated_at
                 FROM offline_operations
-                WHERE state = 'queued' AND owner_key = ?
+                WHERE state IN ({placeholders}) AND owner_key = ?
                 ORDER BY created_at ASC, queue_id ASC
                 LIMIT ?
                 """,
-                (_owner_key(owner_key), limit),
+                (*states, _owner_key(owner_key), limit),
             ).fetchall()
         return [_row_to_record(row) for row in rows]
+
+    def get(
+        self,
+        queue_id: str,
+        *,
+        owner_key: str,
+    ) -> dict[str, Any] | None:
+        """Re-read one queue record, e.g. after a lost result race."""
+
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT queue_id, request_hash, state, request_json,
+                       created_at, updated_at, result_json
+                FROM offline_operations
+                WHERE queue_id = ? AND owner_key = ?
+                """,
+                (str(queue_id), _owner_key(owner_key)),
+            ).fetchone()
+        return _row_to_record(row) if row is not None else None
 
     def claim_pending(
         self,

@@ -16,7 +16,10 @@ from tobkiri_protocol.settings_state import SettingsOwnerPort
 from jsonschema import Draft202012Validator
 
 from domain.frontend.invocation_events import InvocationEventError, InvocationEventStore
-from domain.frontend.offline_queue import OfflineOperationQueue
+from domain.frontend.offline_queue import (
+    OfflineOperationQueue,
+    OfflineQueueError,
+)
 from domain.frontend.command_operations import CommandOperationRegistry
 from domain.frontend.command_registry import SlashCommandRegistry
 from domain.frontend_command_catalog import (
@@ -29,6 +32,17 @@ from domain.frontend_settings_store import FrontendSettingsStore, defaultspack_f
 
 API_VERSION = "tobkiri.commands/v1"
 PACK_ID = "defaultspack"
+# Queue states a replay worker may surface as a durable outcome when its own
+# result write loses a race against cancellation or lease reconciliation.
+_TERMINAL_OFFLINE_STATES = frozenset(
+    {
+        "completed",
+        "conflicted",
+        "cancelled",
+        "failed",
+        "reconciliation_required",
+    }
+)
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "command-protocol-v1.schema.json"
 
 # This is a legacy compatibility registry, not the future host-operation
@@ -935,7 +949,18 @@ class CommandProtocolRegistry(CommandCatalogProjection):
         ):
             request = record["request"]
             lease_id = str(record["lease_id"])
-            if int(request.get("pack_generation") or -1) != self._pack_generation():
+            if self.offline.cancellation_requested(
+                record["queue_id"],
+                owner_key=owner_key,
+                lease_id=lease_id,
+            ):
+                result = {
+                    "api_version": API_VERSION,
+                    "status": "cancelled",
+                    "command_ref": request.get("command_ref"),
+                    "state_changes": [],
+                }
+            elif int(request.get("pack_generation") or -1) != self._pack_generation():
                 result = {
                     "api_version": API_VERSION,
                     "status": "failed",
@@ -945,11 +970,29 @@ class CommandProtocolRegistry(CommandCatalogProjection):
                     },
                 }
             else:
-                barrier = self.offline.begin_effect_commit(
+                # Renew the claimed lease so earlier records in this batch
+                # cannot consume the invoke window, and the effect barrier's
+                # lease_expires_at check still sees a live lease.
+                self.offline.renew_lease(
                     record["queue_id"],
                     owner_key=owner_key,
                     lease_id=lease_id,
                 )
+                try:
+                    barrier = self.offline.begin_effect_commit(
+                        record["queue_id"],
+                        owner_key=owner_key,
+                        lease_id=lease_id,
+                    )
+                except OfflineQueueError:
+                    outcome = self._offline_terminal_outcome(
+                        record,
+                        owner_key,
+                    )
+                    if outcome is None:
+                        raise
+                    results.append(outcome)
+                    continue
                 if barrier["status"] == "cancelled":
                     results.append(barrier["queue"])
                     continue
@@ -997,19 +1040,46 @@ class CommandProtocolRegistry(CommandCatalogProjection):
                 terminal_state = "conflicted"
             else:
                 terminal_state = "failed"
-            queue_result = self.offline.record_result(
-                record["queue_id"],
-                state=terminal_state,
-                result=result,
-                owner_key=owner_key,
-                lease_id=lease_id,
-            )
+            try:
+                queue_result = self.offline.record_result(
+                    record["queue_id"],
+                    state=terminal_state,
+                    result=result,
+                    owner_key=owner_key,
+                    lease_id=lease_id,
+                )
+            except OfflineQueueError:
+                outcome = self._offline_terminal_outcome(
+                    record,
+                    owner_key,
+                )
+                if outcome is None:
+                    raise
+                queue_result = outcome
             results.append(queue_result)
         return {
             "api_version": API_VERSION,
             "status": "succeeded",
             "results": results,
         }
+
+    def _offline_terminal_outcome(
+        self,
+        record: dict[str, Any],
+        owner_key: str,
+    ) -> dict[str, Any] | None:
+        """Re-read a queue row after a lost barrier or result race.
+
+        An invoke that outlives its lease can be terminalized by a concurrent
+        reconciliation (``reconciliation_required``) or a cancellation before
+        this worker records its result. Surface that durable outcome instead
+        of crashing the replay request.
+        """
+
+        current = self.offline.get(record["queue_id"], owner_key=owner_key)
+        if current is None or current["state"] not in _TERMINAL_OFFLINE_STATES:
+            return None
+        return current
 
     def cancel_invocation(
         self,
