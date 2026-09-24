@@ -1232,23 +1232,49 @@ def _secure_windows_journal_lock_acl(path: Path) -> None:
     _secure_windows_signing_key(path)
 
 
-def _acquire_journal_lock(descriptor: int) -> None:
-    """Acquire an exclusive advisory lock on Windows, macOS, or Linux."""
+_JOURNAL_LOCK_TIMEOUT_SECONDS = 60.0
+_JOURNAL_LOCK_POLL_SECONDS = 0.05
+_JOURNAL_LOCK_CONTENTION_ERRNOS = frozenset({11, 13, 36})
 
+
+def _acquire_journal_lock(
+    descriptor: int,
+    timeout_seconds: float = _JOURNAL_LOCK_TIMEOUT_SECONDS,
+) -> None:
+    """Acquire an exclusive advisory lock on Windows, macOS, or Linux.
+
+    A sibling process holding the journal lock — including one stuck
+    mid-transaction — must never wedge every lifecycle operation forever,
+    so contention is polled against a monotonic deadline rather than
+    blocking in the kernel.
+    """
+
+    deadline = time.monotonic() + timeout_seconds
     while True:
         try:
             if os.name == "nt":
                 import msvcrt
 
                 os.lseek(descriptor, 0, os.SEEK_SET)
-                getattr(msvcrt, "locking")(descriptor, getattr(msvcrt, "LK_LOCK"), 1)
+                getattr(msvcrt, "locking")(descriptor, getattr(msvcrt, "LK_NBLCK"), 1)
             else:
                 import fcntl
 
-                fcntl.flock(descriptor, fcntl.LOCK_EX)
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
             return
         except InterruptedError:
             continue
+        except OSError as exc:
+            if (
+                not isinstance(exc, BlockingIOError)
+                and exc.errno not in _JOURNAL_LOCK_CONTENTION_ERRNOS
+            ):
+                raise
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    "PackVM operations journal lock deadline expired"
+                ) from exc
+            time.sleep(_JOURNAL_LOCK_POLL_SECONDS)
 
 
 def _release_journal_lock(descriptor: int) -> None:

@@ -544,6 +544,17 @@ class MacOSVZSupervisorDriver:
         self._compromised_reason: str | None = None
         self._lock = threading.RLock()
 
+    def domain_accounted(self, domain_id: str) -> bool:
+        """Return whether the domain still owns a live helper session.
+
+        A backend attestation must never outlive its supervisor session: a
+        dropped session means the helper channel is gone and the on-disk
+        allocation can only be an orphan, never a reusable resident domain.
+        """
+
+        with self._lock:
+            return domain_id in self._domains
+
     def capability(self) -> tuple[bool, str | None]:
         """Check only local, independently-verifiable production prerequisites."""
 
@@ -979,7 +990,9 @@ class MacOSVZSupervisorDriver:
             if self._domain_allocator is not None:
                 self._domain_allocator.release(session.allocation)
         except Exception:
-            pass
+            # The on-disk allocation may now be orphaned; surface it instead
+            # of silently leaking the domain root.
+            self._compromise("macOS VZ dead helper allocation cleanup failed")
         self._drop_domain_session(domain_id, session)
 
     def _drop_domain_session(self, domain_id: str, session: _DomainSession) -> None:

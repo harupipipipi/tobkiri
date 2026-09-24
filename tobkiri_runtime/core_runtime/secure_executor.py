@@ -61,6 +61,33 @@ def get_secrets_grant_manager():
     return _get()
 
 
+def _run_with_deadline(target: Any, timeout_seconds: float) -> Any:
+    """Invoke ``target`` with a hard return deadline.
+
+    The work runs on a daemon thread so a deadlocked Pack function cannot
+    wedge the caller at executor shutdown; a timed-out worker is abandoned
+    without blocking interpreter exit either.
+    """
+
+    done = threading.Event()
+    box: Dict[str, Any] = {}
+
+    def _run() -> None:
+        try:
+            box["value"] = target()
+        except BaseException as exc:
+            box["error"] = exc
+        finally:
+            done.set()
+
+    threading.Thread(target=_run, daemon=True).start()
+    if not done.wait(timeout_seconds):
+        raise TimeoutError(f"host execution timed out after {timeout_seconds}s")
+    if "error" in box:
+        raise box["error"]
+    return box.get("value")
+
+
 @dataclass
 class ExecutionResult:
     """実行結果（汎用）"""
@@ -746,24 +773,20 @@ else:
             import inspect
             sig = inspect.signature(fn)
             _effective_timeout = min(timeout, MAX_HOST_EXECUTION_TIMEOUT)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                if len(sig.parameters) >= 1:
-                    future = pool.submit(fn, exec_context)
-                else:
-                    future = pool.submit(fn)
-                try:
-                    output = future.result(timeout=_effective_timeout)
-                except concurrent.futures.TimeoutError:
-                    return ExecutionResult(
-                        success=False,
-                        error=f"Lib host execution timed out after {_effective_timeout}s",
-                        error_type="timeout",
-                        execution_mode="host_permissive",
-                        execution_time_ms=(time.time() - start_time) * 1000,
-                        warnings=warnings,
-                        pack_id=pack_id,
-                        lib_type=lib_type
-                    )
+            invoke = (lambda: fn(exec_context)) if len(sig.parameters) >= 1 else fn
+            try:
+                output = _run_with_deadline(invoke, _effective_timeout)
+            except TimeoutError:
+                return ExecutionResult(
+                    success=False,
+                    error=f"Lib host execution timed out after {_effective_timeout}s",
+                    error_type="timeout",
+                    execution_mode="host_permissive",
+                    execution_time_ms=(time.time() - start_time) * 1000,
+                    warnings=warnings,
+                    pack_id=pack_id,
+                    lib_type=lib_type
+                )
             return ExecutionResult(
                 success=True,
                 output=output,
@@ -846,19 +869,17 @@ else:
                     warnings=warnings
                 )
             _effective_timeout = min(timeout, MAX_HOST_EXECUTION_TIMEOUT)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(fn, context)
-                try:
-                    result = future.result(timeout=_effective_timeout)
-                except concurrent.futures.TimeoutError:
-                    return ExecutionResult(
-                        success=False,
-                        error=f"Host execution timed out after {_effective_timeout}s",
-                        error_type="timeout",
-                        execution_mode="host_permissive",
-                        execution_time_ms=(time.time() - start_time) * 1000,
-                        warnings=warnings
-                    )
+            try:
+                result = _run_with_deadline(lambda: fn(context), _effective_timeout)
+            except TimeoutError:
+                return ExecutionResult(
+                    success=False,
+                    error=f"Host execution timed out after {_effective_timeout}s",
+                    error_type="timeout",
+                    execution_mode="host_permissive",
+                    execution_time_ms=(time.time() - start_time) * 1000,
+                    warnings=warnings
+                )
             return ExecutionResult(
                 success=True,
                 output=result,

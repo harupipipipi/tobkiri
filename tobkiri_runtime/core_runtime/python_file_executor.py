@@ -81,6 +81,33 @@ EXECUTOR_IMAGE: str = os.environ.get("RUMI_EXECUTOR_IMAGE") or DEFAULT_EXECUTOR_
 # UDS GID ユーティリティ (A-1: --group-add 対応)
 # ============================================================
 
+def _run_with_deadline(target: Callable[[], Any], timeout_seconds: float) -> Any:
+    """Invoke ``target`` with a hard return deadline.
+
+    The work runs on a daemon thread so a deadlocked Pack function cannot
+    wedge the caller at executor shutdown; a timed-out worker is abandoned
+    without blocking interpreter exit either.
+    """
+
+    done = threading.Event()
+    box: Dict[str, Any] = {}
+
+    def _run() -> None:
+        try:
+            box["value"] = target()
+        except BaseException as exc:
+            box["error"] = exc
+        finally:
+            done.set()
+
+    threading.Thread(target=_run, daemon=True).start()
+    if not done.wait(timeout_seconds):
+        raise TimeoutError(f"host execution timed out after {timeout_seconds}s")
+    if "error" in box:
+        raise box["error"]
+    return box.get("value")
+
+
 def _read_gid_env(env_name: str) -> Optional[int]:
     """
     環境変数から GID を読み取る。
@@ -904,23 +931,66 @@ request = http_request
 
                 # communicate に頼らず、stdout を制限付きで読む
                 # ただし stderr も回収する必要があるため Popen.communicate 的に処理
-                raw_stdout = stdout_pipe.read(MAX_STDOUT_SIZE + 1)
-                if len(raw_stdout) > MAX_STDOUT_SIZE:
+                # パイプを deadline 付き select で駆動し、stdout を閉じないまま
+                # 生き続けるコンテナが呼び出し元を永久に塞がないようにする。
+                import select as _select
+
+                raw_stdout_buf = bytearray()
+                raw_stderr_buf = bytearray()
+                stdout_fd = stdout_pipe.fileno()
+                stderr_fd = stderr_pipe.fileno()
+                pipes: dict[int, bytearray] = {
+                    stdout_fd: raw_stdout_buf,
+                    stderr_fd: raw_stderr_buf,
+                }
+                oversized = False
+                timed_out = False
+                while pipes:
+                    remaining = deadline - _t14.monotonic()
+                    if remaining <= 0:
+                        timed_out = True
+                        break
+                    readable, _, _ = _select.select(
+                        list(pipes), [], [], remaining
+                    )
+                    if not readable:
+                        timed_out = True
+                        break
+                    for fd in readable:
+                        try:
+                            chunk = os.read(fd, 65536)
+                        except OSError:
+                            chunk = b""
+                        if not chunk:
+                            del pipes[fd]
+                            continue
+                        pipes[fd] += chunk
+                        if fd == stdout_fd and len(raw_stdout_buf) > MAX_STDOUT_SIZE:
+                            oversized = True
+                    if oversized:
+                        break
+                raw_stdout = bytes(raw_stdout_buf)
+                raw_stderr = bytes(raw_stderr_buf)
+                if timed_out or oversized:
                     proc.kill()
-                    proc.wait(timeout=5)
-                    result.error = f"stdout exceeded size limit ({MAX_STDOUT_SIZE} bytes)"
-                    result.error_type = "response_too_large"
-                else:
-                    remaining_timeout = max(0.1, deadline - _t14.monotonic())
                     try:
-                        raw_stderr = stderr_pipe.read()
-                        proc.wait(timeout=remaining_timeout)
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        pass
+                    if oversized:
+                        result.error = f"stdout exceeded size limit ({MAX_STDOUT_SIZE} bytes)"
+                        result.error_type = "response_too_large"
+                    else:
+                        result.error = f"Execution timed out after {timeout_seconds}s"
+                        result.error_type = "timeout"
+                else:
+                    try:
+                        proc.wait(timeout=5)
                     except subprocess.TimeoutExpired:
                         proc.kill()
                         proc.wait(timeout=5)
                         result.error = f"Execution timed out after {timeout_seconds}s"
                         result.error_type = "timeout"
-                        raw_stderr = b""
 
                     if not result.error:
                         stderr_text = raw_stderr.decode("utf-8", errors="replace")
@@ -944,7 +1014,11 @@ request = http_request
                 if proc and proc.poll() is None:
                     proc.kill()
                     proc.wait(timeout=5)
-                subprocess.run(["docker", "kill", container_name], capture_output=True)
+                subprocess.run(
+                    ["docker", "kill", container_name],
+                    capture_output=True,
+                    timeout=15,
+                )
                 result.error = f"Execution timed out after {timeout_seconds}s"
                 result.error_type = "timeout"
 
@@ -1167,28 +1241,26 @@ else:
                     else:
                         return run_fn()
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(_run_target)
-                try:
-                    output = future.result(timeout=effective_timeout)
-                    if isinstance(output, dict) and output.get("is_streaming"):
-                        result.is_streaming = True
-                except concurrent.futures.TimeoutError:
-                    result.error = f"Host execution timed out after {effective_timeout}s"
-                    result.error_type = "timeout"
-                    # 診断ログに記録
-                    if context.diagnostics_callback:
-                        try:
-                            context.diagnostics_callback({
-                                "event": "host_execution_timeout",
-                                "file_path": str(file_path),
-                                "owner_pack": owner_pack,
-                                "timeout_seconds": effective_timeout,
-                                "ts": self._now_ts(),
-                            })
-                        except Exception:
-                            pass
-                    return result
+            try:
+                output = _run_with_deadline(_run_target, effective_timeout)
+                if isinstance(output, dict) and output.get("is_streaming"):
+                    result.is_streaming = True
+            except TimeoutError:
+                result.error = f"Host execution timed out after {effective_timeout}s"
+                result.error_type = "timeout"
+                # 診断ログに記録
+                if context.diagnostics_callback:
+                    try:
+                        context.diagnostics_callback({
+                            "event": "host_execution_timeout",
+                            "file_path": str(file_path),
+                            "owner_pack": owner_pack,
+                            "timeout_seconds": effective_timeout,
+                            "ts": self._now_ts(),
+                        })
+                    except Exception:
+                        pass
+                return result
 
             # 出力をJSON互換に変換
             result.output = self._ensure_json_compatible(output)
