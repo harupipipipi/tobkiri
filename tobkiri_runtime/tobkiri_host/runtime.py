@@ -367,9 +367,10 @@ class V4DispatchSession:
             # are accepted only if the typed receipt below proves their exact
             # terminal state and cleanup. No exception text crosses the route,
             # but the typed failure class must stay diagnosable in Host logs.
-            logger.info(
+            logger.warning(
                 "PackVM acceptance invoke failed closed: %s",
                 type(invoke_error).__name__,
+                exc_info=invoke_error,
             )
         finally:
             if timer is not None:
