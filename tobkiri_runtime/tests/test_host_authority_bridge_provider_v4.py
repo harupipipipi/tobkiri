@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Mapping
 
 import pytest
 
+from core_runtime.authority.v4 import AuthorityScope
 from core_runtime.host_provider_backend_v4 import HostProviderCaptureContextV4
 from ecosystem.rumi_host_authority_bridge_pack.runtime import bridge
 from tobkiri_host.broker import RequestEnvelope
@@ -38,6 +40,7 @@ class _ApprovalPort:
         *,
         request_id: str,
         state: str = "pending",
+        redacted_metadata: Mapping[str, str] | None = None,
     ) -> InteractiveApprovalStatus:
         """Seed a request as if the Host pending-effect controller created it."""
 
@@ -48,7 +51,11 @@ class _ApprovalPort:
             typed_confirmation_required=True,
             request_snapshot_digest="a" * 64,
             typed_confirmation_digest="b" * 64,
-            redacted_metadata={"summary": "Publish branch"},
+            redacted_metadata=(
+                dict(redacted_metadata)
+                if redacted_metadata is not None
+                else {"summary": "Publish branch"}
+            ),
             target_principal_id="target-principal",
             base_scope={
                 "capability": "terminal.execute",
@@ -383,6 +390,114 @@ def test_decisions_forward_authenticated_context_and_return_only_redacted_status
         "token",
         "raw_payload",
     } & set(approved)
+
+
+def test_get_wire_payload_contract_exposes_typed_readable_fields() -> None:
+    """The approval window reads one closed, typed, secret-free payload.
+
+    ``operation`` identity is the Host-generated ``redacted_metadata`` copy
+    (action/summary/detail) — the UI never parses raw execute payloads —
+    while ``target``, ``base_scope``, ``expires_at``, and ``remaining_uses``
+    arrive as typed fields.  The wire key set is exactly the port contract
+    fields so a projection change cannot silently leak authority material.
+    """
+
+    port = _ApprovalPort()
+    metadata = {
+        "action": "Run local terminal command",
+        "summary": "Run the prepared local terminal command.",
+        "detail": "argv: echo hello\ncwd: /work",
+        "confirmation_phrase": "EXECUTE",
+    }
+    port.seed(
+        _context(request_id="interactive-request-1"),
+        request_id="interactive-request-1",
+        redacted_metadata=metadata,
+    )
+    contributions = _capture(port)
+
+    wire = _invoke(
+        contributions,
+        bridge._V4_GET_OPERATION,
+        {"request_id": "interactive-request-1"},
+    )
+
+    # Closed shape: every declared port field, and nothing else.
+    expected_keys = {
+        "request_id",
+        "state",
+        "expires_at",
+        "typed_confirmation_required",
+        "request_snapshot_digest",
+        "typed_confirmation_digest",
+        "redacted_metadata",
+        "target_principal_id",
+        "base_scope",
+        "max_uses",
+        "remaining_uses",
+    }
+    assert set(wire) == expected_keys
+    assert {field.name for field in dataclasses.fields(
+        InteractiveApprovalStatus
+    )} == expected_keys
+
+    # Operation identity is readable Host copy, not raw payload text.
+    metadata_wire = wire["redacted_metadata"]
+    assert isinstance(metadata_wire, dict)
+    assert all(
+        isinstance(key, str) and isinstance(value, str)
+        for key, value in metadata_wire.items()
+    )
+    assert metadata_wire["action"] == "Run local terminal command"
+    assert metadata_wire["summary"]
+    assert "argv: echo hello" in metadata_wire["detail"]
+
+    # Target, expiry, and request binding are typed scalar fields.
+    assert wire["request_id"] == "interactive-request-1"
+    assert wire["state"] == "pending"
+    assert isinstance(wire["target_principal_id"], str)
+    assert wire["target_principal_id"]
+    assert isinstance(wire["expires_at"], int)
+    assert isinstance(wire["typed_confirmation_required"], bool)
+    assert wire["request_snapshot_digest"] == "a" * 64
+    assert wire["typed_confirmation_digest"] == "b" * 64
+
+    # Scope is structurally typed, not an opaque string.
+    scope_wire = wire["base_scope"]
+    assert isinstance(scope_wire, dict)
+    assert AuthorityScope.from_dict(scope_wire) == AuthorityScope(
+        capability="terminal.execute",
+        semantics_digest="c" * 64,
+        dimensions={},
+        quotas={},
+        exact_request_digest="d" * 64,
+        opaque=True,
+    )
+
+    # One-shot use accounting arrives as integers.
+    assert wire["max_uses"] == 1
+    assert wire["remaining_uses"] == 1
+
+    # No Grant, lease, token, receipt, raw payload, or client authority flag
+    # can appear at any level of the approval projection.
+    forbidden = {
+        "approved",
+        "approval",
+        "approval_id",
+        "authority_receipt",
+        "authority_token",
+        "grant",
+        "grant_id",
+        "lease",
+        "payload",
+        "raw_payload",
+        "receipt",
+        "token",
+        "ui_operator",
+    }
+    assert not forbidden & set(wire)
+    assert not forbidden & set(metadata_wire)
+    assert not forbidden & set(scope_wire)
 
 
 def test_deny_uses_the_minimal_wire_payload_without_confirmation_text() -> None:
