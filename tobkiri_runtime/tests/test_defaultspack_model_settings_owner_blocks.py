@@ -587,3 +587,125 @@ def test_agent_engine_binds_owner_to_ai_completion(monkeypatch: Any) -> None:
     )
 
     assert seen == [owner]
+
+
+def test_company_message_router_binds_owner_to_instruction_dispatch(
+    monkeypatch: Any,
+) -> None:
+    from domain.company import message_router
+
+    owner = object()
+    seen: list[Any] = []
+
+    def _dispatch(
+        envelope: Any,
+        context: Any,
+        *,
+        settings_owner: Any = None,
+    ) -> dict[str, Any]:
+        del context
+        seen.append(settings_owner)
+        return {
+            "status": "ok",
+            "action_id": envelope.delivery.get("action_id"),
+        }
+
+    monkeypatch.setattr(message_router, "dispatch_input", _dispatch)
+
+    router = message_router.CompanyMessageRouter(
+        company_store=object(),
+        runtime_store=object(),
+        run_dispatcher=object(),
+        settings_owner=owner,
+    )
+    instruction = router._inject_instruction(
+        "company-1",
+        {"message_id": "message-1", "thread_id": "thread-1"},
+        {"run_id": "run-1"},
+        "agent-1",
+        content="hello",
+        sender_id="user",
+        context={},
+    )
+
+    assert instruction["status"] == "ok"
+    assert seen == [owner]
+
+
+def test_company_message_router_binds_owner_to_mention_service(
+    monkeypatch: Any,
+) -> None:
+    from domain.company import message_router
+
+    owner = object()
+    seen: list[Any] = []
+
+    class Mentions:
+        def __init__(self, store: Any, *, settings_owner: Any = None) -> None:
+            del store
+            seen.append(settings_owner)
+
+        def resolve(self, *args: Any, **kwargs: Any) -> None:
+            del args, kwargs
+            return None
+
+    class _CompanyStore:
+        def get_company(self, company_id: str) -> dict[str, str]:
+            return {"id": company_id}
+
+    class _RuntimeStore:
+        def add_message(self, *args: Any, **kwargs: Any) -> dict[str, str]:
+            del args, kwargs
+            return {"message_id": "message-1"}
+
+        def mark_summary_dirty(self, *args: Any, **kwargs: Any) -> None:
+            del args, kwargs
+
+    monkeypatch.setattr(message_router, "CompanyMentionService", Mentions)
+
+    router = message_router.CompanyMessageRouter(
+        company_store=_CompanyStore(),
+        runtime_store=_RuntimeStore(),
+        run_dispatcher=object(),
+        settings_owner=owner,
+    )
+    result = router.post_message("company-1", content="hello", sender_id="user")
+
+    assert result is not None
+    assert seen == [owner]
+
+
+def test_subagent_team_mention_resolution_uses_captured_owner(
+    monkeypatch: Any,
+) -> None:
+    from domain.subagent_team import service as service_module
+
+    owner = object()
+    seen: list[Any] = []
+
+    class Mentions:
+        def __init__(self, store: Any, *, settings_owner: Any = None) -> None:
+            del store
+            seen.append(settings_owner)
+
+        def resolve(self, *args: Any, **kwargs: Any) -> dict[str, list[str]]:
+            del args, kwargs
+            return {"resolved_agent_ids": [], "unresolved": []}
+
+    monkeypatch.setattr(service_module, "CompanyMentionService", Mentions)
+
+    team = service_module.SubagentTeamService(
+        company_store=object(),
+        runtime_store=object(),
+        settings_owner=owner,
+    )
+    resolved = team._resolve_target_agent_ids(
+        "company-1",
+        explicit=["pm"],
+        content="hello",
+    )
+    unresolved = team._unresolved_target_ids("company-1", ["pm"])
+
+    assert resolved == []
+    assert unresolved == []
+    assert seen == [owner, owner]

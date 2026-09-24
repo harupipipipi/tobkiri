@@ -414,7 +414,10 @@ class SubagentTeamService:
 
     def _resolve_target_agent_ids(self, company_id: str, *, explicit: list[str], content: str, channel_id: str | None = None) -> list[str]:
         resolved: list[str] = []
-        mention_service = CompanyMentionService(self.company_store)
+        mention_service = CompanyMentionService(
+            self.company_store,
+            settings_owner=self.settings_owner,
+        )
         if explicit:
             explicit_resolution = mention_service.resolve(company_id, explicit) or {}
             resolved.extend(str(item) for item in explicit_resolution.get("resolved_agent_ids") or [])
@@ -848,7 +851,10 @@ class SubagentTeamService:
     def _unresolved_target_ids(self, company_id: str, target_agent_ids: list[str]) -> list[str]:
         if not target_agent_ids:
             return []
-        mention_service = CompanyMentionService(self.company_store)
+        mention_service = CompanyMentionService(
+            self.company_store,
+            settings_owner=self.settings_owner,
+        )
         resolution = mention_service.resolve(company_id, target_agent_ids) or {}
         return [str(item) for item in resolution.get("unresolved") or [] if str(item).strip()]
 
