@@ -38,6 +38,7 @@ from core_runtime.packvm_lifecycle_v4 import (
     PackVMLifecycleV4,
     _cleanup_binding_is_retryable,
 )
+from core_runtime.process_identity import ProcessIdentityEvidence
 from ecosystem.defaultspack.backend.sandbox.isolation.lima_runtime import (
     PackVMLimaProvisioner,
 )
@@ -862,6 +863,88 @@ def test_cleanup_rejects_live_preflight_claim(
 
     assert root.exists()
     assert provisioner.state_path.exists()
+    assert provisioner.mutation_claim_path.exists()
+
+
+def test_cleanup_reclaims_reused_pid_claim(
+    attested_provisioner: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A live PID with a mismatched start identity is a dead reused owner."""
+
+    provisioner, _manifest, root = attested_provisioner
+    _private_file(
+        provisioner.mutation_claim_path,
+        json.dumps(
+            {
+                "version": 1,
+                "operation": "provision",
+                "instance": macos_vz_provisioner.VZ_INSTANCE,
+                "owner_pid": os.getpid(),
+                "owner_identity": "darwin:1:1:000000",
+                "binding": {
+                    "session_digest": _digest(b"session"),
+                    "plan_digest": _digest(b"plan"),
+                    "ceremony_nonce_digest": _digest(b"nonce"),
+                },
+            }
+        ).encode(),
+    )
+    monkeypatch.setattr(
+        macos_vz_provisioner,
+        "process_start_identity",
+        lambda pid: ProcessIdentityEvidence(
+            "live", f"darwin:{pid}:9:000001"
+        ),
+    )
+
+    provisioner.cleanup(
+        f"{macos_vz_provisioner.PACKVM_CLEANUP_PREFIX} "
+        f"{macos_vz_provisioner.VZ_INSTANCE}"
+    )
+
+    assert not root.exists()
+    assert not provisioner.mutation_claim_path.exists()
+
+
+def test_cleanup_rejects_matching_identity_claim(
+    attested_provisioner: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A live PID with a matching start identity is still the owner."""
+
+    provisioner, _manifest, root = attested_provisioner
+    identity = f"darwin:{os.getpid()}:9:000001"
+    _private_file(
+        provisioner.mutation_claim_path,
+        json.dumps(
+            {
+                "version": 1,
+                "operation": "provision",
+                "instance": macos_vz_provisioner.VZ_INSTANCE,
+                "owner_pid": os.getpid(),
+                "owner_identity": identity,
+                "binding": {
+                    "session_digest": _digest(b"session"),
+                    "plan_digest": _digest(b"plan"),
+                    "ceremony_nonce_digest": _digest(b"nonce"),
+                },
+            }
+        ).encode(),
+    )
+    monkeypatch.setattr(
+        macos_vz_provisioner,
+        "process_start_identity",
+        lambda pid: ProcessIdentityEvidence("live", identity),
+    )
+
+    with pytest.raises(ValueError, match="unresolved owner claim"):
+        provisioner.cleanup(
+            f"{macos_vz_provisioner.PACKVM_CLEANUP_PREFIX} "
+            f"{macos_vz_provisioner.VZ_INSTANCE}"
+        )
+
+    assert root.exists()
     assert provisioner.mutation_claim_path.exists()
 
 

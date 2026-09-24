@@ -50,6 +50,7 @@ from cryptography.hazmat.primitives.serialization import (
 )
 
 from core_runtime.hmac_key_manager import generate_or_load_signing_key
+from core_runtime.process_identity import process_start_identity
 from tobkiri_protocol.secure_persistence import SecureDirectory
 from ecosystem.defaultspack.backend.sandbox.isolation.lima_runtime import (
     PACKVM_BACKEND_ID,
@@ -908,6 +909,7 @@ class MacOSVZProvisioner:
             "operation": operation,
             "instance": VZ_INSTANCE,
             "owner_pid": os.getpid(),
+            "owner_identity": _current_process_identity(),
             "binding": dict(binding),
         }
         descriptor = _open_private_file(self.mutation_lock_path, os.O_CREAT | os.O_RDWR)
@@ -925,7 +927,7 @@ class MacOSVZProvisioner:
                     recover_claim
                     and _claim_binding_equal(existing, claim)
                     and _valid_process_id(existing.get("owner_pid"))
-                    and not _process_is_alive(existing.get("owner_pid"))
+                    and not _recorded_owner_is_alive(existing)
                 )
                 stale_attested_cleanup = (
                     recover_stale_claim_for_cleanup
@@ -934,7 +936,7 @@ class MacOSVZProvisioner:
                     and existing.get("operation") == "provision"
                     and existing.get("instance") == VZ_INSTANCE
                     and _valid_process_id(existing.get("owner_pid"))
-                    and not _process_is_alive(existing.get("owner_pid"))
+                    and not _recorded_owner_is_alive(existing)
                     and not self._failed_provision_claim_is_recoverable(existing)
                 )
                 # A dead owner's claim can never resume its mutation; only a
@@ -963,7 +965,7 @@ class MacOSVZProvisioner:
                     and existing.get("version") == 1
                     and existing.get("instance") == VZ_INSTANCE
                     and _valid_process_id(existing.get("owner_pid"))
-                    and not _process_is_alive(existing.get("owner_pid"))
+                    and not _recorded_owner_is_alive(existing)
                     and not self._failed_provision_claim_is_recoverable(existing)
                 )
                 if (
@@ -974,7 +976,7 @@ class MacOSVZProvisioner:
                 ):
                     if _valid_process_id(
                         existing.get("owner_pid")
-                    ) and _process_is_alive(existing.get("owner_pid")):
+                    ) and _recorded_owner_is_alive(existing):
                         raise PackVMGateBusyError(
                             "PackVM VZ mutation has an unresolved owner claim"
                         )
@@ -1441,6 +1443,7 @@ class MacOSVZProvisioner:
                     "cow_disk_path": str(cow),
                     "efi_store_path": str(efi),
                     "owner_pid": os.getpid(),
+                    "owner_identity": _current_process_identity(),
                     **seed_facts,
                 }
                 _atomic_private_json(root / "allocation.json", allocation)
@@ -1642,7 +1645,7 @@ class MacOSVZProvisioner:
         return (
             _claim_binding_equal(claim, expected)
             and _valid_process_id(claim.get("owner_pid"))
-            and not _process_is_alive(claim.get("owner_pid"))
+            and not _recorded_owner_is_alive(claim)
         )
 
     def _allocation_recovery_receipt_matches(
@@ -1984,7 +1987,7 @@ class MacOSVZProvisioner:
                     continue
                 continue
             owner_pid = record.get("owner_pid")
-            if not _valid_process_id(owner_pid) or _process_is_alive(owner_pid):
+            if not _valid_process_id(owner_pid) or _recorded_owner_is_alive(record):
                 continue
             try:
                 self._remove_allocation_root(root)
@@ -3787,6 +3790,37 @@ def _process_is_alive(value: object) -> bool:
     except OverflowError:
         return False
     return True
+
+
+def _current_process_identity() -> str:
+    """Return this process's kernel-bound start identity, or empty."""
+
+    evidence = process_start_identity(os.getpid())
+    return evidence.identity if evidence.state == "live" else ""
+
+
+def _recorded_owner_is_alive(record: Mapping[str, Any]) -> bool:
+    """Return whether a durable owner PID is provably the same process.
+
+    ``owner_identity`` binds the recorded PID to its kernel start token, so
+    a PID reused by an unrelated process no longer counts as a live owner.
+    Records written before identity binding fall back to the existence
+    probe.  An indeterminate answer stays alive: ambiguous evidence must
+    never release shared state.
+    """
+
+    pid = record.get("owner_pid")
+    if not _valid_process_id(pid):
+        return True
+    identity = record.get("owner_identity")
+    if isinstance(identity, str) and identity:
+        evidence = process_start_identity(pid)
+        if evidence.state == "dead":
+            return False
+        if evidence.state == "unknown":
+            return True
+        return evidence.identity == identity
+    return _process_is_alive(pid)
 
 
 def _valid_process_id(value: object) -> bool:
