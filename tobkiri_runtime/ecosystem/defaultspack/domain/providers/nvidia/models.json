@@ -1,4 +1,10 @@
 {
+  "snapshot": {
+    "source": "https://docs.api.nvidia.com/nim/reference/models-1",
+    "verified_at": "2026-07-13",
+    "strategy": "official_snapshot_with_live_inventory_merge",
+    "lifecycle_policy": "refresh before retirement"
+  },
   "models": [
     {
       "id": "nvidia/nvidia/llama-3.3-nemotron-super-49b-v1.5",

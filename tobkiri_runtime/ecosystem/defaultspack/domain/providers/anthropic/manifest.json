@@ -7,7 +7,8 @@
   "status": "stable",
   "display_name": "Anthropic",
   "entrypoints": {
-    "adapter": "../ai_client/providers/anthropic_provider.py"
+    "adapter": "../ai_client/providers/anthropic_provider.py",
+    "models": "models.json"
   },
   "security": {
     "credential_required": true
@@ -30,6 +31,34 @@
       "vision",
       "reasoning"
     ]
+  },
+  "provider_manifest": {
+    "id": "anthropic",
+    "category": "llm_provider",
+    "version": "1",
+    "display_name": "Anthropic",
+    "enabled": true,
+    "priority": 20,
+    "adapter": "python_entrypoint",
+    "entrypoint": "domain.ai_client.providers.anthropic_provider:AnthropicProvider",
+    "api_key_env": "ANTHROPIC_API_KEY",
+    "base_url_env": "ANTHROPIC_BASE_URL",
+    "default_base_url": "https://api.anthropic.com",
+    "credential_required": true,
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_model": "claude-sonnet-4-6",
+    "default_model_for": {
+      "chat": "claude-sonnet-4-6",
+      "fast": "claude-sonnet-4-6",
+      "large": "claude-opus-4-6"
+    },
+    "config": {
+      "inventory_strategy": "generated_official_snapshot",
+      "inventory_scope": "account",
+      "model_sync": "fixed_allowlist",
+      "source_docs": "https://docs.anthropic.com/en/docs/about-claude/models/overview"
+    }
   },
   "aliases": {
     "provider_ids": [

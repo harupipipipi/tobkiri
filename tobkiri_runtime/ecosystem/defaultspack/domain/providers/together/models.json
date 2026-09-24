@@ -1,0 +1,44 @@
+{
+  "snapshot": {
+    "source": "https://docs.together.ai/docs/serverless-models",
+    "verified_at": "2026-07-13",
+    "strategy": "official_snapshot_with_live_inventory_merge",
+    "lifecycle_policy": "refresh from official docs or authenticated model inventory before retirement"
+  },
+  "models": [
+    {
+      "id": "together/meta-llama/Llama-3.3-70B-Instruct-Turbo",
+      "category": "llm_model",
+      "version": "1",
+      "provider_id": "together",
+      "model_id": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+      "display_name": "Llama 3.3 70B Instruct Turbo",
+      "type": "chat",
+      "enabled": true,
+      "priority": 1,
+      "routing": {
+        "default_for": [
+          "chat"
+        ]
+      },
+      "capabilities": {
+        "text_input": true,
+        "text_output": true,
+        "streaming": true,
+        "thinking": false,
+        "tool_calling": false,
+        "parallel_tool_calls": false,
+        "json_schema": false,
+        "structured_output": false,
+        "image_input": false,
+        "audio_input": false
+      },
+      "metadata": {
+        "source": "https://docs.together.ai/docs/serverless-models",
+        "verified_at": "2026-07-13",
+        "lifecycle": "active",
+        "capability_provenance": "official_documentation"
+      }
+    }
+  ]
+}

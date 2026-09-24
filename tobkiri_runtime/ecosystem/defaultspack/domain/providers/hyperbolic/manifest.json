@@ -1,0 +1,66 @@
+{
+  "id": "hyperbolic",
+  "provider_id": "hyperbolic",
+  "category": "providers",
+  "kind": "llm_provider",
+  "version": "1",
+  "status": "stable",
+  "display_name": "Hyperbolic",
+  "description": "Hyperbolic direct hosted API with live account-visible model discovery.",
+  "provider_metadata": {
+    "display_name": "Hyperbolic",
+    "kind": "cloud",
+    "env_vars": [
+      "HYPERBOLIC_API_KEY"
+    ],
+    "base_url_envs": [
+      "HYPERBOLIC_BASE_URL"
+    ],
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_model": "",
+    "default_base_url": "https://api.hyperbolic.xyz/v1",
+    "default_model_for": {},
+    "catalog_features": [
+      "chat",
+      "streaming",
+      "openai_compatible",
+      "remote_model_discovery"
+    ]
+  },
+  "provider_manifest": {
+    "id": "hyperbolic",
+    "category": "llm_provider",
+    "version": "1",
+    "display_name": "Hyperbolic",
+    "enabled": true,
+    "priority": 220,
+    "adapter": "openai_compatible",
+    "api_key_env": "HYPERBOLIC_API_KEY",
+    "base_url_env": "HYPERBOLIC_BASE_URL",
+    "default_base_url": "https://api.hyperbolic.xyz/v1",
+    "credential_required": true,
+    "catalog_only": false,
+    "supports_invoke": true,
+    "config": {
+      "api_compatibility": "openai",
+      "model_sync": "remote_merge",
+      "model_list_path": "/models",
+      "model_cache_ttl_seconds": 21600,
+      "inventory_scope": "account",
+      "source_docs": "https://docs.hyperbolic.xyz/docs/serverless-inference"
+    }
+  },
+  "aliases": {
+    "provider_ids": [
+      "hyperbolic"
+    ]
+  },
+  "source_pack_id": "defaultspack",
+  "catalog_features": [
+    "chat",
+    "streaming",
+    "openai_compatible",
+    "remote_model_discovery"
+  ]
+}

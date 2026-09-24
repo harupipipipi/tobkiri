@@ -1,0 +1,66 @@
+{
+  "id": "novita",
+  "provider_id": "novita",
+  "category": "providers",
+  "kind": "llm_provider",
+  "version": "1",
+  "status": "stable",
+  "display_name": "Novita AI",
+  "description": "Novita AI direct hosted API with live account-visible model discovery.",
+  "provider_metadata": {
+    "display_name": "Novita AI",
+    "kind": "cloud",
+    "env_vars": [
+      "NOVITA_API_KEY"
+    ],
+    "base_url_envs": [
+      "NOVITA_BASE_URL"
+    ],
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_model": "",
+    "default_base_url": "https://api.novita.ai/openai/v1",
+    "default_model_for": {},
+    "catalog_features": [
+      "chat",
+      "streaming",
+      "openai_compatible",
+      "remote_model_discovery"
+    ]
+  },
+  "provider_manifest": {
+    "id": "novita",
+    "category": "llm_provider",
+    "version": "1",
+    "display_name": "Novita AI",
+    "enabled": true,
+    "priority": 220,
+    "adapter": "openai_compatible",
+    "api_key_env": "NOVITA_API_KEY",
+    "base_url_env": "NOVITA_BASE_URL",
+    "default_base_url": "https://api.novita.ai/openai/v1",
+    "credential_required": true,
+    "catalog_only": false,
+    "supports_invoke": true,
+    "config": {
+      "api_compatibility": "openai",
+      "model_sync": "remote_merge",
+      "model_list_path": "/models",
+      "model_cache_ttl_seconds": 21600,
+      "inventory_scope": "account",
+      "source_docs": "https://novita.ai/docs/api-reference/model-apis-llm-list-models"
+    }
+  },
+  "aliases": {
+    "provider_ids": [
+      "novita"
+    ]
+  },
+  "source_pack_id": "defaultspack",
+  "catalog_features": [
+    "chat",
+    "streaming",
+    "openai_compatible",
+    "remote_model_discovery"
+  ]
+}

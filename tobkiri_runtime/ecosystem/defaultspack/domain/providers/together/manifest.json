@@ -1,0 +1,80 @@
+{
+  "id": "together",
+  "provider_id": "together",
+  "category": "providers",
+  "kind": "llm_provider",
+  "version": "1",
+  "status": "stable",
+  "display_name": "Together",
+  "description": "Together direct hosted provider with canonical account inventory.",
+  "entrypoints": {
+    "adapter": "../ai_client/providers/openai_compatible_provider.py",
+    "models": "models.json"
+  },
+  "security": {
+    "credential_required": true
+  },
+  "provider_metadata": {
+    "display_name": "Together",
+    "kind": "aggregator",
+    "env_vars": [
+      "TOGETHER_API_KEY"
+    ],
+    "base_url_envs": [
+      "TOGETHER_BASE_URL"
+    ],
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+    "default_base_url": "https://api.together.xyz/v1",
+    "default_model_for": {},
+    "catalog_features": [
+      "chat",
+      "streaming",
+      "tool_calls",
+      "openai_compatible"
+    ]
+  },
+  "provider_manifest": {
+    "id": "together",
+    "category": "llm_provider",
+    "version": "1",
+    "display_name": "Together",
+    "enabled": true,
+    "priority": 120,
+    "adapter": "openai_compatible",
+    "api_key_env": "TOGETHER_API_KEY",
+    "base_url_env": "TOGETHER_BASE_URL",
+    "default_base_url": "https://api.together.xyz/v1",
+    "credential_required": true,
+    "default_model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+    "catalog_features": [
+      "chat",
+      "streaming",
+      "tool_calls",
+      "openai_compatible"
+    ],
+    "catalog_only": false,
+    "supports_invoke": true,
+    "config": {
+      "inventory_strategy": "authenticated_models_api",
+      "inventory_scope": "account",
+      "model_sync": "remote_merge",
+      "model_list_path": "/models",
+      "model_cache_ttl_seconds": 21600,
+      "source_docs": "https://docs.together.ai/docs/serverless-models"
+    }
+  },
+  "aliases": {
+    "provider_ids": [
+      "together"
+    ]
+  },
+  "source_pack_id": "defaultspack",
+  "catalog_features": [
+    "chat",
+    "streaming",
+    "tool_calls",
+    "openai_compatible"
+  ]
+}

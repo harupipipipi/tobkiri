@@ -7,7 +7,8 @@
   "status": "stable",
   "display_name": "Google Gemini",
   "entrypoints": {
-    "adapter": "../ai_client/providers/google_provider.py"
+    "adapter": "../ai_client/providers/google_provider.py",
+    "models": "models.json"
   },
   "security": {
     "credential_required": true
@@ -31,6 +32,40 @@
       "vision",
       "embedding"
     ]
+  },
+  "provider_manifest": {
+    "id": "google",
+    "category": "llm_provider",
+    "version": "1",
+    "display_name": "Google Gemini",
+    "enabled": true,
+    "priority": 30,
+    "adapter": "python_entrypoint",
+    "entrypoint": "domain.ai_client.providers.google_provider:GoogleProvider",
+    "api_key_env": [
+      "GOOGLE_API_KEY",
+      "GEMINI_API_KEY"
+    ],
+    "base_url_env": "GOOGLE_BASE_URL",
+    "default_base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "credential_required": true,
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_model": "gemini-2.5-pro",
+    "default_model_for": {
+      "chat": "gemini-2.5-pro",
+      "fast": "gemini-2.5-flash",
+      "large": "gemini-2.5-pro",
+      "embedding": "gemini-embedding-001"
+    },
+    "config": {
+      "inventory_strategy": "authenticated_models_api",
+      "inventory_scope": "account_project",
+      "model_sync": "remote_merge",
+      "model_list_path": "/models",
+      "model_cache_ttl_seconds": 21600,
+      "source_docs": "https://ai.google.dev/gemini-api/docs/models"
+    }
   },
   "aliases": {
     "provider_ids": [

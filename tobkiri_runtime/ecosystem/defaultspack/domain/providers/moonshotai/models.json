@@ -1,4 +1,10 @@
 {
+  "snapshot": {
+    "source": "https://platform.moonshot.ai/docs/api/chat",
+    "verified_at": "2026-07-13",
+    "strategy": "official_snapshot_with_live_inventory_merge",
+    "lifecycle_policy": "refresh before retirement"
+  },
   "models": [
     {
       "id": "moonshotai/kimi-k2-0711-preview",

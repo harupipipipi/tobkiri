@@ -1,11 +1,12 @@
 {
-  "id": "deepseek",
-  "provider_id": "deepseek",
+  "id": "glm",
+  "provider_id": "glm",
   "category": "providers",
   "kind": "llm_provider",
   "version": "1",
   "status": "stable",
-  "display_name": "DeepSeek",
+  "display_name": "GLM",
+  "description": "GLM direct hosted provider with canonical account inventory.",
   "entrypoints": {
     "adapter": "../ai_client/providers/openai_compatible_provider.py",
     "models": "models.json"
@@ -14,59 +15,66 @@
     "credential_required": true
   },
   "provider_metadata": {
-    "display_name": "DeepSeek",
+    "display_name": "GLM",
     "kind": "cloud",
     "env_vars": [
-      "DEEPSEEK_API_KEY"
+      "GLM_API_KEY"
     ],
     "base_url_envs": [
-      "DEEPSEEK_BASE_URL"
+      "GLM_BASE_URL"
     ],
-    "catalog_only": true,
-    "supports_invoke": false,
-    "default_model": "deepseek-chat",
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_model": "glm-4.5",
+    "default_base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "default_model_for": {},
     "catalog_features": [
       "chat",
-      "reasoning"
+      "streaming",
+      "tool_calls",
+      "openai_compatible"
     ]
   },
   "provider_manifest": {
-    "id": "deepseek",
+    "id": "glm",
     "category": "llm_provider",
     "version": "1",
-    "display_name": "DeepSeek",
+    "display_name": "GLM",
     "enabled": true,
-    "priority": 100,
+    "priority": 80,
     "adapter": "openai_compatible",
-    "api_key_env": "DEEPSEEK_API_KEY",
-    "base_url_env": "DEEPSEEK_BASE_URL",
-    "default_base_url": "https://api.deepseek.com",
+    "api_key_env": "GLM_API_KEY",
+    "base_url_env": "GLM_BASE_URL",
+    "default_base_url": "https://open.bigmodel.cn/api/paas/v4",
     "credential_required": true,
+    "default_model": "glm-4.5",
+    "catalog_features": [
+      "chat",
+      "streaming",
+      "tool_calls",
+      "openai_compatible"
+    ],
     "catalog_only": false,
     "supports_invoke": true,
-    "default_model": "deepseek-chat",
     "config": {
       "inventory_strategy": "authenticated_models_api",
       "inventory_scope": "account",
       "model_sync": "remote_merge",
       "model_list_path": "/models",
       "model_cache_ttl_seconds": 21600,
-      "source_docs": "https://api-docs.deepseek.com/"
+      "source_docs": "https://docs.bigmodel.cn/cn/guide/models/text/glm-4.5"
     }
   },
   "aliases": {
     "provider_ids": [
-      "deepseek"
-    ]
-  },
-  "compatibility": {
-    "legacy_ids": [
-      "deepseek"
+      "glm"
     ]
   },
   "source_pack_id": "defaultspack",
   "catalog_features": [
     "chat",
-    "reasoning"
+    "streaming",
+    "tool_calls",
+    "openai_compatible"
   ]
 }

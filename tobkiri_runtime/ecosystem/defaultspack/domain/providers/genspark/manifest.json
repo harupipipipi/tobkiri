@@ -1,0 +1,75 @@
+{
+  "id": "genspark",
+  "provider_id": "genspark",
+  "category": "providers",
+  "kind": "llm_provider",
+  "version": "1",
+  "status": "stable",
+  "display_name": "GenSpark",
+  "description": "GenSpark direct hosted provider with canonical account inventory.",
+  "entrypoints": {
+    "adapter": "../ai_client/providers/genspark_provider.py",
+    "models": "models.json"
+  },
+  "security": {
+    "credential_required": true
+  },
+  "provider_metadata": {
+    "display_name": "GenSpark",
+    "kind": "cloud",
+    "env_vars": [
+      "GENSPARK_API_KEY",
+      "OPENAI_API_KEY"
+    ],
+    "base_url_envs": [
+      "GENSPARK_LLM_BASE_URL"
+    ],
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_model": "gpt-5-mini",
+    "default_base_url": "https://www.genspark.ai/api/llm_proxy/v1",
+    "default_model_for": {},
+    "catalog_features": [
+      "chat",
+      "streaming"
+    ]
+  },
+  "provider_manifest": {
+    "id": "genspark",
+    "category": "llm_provider",
+    "version": "1",
+    "display_name": "GenSpark",
+    "enabled": true,
+    "priority": 50,
+    "adapter": "python_entrypoint",
+    "entrypoint": "domain.ai_client.providers.genspark_provider:GensparkProvider",
+    "api_key_env": [
+      "GENSPARK_API_KEY",
+      "OPENAI_API_KEY"
+    ],
+    "credential_required": true,
+    "catalog_only": false,
+    "supports_invoke": true,
+    "config": {
+      "inventory_strategy": "generated_official_snapshot",
+      "inventory_scope": "account",
+      "model_sync": "fixed_allowlist",
+      "model_list_path": "/models",
+      "model_cache_ttl_seconds": 21600,
+      "source_docs": "https://www.genspark.ai/api-docs"
+    },
+    "base_url_env": "GENSPARK_LLM_BASE_URL",
+    "default_base_url": "https://www.genspark.ai/api/llm_proxy/v1",
+    "default_model": "gpt-5-mini"
+  },
+  "aliases": {
+    "provider_ids": [
+      "genspark"
+    ]
+  },
+  "source_pack_id": "defaultspack",
+  "catalog_features": [
+    "chat",
+    "streaming"
+  ]
+}

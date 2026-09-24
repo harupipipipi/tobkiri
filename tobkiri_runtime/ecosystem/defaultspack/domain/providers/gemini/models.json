@@ -1,0 +1,334 @@
+{
+  "snapshot": {
+    "source": "https://ai.google.dev/gemini-api/docs/models",
+    "verified_at": "2026-07-13",
+    "strategy": "official_snapshot_with_live_inventory_merge",
+    "lifecycle_policy": "refresh from official docs or authenticated model inventory before retirement"
+  },
+  "models": [
+    {
+      "id": "google/gemini-2.0-flash-lite",
+      "category": "llm_model",
+      "version": "1",
+      "provider_id": "google",
+      "model_id": "gemini-2.0-flash-lite",
+      "display_name": "Gemini 2.0 Flash-Lite",
+      "type": "chat",
+      "enabled": false,
+      "priority": 28,
+      "capabilities": {
+        "text_input": true,
+        "text_output": true,
+        "streaming": true,
+        "thinking": false,
+        "tool_calling": false,
+        "parallel_tool_calls": false,
+        "json_schema": false,
+        "structured_output": false,
+        "image_input": false,
+        "audio_input": false
+      },
+      "metadata": {
+        "deprecated": true,
+        "hidden": true,
+        "replacement": "gemini-2.5-flash-lite",
+        "source": "https://ai.google.dev/gemini-api/docs/models",
+        "verified_at": "2026-07-13",
+        "lifecycle": "active",
+        "capability_provenance": "official_documentation"
+      }
+    },
+    {
+      "id": "google/gemini-2.5-flash",
+      "category": "llm_model",
+      "version": "1",
+      "provider_id": "google",
+      "model_id": "gemini-2.5-flash",
+      "display_name": "Gemini 2.5 Flash",
+      "type": "chat",
+      "priority": 20,
+      "routing": {
+        "speed_tier": "fast"
+      },
+      "capabilities": {
+        "text_input": true,
+        "text_output": true,
+        "streaming": true,
+        "thinking": false,
+        "tool_calling": false,
+        "parallel_tool_calls": false,
+        "json_schema": false,
+        "structured_output": false,
+        "image_input": false,
+        "audio_input": false
+      },
+      "enabled": true,
+      "metadata": {
+        "source": "https://ai.google.dev/gemini-api/docs/models",
+        "verified_at": "2026-07-13",
+        "lifecycle": "active",
+        "capability_provenance": "official_documentation"
+      }
+    },
+    {
+      "id": "google/gemini-2.5-pro",
+      "category": "llm_model",
+      "version": "1",
+      "provider_id": "google",
+      "model_id": "gemini-2.5-pro",
+      "display_name": "Gemini 2.5 Pro",
+      "type": "chat",
+      "priority": 10,
+      "routing": {
+        "default_for": [
+          "chat",
+          "large"
+        ]
+      },
+      "capabilities": {
+        "text_input": true,
+        "text_output": true,
+        "streaming": true,
+        "thinking": false,
+        "tool_calling": false,
+        "parallel_tool_calls": false,
+        "json_schema": false,
+        "structured_output": false,
+        "image_input": false,
+        "audio_input": false
+      },
+      "enabled": true,
+      "metadata": {
+        "source": "https://ai.google.dev/gemini-api/docs/models",
+        "verified_at": "2026-07-13",
+        "lifecycle": "active",
+        "capability_provenance": "official_documentation"
+      }
+    },
+    {
+      "id": "google/gemini-3-flash-preview",
+      "category": "llm_model",
+      "version": "1",
+      "provider_id": "google",
+      "model_id": "gemini-3-flash-preview",
+      "display_name": "Gemini 3 Flash Preview",
+      "type": "chat",
+      "priority": 18,
+      "capabilities": {
+        "text_input": true,
+        "text_output": true,
+        "streaming": true,
+        "thinking": false,
+        "tool_calling": false,
+        "parallel_tool_calls": false,
+        "json_schema": false,
+        "structured_output": false,
+        "image_input": false,
+        "audio_input": false
+      },
+      "enabled": true,
+      "metadata": {
+        "source": "https://ai.google.dev/gemini-api/docs/models",
+        "verified_at": "2026-07-13",
+        "lifecycle": "active",
+        "capability_provenance": "official_documentation"
+      }
+    },
+    {
+      "id": "google/gemini-3-pro-preview",
+      "category": "llm_model",
+      "version": "1",
+      "provider_id": "google",
+      "model_id": "gemini-3-pro-preview",
+      "display_name": "Gemini 3 Pro Preview",
+      "type": "chat",
+      "priority": 12,
+      "capabilities": {
+        "text_input": true,
+        "text_output": true,
+        "streaming": true,
+        "thinking": false,
+        "tool_calling": false,
+        "parallel_tool_calls": false,
+        "json_schema": false,
+        "structured_output": false,
+        "image_input": false,
+        "audio_input": false
+      },
+      "enabled": true,
+      "metadata": {
+        "source": "https://ai.google.dev/gemini-api/docs/models",
+        "verified_at": "2026-07-13",
+        "lifecycle": "active",
+        "capability_provenance": "official_documentation"
+      }
+    },
+    {
+      "id": "google/gemini-embedding-001",
+      "category": "llm_model",
+      "version": "1",
+      "provider_id": "google",
+      "model_id": "gemini-embedding-001",
+      "display_name": "Gemini Embedding 001",
+      "type": "embedding",
+      "priority": 30,
+      "routing": {
+        "default_for": [
+          "embedding"
+        ]
+      },
+      "capabilities": {
+        "text_input": true,
+        "text_output": true,
+        "streaming": true,
+        "thinking": false,
+        "tool_calling": false,
+        "parallel_tool_calls": false,
+        "json_schema": false,
+        "structured_output": false,
+        "image_input": false,
+        "audio_input": false
+      },
+      "enabled": true,
+      "metadata": {
+        "source": "https://ai.google.dev/gemini-api/docs/models",
+        "verified_at": "2026-07-13",
+        "lifecycle": "active",
+        "capability_provenance": "official_documentation"
+      }
+    },
+    {
+      "id": "google/gemma-3-27b-it",
+      "category": "llm_model",
+      "version": "1",
+      "provider_id": "google",
+      "model_id": "gemma-3-27b-it",
+      "display_name": "Gemma 3 27B IT",
+      "type": "chat",
+      "priority": 40,
+      "capabilities": {
+        "text_input": true,
+        "text_output": true,
+        "streaming": true,
+        "thinking": false,
+        "tool_calling": false,
+        "parallel_tool_calls": false,
+        "json_schema": false,
+        "structured_output": false,
+        "image_input": false,
+        "audio_input": false
+      },
+      "enabled": true,
+      "metadata": {
+        "source": "https://ai.google.dev/gemini-api/docs/models",
+        "verified_at": "2026-07-13",
+        "lifecycle": "active",
+        "capability_provenance": "official_documentation"
+      }
+    },
+    {
+      "id": "google/gemma-3n-e4b-it",
+      "category": "llm_model",
+      "version": "1",
+      "provider_id": "google",
+      "model_id": "gemma-3n-e4b-it",
+      "display_name": "Gemma 3n E4B IT",
+      "type": "chat",
+      "priority": 45,
+      "capabilities": {
+        "text_input": true,
+        "text_output": true,
+        "streaming": true,
+        "thinking": false,
+        "tool_calling": false,
+        "parallel_tool_calls": false,
+        "json_schema": false,
+        "structured_output": false,
+        "image_input": false,
+        "audio_input": false
+      },
+      "enabled": true,
+      "metadata": {
+        "source": "https://ai.google.dev/gemini-api/docs/models",
+        "verified_at": "2026-07-13",
+        "lifecycle": "active",
+        "capability_provenance": "official_documentation"
+      }
+    },
+    {
+      "id": "google/gemma-4-31b-it",
+      "category": "llm_model",
+      "version": "1",
+      "provider_id": "google",
+      "model_id": "gemma-4-31b-it",
+      "display_name": "Gemma 4 31B IT",
+      "type": "chat",
+      "priority": 35,
+      "capabilities": {
+        "text_input": true,
+        "text_output": true,
+        "streaming": true,
+        "thinking": false,
+        "tool_calling": true,
+        "parallel_tool_calls": false,
+        "json_schema": false,
+        "structured_output": false,
+        "image_input": true,
+        "audio_input": false
+      },
+      "thinking": {
+        "supported": true,
+        "levels": [
+          "minimal",
+          "high"
+        ],
+        "default_level": "high",
+        "provider_mapping": {
+          "minimal": {
+            "reasoning_effort": "minimal"
+          },
+          "high": {
+            "reasoning_effort": "high"
+          },
+          "none": {}
+        }
+      },
+      "enabled": true,
+      "metadata": {
+        "source": "https://ai.google.dev/gemini-api/docs/models",
+        "verified_at": "2026-07-13",
+        "lifecycle": "active",
+        "capability_provenance": "official_documentation"
+      }
+    },
+    {
+      "id": "google/text-embedding-004",
+      "category": "llm_model",
+      "version": "1",
+      "provider_id": "google",
+      "model_id": "text-embedding-004",
+      "display_name": "Text Embedding 004",
+      "type": "embedding",
+      "enabled": true,
+      "priority": 3,
+      "capabilities": {
+        "text_input": true,
+        "text_output": true,
+        "streaming": true,
+        "thinking": false,
+        "tool_calling": false,
+        "parallel_tool_calls": false,
+        "json_schema": false,
+        "structured_output": false,
+        "image_input": false,
+        "audio_input": false
+      },
+      "metadata": {
+        "source": "https://ai.google.dev/gemini-api/docs/models",
+        "verified_at": "2026-07-13",
+        "lifecycle": "active",
+        "capability_provenance": "official_documentation"
+      }
+    }
+  ]
+}

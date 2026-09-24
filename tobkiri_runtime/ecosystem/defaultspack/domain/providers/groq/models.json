@@ -1,4 +1,10 @@
 {
+  "snapshot": {
+    "source": "https://console.groq.com/docs/models",
+    "verified_at": "2026-07-13",
+    "strategy": "official_snapshot_with_live_inventory_merge",
+    "lifecycle_policy": "refresh before retirement"
+  },
   "models": [
     {
       "id": "groq/openai/gpt-oss-120b",

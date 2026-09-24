@@ -1,0 +1,245 @@
+{
+  "snapshot": {
+    "source": "https://developers.openai.com/api/docs/models",
+    "verified_at": "2026-07-13",
+    "strategy": "official_snapshot_with_live_inventory_merge",
+    "lifecycle_policy": "refresh from official docs or authenticated model inventory before retirement"
+  },
+  "models": [
+    {
+      "id": "openai/gpt-4o",
+      "category": "llm_model",
+      "version": "1",
+      "provider_id": "openai",
+      "model_id": "gpt-4o",
+      "display_name": "GPT-4o",
+      "type": "chat",
+      "priority": 30,
+      "routing": {
+        "default_for": [
+          "chat",
+          "vision"
+        ]
+      },
+      "capabilities": {
+        "text_input": true,
+        "text_output": true,
+        "streaming": true,
+        "thinking": false,
+        "tool_calling": true,
+        "parallel_tool_calls": true,
+        "json_schema": true,
+        "structured_output": true,
+        "image_input": true,
+        "audio_input": false
+      },
+      "request_features": {
+        "json_mode": true,
+        "response_format": true,
+        "tool_choice": true
+      },
+      "context_window": 128000,
+      "enabled": true,
+      "metadata": {
+        "source": "https://developers.openai.com/api/docs/models",
+        "verified_at": "2026-07-13",
+        "lifecycle": "active",
+        "capability_provenance": "official_documentation"
+      }
+    },
+    {
+      "id": "openai/gpt-5.4-mini",
+      "category": "llm_model",
+      "version": "1",
+      "provider_id": "openai",
+      "model_id": "gpt-5.4-mini",
+      "display_name": "GPT-5.4 mini",
+      "type": "chat",
+      "priority": 20,
+      "routing": {
+        "speed_tier": "fast"
+      },
+      "capabilities": {
+        "text_input": true,
+        "text_output": true,
+        "streaming": true,
+        "thinking": true,
+        "tool_calling": true,
+        "parallel_tool_calls": true,
+        "json_schema": true,
+        "structured_output": true,
+        "image_input": true,
+        "audio_input": false
+      },
+      "request_features": {
+        "json_mode": true,
+        "response_format": true,
+        "tool_choice": true
+      },
+      "thinking": {
+        "supported": true
+      },
+      "enabled": true,
+      "metadata": {
+        "source": "https://developers.openai.com/api/docs/models",
+        "verified_at": "2026-07-13",
+        "lifecycle": "active",
+        "capability_provenance": "official_documentation"
+      }
+    },
+    {
+      "id": "openai/gpt-5.4",
+      "category": "llm_model",
+      "version": "1",
+      "provider_id": "openai",
+      "model_id": "gpt-5.4",
+      "display_name": "GPT-5.4",
+      "type": "chat",
+      "priority": 10,
+      "capabilities": {
+        "text_input": true,
+        "text_output": true,
+        "streaming": true,
+        "thinking": true,
+        "tool_calling": true,
+        "parallel_tool_calls": true,
+        "json_schema": true,
+        "structured_output": true,
+        "image_input": true,
+        "audio_input": false
+      },
+      "request_features": {
+        "json_mode": true,
+        "response_format": true,
+        "tool_choice": true
+      },
+      "thinking": {
+        "supported": true
+      },
+      "enabled": true,
+      "metadata": {
+        "source": "https://developers.openai.com/api/docs/models",
+        "verified_at": "2026-07-13",
+        "lifecycle": "active",
+        "capability_provenance": "official_documentation"
+      }
+    },
+    {
+      "id": "openai/gpt-5.5-mini",
+      "category": "llm_model",
+      "version": "1",
+      "provider_id": "openai",
+      "model_id": "gpt-5.5-mini",
+      "display_name": "GPT-5.5 mini",
+      "type": "chat",
+      "priority": 20,
+      "routing": {
+        "speed_tier": "fast"
+      },
+      "capabilities": {
+        "text_input": true,
+        "text_output": true,
+        "streaming": true,
+        "thinking": true,
+        "tool_calling": true,
+        "parallel_tool_calls": true,
+        "json_schema": true,
+        "structured_output": true,
+        "image_input": true,
+        "audio_input": false
+      },
+      "request_features": {
+        "json_mode": true,
+        "response_format": true,
+        "tool_choice": true
+      },
+      "thinking": {
+        "supported": true
+      },
+      "enabled": true,
+      "metadata": {
+        "source": "https://developers.openai.com/api/docs/models",
+        "verified_at": "2026-07-13",
+        "lifecycle": "active",
+        "capability_provenance": "official_documentation"
+      }
+    },
+    {
+      "id": "openai/gpt-5.5",
+      "category": "llm_model",
+      "version": "1",
+      "provider_id": "openai",
+      "model_id": "gpt-5.5",
+      "display_name": "GPT-5.5",
+      "type": "chat",
+      "priority": 10,
+      "routing": {
+        "default_for": [
+          "chat",
+          "large"
+        ]
+      },
+      "capabilities": {
+        "text_input": true,
+        "text_output": true,
+        "streaming": true,
+        "thinking": true,
+        "tool_calling": true,
+        "parallel_tool_calls": true,
+        "json_schema": true,
+        "structured_output": true,
+        "image_input": true,
+        "audio_input": false
+      },
+      "request_features": {
+        "json_mode": true,
+        "response_format": true,
+        "tool_choice": true
+      },
+      "thinking": {
+        "supported": true
+      },
+      "enabled": true,
+      "metadata": {
+        "source": "https://developers.openai.com/api/docs/models",
+        "verified_at": "2026-07-13",
+        "lifecycle": "active",
+        "capability_provenance": "official_documentation"
+      }
+    },
+    {
+      "id": "openai/text-embedding-3-large",
+      "category": "llm_model",
+      "version": "1",
+      "provider_id": "openai",
+      "model_id": "text-embedding-3-large",
+      "display_name": "text-embedding-3-large",
+      "type": "embedding",
+      "priority": 30,
+      "routing": {
+        "default_for": [
+          "embedding"
+        ]
+      },
+      "capabilities": {
+        "text_input": true,
+        "text_output": true,
+        "streaming": true,
+        "thinking": false,
+        "tool_calling": false,
+        "parallel_tool_calls": false,
+        "json_schema": false,
+        "structured_output": false,
+        "image_input": false,
+        "audio_input": false
+      },
+      "enabled": true,
+      "metadata": {
+        "source": "https://developers.openai.com/api/docs/models",
+        "verified_at": "2026-07-13",
+        "lifecycle": "active",
+        "capability_provenance": "official_documentation"
+      }
+    }
+  ]
+}

@@ -1421,4 +1421,11 @@ def get_best_model_for_provider(name, use_case="chat"):
                 return str(provider_manifest["default_model"])
     except Exception:
         pass
+    component_manifest = _provider_manifest_map().get(str(name or "").strip(), {})
+    if component_manifest:
+        defaults = component_manifest.get("default_model_for", {}) or {}
+        if use_case in defaults:
+            return str(defaults[use_case])
+        if component_manifest.get("default_model"):
+            return str(component_manifest["default_model"])
     return _BEST_MODEL_BY_PROVIDER.get(name)

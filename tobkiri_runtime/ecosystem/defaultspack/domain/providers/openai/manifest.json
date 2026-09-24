@@ -7,7 +7,8 @@
   "status": "stable",
   "display_name": "OpenAI",
   "entrypoints": {
-    "adapter": "../ai_client/providers/openai_provider.py"
+    "adapter": "../ai_client/providers/openai_provider.py",
+    "models": "models.json"
   },
   "security": {
     "credential_required": true
@@ -33,6 +34,37 @@
       "transcription",
       "tts"
     ]
+  },
+  "provider_manifest": {
+    "id": "openai",
+    "category": "llm_provider",
+    "version": "1",
+    "display_name": "OpenAI",
+    "enabled": true,
+    "priority": 10,
+    "adapter": "python_entrypoint",
+    "entrypoint": "domain.ai_client.providers.openai_provider:OpenAIProvider",
+    "api_key_env": "OPENAI_API_KEY",
+    "base_url_env": "OPENAI_BASE_URL",
+    "default_base_url": "https://api.openai.com/v1",
+    "credential_required": true,
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_model": "gpt-5.5",
+    "default_model_for": {
+      "chat": "gpt-5.5",
+      "fast": "gpt-5.5-mini",
+      "large": "gpt-5.5",
+      "embedding": "text-embedding-3-large"
+    },
+    "config": {
+      "inventory_strategy": "authenticated_models_api",
+      "inventory_scope": "account_project",
+      "model_sync": "remote_merge",
+      "model_list_path": "/models",
+      "model_cache_ttl_seconds": 21600,
+      "source_docs": "https://developers.openai.com/api/docs/models"
+    }
   },
   "aliases": {
     "provider_ids": [

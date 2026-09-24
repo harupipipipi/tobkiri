@@ -308,22 +308,10 @@ def test_extension_registry_synthesizes_provider_default_models(tmp_path: Path):
     assert fast_default["model_id"] == "openai/gpt-5.5-mini"
 
 
-def test_extension_registry_preserves_google_api_key_env_list():
-    root = (
-        Path(__file__).resolve().parent.parent
-        / "ecosystem"
-        / "rumi_model_catalog_pack"
-        / "extensions"
-    )
+def test_canonical_google_component_preserves_api_key_env_list():
+    google = providers_module.get_provider_catalog_map()["google"]
 
-    registry = ExtensionRegistry(root)
-    google = next(
-        provider
-        for provider in registry.llm().providers(enabled_only=True)
-        if provider["id"] == "google"
-    )
-
-    assert google["api_key_env"] == ["GOOGLE_API_KEY", "GEMINI_API_KEY"]
+    assert google["env_vars"] == ["GOOGLE_API_KEY", "GEMINI_API_KEY"]
 
 
 def test_extension_registry_lists_rumi_bundle_ui_surface():

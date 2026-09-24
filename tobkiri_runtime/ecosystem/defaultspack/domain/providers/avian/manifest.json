@@ -1,0 +1,66 @@
+{
+  "id": "avian",
+  "provider_id": "avian",
+  "category": "providers",
+  "kind": "llm_provider",
+  "version": "1",
+  "status": "stable",
+  "display_name": "Avian",
+  "description": "Avian direct hosted API with live account-visible model discovery.",
+  "provider_metadata": {
+    "display_name": "Avian",
+    "kind": "cloud",
+    "env_vars": [
+      "AVIAN_API_KEY"
+    ],
+    "base_url_envs": [
+      "AVIAN_BASE_URL"
+    ],
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_model": "",
+    "default_base_url": "https://api.avian.io/v1",
+    "default_model_for": {},
+    "catalog_features": [
+      "chat",
+      "streaming",
+      "openai_compatible",
+      "remote_model_discovery"
+    ]
+  },
+  "provider_manifest": {
+    "id": "avian",
+    "category": "llm_provider",
+    "version": "1",
+    "display_name": "Avian",
+    "enabled": true,
+    "priority": 220,
+    "adapter": "openai_compatible",
+    "api_key_env": "AVIAN_API_KEY",
+    "base_url_env": "AVIAN_BASE_URL",
+    "default_base_url": "https://api.avian.io/v1",
+    "credential_required": true,
+    "catalog_only": false,
+    "supports_invoke": true,
+    "config": {
+      "api_compatibility": "openai",
+      "model_sync": "remote_merge",
+      "model_list_path": "/models",
+      "model_cache_ttl_seconds": 21600,
+      "inventory_scope": "account",
+      "source_docs": "https://docs.avian.io/"
+    }
+  },
+  "aliases": {
+    "provider_ids": [
+      "avian"
+    ]
+  },
+  "source_pack_id": "defaultspack",
+  "catalog_features": [
+    "chat",
+    "streaming",
+    "openai_compatible",
+    "remote_model_discovery"
+  ]
+}

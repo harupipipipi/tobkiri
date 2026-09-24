@@ -1,0 +1,46 @@
+{
+  "snapshot": {
+    "source": "https://longcat.chat/platform/docs/",
+    "verified_at": "2026-07-13",
+    "strategy": "official_snapshot_with_live_inventory_merge",
+    "lifecycle_policy": "refresh from official docs or authenticated model inventory before retirement"
+  },
+  "models": [
+    {
+      "id": "longcat/LongCat-Flash-Chat",
+      "category": "llm_model",
+      "version": "1",
+      "provider_id": "longcat",
+      "model_id": "LongCat-Flash-Chat",
+      "display_name": "LongCat Flash Chat",
+      "type": "chat",
+      "enabled": true,
+      "priority": 1,
+      "routing": {
+        "default_for": [
+          "chat"
+        ],
+        "speed_tier": "fast"
+      },
+      "capabilities": {
+        "text_input": true,
+        "text_output": true,
+        "streaming": true,
+        "thinking": false,
+        "tool_calling": false,
+        "parallel_tool_calls": false,
+        "json_schema": false,
+        "structured_output": false,
+        "image_input": false,
+        "audio_input": false
+      },
+      "metadata": {
+        "docs": "https://longcat.chat/platform/docs/",
+        "source": "https://longcat.chat/platform/docs/",
+        "verified_at": "2026-07-13",
+        "lifecycle": "active",
+        "capability_provenance": "official_documentation"
+      }
+    }
+  ]
+}
