@@ -77,6 +77,9 @@ class RequestBodyMixin(_HTTPHandlerBase):
             content_length = 0
         if content_length <= 0:
             return
+        # The request was already rejected; draining more than the accepted
+        # body bound only lets a rejected client pin the worker longer.
+        content_length = min(content_length, MAX_REQUEST_BODY_BYTES)
         try:
             self.rfile.read(content_length)
         except Exception:

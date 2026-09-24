@@ -65,6 +65,7 @@ logger = logging.getLogger(__name__)
 # separate acceptance path; a quit must not wait for that path indefinitely.
 THREAD_JOIN_TIMEOUT_SECONDS = 3
 MAX_CONCURRENT_REQUESTS = 32
+_REQUEST_SOCKET_TIMEOUT_SECONDS = 30.0
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 # Startup capture assertions can collide with a writer's packaged-artifact
 # hash or a crash-recovery republish.  Each attempt keeps its bounded lock
@@ -908,6 +909,12 @@ class PackAPIHandler(
 
         BoundPackAPIHandler.__name__ = "PackAPIHandlerV4Instance"
         return BoundPackAPIHandler
+
+    def setup(self) -> None:
+        super().setup()
+        # A stalled client must not pin a worker thread forever; bound each
+        # socket operation while leaving handler deadlines intact.
+        self.connection.settimeout(_REQUEST_SOCKET_TIMEOUT_SECONDS)
 
     def handle(self) -> None:
         """Serve this connection from one immutable Host contract snapshot."""
