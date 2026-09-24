@@ -6053,21 +6053,21 @@
       },
       {
         "evidence": "permissive",
-        "line": 366,
+        "line": 393,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_permissive_mode"
       },
       {
         "evidence": "permissive",
-        "line": 527,
+        "line": 554,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_permissive_mode"
       },
       {
         "evidence": "permissive",
-        "line": 528,
+        "line": 555,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_permissive_mode"
@@ -6102,28 +6102,28 @@
       },
       {
         "evidence": "permissive",
-        "line": 89,
+        "line": 116,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/secure_executor.py",
         "rule_id": "legacy_permissive_mode"
       },
       {
         "evidence": "PERMISSIVE",
-        "line": 101,
+        "line": 128,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/secure_executor.py",
         "rule_id": "legacy_permissive_mode"
       },
       {
         "evidence": "permissive",
-        "line": 193,
+        "line": 220,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/secure_executor.py",
         "rule_id": "legacy_permissive_mode"
       },
       {
         "evidence": "Permissive",
-        "line": 700,
+        "line": 727,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/secure_executor.py",
         "rule_id": "legacy_permissive_mode"
@@ -6375,35 +6375,35 @@
       },
       {
         "evidence": "python_file_call",
-        "line": 111,
+        "line": 138,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_python_file_call"
       },
       {
         "evidence": "python_file_call",
-        "line": 126,
+        "line": 153,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_python_file_call"
       },
       {
         "evidence": "python_file_call",
-        "line": 282,
+        "line": 309,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_python_file_call"
       },
       {
         "evidence": "python_file_call",
-        "line": 351,
+        "line": 378,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_python_file_call"
       },
       {
         "evidence": "python_file_call",
-        "line": 881,
+        "line": 908,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_python_file_call"
@@ -15143,32 +15143,32 @@
         "rule_id": "legacy_permissive_mode"
       },
       {
-        "evidence_digest": "sha256:dcf2918874c9f06fdd6e46e78a5167a8050e120319c799253b8768b5fa8b4f20",
+        "evidence_digest": "sha256:4ddd2f14a390275c5c17f668c470b2c2ce72a9621011ace9ff84d1dbeaa97edb",
         "line": 27,
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_permissive_mode"
       },
       {
-        "evidence_digest": "sha256:dcf2918874c9f06fdd6e46e78a5167a8050e120319c799253b8768b5fa8b4f20",
+        "evidence_digest": "sha256:4ddd2f14a390275c5c17f668c470b2c2ce72a9621011ace9ff84d1dbeaa97edb",
         "line": 35,
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_permissive_mode"
       },
       {
-        "evidence_digest": "sha256:dcf2918874c9f06fdd6e46e78a5167a8050e120319c799253b8768b5fa8b4f20",
-        "line": 366,
+        "evidence_digest": "sha256:4ddd2f14a390275c5c17f668c470b2c2ce72a9621011ace9ff84d1dbeaa97edb",
+        "line": 393,
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_permissive_mode"
       },
       {
-        "evidence_digest": "sha256:dcf2918874c9f06fdd6e46e78a5167a8050e120319c799253b8768b5fa8b4f20",
-        "line": 527,
+        "evidence_digest": "sha256:4ddd2f14a390275c5c17f668c470b2c2ce72a9621011ace9ff84d1dbeaa97edb",
+        "line": 554,
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_permissive_mode"
       },
       {
-        "evidence_digest": "sha256:dcf2918874c9f06fdd6e46e78a5167a8050e120319c799253b8768b5fa8b4f20",
-        "line": 528,
+        "evidence_digest": "sha256:4ddd2f14a390275c5c17f668c470b2c2ce72a9621011ace9ff84d1dbeaa97edb",
+        "line": 555,
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_permissive_mode"
       },
@@ -15191,32 +15191,32 @@
         "rule_id": "legacy_permissive_mode"
       },
       {
-        "evidence_digest": "sha256:a82fdfc17ef5317de1cb47e5957612e05005dc32f8545610e632eb50c62667f7",
+        "evidence_digest": "sha256:8f8252ff32cb69f4c39aced2d016a0770086182d8254665b3a7dc8a12acc4b12",
         "line": 10,
         "path": "tobkiri_runtime/core_runtime/secure_executor.py",
         "rule_id": "legacy_permissive_mode"
       },
       {
-        "evidence_digest": "sha256:a82fdfc17ef5317de1cb47e5957612e05005dc32f8545610e632eb50c62667f7",
-        "line": 89,
+        "evidence_digest": "sha256:8f8252ff32cb69f4c39aced2d016a0770086182d8254665b3a7dc8a12acc4b12",
+        "line": 116,
         "path": "tobkiri_runtime/core_runtime/secure_executor.py",
         "rule_id": "legacy_permissive_mode"
       },
       {
-        "evidence_digest": "sha256:a82fdfc17ef5317de1cb47e5957612e05005dc32f8545610e632eb50c62667f7",
-        "line": 101,
+        "evidence_digest": "sha256:8f8252ff32cb69f4c39aced2d016a0770086182d8254665b3a7dc8a12acc4b12",
+        "line": 128,
         "path": "tobkiri_runtime/core_runtime/secure_executor.py",
         "rule_id": "legacy_permissive_mode"
       },
       {
-        "evidence_digest": "sha256:a82fdfc17ef5317de1cb47e5957612e05005dc32f8545610e632eb50c62667f7",
-        "line": 193,
+        "evidence_digest": "sha256:8f8252ff32cb69f4c39aced2d016a0770086182d8254665b3a7dc8a12acc4b12",
+        "line": 220,
         "path": "tobkiri_runtime/core_runtime/secure_executor.py",
         "rule_id": "legacy_permissive_mode"
       },
       {
-        "evidence_digest": "sha256:a82fdfc17ef5317de1cb47e5957612e05005dc32f8545610e632eb50c62667f7",
-        "line": 700,
+        "evidence_digest": "sha256:8f8252ff32cb69f4c39aced2d016a0770086182d8254665b3a7dc8a12acc4b12",
+        "line": 727,
         "path": "tobkiri_runtime/core_runtime/secure_executor.py",
         "rule_id": "legacy_permissive_mode"
       },
@@ -15419,44 +15419,44 @@
         "rule_id": "legacy_python_file_call"
       },
       {
-        "evidence_digest": "sha256:dcf2918874c9f06fdd6e46e78a5167a8050e120319c799253b8768b5fa8b4f20",
+        "evidence_digest": "sha256:4ddd2f14a390275c5c17f668c470b2c2ce72a9621011ace9ff84d1dbeaa97edb",
         "line": 2,
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_python_file_call"
       },
       {
-        "evidence_digest": "sha256:dcf2918874c9f06fdd6e46e78a5167a8050e120319c799253b8768b5fa8b4f20",
+        "evidence_digest": "sha256:4ddd2f14a390275c5c17f668c470b2c2ce72a9621011ace9ff84d1dbeaa97edb",
         "line": 4,
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_python_file_call"
       },
       {
-        "evidence_digest": "sha256:dcf2918874c9f06fdd6e46e78a5167a8050e120319c799253b8768b5fa8b4f20",
-        "line": 111,
+        "evidence_digest": "sha256:4ddd2f14a390275c5c17f668c470b2c2ce72a9621011ace9ff84d1dbeaa97edb",
+        "line": 138,
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_python_file_call"
       },
       {
-        "evidence_digest": "sha256:dcf2918874c9f06fdd6e46e78a5167a8050e120319c799253b8768b5fa8b4f20",
-        "line": 126,
+        "evidence_digest": "sha256:4ddd2f14a390275c5c17f668c470b2c2ce72a9621011ace9ff84d1dbeaa97edb",
+        "line": 153,
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_python_file_call"
       },
       {
-        "evidence_digest": "sha256:dcf2918874c9f06fdd6e46e78a5167a8050e120319c799253b8768b5fa8b4f20",
-        "line": 282,
+        "evidence_digest": "sha256:4ddd2f14a390275c5c17f668c470b2c2ce72a9621011ace9ff84d1dbeaa97edb",
+        "line": 309,
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_python_file_call"
       },
       {
-        "evidence_digest": "sha256:dcf2918874c9f06fdd6e46e78a5167a8050e120319c799253b8768b5fa8b4f20",
-        "line": 351,
+        "evidence_digest": "sha256:4ddd2f14a390275c5c17f668c470b2c2ce72a9621011ace9ff84d1dbeaa97edb",
+        "line": 378,
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_python_file_call"
       },
       {
-        "evidence_digest": "sha256:dcf2918874c9f06fdd6e46e78a5167a8050e120319c799253b8768b5fa8b4f20",
-        "line": 881,
+        "evidence_digest": "sha256:4ddd2f14a390275c5c17f668c470b2c2ce72a9621011ace9ff84d1dbeaa97edb",
+        "line": 908,
         "path": "tobkiri_runtime/core_runtime/python_file_executor.py",
         "rule_id": "legacy_python_file_call"
       },
@@ -18411,7 +18411,7 @@
     ]
   },
   "repository": {
-    "commit": "c1ced2e765e7de3f67835fba852903f65d3186c7",
+    "commit": "9f2c748c0106247a4d3e07c4be677ac67f496fd2",
     "tree_digest": "4aaf43ebd16d720709b2a377300bea7f7ee91bac7453b59937e10860529dacda"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",
