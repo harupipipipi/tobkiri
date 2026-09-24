@@ -81,6 +81,38 @@ _DATABASE_THREAD_LOCKS: dict[FileIdentity, threading.RLock] = {}
 _DATABASE_THREAD_LOCKS_GUARD = threading.Lock()
 _ACTIVE_DATABASE_GUARDS: set[int] = set()
 
+# Process-lifetime verified audit tips, keyed by stable file identity
+# (device, inode, owner, type).  The first AuthorityStore open in a process
+# verifies the complete hash chain; later opens verify only rows appended
+# after the cached tip and re-check the tip row itself.  Any history rewrite
+# that keeps the chain consistent must recompute digests, which changes the
+# tip row and is detected; a replaced file gets a new FileIdentity and is
+# verified from scratch.  The cache never crosses fork or process boundaries,
+# so every process still verifies the full history at least once.
+_VERIFIED_AUDIT_TIPS: dict[FileIdentity, tuple[int, str, str]] = {}
+_VERIFIED_AUDIT_TIPS_GUARD = threading.Lock()
+
+
+def _verified_audit_tip(
+    identity: FileIdentity,
+) -> tuple[int, str, str] | None:
+    with _VERIFIED_AUDIT_TIPS_GUARD:
+        return _VERIFIED_AUDIT_TIPS.get(identity)
+
+
+def _record_verified_audit_tip(
+    identity: FileIdentity,
+    sequence: int,
+    previous_digest: str,
+    event_digest: str,
+) -> None:
+    with _VERIFIED_AUDIT_TIPS_GUARD:
+        _VERIFIED_AUDIT_TIPS[identity] = (
+            sequence,
+            previous_digest,
+            event_digest,
+        )
+
 # Bound for acquiring the per-database thread lock and cross-process
 # lifecycle flock in ``_open_database_guard``.  Holders only run one short
 # SQLite transaction inside the guard, so a wait this long means the caller
@@ -102,6 +134,7 @@ def _reset_database_thread_locks() -> None:
     _ACTIVE_DATABASE_GUARDS = set()
     _DATABASE_THREAD_LOCKS = {}
     _DATABASE_THREAD_LOCKS_GUARD = threading.Lock()
+    _VERIFIED_AUDIT_TIPS.clear()
 
 
 if hasattr(os, "register_at_fork"):
@@ -3313,15 +3346,58 @@ class AuthorityStore:
     def _verify_audit_connection(self, connection: _IdentityBoundConnection) -> None:
         """Verify the authoritative chain before any schema migration write."""
 
+        identity = self._database_identity
+        cached = (
+            _verified_audit_tip(identity) if identity is not None else None
+        )
+        if cached is None:
+            rows = connection.execute(
+                "SELECT * FROM authority_audit ORDER BY sequence"
+            ).fetchall()
+            self._verify_audit_rows(rows)
+            if identity is not None and rows:
+                _record_verified_audit_tip(
+                    identity,
+                    int(rows[-1]["sequence"]),
+                    str(rows[-1]["previous_digest"]),
+                    str(rows[-1]["event_digest"]),
+                )
+            return
+        tip_sequence, tip_previous_digest, tip_event_digest = cached
+        tip_row = connection.execute(
+            "SELECT sequence, previous_digest, event_digest"
+            " FROM authority_audit WHERE sequence=?",
+            (tip_sequence,),
+        ).fetchone()
+        if (
+            tip_row is None
+            or str(tip_row["previous_digest"]) != tip_previous_digest
+            or str(tip_row["event_digest"]) != tip_event_digest
+        ):
+            raise AuthorityStoreError("authoritative audit chain is invalid")
         rows = connection.execute(
-            "SELECT * FROM authority_audit ORDER BY sequence"
+            "SELECT * FROM authority_audit WHERE sequence>? ORDER BY sequence",
+            (tip_sequence,),
         ).fetchall()
-        self._verify_audit_rows(rows)
+        self._verify_audit_rows(rows, previous_digest=tip_event_digest)
+        if rows:
+            _record_verified_audit_tip(
+                identity,
+                int(rows[-1]["sequence"]),
+                str(rows[-1]["previous_digest"]),
+                str(rows[-1]["event_digest"]),
+            )
 
-    def _verify_audit_rows(self, rows: Iterable[sqlite3.Row]) -> list[dict[str, Any]]:
+    def _verify_audit_rows(
+        self,
+        rows: Iterable[sqlite3.Row],
+        *,
+        previous_digest: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Verify and decode ordered authoritative audit rows."""
 
-        previous_digest = "sha256:" + "0" * 64
+        if previous_digest is None:
+            previous_digest = "sha256:" + "0" * 64
         output: list[dict[str, Any]] = []
         for row in rows:
             payload = self._decrypt(row["encrypted_payload"])

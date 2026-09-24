@@ -8,6 +8,7 @@ import sqlite3
 
 import pytest
 
+from core_runtime.authority import v4_store as _v4_store
 from core_runtime.authority.v4 import (
     AuthorityDenied,
     AuthorityKernel,
@@ -298,6 +299,9 @@ def test_corrupted_historical_audit_fails_before_schema_write(
             (_digest("tampered"),),
         )
 
+    # A fresh process has no verified-tip cache; simulate that process
+    # restart so the open performs a complete chain verification.
+    _v4_store._reset_database_thread_locks()
     with pytest.raises(AuthorityStoreError, match="audit chain"):
         AuthorityStore(fixture.path, key_path=fixture.key_path)
 
@@ -427,3 +431,63 @@ def test_unknown_schema_version_fails_closed_without_downgrade(tmp_path: Path) -
         AuthorityStore(harness.store.path, key_path=harness.store.key_path)
 
     assert _schema_version(harness.store.path) == "99"
+
+
+def test_reopen_verifies_appended_audit_rows_incrementally(
+    tmp_path: Path,
+) -> None:
+    """A second in-process open verifies rows appended after the tip."""
+
+    harness = _Harness(tmp_path)
+    baseline = len(harness.store.audit_events())
+    harness.kernel.authorize(harness.context(), harness.scope)
+
+    reopened = AuthorityStore(
+        harness.store.path,
+        key_path=harness.store.key_path,
+        clock=harness.clock,
+    )
+    assert len(reopened.audit_events()) > baseline
+
+    with sqlite3.connect(harness.store.path) as connection:
+        connection.execute(
+            "UPDATE authority_audit SET event_digest=? WHERE sequence="
+            "(SELECT MAX(sequence) FROM authority_audit)",
+            (_digest("tampered"),),
+        )
+
+    with pytest.raises(AuthorityStoreError, match="audit chain"):
+        AuthorityStore(harness.store.path, key_path=harness.store.key_path)
+
+
+def test_reopen_detects_verified_tip_replacement(tmp_path: Path) -> None:
+    """Rewriting the cached tip row is detected on the next open."""
+
+    harness = _Harness(tmp_path)
+    AuthorityStore(harness.store.path, key_path=harness.store.key_path)
+
+    with sqlite3.connect(harness.store.path) as connection:
+        connection.execute(
+            "UPDATE authority_audit SET previous_digest=? WHERE sequence="
+            "(SELECT MAX(sequence) FROM authority_audit)",
+            (_digest("rewritten"),),
+        )
+
+    with pytest.raises(AuthorityStoreError, match="audit chain"):
+        AuthorityStore(harness.store.path, key_path=harness.store.key_path)
+
+
+def test_reopen_detects_history_truncate_and_rebuild(tmp_path: Path) -> None:
+    """Deleting the tip row (truncate/rebuild) is detected on reopen."""
+
+    harness = _Harness(tmp_path)
+    AuthorityStore(harness.store.path, key_path=harness.store.key_path)
+
+    with sqlite3.connect(harness.store.path) as connection:
+        connection.execute(
+            "DELETE FROM authority_audit WHERE sequence="
+            "(SELECT MAX(sequence) FROM authority_audit)"
+        )
+
+    with pytest.raises(AuthorityStoreError, match="audit chain"):
+        AuthorityStore(harness.store.path, key_path=harness.store.key_path)
