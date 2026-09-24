@@ -1359,6 +1359,16 @@ async function openCodingWidget(page: Page, options: ApiMockOptions = {}) {
 // These browser tests cover the approval-window renderer through a mocked
 // Tauri bridge. WebviewWindowBuilder creation, focus, and always-on-top need
 // dedicated desktop E2E coverage; they are not established by this fixture.
+test("host permissions window reaches its sealed Host-scoped screen", async ({ page }) => {
+  await installDefaultspackApiMocks(page);
+
+  await page.goto("/host-permissions");
+
+  await expect(page.getByRole("heading", { name: "Host Permissions" })).toBeVisible();
+  await expect(page.getByText("Tobkiri · viewer_tauri")).toBeVisible();
+  await expect(page.locator("[data-frontend-unavailable]")).toHaveCount(0);
+});
+
 test("approval window renderer contract binds typed approval to the current request and closes after settlement", async ({ page }) => {
   const decisions: Array<{ decision: "approve" | "deny"; payload: Record<string, unknown> }> = [];
   const requestId = "apr-renderer-typed-contract";

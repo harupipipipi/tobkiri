@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, RefreshCw, ShieldCheck, ShieldQuestion } from "lucide-react";
 
 import { ErrorNotice } from "../components/ErrorNotice";
@@ -7,46 +7,197 @@ import { openHostPermissionSettings } from "../lib/desktopApproval";
 import { isDesktopSystemInfoAvailable } from "../lib/desktopSystemInfo";
 import { fetchHostPermissionsSnapshot, type HostPermissionsSnapshot } from "./hostPermissionsClient";
 import { hostPermissionStatusLabel, type HostPermissionBucket, type HostPermissionRow } from "./hostPermissions";
+import {
+  HOST_PERMISSION_RECHECK_DELAYS_MS,
+  beginHostPermissionReconciliation,
+  classifyHostPermissionRecheck,
+  hostPermissionReconciliationLabel,
+  hostPermissionReturnAction,
+  hostPermissionSettingsInstruction,
+  hostPermissionSnapshotFailure,
+  isHostPermissionReconciliationBusy,
+  markHostPermissionReconciliationFailure,
+  markHostPermissionSettingsOpened,
+  type HostPermissionReconciliation,
+} from "./hostPermissionReconciliation";
 
 type LoadState = "loading" | "ready" | "error";
-
-type PageNotice = {
-  message: string;
-  severity: "error" | "warning" | "success";
-};
 
 export function HostPermissionsPage() {
   const [snapshot, setSnapshot] = useState<HostPermissionsSnapshot | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [notice, setNotice] = useState<PageNotice | null>(null);
-  const [openingPermissionId, setOpeningPermissionId] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [lastVerifiedAt, setLastVerifiedAt] = useState<number | null>(null);
+  const [staleSince, setStaleSince] = useState<number | null>(null);
+  const [reconciliation, setReconciliation] = useState<HostPermissionReconciliation | null>(null);
   const tauriAvailable = useMemo(() => isDesktopSystemInfoAvailable(), []);
+  const snapshotRef = useRef<HostPermissionsSnapshot | null>(null);
+  const reconciliationRef = useRef<HostPermissionReconciliation | null>(null);
+  const recheckInFlightRef = useRef(false);
+  const pendingFinalRecheckRef = useRef(false);
+  const recheckTimersRef = useRef<number[]>([]);
+  const settingsButtonsRef = useRef(new Map<string, HTMLButtonElement>());
 
-  const refresh = async () => {
-    setLoadState("loading");
-    setNotice(null);
+  const updateReconciliation = useCallback((next: HostPermissionReconciliation | null) => {
+    reconciliationRef.current = next;
+    setReconciliation(next);
+  }, []);
+
+  const clearRecheckTimers = useCallback(() => {
+    for (const timer of recheckTimersRef.current) window.clearTimeout(timer);
+    recheckTimersRef.current = [];
+  }, []);
+
+  const restoreSettingsFocus = useCallback((permissionId: string) => {
+    window.setTimeout(() => settingsButtonsRef.current.get(permissionId)?.focus(), 0);
+  }, []);
+
+  const applySnapshot = useCallback((nextSnapshot: HostPermissionsSnapshot) => {
+    snapshotRef.current = nextSnapshot;
+    setSnapshot(nextSnapshot);
+    setLastVerifiedAt(Date.now());
+    setStaleSince(null);
+    setLoadState("ready");
+    setMessage(nextSnapshot.authorityError
+      ? `Tobkiri approval history is unavailable: ${nextSnapshot.authorityError}`
+      : null);
+  }, []);
+
+  const refresh = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoadState("loading");
+    setMessage(null);
     try {
       const nextSnapshot = await fetchHostPermissionsSnapshot();
-      setSnapshot(nextSnapshot);
-      setLoadState("ready");
-      if (nextSnapshot.authorityError) {
-        setNotice({
-          message: `Tobkiri approval history is unavailable: ${nextSnapshot.authorityError}`,
-          severity: "warning",
-        });
-      }
+      const loadFailure = hostPermissionSnapshotFailure(nextSnapshot);
+      if (loadFailure) throw new Error(loadFailure);
+      applySnapshot(nextSnapshot);
+      return nextSnapshot;
     } catch (error) {
-      setLoadState("error");
-      setNotice({
-        message: error instanceof Error ? error.message : "Host permissions could not be loaded.",
-        severity: "error",
-      });
+      const detail = error instanceof Error ? error.message : "Host permissions could not be loaded.";
+      setLoadState(snapshotRef.current ? "ready" : "error");
+      setStaleSince(Date.now());
+      setMessage(detail);
+      return null;
     }
-  };
+  }, [applySnapshot]);
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [refresh]);
+
+  const runRecheck = useCallback(async (finalAttempt = false) => {
+    const active = reconciliationRef.current;
+    if (!active || !isHostPermissionReconciliationBusy(active)) return;
+    if (recheckInFlightRef.current) {
+      pendingFinalRecheckRef.current ||= finalAttempt;
+      return;
+    }
+    recheckInFlightRef.current = true;
+    const checking = { ...active, phase: "checking" as const };
+    updateReconciliation(checking);
+    try {
+      const nextSnapshot = await fetchHostPermissionsSnapshot();
+      const loadFailure = hostPermissionSnapshotFailure(nextSnapshot);
+      if (loadFailure) throw new Error(loadFailure);
+      applySnapshot(nextSnapshot);
+      const current = reconciliationRef.current;
+      if (!current || current.permissionId !== active.permissionId) return;
+      const attempt = current.attempt + 1;
+      const next = classifyHostPermissionRecheck(
+        current,
+        nextSnapshot.rows.find((row) => row.id === current.permissionId),
+        attempt,
+        finalAttempt,
+        Date.now(),
+      );
+      updateReconciliation(next);
+      if (!isHostPermissionReconciliationBusy(next)) {
+        clearRecheckTimers();
+        restoreSettingsFocus(next.permissionId);
+      }
+    } catch (error) {
+      const current = reconciliationRef.current;
+      if (!current || current.permissionId !== active.permissionId) return;
+      const detail = error instanceof Error ? error.message : "Host permission status could not be checked.";
+      const failed = markHostPermissionReconciliationFailure(current, "error", detail, Date.now());
+      setLoadState(snapshotRef.current ? "ready" : "error");
+      setStaleSince(Date.now());
+      setMessage(detail);
+      updateReconciliation(failed);
+      clearRecheckTimers();
+      restoreSettingsFocus(failed.permissionId);
+    } finally {
+      recheckInFlightRef.current = false;
+      if (pendingFinalRecheckRef.current) {
+        pendingFinalRecheckRef.current = false;
+        void runRecheck(true);
+      }
+    }
+  }, [applySnapshot, clearRecheckTimers, restoreSettingsFocus, updateReconciliation]);
+
+  useEffect(() => {
+    const reconcileOnReturn = () => {
+      const action = hostPermissionReturnAction(document.visibilityState, reconciliationRef.current);
+      if (action === "none") return;
+      if (action === "reconcile") {
+        void runRecheck(false);
+      } else {
+        void refresh(false);
+      }
+    };
+    window.addEventListener("focus", reconcileOnReturn);
+    document.addEventListener("visibilitychange", reconcileOnReturn);
+    return () => {
+      window.removeEventListener("focus", reconcileOnReturn);
+      document.removeEventListener("visibilitychange", reconcileOnReturn);
+    };
+  }, [refresh, runRecheck]);
+
+  useEffect(() => () => clearRecheckTimers(), [clearRecheckTimers]);
+
+  const openSettings = useCallback(async (row: HostPermissionRow) => {
+    if (isHostPermissionReconciliationBusy(reconciliationRef.current)) return;
+    const opening = beginHostPermissionReconciliation(row, Date.now());
+    updateReconciliation(opening);
+    setMessage(null);
+    if (!tauriAvailable) {
+      const unavailable = markHostPermissionReconciliationFailure(
+        opening,
+        "unavailable",
+        "Open OS Settings requires the Tobkiri Launcher desktop bridge.",
+        Date.now(),
+      );
+      updateReconciliation(unavailable);
+      restoreSettingsFocus(row.id);
+      return;
+    }
+    try {
+      const opened = await openHostPermissionSettings(row.id);
+      if (!opened) {
+        const unavailable = markHostPermissionReconciliationFailure(
+          opening,
+          "unavailable",
+          "The desktop bridge did not confirm the requested OS Settings destination.",
+          Date.now(),
+        );
+        updateReconciliation(unavailable);
+        restoreSettingsFocus(row.id);
+        return;
+      }
+      const waiting = markHostPermissionSettingsOpened(opening, Date.now());
+      updateReconciliation(waiting);
+      clearRecheckTimers();
+      recheckTimersRef.current = HOST_PERMISSION_RECHECK_DELAYS_MS.map((delay, index) => window.setTimeout(
+        () => void runRecheck(index === HOST_PERMISSION_RECHECK_DELAYS_MS.length - 1),
+        delay,
+      ));
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "OS settings could not be opened.";
+      const failed = markHostPermissionReconciliationFailure(opening, "error", detail, Date.now());
+      updateReconciliation(failed);
+      restoreSettingsFocus(row.id);
+    }
+  }, [clearRecheckTimers, restoreSettingsFocus, runRecheck, tauriAvailable, updateReconciliation]);
 
   const rows = snapshot?.rows ?? [];
   const sourceLabel = snapshot?.info
@@ -84,6 +235,11 @@ export function HostPermissionsPage() {
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
           <StatusStrip snapshot={snapshot} loading={loadState === "loading"} />
 
+          <p className="text-xs text-zinc-500" role="status">
+            {lastVerifiedAt ? <>Last verified <time dateTime={new Date(lastVerifiedAt).toISOString()}>{formatTimestamp(lastVerifiedAt)}</time>.</> : "Not verified yet."}
+            {staleSince ? <> Last-known values are stale since <time dateTime={new Date(staleSince).toISOString()}>{formatTimestamp(staleSince)}</time>.</> : null}
+          </p>
+
           {!tauriAvailable && (
             <ErrorNotice
               className="rounded-lg px-3 py-2 text-xs leading-5"
@@ -95,21 +251,16 @@ export function HostPermissionsPage() {
             />
           )}
 
-          {notice?.severity === "success" ? (
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs leading-5 text-zinc-400">
-              {notice.message}
-            </div>
-          ) : null}
-          {notice?.severity === "error" || notice?.severity === "warning" ? (
+          {message && (
             <ErrorNotice
               className="rounded-lg px-3 py-2 text-xs leading-5"
-              copyLabel={notice.severity === "error" ? "Copy host permissions error" : "Copy host permissions warning"}
-              copyText={notice.message}
-              errorIcon={`host-permissions-${notice.severity}`}
-              message={notice.message}
-              severity={notice.severity}
+              copyLabel={staleSince ? "Copy host permissions error" : "Copy host permissions warning"}
+              copyText={message}
+              errorIcon={staleSince ? "host-permissions-error" : "host-permissions-warning"}
+              message={message}
+              severity={staleSince ? "error" : "warning"}
             />
-          ) : null}
+          )}
 
           {loadState === "error" ? (
             <ErrorNotice
@@ -121,7 +272,7 @@ export function HostPermissionsPage() {
             />
           ) : (
             <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/70">
-              <div className="grid grid-cols-[minmax(190px,1.2fr)_minmax(120px,0.7fr)_minmax(120px,0.7fr)_minmax(78px,0.45fr)_minmax(90px,0.5fr)_minmax(180px,1fr)_minmax(116px,0.55fr)] gap-3 border-b border-zinc-800 bg-zinc-900/50 px-3 py-2 text-[11px] font-semibold text-zinc-500 max-lg:hidden">
+              <div className="grid grid-cols-[minmax(190px,1.2fr)_minmax(120px,0.7fr)_minmax(120px,0.7fr)_minmax(78px,0.45fr)_minmax(90px,0.5fr)_minmax(180px,1fr)_minmax(220px,0.8fr)] gap-3 border-b border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs font-semibold text-zinc-500 max-lg:hidden">
                 <span>Permission</span>
                 <span>Tobkiri approval</span>
                 <span>OS permission</span>
@@ -136,34 +287,14 @@ export function HostPermissionsPage() {
                     key={row.id}
                     row={row}
                     tauriAvailable={tauriAvailable}
-                    opening={openingPermissionId === row.id}
-                    onOpenSettings={async () => {
-                      if (!tauriAvailable) {
-                        setNotice({
-                          message: "Open OS Settings is available only in Tobkiri Launcher.",
-                          severity: "warning",
-                        });
-                        return;
-                      }
-                      setOpeningPermissionId(row.id);
-                      setNotice(null);
-                      try {
-                        const opened = await openHostPermissionSettings(row.id);
-                        setNotice(opened
-                          ? { message: `${row.label} settings opened.`, severity: "success" }
-                          : {
-                            message: "Open OS Settings is available only in Tobkiri Launcher.",
-                            severity: "warning",
-                          });
-                      } catch (error) {
-                        setNotice({
-                          message: error instanceof Error ? error.message : "OS settings could not be opened.",
-                          severity: "error",
-                        });
-                      } finally {
-                        setOpeningPermissionId(null);
-                      }
+                    permissionSubject={snapshot?.info?.permission_subject || snapshot?.info?.app_name || "Tobkiri Launcher"}
+                    reconciliation={reconciliation?.permissionId === row.id ? reconciliation : null}
+                    anyReconciliationBusy={isHostPermissionReconciliationBusy(reconciliation)}
+                    buttonRef={(button) => {
+                      if (button) settingsButtonsRef.current.set(row.id, button);
+                      else settingsButtonsRef.current.delete(row.id);
                     }}
+                    onOpenSettings={() => void openSettings(row)}
                   />
                 )) : (
                   <div className="px-3 py-10 text-center text-sm text-zinc-500">
@@ -204,16 +335,23 @@ function StatusStrip({ snapshot, loading }: { snapshot: HostPermissionsSnapshot 
 function HostPermissionListRow({
   row,
   tauriAvailable,
-  opening,
+  permissionSubject,
+  reconciliation,
+  anyReconciliationBusy,
+  buttonRef,
   onOpenSettings,
 }: {
   row: HostPermissionRow;
   tauriAvailable: boolean;
-  opening: boolean;
+  permissionSubject: string;
+  reconciliation: HostPermissionReconciliation | null;
+  anyReconciliationBusy: boolean;
+  buttonRef: (button: HTMLButtonElement | null) => void;
   onOpenSettings: () => void;
 }) {
+  const opening = reconciliation?.phase === "opening_settings";
   return (
-    <div className="grid gap-3 px-3 py-3 text-sm lg:grid-cols-[minmax(190px,1.2fr)_minmax(120px,0.7fr)_minmax(120px,0.7fr)_minmax(78px,0.45fr)_minmax(90px,0.5fr)_minmax(180px,1fr)_minmax(116px,0.55fr)] lg:items-center">
+    <div className="grid gap-3 px-3 py-3 text-sm lg:grid-cols-[minmax(190px,1.2fr)_minmax(120px,0.7fr)_minmax(120px,0.7fr)_minmax(78px,0.45fr)_minmax(90px,0.5fr)_minmax(180px,1fr)_minmax(220px,0.8fr)] lg:items-center">
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
           <StatusDot status={row.rumiStatus === "approved" && (row.osStatus === "approved" || row.osStatus === "unsupported") ? "approved" : row.rumiStatus} />
@@ -241,17 +379,31 @@ function HostPermissionListRow({
       <LabeledCell label="Required by functions">
         <span className="line-clamp-2 text-xs leading-5 text-zinc-400">{row.requiredByFunctions.join(", ") || "None"}</span>
       </LabeledCell>
-      <div className="flex justify-start lg:justify-end">
+      <div className="flex min-w-0 flex-col items-start gap-1.5 lg:items-end">
         <button
+          ref={buttonRef}
           type="button"
           onClick={onOpenSettings}
-          disabled={!tauriAvailable || opening}
+          disabled={!tauriAvailable || anyReconciliationBusy}
           className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 text-xs font-semibold text-zinc-300 transition-colors hover:border-zinc-700 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
           title={tauriAvailable ? `Open OS settings for ${row.label}` : "Requires Tobkiri Launcher desktop bridge"}
         >
           {opening ? <Loader2 size={13} className="animate-spin" /> : <ExternalLink size={13} />}
           {tauriAvailable ? "Open" : "Desktop only"}
         </button>
+        {reconciliation && (
+          <div className="w-full rounded-md border border-zinc-800 bg-black/20 px-2 py-1.5 text-left text-xs leading-4 lg:text-right" role="status" aria-live="polite">
+            <strong className={cn("font-semibold", reconciliationPhaseClassName(reconciliation.phase))}>
+              {hostPermissionReconciliationLabel(reconciliation.phase)}
+            </strong>
+            {(reconciliation.phase === "opening_settings" || reconciliation.phase === "waiting_for_return" || reconciliation.phase === "checking") && (
+              <span className="mt-0.5 block text-zinc-500">
+                {hostPermissionSettingsInstruction(row, permissionSubject)}
+              </span>
+            )}
+            {reconciliation.detail && <span className="mt-0.5 block text-zinc-500">{reconciliation.detail}</span>}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -311,4 +463,19 @@ function riskClassName(risk: string): string {
     default:
       return "border-zinc-800 bg-zinc-900 text-zinc-400";
   }
+}
+
+function reconciliationPhaseClassName(phase: HostPermissionReconciliation["phase"]): string {
+  if (phase === "changed") return "text-emerald-300";
+  if (phase === "denied" || phase === "error") return "text-rose-300";
+  if (phase === "unchanged" || phase === "unavailable") return "text-amber-200";
+  return "text-sky-300";
+}
+
+function formatTimestamp(timestamp: number): string {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(timestamp));
 }

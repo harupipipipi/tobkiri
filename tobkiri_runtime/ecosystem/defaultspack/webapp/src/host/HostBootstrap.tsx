@@ -9,6 +9,7 @@ import { TobkiriLoadingScreen } from "../components/TobkiriLoadingScreen";
 import { defaultspackApiFetch, defaultspackContractRoute } from "../lib/api";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { AuthorityApprovalWindow } from "../components/AuthorityApprovalWindow";
+import { HostPermissionsPage } from "../hostPermissions/HostPermissionsPage";
 import {
   DynamicFrontendHost,
   contributionsForRoute,
@@ -169,8 +170,8 @@ export function HostBootstrap({
   const [catalog, setCatalog] = useState<FrontendCatalog | null>(null);
   const [failed, setFailed] = useState(false);
   const requested = useMemo(() => parseProfileScreenPath(pathname), [pathname]);
-  // Host-scoped mounts such as `/approval` intentionally omit the Runtime
-  // Profile prefix; they render their sealed Application screen directly.
+  // Host-scoped mounts intentionally omit the Runtime Profile prefix; they
+  // render their sealed Application screen directly.
   const hostRoute = useMemo(
     () => (requested === null ? applicationPathname(pathname) : null),
     [pathname, requested],
@@ -224,6 +225,9 @@ export function HostBootstrap({
   if (!requested) {
     if (hostRoute === "/approval") {
       return <AuthorityApprovalWindow />;
+    }
+    if (hostRoute === "/host-permissions") {
+      return <HostPermissionsPage />;
     }
     return (
       <HostBootstrapFallback

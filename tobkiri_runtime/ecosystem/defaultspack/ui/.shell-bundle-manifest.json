@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "bb05ab2f6d7ae79dbb29e359de457fbee76f636a2fc938e64cce3dc9b0d3b478",
+    "digest": "e7eade12557ba32b63934bc529dbfc13d46f559bd93fe573e8b2fd6d4c2b3565",
     "entries": [
       {
         "path": "index.html",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 5711,
-        "sha256": "1b695975cc8bd5eadd0024fefc711cbe2066ba0af1466f531f4bc6a00de878bc"
+        "size": 5768,
+        "sha256": "321f6b2d037277ae953b1dd322f530978e8576c1f0b686c410fbb48c96284f25"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -1075,13 +1075,13 @@
       },
       {
         "path": "src/host/HostBootstrap.test.tsx",
-        "size": 6232,
-        "sha256": "d6209919736847590084dc186bd0078884893c0c335b73c0f6d679c2cd85e7df"
+        "size": 6948,
+        "sha256": "9e40e50eac374002f58432ca3047877367e1ea51812a2b26954a9f0d7acdc2ed"
       },
       {
         "path": "src/host/HostBootstrap.tsx",
-        "size": 8329,
-        "sha256": "d29581704a0fb4167413a3dfd13101ca67a1909450f96a53e2bd0d61e4821ef6"
+        "size": 8476,
+        "sha256": "6d5f8b708fb5926f1194c0001059bf28e74177cb37fad22bf3433c60baca286d"
       },
       {
         "path": "src/host/frontendContracts.ts",
@@ -1090,8 +1090,18 @@
       },
       {
         "path": "src/hostPermissions/HostPermissionsPage.tsx",
-        "size": 14025,
-        "sha256": "0284d61d2f1d8caf736577ba8c740d68e8d82e80a7c63736e5318cd5d1339a8d"
+        "size": 21614,
+        "sha256": "fd93f48cee072679ebe11633a21fb4f4a1e4a9fc50048d922f53a34a3be77dc1"
+      },
+      {
+        "path": "src/hostPermissions/hostPermissionReconciliation.test.ts",
+        "size": 4738,
+        "sha256": "afe163b7b9163fa5f858e52d948c4edca2aa9643fbbe19211277fb3c6c38eef7"
+      },
+      {
+        "path": "src/hostPermissions/hostPermissionReconciliation.ts",
+        "size": 4478,
+        "sha256": "37dd94aab610c1dd3b93601f130382d9e867b2c8ea81ee041df35f78810f40d7"
       },
       {
         "path": "src/hostPermissions/hostPermissionRegistry.json",
@@ -1525,13 +1535,13 @@
       },
       {
         "path": "src/lib/profileRoute.test.ts",
-        "size": 2461,
-        "sha256": "289de6669d725f9ed74c8bb1004d597175c16ea9bddb7d83d4f22076af077197"
+        "size": 2670,
+        "sha256": "ef3bea2d8be987fdbaf7987b6f891dc5fa665302dd6e59fa48186a813d681593"
       },
       {
         "path": "src/lib/profileRoute.ts",
-        "size": 3695,
-        "sha256": "1f986003b2aeb09c061528b0181237a3164d9cae2ddabf458f638aa4f65abd53"
+        "size": 3755,
+        "sha256": "cacc6c9d408921ffcbe5077d27652b2fc9c49ac372798ed8dd5982f0ba3101cd"
       },
       {
         "path": "src/lib/providerConfiguration.ts",
@@ -1931,22 +1941,22 @@
     ]
   },
   "bundle": {
-    "digest": "8ac203be7df476d2a9fd3108ee2a361d32259e40f9c1da2a8dc371ae16122f3f",
+    "digest": "7c6865d93867346bbf4bb064b1afc48ac7e1fca721ead37937e2fd5b6497714d",
     "entries": [
       {
         "path": "shell-app.css",
-        "size": 232456,
-        "sha256": "9ed65a93ac44df6cba7dea05fd98d4549f594deaa0e5e7b2080fd2832b234a16"
+        "size": 232443,
+        "sha256": "d75e1b59afa45ccfbab6d282ea67065c37ddcdf6f40572c973a80433ca34abfa"
       },
       {
         "path": "shell-app.js",
-        "size": 25493,
-        "sha256": "565a747557049cce76982c7082c52853bc505ca4de0d97196fe2a122e5d8cb60"
+        "size": 25547,
+        "sha256": "9682690f9de20ce4e962f975e8c089b916b10a9ad1be9340d433c6fc06569ba9"
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2239224,
-        "sha256": "c475c0b32af8b76b9cc825bf7061a09e6e1f493a6f910f18d2319bbd85eb9758"
+        "size": 2244067,
+        "sha256": "b224a1a7458942c0c0db620210fd569496a0fcd4a49551f1134f5fcc879c759d"
       },
       {
         "path": "shell-rolldown-runtime.js",
@@ -1956,7 +1966,7 @@
       {
         "path": "shell-vendor.js",
         "size": 181067,
-        "sha256": "7b2736ff13d0e3f6b96cecda6f65f3e8a88de5cd4df66b4b6e3147179e6da995"
+        "sha256": "25d8bd66b2ab9b8d23147bef9834f58439dba3478f96603edafd55699a2b8205"
       },
       {
         "path": "shell.html",
