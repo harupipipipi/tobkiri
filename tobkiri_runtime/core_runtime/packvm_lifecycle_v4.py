@@ -1262,7 +1262,11 @@ def _acquire_journal_lock(
 
                 fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
             return
-        except InterruptedError:
+        except InterruptedError as exc:
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    "PackVM operations journal lock deadline expired"
+                ) from exc
             continue
         except OSError as exc:
             if (

@@ -2795,18 +2795,10 @@ fn spawn_signal_shutdown_watcher(app: &AppHandle, set: libc::sigset_t) {
                 // held by a deadlocked thread) must not turn the signal
                 // handler into the next hang: bound the cleanup, then exit
                 // regardless so the signal always terminates the launcher.
-                let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
-                let defaultspack = Arc::clone(defaultspack.inner());
-                let kernel_manager = Arc::clone(kernel_manager.inner());
-                let _ = std::thread::Builder::new()
-                    .name("tobkiri-signal-cleanup".into())
-                    .spawn(move || {
-                        stop_managed_runtimes(&defaultspack, &kernel_manager);
-                        let _ = done_tx.send(());
-                    });
-                if done_rx.recv_timeout(std::time::Duration::from_secs(30)).is_err() {
-                    error!("Timed out stopping managed runtimes after signal; exiting");
-                }
+                stop_managed_runtimes_bounded(
+                    Arc::clone(defaultspack.inner()),
+                    Arc::clone(kernel_manager.inner()),
+                );
             }
             std::process::exit(0);
         });
@@ -2829,7 +2821,9 @@ pub(crate) fn request_app_exit(app: &AppHandle) {
     let handle = app.clone();
 
     std::thread::spawn(move || {
-        stop_managed_runtimes(&defaultspack, &km);
+        // The same bound as the signal path: a wedged runtime stop must not
+        // leave the launcher hidden-but-alive with windows already closed.
+        stop_managed_runtimes_bounded(defaultspack, km);
         handle.exit(0);
     });
 }
@@ -2863,6 +2857,27 @@ fn stop_managed_runtimes(
             }
         });
     });
+}
+
+fn stop_managed_runtimes_bounded(
+    defaultspack: Arc<DefaultspackManager>,
+    kernel_manager: Arc<Mutex<KernelManager>>,
+) {
+    // Every shutdown path bounds the graceful stop behind one watchdog so a
+    // wedged manager lock can never outlast the launcher itself.
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+    let _ = std::thread::Builder::new()
+        .name("tobkiri-runtime-cleanup".into())
+        .spawn(move || {
+            stop_managed_runtimes(&defaultspack, &kernel_manager);
+            let _ = done_tx.send(());
+        });
+    if done_rx
+        .recv_timeout(std::time::Duration::from_secs(30))
+        .is_err()
+    {
+        error!("Timed out stopping managed runtimes; exiting anyway");
+    }
 }
 
 fn spawn_kernel_exit_monitor(
@@ -3673,7 +3688,10 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             if claim_shutdown(shutdown_flag) {
                 let defaultspack = app_handle.state::<Arc<DefaultspackManager>>();
                 let kernel_manager = app_handle.state::<Arc<Mutex<KernelManager>>>();
-                stop_managed_runtimes(defaultspack.inner(), kernel_manager.inner());
+                stop_managed_runtimes_bounded(
+                    Arc::clone(defaultspack.inner()),
+                    Arc::clone(kernel_manager.inner()),
+                );
             }
         }
 
