@@ -83,19 +83,21 @@ _ACTIVE_DATABASE_GUARDS: set[int] = set()
 
 # Process-lifetime verified audit tips, keyed by stable file identity
 # (device, inode, owner, type).  The first AuthorityStore open in a process
-# verifies the complete hash chain; later opens verify only rows appended
-# after the cached tip and re-check the tip row itself.  Any history rewrite
-# that keeps the chain consistent must recompute digests, which changes the
-# tip row and is detected; a replaced file gets a new FileIdentity and is
-# verified from scratch.  The cache never crosses fork or process boundaries,
-# so every process still verifies the full history at least once.
-_VERIFIED_AUDIT_TIPS: dict[FileIdentity, tuple[int, str, str]] = {}
+# verifies the complete hash chain; later opens re-verify the tip row
+# end-to-end, require the pre-tip history to stay row-contiguous, and verify
+# only rows appended after the tip.  A history rewrite that preserves those
+# structural checks is still caught by the periodic full verification below:
+# the residual masking window is the interval, not the process lifetime.
+# The cache never crosses fork or process boundaries, so every process still
+# verifies the full history at least once.
+_AUDIT_FULL_VERIFY_INTERVAL_SECONDS = 300.0
+_VERIFIED_AUDIT_TIPS: dict[FileIdentity, tuple[int, str, str, float]] = {}
 _VERIFIED_AUDIT_TIPS_GUARD = threading.Lock()
 
 
 def _verified_audit_tip(
     identity: FileIdentity,
-) -> tuple[int, str, str] | None:
+) -> tuple[int, str, str, float] | None:
     with _VERIFIED_AUDIT_TIPS_GUARD:
         return _VERIFIED_AUDIT_TIPS.get(identity)
 
@@ -105,13 +107,23 @@ def _record_verified_audit_tip(
     sequence: int,
     previous_digest: str,
     event_digest: str,
+    verified_at: float | None = None,
 ) -> None:
     with _VERIFIED_AUDIT_TIPS_GUARD:
+        existing = _VERIFIED_AUDIT_TIPS.get(identity)
         _VERIFIED_AUDIT_TIPS[identity] = (
             sequence,
             previous_digest,
             event_digest,
+            time.monotonic()
+            if verified_at is None
+            else (existing[3] if existing is not None else verified_at),
         )
+
+
+def _drop_verified_audit_tip(identity: FileIdentity) -> None:
+    with _VERIFIED_AUDIT_TIPS_GUARD:
+        _VERIFIED_AUDIT_TIPS.pop(identity, None)
 
 # Bound for acquiring the per-database thread lock and cross-process
 # lifecycle flock in ``_open_database_guard``.  Holders only run one short
@@ -126,6 +138,7 @@ def _reset_database_thread_locks() -> None:
 
     global _ACTIVE_DATABASE_GUARDS
     global _DATABASE_THREAD_LOCKS, _DATABASE_THREAD_LOCKS_GUARD
+    global _VERIFIED_AUDIT_TIPS, _VERIFIED_AUDIT_TIPS_GUARD
     for descriptor in _ACTIVE_DATABASE_GUARDS:
         try:
             os.close(descriptor)
@@ -134,7 +147,11 @@ def _reset_database_thread_locks() -> None:
     _ACTIVE_DATABASE_GUARDS = set()
     _DATABASE_THREAD_LOCKS = {}
     _DATABASE_THREAD_LOCKS_GUARD = threading.Lock()
-    _VERIFIED_AUDIT_TIPS.clear()
+    # The guard itself may have been held by a sibling thread at fork, so it
+    # must be replaced rather than acquired; clearing through a deadlocked
+    # inherited lock would hang the child's first store open.
+    _VERIFIED_AUDIT_TIPS = {}
+    _VERIFIED_AUDIT_TIPS_GUARD = threading.Lock()
 
 
 if hasattr(os, "register_at_fork"):
@@ -3363,23 +3380,59 @@ class AuthorityStore:
                     str(rows[-1]["event_digest"]),
                 )
             return
-        tip_sequence, tip_previous_digest, tip_event_digest = cached
+        tip_sequence, tip_previous_digest, tip_event_digest, verified_at = cached
+        # Structural gate: pre-tip history must stay row-contiguous and the
+        # tip row must survive a full decrypt and digest recompute.  Any
+        # mismatch falls back to complete verification rather than failing
+        # closed outright, so a legitimate same-inode restore re-verifies
+        # cleanly instead of wedging every later open in this process.
+        below_tip = connection.execute(
+            "SELECT COUNT(*) AS count FROM authority_audit WHERE sequence<=?",
+            (tip_sequence,),
+        ).fetchone()["count"]
         tip_row = connection.execute(
-            "SELECT sequence, previous_digest, event_digest"
-            " FROM authority_audit WHERE sequence=?",
+            "SELECT * FROM authority_audit WHERE sequence=?",
             (tip_sequence,),
         ).fetchone()
-        if (
-            tip_row is None
-            or str(tip_row["previous_digest"]) != tip_previous_digest
-            or str(tip_row["event_digest"]) != tip_event_digest
-        ):
-            raise AuthorityStoreError("authoritative audit chain is invalid")
+        incremental_ok = below_tip == tip_sequence and tip_row is not None
+        if incremental_ok:
+            try:
+                self._verify_audit_rows(
+                    [tip_row], previous_digest=tip_previous_digest
+                )
+                if str(tip_row["event_digest"]) != tip_event_digest:
+                    raise AuthorityStoreError("audit tip mismatch")
+                rows = connection.execute(
+                    "SELECT * FROM authority_audit"
+                    " WHERE sequence>? ORDER BY sequence",
+                    (tip_sequence,),
+                ).fetchall()
+                self._verify_audit_rows(rows, previous_digest=tip_event_digest)
+            except AuthorityStoreError:
+                incremental_ok = False
+        if incremental_ok:
+            if rows:
+                _record_verified_audit_tip(
+                    identity,
+                    int(rows[-1]["sequence"]),
+                    str(rows[-1]["previous_digest"]),
+                    str(rows[-1]["event_digest"]),
+                    verified_at,
+                )
+            if (
+                time.monotonic() - verified_at
+                <= _AUDIT_FULL_VERIFY_INTERVAL_SECONDS
+            ):
+                return
+        # Incremental verification failed or the periodic bound elapsed:
+        # re-verify the complete chain.  A real tamper raises here; a
+        # legitimate rewrite records the new tip and keeps later opens
+        # incremental instead of permanently wedging this process.
+        _drop_verified_audit_tip(identity)
         rows = connection.execute(
-            "SELECT * FROM authority_audit WHERE sequence>? ORDER BY sequence",
-            (tip_sequence,),
+            "SELECT * FROM authority_audit ORDER BY sequence"
         ).fetchall()
-        self._verify_audit_rows(rows, previous_digest=tip_event_digest)
+        self._verify_audit_rows(rows)
         if rows:
             _record_verified_audit_tip(
                 identity,

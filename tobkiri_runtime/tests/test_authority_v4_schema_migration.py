@@ -491,3 +491,49 @@ def test_reopen_detects_history_truncate_and_rebuild(tmp_path: Path) -> None:
 
     with pytest.raises(AuthorityStoreError, match="audit chain"):
         AuthorityStore(harness.store.path, key_path=harness.store.key_path)
+
+
+def test_reopen_detects_mid_chain_deletion(tmp_path: Path) -> None:
+    """Deleting a pre-tip row breaks contiguity and forces full verification."""
+
+    harness = _Harness(tmp_path)
+    AuthorityStore(harness.store.path, key_path=harness.store.key_path)
+
+    with sqlite3.connect(harness.store.path) as connection:
+        connection.execute(
+            "DELETE FROM authority_audit WHERE sequence=1"
+        )
+
+    with pytest.raises(AuthorityStoreError, match="audit chain"):
+        AuthorityStore(harness.store.path, key_path=harness.store.key_path)
+
+
+def test_periodic_full_verify_catches_mid_chain_edit(tmp_path: Path) -> None:
+    """A pre-tip edit masked by the incremental path is caught on the bound."""
+
+    harness = _Harness(tmp_path)
+    AuthorityStore(harness.store.path, key_path=harness.store.key_path)
+
+    with sqlite3.connect(harness.store.path) as connection:
+        connection.execute(
+            "UPDATE authority_audit SET event_id='tampered' WHERE sequence=1"
+        )
+
+    # The incremental open still passes: tip and contiguity are intact.
+    AuthorityStore(harness.store.path, key_path=harness.store.key_path)
+
+    # Age the recorded verification past the full-verify interval so the
+    # next open re-verifies the complete chain.
+    with _v4_store._VERIFIED_AUDIT_TIPS_GUARD:
+        for key, (seq, prev, event, verified_at) in list(
+            _v4_store._VERIFIED_AUDIT_TIPS.items()
+        ):
+            _v4_store._VERIFIED_AUDIT_TIPS[key] = (
+                seq,
+                prev,
+                event,
+                verified_at - _v4_store._AUDIT_FULL_VERIFY_INTERVAL_SECONDS - 1,
+            )
+
+    with pytest.raises(AuthorityStoreError, match="audit chain"):
+        AuthorityStore(harness.store.path, key_path=harness.store.key_path)
