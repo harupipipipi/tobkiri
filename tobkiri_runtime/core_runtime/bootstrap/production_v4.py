@@ -1578,6 +1578,7 @@ def capture_production_dispatch(
     )
     registered_backends = tuple((backends or BackendRegistry(())).registered)
     owned_packvm_backends: tuple[Any, ...] = ()
+    owned_wasm_backends: tuple[Any, ...] = ()
     if backends is None:
         authenticated_backend = _authenticated_packvm_backend(packvm_provisioner)
         if authenticated_backend is not None:
@@ -1590,7 +1591,9 @@ def capture_production_dispatch(
             try:
                 from tobkiri_host.wasm_backend import production_wasm_backend
 
-                registered_backends += (production_wasm_backend(),)
+                wasm_backend = production_wasm_backend()
+                registered_backends += (wasm_backend,)
+                owned_wasm_backends = (wasm_backend,)
             except Exception:
                 # A missing or unverified engine leaves the pinned binding
                 # unavailable and receives no domain or Authority records.
@@ -3189,7 +3192,7 @@ def capture_production_dispatch(
             *((control_session.close,) if control_session is not None else ()),
             *tuple(
                 backend.close
-                for backend in owned_packvm_backends
+                for backend in (*owned_packvm_backends, *owned_wasm_backends)
                 if callable(getattr(backend, "close", None))
             ),
         ),

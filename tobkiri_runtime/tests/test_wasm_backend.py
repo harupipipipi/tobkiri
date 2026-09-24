@@ -301,6 +301,57 @@ def test_failed_worker_close_retains_reservation(
     assert backend._reservations["reservation-1"] is owned
 
 
+def test_release_fences_new_claims_before_worker_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend, binding = _backend()
+    backend.materialize(binding, "reservation-1")
+    owned = backend._reservations["reservation-1"]
+    close_entered = threading.Event()
+    allow_close = threading.Event()
+
+    def slow_close() -> None:
+        close_entered.set()
+        assert allow_close.wait(timeout=5)
+
+    monkeypatch.setattr(owned.worker, "close", slow_close)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        releaser = executor.submit(backend.release_materialization, "reservation-1")
+        assert close_entered.wait(timeout=5)
+        with pytest.raises(BackendUnavailableError, match="does not own"):
+            backend.invoke(
+                _envelope(backend, binding, "reservation-1", "request-1")
+            )
+        allow_close.set()
+        releaser.result(timeout=5)
+    assert backend._reservations == {}
+
+
+def test_backend_close_reaps_every_live_reservation() -> None:
+    backend, binding = _backend()
+    backend.materialize(binding, "reservation-1")
+    backend.materialize(binding, "reservation-2")
+    backend.close()
+    assert backend._reservations == {}
+    backend.close()
+
+
+def test_backend_close_retains_an_unconfirmed_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend, binding = _backend()
+    backend.materialize(binding, "reservation-1")
+    owned = backend._reservations["reservation-1"]
+
+    def fail_close() -> None:
+        raise RuntimeError("unconfirmed")
+
+    monkeypatch.setattr(owned.worker, "close", fail_close)
+    with pytest.raises(BackendUnavailableError, match="unconfirmed"):
+        backend.close()
+    assert backend._reservations["reservation-1"] is owned
+
+
 def test_worker_command_digest_must_match_trusted_argv() -> None:
     with pytest.raises(ValueError, match="command digest mismatch"):
         WasmComponentBackend(

@@ -43,6 +43,9 @@ class _ReservationWorker:
     worker: ComponentWorker
     artifact: bytes
     request_id: str | None = None
+    # Set under the backend lock once release starts so a late claim cannot
+    # start a new worker between the exit check and the reservation drop.
+    releasing: bool = False
 
 
 class WasmComponentBackend:
@@ -297,7 +300,7 @@ class WasmComponentBackend:
             raise ProviderExecutionError("Wasm worker deadline exceeded")
         with self._lock:
             owned = self._reservations.get(reservation_id)
-            if owned is None or owned.request_id is not None:
+            if owned is None or owned.releasing or owned.request_id is not None:
                 raise BackendUnavailableError("Wasm request does not own a worker")
             if (
                 request.target_domain.value != owned.domain_id
@@ -338,10 +341,19 @@ class WasmComponentBackend:
             raise BackendUnavailableError("cancel request does not own a Wasm worker")
 
     def release_materialization(self, reservation_id: str) -> None:
-        """Release a reservation only after its exact worker is reaped."""
+        """Release a reservation only after its exact worker is reaped.
+
+        Marking the reservation as releasing under the lock fences new
+        claims before the exit check, so worker exit is confirmed for every
+        worker the reservation can ever start.  A failed close keeps the
+        reservation registered: the Broker retains the charge and fences the
+        request, and this method stays retryable with the same worker.
+        """
 
         with self._lock:
             owned = self._reservations.get(reservation_id)
+            if owned is not None:
+                owned.releasing = True
         if owned is None:
             return
         owned.worker.close()
@@ -362,6 +374,27 @@ class WasmComponentBackend:
             )
         failures: list[Exception] = []
         for reservation_id in reservations:
+            try:
+                self.release_materialization(reservation_id)
+            except Exception as exc:
+                failures.append(exc)
+        if failures:
+            raise BackendUnavailableError(
+                "Wasm worker termination is unconfirmed"
+            ) from failures[0]
+
+    def close(self) -> None:
+        """Reap every live reservation worker; retain unconfirmed exits.
+
+        Reservations a request never released remain charged here: a failed
+        worker keeps its handle for a later retry through this method rather
+        than being reconstructed from a process ID.
+        """
+
+        with self._lock:
+            reservation_ids = tuple(self._reservations)
+        failures: list[Exception] = []
+        for reservation_id in reservation_ids:
             try:
                 self.release_materialization(reservation_id)
             except Exception as exc:
