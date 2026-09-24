@@ -28,7 +28,11 @@ def run(input_data, context, *, settings_owner=None):
                 return error("agent not found: " + str(agent_id), "NOT_FOUND")
             return ok(agent)
         if action in {"create", "upsert"}:
-            blocked = direct_lifecycle_denied(input_data, context if isinstance(context, dict) else {})
+            blocked = direct_lifecycle_denied(
+                input_data,
+                context if isinstance(context, dict) else {},
+                settings_owner=settings_owner,
+            )
             if blocked is not None:
                 return blocked
             agent = input_data.get("agent")
@@ -53,7 +57,11 @@ def run(input_data, context, *, settings_owner=None):
                 return missing_team(company_id)
             return ok(updated)
         if action in {"patch", "update"}:
-            blocked = direct_lifecycle_denied(input_data, context if isinstance(context, dict) else {})
+            blocked = direct_lifecycle_denied(
+                input_data,
+                context if isinstance(context, dict) else {},
+                settings_owner=settings_owner,
+            )
             if blocked is not None:
                 return blocked
             agent_id = input_data.get("agent_id") or input_data.get("short_id") or input_data.get("id")
@@ -76,7 +84,11 @@ def run(input_data, context, *, settings_owner=None):
                 return error("agent not found: " + str(agent_id), "NOT_FOUND")
             return ok(updated)
         if action in {"archive", "delete", "remove"}:
-            blocked = direct_lifecycle_denied(input_data, context if isinstance(context, dict) else {})
+            blocked = direct_lifecycle_denied(
+                input_data,
+                context if isinstance(context, dict) else {},
+                settings_owner=settings_owner,
+            )
             if blocked is not None:
                 return blocked
             agent_id = input_data.get("agent_id") or input_data.get("short_id") or input_data.get("id")
@@ -92,7 +104,11 @@ def run(input_data, context, *, settings_owner=None):
                 return error("agent not found: " + str(agent_id), "NOT_FOUND")
             return ok({"archived": True, "agent": archived})
         if action in {"pause", "resume"}:
-            blocked = direct_lifecycle_denied(input_data, context if isinstance(context, dict) else {})
+            blocked = direct_lifecycle_denied(
+                input_data,
+                context if isinstance(context, dict) else {},
+                settings_owner=settings_owner,
+            )
             if blocked is not None:
                 return blocked
             agent_id = input_data.get("agent_id") or input_data.get("short_id") or input_data.get("id")

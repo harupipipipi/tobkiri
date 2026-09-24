@@ -29,7 +29,11 @@ def run(input_data, context, *, settings_owner=None):
                 return missing_team(company_id)
             return ok({"settings": settings.get("subagent_team", {}) if isinstance(settings, dict) else {}})
         if action == "update_settings":
-            blocked = direct_lifecycle_denied(input_data, context if isinstance(context, dict) else {})
+            blocked = direct_lifecycle_denied(
+                input_data,
+                context if isinstance(context, dict) else {},
+                settings_owner=settings_owner,
+            )
             if blocked is not None:
                 return blocked
             settings = input_data.get("settings")

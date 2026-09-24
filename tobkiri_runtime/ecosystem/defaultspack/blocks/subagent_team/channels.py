@@ -27,7 +27,11 @@ def run(input_data, context, *, settings_owner=None):
                 return error("channel not found: " + str(channel_id), "NOT_FOUND")
             return ok(channel)
         if action in {"create", "upsert"}:
-            blocked = direct_lifecycle_denied(input_data, context if isinstance(context, dict) else {})
+            blocked = direct_lifecycle_denied(
+                input_data,
+                context if isinstance(context, dict) else {},
+                settings_owner=settings_owner,
+            )
             if blocked is not None:
                 return blocked
             channel = input_data.get("channel")
@@ -46,7 +50,11 @@ def run(input_data, context, *, settings_owner=None):
                 return missing_team(company_id)
             return ok(updated)
         if action in {"update", "patch"}:
-            blocked = direct_lifecycle_denied(input_data, context if isinstance(context, dict) else {})
+            blocked = direct_lifecycle_denied(
+                input_data,
+                context if isinstance(context, dict) else {},
+                settings_owner=settings_owner,
+            )
             if blocked is not None:
                 return blocked
             channel_id = input_data.get("channel_id") or input_data.get("id")
@@ -69,7 +77,11 @@ def run(input_data, context, *, settings_owner=None):
                 return error("channel not found: " + str(channel_id), "NOT_FOUND")
             return ok(updated)
         if action in {"archive", "delete", "remove"}:
-            blocked = direct_lifecycle_denied(input_data, context if isinstance(context, dict) else {})
+            blocked = direct_lifecycle_denied(
+                input_data,
+                context if isinstance(context, dict) else {},
+                settings_owner=settings_owner,
+            )
             if blocked is not None:
                 return blocked
             channel_id = input_data.get("channel_id") or input_data.get("id")
@@ -84,7 +96,11 @@ def run(input_data, context, *, settings_owner=None):
                 return error("channel not found: " + str(channel_id), "NOT_FOUND")
             return ok({"archived": True, "channel": archived})
         if action == "join":
-            blocked = direct_lifecycle_denied(input_data, context if isinstance(context, dict) else {})
+            blocked = direct_lifecycle_denied(
+                input_data,
+                context if isinstance(context, dict) else {},
+                settings_owner=settings_owner,
+            )
             if blocked is not None:
                 return blocked
             channel_id = input_data.get("channel_id") or input_data.get("id")
@@ -103,7 +119,11 @@ def run(input_data, context, *, settings_owner=None):
                 return error("channel not found: " + str(channel_id), "NOT_FOUND")
             return ok(updated)
         if action == "leave":
-            blocked = direct_lifecycle_denied(input_data, context if isinstance(context, dict) else {})
+            blocked = direct_lifecycle_denied(
+                input_data,
+                context if isinstance(context, dict) else {},
+                settings_owner=settings_owner,
+            )
             if blocked is not None:
                 return blocked
             channel_id = input_data.get("channel_id") or input_data.get("id")

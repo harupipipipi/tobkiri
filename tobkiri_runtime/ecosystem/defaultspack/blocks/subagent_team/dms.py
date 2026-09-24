@@ -19,7 +19,11 @@ def run(input_data, context, *, settings_owner=None):
                 return missing_team(company_id)
             return ok({"dms": dms, "total": len(dms)})
         if action in {"create", "ensure"}:
-            blocked = direct_lifecycle_denied(input_data, context if isinstance(context, dict) else {})
+            blocked = direct_lifecycle_denied(
+                input_data,
+                context if isinstance(context, dict) else {},
+                settings_owner=settings_owner,
+            )
             if blocked is not None:
                 return blocked
             dm = service.ensure_dm(

@@ -709,3 +709,175 @@ def test_subagent_team_mention_resolution_uses_captured_owner(
     assert resolved == []
     assert unresolved == []
     assert seen == [owner, owner]
+
+
+def test_subagent_lifecycle_denied_binds_owner_to_team_service(
+    monkeypatch: Any,
+) -> None:
+    from domain.subagent_team import service as service_module
+    from blocks.subagent_team import _helpers
+
+    owner = object()
+    seen: list[Any] = []
+
+    class Service:
+        def __init__(self, *, settings_owner: Any = None) -> None:
+            seen.append(settings_owner)
+
+        def authorize_pm_actor(self, *args: Any, **kwargs: Any) -> dict[str, bool]:
+            del args, kwargs
+            return {"allowed": True}
+
+    monkeypatch.setattr(service_module, "SubagentTeamService", Service)
+
+    result = _helpers.direct_lifecycle_denied(
+        {"company_id": "company-1"},
+        {"actor_id": "agent-1"},
+        settings_owner=owner,
+    )
+
+    assert result is None
+    assert seen == [owner]
+
+
+def test_subagent_agents_block_forwards_owner_to_lifecycle_check(
+    monkeypatch: Any,
+) -> None:
+    import blocks.subagent_team.agents as block
+
+    owner = object()
+    seen: list[Any] = []
+
+    def _denied(*args: Any, **kwargs: Any) -> None:
+        del args
+        seen.append(kwargs.get("settings_owner"))
+        return None
+
+    class Service:
+        def __init__(self, *, settings_owner: Any = None) -> None:
+            del settings_owner
+
+        def creator_request(self, *args: Any, **kwargs: Any) -> dict[str, bool]:
+            del args, kwargs
+            return {"created": True}
+
+    monkeypatch.setattr(block, "direct_lifecycle_denied", _denied)
+    monkeypatch.setattr(block, "SubagentTeamService", Service)
+
+    result = block.run(
+        {"company_id": "company-1", "action": "create", "agent": {}},
+        {"actor_id": "agent-1"},
+        settings_owner=owner,
+    )
+
+    assert result["status"] == "ok"
+    assert seen == [owner]
+
+
+def test_subagent_workspace_metadata_binds_owner_to_company_service(
+    monkeypatch: Any,
+) -> None:
+    import blocks.subagent_team.workspace_metadata as block
+
+    owner = object()
+    seen: list[Any] = []
+
+    class Service:
+        def __init__(self, store: Any, *, settings_owner: Any = None) -> None:
+            del store
+            seen.append(settings_owner)
+
+        def update_company(self, *args: Any, **kwargs: Any) -> dict[str, str]:
+            del args, kwargs
+            return {"id": "company-1"}
+
+    class _CompanyStore:
+        def find_company_by_conversation_id(self, conversation_id: str) -> None:
+            del conversation_id
+            return None
+
+    monkeypatch.setattr(block, "CompanyService", Service)
+    monkeypatch.setattr(block, "CompanyStore", _CompanyStore)
+
+    result = block.run(
+        {"company_id": "company-1", "metadata": {"key": "value"}},
+        {},
+        settings_owner=owner,
+    )
+
+    assert result["status"] == "ok"
+    assert seen == [owner]
+
+
+def test_subagent_file_tree_block_binds_owner_to_node_open(
+    monkeypatch: Any,
+) -> None:
+    import blocks.subagent_team.file_tree as block
+
+    owner = object()
+    seen: list[Any] = []
+
+    def _open(*args: Any, **kwargs: Any) -> dict[str, str]:
+        del args
+        seen.append(kwargs.get("settings_owner"))
+        return {"node_id": "history"}
+
+    monkeypatch.setattr(block, "open_file_tree_node", _open)
+
+    result = block.run(
+        {"action": "open", "node_id": "history:ops"},
+        {},
+        settings_owner=owner,
+    )
+
+    assert result["status"] == "ok"
+    assert seen == [owner]
+
+
+def test_subagent_file_tree_history_binds_owner_to_team_service(
+    monkeypatch: Any,
+) -> None:
+    from domain.subagent_team import file_tree
+
+    owner = object()
+    seen: list[Any] = []
+
+    class Service:
+        def __init__(self, *, settings_owner: Any = None) -> None:
+            seen.append(settings_owner)
+
+        def authorize_channel_read(self, *args: Any, **kwargs: Any) -> dict[str, bool]:
+            del args, kwargs
+            return {"allowed": True}
+
+    class _CompanyStore:
+        def get_company(self, company_id: str) -> dict[str, str]:
+            return {"id": company_id}
+
+    class _RuntimeStore:
+        def list_messages(self, *args: Any, **kwargs: Any) -> tuple[list[Any], int]:
+            del args, kwargs
+            return [], 0
+
+        def list_tasks(self, *args: Any, **kwargs: Any) -> tuple[list[Any], int]:
+            del args, kwargs
+            return [], 0
+
+        def list_run_links(self, *args: Any, **kwargs: Any) -> list[Any]:
+            del args, kwargs
+            return []
+
+    monkeypatch.setattr(file_tree, "SubagentTeamService", Service)
+    monkeypatch.setattr(file_tree, "CompanyStore", _CompanyStore)
+    monkeypatch.setattr(file_tree, "CompanyRuntimeStore", _RuntimeStore)
+
+    result = file_tree._open_history_node(
+        {"company_id": "company-1", "channel_id": "ops"},
+        {},
+        node_kind="history",
+        node_id="ops",
+        settings_owner=owner,
+    )
+
+    assert result["kind"] == "history"
+    assert seen == [owner]
