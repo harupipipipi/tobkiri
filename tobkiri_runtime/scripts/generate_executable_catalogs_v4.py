@@ -80,6 +80,16 @@ _LONG_RUNNING_OPERATION_TIMEOUTS_MS = {
         "complete",
     ): 120_000,
     (
+        "defaultspack",
+        "defaultspack.conversation.saved",
+        "saved_complete",
+    ): 120_000,
+    (
+        "rumi_turn_runtime_pack",
+        "rumi_turn_runtime_pack.turn-runtime.saved",
+        "rumi_turn_runtime_pack.turn-saved",
+    ): 120_000,
+    (
         "rumi_ai_gateway_pack",
         "rumi_ai_gateway_pack.ai-gateway.generate",
         "rumi_ai_gateway_pack.ai-gateway.generate",
