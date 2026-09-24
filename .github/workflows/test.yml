@@ -274,6 +274,7 @@ jobs:
             tests/test_scheduler_definitions_wasm.py \
             tests/test_wasm_component.py \
             tests/test_wasm_worker.py \
+            tests/test_wasm_worker_limits.py \
             tests/test_computer_approval_audit_bridge.py::test_pid_event_function_routes_through_captured_host_contract \
             tests/test_mcp_stdio_shutdown.py \
             tests/test_mcp_sse_origin.py \
