@@ -1344,6 +1344,132 @@ async function openDefaultspack(page: Page, path = "/chat", options: ApiMockOpti
   await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
 }
 
+test("reviewable voice input preserves the draft until the edited transcript is applied", async ({ page }) => {
+  const transcriptionRequests: Record<string, unknown>[] = [];
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    const request = route.request();
+    const path = requestTarget(new URL(request.url()));
+    if (path === routeKey("api/ambient/transcriptions")) {
+      transcriptionRequests.push(request.postDataJSON() as Record<string, unknown>);
+      return fulfill(route, {
+        transcript: "captured words",
+        transcription: { status: "ok", source: "ui-contract-fixture" },
+      });
+    }
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "error", success: false, data: null, error: "harness_only" }),
+    });
+  });
+  await page.addInitScript(() => {
+    const track = { stop() {} };
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        async getUserMedia() {
+          return { getTracks: () => [track] };
+        },
+        addEventListener() {},
+        removeEventListener() {},
+      },
+    });
+    class FixtureMediaRecorder extends EventTarget {
+      static isTypeSupported() {
+        return true;
+      }
+
+      readonly mimeType = "audio/webm";
+      state: RecordingState = "inactive";
+
+      start() {
+        this.state = "recording";
+      }
+
+      stop() {
+        this.state = "inactive";
+        const dataEvent = new Event("dataavailable") as Event & { data: Blob };
+        Object.defineProperty(dataEvent, "data", { value: new Blob(["voice"], { type: this.mimeType }) });
+        this.dispatchEvent(dataEvent);
+        this.dispatchEvent(new Event("stop"));
+      }
+    }
+    Object.defineProperty(window, "MediaRecorder", {
+      configurable: true,
+      value: FixtureMediaRecorder,
+    });
+  });
+  await page.goto("/p/harness/chat");
+  await page.evaluate(async () => {
+    document.getElementById("root")?.remove();
+    const rootElement = document.createElement("div");
+    rootElement.id = "voice-input-e2e-root";
+    document.body.appendChild(rootElement);
+    const load = (path: string) => import(path);
+    const [reactModule, reactDomModule, composerModule] = await Promise.all([
+      load("/node_modules/.vite/deps/react.js"),
+      load("/node_modules/.vite/deps/react-dom_client.js"),
+      load("/src/renderers/ComposerRenderer.tsx"),
+    ]);
+    const React = reactModule.default;
+    const createRoot = reactDomModule.createRoot ?? reactDomModule.default?.createRoot;
+    const { ComposerRenderer } = composerModule;
+    function VoiceHarness() {
+      const [input, setInput] = React.useState("hello world");
+      return React.createElement(ComposerRenderer, {
+        input,
+        placeholder: "Message",
+        isGenerating: false,
+        selectedProfile: {
+          profile_id: "stub/default",
+          display_name: "Stub Default",
+          provider_id: "stub",
+          model_id: "default",
+        },
+        favoriteProfiles: [],
+        inlineExtensions: [],
+        belowExtensions: [],
+        thinkingLevel: null,
+        contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+        onInputChange: setInput,
+        onSubmit: () => undefined,
+        onModelProfileSelect: () => undefined,
+        onThinkingLevelChange: () => undefined,
+      });
+    }
+    createRoot(rootElement).render(React.createElement(VoiceHarness));
+  });
+
+  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  await expect(composer).toHaveValue("hello world");
+  await composer.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(6, 11));
+  await page.getByRole("button", { name: "Start reviewable voice input" }).click();
+
+  await expect(page.getByRole("heading", { name: "Reviewable voice input" })).toBeVisible();
+  await expect(composer).toHaveJSProperty("readOnly", true);
+  await expect(composer).toHaveValue("hello world");
+
+  await page.getByRole("button", { name: "Allow and start microphone" }).click();
+  await expect(page.getByRole("heading", { name: "Recording voice input" })).toBeVisible();
+  await page.getByRole("button", { name: "Stop and review" }).click();
+
+  await expect(page.getByRole("heading", { name: "Review transcript" })).toBeVisible();
+  const transcript = page.getByRole("textbox", { name: "Editable transcript" });
+  await expect(transcript).toHaveValue("captured words");
+  await expect(composer).toHaveValue("hello world");
+  await transcript.fill("reviewed text");
+  await page.getByRole("button", { name: "Insert at cursor" }).click();
+
+  await expect(composer).toHaveValue("hello reviewed text");
+  await expect(composer).toHaveJSProperty("readOnly", false);
+  expect(transcriptionRequests).toHaveLength(1);
+  expect(transcriptionRequests[0]).toMatchObject({
+    audio_mime_type: "audio/webm",
+    audio_name: expect.stringMatching(/^voice-.*\.webm$/),
+    metadata: expect.objectContaining({ action: "reviewable_voice_input" }),
+  });
+});
+
 async function openCodingWidget(page: Page, options: ApiMockOptions = {}) {
   await openDefaultspack(page, "/chat", options);
   await page.locator("textarea.rumi-composer-textarea").fill("/coding");

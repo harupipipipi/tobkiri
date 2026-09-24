@@ -13,6 +13,52 @@ const AUDIO_CAPABILITY_KEYS = [
   "input_audio",
 ] as const;
 
+export type ComposerVoicePhase = "idle" | "consent" | "starting" | "listening" | "transcribing" | "review" | "error";
+export type ComposerVoiceInsertMode = "insert" | "replace" | "append";
+
+export function composerVoiceLanguage(documentLanguage?: string, browserLanguage?: string): string {
+  const candidate = String(documentLanguage || browserLanguage || "").trim();
+  return /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(candidate) ? candidate : "en-US";
+}
+
+export function composerVoiceErrorMessage(errorCode: string, online = true): string {
+  const code = errorCode.trim().toLowerCase();
+  if (code === "not-allowed" || code === "service-not-allowed") {
+    return "Microphone permission was denied. Allow microphone access in browser or OS settings, then retry.";
+  }
+  if (code === "audio-capture" || code === "not-found") {
+    return "No usable microphone was found. Check the selected input device and OS microphone access.";
+  }
+  if (code === "network" || !online) {
+    return "Speech recognition could not reach its service. Check your connection or use local/offline transcription.";
+  }
+  if (code === "no-speech" || code === "nomatch") {
+    return "No speech was recognized. Check the microphone, speak clearly, and retry.";
+  }
+  if (code === "aborted") return "Voice input was cancelled. Your original draft was preserved.";
+  return "Speech recognition stopped unexpectedly. Your original draft was preserved; retry or use local/offline transcription.";
+}
+
+export function applyComposerVoiceTranscript(
+  draft: string,
+  transcript: string,
+  mode: ComposerVoiceInsertMode,
+  selection: { start: number; end: number },
+): { value: string; cursor: number } {
+  const cleanTranscript = transcript.trim();
+  if (!cleanTranscript) return { value: draft, cursor: Math.min(selection.end, draft.length) };
+  if (mode === "replace") return { value: cleanTranscript, cursor: cleanTranscript.length };
+  if (mode === "append") {
+    const separator = draft && !draft.endsWith("\n") ? "\n" : "";
+    const value = `${draft}${separator}${cleanTranscript}`;
+    return { value, cursor: value.length };
+  }
+  const start = Math.max(0, Math.min(selection.start, draft.length));
+  const end = Math.max(start, Math.min(selection.end, draft.length));
+  const value = `${draft.slice(0, start)}${cleanTranscript}${draft.slice(end)}`;
+  return { value, cursor: start + cleanTranscript.length };
+}
+
 function explicitAudioCapability(
   value: unknown,
   seen = new Set<object>(),

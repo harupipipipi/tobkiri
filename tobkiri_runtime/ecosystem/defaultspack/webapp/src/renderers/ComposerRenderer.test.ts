@@ -21,6 +21,9 @@ import {
   composerHelperCopy,
   composerModelControlWidth,
   composerPlaceholderCopy,
+  composerVoiceErrorMessage,
+  composerVoiceLanguage,
+  applyComposerVoiceTranscript,
   modelDropdownPlacementClassName,
   nextModelPickerOpenState,
   isModelPickerToggleCommand,
@@ -51,6 +54,34 @@ import {
 } from "./ComposerRenderer";
 import { COMPOSER_BUTTON_DROP, COMPOSER_PANEL_DROP, COMPOSER_SELECTOR_DROP, COMPOSER_TOGGLE_DROP } from "../lib/toolUi";
 import type { ComposerCommandItem } from "../lib/api";
+
+test("composer voice language follows the document locale and rejects invalid values", () => {
+  assert.equal(composerVoiceLanguage("ja-JP", "en-US"), "ja-JP");
+  assert.equal(composerVoiceLanguage("", "en-GB"), "en-GB");
+  assert.equal(composerVoiceLanguage("not a locale", ""), "en-US");
+});
+
+test("composer voice transcript preserves the draft until an explicit apply mode is chosen", () => {
+  assert.deepEqual(
+    applyComposerVoiceTranscript("hello world", "new text", "insert", { start: 6, end: 11 }),
+    { value: "hello new text", cursor: 14 },
+  );
+  assert.deepEqual(
+    applyComposerVoiceTranscript("hello", "new text", "append", { start: 0, end: 0 }),
+    { value: "hello\nnew text", cursor: 14 },
+  );
+  assert.deepEqual(
+    applyComposerVoiceTranscript("hello", "new text", "replace", { start: 0, end: 5 }),
+    { value: "new text", cursor: 8 },
+  );
+});
+
+test("composer voice errors provide actionable messages without leaking host details", () => {
+  assert.match(composerVoiceErrorMessage("not-allowed"), /permission/i);
+  assert.match(composerVoiceErrorMessage("audio-capture"), /microphone/i);
+  assert.match(composerVoiceErrorMessage("network", false), /connection/i);
+  assert.doesNotMatch(composerVoiceErrorMessage("unknown"), /stack|exception|localhost/i);
+});
 
 test("composer file mention filters string context files", () => {
   const files = ["README.md", "src/App.tsx", "docs/context.md"];
@@ -218,6 +249,9 @@ test("structured composer controls stay above the textarea without rewriting its
 
   assert.match(html, /data-structured-composer="structured"/);
   assert.match(html, /本文だけを保持/);
+  assert.match(html, /aria-label="Start reviewable voice input"/);
+  assert.match(html, /aria-controls="composer-voice-panel"/);
+  assert.match(html, /aria-pressed="false"/);
   assert.doesNotMatch(html, /&lt;rumi:input&gt;/);
 });
 
