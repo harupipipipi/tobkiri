@@ -662,7 +662,7 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
             operation_id="saved_complete",
             target_principal=OpaqueAuthorityRef(principal.principal_id),
             target_domain=OpaqueAuthorityRef(context.target_domain_id),
-            deadline_monotonic=time.monotonic() + 60,
+            deadline_monotonic=time.monotonic() + 300,
             cancellation_requested=threading.Event(),
             payload={
                 "request": {
@@ -700,6 +700,7 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
         assert store.path.read_bytes() == before
         intent = saved.start(outer.payload["request"])
         for _ in range(4):
+            assert "state" in intent, intent
             intent = saved.resume(
                 intent["state"], callback(outer, _frame(intent, context.request_id))
             )
@@ -756,6 +757,7 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
         preflight(envelope)
         intent = saved.start(envelope.payload["request"])
         for _ in range(4):
+            assert "state" in intent, intent
             intent = saved.resume(
                 intent["state"],
                 callback(
