@@ -122,14 +122,17 @@ def _model_search(
     ``blocks.ai.search_models`` handler used.
     The domain modules keep their legacy ``domain.*`` import layout, so the
     pack root must already be importable exactly as ``desktop_app`` arranges
-    at application start.
+    at application start.  In the sealed Host the import path is frozen at
+    attestation and carries only the application root, so the already
+    verified Defaultspack domain tree is bound under its legacy top-level
+    spelling through ``sys.modules`` instead of mutating ``sys.path``.
     """
 
+    import importlib
     import sys
 
-    pack_root = str(Path(__file__).resolve().parents[1])
-    if pack_root not in sys.path:
-        sys.path.insert(0, pack_root)
+    domain_root = importlib.import_module("ecosystem.defaultspack.domain")
+    sys.modules.setdefault("domain", domain_root)
 
     from domain.ai_client.model_search import (
         get_profile_catalog,

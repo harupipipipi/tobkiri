@@ -166,6 +166,34 @@ def _scenario_model_search_dispatch_chain_imports_under_frozen_path() -> None:
     assert callable(get_provider_catalog)
 
 
+def _scenario_typed_role_model_search_invocation() -> None:
+    """Run ``runtime_composition._model_search`` under the typed role path.
+
+    The sealed ``typed`` role attests only the application root, so
+    ``domain.*`` is not importable and ``sys.path`` cannot be extended.
+    The composition callback must still resolve its domain modules through
+    the already verified canonical package.
+    """
+    sys.path = _FrozenSysPath([str(ROOT)])
+    _purge(
+        (
+            "ecosystem.defaultspack",
+            "ecosystem",
+            "defaultspack",
+            "domain",
+            "backend",
+            "blocks",
+        )
+    )
+    from ecosystem.defaultspack.defaultspack.runtime_composition import (
+        _model_search,
+    )
+
+    result = _model_search({}, [], {})
+    assert isinstance(result.get("models"), list)
+    assert isinstance(result.get("filters_applied"), dict)
+
+
 def _scenario_openai_provider_public_surface() -> None:
     _purge(("ecosystem.defaultspack.domain.ai_client", "domain.ai_client"))
     from ecosystem.defaultspack.domain.ai_client.base_provider import (
@@ -226,6 +254,9 @@ _SCENARIOS = {
     ),
     "test_model_search_dispatch_chain_imports_under_frozen_path": (
         _scenario_model_search_dispatch_chain_imports_under_frozen_path
+    ),
+    "test_typed_role_model_search_invocation": (
+        _scenario_typed_role_model_search_invocation
     ),
     "test_openai_provider_public_surface": (
         _scenario_openai_provider_public_surface
@@ -300,6 +331,11 @@ def test_model_search_dispatch_chain_imports_under_frozen_path() -> None:
     _assert_frozen_scenario(
         "test_model_search_dispatch_chain_imports_under_frozen_path"
     )
+
+
+def test_typed_role_model_search_invocation() -> None:
+    """``_model_search`` must run where only the application root is attested."""
+    _assert_frozen_scenario("test_typed_role_model_search_invocation")
 
 
 def test_openai_provider_public_surface() -> None:
