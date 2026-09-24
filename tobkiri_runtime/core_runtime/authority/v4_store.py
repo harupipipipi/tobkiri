@@ -3383,9 +3383,9 @@ class AuthorityStore:
         tip_sequence, tip_previous_digest, tip_event_digest, verified_at = cached
         # Structural gate: pre-tip history must stay row-contiguous and the
         # tip row must survive a full decrypt and digest recompute.  Any
-        # mismatch falls back to complete verification rather than failing
-        # closed outright, so a legitimate same-inode restore re-verifies
-        # cleanly instead of wedging every later open in this process.
+        # divergence fails this open and evicts the cached tip so a
+        # legitimate same-inode restore is fully verified — and accepted —
+        # on the very next open instead of wedging the process.
         below_tip = connection.execute(
             "SELECT COUNT(*) AS count FROM authority_audit WHERE sequence<=?",
             (tip_sequence,),
@@ -3410,24 +3410,31 @@ class AuthorityStore:
                 self._verify_audit_rows(rows, previous_digest=tip_event_digest)
             except AuthorityStoreError:
                 incremental_ok = False
-        if incremental_ok:
-            if rows:
-                _record_verified_audit_tip(
-                    identity,
-                    int(rows[-1]["sequence"]),
-                    str(rows[-1]["previous_digest"]),
-                    str(rows[-1]["event_digest"]),
-                    verified_at,
-                )
-            if (
-                time.monotonic() - verified_at
-                <= _AUDIT_FULL_VERIFY_INTERVAL_SECONDS
-            ):
-                return
-        # Incremental verification failed or the periodic bound elapsed:
-        # re-verify the complete chain.  A real tamper raises here; a
-        # legitimate rewrite records the new tip and keeps later opens
-        # incremental instead of permanently wedging this process.
+        if not incremental_ok:
+            # The file diverged from the verified history: truncated,
+            # reordered, or rewritten in place.  Evicting the stale entry
+            # before raising keeps this from wedging every later open — a
+            # legitimate restore fails once here, then the next open has no
+            # cache and fully verifies the restored chain as its own
+            # baseline.
+            _drop_verified_audit_tip(identity)
+            raise AuthorityStoreError("authoritative audit chain is invalid")
+        if rows:
+            _record_verified_audit_tip(
+                identity,
+                int(rows[-1]["sequence"]),
+                str(rows[-1]["previous_digest"]),
+                str(rows[-1]["event_digest"]),
+                verified_at,
+            )
+        if (
+            time.monotonic() - verified_at
+            <= _AUDIT_FULL_VERIFY_INTERVAL_SECONDS
+        ):
+            return
+        # The periodic bound elapsed: re-verify the complete chain so an
+        # in-place rewrite that preserves the structural checks cannot stay
+        # masked for the whole process lifetime.
         _drop_verified_audit_tip(identity)
         rows = connection.execute(
             "SELECT * FROM authority_audit ORDER BY sequence"
