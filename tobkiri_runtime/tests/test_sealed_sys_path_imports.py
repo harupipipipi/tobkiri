@@ -174,7 +174,13 @@ def _scenario_typed_role_model_search_invocation() -> None:
     The composition callback must still resolve its domain modules through
     the already verified canonical package.
     """
-    sys.path = _FrozenSysPath([str(ROOT)])
+    sys.path = _FrozenSysPath(
+        [
+            entry
+            for entry in sys.path
+            if not entry or Path(entry).resolve() != DEFAULTSPACK_ROOT
+        ]
+    )
     _purge(
         (
             "ecosystem.defaultspack",
