@@ -120,6 +120,16 @@ def bootstrap_review_catalog(
     # Keep optional roots out of the definition: promoting them to mandatory
     # Packs would prevent the user from disabling them after the update.
     additional_ids = tuple(sorted(selected_ids - declared_ids - dependency_ids))
+    if additional_ids:
+        from ..pack_control_v4 import verified_reconfirmed_pack_ids
+
+        # A preserved optional Pack is carried only while its install and
+        # approval receipts still verify.  Excluding the unverifiable rest
+        # keeps the upgrade path reachable; stale approvals stay invalid
+        # and must be re-approved before such a Pack can be enabled again.
+        additional_ids = verified_reconfirmed_pack_ids(
+            profile_id, additional_ids, catalog
+        )
     return (
         runtime.catalog_with_profiles(catalog, {**catalog.profiles, profile_id: candidate}),
         additional_ids,

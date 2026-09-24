@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
@@ -31,6 +32,8 @@ from .external_pack_catalog_v4 import (
 )
 from .profile_runtime_port import require_profile_runtime
 from .active_profile_store_v4 import ActiveProfilePointer
+
+logger = logging.getLogger(__name__)
 
 HOST_PROFILE_CONTROL_OPERATIONS = frozenset(
     {
@@ -1422,6 +1425,72 @@ def verify_reconfirmed_pack_approvals(resolved: Any, catalog: Any) -> None:
     for pack_id in optional:
         if _pack_manifest_artifact_digest(pack_id) != catalog.packs[pack_id]["pack"]["artifact_digest"]:
             raise PackControlDigestMismatch("reviewed Pack differs from its installed artifact")
+
+
+def verified_reconfirmed_pack_ids(
+    profile_id: str, pack_ids: tuple[str, ...], catalog: Any
+) -> tuple[str, ...]:
+    """Return the preserved optional Packs whose receipts still verify.
+
+    A preserved optional Pack is carried into a reconfirmation candidate
+    only when its install binding, approval receipt, and installed
+    artifact all verify against the current catalog.  A Pack whose
+    approval receipt is intact but bound to a superseded catalog context
+    (``approval_binding_invalid``) is excluded instead of denying the
+    whole upgrade: it cannot run under a stale approval either way, and
+    Pack control stays reachable to re-approve it after activation.
+    Every other verification failure stays a typed denial.
+    """
+
+    _safe_identity(profile_id, "Profile ID")
+    binding = _Binding(
+        profile_id=profile_id,
+        workspace_id=profile_id,
+        profile_revision="",
+        plan_digest="",
+        catalog_revision=control_catalog_revision(),
+    )
+    installed = _read_control_state(profile_id, read_only=True)
+    records = load_pack_catalog()
+    verified: list[str] = []
+    for pack_id in sorted(pack_ids):
+        record = records.get(pack_id)
+        entry = installed.get(pack_id)
+        catalog_pack = catalog.packs.get(pack_id)
+        try:
+            if record is None:
+                raise PackControlDigestMismatch(
+                    "optional Pack is absent from the catalog"
+                )
+            if entry is None:
+                raise PackControlConflict(
+                    "Pack must be installed before activation"
+                )
+            _require_install_binding(pack_id, record, entry, binding)
+            approved, reason = _approval_status(
+                pack_id, record, binding, read_only=True
+            )
+            if not approved:
+                _raise_approval_failure(reason)
+            if catalog_pack is None or (
+                _pack_manifest_artifact_digest(pack_id)
+                != catalog_pack["pack"]["artifact_digest"]
+            ):
+                raise PackControlDigestMismatch(
+                    "reviewed Pack differs from its installed artifact"
+                )
+        except PackControlDigestMismatch as error:
+            if str(error) != "approval_binding_invalid":
+                raise
+            logger.warning(
+                "preserved optional Pack %s approval is bound to a "
+                "superseded catalog context and was excluded from the "
+                "reconfirmation candidate",
+                pack_id,
+            )
+            continue
+        verified.append(pack_id)
+    return tuple(verified)
 
 
 def _verify_optional_pack_approvals(

@@ -114,6 +114,47 @@ def test_catalog_separates_admission_and_active_pack_digests(captured_session) -
     assert _catalog_pack(catalog, TARGET_PACK)["pack_artifact_digest"] is None
 
 
+def test_reconfirmation_excludes_optional_packs_with_stale_approvals(
+    captured_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A preserved optional Pack whose approval no longer verifies is
+    excluded from the reconfirmation candidate instead of denying the
+    whole Profile upgrade.  Its stale approval record remains untouched
+    and must be re-approved before the Pack can be enabled again."""
+    session, _state_path, user_data = captured_session
+    _invoke(session, "pack.install", {"pack_id": TARGET_PACK})
+    candidate = _invoke(
+        session, "approval.candidate", {"pack_id": TARGET_PACK}
+    )
+    _invoke(
+        session,
+        "approval.approve",
+        {"pack_id": TARGET_PACK, "candidate_id": candidate["candidate_id"]},
+    )
+    _invoke(session, "pack.enable", {"pack_id": TARGET_PACK})
+
+    resolved, _ = profile_capture._resolve_bootstrap_candidate()
+    assert TARGET_PACK in {
+        row["pack_id"] for row in resolved.profile["packs"]
+    }
+
+    monkeypatch.setattr(
+        pack_control,
+        "control_catalog_revision",
+        lambda: "sha256:" + "0" * 64,
+    )
+    resolved, _ = profile_capture._resolve_bootstrap_candidate()
+    assert TARGET_PACK not in {
+        row["pack_id"] for row in resolved.profile["packs"]
+    }
+
+    approval_path = (
+        user_data / "pack_control" / "approvals" / "defaults"
+        / f"{TARGET_PACK}.json"
+    )
+    assert approval_path.is_file()
+
+
 @pytest.mark.parametrize("pack_id", [TARGET_PACK, "rumi_agent_workroom_pack"])
 def test_catalog_install_approve_enable_and_restart_read_back(captured_session, pack_id: str) -> None:
     """The positive lifecycle survives a fresh captured session."""
