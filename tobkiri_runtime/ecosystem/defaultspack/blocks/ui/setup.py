@@ -31,6 +31,10 @@ def _lazy(
 
     setattr(handler, "__rumi_route_sensitive__", sensitive)
     setattr(handler, "__rumi_route_local_only__", local_only)
+    # Declared route binding metadata: lets route-parity checks resolve the
+    # registered implementation without invoking the handler.
+    setattr(handler, "__rumi_route_block_module__", module_path)
+    setattr(handler, "__rumi_route_block_function__", func_name)
     return handler
 
 
