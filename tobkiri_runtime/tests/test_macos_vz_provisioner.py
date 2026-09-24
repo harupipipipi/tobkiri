@@ -1388,6 +1388,179 @@ def test_helper_exchange_bound_derives_from_request_deadline() -> None:
     assert macos_vz_provisioner._exchange_wait_bound(expired) == 30.0
 
 
+def test_helper_exchange_bound_reads_nested_request_deadline() -> None:
+    """Real supervisor envelopes nest the deadline inside ``request``."""
+
+    envelope = {"request": {"deadline_monotonic": str(time.monotonic() + 200.0)}}
+    bound = macos_vz_provisioner._exchange_wait_bound(envelope)
+    assert bound == pytest.approx(230.0, abs=1.0)
+    huge = {"request": {"deadline_monotonic": str(time.monotonic() + 10_000.0)}}
+    assert macos_vz_provisioner._exchange_wait_bound(huge) == 600.0
+    malformed = {"request": {"deadline_monotonic": "not-a-number"}}
+    assert macos_vz_provisioner._exchange_wait_bound(malformed) == 120.0
+
+
+def test_provision_adopts_dead_routine_claim(
+    provisioner_fixture: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dead routine claim cannot block provision or recovery ceremonies."""
+
+    provisioner, _manifest, _base = provisioner_fixture
+    provisioner.mutation_claim_path.parent.mkdir(parents=True, mode=0o700)
+    _private_file(
+        provisioner.mutation_claim_path,
+        json.dumps(
+            {
+                "version": 1,
+                "operation": "release",
+                "instance": macos_vz_provisioner.VZ_INSTANCE,
+                "owner_pid": 99_999_999,
+                "binding": {"domain_digest": _digest(b"other-domain")},
+            }
+        ).encode(),
+    )
+    monkeypatch.setattr(macos_vz_provisioner, "_process_is_alive", lambda _pid: False)
+    binding = {
+        "session_digest": _digest(b"session"),
+        "plan_digest": _digest(b"plan"),
+        "ceremony_nonce_digest": _digest(b"nonce"),
+    }
+
+    with provisioner.operation_gate("provision", binding):
+        pass
+
+    assert not provisioner.mutation_claim_path.exists()
+
+
+def test_allocate_recovers_same_domain_retry_residue(
+    provisioner_fixture: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+) -> None:
+    """A crashed allocate's own residue cannot deadlock its retry."""
+
+    provisioner, _manifest, _base = provisioner_fixture
+    provisioner._state_dir.mkdir(mode=0o700)
+    (provisioner._state_dir / "domains").mkdir(mode=0o700)
+    allocation_name = macos_vz_provisioner._digest_text(
+        "domain.retry\0reservation-retry\0lease-retry"
+    )[7:]
+    residue = provisioner._state_dir / "domains" / allocation_name
+    residue.mkdir(mode=0o700)
+    _private_file(residue / "cow.partial", b"partial")
+
+    artifact = _materialized_artifact()
+    allocation = provisioner.allocate(
+        domain_id="domain.retry",
+        reservation_id="reservation-retry",
+        lease_id="lease-retry",
+        channel_key=b"k" * 32,
+        artifact_digest=artifact.artifact_digest,
+        executable_digest=artifact.implementation_digest,
+        materialization_digest=artifact.materialization_digest,
+        artifact=artifact,
+    )
+
+    assert Path(allocation.run_root).is_dir()
+    provisioner.release(allocation)
+
+
+def test_adopted_allocate_claim_still_recovers_interrupted_allocation(
+    attested_provisioner: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Adopting a dead ``allocate`` claim preserves its recovery proof.
+
+    A routine op that adopts a crashed allocation's claim must leave enough
+    durable evidence for ``recover_interrupted_allocation`` to complete the
+    admission-ledger release ceremony.
+    """
+
+    provisioner, manifest, _instance_root = attested_provisioner
+    lifecycle = PackVMLifecycleV4(provisioner)
+    state = provisioner._load_state()
+    driver = MacOSVZSupervisorDriver(
+        transport_factory=None,
+        helper_path=manifest.helper_path,
+        helper_identity=MacOSVZHelperIdentity(
+            binary_digest=manifest.helper_digest,
+            code_digest=manifest.helper_digest,
+            bundle_id=manifest.helper_bundle_id,
+            team_id=manifest.helper_team_id,
+            signing_identity=manifest.helper_signing_identity,
+        ),
+        launch_assets=MacOSVZLaunchAssets(
+            base_image_digest=manifest.image_digest,
+            base_image_path=str(state["base_image_path"]),
+            agent_template_digest=manifest.agent_digest,
+            config_template_digest=manifest.config_digest,
+            base_image_read_only=True,
+        ),
+        agent_identity=MacOSVZAgentIdentity(agent_digest=manifest.agent_digest),
+        domain_allocator=provisioner,
+    )
+    domain_id = "domain.provider.0123456789abcdef01234567.9"
+    reservation_id = "reservation-orphaned"
+    executable_digest = _digest(b"implementation")
+    lease_id = macos_vz_provisioner._canonical_digest(
+        {
+            "reservation_id": reservation_id,
+            "executable": executable_digest,
+            "backend": driver.backend_digest,
+        }
+    )
+    binding = {
+        "domain_digest": macos_vz_provisioner._digest_text(domain_id),
+        "reservation_digest": macos_vz_provisioner._digest_text(reservation_id),
+        "lease_digest": macos_vz_provisioner._digest_text(lease_id),
+    }
+    _private_file(
+        provisioner.mutation_claim_path,
+        json.dumps(
+            {
+                "version": 1,
+                "operation": "allocate",
+                "instance": macos_vz_provisioner.VZ_INSTANCE,
+                "owner_pid": 99_999_999,
+                "binding": binding,
+            }
+        ).encode(),
+    )
+    monkeypatch.setattr(
+        macos_vz_provisioner, "_process_is_alive", lambda _pid: False
+    )
+
+    artifact = _materialized_artifact()
+    allocation = provisioner.allocate(
+        domain_id="domain.adopter",
+        reservation_id="reservation-adopter",
+        lease_id="lease-adopter",
+        channel_key=b"k" * 32,
+        artifact_digest=artifact.artifact_digest,
+        executable_digest=artifact.implementation_digest,
+        materialization_digest=artifact.materialization_digest,
+        artifact=artifact,
+    )
+    assert not provisioner.mutation_claim_path.exists()
+    assert provisioner.orphaned_allocation_claims_path.is_file()
+    provisioner.release(allocation)
+
+    assert lifecycle.recover_interrupted_allocation(
+        domain_id=domain_id,
+        reservation_id=reservation_id,
+        executable_digest=executable_digest,
+    )
+    assert provisioner.allocation_recovery_path.is_file()
+    assert lifecycle.recover_interrupted_allocation(
+        domain_id=domain_id,
+        reservation_id=reservation_id,
+        executable_digest=executable_digest,
+    )
+    journal = json.loads(
+        provisioner.orphaned_allocation_claims_path.read_text()
+    )
+    assert not journal["entries"]
+
+
 def test_prepare_declares_three_gib_download_without_downloading(
     provisioner_fixture: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
     monkeypatch: pytest.MonkeyPatch,

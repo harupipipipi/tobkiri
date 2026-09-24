@@ -23,12 +23,14 @@ import ctypes
 from dataclasses import dataclass
 import hashlib
 import hmac
+import io
 import json
 import math
 import os
 from pathlib import Path
 import platform as host_platform
 import secrets
+import select
 import shutil
 import stat
 import struct
@@ -97,6 +99,11 @@ _MAX_MANIFEST_BYTES = 128 * 1024
 # stage (``MAX_CHILD_REQUEST_BYTES``) plus envelope headroom, so the guest-side
 # input bound — not this transport bound — decides oversized inputs.
 _MAX_HELPER_PROTOCOL_BYTES = 2 * 1024 * 1024
+_DEFAULT_EXCHANGE_WAIT_SECONDS = 120.0
+_MAX_EXCHANGE_WAIT_SECONDS = 600.0
+_MAX_HELPER_SEND_SECONDS = 30.0
+_MAX_ORPHANED_ALLOCATION_CLAIMS = 32
+_MAX_PROCESS_ID = 2**31 - 1
 _MAX_ARTIFACT_SEED_MANIFEST_BYTES = 16 * 1024 * 1024
 _MAX_ARTIFACT_SEED_PAYLOAD_BYTES = 512 * 1024 * 1024
 _ARTIFACT_SEED_MAGIC = b"tobkiri-packvm-artifact-seed.v1\0"
@@ -376,10 +383,12 @@ class _MacOSVZHelperProcess:
                 raise ValueError("PackVM VZ helper request identity is invalid")
             pending = _PendingHelperExchange()
             self._pending[key] = pending
+        bound = _exchange_wait_bound(envelope)
+        send_deadline = time.monotonic() + min(bound, _MAX_HELPER_SEND_SECONDS)
         try:
             with self._send_lock:
-                self._write_line(dict(envelope))
-            return pending.take(_exchange_wait_bound(envelope))
+                self._write_line(dict(envelope), send_deadline)
+            return pending.take(bound)
         finally:
             with self._lock:
                 self._pending.pop(key, None)
@@ -454,22 +463,65 @@ class _MacOSVZHelperProcess:
                 raise ValueError("PackVM VZ helper process is unavailable")
             pending = _PendingHelperExchange()
             self._pending[key] = pending
+        bound = _exchange_wait_bound(payload)
+        send_deadline = time.monotonic() + min(bound, _MAX_HELPER_SEND_SECONDS)
         try:
             with self._send_lock:
-                self._write_line(dict(payload))
-            return pending.take()
+                self._write_line(dict(payload), send_deadline)
+            return pending.take(bound)
         finally:
             with self._lock:
                 self._pending.pop(key, None)
 
-    def _write_line(self, payload: dict[str, object]) -> None:
+    def _write_line(self, payload: dict[str, object], deadline: float) -> None:
+        """Write one request line without allowing a wedged helper to block.
+
+        A helper that stays alive but stops draining stdin would otherwise
+        hold ``_send_lock`` forever, wedging every later request — including
+        the ``cancel`` that must be able to reach it.  The descriptor is
+        switched to non-blocking for the duration of the bounded write so a
+        full pipe can never outlast the caller's deadline.
+        """
+
         if self._process.stdin is None:
             raise ValueError("PackVM VZ helper pipes are unavailable")
         encoded = _canonical_bytes(payload)
         if len(encoded) > _MAX_HELPER_PROTOCOL_BYTES:
             raise ValueError("PackVM VZ helper request exceeds its bound")
-        self._process.stdin.write(encoded + b"\n")
-        self._process.stdin.flush()
+        try:
+            fd = self._process.stdin.fileno()
+        except (OSError, io.UnsupportedOperation):
+            # Test doubles expose an in-memory stream instead of a pipe; the
+            # write cannot block on a kernel buffer so the buffered path is
+            # safe there.
+            self._process.stdin.write(encoded + b"\n")
+            self._process.stdin.flush()
+            return
+        try:
+            os.set_blocking(fd, False)
+        except OSError as exc:
+            raise ValueError("PackVM VZ helper pipes are unavailable") from exc
+        try:
+            view = memoryview(encoded + b"\n")
+            while view:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise ValueError("PackVM VZ helper send deadline expired")
+                _, writable, _ = select.select([], [fd], [], remaining)
+                if not writable:
+                    raise ValueError("PackVM VZ helper send deadline expired")
+                try:
+                    written = os.write(fd, view)
+                except BlockingIOError:
+                    continue
+                if written <= 0:
+                    raise ValueError("PackVM VZ helper pipes are unavailable")
+                view = view[written:]
+        finally:
+            try:
+                os.set_blocking(fd, True)
+            except OSError:
+                pass
 
     def _reader_loop(self) -> None:
         """Route each bounded response to the exchange which owns its nonce.
@@ -551,20 +603,25 @@ class _PendingHelperExchange:
 def _exchange_wait_bound(envelope: Mapping[str, object]) -> float:
     """Bound a helper exchange by the request deadline plus drain margin.
 
-    Supervisor invoke envelopes carry ``deadline_monotonic``; the helper is
-    expected to answer shortly after the guest reaches that deadline.  Ops
-    without a deadline (prelaunch ceremonies) fall back to a fixed bound so
-    a silent-but-alive helper can never wedge the caller forever.
+    Supervisor invoke envelopes nest ``deadline_monotonic`` inside their
+    ``request`` mapping; the helper is expected to answer shortly after the
+    guest reaches that deadline.  Ops without a deadline (prelaunch
+    ceremonies) fall back to a fixed bound so a silent-but-alive helper can
+    never wedge the caller forever.
     """
 
     raw = envelope.get("deadline_monotonic")
+    request = envelope.get("request")
+    if raw is None and isinstance(request, Mapping):
+        raw = request.get("deadline_monotonic")
     try:
         deadline = float(raw) if isinstance(raw, (str, int, float)) else None
     except (TypeError, ValueError):
         deadline = None
     if deadline is None or not math.isfinite(deadline):
-        return 120.0
-    return max(deadline - time.monotonic(), 0.0) + 30.0
+        return _DEFAULT_EXCHANGE_WAIT_SECONDS
+    remaining = max(deadline - time.monotonic(), 0.0) + 30.0
+    return min(remaining, _MAX_EXCHANGE_WAIT_SECONDS)
 
 
 class MacOSVZProvisioner:
@@ -697,6 +754,82 @@ class MacOSVZProvisioner:
         return self._state_dir / "packvm-vz-allocation-recovery.json"
 
     @property
+    def orphaned_allocation_claims_path(self) -> Path:
+        """Return the bounded journal of adopted dead allocation claims."""
+
+        return self._state_dir / "packvm-vz-orphaned-allocation-claims.json"
+
+    def _orphaned_allocation_entries(self) -> list[Any]:
+        journal = _read_json_if_present(self.orphaned_allocation_claims_path)
+        if journal is None:
+            return []
+        entries = journal.get("entries")
+        return list(entries) if isinstance(entries, list) else []
+
+    def _record_orphaned_allocation_claim(self, claim: Mapping[str, Any]) -> None:
+        """Preserve a dead ``allocate`` claim before another op adopts it.
+
+        ``recover_interrupted_allocation`` proves a crashed allocation to the
+        admission ledger through the exact owner claim; overwriting it without
+        preserving its binding would strand the detached reservation
+        permanently.  The journal is bounded and consumed entry-by-entry by
+        the recovery ceremony.
+        """
+
+        key = _canonical_bytes(dict(claim))
+        retained = [
+            entry
+            for entry in self._orphaned_allocation_entries()
+            if not isinstance(entry, Mapping)
+            or _canonical_bytes(dict(entry)) != key
+        ]
+        retained.append(dict(claim))
+        retained = retained[-_MAX_ORPHANED_ALLOCATION_CLAIMS:]
+        _atomic_private_json(
+            self.orphaned_allocation_claims_path,
+            {"version": 1, "entries": retained},
+        )
+
+    def _orphaned_allocation_claim(
+        self, domain_id: str, reservation_id: str
+    ) -> dict[str, Any] | None:
+        """Return the adopted dead ``allocate`` claim for this binding, if any."""
+
+        domain_digest = _digest_text(domain_id)
+        reservation_digest = _digest_text(reservation_id)
+        for entry in self._orphaned_allocation_entries():
+            if not isinstance(entry, Mapping):
+                continue
+            binding = entry.get("binding")
+            if (
+                entry.get("version") == 1
+                and entry.get("operation") == "allocate"
+                and entry.get("instance") == VZ_INSTANCE
+                and isinstance(binding, Mapping)
+                and binding.get("domain_digest") == domain_digest
+                and binding.get("reservation_digest") == reservation_digest
+            ):
+                return dict(entry)
+        return None
+
+    def _drop_orphaned_allocation_claim(self, claim: Mapping[str, Any]) -> None:
+        """Consume a preserved claim once its recovery ceremony completes."""
+
+        entries = self._orphaned_allocation_entries()
+        key = _canonical_bytes(dict(claim))
+        retained = [
+            entry
+            for entry in entries
+            if not isinstance(entry, Mapping)
+            or _canonical_bytes(dict(entry)) != key
+        ]
+        if len(retained) != len(entries):
+            _atomic_private_json(
+                self.orphaned_allocation_claims_path,
+                {"version": 1, "entries": retained},
+            )
+
+    @property
     def audit_path(self) -> Path:
         """Return the bounded append-only local lifecycle audit path."""
 
@@ -762,9 +895,16 @@ class MacOSVZProvisioner:
                 # cleanup ceremony. Routine lifecycle operations must reclaim
                 # any other dead claim or a single crash would deadlock every
                 # later mutation. Provision ceremonies keep exact matching so
-                # signed recovery evidence can never be shadowed.
+                # signed recovery evidence can never be shadowed, but they may
+                # still adopt a dead claim left by a routine operation.
                 stale_orphaned = (
-                    operation in {"allocate", "release", "stop", "cleanup"}
+                    (
+                        operation in {"allocate", "release", "stop", "cleanup"}
+                        or (
+                            operation == "provision"
+                            and existing.get("operation") != "provision"
+                        )
+                    )
                     and existing.get("version") == 1
                     and existing.get("instance") == VZ_INSTANCE
                     and _valid_process_id(existing.get("owner_pid"))
@@ -779,6 +919,11 @@ class MacOSVZProvisioner:
                 ):
                     raise ValueError("PackVM VZ mutation has an unresolved owner claim")
                 if stale_recovery or stale_attested_cleanup or stale_orphaned:
+                    if stale_orphaned and existing.get("operation") == "allocate":
+                        # ``recover_interrupted_allocation`` proves a crashed
+                        # allocation to the admission ledger through this exact
+                        # claim, so adopting it must first preserve its binding.
+                        self._record_orphaned_allocation_claim(existing)
                     _atomic_private_json(self.mutation_claim_path, claim)
             else:
                 if require_existing_claim:
@@ -1176,9 +1321,12 @@ class MacOSVZProvisioner:
         with self.operation_gate("allocate", binding):
             self._assert_state_current(state)
             self._verify_state_bindings(state, manifest)
+            # The sweep must precede the exists-check: residue from a crashed
+            # allocation of this same domain is reclaimable inside the gate,
+            # and rejecting it first would deadlock every retry.
+            self._sweep_dead_owner_domains()
             if root.exists() or root.is_symlink():
                 raise ValueError("PackVM VZ domain allocation already exists")
-            self._sweep_dead_owner_domains()
             # Recheck while the cross-process mutation gate is held.  The
             # user-visible plan reserves the maximum artifact, but actual free
             # space may have changed before this exact allocation begins.
@@ -1283,7 +1431,12 @@ class MacOSVZProvisioner:
             raise ValueError("PackVM VZ recovery executable digest is invalid")
         claim = _read_json_if_present(self.mutation_claim_path)
         receipt_hint = _read_json_if_present(self.allocation_recovery_path)
-        hint = claim if claim is not None else receipt_hint
+        orphaned = (
+            None
+            if claim is not None
+            else self._orphaned_allocation_claim(domain_id, reservation_id)
+        )
+        hint = claim if claim is not None else (orphaned or receipt_hint)
         hint_binding = hint.get("binding") if isinstance(hint, Mapping) else None
         if not isinstance(hint_binding, Mapping) or (
             hint_binding.get("domain_digest") != _digest_text(domain_id)
@@ -1352,9 +1505,12 @@ class MacOSVZProvisioner:
             "binding": binding,
         }
         receipt_matches = self._allocation_recovery_receipt_matches(binding, root)
-        if claim is None:
+        effective_claim = claim if claim is not None else orphaned
+        if effective_claim is None:
             return receipt_matches
-        if not self._stale_allocation_claim_matches(claim, expected_claim):
+        if not self._stale_allocation_claim_matches(
+            effective_claim, expected_claim
+        ):
             return False
         if root.exists() or root.is_symlink():
             if not _safe_private_domain_root(root):
@@ -1370,22 +1526,39 @@ class MacOSVZProvisioner:
             _try_lock(descriptor)
             locked = True
             current = _read_json_if_present(self.mutation_claim_path)
-            if current is None or not self._stale_allocation_claim_matches(
-                current, expected_claim
-            ):
-                return False
+            if claim is not None:
+                if current is None or not self._stale_allocation_claim_matches(
+                    current, expected_claim
+                ):
+                    return False
+            elif current is not None:
+                if self._failed_provision_claim_is_recoverable(current):
+                    return False
+                # This lock is held, so the claim's writer can no longer hold
+                # it too: the entry is orphaned residue by construction, from
+                # a mutation that died before unlinking.  Preserve an
+                # ``allocate`` binding exactly like the gate does, then drop
+                # the residue so it cannot shadow this ceremony.
+                if current.get("operation") == "allocate":
+                    self._record_orphaned_allocation_claim(current)
+                self.mutation_claim_path.unlink(missing_ok=True)
             if root.exists() or root.is_symlink():
                 self._remove_allocation_root(root)
             if not receipt_matches:
                 self._write_allocation_recovery_receipt(
-                    binding, root, int(current["owner_pid"])
+                    binding, root, int(effective_claim["owner_pid"])
                 )
             latest = _read_json_if_present(self.mutation_claim_path)
-            if latest is None or not hmac.compare_digest(
-                _canonical_bytes(latest), _canonical_bytes(current)
-            ):
-                raise ValueError("PackVM VZ allocation recovery claim changed")
-            self.mutation_claim_path.unlink()
+            if claim is not None:
+                if latest is None or not hmac.compare_digest(
+                    _canonical_bytes(latest), _canonical_bytes(current)
+                ):
+                    raise ValueError("PackVM VZ allocation recovery claim changed")
+                self.mutation_claim_path.unlink()
+            else:
+                if latest is not None:
+                    raise ValueError("PackVM VZ allocation recovery claim changed")
+                self._drop_orphaned_allocation_claim(effective_claim)
             return True
         finally:
             if locked:
@@ -1711,15 +1884,26 @@ class MacOSVZProvisioner:
         A resident domain is only usable inside the process that allocated
         it: the helper's command channel is that process' pipe, so a dead
         owner means no guest can ever be driven or terminated again. Roots
-        without a readable owner claim or incomplete allocation records are
-        retained for the explicit recovery and cleanup ceremonies.
+        without a readable owner claim, corrupt records, or unsafe residue
+        are retained for the explicit recovery and cleanup ceremonies.
         """
 
         domains_root = self._state_dir / "domains"
         if not domains_root.is_dir() or domains_root.is_symlink():
             return
         for root in sorted(domains_root.iterdir()):
-            record = _read_json_if_present(root / "allocation.json")
+            try:
+                if not _safe_private_domain_root(root):
+                    continue
+            except (OSError, ValueError):
+                continue
+            try:
+                record = _read_json_if_present(root / "allocation.json")
+            except (OSError, ValueError):
+                # A corrupt or unreadable record is ambiguous residue; retain
+                # it for the attested ceremonies rather than failing every
+                # later allocation.
+                continue
             if record is None:
                 # ``allocation.json`` is written last inside this same
                 # mutation gate, so its absence can only be residue from a
@@ -3528,13 +3712,19 @@ def _process_is_alive(value: object) -> bool:
         return False
     except PermissionError:
         return True
+    except OverflowError:
+        return False
     return True
 
 
 def _valid_process_id(value: object) -> bool:
     """Accept only a positive integer owner PID from a durable claim."""
 
-    return not isinstance(value, bool) and isinstance(value, int) and value > 0
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, int)
+        and 0 < value <= _MAX_PROCESS_ID
+    )
 
 
 def _digest_bytes(value: bytes) -> str:
