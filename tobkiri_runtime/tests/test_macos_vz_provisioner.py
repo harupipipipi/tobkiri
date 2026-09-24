@@ -18,6 +18,7 @@ import shutil
 import threading
 import sys
 import textwrap
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -1271,6 +1272,120 @@ def test_allocate_keeps_live_and_untracked_domain_roots(
     assert legacy_root.is_dir()
     provisioner.release(live)
     provisioner.release(other)
+
+
+def test_routine_operation_reclaims_dead_owner_claim(
+    provisioner_fixture: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A crashed mutation's claim cannot deadlock later routine lifecycle ops."""
+
+    provisioner, _manifest, _base = provisioner_fixture
+    provisioner.mutation_claim_path.parent.mkdir(parents=True, mode=0o700)
+    _private_file(
+        provisioner.mutation_claim_path,
+        json.dumps(
+            {
+                "version": 1,
+                "operation": "allocate",
+                "instance": macos_vz_provisioner.VZ_INSTANCE,
+                "owner_pid": 99_999_999,
+                "binding": {"domain_digest": _digest(b"other-domain")},
+            }
+        ).encode(),
+    )
+    monkeypatch.setattr(macos_vz_provisioner, "_process_is_alive", lambda _pid: False)
+
+    artifact = _materialized_artifact()
+    allocation = provisioner.allocate(
+        domain_id="domain.reclaimed",
+        reservation_id="reservation-reclaimed",
+        lease_id="lease-reclaimed",
+        channel_key=b"k" * 32,
+        artifact_digest=artifact.artifact_digest,
+        executable_digest=artifact.implementation_digest,
+        materialization_digest=artifact.materialization_digest,
+        artifact=artifact,
+    )
+
+    assert Path(allocation.run_root).is_dir()
+    assert not provisioner.mutation_claim_path.exists()
+    provisioner.release(allocation)
+
+
+def test_provision_ceremony_keeps_strict_dead_claim_semantics(
+    provisioner_fixture: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Provision never adopts a dead claim bound to a different ceremony."""
+
+    provisioner, _manifest, _base = provisioner_fixture
+    binding = {
+        "session_digest": _digest(b"session"),
+        "plan_digest": _digest(b"plan"),
+        "ceremony_nonce_digest": _digest(b"nonce"),
+    }
+    provisioner.mutation_claim_path.parent.mkdir(parents=True, mode=0o700)
+    _private_file(
+        provisioner.mutation_claim_path,
+        json.dumps(
+            {
+                "version": 1,
+                "operation": "provision",
+                "instance": macos_vz_provisioner.VZ_INSTANCE,
+                "owner_pid": 99_999_999,
+                "binding": {
+                    **binding,
+                    "plan_digest": _digest(b"other-plan"),
+                },
+            }
+        ).encode(),
+    )
+    monkeypatch.setattr(macos_vz_provisioner, "_process_is_alive", lambda _pid: False)
+
+    with pytest.raises(ValueError, match="unresolved owner claim"):
+        with provisioner.operation_gate("provision", binding):
+            pass
+
+
+def test_allocate_sweeps_incomplete_domain_roots(
+    provisioner_fixture: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+) -> None:
+    """Roots abandoned before ``allocation.json`` are reclaimable residue."""
+
+    provisioner, _manifest, _base = provisioner_fixture
+    provisioner._state_dir.mkdir(mode=0o700)
+    (provisioner._state_dir / "domains").mkdir(mode=0o700)
+    partial = provisioner._state_dir / "domains" / "partial-root"
+    partial.mkdir(mode=0o700)
+    _private_file(partial / "cow.partial", b"partial")
+
+    artifact = _materialized_artifact()
+    allocation = provisioner.allocate(
+        domain_id="domain.after-partial",
+        reservation_id="reservation-after-partial",
+        lease_id="lease-after-partial",
+        channel_key=b"k" * 32,
+        artifact_digest=artifact.artifact_digest,
+        executable_digest=artifact.implementation_digest,
+        materialization_digest=artifact.materialization_digest,
+        artifact=artifact,
+    )
+
+    assert not partial.exists()
+    assert Path(allocation.run_root).is_dir()
+    provisioner.release(allocation)
+
+
+def test_helper_exchange_bound_derives_from_request_deadline() -> None:
+    """Invoke exchanges outlive the fixed bound only until the op deadline."""
+
+    envelope = {"deadline_monotonic": str(time.monotonic() + 200.0)}
+    bound = macos_vz_provisioner._exchange_wait_bound(envelope)
+    assert bound == pytest.approx(230.0, abs=1.0)
+    assert macos_vz_provisioner._exchange_wait_bound({}) == 120.0
+    expired = {"deadline_monotonic": str(time.monotonic() - 5.0)}
+    assert macos_vz_provisioner._exchange_wait_bound(expired) == 30.0
 
 
 def test_prepare_declares_three_gib_download_without_downloading(

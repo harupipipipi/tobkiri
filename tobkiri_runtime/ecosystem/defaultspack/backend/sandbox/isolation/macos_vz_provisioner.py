@@ -24,6 +24,7 @@ from dataclasses import dataclass
 import hashlib
 import hmac
 import json
+import math
 import os
 from pathlib import Path
 import platform as host_platform
@@ -378,7 +379,7 @@ class _MacOSVZHelperProcess:
         try:
             with self._send_lock:
                 self._write_line(dict(envelope))
-            return pending.take()
+            return pending.take(_exchange_wait_bound(envelope))
         finally:
             with self._lock:
                 self._pending.pop(key, None)
@@ -538,12 +539,32 @@ class _PendingHelperExchange:
         self._failure = reason
         self._event.set()
 
-    def take(self) -> dict[str, object]:
-        self._event.wait()
+    def take(self, timeout_seconds: float = 120.0) -> dict[str, object]:
+        if not self._event.wait(timeout_seconds):
+            raise ValueError("PackVM VZ helper response deadline expired")
         if self._failure is not None:
             raise ValueError(self._failure)
         assert self._response is not None
         return self._response
+
+
+def _exchange_wait_bound(envelope: Mapping[str, object]) -> float:
+    """Bound a helper exchange by the request deadline plus drain margin.
+
+    Supervisor invoke envelopes carry ``deadline_monotonic``; the helper is
+    expected to answer shortly after the guest reaches that deadline.  Ops
+    without a deadline (prelaunch ceremonies) fall back to a fixed bound so
+    a silent-but-alive helper can never wedge the caller forever.
+    """
+
+    raw = envelope.get("deadline_monotonic")
+    try:
+        deadline = float(raw) if isinstance(raw, (str, int, float)) else None
+    except (TypeError, ValueError):
+        deadline = None
+    if deadline is None or not math.isfinite(deadline):
+        return 120.0
+    return max(deadline - time.monotonic(), 0.0) + 30.0
 
 
 class MacOSVZProvisioner:
@@ -736,13 +757,28 @@ class MacOSVZProvisioner:
                     and not _process_is_alive(existing.get("owner_pid"))
                     and not self._failed_provision_claim_is_recoverable(existing)
                 )
+                # A dead owner's claim can never resume its mutation; only a
+                # signed failed-provision claim stays reserved for the exact
+                # cleanup ceremony. Routine lifecycle operations must reclaim
+                # any other dead claim or a single crash would deadlock every
+                # later mutation. Provision ceremonies keep exact matching so
+                # signed recovery evidence can never be shadowed.
+                stale_orphaned = (
+                    operation in {"allocate", "release", "stop", "cleanup"}
+                    and existing.get("version") == 1
+                    and existing.get("instance") == VZ_INSTANCE
+                    and _valid_process_id(existing.get("owner_pid"))
+                    and not _process_is_alive(existing.get("owner_pid"))
+                    and not self._failed_provision_claim_is_recoverable(existing)
+                )
                 if (
                     not same_owner
                     and not stale_recovery
                     and not stale_attested_cleanup
+                    and not stale_orphaned
                 ):
                     raise ValueError("PackVM VZ mutation has an unresolved owner claim")
-                if stale_recovery or stale_attested_cleanup:
+                if stale_recovery or stale_attested_cleanup or stale_orphaned:
                     _atomic_private_json(self.mutation_claim_path, claim)
             else:
                 if require_existing_claim:
@@ -1685,8 +1721,13 @@ class MacOSVZProvisioner:
         for root in sorted(domains_root.iterdir()):
             record = _read_json_if_present(root / "allocation.json")
             if record is None:
-                # Incomplete allocations belong to interrupted-allocation
-                # recovery, which verifies signed receipts before removal.
+                # ``allocation.json`` is written last inside this same
+                # mutation gate, so its absence can only be residue from a
+                # mutation whose owner died before the domain could launch.
+                try:
+                    self._remove_allocation_root(root)
+                except Exception:
+                    continue
                 continue
             owner_pid = record.get("owner_pid")
             if not _valid_process_id(owner_pid) or _process_is_alive(owner_pid):
