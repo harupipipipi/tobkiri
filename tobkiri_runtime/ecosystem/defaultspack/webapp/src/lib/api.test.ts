@@ -5,6 +5,13 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, usesBrowserComputerApprovalEndpoint } from "./api";
 import type { ComposerCommandItem } from "./api";
+import {
+  applyDefaultspackLocalAuthHeaders,
+  cleanupLegacyDefaultspackLocalAuth,
+  initializeDefaultspackLocalAuth,
+  resetDefaultspackLocalAuthForTests,
+  safeDefaultspackLocalPath,
+} from "./defaultspackLocalAuth";
 import { authorityApprovalRuntimeContent } from "./authorityApproval";
 import { deleteCalendarScheduleBeforeLocalChange } from "./calendarScheduleDeletion";
 import { mergeRegisteredSlashCommands, registeredSlashCommandsFromSettings } from "./registeredSlashCommands";
@@ -2900,7 +2907,7 @@ test("safe API requests do not include a local CSRF header", async () => {
   assert.equal(headers.get("X-Rumi-CSRF"), null);
 });
 
-test("API headers consume Viewer local auth from URL fragment", () => {
+test("legacy local auth is revoked from URL and storage without becoming an API credential", () => {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
   const previousSessionStorage = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
@@ -2911,6 +2918,7 @@ test("API headers consume Viewer local auth from URL fragment", () => {
       pathname: "/chat",
       search: "?chat=c1",
       hash: "#rumi_local_auth=local-token-1&panel=main",
+      href: "http://127.0.0.1:8766/chat?chat=c1#rumi_local_auth=local-token-1&panel=main",
     },
     history: {
       state: { from: "test" },
@@ -2937,9 +2945,10 @@ test("API headers consume Viewer local auth from URL fragment", () => {
   });
 
   try {
+    cleanupLegacyDefaultspackLocalAuth();
     const headers = defaultspackApiHeaders("GET");
-    assert.equal(headers.get("Authorization"), "Bearer local-token-1");
-    assert.equal(values.get("rumi-defaultspack-local-auth"), "local-token-1");
+    assert.equal(headers.get("Authorization"), null);
+    assert.equal(values.has("rumi-defaultspack-local-auth"), false);
     assert.equal(replacedUrl, "/chat?chat=c1#panel=main");
   } finally {
     if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
@@ -2971,7 +2980,7 @@ test("API headers keep explicit Authorization over Viewer local auth", () => {
   }
 });
 
-test("local auth URL helper carries Viewer token into child windows", () => {
+test("local auth URL helper keeps child-window routes clean", () => {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   const previousSessionStorage = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
   Object.defineProperty(globalThis, "window", {
@@ -2990,13 +2999,156 @@ test("local auth URL helper carries Viewer token into child windows", () => {
   try {
     assert.equal(
       defaultspackUrlWithLocalAuth("/finger-recording?authority_approved=1"),
-      "/finger-recording?authority_approved=1#rumi_local_auth=local-token-1",
+      "/finger-recording?authority_approved=1",
     );
   } finally {
     if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
     else Reflect.deleteProperty(globalThis, "window");
     if (previousSessionStorage) Object.defineProperty(globalThis, "sessionStorage", previousSessionStorage);
     else Reflect.deleteProperty(globalThis, "sessionStorage");
+  }
+});
+
+test("local auth URL helper rejects external, malformed, query-bearing, and fragment destinations", () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { location: { origin: "http://127.0.0.1:8766" } },
+  });
+  const unsafe = [
+    "https://example.invalid/chat",
+    "//example.invalid/chat",
+    "javascript:alert(1)",
+    "data:text/html,unsafe",
+    "file:///tmp/unsafe",
+    "custom:unsafe",
+    "http://user:password@127.0.0.1:8766/chat",
+    "/chat#panel",
+    "/chat?rumi_local_auth=secret",
+    "/chat\\external",
+    "/%",
+    "relative/chat",
+  ];
+  try {
+    for (const destination of unsafe) {
+      assert.throws(() => safeDefaultspackLocalPath(destination), /Defaultspack destination/);
+    }
+    assert.equal(safeDefaultspackLocalPath("/chat?chat=abc-123"), "/chat?chat=abc-123");
+  } finally {
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+test("native one-time exchange creates only a memory-bound local auth session", async () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const previousSessionStorage = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
+  const previousLocalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  const previousTauri = Object.getOwnPropertyDescriptor(globalThis, "__TAURI_INTERNALS__");
+  const originalFetch = globalThis.fetch;
+  const legacyValue = "legacy-value";
+  const values = new Map([["rumi-defaultspack-local-auth", legacyValue]]);
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+    removeItem: (key: string) => values.delete(key),
+  };
+  const nowSeconds = Date.now() / 1000;
+  const exchange = {
+    exchange_code: "single-use-code",
+    expires_at: nowSeconds + 20,
+    origin: "http://127.0.0.1:8766",
+    window_id: "defaultspack-main",
+    process_id: "launcher-42",
+    device_id: "device-42",
+    nonce: "nonce-42",
+    scope: "defaultspack-local-ui",
+  };
+  let redeemRequest = "";
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      location: { origin: exchange.origin, href: `${exchange.origin}/chat`, pathname: "/chat" },
+      history: { state: null, replaceState: () => {} },
+    },
+  });
+  Object.defineProperty(globalThis, "document", { configurable: true, value: { title: "Tobkiri" } });
+  Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: storage });
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, value: storage });
+  Object.defineProperty(globalThis, "__TAURI_INTERNALS__", {
+    configurable: true,
+    value: { invoke: async (command: string) => {
+      assert.equal(command, "defaultspack_local_auth_exchange");
+      return exchange;
+    } },
+  });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    redeemRequest = `${String(input)} ${JSON.stringify(init)}`;
+    return new Response(JSON.stringify({
+      status: "ok",
+      data: { session_token: "memory-session-token", expires_at: nowSeconds + 3600 },
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    resetDefaultspackLocalAuthForTests();
+    await initializeDefaultspackLocalAuth();
+    const headers = new Headers();
+    applyDefaultspackLocalAuthHeaders(headers);
+    assert.equal(headers.get("Authorization"), "Bearer memory-session-token");
+    assert.equal(headers.get("X-Rumi-Local-Auth-Window"), "defaultspack-main");
+    assert.equal(headers.get("X-Rumi-Local-Auth-Process"), "launcher-42");
+    assert.equal([...headers.values()].some((value) => value.includes("single-use-code")), false);
+    assert.equal(values.has("rumi-defaultspack-local-auth"), false);
+    assert.doesNotMatch(redeemRequest, new RegExp(legacyValue));
+  } finally {
+    resetDefaultspackLocalAuthForTests();
+    globalThis.fetch = originalFetch;
+    for (const [key, descriptor] of [
+      ["window", previousWindow], ["document", previousDocument],
+      ["sessionStorage", previousSessionStorage], ["localStorage", previousLocalStorage],
+      ["__TAURI_INTERNALS__", previousTauri],
+    ] as const) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+  }
+});
+
+test("verified Profile Shell falls back to its HttpOnly cookie when Launcher exchange is unavailable", async () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const previousTauri = Object.getOwnPropertyDescriptor(globalThis, "__TAURI_INTERNALS__");
+  let invokeCount = 0;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      location: { origin: "http://127.0.0.1:8766", href: "http://127.0.0.1:8766/chat", pathname: "/chat" },
+      opener: null,
+    },
+  });
+  Object.defineProperty(globalThis, "__TAURI_INTERNALS__", {
+    configurable: true,
+    value: { invoke: async () => {
+      invokeCount += 1;
+      throw new Error("unknown command defaultspack_local_auth_exchange");
+    } },
+  });
+
+  try {
+    resetDefaultspackLocalAuthForTests();
+    await initializeDefaultspackLocalAuth();
+    await initializeDefaultspackLocalAuth();
+    const headers = new Headers();
+    applyDefaultspackLocalAuthHeaders(headers);
+    assert.equal(invokeCount, 1);
+    assert.equal(headers.has("Authorization"), false);
+  } finally {
+    resetDefaultspackLocalAuthForTests();
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+    if (previousTauri) Object.defineProperty(globalThis, "__TAURI_INTERNALS__", previousTauri);
+    else Reflect.deleteProperty(globalThis, "__TAURI_INTERNALS__");
   }
 });
 

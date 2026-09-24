@@ -2,16 +2,16 @@ import type { ToolPreviewItem } from "../components/ToolPreview";
 import type { CommandInvocationRequest } from "../generated/commandProtocolModels";
 import type { AuthorityApprovalScope } from "./authorityApproval";
 import { chatContinuationPacketMatchesTurn } from "./pendingChat";
-import { defaultspackUrlWithLocalAuthToken } from "./defaultspackLocalAuth";
+import {
+  applyDefaultspackLocalAuthHeaders,
+  initializeDefaultspackLocalAuth,
+  safeDefaultspackLocalPath,
+} from "./defaultspackLocalAuth";
 import { configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
 import { openAuthorityApprovalWindow } from "./desktopApproval";
 
 const PANEL_CSRF_STORAGE_KEY = "rumi-panel-csrf";
 const DEFAULTSPACK_CSRF_STORAGE_KEY = "rumi-defaultspack-csrf";
-const DEFAULTSPACK_LOCAL_AUTH_STORAGE_KEY = "rumi-defaultspack-local-auth";
-const DEFAULTSPACK_LOCAL_AUTH_FRAGMENT_KEY = "rumi_local_auth";
-let defaultspackLocalAuthMemoryToken = "";
-let defaultspackLocalAuthBootstrapped = false;
 
 export type ChatContentBlock = {
   type?: string;
@@ -2922,57 +2922,12 @@ function getDefaultspackCsrfToken(): string {
   return token;
 }
 
-function consumeDefaultspackLocalAuthFromLocation(): string {
-  if (typeof window === "undefined") return "";
-  const storage = sessionStorageOrNull();
-  try {
-    const rawHash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
-    if (!rawHash) return defaultspackLocalAuthMemoryToken || storage?.getItem(DEFAULTSPACK_LOCAL_AUTH_STORAGE_KEY)?.trim() || "";
-    const params = new URLSearchParams(rawHash);
-    const token = params.get(DEFAULTSPACK_LOCAL_AUTH_FRAGMENT_KEY)?.trim() ?? "";
-    if (!token) return defaultspackLocalAuthMemoryToken || storage?.getItem(DEFAULTSPACK_LOCAL_AUTH_STORAGE_KEY)?.trim() || "";
-    defaultspackLocalAuthMemoryToken = token;
-    storage?.setItem(DEFAULTSPACK_LOCAL_AUTH_STORAGE_KEY, token);
-    params.delete(DEFAULTSPACK_LOCAL_AUTH_FRAGMENT_KEY);
-    const nextHash = params.toString();
-    const nextUrl = `${window.location.pathname}${window.location.search}${nextHash ? `#${nextHash}` : ""}`;
-    window.history.replaceState(window.history.state, document.title, nextUrl);
-    return token;
-  } catch {
-    return storage?.getItem(DEFAULTSPACK_LOCAL_AUTH_STORAGE_KEY)?.trim() ?? "";
-  }
-}
-
-export function bootstrapDefaultspackLocalAuth(): string {
-  const stored = sessionStorageOrNull()?.getItem(DEFAULTSPACK_LOCAL_AUTH_STORAGE_KEY)?.trim() || "";
-  if (defaultspackLocalAuthBootstrapped) {
-    if (defaultspackLocalAuthMemoryToken || stored) return defaultspackLocalAuthMemoryToken || stored;
-  }
-  defaultspackLocalAuthBootstrapped = true;
-  const consumed = consumeDefaultspackLocalAuthFromLocation();
-  if (consumed) {
-    defaultspackLocalAuthMemoryToken = consumed;
-    return consumed;
-  }
-  defaultspackLocalAuthMemoryToken = stored;
-  return defaultspackLocalAuthMemoryToken;
-}
-
-function getDefaultspackLocalAuthToken(): string {
-  return bootstrapDefaultspackLocalAuth();
-}
-
-bootstrapDefaultspackLocalAuth();
-
 export function defaultspackApiHeaders(method: string, headers?: HeadersInit): Headers {
   const nextHeaders = new Headers(headers);
   if (!nextHeaders.has("Content-Type")) {
     nextHeaders.set("Content-Type", "application/json");
   }
-  if (!nextHeaders.has("Authorization")) {
-    const token = getDefaultspackLocalAuthToken();
-    if (token) nextHeaders.set("Authorization", `Bearer ${token}`);
-  }
+  applyDefaultspackLocalAuthHeaders(nextHeaders);
   const csrfHeader = nextHeaders.get("X-Rumi-CSRF");
   if (isUnsafeHttpMethod(method) && (!csrfHeader || !csrfHeader.trim())) {
     nextHeaders.set("X-Rumi-CSRF", getDefaultspackCsrfToken());
@@ -2981,7 +2936,7 @@ export function defaultspackApiHeaders(method: string, headers?: HeadersInit): H
 }
 
 export function defaultspackUrlWithLocalAuth(pathOrUrl: string): string {
-  return defaultspackUrlWithLocalAuthToken(pathOrUrl, getDefaultspackLocalAuthToken());
+  return safeDefaultspackLocalPath(pathOrUrl);
 }
 
 /**
@@ -3033,10 +2988,11 @@ function isDefaultspackContractRoute(
     && (input as DefaultspackContractRoute).kind === "defaultspack-contract-route";
 }
 
-export function defaultspackApiFetch(
+export async function defaultspackApiFetch(
   input: RequestInfo | URL | DefaultspackContractRoute,
   init: RequestInit = {},
 ): Promise<Response> {
+  await initializeDefaultspackLocalAuth();
   const method = (init.method ?? "GET").toUpperCase();
   const requestInput = isDefaultspackContractRoute(input)
     ? defaultspackContractUrl(input, method)

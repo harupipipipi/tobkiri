@@ -326,7 +326,7 @@ test("Viewer authenticates every dedicated Defaultspack window and rejects unsaf
 
   // `/approval` is an auth_bootstrap mount: it only serves the page after the
   // one-time `?code=` exchange mints a `rumi_panel_session` cookie, so the
-  // approval window must use the bootstrap-code URL builder rather than the
+  // approval window must use the presenter-bound code URL builder rather than the
   // fragment-based helper (a `rumi_local_auth` fragment never reaches the
   // server on the initial navigation).
   assert.match(viewerSource, /authority_approval_bootstrap_window_url\(config, &request_id\)/);
@@ -335,10 +335,12 @@ test("Viewer authenticates every dedicated Defaultspack window and rejects unsaf
     /request_panel_presenter_code_with_retry\(\s*active_defaultspack_http_port\(\),\s*&bootstrap_secret,\s*request_id,/
   );
   assert.match(viewerSource, /dock_registration::add_defaultspack_bootstrap_code\(url, &code\)/);
-  assert.match(viewerSource, /authenticated_defaultspack_window_url\(config, ambient_trigger_url/);
-  assert.match(viewerSource, /authenticated_defaultspack_window_url\(config, finger_recording_url/);
-  assert.match(viewerSource, /authenticated_defaultspack_window_url\(config, defaults_console_url/);
-  assert.match(viewerSource, /authenticated_defaultspack_window_url\(config, host_permissions_url/);
+  assert.match(viewerSource, /validated_defaultspack_window_url\(config, ambient_trigger_url/);
+  assert.match(viewerSource, /validated_defaultspack_window_url\(config, finger_recording_url/);
+  assert.match(viewerSource, /validated_defaultspack_window_url\(config, defaults_console_url/);
+  assert.match(viewerSource, /validated_defaultspack_window_url\(config, host_permissions_url/);
+  assert.match(viewerSource, /dock_registration::defaultspack_local_auth_exchange/);
+  assert.match(dockSource, /issue_defaultspack_local_auth_exchange/);
   assert.match(dockSource, /active HMAC store is encrypted; using the Kernel-managed desktop token cache/);
   assert.match(dockSource, /Viewer did not stop it\. Close that process or free port/);
   assert.match(dockSource, /identify_defaultspack_listener\(&listener, metadata\)/);

@@ -692,6 +692,22 @@ def test_chat_http_route_requires_captured_conversation_operation():
     )
 
 
+def test_local_auth_handoff_routes_are_always_available():
+    from ecosystem.defaultspack.transport.registry import (
+        _ALWAYS_AVAILABLE_HTTP_ROUTE_SPECS,
+    )
+
+    routes = {
+        (spec.method, spec.pattern): spec.handler_name
+        for spec in _ALWAYS_AVAILABLE_HTTP_ROUTE_SPECS
+    }
+    assert routes[("POST", "/api/local-auth/exchange")] == "_handle_local_auth_exchange"
+    assert (
+        routes[("POST", "/api/local-auth/exchange/redeem")]
+        == "_handle_local_auth_exchange_redeem"
+    )
+
+
 def test_legacy_http_route_allowlist_is_physically_absent(monkeypatch):
     del monkeypatch
     from ecosystem.defaultspack.transport.registry import (

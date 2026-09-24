@@ -1226,6 +1226,42 @@ class DefaultsHttpServer:
             }
         )
 
+    def _handle_local_auth_exchange(self, request_data, path_params):
+        from domain.safety.local_auth_exchange import (
+            LocalAuthAudience,
+            get_local_auth_exchange_store,
+        )
+
+        try:
+            audience = LocalAuthAudience.from_mapping(request_data)
+            subject = str(request_data.get("_local_auth_subject") or "").strip()
+            if not subject:
+                return _http_error(
+                    "local auth exchange requires an authenticated issuer",
+                    "AUTH_REQUIRED",
+                    401,
+                )
+            return ok(get_local_auth_exchange_store().issue(subject, audience))
+        except ValueError as exc:
+            return _http_error(str(exc), "LOCAL_AUTH_EXCHANGE_INVALID", 400)
+
+    def _handle_local_auth_exchange_redeem(self, request_data, path_params):
+        from domain.safety.local_auth_exchange import (
+            LocalAuthAudience,
+            get_local_auth_exchange_store,
+        )
+
+        try:
+            audience = LocalAuthAudience.from_mapping(request_data)
+            code = str(request_data.get("exchange_code") or "").strip()
+            if not code or len(code) > 256:
+                raise ValueError("local auth exchange code is invalid")
+            return ok(get_local_auth_exchange_store().redeem(code, audience))
+        except PermissionError as exc:
+            return _http_error(str(exc), "LOCAL_AUTH_AUDIENCE_MISMATCH", 403)
+        except ValueError as exc:
+            return _http_error(str(exc), "LOCAL_AUTH_EXCHANGE_REJECTED", 410)
+
     def _handle_context_info(self, request_data, path_params):
         interfaces = {}
         if self.facade is not None:
@@ -1547,6 +1583,10 @@ def _websocket_auth_error(headers, client_address=None):
 
 
 def _configured_local_auth_tokens():
+    from domain.safety.local_auth_secret import (
+        configured_local_auth_environment_tokens,
+    )
+
     tokens = []
     seen = set()
 
@@ -1557,6 +1597,8 @@ def _configured_local_auth_tokens():
             tokens.append(token)
 
     add_token(host_contract_value("desktop_api_token"))
+    for value in configured_local_auth_environment_tokens():
+        add_token(value)
     for path in _local_auth_token_file_candidates():
         try:
             add_token(path.read_text(encoding="utf-8"))
@@ -1598,7 +1640,75 @@ def _local_auth_token_authorized(headers):
     provided = _bearer_token(headers)
     if not provided:
         return False
-    return any(hmac.compare_digest(provided, expected) for expected in _configured_local_auth_tokens())
+    if any(hmac.compare_digest(provided, expected) for expected in _configured_local_auth_tokens()):
+        return True
+    audience = _local_auth_audience_from_headers(headers)
+    if audience is None:
+        return False
+    from domain.safety.local_auth_exchange import get_local_auth_exchange_store
+
+    return get_local_auth_exchange_store().authorize(provided, audience)
+
+
+def _local_auth_audience_from_headers(headers):
+    from domain.safety.local_auth_exchange import LocalAuthAudience
+
+    try:
+        return LocalAuthAudience.from_mapping(
+            {
+                "origin": _header_value(headers, "Origin"),
+                "window_id": _header_value(headers, "X-Rumi-Local-Auth-Window"),
+                "process_id": _header_value(headers, "X-Rumi-Local-Auth-Process"),
+                "device_id": _header_value(headers, "X-Rumi-Local-Auth-Device"),
+                "nonce": _header_value(headers, "X-Rumi-Local-Auth-Nonce"),
+                "scope": _header_value(headers, "X-Rumi-Local-Auth-Scope"),
+            }
+        )
+    except ValueError:
+        return None
+
+
+def _local_auth_subject(headers):
+    provided = _bearer_token(headers)
+    if not provided:
+        return ""
+    for expected in _configured_local_auth_tokens():
+        if hmac.compare_digest(provided, expected):
+            return "local-ui:" + hashlib.sha256(provided.encode("utf-8")).hexdigest()
+    audience = _local_auth_audience_from_headers(headers)
+    if audience is None:
+        return ""
+    from domain.safety.local_auth_exchange import get_local_auth_exchange_store
+
+    return get_local_auth_exchange_store().subject(provided, audience)
+
+
+def _local_auth_exchange_transport_error(headers, *, require_auth):
+    origin = _strict_local_origin(_header_value(headers, "Origin"))
+    host_value = _header_value(headers, "Host").strip()
+    try:
+        host = urllib.parse.urlsplit("//" + host_value)
+        origin_parts = urllib.parse.urlsplit(origin)
+    except (TypeError, ValueError):
+        return (403, "local auth exchange origin is invalid", "ORIGIN_DENIED")
+    if (
+        not origin
+        or origin_parts.scheme != "http"
+        or not host.hostname
+        or host.username is not None
+        or host.password is not None
+        or origin_parts.hostname != host.hostname
+        or origin_parts.port != host.port
+    ):
+        return (403, "local auth exchange origin does not match", "ORIGIN_DENIED")
+    if require_auth:
+        if not _configured_local_auth_tokens():
+            return (403, "local auth token is not configured", "AUTH_REQUIRED")
+        if not _local_auth_token_authorized(headers):
+            return (401, "local auth token required", "AUTH_REQUIRED")
+    if not _header_value(headers, "X-Rumi-CSRF").strip():
+        return (403, "CSRF header required", "CSRF_REQUIRED")
+    return None
 
 
 def _browser_exchange_transport_error(headers):
@@ -1981,12 +2091,25 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
                 "/api/authority/browser-exchange/revoke",
                 "/api/authority/browser-ui-operator",
             }
+            local_auth_exchange_path = path in {
+                "/api/local-auth/exchange",
+                "/api/local-auth/exchange/redeem",
+            }
             if browser_exchange_path and parsed_url.query:
                 self._send_json(
                     400,
                     error(
                         "browser approval exchanges do not accept URL parameters",
                         "BROWSER_EXCHANGE_URL_FORBIDDEN",
+                    ),
+                )
+                return
+            if local_auth_exchange_path and parsed_url.query:
+                self._send_json(
+                    400,
+                    error(
+                        "local auth exchanges do not accept URL parameters",
+                        "LOCAL_AUTH_EXCHANGE_URL_FORBIDDEN",
                     ),
                 )
                 return
@@ -2025,6 +2148,8 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
                         "principal_id": "local-ui:"
                         + hashlib.sha256(bearer.encode("utf-8")).hexdigest()
                     }
+            if path == "/api/local-auth/exchange":
+                server_context["_local_auth_subject"] = _local_auth_subject(self.headers)
             if method in ("POST", "PUT", "PATCH"):
                 try:
                     content_length = int(self.headers.get("Content-Length", 0))
@@ -2051,7 +2176,7 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
                 if content_length > 0:
                     raw_body = self.rfile.read(content_length)
                     raw_text = raw_body.decode("utf-8", errors="replace")
-                    if not browser_exchange_path:
+                    if not (browser_exchange_path or local_auth_exchange_path):
                         server_context["_raw_body"] = raw_text
                         server_context["_raw_body_base64"] = base64.b64encode(
                             raw_body
@@ -2089,8 +2214,10 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
             if handler is None:
                 self._send_json(404, error("not found: " + method + " " + path))
                 return
-            if route_pattern and not server._route_allowed_by_active_profile(
-                method, route_pattern
+            if (
+                route_pattern
+                and not local_auth_exchange_path
+                and not server._route_allowed_by_active_profile(method, route_pattern)
             ):
                 server._record_profile_blocked_route(method, route_pattern)
                 self._send_json(
@@ -2273,6 +2400,16 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
 
     def _sensitive_request_error(self, method, path, request_data=None):
         route_sensitive, route_local_only = self._route_metadata_flags(method, path)
+        if path in {"/api/local-auth/exchange", "/api/local-auth/exchange/redeem"}:
+            if not _local_is_loopback_request(
+                {str(key): str(value) for key, value in self.headers.items()},
+                self.client_address,
+            ):
+                return (403, "local auth exchange requires loopback", "LOCAL_ONLY_REQUIRED")
+            return _local_auth_exchange_transport_error(
+                self.headers,
+                require_auth=path == "/api/local-auth/exchange",
+            )
         if path in {
             "/api/authority/browser-exchange",
             "/api/authority/browser-exchange/revoke",

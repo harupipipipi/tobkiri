@@ -1,6 +1,11 @@
 export const CRASH_LOOP_KEY = "rumi-crash-boundary-v1";
 export const RECOVERABLE_DRAFT_KEYS = ["rumi-input"] as const;
-export const RESETTABLE_CLIENT_KEYS = ["rumi-workspace-tabs", "rumi-active-workspace-tab", "rumi-ui-placements"] as const;
+export const RESETTABLE_CLIENT_KEYS = [
+  "rumi-workspace-tabs",
+  "rumi-active-workspace-tab",
+  "rumi-ui-placements",
+  "rumi-defaultspack-local-auth",
+] as const;
 const CRASH_WINDOW_MS = 60_000;
 
 export type CrashDraftSnapshot = { capturedAt: string; drafts: Record<string, string> };

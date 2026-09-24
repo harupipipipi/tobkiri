@@ -544,13 +544,13 @@ fn host_permissions_url() -> Result<Url, String> {
     .map_err(|error| format!("failed to build host permissions window URL: {error}"))
 }
 
-fn authenticated_defaultspack_window_url(
-    config: &AppConfig,
+fn validated_defaultspack_window_url(
+    _config: &AppConfig,
     url: Result<Url, String>,
 ) -> Result<Url, String> {
     let url = url?;
-    dock_registration::add_defaultspack_local_auth(config, url)
-        .map_err(|error| format!("failed to authenticate Defaultspack window URL: {error:#}"))
+    dock_registration::validate_defaultspack_window_url(url, active_defaultspack_http_port())
+        .map_err(|error| format!("invalid Defaultspack window URL: {error:#}"))
 }
 
 fn authority_approval_bootstrap_window_url(
@@ -879,7 +879,7 @@ fn focus_ambient_trigger_window(window: &tauri::WebviewWindow) -> Result<(), Str
 }
 
 fn open_ambient_trigger_window_for_app(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
-    let ambient_url = authenticated_defaultspack_window_url(config, ambient_trigger_url())?;
+    let ambient_url = validated_defaultspack_window_url(config, ambient_trigger_url())?;
     if let Some(window) = app.get_webview_window(AMBIENT_TRIGGER_WINDOW_LABEL) {
         window
             .navigate(ambient_url)
@@ -960,7 +960,7 @@ fn open_finger_recording_window_for_app(app: &AppHandle, config: &AppConfig) -> 
         app,
         FINGER_RECORDING_WINDOW_LABEL,
         FINGER_RECORDING_WINDOW_TITLE,
-        authenticated_defaultspack_window_url(config, finger_recording_url())?,
+        validated_defaultspack_window_url(config, finger_recording_url())?,
         380.0,
         460.0,
     )
@@ -1013,7 +1013,7 @@ fn open_defaults_console_window_for_app(app: &AppHandle, config: &AppConfig) -> 
         app,
         DEFAULTS_CONSOLE_WINDOW_LABEL,
         DEFAULTS_CONSOLE_WINDOW_TITLE,
-        authenticated_defaultspack_window_url(config, defaults_console_url())?,
+        validated_defaultspack_window_url(config, defaults_console_url())?,
         760.0,
         520.0,
     )
@@ -1040,8 +1040,7 @@ fn focus_host_permissions_window(window: &tauri::WebviewWindow) -> Result<(), St
 }
 
 fn open_host_permissions_window_for_app(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
-    let host_permissions_url =
-        authenticated_defaultspack_window_url(config, host_permissions_url())?;
+    let host_permissions_url = validated_defaultspack_window_url(config, host_permissions_url())?;
     if let Some(window) = app.get_webview_window(HOST_PERMISSIONS_WINDOW_LABEL) {
         window
             .navigate(host_permissions_url)
@@ -3557,6 +3556,7 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             desktop_system_info::open_host_permission_settings,
             dock_registration::register_defaultspack_dock,
             dock_registration::launch_defaultspack_desktop,
+            dock_registration::defaultspack_local_auth_exchange,
             presentation::get_presentation_catalog,
             presentation::select_presentation,
             presentation::launch_selected_presentation

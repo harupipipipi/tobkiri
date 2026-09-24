@@ -27,10 +27,10 @@ test("repeated crash detector uses a bounded time window", () => {
   assert.equal(recordCrash(storage, 200_000), 1);
 });
 
-test("safe reset removes layout state but preserves drafts and credentials", () => {
+test("safe reset preserves drafts but revokes legacy stored local auth", () => {
   const storage = memoryStorage({ "rumi-input": "draft", "rumi-workspace-tabs": "tabs", "rumi-defaultspack-local-auth": "credential" });
   resetAffectedClientState(storage);
   assert.equal(storage.getItem("rumi-workspace-tabs"), null);
   assert.equal(storage.getItem("rumi-input"), "draft");
-  assert.equal(storage.getItem("rumi-defaultspack-local-auth"), "credential");
+  assert.equal(storage.getItem("rumi-defaultspack-local-auth"), null);
 });

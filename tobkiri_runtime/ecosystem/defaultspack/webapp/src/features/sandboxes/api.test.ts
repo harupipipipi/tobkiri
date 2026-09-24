@@ -29,7 +29,7 @@ function desktopResponse(status: "running" | "stopped") {
   };
 }
 
-test("ensureRuntime uses Defaultspack local auth and CSRF headers", async () => {
+test("ensureRuntime revokes legacy stored local auth and keeps CSRF headers", async () => {
   let requestUrl = "";
   let requestInit: RequestInit | undefined;
   const originalFetch = globalThis.fetch;
@@ -44,6 +44,7 @@ test("ensureRuntime uses Defaultspack local auth and CSRF headers", async () => 
     value: {
       getItem: (key: string) => values.get(key) ?? null,
       setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
     },
   });
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -72,8 +73,9 @@ test("ensureRuntime uses Defaultspack local auth and CSRF headers", async () => 
   const body = JSON.parse(String(requestInit?.body));
   assert.equal(requestUrl, routeKey("api/runtime/ensure"));
   assert.equal(requestInit?.method, "POST");
-  assert.equal(headers.get("Authorization"), "Bearer local-token-1");
+  assert.equal(headers.get("Authorization"), null);
   assert.equal(headers.get("X-Rumi-CSRF"), "panel-csrf-1");
+  assert.equal(values.has("rumi-defaultspack-local-auth"), false);
   assert.equal(body.provider_id, "windows_wsl");
   assert.match(body.request_id, /^ensure-/);
 });
