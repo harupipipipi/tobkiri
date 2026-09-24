@@ -1729,8 +1729,15 @@ class PackAPIHandler(
                 self._runtime_refresh(None)
             elif (
                 operation == "progress"
-                and result.get("operation_kind") == "cleanup"
                 and result.get("state") == "succeeded"
+                and (
+                    result.get("operation_kind") == "cleanup"
+                    or (
+                        result.get("operation_kind") == "provision"
+                        and isinstance(result.get("doctor"), dict)
+                        and result["doctor"].get("ready") is True
+                    )
+                )
                 and self._runtime_refresh
             ):
                 self._runtime_refresh(None)
