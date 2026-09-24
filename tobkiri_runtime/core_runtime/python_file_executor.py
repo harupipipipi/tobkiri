@@ -48,7 +48,6 @@ import sys
 import threading
 import traceback
 import uuid
-import concurrent.futures
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
