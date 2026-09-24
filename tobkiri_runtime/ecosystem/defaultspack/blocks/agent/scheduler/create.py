@@ -53,6 +53,7 @@ def run(input_data, context, *, settings_owner=None):
             schedule_config=schedule_config,
             name=name,
             description=description,
+            mutation_id=input_data.get("mutation_id"),
         )
     except ValueError as exc:
         return error(str(exc), "VALIDATION_ERROR")

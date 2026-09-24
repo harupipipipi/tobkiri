@@ -10,6 +10,9 @@ Supports three schedule types:
 No external dependencies. Pure stdlib.
 """
 
+import copy
+import sys
+import os
 import hashlib
 import json
 import threading
@@ -55,6 +58,17 @@ _SCHEDULE_AI_REQUEST_TIMEOUT_MAX_SECONDS = 3600.0
 _SCHEDULED_CHAT_SECRET_VALUE_RE = re.compile(
     r"\b(AIza[0-9A-Za-z_-]{20,}|sk-[0-9A-Za-z_-]{20,}|gh[pousr]_[0-9A-Za-z_]{20,})\b"
 )
+
+
+def _serialized_schedule_mutation(method):
+    """Keep revision checks and their durable writes in one mutation boundary."""
+    def serialized(self, *args, **kwargs):
+        with self._mutation_lock:
+            return method(self, *args, **kwargs)
+
+    serialized.__name__ = method.__name__
+    serialized.__doc__ = method.__doc__
+    return serialized
 
 
 class _SchedulerTaskTimedOut(TimeoutError):
@@ -1137,8 +1151,10 @@ class Scheduler:
         self._initialised = True
         self._settings_owner = settings_owner
         self._lock = threading.Lock()
+        self._mutation_lock = threading.RLock()
         self._timers = {}        # schedule_id -> threading.Timer
         self._schedules = {}     # schedule_id -> schedule dict (in-memory cache)
+        self._deleted_schedule_ids = set()
         self._conversation_locks = {}  # conversation_id -> threading.Lock
         self._conversation_lock_holders = {}  # conversation_id -> in-process holder metadata
         self._active_execution_ids = set()
@@ -1158,6 +1174,7 @@ class Scheduler:
                 timers_to_cancel = list(self._timers.values())
                 self._timers.clear()
                 self._schedules.clear()
+                self._deleted_schedule_ids.clear()
                 self._stale_recovered_execution_ids.clear()
                 self._conversation_lock_holders.clear()
                 self._loaded = False
@@ -1178,7 +1195,25 @@ class Scheduler:
         self._recover_stale_running_executions()
         self._ensure_active_timers()
 
-    def create_schedule(self, schedule_type, task_config, schedule_config, name="", description=""):
+    def _save_schedule_durable(self, schedule):
+        """Persist unless a concurrent durable delete has tombstoned the ID."""
+        schedule_id = str(schedule.get("id") or "")
+        with self._mutation_lock:
+            if schedule_id in self._deleted_schedule_ids:
+                return False
+            save_schedule(schedule)
+            return True
+
+    @_serialized_schedule_mutation
+    def create_schedule(
+        self,
+        schedule_type,
+        task_config,
+        schedule_config,
+        name="",
+        description="",
+        mutation_id=None,
+    ):
         """Create and persist a new schedule.
 
         schedule_type: "interval" | "cron" | "once"
@@ -1189,6 +1224,15 @@ class Scheduler:
           - once: {run_at: "2025-03-01T09:00:00Z"}
         """
         self.ensure_loaded()
+
+        mutation_id = str(mutation_id or "").strip()
+        if mutation_id:
+            with self._lock:
+                for existing in self._schedules.values():
+                    if existing.get("id") in self._deleted_schedule_ids:
+                        continue
+                    if mutation_id in existing.get("settled_mutation_ids", []):
+                        return existing
 
         # Validate schedule_type
         if schedule_type not in ("interval", "cron", "once"):
@@ -1247,12 +1291,14 @@ class Scheduler:
             "next_execution_at": None,
             "created_at": now,
             "updated_at": now,
+            "revision": 1,
+            "settled_mutation_ids": [mutation_id] if mutation_id else [],
         }
 
         # Compute next execution time
         schedule["next_execution_at"] = self._compute_next_execution(schedule)
 
-        save_schedule(schedule)
+        self._save_schedule_durable(schedule)
         with self._lock:
             self._schedules[sid] = schedule
 
@@ -1263,18 +1309,25 @@ class Scheduler:
         """Return a schedule dict or None."""
         self.ensure_loaded()
         with self._lock:
+            if schedule_id in self._deleted_schedule_ids:
+                return None
             return self._schedules.get(schedule_id)
 
     def list_schedules(self, status_filter=None):
         """Return list of all schedules, optionally filtered by status."""
         self.ensure_loaded()
         with self._lock:
-            all_s = list(self._schedules.values())
+            all_s = [
+                schedule
+                for schedule_id, schedule in self._schedules.items()
+                if schedule_id not in self._deleted_schedule_ids
+            ]
         if status_filter:
             all_s = [s for s in all_s if s.get("status") == status_filter]
         all_s.sort(key=lambda s: s.get("created_at", ""), reverse=True)
         return all_s
 
+    @_serialized_schedule_mutation
     def update_schedule(self, schedule_id, updates):
         """Update a schedule. Allowed fields: name, description, task, config, type.
 
@@ -1282,9 +1335,25 @@ class Scheduler:
         """
         self.ensure_loaded()
         with self._lock:
-            sched = self._schedules.get(schedule_id)
-        if sched is None:
+            existing_schedule = self._schedules.get(schedule_id)
+            if schedule_id in self._deleted_schedule_ids:
+                existing_schedule = None
+            sched = copy.deepcopy(existing_schedule) if existing_schedule is not None else None
+        if existing_schedule is None:
             return None
+        # Never mutate the shared cache until the durable write succeeds.
+        updates = dict(updates)
+
+        mutation_id = str(updates.pop("mutation_id", "") or "").strip()
+        settled_mutation_ids = list(sched.get("settled_mutation_ids", []))
+        if mutation_id and mutation_id in settled_mutation_ids:
+            return sched
+        expected_revision = updates.pop("expected_revision", None)
+        current_revision = int(sched.get("revision", 0) or 0)
+        if expected_revision is not None and int(expected_revision) != current_revision:
+            raise ValueError(
+                f"schedule revision conflict: expected {expected_revision}, current {current_revision}"
+            )
 
         allowed_keys = ("name", "description", "task", "config", "type")
         changed = False
@@ -1337,9 +1406,12 @@ class Scheduler:
 
         if changed:
             sched["updated_at"] = timestamp()
+            sched["revision"] = current_revision + 1
+            if mutation_id:
+                sched["settled_mutation_ids"] = (settled_mutation_ids + [mutation_id])[-64:]
             if sched.get("status") == "active":
                 sched["next_execution_at"] = self._compute_next_execution(sched)
-            save_schedule(sched)
+            self._save_schedule_durable(sched)
             with self._lock:
                 self._schedules[schedule_id] = sched
             if sched.get("status") == "active":
@@ -1348,13 +1420,33 @@ class Scheduler:
 
         return sched
 
-    def delete_schedule(self, schedule_id):
+    @_serialized_schedule_mutation
+    def delete_schedule(self, schedule_id, expected_revision=None):
         """Delete a schedule. Returns True if deleted."""
         self.ensure_loaded()
+        with self._lock:
+            existing = self._schedules.get(schedule_id)
+        if existing is not None and expected_revision is not None:
+            current_revision = int(existing.get("revision", 0) or 0)
+            if int(expected_revision) != current_revision:
+                raise ValueError(
+                    f"schedule revision conflict: expected {expected_revision}, current {current_revision}"
+                )
         self._cancel_timer(schedule_id)
         with self._lock:
+            self._deleted_schedule_ids.add(schedule_id)
+        try:
+            # The tombstone prevents an already-running execution from
+            # recreating the file after this durable unlink.
+            store_delete(schedule_id)
+        except Exception:
+            with self._lock:
+                self._deleted_schedule_ids.discard(schedule_id)
+            if existing is not None and existing.get("status") == "active":
+                self._arm_timer(schedule_id)
+            raise
+        with self._lock:
             removed = self._schedules.pop(schedule_id, None)
-        store_delete(schedule_id)
         return removed is not None
 
     def pause_schedule(self, schedule_id):
@@ -1370,7 +1462,7 @@ class Scheduler:
         sched["status"] = "paused"
         sched["next_execution_at"] = None
         sched["updated_at"] = timestamp()
-        save_schedule(sched)
+        self._save_schedule_durable(sched)
         with self._lock:
             self._schedules[schedule_id] = sched
         return sched
@@ -1389,7 +1481,7 @@ class Scheduler:
         sched["status"] = "active"
         sched["next_execution_at"] = self._compute_next_execution(sched)
         sched["updated_at"] = timestamp()
-        save_schedule(sched)
+        self._save_schedule_durable(sched)
         with self._lock:
             self._schedules[schedule_id] = sched
         self._arm_timer(schedule_id)
@@ -1606,6 +1698,8 @@ class Scheduler:
     def _arm_timer(self, schedule_id):
         """Set a threading.Timer for the next execution of a schedule."""
         with self._lock:
+            if schedule_id in self._deleted_schedule_ids:
+                return
             sched = self._schedules.get(schedule_id)
         if sched is None or sched.get("status") != "active":
             return
@@ -1744,7 +1838,7 @@ class Scheduler:
                     elif sched.get("status") == "active":
                         sched["next_execution_at"] = self._compute_next_execution(sched)
                 sched["updated_at"] = timestamp()
-                save_schedule(sched)
+                self._save_schedule_durable(sched)
                 self._schedules[schedule_id] = sched
             return True
         except Exception:
@@ -1809,7 +1903,7 @@ class Scheduler:
         }
         sched["running_started_at"] = started_at
         sched["updated_at"] = marked_at
-        save_schedule(sched)
+        self._save_schedule_durable(sched)
         with self._lock:
             self._schedules[schedule_id] = sched
 
@@ -1903,7 +1997,7 @@ class Scheduler:
             elif sched.get("status") == "active":
                 sched["next_execution_at"] = self._compute_next_execution(sched)
             sched["updated_at"] = timestamp()
-            save_schedule(sched)
+            self._save_schedule_durable(sched)
             self._schedules[schedule_id] = sched
 
     def _conversation_execution_lock(self, conversation_id):
@@ -2307,7 +2401,7 @@ class Scheduler:
                             elif sched.get("status") == "active":
                                 sched["next_execution_at"] = self._compute_next_execution(sched)
                         sched["updated_at"] = timestamp()
-                        save_schedule(sched)
+                        self._save_schedule_durable(sched)
                         with self._lock:
                             self._schedules[schedule_id] = sched
             finally:

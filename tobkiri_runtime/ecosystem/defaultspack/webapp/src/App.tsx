@@ -84,7 +84,21 @@ import { deriveConversationTitle, formatRelativeTime, inspectConversationIntegri
 import { isMessageScrollerNearBottom } from "./lib/chatScroll";
 import { loadConversationForRefresh, resolveSupersededConversationRedirect } from "./lib/chatRouteLoading";
 import { cn } from "./lib/cn";
-import { deleteCalendarScheduleBeforeLocalChange } from "./lib/calendarScheduleDeletion";
+import {
+  beginCalendarMutation,
+  cancelCalendarMutation,
+  exportCalendarRecovery,
+  loadCalendarDocument,
+  reconcileCalendarSchedules,
+  replayCalendarRemoteMutation,
+  repairCalendarDocument,
+  settleCalendarMutation,
+  type CalendarLoadResult,
+  type CalendarMutation,
+  type CalendarReconciliationIssue,
+  CalendarPersistenceError,
+  type DurableCalendarItem,
+} from "./lib/calendarDurability";
 import {
   canExecuteComposerEndpointAction,
   composerMentionMetadataFromWidgets,
@@ -182,18 +196,7 @@ type PendingNewTaskContext = {
 
 type CalendarItemKind = "task" | "event" | "reminder";
 
-type CalendarItem = {
-  id: string;
-  date: string;
-  endDate?: string;
-  agentPrompt?: string;
-  kind: CalendarItemKind;
-  lastRunStatus?: string;
-  scheduleId?: string;
-  scheduleStatus?: string;
-  title: string;
-  time?: string;
-};
+type CalendarItem = DurableCalendarItem;
 
 type CalendarSettings = {
   agentCurrentChat: boolean;
@@ -689,7 +692,7 @@ function resolveCalendarAgentModel(settings: CalendarSettings, activeModelId: st
   return configuredProfile?.profile_id || configuredProfile?.qualified_model_id || activeModelId || "default";
 }
 
-function CalendarComposerPanel({
+export function CalendarComposerPanel({
   conversationId,
   modelId,
   modelProfiles,
@@ -709,7 +712,19 @@ function CalendarComposerPanel({
   const weekLabels = ["日", "月", "火", "水", "木", "金", "土"];
   const visibleWeekLabels = weekLabels.map((_, index) => weekLabels[(index + weekStartIndex) % 7]);
   const monthStartOffset = (monthStart.getDay() - weekStartIndex + 7) % 7;
-  const [items, setItems] = useLocalStorage<CalendarItem[]>("defaultspack.calendar.items.v1", []);
+  const calendarWriterIdRef = useRef(`calendar-writer-${createCalendarItemId()}`);
+  const [calendarLoad, setCalendarLoad] = useState<CalendarLoadResult>(() => (
+    loadCalendarDocument(window.localStorage, calendarWriterIdRef.current)
+  ));
+  const [calendarReconciliation, setCalendarReconciliation] = useState<{
+    items: CalendarItem[];
+    issues: CalendarReconciliationIssue[];
+  } | null>(null);
+  const items = calendarLoad.document.items;
+  const calendarExportHref = useMemo(() => URL.createObjectURL(new Blob(
+    [exportCalendarRecovery(calendarLoad)],
+    { type: "application/json" },
+  )), [calendarLoad]);
   const [activeEditor, setActiveEditor] = useState<CalendarEditorState | null>(null);
   const [dragState, setDragState] = useState<CalendarDragState | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
@@ -723,6 +738,103 @@ function CalendarComposerPanel({
   const [lastAgentResult, setLastAgentResult] = useState<string | null>(null);
   const calendarRef = useRef<HTMLElement | null>(null);
   const suppressNextCellOpenRef = useRef(false);
+
+  const calendarFailureMessage = (error: unknown, fallback: string): string => {
+    const errorCode = error instanceof CalendarPersistenceError ? error.code : "REMOTE_OPERATION_FAILED";
+    void reportClientDiagnostic({
+      source: "webapp",
+      category: "calendar_durability",
+      level: "error",
+      message: "A Calendar durable mutation needs user-visible recovery.",
+      fingerprint: `calendar-durability:${errorCode}`,
+      detail: {
+        error_name: error instanceof Error ? error.name : "UnknownError",
+        error_code: errorCode,
+      },
+    });
+    return error instanceof CalendarPersistenceError
+      ? error.message
+      : `${fallback} The draft and recovery journal were kept; retry or export before continuing.`;
+  };
+
+  const applySettledMutation = (mutation: CalendarMutation): void => {
+    const document = settleCalendarMutation(window.localStorage, calendarWriterIdRef.current, mutation);
+    setCalendarLoad({ document, pendingMutation: null, recoveryRaw: calendarLoad.recoveryRaw, status: "ready" });
+  };
+
+  const beginDurableMutation = (
+    operation: CalendarMutation["operation"],
+    proposedItems: CalendarItem[],
+    targetItemId?: string,
+  ): CalendarMutation => {
+    if (calendarReconciliation) {
+      throw new CalendarPersistenceError(
+        "Calendar sync issues must be repaired before another change can start.",
+        "CONFLICT",
+      );
+    }
+    const mutation = beginCalendarMutation(window.localStorage, calendarLoad.document, {
+      mutationId: `calendar-mutation-${createCalendarItemId()}`,
+      operation,
+      proposedItems,
+      targetItemId,
+    });
+    setCalendarLoad((current) => ({ ...current, pendingMutation: mutation }));
+    return mutation;
+  };
+
+  useEffect(() => {
+    return () => URL.revokeObjectURL(calendarExportHref);
+  }, [calendarExportHref]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api.listSchedules().then((response) => {
+      if (cancelled) return;
+      const data = isRecord(response.data) ? response.data : response;
+      const schedules = Array.isArray(data.schedules) ? data.schedules : [];
+      const reconciliation = reconcileCalendarSchedules(calendarLoad.document.items, schedules);
+      if (
+        reconciliation.issues.length > 0
+        || JSON.stringify(reconciliation.items) !== JSON.stringify(calendarLoad.document.items)
+      ) {
+        setCalendarReconciliation(reconciliation);
+      }
+    }).catch((error) => {
+      if (!cancelled) {
+        setCalendarReconciliation({
+          items: calendarLoad.document.items,
+          issues: [{ itemId: "calendar", kind: "conflict", message: error instanceof Error ? error.message : "Backend reconciliation failed." }],
+        });
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (!event.key?.startsWith("defaultspack.calendar.")) return;
+      const next = loadCalendarDocument(window.localStorage, calendarWriterIdRef.current);
+      const foreignPending = next.pendingMutation?.writerId !== undefined
+        && next.pendingMutation.writerId !== calendarWriterIdRef.current;
+      if (
+        next.document.revision > calendarLoad.document.revision
+        || next.status === "corrupt"
+        || next.status === "unavailable"
+        || next.pendingMutation?.mutationId !== calendarLoad.pendingMutation?.mutationId
+      ) {
+        setCalendarLoad(next);
+      }
+      if (next.document.revision > calendarLoad.document.revision || foreignPending) {
+        setActiveEditor(null);
+        setDragState(null);
+        setIsTimeMenuOpen(false);
+        setDraftError("Calendar changed in another tab. Review the synchronized state before editing again.");
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [calendarLoad.document.revision, calendarLoad.pendingMutation?.mutationId]);
 
   useEffect(() => {
     setDraftKind(settings.defaultItemType);
@@ -854,21 +966,29 @@ function CalendarComposerPanel({
     setIsTimeMenuOpen(false);
   };
 
-  const schedulePayloadForItem = (itemId: string, title: string, startKey: string, endKey: string, time: string, agentPrompt: string) => ({
-    name: `Calendar: ${title}`,
-    description: `Created from Rumi calendar for ${calendarRangeLabel(startKey, endKey)}.`,
+  const schedulePayloadForItem = (
+    item: CalendarItem,
+    mutationId: string,
+    expectedRevision?: number,
+  ) => ({
+    mutation_id: mutationId,
+    ...(expectedRevision !== undefined ? { expected_revision: expectedRevision } : {}),
+    name: `Calendar: ${item.title}`,
+    description: `Created from Tobkiri Calendar for ${calendarRangeLabel(item.date, item.endDate ?? item.date)}.`,
     schedule_type: "once",
-    schedule_config: { run_at: calendarRunAtIso(startKey, time) },
+    schedule_config: { run_at: calendarRunAtIso(item.date, item.time ?? settings.defaultTime) },
     task: {
-      message: agentPrompt || title,
+      message: item.agentPrompt || item.title,
       model: resolveCalendarAgentModel(settings, modelId, modelProfiles),
       conversation_id: settings.agentCurrentChat ? conversationId || null : null,
       metadata: {
         source: "calendar",
-        calendar_item_id: itemId,
-        calendar_start_date: startKey,
-        calendar_end_date: endKey,
-        calendar_time: normalizeCalendarTimeInput(time),
+        calendar_item_id: item.id,
+        calendar_item_snapshot: item,
+        calendar_revision: item.calendarRevision ?? 0,
+        calendar_start_date: item.date,
+        calendar_end_date: item.endDate ?? item.date,
+        calendar_time: normalizeCalendarTimeInput(item.time),
       },
     },
   });
@@ -880,25 +1000,24 @@ function CalendarComposerPanel({
 
   const persistAgentSchedule = async (
     existing: CalendarItem | null,
-    itemId: string,
-    title: string,
-    startKey: string,
-    endKey: string,
-    time: string,
-    agentPrompt: string,
-  ): Promise<{ scheduleId?: string; scheduleStatus?: string }> => {
-    const payload = schedulePayloadForItem(itemId, title, startKey, endKey, time, agentPrompt);
+    item: CalendarItem,
+    mutationId: string,
+  ): Promise<{ scheduleId?: string; scheduleRevision?: number; scheduleStatus?: string }> => {
+    const payload = schedulePayloadForItem(item, mutationId, existing?.scheduleId ? existing.scheduleRevision ?? 0 : undefined);
     if (existing?.scheduleId) {
       const updated = extractScheduleRecord(await api.updateSchedule(existing.scheduleId, payload));
       return {
         scheduleId: String(updated.id ?? existing.scheduleId),
+        scheduleRevision: Number(updated.revision ?? existing.scheduleRevision ?? 0),
         scheduleStatus: String(updated.status ?? existing.scheduleStatus ?? "active"),
       };
     }
     const created = extractScheduleRecord(await api.createSchedule(payload));
     const scheduleId = created.id ? String(created.id) : undefined;
+    if (!scheduleId) throw new Error("Backend did not acknowledge the Calendar schedule ID.");
     return {
       scheduleId,
+      scheduleRevision: Number(created.revision ?? 0),
       scheduleStatus: String(created.status ?? "active"),
     };
   };
@@ -916,37 +1035,44 @@ function CalendarComposerPanel({
     const itemId = existing?.id ?? createCalendarItemId();
     const agentPrompt = draftAgentPrompt.trim() || title;
     try {
-      let scheduleId = existing?.scheduleId;
-      let scheduleStatus = existing?.scheduleStatus;
-      if (draftKind === "task" && draftAgentEnabled) {
-        const schedule = await persistAgentSchedule(existing, itemId, title, startKey, endKey, normalizedTime, agentPrompt);
-        scheduleId = schedule.scheduleId;
-        scheduleStatus = schedule.scheduleStatus;
-      } else if (existing?.scheduleId) {
-        await deleteCalendarScheduleBeforeLocalChange(existing.scheduleId, api.deleteSchedule);
-        scheduleId = undefined;
-        scheduleStatus = undefined;
-      }
-      const nextItem: CalendarItem = {
+      const calendarRevision = (existing?.calendarRevision ?? 0) + 1;
+      const keepsAgentSchedule = draftKind === "task" && draftAgentEnabled;
+      let nextItem: CalendarItem = {
         id: itemId,
         date: startKey,
         endDate: endKey === startKey ? undefined : endKey,
         kind: draftKind,
         title,
         time: normalizedTime,
-        agentPrompt: draftKind === "task" && draftAgentEnabled ? agentPrompt : undefined,
-        scheduleId,
-        scheduleStatus,
+        agentPrompt: keepsAgentSchedule ? agentPrompt : undefined,
+        scheduleId: keepsAgentSchedule ? existing?.scheduleId : undefined,
+        scheduleRevision: keepsAgentSchedule ? existing?.scheduleRevision : undefined,
+        scheduleStatus: keepsAgentSchedule ? existing?.scheduleStatus : undefined,
+        calendarRevision,
         lastRunStatus: existing?.lastRunStatus,
+        syncState: "pending",
       };
-      setItems((current) => activeEditor.mode === "edit"
-        ? current.map((item) => item.id === itemId ? nextItem : item)
-        : [...current, nextItem]);
+      const proposedItems = activeEditor.mode === "edit"
+        ? items.map((item) => item.id === itemId ? nextItem : item)
+        : [...items, nextItem];
+      const mutation = beginDurableMutation("upsert", proposedItems, itemId);
+      if (keepsAgentSchedule) {
+        const schedule = await persistAgentSchedule(existing, nextItem, mutation.mutationId);
+        nextItem = { ...nextItem, ...schedule, syncState: "settled" };
+      } else if (existing?.scheduleId) {
+        await api.deleteSchedule(existing.scheduleId, {
+          mutation_id: mutation.mutationId,
+          expected_revision: existing.scheduleRevision ?? 0,
+        });
+        nextItem = { ...nextItem, syncState: "settled" };
+      }
+      mutation.proposedItems = mutation.proposedItems.map((item) => item.id === itemId ? nextItem : item);
+      applySettledMutation(mutation);
       setActiveEditor(null);
       setDraftTitle("");
       setIsTimeMenuOpen(false);
     } catch (error) {
-      setDraftError(error instanceof Error ? error.message : "Agent task schedule failed.");
+      setDraftError(calendarFailureMessage(error, "Agent task schedule failed."));
     } finally {
       setIsSavingDraft(false);
     }
@@ -957,11 +1083,17 @@ function CalendarComposerPanel({
     setIsSavingDraft(true);
     setDraftError(null);
     try {
-      await deleteCalendarScheduleBeforeLocalChange(activeItem.scheduleId, api.deleteSchedule);
-      setItems((current) => current.filter((item) => item.id !== activeItem.id));
+      const mutation = beginDurableMutation("delete", items.filter((item) => item.id !== activeItem.id), activeItem.id);
+      if (activeItem.scheduleId) {
+        await api.deleteSchedule(activeItem.scheduleId, {
+          mutation_id: mutation.mutationId,
+          expected_revision: activeItem.scheduleRevision ?? 0,
+        });
+      }
+      applySettledMutation(mutation);
       setActiveEditor(null);
     } catch (error) {
-      setDraftError(error instanceof Error ? error.message : "Delete failed.");
+      setDraftError(calendarFailureMessage(error, "Delete failed."));
     } finally {
       setIsSavingDraft(false);
     }
@@ -974,10 +1106,15 @@ function CalendarComposerPanel({
     try {
       const response = extractScheduleRecord(await api.triggerSchedule(activeItem.scheduleId));
       const status = String(response.status ?? "triggered");
-      setItems((current) => current.map((item) => item.id === activeItem.id ? { ...item, lastRunStatus: status } : item));
+      const mutation = beginDurableMutation(
+        "upsert",
+        items.map((item) => item.id === activeItem.id ? { ...item, lastRunStatus: status } : item),
+        activeItem.id,
+      );
+      applySettledMutation(mutation);
       setLastAgentResult(`Agent run: ${status}`);
     } catch (error) {
-      setDraftError(error instanceof Error ? error.message : "Agent trigger failed.");
+      setDraftError(calendarFailureMessage(error, "Agent trigger failed."));
     } finally {
       setIsSavingDraft(false);
     }
@@ -1012,6 +1149,83 @@ function CalendarComposerPanel({
     openCreateEditor(cell, currentDrag.startKey, endKey);
     if (holdMs > 360 || currentDrag.startKey !== endKey) {
       setDraftTitle("");
+    }
+  };
+
+  const repairCalendarState = async () => {
+    try {
+      if (calendarLoad.pendingMutation) {
+        const mutation = await replayCalendarRemoteMutation(
+          calendarLoad.document.items,
+          calendarLoad.pendingMutation,
+          {
+            upsertSchedule: persistAgentSchedule,
+            deleteSchedule: async (existing, mutationId) => {
+              if (!existing.scheduleId) return;
+              await api.deleteSchedule(existing.scheduleId, {
+                mutation_id: mutationId,
+                expected_revision: existing.scheduleRevision ?? 0,
+              });
+            },
+          },
+        );
+        applySettledMutation(mutation);
+        setCalendarReconciliation(null);
+        setDraftError(null);
+        setActiveEditor(null);
+        setDraftTitle("");
+        setIsTimeMenuOpen(false);
+        return;
+      }
+      const response = await api.listSchedules();
+      const data = isRecord(response.data) ? response.data : response;
+      const schedules = Array.isArray(data.schedules) ? data.schedules : [];
+      const repairItems = reconcileCalendarSchedules(
+        calendarReconciliation?.items ?? calendarLoad.document.items,
+        schedules,
+      ).items;
+      const document = repairCalendarDocument(
+        window.localStorage,
+        calendarWriterIdRef.current,
+        repairItems,
+        calendarLoad.document.revision,
+      );
+      setCalendarLoad({ document, pendingMutation: null, recoveryRaw: calendarLoad.recoveryRaw, status: "ready" });
+      setCalendarReconciliation(null);
+      setDraftError(null);
+      setActiveEditor(null);
+      setDraftTitle("");
+      setIsTimeMenuOpen(false);
+    } catch (error) {
+      setDraftError(calendarFailureMessage(error, "Calendar repair failed."));
+    }
+  };
+
+  const cancelPendingCalendarChange = async () => {
+    try {
+      const cancelled = cancelCalendarMutation(window.localStorage, calendarWriterIdRef.current);
+      setCalendarLoad(cancelled);
+      const response = await api.listSchedules();
+      const data = isRecord(response.data) ? response.data : response;
+      const schedules = Array.isArray(data.schedules) ? data.schedules : [];
+      const reconciliation = reconcileCalendarSchedules(cancelled.document.items, schedules);
+      if (
+        reconciliation.issues.length > 0
+        || JSON.stringify(reconciliation.items) !== JSON.stringify(cancelled.document.items)
+      ) {
+        setCalendarReconciliation(reconciliation);
+      }
+      setDraftError(null);
+    } catch (error) {
+      setCalendarReconciliation({
+        items: calendarLoad.document.items,
+        issues: [{
+          itemId: "calendar",
+          kind: "conflict",
+          message: "Backend state could not be checked after cancellation.",
+        }],
+      });
+      setDraftError(calendarFailureMessage(error, "Pending Calendar change could not be cancelled."));
     }
   };
 
@@ -1053,6 +1267,30 @@ function CalendarComposerPanel({
         </div>
         <div className="h-8 w-[112px]" aria-hidden="true" />
       </div>
+      {(calendarLoad.status === "corrupt" || calendarLoad.status === "unavailable" || calendarLoad.pendingMutation || calendarReconciliation) && (
+        <div role="status" className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-amber-700/50 bg-amber-950/40 px-4 py-2 text-xs text-amber-100">
+          <span>
+            {calendarLoad.status === "corrupt"
+              ? "Calendar storage is unreadable. The original data was preserved."
+              : calendarLoad.status === "unavailable"
+                ? "Calendar storage is unavailable. Changes are blocked so drafts are not lost."
+              : calendarLoad.pendingMutation
+                ? "A Calendar change is pending durable settlement. Repair or export before continuing."
+                : calendarReconciliation?.issues.length
+                  ? `${calendarReconciliation.issues.length} Calendar sync issue(s) need review.`
+                  : "Backend has newer Calendar state ready to repair."}
+          </span>
+          <span className="flex flex-shrink-0 gap-2">
+            {calendarLoad.pendingMutation && <button type="button" className="rounded border border-amber-500/60 px-2 py-1 hover:bg-amber-900/60" onClick={() => void cancelPendingCalendarChange()}>Cancel</button>}
+            <a
+              className="rounded border border-amber-500/60 px-2 py-1 hover:bg-amber-900/60"
+              download={`tobkiri-calendar-recovery-${new Date().toISOString().replace(/[:.]/g, "-")}.json`}
+              href={calendarExportHref}
+            >Export</a>
+            <button type="button" className="rounded bg-amber-200 px-2 py-1 font-semibold text-amber-950 hover:bg-amber-100" onClick={() => void repairCalendarState()}>{calendarLoad.pendingMutation ? "Retry / Repair" : "Repair"}</button>
+          </span>
+        </div>
+      )}
       <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-6 overflow-hidden">
         {calendarCells.map((cell, index) => {
           const visibleItems = (itemsByDate[cell.key] ?? []).slice(0, settings.maxItemsPerDay);

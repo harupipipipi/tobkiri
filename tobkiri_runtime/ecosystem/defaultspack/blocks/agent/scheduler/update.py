@@ -36,8 +36,12 @@ def run(input_data, context, *, settings_owner=None):
         updates["config"] = input_data["schedule_config"]
     if "task" in input_data:
         updates["task"] = input_data["task"]
+    if "mutation_id" in input_data:
+        updates["mutation_id"] = input_data["mutation_id"]
+    if "expected_revision" in input_data:
+        updates["expected_revision"] = input_data["expected_revision"]
 
-    if not updates:
+    if not updates or set(updates).issubset({"mutation_id", "expected_revision"}):
         return error("no update fields provided")
 
     try:

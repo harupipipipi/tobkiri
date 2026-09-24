@@ -19,11 +19,16 @@ def run(input_data, context, *, settings_owner=None):
 
     try:
         scheduler = Scheduler(settings_owner=settings_owner)
-        deleted = scheduler.delete_schedule(schedule_id)
+        deleted = scheduler.delete_schedule(
+            schedule_id,
+            expected_revision=input_data.get("expected_revision"),
+        )
+    except ValueError as exc:
+        return error(str(exc), "VALIDATION_ERROR")
     except Exception as exc:
         return error("failed to delete schedule: " + str(exc), "INTERNAL_ERROR")
 
-    if not deleted:
+    if not deleted and not input_data.get("mutation_id"):
         return error("schedule not found: " + schedule_id, "NOT_FOUND")
 
     return ok({"schedule_id": schedule_id, "deleted": True})
