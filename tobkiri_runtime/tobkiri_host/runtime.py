@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import logging
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,6 +21,8 @@ from .contracts import AdapterExecutor, AdapterPlanner
 from .effects import ReconciliationStore
 from .materialization import MaterializationCoordinator
 from .models import InvocationFrame, PackArtifact, RequestContext
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -359,11 +362,15 @@ class V4DispatchSession:
                 parent_cancellation=(cancellation if scenario == "cancel" else None),
                 before_dispatch=(schedule_cancel if scenario == "cancel" else None),
             )
-        except Exception:
+        except Exception as invoke_error:
             # Expected timeout, cancellation, overflow, and abnormal-exit paths
             # are accepted only if the typed receipt below proves their exact
-            # terminal state and cleanup. No exception text crosses the route.
-            pass
+            # terminal state and cleanup. No exception text crosses the route,
+            # but the typed failure class must stay diagnosable in Host logs.
+            logger.info(
+                "PackVM acceptance invoke failed closed: %s",
+                type(invoke_error).__name__,
+            )
         finally:
             if timer is not None:
                 timer.cancel()

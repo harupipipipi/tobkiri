@@ -1142,6 +1142,7 @@ class MacOSVZProvisioner:
             self._verify_state_bindings(state, manifest)
             if root.exists() or root.is_symlink():
                 raise ValueError("PackVM VZ domain allocation already exists")
+            self._sweep_dead_owner_domains()
             # Recheck while the cross-process mutation gate is held.  The
             # user-visible plan reserves the maximum artifact, but actual free
             # space may have changed before this exact allocation begins.
@@ -1194,6 +1195,7 @@ class MacOSVZProvisioner:
                     "run_root": str(root),
                     "cow_disk_path": str(cow),
                     "efi_store_path": str(efi),
+                    "owner_pid": os.getpid(),
                     **seed_facts,
                 }
                 _atomic_private_json(root / "allocation.json", allocation)
@@ -1666,6 +1668,35 @@ class MacOSVZProvisioner:
                 return None
             self._claimed_transport_roots.add(root)
             return process
+
+    def _sweep_dead_owner_domains(self) -> None:
+        """Reclaim allocation roots whose owning process is dead.
+
+        A resident domain is only usable inside the process that allocated
+        it: the helper's command channel is that process' pipe, so a dead
+        owner means no guest can ever be driven or terminated again. Roots
+        without a readable owner claim or incomplete allocation records are
+        retained for the explicit recovery and cleanup ceremonies.
+        """
+
+        domains_root = self._state_dir / "domains"
+        if not domains_root.is_dir() or domains_root.is_symlink():
+            return
+        for root in sorted(domains_root.iterdir()):
+            record = _read_json_if_present(root / "allocation.json")
+            if record is None:
+                # Incomplete allocations belong to interrupted-allocation
+                # recovery, which verifies signed receipts before removal.
+                continue
+            owner_pid = record.get("owner_pid")
+            if not _valid_process_id(owner_pid) or _process_is_alive(owner_pid):
+                continue
+            try:
+                self._remove_allocation_root(root)
+            except Exception:
+                # Residue that violates the strict cleanup contract stays for
+                # the attested cleanup ceremony rather than failing allocate.
+                continue
 
     def _remove_allocation_root(self, root: Path) -> None:
         if not root.exists():

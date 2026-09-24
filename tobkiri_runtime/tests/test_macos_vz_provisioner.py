@@ -1179,6 +1179,100 @@ def test_allocate_creates_per_domain_cow_efi_and_seeds(
     assert not root.exists()
 
 
+def test_allocate_sweeps_dead_owner_domain_roots(
+    provisioner_fixture: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+) -> None:
+    """A dead owner's resident domain is reclaimed before capacity is checked."""
+
+    provisioner, _manifest, _base = provisioner_fixture
+    artifact = _materialized_artifact()
+    stale = provisioner.allocate(
+        domain_id="domain.stale",
+        reservation_id="reservation-stale",
+        lease_id="lease-stale",
+        channel_key=b"k" * 32,
+        artifact_digest=artifact.artifact_digest,
+        executable_digest=artifact.implementation_digest,
+        materialization_digest=artifact.materialization_digest,
+        artifact=artifact,
+    )
+    stale_root = Path(stale.run_root)
+    record = json.loads((stale_root / "allocation.json").read_text())
+    assert record["owner_pid"] == os.getpid()
+    record["owner_pid"] = 99_999_999
+    macos_vz_provisioner._atomic_private_json(
+        stale_root / "allocation.json", record
+    )
+
+    live = provisioner.allocate(
+        domain_id="domain.live",
+        reservation_id="reservation-live",
+        lease_id="lease-live",
+        channel_key=b"k" * 32,
+        artifact_digest=artifact.artifact_digest,
+        executable_digest=artifact.implementation_digest,
+        materialization_digest=artifact.materialization_digest,
+        artifact=artifact,
+    )
+
+    assert not stale_root.exists()
+    assert Path(live.run_root).is_dir()
+    live_record = json.loads(
+        (Path(live.run_root) / "allocation.json").read_text()
+    )
+    assert live_record["owner_pid"] == os.getpid()
+    provisioner.release(live)
+
+
+def test_allocate_keeps_live_and_untracked_domain_roots(
+    provisioner_fixture: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+) -> None:
+    """Live-owner and ownerless roots are never swept by another allocate."""
+
+    provisioner, _manifest, _base = provisioner_fixture
+    artifact = _materialized_artifact()
+    live = provisioner.allocate(
+        domain_id="domain.retained",
+        reservation_id="reservation-retained",
+        lease_id="lease-retained",
+        channel_key=b"k" * 32,
+        artifact_digest=artifact.artifact_digest,
+        executable_digest=artifact.implementation_digest,
+        materialization_digest=artifact.materialization_digest,
+        artifact=artifact,
+    )
+    live_root = Path(live.run_root)
+    legacy_root = provisioner._state_dir / "domains" / "legacy-root"
+    legacy_root.mkdir(mode=0o700)
+    macos_vz_provisioner._atomic_private_json(
+        legacy_root / "allocation.json",
+        {
+            "domain_id": "domain.legacy",
+            "reservation_id": "reservation-legacy",
+            "lease_id": "lease-legacy",
+            "run_root": str(legacy_root),
+            "cow_disk_path": str(legacy_root / "boot-cow.raw"),
+            "efi_store_path": str(legacy_root / "efi-variable-store.bin"),
+        },
+    )
+
+    other = provisioner.allocate(
+        domain_id="domain.other",
+        reservation_id="reservation-other",
+        lease_id="lease-other",
+        channel_key=b"k" * 32,
+        artifact_digest=artifact.artifact_digest,
+        executable_digest=artifact.implementation_digest,
+        materialization_digest=artifact.materialization_digest,
+        artifact=artifact,
+    )
+
+    assert live_root.is_dir()
+    assert legacy_root.is_dir()
+    provisioner.release(live)
+    provisioner.release(other)
+
+
 def test_prepare_declares_three_gib_download_without_downloading(
     provisioner_fixture: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
     monkeypatch: pytest.MonkeyPatch,
