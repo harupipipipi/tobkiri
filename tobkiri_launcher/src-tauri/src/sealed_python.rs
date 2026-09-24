@@ -1267,6 +1267,89 @@ fn canonical_private_temp_root() -> Result<PathBuf> {
         .context("[PYTHON_SEALED_SNAPSHOT_INVALID] canonicalize private temp root")
 }
 
+/// Reclaim snapshots whose owning launcher is provably dead.
+///
+/// Snapshot cleanup is lifetime-bound to the in-process reaper: a launcher
+/// crash, SIGKILL, or force-quit strands the ~sealed-runtime-sized snapshot
+/// in the private temp root forever, and macOS does not garbage-collect
+/// per-user temp directories. A snapshot is only removed when both owner
+/// checks pass: the launcher pid embedded in the directory name is dead
+/// (which also fences the create-before-lease window, since a live creator
+/// still owns the name) and the environment lease is either absent or has
+/// no surviving shared holder (which fences a launcher whose orphaned
+/// bootstrap child is still running). Anything else is left untouched.
+#[cfg(target_os = "macos")]
+pub(crate) fn sweep_stale_macos_snapshots() {
+    use std::os::fd::AsRawFd;
+    use std::os::unix::fs::MetadataExt;
+
+    fn owner_pid(name: &str) -> Option<i32> {
+        let suffix = name.strip_prefix(".tobkiri-sealed-python-")?;
+        let (pid, nonce) = suffix.split_once('-')?;
+        if nonce.len() != 64 || !nonce.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return None;
+        }
+        pid.parse::<i32>().ok().filter(|pid| *pid > 0)
+    }
+
+    fn owner_is_dead(pid: i32) -> bool {
+        unsafe { libc::kill(pid, 0) } == -1
+            && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+    }
+
+    fn lease_is_unheld(path: &Path) -> bool {
+        match open_regular(path) {
+            Ok(file) => {
+                let result =
+                    unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+                if result == 0 {
+                    unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_UN) };
+                    true
+                } else {
+                    false
+                }
+            }
+            Err(error) => error
+                .downcast_ref::<std::io::Error>()
+                .map(|inner| inner.kind() == std::io::ErrorKind::NotFound)
+                .unwrap_or(false),
+        }
+    }
+
+    let Ok(temp_root) = fs::canonicalize(std::env::temp_dir()) else {
+        return;
+    };
+    let Ok(entries) = fs::read_dir(&temp_root) else {
+        return;
+    };
+    let self_uid = unsafe { libc::geteuid() };
+    for entry in entries.flatten() {
+        let file_name = entry.file_name();
+        let Some(name) = file_name.to_str() else {
+            continue;
+        };
+        let Some(pid) = owner_pid(name) else {
+            continue;
+        };
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        if !metadata.is_dir() || metadata.uid() != self_uid || !owner_is_dead(pid) {
+            continue;
+        }
+        let path = entry.path();
+        if !lease_is_unheld(&path.join(LIFETIME_LEASE)) {
+            continue;
+        }
+        if let Ok(handle) = open_directory(&path) {
+            cleanup_macos_snapshot(&path, &handle);
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn sweep_stale_macos_snapshots() {}
+
 fn build_runtime_overlay(
     sealed_manifest: &SealedEnvironmentManifest,
     sealed_manifest_sha256: &str,
@@ -4446,6 +4529,64 @@ mod tests {
         verify_child_lifetime_lease(&path).unwrap();
         assert_eq!(unsafe { libc::flock(held.as_raw_fd(), libc::LOCK_UN) }, 0);
         fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn stale_snapshot_sweep_reaps_only_dead_owner_directories() {
+        use std::os::fd::AsRawFd;
+
+        fn dead_pid() -> i32 {
+            let mut child = Command::new("/usr/bin/true").spawn().unwrap();
+            let pid = child.id() as i32;
+            child.wait().unwrap();
+            pid
+        }
+
+        let nonce = || "a".repeat(64);
+        let temp_root = fs::canonicalize(std::env::temp_dir()).unwrap();
+        let snapshot = |pid: i32| {
+            temp_root.join(format!(".tobkiri-sealed-python-{pid}-{}", nonce()))
+        };
+
+        let mid_creation = snapshot(dead_pid());
+        fs::create_dir(&mid_creation).unwrap();
+        fs::write(mid_creation.join("partial"), b"x").unwrap();
+
+        let dead_leased = snapshot(dead_pid());
+        fs::create_dir(&dead_leased).unwrap();
+        fs::write(dead_leased.join(LIFETIME_LEASE), b"").unwrap();
+        fs::write(dead_leased.join("payload"), b"x").unwrap();
+
+        let held_dir = snapshot(dead_pid());
+        fs::create_dir(&held_dir).unwrap();
+        let held_lease_path = held_dir.join(LIFETIME_LEASE);
+        fs::write(&held_lease_path, b"").unwrap();
+        let held = open_regular(&held_lease_path).unwrap();
+        assert_eq!(unsafe { libc::flock(held.as_raw_fd(), libc::LOCK_SH) }, 0);
+
+        let live_dir = snapshot(std::process::id() as i32);
+        fs::create_dir(&live_dir).unwrap();
+
+        let foreign = temp_root.join(format!(
+            ".tobkiri-sealed-python-fixture-{}-{}",
+            dead_pid(),
+            nonce()
+        ));
+        fs::create_dir(&foreign).unwrap();
+
+        sweep_stale_macos_snapshots();
+
+        assert!(!mid_creation.exists());
+        assert!(!dead_leased.exists());
+        assert!(held_dir.exists());
+        assert!(live_dir.exists());
+        assert!(foreign.exists());
+
+        assert_eq!(unsafe { libc::flock(held.as_raw_fd(), libc::LOCK_UN) }, 0);
+        fs::remove_dir_all(held_dir).ok();
+        fs::remove_dir_all(live_dir).ok();
+        fs::remove_dir_all(foreign).ok();
     }
 
     #[test]

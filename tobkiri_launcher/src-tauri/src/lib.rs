@@ -3683,6 +3683,7 @@ fn launcher_setup(app: &mut tauri::App, ctx: &LauncherSetupContext) -> AnyResult
     std::fs::create_dir_all(&config.log_dir).ok();
     std::fs::create_dir_all(&config.user_data_dir).ok();
     std::fs::create_dir_all(config.host_broker_dir()).ok();
+    sealed_python::sweep_stale_macos_snapshots();
 
     let progress = SetupProgress(Arc::new(Mutex::new("Initializing...".to_string())));
     let progress_arc = progress.0.clone();
