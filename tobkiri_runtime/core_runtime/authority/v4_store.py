@@ -3371,7 +3371,7 @@ class AuthorityStore:
         cached = (
             _verified_audit_tip(identity) if identity is not None else None
         )
-        if cached is None:
+        if cached is None or identity is None:
             rows = connection.execute(
                 "SELECT * FROM authority_audit ORDER BY sequence"
             ).fetchall()

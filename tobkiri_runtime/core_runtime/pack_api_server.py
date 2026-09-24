@@ -1745,8 +1745,8 @@ class PackAPIHandler(
                     result.get("operation_kind") == "cleanup"
                     or (
                         result.get("operation_kind") == "provision"
-                        and isinstance(result.get("doctor"), dict)
-                        and result["doctor"].get("ready") is True
+                        and isinstance(doctor := result.get("doctor"), dict)
+                        and doctor.get("ready") is True
                     )
                 )
                 and self._runtime_refresh is not None

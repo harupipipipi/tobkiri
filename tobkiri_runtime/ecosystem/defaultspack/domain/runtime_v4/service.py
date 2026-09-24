@@ -1223,7 +1223,7 @@ class ActivationStore:
             raise ProfileResolutionDenied("activation state root is unsafe") from exc
         self._workspace_digest = canonical_digest({"workspace_root": str(self.workspace_root)})
         self._pending_migration_verified: (
-            tuple[str, str, _ArtifactTreeIdentity] | None
+            tuple[str, str, _ArtifactTreeIdentity | None] | None
         ) = None
 
     def _write_state(self, relative: str | Path, payload: Mapping[str, Any]) -> None:

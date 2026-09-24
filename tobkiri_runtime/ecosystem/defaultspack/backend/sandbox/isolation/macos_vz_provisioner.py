@@ -1637,16 +1637,13 @@ class MacOSVZProvisioner:
             # Several orphaned claims can share the domain/reservation
             # digests while differing on lease; adopt the one matching this
             # exact allocation binding.
-            effective_claim = next(
-                (
-                    entry
-                    for entry in orphaned_entries
-                    if self._stale_allocation_claim_matches(
-                        entry, expected_claim
-                    )
-                ),
-                None,
-            )
+            effective_claim = None
+            for entry in orphaned_entries:
+                if self._stale_allocation_claim_matches(
+                    entry, expected_claim
+                ):
+                    effective_claim = entry
+                    break
         if effective_claim is None:
             return receipt_matches
         if root.exists() or root.is_symlink():
@@ -3876,6 +3873,7 @@ def _recorded_owner_is_alive(record: Mapping[str, Any]) -> bool:
     pid = record.get("owner_pid")
     if not _valid_process_id(pid):
         return True
+    assert isinstance(pid, int)
     identity = record.get("owner_identity")
     if isinstance(identity, str) and identity:
         evidence = process_start_identity(pid)

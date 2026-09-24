@@ -149,12 +149,13 @@ async def _uc_run_process_capped(
     async def _pump() -> tuple[bytes, bytes]:
         assert proc.stdin is not None
         assert proc.stdout is not None and proc.stderr is not None
+        stdin = proc.stdin
 
         async def _feed() -> None:
             try:
-                proc.stdin.write(input_bytes)
-                await proc.stdin.drain()
-                proc.stdin.close()
+                stdin.write(input_bytes)
+                await stdin.drain()
+                stdin.close()
             except (BrokenPipeError, ConnectionResetError):
                 # The child exited without reading stdin.
                 pass
