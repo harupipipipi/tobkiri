@@ -134,11 +134,11 @@ def test_model_evals_profiles_and_presets_are_local_first_network_none():
 
 def test_model_evals_pack_contains_only_declared_runtime_code_and_no_secret_like_literals():
     executable_suffixes = {".py", ".sh", ".js", ".ts", ".tsx", ".ipynb", ".sql"}
-    executable_files = [
+    executable_files = sorted(
         path.relative_to(PACK_DIR).as_posix()
         for path in PACK_DIR.glob("**/*")
         if path.is_file() and path.suffix in executable_suffixes
-    ]
+    )
     assert executable_files == [
         "runtime/__init__.py",
         "runtime/evaluator.py",
