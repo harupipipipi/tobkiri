@@ -2748,6 +2748,55 @@ fn summarize_background_control_status(
     }
 }
 
+#[cfg(unix)]
+fn block_process_shutdown_signals() -> Option<libc::sigset_t> {
+    // Block TERM/INT/HUP on the calling thread before Tauri spawns its own
+    // threads so the mask is inherited process-wide. The signals stay pending
+    // until the dedicated watcher below collects them with `sigwait`.
+    unsafe {
+        let mut set: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&mut set);
+        libc::sigaddset(&mut set, libc::SIGTERM);
+        libc::sigaddset(&mut set, libc::SIGINT);
+        libc::sigaddset(&mut set, libc::SIGHUP);
+        if libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut()) != 0 {
+            return None;
+        }
+        Some(set)
+    }
+}
+
+#[cfg(unix)]
+fn spawn_signal_shutdown_watcher(app: &AppHandle, set: libc::sigset_t) {
+    // Default signal disposition kills the process without ever emitting a
+    // Tauri `RunEvent`, so neither `request_app_exit` nor `Drop` would reap
+    // the managed children. Collect the pending signal here and run the
+    // same bounded runtime stop before exiting without the event loop.
+    let handle = app.clone();
+    let _ = std::thread::Builder::new()
+        .name("tobkiri-signal-shutdown".into())
+        .spawn(move || {
+            let mut caught: libc::c_int = 0;
+            unsafe {
+                if libc::sigwait(&set, &mut caught) != 0 {
+                    return;
+                }
+            }
+            let shutdown_flag = Arc::clone(&handle.state::<ShutdownState>().inner().0);
+            if claim_shutdown(&shutdown_flag) {
+                for label in ["panel", "main"] {
+                    if let Some(window) = handle.get_webview_window(label) {
+                        let _ = window.hide();
+                    }
+                }
+                let defaultspack = handle.state::<Arc<DefaultspackManager>>();
+                let kernel_manager = handle.state::<Arc<Mutex<KernelManager>>>();
+                stop_managed_runtimes(defaultspack.inner(), kernel_manager.inner());
+            }
+            std::process::exit(0);
+        });
+}
+
 pub(crate) fn request_app_exit(app: &AppHandle) {
     let shutdown_flag = Arc::clone(&app.state::<ShutdownState>().inner().0);
     if !claim_shutdown(&shutdown_flag) {
@@ -3420,6 +3469,8 @@ pub fn run() {
 }
 
 fn run_launcher(context: tauri::Context<tauri::Wry>) {
+    #[cfg(unix)]
+    let shutdown_signals = block_process_shutdown_signals();
     env_logger::init();
     let app_identifier = context.config().identifier.clone();
 
@@ -3576,6 +3627,11 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             std::process::exit(1);
         }
     };
+
+    #[cfg(unix)]
+    if let Some(set) = shutdown_signals {
+        spawn_signal_shutdown_watcher(app.handle(), set);
+    }
 
     record_startup_stage(&startup_stage, "running");
     app.run(|app_handle, event| {
