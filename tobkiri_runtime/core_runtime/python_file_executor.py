@@ -929,54 +929,59 @@ request = http_request
                 # タイムアウト付きで stdout を制限読み取り
                 deadline = _t14.monotonic() + timeout_seconds
 
-                # communicate に頼らず、stdout を制限付きで読む
-                # ただし stderr も回収する必要があるため Popen.communicate 的に処理
-                # パイプを deadline 付き select で駆動し、stdout を閉じないまま
-                # 生き続けるコンテナが呼び出し元を永久に塞がないようにする。
-                import select as _select
-
+                # communicate に頼らず、stdout を制限付きで読む。
+                # select.select は Windows ではパイプに使えないため、パイプ
+                # ごとの排出スレッドで駆動し、stdout を閉じないまま生き続ける
+                # コンテナが呼び出し元を永久に塞がないようにする。
                 raw_stdout_buf = bytearray()
                 raw_stderr_buf = bytearray()
-                stdout_fd = stdout_pipe.fileno()
-                stderr_fd = stderr_pipe.fileno()
-                pipes: dict[int, bytearray] = {
-                    stdout_fd: raw_stdout_buf,
-                    stderr_fd: raw_stderr_buf,
-                }
-                oversized = False
-                timed_out = False
-                while pipes:
-                    remaining = deadline - _t14.monotonic()
-                    if remaining <= 0:
-                        timed_out = True
-                        break
-                    readable, _, _ = _select.select(
-                        list(pipes), [], [], remaining
-                    )
-                    if not readable:
-                        timed_out = True
-                        break
-                    for fd in readable:
+                oversized_event = threading.Event()
+
+                def _drain_pipe(
+                    pipe: Any, buf: bytearray, *, retain: bool
+                ) -> None:
+                    while True:
                         try:
-                            chunk = os.read(fd, 65536)
-                        except OSError:
-                            chunk = b""
+                            chunk = pipe.read(65536)
+                        except (OSError, ValueError):
+                            return
                         if not chunk:
-                            del pipes[fd]
-                            continue
-                        if fd == stdout_fd:
-                            pipes[fd] += chunk
-                            if len(raw_stdout_buf) > MAX_STDOUT_SIZE:
-                                oversized = True
+                            return
+                        if retain:
+                            buf += chunk
+                            if len(buf) > MAX_STDOUT_SIZE:
+                                oversized_event.set()
+                                return
                         else:
                             # stderr is drained but only retained up to the
                             # same bound so a noisy container cannot exhaust
                             # host memory through the second pipe.
-                            keep = MAX_STDOUT_SIZE - len(raw_stderr_buf)
+                            keep = MAX_STDOUT_SIZE - len(buf)
                             if keep > 0:
-                                raw_stderr_buf += chunk[:keep]
-                    if oversized:
-                        break
+                                buf += chunk[:keep]
+
+                stdout_reader = threading.Thread(
+                    target=_drain_pipe,
+                    args=(stdout_pipe, raw_stdout_buf),
+                    kwargs={"retain": True},
+                    daemon=True,
+                )
+                stderr_reader = threading.Thread(
+                    target=_drain_pipe,
+                    args=(stderr_pipe, raw_stderr_buf),
+                    kwargs={"retain": False},
+                    daemon=True,
+                )
+                stdout_reader.start()
+                stderr_reader.start()
+
+                stdout_reader.join(max(0.0, deadline - _t14.monotonic()))
+                timed_out = stdout_reader.is_alive()
+                if not timed_out:
+                    # stdout reached EOF, so the process is exiting; give the
+                    # stderr drain a short grace window to finish collecting.
+                    stderr_reader.join(timeout=5.0)
+                oversized = oversized_event.is_set()
                 raw_stdout = bytes(raw_stdout_buf)
                 raw_stderr = bytes(raw_stderr_buf)
                 if timed_out or oversized:

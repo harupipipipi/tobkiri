@@ -36,7 +36,7 @@ use std::io::Write;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{fs, io};
@@ -62,7 +62,7 @@ mod dock_registration;
 
 /// Wrapper around a shared progress string, managed as Tauri State.
 pub struct SetupProgress(pub Arc<Mutex<String>>);
-pub struct ShutdownState(pub Arc<AtomicBool>);
+pub struct ShutdownState(pub Arc<AtomicBool>, pub Arc<(Mutex<bool>, Condvar)>);
 pub struct AllowedNavigationPorts(pub Arc<Mutex<Vec<u16>>>);
 
 const PRIMARY_WINDOW_LABELS: [&str; 2] = ["panel", "main"];
@@ -2782,7 +2782,9 @@ fn spawn_signal_shutdown_watcher(app: &AppHandle, set: libc::sigset_t) {
                     return;
                 }
             }
-            let shutdown_flag = Arc::clone(&handle.state::<ShutdownState>().inner().0);
+            let shutdown_state = handle.state::<ShutdownState>();
+            let shutdown_flag = Arc::clone(&shutdown_state.inner().0);
+            let completion = Arc::clone(&shutdown_state.inner().1);
             if claim_shutdown(&shutdown_flag) {
                 for label in ["panel", "main"] {
                     if let Some(window) = handle.get_webview_window(label) {
@@ -2799,6 +2801,12 @@ fn spawn_signal_shutdown_watcher(app: &AppHandle, set: libc::sigset_t) {
                     Arc::clone(defaultspack.inner()),
                     Arc::clone(kernel_manager.inner()),
                 );
+                complete_shutdown(&completion);
+            } else {
+                // Another exit path already claimed shutdown but its
+                // bounded cleanup may still be running; wait for it rather
+                // than exiting underneath the in-flight stop.
+                wait_for_shutdown_completion(&completion);
             }
             std::process::exit(0);
         });
@@ -2818,18 +2826,49 @@ pub(crate) fn request_app_exit(app: &AppHandle) {
 
     let km = Arc::clone(app.state::<Arc<Mutex<KernelManager>>>().inner());
     let defaultspack = Arc::clone(app.state::<Arc<DefaultspackManager>>().inner());
+    let completion = Arc::clone(&app.state::<ShutdownState>().inner().1);
     let handle = app.clone();
 
     std::thread::spawn(move || {
         // The same bound as the signal path: a wedged runtime stop must not
         // leave the launcher hidden-but-alive with windows already closed.
         stop_managed_runtimes_bounded(defaultspack, km);
+        complete_shutdown(&completion);
         handle.exit(0);
     });
 }
 
 fn claim_shutdown(shutdown_flag: &AtomicBool) -> bool {
     !shutdown_flag.swap(true, Ordering::SeqCst)
+}
+
+type ShutdownCompletion = Arc<(Mutex<bool>, Condvar)>;
+
+fn complete_shutdown(completion: &ShutdownCompletion) {
+    let (lock, notified) = &**completion;
+    if let Ok(mut done) = lock.lock() {
+        *done = true;
+    }
+    notified.notify_all();
+}
+
+fn wait_for_shutdown_completion(completion: &ShutdownCompletion) {
+    // Outlast the cleanup watchdog so an in-progress bounded stop can
+    // finish before a concurrent exit path ends the process beneath it.
+    let (lock, notified) = &**completion;
+    let deadline = Instant::now() + Duration::from_secs(35);
+    if let Ok(mut done) = lock.lock() {
+        while !*done {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            match notified.wait_timeout(done, remaining) {
+                Ok((guard, _)) => done = guard,
+                Err(_) => break,
+            }
+        }
+    }
 }
 
 fn stop_managed_runtimes(
@@ -3684,7 +3723,8 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             // Kernel lock and extend the measured process lifetime.  The
             // event still owns the fallback path for exits that arrive
             // without an earlier `ExitRequested` callback.
-            let shutdown_flag = &app_handle.state::<ShutdownState>().inner().0;
+            let shutdown_state = app_handle.state::<ShutdownState>();
+            let shutdown_flag = &shutdown_state.inner().0;
             if claim_shutdown(shutdown_flag) {
                 let defaultspack = app_handle.state::<Arc<DefaultspackManager>>();
                 let kernel_manager = app_handle.state::<Arc<Mutex<KernelManager>>>();
@@ -3692,6 +3732,12 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
                     Arc::clone(defaultspack.inner()),
                     Arc::clone(kernel_manager.inner()),
                 );
+                complete_shutdown(&shutdown_state.inner().1);
+            } else {
+                // An earlier exit path claimed shutdown but its bounded
+                // cleanup may still be running; let it finish before the
+                // process ends beneath the in-flight stop.
+                wait_for_shutdown_completion(&shutdown_state.inner().1);
             }
         }
 
@@ -3778,7 +3824,10 @@ fn launcher_setup(app: &mut tauri::App, ctx: &LauncherSetupContext) -> AnyResult
     let progress_arc = progress.0.clone();
     app.manage(progress);
     let shutdown_flag = Arc::new(AtomicBool::new(false));
-    app.manage(ShutdownState(Arc::clone(&shutdown_flag)));
+    app.manage(ShutdownState(
+        Arc::clone(&shutdown_flag),
+        Arc::new((Mutex::new(false), Condvar::new())),
+    ));
 
     record_startup_stage(&ctx.startup_stage, "loading_panel_bootstrap_secret");
     let panel_bootstrap_secret = load_or_create_panel_bootstrap_secret(&config)
