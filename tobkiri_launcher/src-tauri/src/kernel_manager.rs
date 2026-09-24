@@ -750,7 +750,10 @@ fn is_sealed_kernel_command(normalized_command: &str) -> bool {
 
 /// A sealed Kernel runs from the verified environment root named by its own
 /// `--environment-root` argument (on macOS that root is the private
-/// `.tobkiri-sealed-python-*` snapshot copy).
+/// `.tobkiri-sealed-python-*` snapshot copy). The snapshot name embeds the
+/// launcher pid that created it: that owner must be dead for the listener
+/// to count as stale, or a healthy kernel belonging to a concurrently
+/// running install would be reclaimed while it still serves.
 fn sealed_kernel_listener(listener: &PortListener) -> bool {
     let command = normalize_for_match(&listener.command);
     if !is_sealed_kernel_command(&command) {
@@ -760,18 +763,61 @@ fn sealed_kernel_listener(listener: &PortListener) -> bool {
         return false;
     };
     let cwd = normalize_for_match(cwd);
-    command.contains(&format!(
-        "{} {}",
-        crate::sealed_python_protocol::ARG_ENVIRONMENT_ROOT,
-        cwd
-    )) || cwd
-        .rsplit('/')
-        .next()
-        .is_some_and(crate::sealed_python::is_sealed_snapshot_dir_name)
+    let Some(env_root) = crate::sealed_python_protocol::sealed_environment_root(&command) else {
+        return false;
+    };
+    let env_root = normalize_for_match(env_root);
+    let Some(leaf) = env_root.rsplit('/').next() else {
+        return false;
+    };
+    if !crate::sealed_python::is_sealed_snapshot_dir_name(leaf) {
+        return false;
+    }
+    if !sealed_snapshot_owner_dead(leaf) {
+        return false;
+    }
+    cwd == env_root
+        || cwd
+            .rsplit('/')
+            .next()
+            .is_some_and(crate::sealed_python::is_sealed_snapshot_dir_name)
+}
+
+/// Whether the launcher pid stamped into a snapshot directory name is
+/// provably dead. `EPERM` counts as alive — a process that cannot be
+/// probed cannot be proven stale. Non-Unix platforms cannot establish
+/// owner liveness, so the snapshot evidence is never enough there.
+fn sealed_snapshot_owner_dead(snapshot_leaf: &str) -> bool {
+    let Some(owner_pid) = crate::sealed_python::sealed_snapshot_owner_pid(snapshot_leaf) else {
+        return false;
+    };
+    #[cfg(unix)]
+    {
+        let alive = unsafe { libc::kill(owner_pid, 0) } == 0
+            || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM);
+        !alive
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = owner_pid;
+        false
+    }
 }
 
 fn command_mentions_path(command: &str, path: &Path) -> bool {
-    normalize_for_match(command).contains(&normalize_path_for_match(path))
+    let command = normalize_for_match(command);
+    let path = normalize_path_for_match(path);
+    if path.is_empty() {
+        return false;
+    }
+    // The path must end at a segment boundary or the end of the argument —
+    // a plain substring also matches `…/rumi_runtime_extra/…` or
+    // `…/app.py.bak`, which would misidentify a foreign process as ours.
+    command.match_indices(&path).any(|(start, _)| {
+        let head_ok = start == 0 || command[..start].ends_with(['/', ' ', '"', '\'']);
+        let tail = &command[start + path.len()..];
+        head_ok && (tail.is_empty() || tail.starts_with(['/', ' ', '"', '\'']))
+    })
 }
 
 fn observed_path_matches(observed: &str, expected: &Path) -> bool {
@@ -813,6 +859,17 @@ fn signal_listener_process_tree(pid: u32, signal: &str) {
 pub(crate) fn terminate_external_listener(pid: u32, port: u16) -> Result<()> {
     #[cfg(unix)]
     {
+        // Re-verify the occupant immediately before signaling: the caller's
+        // identification work spans several subprocesses, so the recorded
+        // pid may have exited and been recycled by an innocent process.
+        match detect_port_listener(port)? {
+            Some(listener) if listener.pid == pid => {}
+            Some(listener) => bail!(
+                "port {port} listener changed to pid {} before it could be signaled",
+                listener.pid
+            ),
+            None => return Ok(()),
+        }
         signal_listener_process_tree(pid, "-TERM");
         wait_for_port_to_clear(port, pid, Duration::from_secs(KILL_TIMEOUT_SECS))?;
         Ok(())
@@ -859,6 +916,16 @@ fn wait_for_port_to_clear(port: u16, expected_pid: u32, timeout: Duration) -> Re
     #[cfg(unix)]
     {
         warn!("Port {port} is still occupied after SIGTERM; sending SIGKILL to pid {expected_pid}");
+        // Same pid+port fence as the initial signal: the loop's last
+        // detection is up to 250ms stale.
+        match detect_port_listener(port)? {
+            Some(listener) if listener.pid == expected_pid => {}
+            Some(listener) => bail!(
+                "port {port} listener changed to pid {} before SIGKILL",
+                listener.pid
+            ),
+            None => return Ok(()),
+        }
         signal_listener_process_tree(expected_pid, "-KILL");
         let kill_deadline = Instant::now() + Duration::from_secs(2);
         while Instant::now() < kill_deadline {
@@ -900,7 +967,9 @@ impl Drop for KernelManager {
 /// directories.
 pub(crate) fn reclaim_stale_kernel_port(config: &AppConfig, port: u16) -> Result<bool> {
     let Some(listener) = detect_port_listener(port)? else {
-        return Ok(true);
+        // An empty detection is not proof the port is free — a missing or
+        // timed-out lsof must not bind a port another process still owns.
+        return Ok(crate::is_loopback_port_available(port));
     };
     let Some(identity) = identify_owned_listener(&listener, config) else {
         return Ok(false);
@@ -1316,8 +1385,10 @@ mod tests {
     #[test]
     fn sealed_kernel_argv_is_recoverable_from_its_environment_root() {
         let config = test_config();
+        // The stamped owner must be dead for the listener to be stale; a
+        // guaranteed-unowned pid keeps the test deterministic.
         let root = format!(
-            "/private/tmp/.tobkiri-sealed-python-4321-{}",
+            "/private/tmp/.tobkiri-sealed-python-999999999-{}",
             "a".repeat(64)
         );
         let listener = PortListener {

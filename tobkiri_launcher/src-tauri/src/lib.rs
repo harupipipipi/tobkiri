@@ -2827,10 +2827,8 @@ fn spawn_signal_shutdown_watcher(app: &AppHandle, set: libc::sigset_t) {
                 // Managers are registered one by one during setup; a signal
                 // in that window must stop whichever already exist rather
                 // than panic mid-claim and leave the flag claimed forever.
-                let defaultspack =
-                    handle.try_state::<Arc<DefaultspackManager>>();
-                let kernel_manager =
-                    handle.try_state::<Arc<Mutex<KernelManager>>>();
+                let defaultspack = handle.try_state::<Arc<DefaultspackManager>>();
+                let kernel_manager = handle.try_state::<Arc<Mutex<KernelManager>>>();
                 // A wedged runtime stop (for example a kernel-manager mutex
                 // held by a deadlocked thread) must not turn the signal
                 // handler into the next hang: bound the cleanup, then exit
@@ -2950,10 +2948,7 @@ fn stop_managed_runtimes_bounded(
     let _ = std::thread::Builder::new()
         .name("tobkiri-runtime-cleanup".into())
         .spawn(move || {
-            stop_managed_runtimes(
-                defaultspack.as_deref(),
-                kernel_manager.as_deref(),
-            );
+            stop_managed_runtimes(defaultspack.as_deref(), kernel_manager.as_deref());
             let _ = done_tx.send(());
         });
     if done_rx
@@ -2983,6 +2978,9 @@ fn spawn_kernel_exit_monitor(
             }
 
             let mut restarted = false;
+            // Phase 1 (locked): inspect liveness and decide whether a
+            // restart is due. The lock is released before the slow work.
+            let mut restart_attempt = false;
             match km.lock() {
                 Ok(mut kernel) => {
                     if kernel.is_running() {
@@ -2993,7 +2991,35 @@ fn spawn_kernel_exit_monitor(
                         }
                         let restart_due = next_restart_attempt_at
                             .map_or(true, |attempt_at| attempt_at <= Instant::now());
-                        if kernel.restart_owed() && restart_due {
+                        restart_attempt = kernel.restart_owed() && restart_due;
+                    }
+                }
+                Err(error) => {
+                    error!("Failed to lock kernel manager for exit monitor: {error}");
+                }
+            }
+
+            // Phase 2 (unlocked): reclaim a stale preferred-port listener.
+            // The detect -> signal -> clear sequence is bounded but can
+            // take seconds; holding the manager lock across it would stall
+            // shutdown and panel session renewal behind the monitor.
+            if restart_attempt {
+                if let Err(error) =
+                    kernel_manager::reclaim_stale_kernel_port(&config, config.kernel_port)
+                {
+                    warn!(
+                        "Supervised Kernel restart could not reclaim the preferred port: {error:#}"
+                    );
+                }
+            }
+
+            // Phase 3 (locked): spawn. `start()` re-checks the port
+            // conflict internally, which is now a fast no-op because the
+            // stale listener was already reclaimed above.
+            if restart_attempt {
+                match km.lock() {
+                    Ok(mut kernel) => {
+                        if kernel.restart_owed() {
                             match kernel.start() {
                                 Ok(()) => {
                                     restarted = true;
@@ -3023,9 +3049,9 @@ fn spawn_kernel_exit_monitor(
                             }
                         }
                     }
-                }
-                Err(error) => {
-                    error!("Failed to lock kernel manager for exit monitor: {error}");
+                    Err(error) => {
+                        error!("Failed to lock kernel manager for restart: {error}");
+                    }
                 }
             }
 

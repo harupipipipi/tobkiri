@@ -418,7 +418,7 @@ fn normalized_process_value(value: &str) -> String {
         .to_ascii_lowercase()
 }
 
-fn identify_defaultspack_listener(
+pub(crate) fn identify_defaultspack_listener(
     listener: &PortListener,
     metadata: &DefaultspackDesktopMetadata,
 ) -> bool {

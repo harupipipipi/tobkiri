@@ -12,6 +12,11 @@ pub const INSPECTION_COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 /// Poll interval used while waiting out an inspection subprocess deadline.
 const INSPECTION_COMMAND_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
+/// Retention cap for a single inspection stream. Larger outputs keep
+/// draining (so the child never wedges on a full pipe) but are truncated —
+/// `netstat -ano` on a busy machine can exceed the pipe buffer.
+const INSPECTION_OUTPUT_CAP: usize = 4 * 1024 * 1024;
+
 pub fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
     let mut command = Command::new(program);
     hide_console_window(&mut command);
@@ -76,15 +81,18 @@ pub fn hide_console_window(command: &mut Command) {
 /// Inspection helpers execute while lifecycle mutexes are held, so an
 /// unbounded `Command::output()` could wedge every supervised process behind
 /// one hung diagnostic tool. The child is killed and reaped when the
-/// deadline expires. Output is drained only after the process exits — a
-/// process cannot exit while a pipe write is still blocked — which keeps
-/// this single-threaded drain safe for bounded diagnostic output.
+/// deadline expires. Both pipes drain on background threads so a child
+/// with more than a pipe-buffer of output (an unfiltered `netstat -ano`
+/// on a busy machine) still finishes instead of blocking on write until
+/// the deadline kills it.
 pub fn bounded_output(command: &mut Command, timeout: Duration) -> io::Result<Output> {
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut child = command.spawn()?;
+    let stdout_handle = child.stdout.take().map(drain_capped);
+    let stderr_handle = child.stderr.take().map(drain_capped);
     let deadline = Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
@@ -95,6 +103,8 @@ pub fn bounded_output(command: &mut Command, timeout: Duration) -> io::Result<Ou
             Ok(None) => {
                 let _ = child.kill();
                 let _ = child.wait();
+                join_drain(stdout_handle);
+                join_drain(stderr_handle);
                 return Err(io::Error::new(
                     io::ErrorKind::TimedOut,
                     "inspection command exceeded its deadline",
@@ -103,23 +113,90 @@ pub fn bounded_output(command: &mut Command, timeout: Duration) -> io::Result<Ou
             Err(error) => {
                 let _ = child.kill();
                 let _ = child.wait();
+                join_drain(stdout_handle);
+                join_drain(stderr_handle);
                 return Err(error);
             }
         }
     };
-    let mut stdout = Vec::new();
-    if let Some(mut pipe) = child.stdout.take() {
-        pipe.read_to_end(&mut stdout)?;
-    }
-    let mut stderr = Vec::new();
-    if let Some(mut pipe) = child.stderr.take() {
-        pipe.read_to_end(&mut stderr)?;
-    }
     Ok(Output {
         status,
-        stdout,
-        stderr,
+        stdout: join_drain(stdout_handle),
+        stderr: join_drain(stderr_handle),
     })
+}
+
+/// Drain a pipe to EOF retaining at most [`INSPECTION_OUTPUT_CAP`] bytes.
+fn drain_capped<R>(mut pipe: R) -> std::thread::JoinHandle<Vec<u8>>
+where
+    R: Read + Send + 'static,
+{
+    std::thread::spawn(move || {
+        let mut retained = Vec::new();
+        let mut buffer = [0u8; 8192];
+        loop {
+            match pipe.read(&mut buffer) {
+                Ok(0) | Err(_) => return retained,
+                Ok(count) => {
+                    let keep = (INSPECTION_OUTPUT_CAP - retained.len()).min(count);
+                    retained.extend_from_slice(&buffer[..keep]);
+                }
+            }
+        }
+    })
+}
+
+fn join_drain(handle: Option<std::thread::JoinHandle<Vec<u8>>>) -> Vec<u8> {
+    handle
+        .and_then(|handle| handle.join().ok())
+        .unwrap_or_default()
+}
+
+/// Kernel start-time token for `pid`, used to detect pid recycling.
+///
+/// Two different processes that briefly share one pid value never share a
+/// start marker, so comparing the recorded marker before signalling a
+/// process group keeps a recycled leader's foreign group out of the kill
+/// path. Returns `None` when the process is gone or the platform cannot
+/// produce a marker — callers must treat `None` as "cannot prove identity".
+#[cfg(target_os = "macos")]
+pub fn process_start_marker(pid: u32) -> Option<u64> {
+    let mut info = std::mem::MaybeUninit::<libc::proc_bsdinfo>::uninit();
+    let size = std::mem::size_of::<libc::proc_bsdinfo>() as i32;
+    let written = unsafe {
+        libc::proc_pidinfo(
+            pid as i32,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            info.as_mut_ptr() as *mut libc::c_void,
+            size,
+        )
+    };
+    if written != size {
+        return None;
+    }
+    let info = unsafe { info.assume_init() };
+    Some(
+        u64::from(info.pbi_start_tvsec).saturating_mul(1_000_000)
+            + u64::from(info.pbi_start_tvusec),
+    )
+}
+
+/// Linux marker: field 22 (`starttime`) of `/proc/<pid>/stat`, read past
+/// the parenthesized comm so a process name containing spaces or parens
+/// cannot shift the field positions.
+#[cfg(target_os = "linux")]
+pub fn process_start_marker(pid: u32) -> Option<u64> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let after_comm = stat.rfind(')')?;
+    let fields: Vec<&str> = stat[after_comm + 1..].split_whitespace().collect();
+    // Fields after ')' begin at field 3, so starttime (field 22) is index 19.
+    fields.get(19)?.parse::<u64>().ok()
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+pub fn process_start_marker(_pid: u32) -> Option<u64> {
+    None
 }
 
 #[cfg(test)]

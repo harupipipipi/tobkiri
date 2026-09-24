@@ -1562,7 +1562,10 @@ class KernelFlowExecutionMixin:
             # harmless no-op once `--rm` has already reaped it.
             if container_may_exist:
                 try:
-                    subprocess.run(
+                    # Blocking subprocess on the event loop would stall
+                    # every other flow; the daemon call runs on a thread.
+                    await asyncio.to_thread(
+                        subprocess.run,
                         ["docker", "rm", "-f", container_name],
                         capture_output=True,
                         timeout=15,

@@ -1269,7 +1269,7 @@ fn canonical_private_temp_root() -> Result<PathBuf> {
 
 /// Parse the launcher pid out of a private snapshot-root directory name
 /// (`.tobkiri-sealed-python-<launcher pid>-<64-hex nonce>`).
-fn sealed_snapshot_owner_pid(name: &str) -> Option<i32> {
+pub(crate) fn sealed_snapshot_owner_pid(name: &str) -> Option<i32> {
     let suffix = name.strip_prefix(".tobkiri-sealed-python-")?;
     let (pid, nonce) = suffix.split_once('-')?;
     if nonce.len() != 64 || !nonce.bytes().all(|byte| byte.is_ascii_hexdigit()) {
@@ -1302,8 +1302,7 @@ pub(crate) fn sweep_stale_macos_snapshots() {
 
     fn owner_is_dead(pid: i32) -> bool {
         let result = unsafe { libc::kill(pid, 0) };
-        result == -1
-            && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+        result == -1 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
     }
 
     fn lease_is_unheld(path: &Path) -> bool {
@@ -4554,9 +4553,8 @@ mod tests {
 
         let nonce = || "a".repeat(64);
         let temp_root = fs::canonicalize(std::env::temp_dir()).unwrap();
-        let snapshot = |pid: i32| {
-            temp_root.join(format!(".tobkiri-sealed-python-{pid}-{}", nonce()))
-        };
+        let snapshot =
+            |pid: i32| temp_root.join(format!(".tobkiri-sealed-python-{pid}-{}", nonce()));
 
         let mid_creation = snapshot(dead_pid());
         fs::create_dir(&mid_creation).unwrap();

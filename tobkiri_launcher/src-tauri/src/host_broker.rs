@@ -60,6 +60,10 @@ const MAX_BODY_BYTES: usize = 1024 * 1024;
 const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(5);
 const REQUEST_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 const HELPER_TIMEOUT: Duration = Duration::from_secs(45);
+/// Bound on joining the helper's output-drain threads after the group is
+/// severed, so a descendant clinging to an inherited pipe cannot outwait
+/// the helper deadline.
+const HELPER_OUTPUT_JOIN_TIMEOUT: Duration = Duration::from_secs(5);
 const APPROVAL_TOKEN_VERSION: &str = "v1";
 #[cfg(any(test, not(any(target_os = "macos", target_os = "windows"))))]
 const HOST_BROKER_DISABLED_REASON: &str =
@@ -2506,6 +2510,7 @@ fn run_computer_helper(
     }
     drop(child.stdin.take());
 
+    let helper_marker = crate::process_utils::process_start_marker(child.id());
     let stdout_handle = child.stdout.take().map(|mut stdout| {
         thread::spawn(move || {
             let mut bytes = Vec::new();
@@ -2521,9 +2526,13 @@ fn run_computer_helper(
         })
     });
 
-    let status = wait_for_helper_status(&mut child, HELPER_TIMEOUT)?;
-    let stdout = join_output(stdout_handle);
-    let stderr = join_output(stderr_handle);
+    let status = wait_for_helper_status(&mut child, HELPER_TIMEOUT, helper_marker)?;
+    // A helper that exits while leaving a descendant attached to its pipes
+    // would hang the output joins forever, so the group is severed on
+    // every exit path and the joins themselves stay bounded.
+    terminate_helper_process(&mut child, helper_marker);
+    let stdout = join_output(stdout_handle, HELPER_OUTPUT_JOIN_TIMEOUT);
+    let stderr = join_output(stderr_handle, HELPER_OUTPUT_JOIN_TIMEOUT);
     if !status.success() {
         return Err(ComputerHelperError::Failed(anyhow!(
             "Viewer host helper exited with status {} (stderr_present={})",
@@ -2552,6 +2561,7 @@ fn trusted_helper_chat_store_path(value: Option<&std::ffi::OsStr>) -> Option<std
 fn wait_for_helper_status(
     child: &mut std::process::Child,
     timeout: Duration,
+    helper_marker: Option<u64>,
 ) -> std::result::Result<ExitStatus, ComputerHelperError> {
     let started = Instant::now();
     loop {
@@ -2563,28 +2573,47 @@ fn wait_for_helper_status(
             return Ok(status);
         }
         if started.elapsed() >= timeout {
-            terminate_helper_process(child);
+            terminate_helper_process(child, helper_marker);
             return Err(ComputerHelperError::Timeout);
         }
         thread::sleep(Duration::from_millis(25));
     }
 }
 
-/// Kill a timed-out host helper. On Unix the helper leads its own process
-/// group, so the group is signalled first to reclaim any helper
-/// subprocesses; the direct kill covers helpers that never became leaders.
-fn terminate_helper_process(child: &mut std::process::Child) {
+/// Kill a host helper. On Unix the helper leads its own process group, so
+/// the group is signalled first to reclaim any helper subprocesses; the
+/// direct kill covers helpers that never became leaders. The recorded
+/// start marker keeps a pid recycled between spawn and teardown from
+/// redirecting the group signal onto a foreign process.
+fn terminate_helper_process(child: &mut std::process::Child, helper_marker: Option<u64>) {
     #[cfg(unix)]
     {
-        let _ = crate::defaultspack_manager::send_process_group_signal(child.id(), "-KILL");
+        let mut group_is_ours = true;
+        if let Some(recorded) = helper_marker {
+            if let Some(current) = crate::process_utils::process_start_marker(child.id()) {
+                group_is_ours = current == recorded;
+            }
+        }
+        if group_is_ours {
+            let _ = crate::defaultspack_manager::send_process_group_signal(child.id(), "-KILL");
+        }
     }
     let _ = child.kill();
     let _ = child.wait();
 }
 
-fn join_output(handle: Option<thread::JoinHandle<Vec<u8>>>) -> Vec<u8> {
-    handle
-        .and_then(|handle| handle.join().ok())
+fn join_output(handle: Option<thread::JoinHandle<Vec<u8>>>, timeout: Duration) -> Vec<u8> {
+    let Some(handle) = handle else {
+        return Vec::new();
+    };
+    let (sender, receiver) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        let _ = sender.send(handle.join());
+    });
+    receiver
+        .recv_timeout(timeout)
+        .ok()
+        .and_then(|result| result.ok())
         .unwrap_or_default()
 }
 

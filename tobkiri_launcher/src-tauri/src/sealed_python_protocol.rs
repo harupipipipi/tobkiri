@@ -110,6 +110,16 @@ pub fn sealed_bootstrap_role(command: &str) -> Option<&str> {
         .find_map(|pair| (pair[0] == ARG_ROLE).then_some(pair[1]))
 }
 
+/// Return the `--environment-root` value of a launch command, or `None`
+/// when the pair is absent. Callers establish the launch identity first
+/// (see [`sealed_bootstrap_role`]); this only extracts the paired value.
+pub fn sealed_environment_root(command: &str) -> Option<&str> {
+    let tokens = command.split_whitespace().collect::<Vec<_>>();
+    tokens
+        .windows(2)
+        .find_map(|pair| (pair[0] == ARG_ENVIRONMENT_ROOT).then_some(pair[1]))
+}
+
 /// Reject a packaging bootstrap that does not implement the complete v3 wire.
 pub fn validate_bootstrap_template(template: &str) -> Result<(), String> {
     let missing = REQUIRED_TEMPLATE_FRAGMENTS
