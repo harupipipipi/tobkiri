@@ -197,8 +197,11 @@ def test_all_canonical_executable_catalogs_compile_without_exclusion() -> None:
         item for item in compiled if item.artifact.pack_id == "rumi_command_protocol_pack"
     )
     assert set(command.routes) == {
+        ("tobkiri.action.command.invoke.v1", "command.invoke"),
         ("tobkiri.resource.command.catalog.v1", "command.catalog.read"),
-        ("tobkiri.service.command.high-risk.v1", "high_risk_command.manage")
+        ("tobkiri.resource.command.datasource.v1", "command.datasource.query"),
+        ("tobkiri.resource.command.state.v1", "command.state.query"),
+        ("tobkiri.service.command.high-risk.v1", "high_risk_command.manage"),
     }
 
     conversation = next(item for item in compiled if item.artifact.pack_id == "defaultspack")
