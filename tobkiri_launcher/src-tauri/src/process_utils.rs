@@ -14,8 +14,34 @@ pub fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
 pub fn isolated_python(program: impl AsRef<std::ffi::OsStr>) -> Command {
     let mut command = command(program);
     command.args(["-I", "-B"]);
+    unblock_shutdown_signals(&mut command);
     command
 }
+
+/// Restore TERM/INT/HUP delivery in a spawned child.
+///
+/// The launcher's shutdown watcher blocks those signals on the main thread so
+/// `sigwait` can collect them; every spawned thread — and every forked child —
+/// inherits that mask. Managed Python roles install their own signal handlers,
+/// so without this their graceful stops always degrade to SIGKILL.
+#[cfg(unix)]
+fn unblock_shutdown_signals(command: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    unsafe {
+        command.pre_exec(|| {
+            let mut set: libc::sigset_t = std::mem::zeroed();
+            libc::sigemptyset(&mut set);
+            libc::sigaddset(&mut set, libc::SIGTERM);
+            libc::sigaddset(&mut set, libc::SIGINT);
+            libc::sigaddset(&mut set, libc::SIGHUP);
+            libc::pthread_sigmask(libc::SIG_UNBLOCK, &set, std::ptr::null_mut());
+            Ok(())
+        });
+    }
+}
+
+#[cfg(not(unix))]
+fn unblock_shutdown_signals(_: &mut Command) {}
 
 pub fn hide_console_window(command: &mut Command) {
     #[cfg(windows)]
