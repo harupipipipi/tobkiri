@@ -1732,8 +1732,12 @@ class PackAPIHandler(
                 refresh_after_response = self._runtime_refresh is not None
             else:
                 result = lifecycle.cleanup(payload, session_id=packvm_session_id)
-            if operation == "doctor" and result.get("ready") is True and self._runtime_refresh:
-                self._runtime_refresh(None)
+            if (
+                operation == "doctor"
+                and result.get("ready") is True
+                and self._runtime_refresh is not None
+            ):
+                refresh_after_response = True
             elif (
                 operation == "progress"
                 and result.get("state") == "succeeded"
@@ -1745,9 +1749,9 @@ class PackAPIHandler(
                         and result["doctor"].get("ready") is True
                     )
                 )
-                and self._runtime_refresh
+                and self._runtime_refresh is not None
             ):
-                self._runtime_refresh(None)
+                refresh_after_response = True
         except (OSError, RuntimeError, ValueError) as error:
             public_result = _public_error_result(_exception_error_code(error))
             logger.warning(
@@ -1768,23 +1772,24 @@ class PackAPIHandler(
         if refresh_after_response:
             refresh = self._runtime_refresh
 
-            def refresh_stopped_runtime() -> None:
+            def refresh_after_committed_result() -> None:
                 if refresh is None:
                     return
                 try:
                     refresh(None)
                 except Exception:
-                    # The stop response is already committed. A refresh failure
-                    # must not turn a successful, audited stop into an HTTP
-                    # timeout or an unhandled daemon-thread exception.
+                    # The lifecycle response is already committed. A refresh
+                    # failure must not turn a successful, audited operation
+                    # into an HTTP timeout or an unhandled daemon-thread
+                    # exception.
                     logger.warning(
-                        "PackVM stop runtime refresh failed",
+                        "PackVM lifecycle runtime refresh failed",
                         exc_info=True,
                     )
 
             threading.Thread(
-                target=refresh_stopped_runtime,
-                name="packvm-stop-runtime-refresh",
+                target=refresh_after_committed_result,
+                name="packvm-lifecycle-runtime-refresh",
                 daemon=True,
             ).start()
         return True

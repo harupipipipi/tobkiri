@@ -500,6 +500,13 @@ class _PackVMLifecycle:
                 "operation_kind": "cleanup",
                 "state": "succeeded",
             }
+        if operation_id == "33333333-3333-4333-8333-333333333333":
+            return {
+                "operation_id": operation_id,
+                "operation_kind": "provision",
+                "state": "succeeded",
+                "doctor": {"ready": True},
+            }
         return {"operation_id": operation_id, "state": "succeeded"}
 
     def cancel(
@@ -790,6 +797,15 @@ def _panel_session(
     return cookie.split(";", 1)[0], exchange["data"]["csrf_token"], origin
 
 
+def _wait_for_refreshes(refreshed: list[object], expected: list[object]) -> None:
+    """Allow the deferred post-response lifecycle refresh thread to publish."""
+
+    deadline = time.monotonic() + 5
+    while refreshed != expected and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert refreshed == expected
+
+
 def _assert_retired_generic_dispatch(
     status: int,
     payload: Mapping[str, object],
@@ -918,7 +934,7 @@ def test_packvm_lifecycle_routes_require_auth_csrf_and_fresh_request_id() -> Non
         )
         assert status == 200
         assert doctor["data"]["ready"] is True
-        assert refreshed == [None]
+        _wait_for_refreshes(refreshed, [None])
 
         cleanup_id = "22222222-2222-4222-8222-222222222222"
         status, cleanup, _headers = _request(
@@ -947,7 +963,7 @@ def test_packvm_lifecycle_routes_require_auth_csrf_and_fresh_request_id() -> Non
         )
         assert status == 200
         assert cleanup_progress["data"]["state"] == "succeeded"
-        assert refreshed == [None, None]
+        _wait_for_refreshes(refreshed, [None, None])
     finally:
         server.stop()
 
@@ -998,6 +1014,68 @@ def test_packvm_stop_commits_response_before_slow_runtime_refresh() -> None:
         server.stop()
 
     assert refreshed == [None]
+
+
+def test_packvm_refresh_failure_cannot_replace_committed_operation_result() -> None:
+    """An uncaught refresh error must not drop a successful lifecycle result."""
+
+    lifecycle = _PackVMLifecycle()
+    refreshed: list[object] = []
+
+    def failing_refresh(session: object) -> None:
+        refreshed.append(session)
+        raise BackendUnavailableError("runtime capture regressed")
+
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified-desktop"),
+        dispatch_session=_Dispatch(),
+        packvm_lifecycle=lifecycle,
+    )
+    server._refresh_runtime_capture = failing_refresh  # type: ignore[method-assign]
+    server.start()
+    try:
+        cookie, _csrf, origin = _panel_session(server)
+        status, doctor, _headers = _request(
+            server,
+            "GET",
+            "/api/v4/packvm/doctor",
+            headers={"Cookie": cookie, "Origin": origin},
+        )
+        assert status == 200
+        assert doctor["data"]["ready"] is True
+        _wait_for_refreshes(refreshed, [None])
+
+        provision_id = "33333333-3333-4333-8333-333333333333"
+        status, progress, _headers = _request(
+            server,
+            "GET",
+            f"/api/v4/packvm/progress?operation_id={provision_id}",
+            headers={"Cookie": cookie, "Origin": origin},
+        )
+        assert status == 200
+        assert progress["data"] == {
+            "operation_id": provision_id,
+            "operation_kind": "provision",
+            "state": "succeeded",
+            "doctor": {"ready": True},
+        }
+        _wait_for_refreshes(refreshed, [None, None])
+
+        cleanup_id = "22222222-2222-4222-8222-222222222222"
+        status, cleanup_progress, _headers = _request(
+            server,
+            "GET",
+            f"/api/v4/packvm/progress?operation_id={cleanup_id}",
+            headers={"Cookie": cookie, "Origin": origin},
+        )
+        assert status == 200
+        assert cleanup_progress["data"]["state"] == "succeeded"
+        _wait_for_refreshes(refreshed, [None, None, None])
+    finally:
+        server.stop()
+
+    assert refreshed == [None, None, None]
 
 
 @pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "::1"])

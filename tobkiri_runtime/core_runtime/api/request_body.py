@@ -49,6 +49,9 @@ class RequestBodyMixin(_HTTPHandlerBase):
             return b""
         if content_length > MAX_REQUEST_BODY_BYTES:
             self._send_response(APIResponse(False, error="Request body too large"), 413)
+            # The rejected body stays undrained; keep-alive would let its
+            # bytes poison the next pipelined request.
+            self.close_connection = True
             return None
         raw = self.rfile.read(content_length)
         self._raw_body_bytes = raw
@@ -79,6 +82,10 @@ class RequestBodyMixin(_HTTPHandlerBase):
             return
         # The request was already rejected; draining more than the accepted
         # body bound only lets a rejected client pin the worker longer.
+        # Anything still undrained after the cap cannot be trusted as the
+        # next request boundary, so the connection must close.
+        if content_length > MAX_REQUEST_BODY_BYTES:
+            self.close_connection = True
         content_length = min(content_length, MAX_REQUEST_BODY_BYTES)
         try:
             self.rfile.read(content_length)
