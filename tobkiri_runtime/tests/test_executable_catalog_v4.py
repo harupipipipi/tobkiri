@@ -144,26 +144,43 @@ def test_native_startup_reads_outlive_cold_packvm_start(
     assert operation["timeout_hard_max_ms"] == 300_000
 
 
-def test_unrelated_saved_turn_keeps_standard_deadline() -> None:
-    """The native startup allowance must stay limited to the selected reads."""
+@pytest.mark.parametrize(
+    ("pack_id", "function_id", "operation_id"),
+    (
+        (
+            "defaultspack",
+            "defaultspack.conversation.saved",
+            "saved_complete",
+        ),
+        (
+            "rumi_turn_runtime_pack",
+            "rumi_turn_runtime_pack.turn-runtime.saved",
+            "rumi_turn_runtime_pack.turn-saved",
+        ),
+    ),
+)
+def test_saved_turn_exchange_outlives_cold_packvm_start(
+    pack_id: str,
+    function_id: str,
+    operation_id: str,
+) -> None:
+    """The saved exchange encloses cold PackVM launch and provider work."""
 
     catalog = json.loads(
-        (ROOT / "ecosystem" / "defaultspack" / "executables.v4.json").read_text(
+        (ROOT / "ecosystem" / pack_id / "executables.v4.json").read_text(
             encoding="utf-8"
         )
     )
     variant = next(
-        item
-        for item in catalog["variants"]
-        if item["function_id"] == "defaultspack.conversation.saved"
+        item for item in catalog["variants"] if item["function_id"] == function_id
     )
     operation = next(
         item
         for item in variant["operations"]
-        if item["operation_id"] == "saved_complete"
+        if item["operation_id"] == operation_id
     )
 
-    assert operation["timeout_default_ms"] == 30_000
+    assert operation["timeout_default_ms"] == 120_000
     assert operation["timeout_hard_max_ms"] == 300_000
 
 
