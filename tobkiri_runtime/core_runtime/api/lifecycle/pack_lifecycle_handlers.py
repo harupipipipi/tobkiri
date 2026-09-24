@@ -89,36 +89,21 @@ class PackLifecycleHandlersMixin:
             _log_internal_error("pack_import", e)
             return {"success": False, "error": _SAFE_ERROR_MSG}
 
-    def _pack_apply_actor(self, actor: str | None = None) -> str:
-        if actor:
-            return str(actor)
-        principal = getattr(self, "_authenticated_principal", None)
-        principal_id = getattr(principal, "principal_id", None)
-        return str(principal_id or "api_user")
-
     def _pack_apply(
         self,
         staging_id: str,
         mode: str = "replace",
         actor: str | None = None,
     ) -> dict:
-        try:
-            from ...pack_importer import get_pack_importer
-            importer = get_pack_importer()
-            meta = importer.get_staging_meta(staging_id)
-            if meta is None:
-                return {"success": False, "error": f"Staging not found: {staging_id}"}
-
-            from ...pack_applier import get_pack_applier
-            applier = get_pack_applier()
-            result = applier.apply(
-                staging_id,
-                mode=mode,
-                actor=self._pack_apply_actor(actor),
-            )
-            if isinstance(result, dict):
-                return result
-            return result.to_dict()
-        except Exception as e:
-            _log_internal_error("pack_apply", e)
-            return {"success": False, "error": _SAFE_ERROR_MSG}
+        # The unsigned staging apply path is retired.  Non-builtin Packs are
+        # admitted only through the Host signed external Pack catalog
+        # (publisher signature + Host-owned install record).
+        del staging_id, mode, actor
+        return {
+            "success": False,
+            "error": (
+                "unsigned pack apply is retired; "
+                "install requires signed Host admission"
+            ),
+            "denied": True,
+        }

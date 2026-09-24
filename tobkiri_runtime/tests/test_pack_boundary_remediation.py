@@ -96,3 +96,37 @@ def test_finite_boundary_rejects_symlinked_pack_roots_and_files(
     (safe_root / "secret.json").symlink_to(secret)
     with pytest.raises(PackBoundaryError, match="symlink"):
         finite_files(safe_root, (".json",))
+
+
+def test_planted_directory_is_not_host_bundled(tmp_path: Path) -> None:
+    """A directory physically planted under an ecosystem-like path is non-builtin."""
+
+    from core_runtime.pack_artifact_integrity import _is_host_bundled_pack
+
+    planted = tmp_path / "ecosystem" / "planted_pack"
+    planted.mkdir(parents=True)
+    assert _is_host_bundled_pack(planted, {"id": "planted_pack"}) is False
+    assert _is_host_bundled_pack(planted, {}) is False
+
+
+def test_catalog_named_directory_at_wrong_root_is_not_host_bundled(
+    tmp_path: Path,
+) -> None:
+    """A catalog Pack ID only counts as bundled at its canonical root."""
+
+    from core_runtime.pack_artifact_integrity import _is_host_bundled_pack
+
+    planted = tmp_path / "ecosystem" / "defaultspack"
+    planted.mkdir(parents=True)
+    assert _is_host_bundled_pack(planted, {"id": "defaultspack"}) is False
+    assert _is_host_bundled_pack(planted, {}) is False
+
+
+def test_canonical_catalog_root_is_host_bundled() -> None:
+    """The catalog-defined ecosystem root remains recognized as bundled."""
+
+    from core_runtime.pack_artifact_integrity import _is_host_bundled_pack
+
+    canonical = resolve_pack_root("defaultspack")
+    assert _is_host_bundled_pack(canonical, {}) is True
+    assert _is_host_bundled_pack(canonical, {"id": "defaultspack"}) is True

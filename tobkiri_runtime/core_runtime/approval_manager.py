@@ -45,6 +45,7 @@ from .paths import (
     CORE_PACK_DIR,
     CORE_PACK_ID_PREFIX,
     discover_pack_locations,
+    find_ecosystem_json,
     check_pack_id_mismatch,
     PackLocation,
 )
@@ -606,8 +607,120 @@ class ApprovalManager:
         # ハッシュ検証（ロック外でファイルI/O）— キャッシュなしで検証（TOCTOU 緩和）
         if not self.verify_hash(pack_id, use_cache=False):
             return False, "hash_mismatch"
-        
+
+        # Non core/system Packs must re-verify their declared artifacts and
+        # the Host-owned install binding at check time (TOCTOU): a Pack that
+        # was approved earlier is only usable while it still matches the
+        # exact signed content the Host recorded.
+        gate_ok, gate_reason = self._verify_pack_install_gate(pack_id)
+        if not gate_ok:
+            return False, gate_reason
+
         return True, None
+
+    def _verify_pack_install_gate(self, pack_id: str) -> Tuple[bool, Optional[str]]:
+        """Re-verify declared artifacts and the Host install binding.
+
+        This is the check-time half of the install gate (approve-time is the
+        Host admission transaction).  Bundled catalog Packs are recognized
+        only at their canonical root; every other Pack must satisfy the
+        publisher signature plus Host-owned install record gate so a tree
+        planted after approval cannot execute.
+        """
+        if pack_id == LOCAL_PACK_ID:
+            root = self._get_local_pack_dir()
+            manifest: Dict[str, Any] = {"id": LOCAL_PACK_ID}
+        else:
+            pack_dir = self._resolve_pack_dir(pack_id)
+            if pack_dir is None or not pack_dir.exists():
+                return False, "pack_dir_missing"
+            root = pack_dir
+            manifest = self._pack_manifest_for_gate(root)
+        try:
+            from .pack_artifact_integrity import (
+                _is_host_bundled_pack,
+                _pack_identity,
+                read_host_policy_snapshot,
+                verify_declared_artifacts,
+                verify_host_install_binding,
+            )
+        except Exception:
+            return False, "install_gate_unavailable"
+        try:
+            artifacts_ok, _diagnostics = verify_declared_artifacts(
+                root, manifest
+            )
+            if not artifacts_ok:
+                return False, "integrity_failed"
+            if _is_host_bundled_pack(root, manifest):
+                return True, None
+            trust_store_value = os.environ.get(
+                "RUMI_PACK_PUBLISHER_TRUST_STORE", ""
+            ).strip()
+            if not trust_store_value:
+                return False, "install_record_missing"
+            trust_store_path = Path(
+                os.path.abspath(Path(trust_store_value).expanduser())
+            )
+            policy = read_host_policy_snapshot(trust_store_path)
+            records = policy.get("install_records")
+            records = records if isinstance(records, Mapping) else {}
+            manifest_pack_id, _version = _pack_identity(manifest, root)
+            record = records.get(manifest_pack_id)
+            if not isinstance(record, Mapping):
+                return False, "install_record_missing"
+            signed_manifest = self._host_signed_manifest(
+                root, manifest, record
+            )
+            verify_host_install_binding(root, record, signed_manifest)
+        except Exception:
+            return False, "install_binding_failed"
+        return True, None
+
+    @staticmethod
+    def _pack_manifest_for_gate(root: Path) -> Dict[str, Any]:
+        """Load the declared ecosystem manifest for one Pack root if present."""
+        ecosystem_json, _pack_subdir = find_ecosystem_json(root)
+        if ecosystem_json is None:
+            return {}
+        try:
+            payload = json.loads(ecosystem_json.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    @staticmethod
+    def _host_signed_manifest(
+        root: Path,
+        manifest: Mapping[str, Any],
+        install_record: Mapping[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Load the signed Pack manifest bound to the Host install record."""
+        metadata = manifest.get("metadata")
+        metadata = metadata if isinstance(metadata, Mapping) else {}
+        integrity = metadata.get("integrity")
+        integrity = integrity if isinstance(integrity, Mapping) else {}
+        relative = str(
+            install_record.get("signed_manifest_path")
+            or integrity.get("signed_manifest")
+            or ""
+        ).strip()
+        if not relative:
+            return None
+        if (
+            relative.startswith("/")
+            or "\\" in relative
+            or ".." in relative.split("/")
+        ):
+            raise ValueError("signed manifest path is unsafe")
+        candidate = (root / relative).resolve()
+        candidate.relative_to(root.resolve())
+        if candidate.is_symlink():
+            raise ValueError("signed manifest path must not be a symlink")
+        payload = json.loads(candidate.read_bytes())
+        if not isinstance(payload, dict):
+            raise ValueError("signed manifest is invalid")
+        return dict(payload)
 
     def get_verified_pack_trust(
         self, pack_ids: Iterable[str]

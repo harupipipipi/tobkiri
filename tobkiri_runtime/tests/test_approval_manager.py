@@ -125,6 +125,38 @@ def _make_manager(
     return mgr, pack_dir
 
 
+def _authorize_dev_pack(
+    tmp_path: Path,
+    pack_id: str,
+    pack_dir: Path,
+    monkeypatch,
+) -> Path:
+    """Grant a non-builtin test Pack a developer-mode Host install record."""
+    from core_runtime.pack_artifact_integrity import write_host_install_record
+
+    trust_dir = tmp_path / "host-policy"
+    trust_dir.mkdir(mode=0o700, exist_ok=True)
+    trust_store = trust_dir / "publisher-trust.json"
+    write_host_install_record(
+        trust_store,
+        pack_id=pack_id,
+        install_path=pack_dir,
+        record={
+            "signature_required": False,
+            "developer_mode": True,
+            "publisher_id": "",
+            "key_id": "",
+            "installed_version": "1.0",
+            "signed_manifest_path": "",
+            "contract_versions": {},
+            "requested_capabilities": [],
+        },
+    )
+    monkeypatch.setenv("RUMI_PACK_PUBLISHER_TRUST_STORE", str(trust_store))
+    monkeypatch.setenv("RUMI_PACK_DEVELOPER_MODE", "1")
+    return trust_store
+
+
 # ===================================================================
 # approve
 # ===================================================================
@@ -169,7 +201,8 @@ class TestApprove:
         assert "_hmac_signature" in data
 
     def test_approve_if_snapshot_accepts_exact_contents(self, tmp_path, monkeypatch):
-        mgr, _ = _make_manager(tmp_path, monkeypatch=monkeypatch)
+        mgr, pack_dir = _make_manager(tmp_path, monkeypatch=monkeypatch)
+        _authorize_dev_pack(tmp_path, "testpack", pack_dir, monkeypatch)
         snapshot = mgr.get_pack_approval_snapshot("testpack")
 
         result = mgr.approve_if_snapshot("testpack", snapshot["snapshot_digest"])
@@ -424,11 +457,25 @@ class TestMiscOperations:
         assert "testpack" not in pending
 
     def test_is_pack_approved_and_verified(self, tmp_path, monkeypatch):
-        mgr, _ = _make_manager(tmp_path, monkeypatch=monkeypatch)
+        mgr, pack_dir = _make_manager(tmp_path, monkeypatch=monkeypatch)
+        _authorize_dev_pack(tmp_path, "testpack", pack_dir, monkeypatch)
         mgr.approve("testpack")
         is_valid, reason = mgr.is_pack_approved_and_verified("testpack")
         assert is_valid is True
         assert reason is None
+
+    def test_nonbuiltin_approved_pack_without_install_binding_denied(
+        self, tmp_path, monkeypatch
+    ):
+        mgr, _pack_dir = _make_manager(tmp_path, monkeypatch=monkeypatch)
+        monkeypatch.delenv("RUMI_PACK_PUBLISHER_TRUST_STORE", raising=False)
+        monkeypatch.delenv("RUMI_PACK_DEVELOPER_MODE", raising=False)
+        mgr.approve("testpack")
+        assert mgr.get_status("testpack") == PackStatus.APPROVED
+        assert mgr.verify_hash("testpack") is True
+        is_valid, reason = mgr.is_pack_approved_and_verified("testpack")
+        assert is_valid is False
+        assert reason == "integrity_failed"
 
     def test_is_pack_not_approved(self, tmp_path, monkeypatch):
         mgr, _ = _make_manager(tmp_path, monkeypatch=monkeypatch)

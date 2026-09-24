@@ -366,9 +366,112 @@ def test_create_pack_request_rejects_target_pack_mismatch(tmp_path):
     assert "target_pack_id" in result["error"]
 
 
-def test_approve_request_rechecks_staging_meta_before_apply(monkeypatch, tmp_path):
+def _signed_pack_at(
+    source: Path,
+    tmp_path: Path,
+    pack_id: str,
+    *,
+    write_record: bool = True,
+) -> Path:
+    """Place a signed v4 Pack at ``source`` and return its trust store path."""
+    import shutil
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+        Ed25519PrivateKey,
+    )
+    from core_runtime.pack_artifact_integrity import write_host_install_record
+    from core_runtime.pack_signature import build_signed_manifest, sign_manifest
+    from tests.test_external_pack_catalog_v4 import (
+        CONTRACT_ID,
+        FIXTURE,
+        _refresh_fixture_artifacts,
+        _write_json,
+    )
+
+    shutil.copytree(FIXTURE, source)
+    for sidecar in (
+        "pack.v4.json",
+        "executables.v4.json",
+        "contracts.v4.json",
+        "artifact-index.v4.json",
+    ):
+        path = source / sidecar
+        path.write_text(
+            path.read_text(encoding="utf-8").replace(
+                "conformance.minimal.echo", pack_id
+            ),
+            encoding="utf-8",
+        )
+    _refresh_fixture_artifacts(source)
+    private_key = Ed25519PrivateKey.generate()
+    manifest = build_signed_manifest(
+        source,
+        pack_id=pack_id,
+        version="1.0.0",
+        publisher_id="publisher.conformance",
+        core_compatibility=">=0",
+        contract_versions={CONTRACT_ID: "1.0.0"},
+        requested_capabilities=[],
+    )
+    signed = sign_manifest(manifest, private_key)
+    signed_path = source / ".tobkiri" / "signed-pack.json"
+    signed_path.parent.mkdir(mode=0o700)
+    _write_json(signed_path, signed)
+    public_pem = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode("utf-8")
+    trust_dir = tmp_path / "host-policy"
+    trust_dir.mkdir(mode=0o700, exist_ok=True)
+    trust_store = trust_dir / "publisher-trust.json"
+    _write_json(
+        trust_store,
+        {
+            "publishers": {
+                "publisher.conformance": {
+                    "public_key_pem": public_pem,
+                    "allowed_pack_namespaces": [pack_id],
+                    "revoked_key_ids": [],
+                }
+            },
+        },
+    )
+    trust_store.chmod(0o600)
+    if write_record:
+        write_host_install_record(
+            trust_store,
+            pack_id=pack_id,
+            install_path=source,
+            record={
+                "signature_required": True,
+                "publisher_id": "publisher.conformance",
+                "key_id": signed["signature"]["key_id"],
+                "installed_version": "1.0.0",
+                "signed_manifest_path": ".tobkiri/signed-pack.json",
+                "contract_versions": {CONTRACT_ID: "1.0.0"},
+                "requested_capabilities": [],
+            },
+        )
+    return trust_store
+
+
+def _extension_manager(tmp_path: Path):
+    """Build an ExtensionManager rooted entirely under ``tmp_path``."""
     from ecosystem.defaultspack.backend.pack_extension.extension_manager import (
         ExtensionManager,
+    )
+
+    return ExtensionManager(
+        requests_root=tmp_path / "requests",
+        ecosystem_dir=tmp_path / "ecosystem",
+        backup_root=tmp_path / "backups",
+        staging_root=tmp_path / "staging",
+    )
+
+
+def test_approve_request_rechecks_staging_meta_before_apply(monkeypatch, tmp_path):
+    from ecosystem.defaultspack.backend.pack_extension.extension_manager import (
         PatchMode,
     )
 
@@ -376,21 +479,17 @@ def test_approve_request_rechecks_staging_meta_before_apply(monkeypatch, tmp_pat
     _write_staging_meta(tmp_path, staging_id, ["nice_pack"])
     calls = []
 
-    class _Applier:
-        def __init__(self, **kwargs):
-            calls.append(("init", kwargs))
+    def _forbidden_admission(source_root, *, trust_store_path, fault_injector=None):
+        calls.append(source_root)
+        raise AssertionError(
+            "admission should not run after staging metadata changes"
+        )
 
-        def apply(self, staging_id, *, mode="replace", actor="api_user"):
-            calls.append(("apply", staging_id, mode, actor))
-            raise AssertionError("apply should not run after staging metadata changes")
-
-    monkeypatch.setattr("core_runtime.pack_applier.PackApplier", _Applier)
-    manager = ExtensionManager(
-        requests_root=tmp_path / "requests",
-        ecosystem_dir=tmp_path / "ecosystem",
-        backup_root=tmp_path / "backups",
-        staging_root=tmp_path / "staging",
+    monkeypatch.setattr(
+        "core_runtime.external_pack_catalog_v4.admit_signed_external_pack",
+        _forbidden_admission,
     )
+    manager = _extension_manager(tmp_path)
     created = manager.create_pack_request(
         mode=PatchMode.REQUEST_EXTENSION.value,
         staging_id=staging_id,
@@ -406,9 +505,8 @@ def test_approve_request_rechecks_staging_meta_before_apply(monkeypatch, tmp_pat
     assert calls == []
 
 
-def test_extension_approval_applies_staging(monkeypatch, tmp_path):
+def test_extension_approval_applies_builtin_staging(monkeypatch, tmp_path):
     from ecosystem.defaultspack.backend.pack_extension.extension_manager import (
-        ExtensionManager,
         PatchMode,
     )
 
@@ -416,7 +514,7 @@ def test_extension_approval_applies_staging(monkeypatch, tmp_path):
 
     class _ApplyResult:
         success = True
-        applied_pack_ids = ["new_pack"]
+        applied_pack_ids = ["defaultspack"]
         backup_paths = {"old_pack": str(tmp_path / "backups" / "old_pack")}
 
         def to_dict(self):
@@ -435,24 +533,19 @@ def test_extension_approval_applies_staging(monkeypatch, tmp_path):
             return _ApplyResult()
 
     monkeypatch.setattr("core_runtime.pack_applier.PackApplier", _Applier)
-    _write_staging_meta(tmp_path, "a" * 16, ["new_pack"])
-    manager = ExtensionManager(
-        requests_root=tmp_path / "requests",
-        ecosystem_dir=tmp_path / "ecosystem",
-        backup_root=tmp_path / "backups",
-        staging_root=tmp_path / "staging",
-    )
+    _write_staging_meta(tmp_path, "a" * 16, ["defaultspack"])
+    manager = _extension_manager(tmp_path)
     created = manager.create_pack_request(
         mode=PatchMode.REQUEST_EXTENSION.value,
         staging_id="a" * 16,
         actor="tester",
-        target_pack_id="new_pack",
+        target_pack_id="defaultspack",
     )
 
     result = manager.approve_request(created["request_id"], reviewer="reviewer")
 
     assert result["status"] == "applied"
-    assert result["applied_pack_ids"] == ["new_pack"]
+    assert result["applied_pack_ids"] == ["defaultspack"]
     assert calls[0] == (
         "init",
         str(tmp_path / "ecosystem"),
@@ -460,6 +553,167 @@ def test_extension_approval_applies_staging(monkeypatch, tmp_path):
         str(tmp_path / "staging"),
     )
     assert calls[-1] == ("apply", "a" * 16, "replace", "reviewer")
+
+
+def test_extension_approval_denies_unsigned_external_pack(monkeypatch, tmp_path):
+    from ecosystem.defaultspack.backend.pack_extension.extension_manager import (
+        PatchMode,
+    )
+    from core_runtime.pack_artifact_integrity import write_host_install_record
+
+    staging_id = "a" * 16
+    staged_pack = tmp_path / "staging" / staging_id / "payload" / "evil_pack"
+    staged_pack.mkdir(parents=True)
+    (staged_pack / "ecosystem.json").write_text(
+        json.dumps({"pack_id": "evil_pack", "version": "1.0"}),
+        encoding="utf-8",
+    )
+    other_root = tmp_path / "other-pack-root"
+    other_root.mkdir()
+    trust_store = tmp_path / "host-policy" / "publisher-trust.json"
+    trust_store.parent.mkdir(mode=0o700)
+    write_host_install_record(
+        trust_store,
+        pack_id="other_pack",
+        install_path=other_root,
+        record={
+            "signature_required": False,
+            "developer_mode": True,
+            "publisher_id": "",
+            "key_id": "",
+            "installed_version": "1.0",
+            "signed_manifest_path": "",
+            "contract_versions": {},
+            "requested_capabilities": [],
+        },
+    )
+    _write_staging_meta(tmp_path, staging_id, ["evil_pack"])
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user-data"))
+    monkeypatch.setenv("RUMI_PACK_PUBLISHER_TRUST_STORE", str(trust_store))
+    manager = _extension_manager(tmp_path)
+    created = manager.create_pack_request(
+        mode=PatchMode.REQUEST_EXTENSION.value,
+        staging_id=staging_id,
+        actor="tester",
+        target_pack_id="evil_pack",
+    )
+
+    result = manager.approve_request(created["request_id"], reviewer="reviewer")
+
+    assert result["status_code"] == 403
+    assert result["error"] == "external pack admission denied"
+    assert not (tmp_path / "ecosystem" / "evil_pack").exists()
+
+
+def test_extension_approval_denies_external_without_trust_store(
+    monkeypatch, tmp_path
+):
+    from ecosystem.defaultspack.backend.pack_extension.extension_manager import (
+        PatchMode,
+    )
+
+    staging_id = "a" * 16
+    _write_staging_meta(tmp_path, staging_id, ["evil_pack"])
+    monkeypatch.delenv("RUMI_PACK_PUBLISHER_TRUST_STORE", raising=False)
+    manager = _extension_manager(tmp_path)
+    created = manager.create_pack_request(
+        mode=PatchMode.REQUEST_EXTENSION.value,
+        staging_id=staging_id,
+        actor="tester",
+        target_pack_id="evil_pack",
+    )
+
+    result = manager.approve_request(created["request_id"], reviewer="reviewer")
+
+    assert result["status_code"] == 403
+    assert "publisher trust store" in result["detail"]
+    assert not (tmp_path / "ecosystem" / "evil_pack").exists()
+
+
+def test_extension_approval_denies_missing_host_install_record(
+    monkeypatch, tmp_path
+):
+    from ecosystem.defaultspack.backend.pack_extension.extension_manager import (
+        PatchMode,
+    )
+    from core_runtime.pack_artifact_integrity import write_host_install_record
+
+    staging_id = "a" * 16
+    payload_root = tmp_path / "staging" / staging_id / "payload"
+    pack_id = "a2signedpack"
+    source = payload_root / pack_id
+    payload_root.mkdir(parents=True)
+    trust_store = _signed_pack_at(
+        source, tmp_path, pack_id, write_record=False
+    )
+    other_root = tmp_path / "other-pack-root"
+    other_root.mkdir()
+    write_host_install_record(
+        trust_store,
+        pack_id="other_pack",
+        install_path=other_root,
+        record={
+            "signature_required": False,
+            "developer_mode": True,
+            "publisher_id": "",
+            "key_id": "",
+            "installed_version": "1.0",
+            "signed_manifest_path": "",
+            "contract_versions": {},
+            "requested_capabilities": [],
+        },
+    )
+    _write_staging_meta(tmp_path, staging_id, [pack_id])
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user-data"))
+    monkeypatch.setenv("RUMI_PACK_PUBLISHER_TRUST_STORE", str(trust_store))
+    manager = _extension_manager(tmp_path)
+    created = manager.create_pack_request(
+        mode=PatchMode.REQUEST_EXTENSION.value,
+        staging_id=staging_id,
+        actor="tester",
+        target_pack_id=pack_id,
+    )
+
+    result = manager.approve_request(created["request_id"], reviewer="reviewer")
+
+    assert result["status_code"] == 403
+    assert "Host install" in result["detail"]
+    assert not (tmp_path / "ecosystem" / pack_id).exists()
+
+
+def test_extension_approval_admits_signed_external_pack(monkeypatch, tmp_path):
+    from ecosystem.defaultspack.backend.pack_extension.extension_manager import (
+        PatchMode,
+    )
+    from core_runtime.external_pack_catalog_v4 import (
+        load_external_pack_catalog,
+    )
+
+    staging_id = "a" * 16
+    payload_root = tmp_path / "staging" / staging_id / "payload"
+    pack_id = "a2signedpack"
+    source = payload_root / pack_id
+    payload_root.mkdir(parents=True)
+    trust_store = _signed_pack_at(source, tmp_path, pack_id)
+    _write_staging_meta(tmp_path, staging_id, [pack_id])
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user-data"))
+    monkeypatch.setenv("RUMI_PACK_PUBLISHER_TRUST_STORE", str(trust_store))
+    manager = _extension_manager(tmp_path)
+    created = manager.create_pack_request(
+        mode=PatchMode.REQUEST_EXTENSION.value,
+        staging_id=staging_id,
+        actor="tester",
+        target_pack_id=pack_id,
+    )
+
+    result = manager.approve_request(created["request_id"], reviewer="reviewer")
+
+    assert result["status"] == "applied"
+    assert result["applied_pack_ids"] == [pack_id]
+    catalog = load_external_pack_catalog()
+    assert pack_id in catalog.records
+    assert pack_id in catalog.roots
+    assert not (tmp_path / "ecosystem" / pack_id).exists()
 
 
 def test_defaultspack_management_requires_captured_operation():

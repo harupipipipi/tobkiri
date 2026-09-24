@@ -20,7 +20,6 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from .pack_signature import PackSignatureError, verify_signed_pack
-from .paths import ECOSYSTEM_DIR
 
 
 _SIGNED_MANIFEST_DIGEST_FIELD = "signed_manifest_digest"
@@ -286,16 +285,31 @@ def _is_host_bundled_pack(
     pack_root: Path,
     ecosystem_manifest: Mapping[str, Any],
 ) -> bool:
-    """Recognize only Packs physically shipped in the immutable bundle root."""
+    """Recognize only cataloged Packs at their canonical bundled root.
+
+    A Pack is Host-bundled only when its identity is present in the
+    generated v4 catalog and the supplied root resolves to the exact
+    catalog-defined ecosystem directory.  A physically planted directory
+    under a bundled-looking location is non-builtin and therefore requires
+    a publisher signature plus a Host-owned install record.
+    """
 
     try:
         root = pack_root.resolve(strict=True)
-        bundled_root = Path(ECOSYSTEM_DIR).resolve(strict=True)
-        root.relative_to(bundled_root)
-    except (OSError, ValueError):
+    except OSError:
         return False
-    pack_id, _ = _pack_identity(ecosystem_manifest, root)
-    return root.parent == bundled_root and root.name == pack_id
+    pack_id, _version = _pack_identity(ecosystem_manifest, root)
+    if not pack_id:
+        return False
+    try:
+        from .pack_boundary import load_pack_catalog, resolve_pack_root
+
+        catalog = load_pack_catalog()
+        if pack_id not in catalog:
+            return False
+        return root == resolve_pack_root(pack_id)
+    except Exception:
+        return False
 
 
 def _read_json_nofollow(
