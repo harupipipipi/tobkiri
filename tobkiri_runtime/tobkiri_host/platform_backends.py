@@ -546,6 +546,33 @@ class ProductionIsolationBackend:
                 raise BackendUnavailableError("cancel request does not own an active domain")
         self._driver.cancel(request_id)
 
+    def materialization_accounted(self, reservation_id: str) -> bool:
+        """Return whether the reservation's materialization is still accounted.
+
+        Resident domains intentionally outlive their request; accountability
+        means the domain is still tracked with a live supervisor session, or
+        it was fully released. Anything else is an orphaned allocation and
+        must not be reported as released.
+        """
+
+        with self._materialization_lock:
+            domain_id = self._reservations.get(reservation_id)
+            if domain_id is None:
+                return True
+            attestation = self._domains.get(domain_id)
+            lease = self._leases.get(domain_id)
+            if not (
+                attestation is not None
+                and attestation.reservation_id == reservation_id
+                and lease is not None
+                and lease.reservation_id == reservation_id
+            ):
+                return False
+            # Drivers that expose session state must still own the domain;
+            # a dropped session with a surviving attestation is an orphan.
+            domain_accounted = getattr(self._driver, "domain_accounted", None)
+            return not callable(domain_accounted) or bool(domain_accounted(domain_id))
+
     def terminate(self, domain_id: str) -> None:
         with self._materialization_lock:
             self._terminate_locked(domain_id)

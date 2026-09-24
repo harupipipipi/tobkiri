@@ -33,6 +33,7 @@ from .errors import (
     AmbiguousEffectError,
     AuditUnavailableError,
     AuthorizationError,
+    BackendUnavailableError,
     ProviderExecutionError,
     PackVMAcceptanceError,
     RequestTimedOutError,
@@ -551,14 +552,31 @@ class RequestBroker:
         acceptance_request_id: str | None = None
 
         def release_resources(_completed: Future[object] | None = None) -> None:
-            materialization_released = not isinstance(backend, RequestScopedBackend)
             if isinstance(backend, RequestScopedBackend):
+                materialization_released = False
                 try:
                     backend.release_materialization(ticket.reservation.reservation_id)
                     materialization_released = True
                 except Exception:
                     self._authority.fence_request(context.request_id)
                     raise
+            else:
+                # A resident domain outlives its request by design, so
+                # "released" here means the materialization is still provably
+                # accounted — tracked with a live session or fully released —
+                # never vacuously true for an orphaned allocation. Backends
+                # without accounting surface keep the request-scoped default.
+                accounted = getattr(backend, "materialization_accounted", None)
+                materialization_released = True
+                if callable(accounted):
+                    materialization_released = bool(
+                        accounted(ticket.reservation.reservation_id)
+                    )
+                    if not materialization_released:
+                        self._authority.fence_request(context.request_id)
+                        raise BackendUnavailableError(
+                            "resident backend materialization is unaccounted"
+                        )
             self._admission.release(ticket)
             if acceptance_request_id is not None and self._acceptance_receipts is not None:
                 self._acceptance_receipts.record_resources_released(
