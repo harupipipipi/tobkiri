@@ -148,25 +148,35 @@ async def _uc_run_process_capped(
 
     async def _pump() -> tuple[bytes, bytes]:
         assert proc.stdin is not None
-        try:
-            proc.stdin.write(input_bytes)
-            await proc.stdin.drain()
-            proc.stdin.close()
-        except (BrokenPipeError, ConnectionResetError):
-            # The child exited without reading stdin.
-            pass
         assert proc.stdout is not None and proc.stderr is not None
-        stdout, stderr, _ = await asyncio.gather(
+
+        async def _feed() -> None:
+            try:
+                proc.stdin.write(input_bytes)
+                await proc.stdin.drain()
+                proc.stdin.close()
+            except (BrokenPipeError, ConnectionResetError):
+                # The child exited without reading stdin.
+                pass
+
+        # The stdin feed runs concurrently with the drains — a child that
+        # never reads stdin must not deadlock a large input, and a noisy
+        # child must not block the feed on a full pipe.
+        stdout, stderr, _, _ = await asyncio.gather(
             _drain_stream_capped(proc.stdout, _UC_MAX_RESPONSE_SIZE),
             _drain_stream_capped(proc.stderr, 4096),
             proc.wait(),
+            _feed(),
         )
         return stdout, stderr
 
     try:
         return await asyncio.wait_for(_pump(), timeout=timeout)
     except BaseException:
-        proc.kill()
+        try:
+            proc.kill()
+        except OSError:
+            pass
         raise
 
 class KernelFlowExecutionMixin:

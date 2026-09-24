@@ -549,7 +549,7 @@ class _MacOSVZHelperProcess:
             raise ValueError("PackVM VZ helper pipes are unavailable")
         try:
             encoded = _canonical_bytes(payload)
-        except (TypeError, ValueError) as exc:
+        except (TypeError, ValueError, RecursionError) as exc:
             # A request the canonicalizer cannot serialize is a caller bug
             # (lone surrogates, circular values), not a channel failure:
             # expiring here would tear down the whole domain for one bad
