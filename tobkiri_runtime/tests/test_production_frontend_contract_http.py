@@ -289,7 +289,12 @@ class _SavedToolPackVmBackend(_SavedPackVmBackend):
             "payload": payload,
         }
         host = SavedHostExchange(
-            ChainIdentity(domain, request_id, binding, request.deadline_monotonic),
+            ChainIdentity(
+                domain,
+                request_id,
+                binding,
+                min(request.deadline_monotonic, time.monotonic() + 60),
+            ),
             request_digest=transport["request_digest"],
             artifact_identity=transport["guest_artifact_identity"],
             deadline_text=transport["deadline_monotonic"],

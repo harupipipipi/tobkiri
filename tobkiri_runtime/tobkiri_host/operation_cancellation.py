@@ -403,6 +403,16 @@ class OwnedCancellationBinding:
                     del registry._active[key]
                     registry._records.pop(key, None)
 
+    def active_for(self, reference: str) -> bool:
+        """Report whether any owner still tracks this reference in this group."""
+        key = self._key(reference)
+        group = self._scope[:2]
+        with self._registry._lock:
+            return any(
+                active[-1] == key[-1] and active[:2] == group
+                for active in self._registry._active
+            )
+
     def request(self, reference: str) -> CancellationObservation:
         """Signal one owned live execution and expose only its scope-exit event."""
         key = self._key(reference)

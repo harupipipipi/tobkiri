@@ -82,9 +82,13 @@ class TurnHostFactoryV4:
                 try:
                     observation = invocation.cancellation.request(turn_id)
                 except PermissionError:
+                    if invocation.cancellation.active_for(turn_id):
+                        # Another owner still executes this turn; this session
+                        # may neither signal it nor record intent against it.
+                        raise
                     observation = None
-                store.request_saved_cancellation(turn_id)
                 invocation.assert_current()
+                store.request_saved_cancellation(turn_id)
                 if observation is None:
                     # The tracked execution is already gone (for example a
                     # durable turn parked in waiting after its owner lost the
