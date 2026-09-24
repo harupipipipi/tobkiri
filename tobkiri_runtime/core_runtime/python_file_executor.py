@@ -964,9 +964,17 @@ request = http_request
                         if not chunk:
                             del pipes[fd]
                             continue
-                        pipes[fd] += chunk
-                        if fd == stdout_fd and len(raw_stdout_buf) > MAX_STDOUT_SIZE:
-                            oversized = True
+                        if fd == stdout_fd:
+                            pipes[fd] += chunk
+                            if len(raw_stdout_buf) > MAX_STDOUT_SIZE:
+                                oversized = True
+                        else:
+                            # stderr is drained but only retained up to the
+                            # same bound so a noisy container cannot exhaust
+                            # host memory through the second pipe.
+                            keep = MAX_STDOUT_SIZE - len(raw_stderr_buf)
+                            if keep > 0:
+                                raw_stderr_buf += chunk[:keep]
                     if oversized:
                         break
                 raw_stdout = bytes(raw_stdout_buf)
@@ -976,6 +984,17 @@ request = http_request
                     try:
                         proc.wait(timeout=5)
                     except subprocess.TimeoutExpired:
+                        pass
+                    # proc is the docker CLI client; killing it detaches and
+                    # leaves the --rm container running under the daemon, so
+                    # the container itself must be killed by name.
+                    try:
+                        subprocess.run(
+                            ["docker", "kill", container_name],
+                            capture_output=True,
+                            timeout=15,
+                        )
+                    except (OSError, subprocess.SubprocessError):
                         pass
                     if oversized:
                         result.error = f"stdout exceeded size limit ({MAX_STDOUT_SIZE} bytes)"

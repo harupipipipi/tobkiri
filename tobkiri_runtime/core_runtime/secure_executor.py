@@ -372,7 +372,11 @@ class SecureExecutor:
                 )
         
         except subprocess.TimeoutExpired:
-            subprocess.run(["docker", "kill", container_name], capture_output=True)
+            subprocess.run(
+                ["docker", "kill", container_name],
+                capture_output=True,
+                timeout=15,
+            )
             return ExecutionResult(
                 success=False,
                 error=f"Execution timed out after {timeout}s",
@@ -686,7 +690,11 @@ else:
                     lib_type=lib_type
                 )
         except subprocess.TimeoutExpired:
-            subprocess.run(["docker", "kill", container_name], capture_output=True)
+            subprocess.run(
+                ["docker", "kill", container_name],
+                capture_output=True,
+                timeout=15,
+            )
             return ExecutionResult(
                 success=False,
                 error=f"Lib execution timed out after {timeout}s",
