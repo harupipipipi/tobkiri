@@ -2791,7 +2791,22 @@ fn spawn_signal_shutdown_watcher(app: &AppHandle, set: libc::sigset_t) {
                 }
                 let defaultspack = handle.state::<Arc<DefaultspackManager>>();
                 let kernel_manager = handle.state::<Arc<Mutex<KernelManager>>>();
-                stop_managed_runtimes(defaultspack.inner(), kernel_manager.inner());
+                // A wedged runtime stop (for example a kernel-manager mutex
+                // held by a deadlocked thread) must not turn the signal
+                // handler into the next hang: bound the cleanup, then exit
+                // regardless so the signal always terminates the launcher.
+                let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+                let defaultspack = Arc::clone(defaultspack.inner());
+                let kernel_manager = Arc::clone(kernel_manager.inner());
+                let _ = std::thread::Builder::new()
+                    .name("tobkiri-signal-cleanup".into())
+                    .spawn(move || {
+                        stop_managed_runtimes(&defaultspack, &kernel_manager);
+                        let _ = done_tx.send(());
+                    });
+                if done_rx.recv_timeout(std::time::Duration::from_secs(30)).is_err() {
+                    error!("Timed out stopping managed runtimes after signal; exiting");
+                }
             }
             std::process::exit(0);
         });
