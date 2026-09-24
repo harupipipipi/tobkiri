@@ -913,6 +913,7 @@ request = http_request
 
             # Docker実行 (#14: stdout サイズ制限付き)
             proc = None
+            container_may_exist = False
             try:
                 import time as _t14
                 proc = subprocess.Popen(
@@ -920,6 +921,7 @@ request = http_request
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                 )
+                container_may_exist = True
 
                 stdout_pipe = proc.stdout
                 stderr_pipe = proc.stderr
@@ -990,17 +992,6 @@ request = http_request
                         proc.wait(timeout=5)
                     except subprocess.TimeoutExpired:
                         pass
-                    # proc is the docker CLI client; killing it detaches and
-                    # leaves the --rm container running under the daemon, so
-                    # the container itself must be killed by name.
-                    try:
-                        subprocess.run(
-                            ["docker", "kill", container_name],
-                            capture_output=True,
-                            timeout=15,
-                        )
-                    except (OSError, subprocess.SubprocessError):
-                        pass
                     if oversized:
                         result.error = f"stdout exceeded size limit ({MAX_STDOUT_SIZE} bytes)"
                         result.error_type = "response_too_large"
@@ -1034,17 +1025,31 @@ request = http_request
                             result.error_type = "container_execution_error"
 
             except subprocess.TimeoutExpired:
-                # タイムアウト時はコンテナを強制停止
+                # タイムアウト時はCLIを止め、コンテナは finally の rm -f が回収
                 if proc and proc.poll() is None:
-                    proc.kill()
-                    proc.wait(timeout=5)
-                subprocess.run(
-                    ["docker", "kill", container_name],
-                    capture_output=True,
-                    timeout=15,
-                )
+                    try:
+                        proc.kill()
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        pass
                 result.error = f"Execution timed out after {timeout_seconds}s"
                 result.error_type = "timeout"
+            finally:
+                # proc is only the docker CLI client; the daemon-side
+                # container survives CLI death on every path above — timeout,
+                # oversize, early EOF, post-Popen exceptions, and even
+                # KeyboardInterrupt.  `rm -f` covers running and
+                # created-but-not-started containers in one call, and is a
+                # harmless no-op once `--rm` has already reaped it.
+                if container_may_exist:
+                    try:
+                        subprocess.run(
+                            ["docker", "rm", "-f", container_name],
+                            capture_output=True,
+                            timeout=15,
+                        )
+                    except (OSError, subprocess.SubprocessError):
+                        pass
 
         except Exception as e:
             result.error = str(e)

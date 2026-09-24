@@ -1448,20 +1448,29 @@ class KernelFlowExecutionMixin:
         import asyncio
         import json
         import os
+        import subprocess
+
+        # Name the container up front so the daemon-side container can be
+        # force-removed on every exit path below (timeout / cancellation /
+        # error), even when the orchestrator builds the command.
+        pack_id = os.path.basename(pack_dir) if pack_dir else "unknown"
+        container_name = f"rumi-uc-{pack_id}-{uuid.uuid4().hex[:12]}"
         try:
             from core_runtime.container_orchestrator import get_container_orchestrator
             orch = get_container_orchestrator()
             cmd_args = orch.build_universal_call_command(
-                pack_id=os.path.basename(pack_dir) if pack_dir else "unknown",
+                pack_id=pack_id,
                 workspace_dir=pack_dir or os.path.dirname(target),
                 input_file="",
                 filename=os.path.basename(target),
                 runtime=runtime,
                 docker_image=docker_image,
+                container_name=container_name,
             )
         except Exception:
             cmd_args = [
                 "docker", "run", "--rm",
+                "--name", container_name,
                 "--network=none", "--cap-drop=ALL",
                 "--security-opt=no-new-privileges:true",
                 "--read-only", "--memory=256m", "--cpus=0.5", "--pids-limit=50",
@@ -1475,25 +1484,46 @@ class KernelFlowExecutionMixin:
                 cmd_args += [f"./{os.path.basename(target)}"]
 
         input_bytes = json.dumps(input_data).encode("utf-8")
-        proc = await asyncio.create_subprocess_exec(
-            *cmd_args,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        container_may_exist = False
         try:
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(input=input_bytes),
-                timeout=timeout,
+            proc = await asyncio.create_subprocess_exec(
+                *cmd_args,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-        except asyncio.TimeoutError:
-            proc.kill()
-            raise
-        stdout_str = stdout.decode("utf-8", errors="replace")[:_UC_MAX_RESPONSE_SIZE]
-        try:
-            return json.loads(stdout_str)
-        except json.JSONDecodeError:
-            return {"raw_stdout": stdout_str, "stderr": stderr.decode("utf-8", errors="replace")[:4096]}
+            container_may_exist = True
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    proc.communicate(input=input_bytes),
+                    timeout=timeout,
+                )
+            except BaseException:
+                # Timeout, cancellation, or any other failure: stop the
+                # docker CLI client.  The daemon-side container is reaped
+                # by the finally block below.
+                proc.kill()
+                raise
+            stdout_str = stdout.decode("utf-8", errors="replace")[:_UC_MAX_RESPONSE_SIZE]
+            try:
+                return json.loads(stdout_str)
+            except json.JSONDecodeError:
+                return {"raw_stdout": stdout_str, "stderr": stderr.decode("utf-8", errors="replace")[:4096]}
+        finally:
+            # proc is only the docker CLI client; the daemon-side container
+            # survives CLI death on every path above — timeout, cancellation,
+            # and post-spawn errors.  `rm -f` covers running and
+            # created-but-not-started containers in one call, and is a
+            # harmless no-op once `--rm` has already reaped it.
+            if container_may_exist:
+                try:
+                    subprocess.run(
+                        ["docker", "rm", "-f", container_name],
+                        capture_output=True,
+                        timeout=15,
+                    )
+                except (OSError, subprocess.SubprocessError):
+                    pass
 
 
 __all__ = ["KernelFlowExecutionMixin", "MAX_FLOW_CHAIN_DEPTH"]

@@ -10,6 +10,7 @@ Wave 1-4 の修正に対するテスト:
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import sys
@@ -137,10 +138,12 @@ class TestLibInContainerSanitize:
         pack_data_dir = tmp_path / "data"
         pack_data_dir.mkdir()
 
+        # コンテナ実行は Popen + パイプ排出スレッドで駆動するため、
+        # stdout/stderr はバイト列を返すパイプとして差し替える
         mock_proc = MagicMock()
         mock_proc.returncode = 0
-        mock_proc.stdout = '{"status": "ok"}'
-        mock_proc.stderr = ""
+        mock_proc.stdout = io.BytesIO(b'{"status": "ok"}')
+        mock_proc.stderr = io.BytesIO(b"")
 
         sanitize_called = {"called": False}
         original_sanitize = executor._sanitize_context
@@ -148,14 +151,15 @@ class TestLibInContainerSanitize:
             sanitize_called["called"] = True
             return original_sanitize(ctx)
 
-        with patch.object(executor, "_sanitize_context", side_effect=spy_sanitize):
-            with patch("subprocess.run", return_value=mock_proc):
-                result = executor._execute_lib_in_container(
-                    pack_id="test-pack", lib_type="install",
-                    lib_file=lib_file, pack_data_dir=pack_data_dir,
-                    context={"phase": "install", "payload": {"key": "val"}},
-                    timeout=30, start_time=time.time(),
-                )
+        with patch.object(executor, "_sanitize_context", side_effect=spy_sanitize), \
+                patch("subprocess.Popen", return_value=mock_proc), \
+                patch("subprocess.run", return_value=MagicMock(returncode=0)):
+            result = executor._execute_lib_in_container(
+                pack_id="test-pack", lib_type="install",
+                lib_file=lib_file, pack_data_dir=pack_data_dir,
+                context={"phase": "install", "payload": {"key": "val"}},
+                timeout=30, start_time=time.time(),
+            )
         assert sanitize_called["called"]
         assert result.success
 

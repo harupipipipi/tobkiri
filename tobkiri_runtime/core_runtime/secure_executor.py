@@ -55,6 +55,10 @@ MAX_CONTEXT_DEPTH = 10
 # SEC-1 Wave 4: ホスト実行タイムアウト
 MAX_HOST_EXECUTION_TIMEOUT = int(os.getenv("RUMI_HOST_EXEC_TIMEOUT", "120"))
 
+# コンテナ出力のバッファ上限（無制限 capture_output によるメモリ枯渇対策）
+MAX_STDOUT_SIZE = 2 * 1024 * 1024  # 2 MiB
+MAX_STDERR_SIZE = 1 * 1024 * 1024  # 1 MiB
+
 
 def get_secrets_grant_manager():
     from .secrets_grant_manager import get_secrets_grant_manager as _get
@@ -243,7 +247,8 @@ class SecureExecutor:
         """Dockerコンテナ内で実行"""
         import time
         start_time = time.time()
-        
+        _effective_timeout = min(timeout, MAX_HOST_EXECUTION_TIMEOUT)
+
         container_name = f"rumi-exec-{pack_id}-{phase}-{uuid.uuid4().hex[:12]}"
         safe_context = self._sanitize_context(context)
         
@@ -339,47 +344,183 @@ class SecureExecutor:
             builder.command(["python", "-c", self._get_executor_script(file_path.name)])
 
             docker_cmd = builder.build()
-            
-            result = subprocess.run(
-                docker_cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout
-            )
-            
-            execution_time_ms = (time.time() - start_time) * 1000
-            
-            if result.returncode == 0:
-                output = None
-                if result.stdout.strip():
-                    try:
-                        output = json.loads(result.stdout.strip())
-                    except json.JSONDecodeError:
-                        output = result.stdout.strip()
-                return ExecutionResult(
-                    success=True,
-                    output=output,
-                    execution_mode="container",
-                    execution_time_ms=execution_time_ms
+
+            # Docker実行: stdout/stderr は上限付きバッファへ排出し、
+            # finally の rm -f でコンテナを確実に除去する
+            proc = None
+            container_may_exist = False
+            try:
+                proc = subprocess.Popen(
+                    docker_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                 )
-            else:
+                container_may_exist = True
+
+                stdout_pipe = proc.stdout
+                stderr_pipe = proc.stderr
+                if stdout_pipe is None or stderr_pipe is None:
+                    raise RuntimeError("executor output pipes were not created")
+
+                deadline = time.monotonic() + _effective_timeout
+
+                # communicate に頼らずパイプごとの排出スレッドで駆動し、
+                # 無制限出力によるホスト側メモリ枯渇を防ぐ
+                raw_stdout_buf = bytearray()
+                raw_stderr_buf = bytearray()
+                oversized_event = threading.Event()
+
+                def _drain_pipe(
+                    pipe: Any, buf: bytearray, cap: int, *, retain: bool
+                ) -> None:
+                    while True:
+                        try:
+                            chunk = pipe.read(65536)
+                        except (OSError, ValueError):
+                            return
+                        if not chunk:
+                            return
+                        if retain:
+                            buf += chunk
+                            if len(buf) > cap:
+                                oversized_event.set()
+                                return
+                        else:
+                            # stderr は上限まで保持し、残りは排出して捨てる
+                            keep = cap - len(buf)
+                            if keep > 0:
+                                buf += chunk[:keep]
+
+                stdout_reader = threading.Thread(
+                    target=_drain_pipe,
+                    args=(stdout_pipe, raw_stdout_buf, MAX_STDOUT_SIZE),
+                    kwargs={"retain": True},
+                    daemon=True,
+                )
+                stderr_reader = threading.Thread(
+                    target=_drain_pipe,
+                    args=(stderr_pipe, raw_stderr_buf, MAX_STDERR_SIZE),
+                    kwargs={"retain": False},
+                    daemon=True,
+                )
+                stdout_reader.start()
+                stderr_reader.start()
+
+                stdout_reader.join(max(0.0, deadline - time.monotonic()))
+                timed_out = stdout_reader.is_alive()
+                if not timed_out:
+                    # stdout が EOF ならプロセスは終了間際。stderr の排出に
+                    # 短い猶予を与えて残りを回収する
+                    stderr_reader.join(timeout=5.0)
+                oversized = oversized_event.is_set()
+                raw_stdout = bytes(raw_stdout_buf)
+                raw_stderr = bytes(raw_stderr_buf)
+                execution_time_ms = (time.time() - start_time) * 1000
+
+                if timed_out or oversized:
+                    proc.kill()
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        pass
+                    if oversized:
+                        return ExecutionResult(
+                            success=False,
+                            error=(
+                                "stdout exceeded size limit "
+                                f"({MAX_STDOUT_SIZE} bytes)"
+                            ),
+                            error_type="response_too_large",
+                            execution_mode="container",
+                            execution_time_ms=execution_time_ms
+                        )
+                    return ExecutionResult(
+                        success=False,
+                        error=(
+                            "Execution timed out after "
+                            f"{_effective_timeout}s"
+                        ),
+                        error_type="timeout",
+                        execution_mode="container",
+                        execution_time_ms=execution_time_ms
+                    )
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=5)
+                    return ExecutionResult(
+                        success=False,
+                        error=(
+                            "Execution timed out after "
+                            f"{_effective_timeout}s"
+                        ),
+                        error_type="timeout",
+                        execution_mode="container",
+                        execution_time_ms=execution_time_ms
+                    )
+
+                stderr_text = raw_stderr.decode("utf-8", errors="replace")
+                stdout_text = raw_stdout.decode("utf-8", errors="replace").strip()
+
+                if proc.returncode == 0:
+                    output = None
+                    if stdout_text:
+                        try:
+                            output = json.loads(stdout_text)
+                        except json.JSONDecodeError:
+                            output = stdout_text
+                    return ExecutionResult(
+                        success=True,
+                        output=output,
+                        execution_mode="container",
+                        execution_time_ms=execution_time_ms
+                    )
                 return ExecutionResult(
                     success=False,
-                    error=result.stderr or f"Exit code: {result.returncode}",
+                    error=stderr_text or f"Exit code: {proc.returncode}",
                     error_type="container_execution_error",
                     execution_mode="container",
                     execution_time_ms=execution_time_ms
                 )
-        
+            except subprocess.TimeoutExpired:
+                # CLI 側の待機タイムアウト。コンテナ本体は finally の
+                # rm -f が回収する
+                if proc and proc.poll() is None:
+                    try:
+                        proc.kill()
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        pass
+                return ExecutionResult(
+                    success=False,
+                    error=(
+                        "Execution timed out after "
+                        f"{_effective_timeout}s"
+                    ),
+                    error_type="timeout",
+                    execution_mode="container",
+                    execution_time_ms=(time.time() - start_time) * 1000
+                )
+            finally:
+                # proc は docker CLI クライアントに過ぎず、CLI 終了後も
+                # daemon 側のコンテナは生き残り得る。rm -f は実行中・
+                # 作成済み未起動の双方を一回で回収し、--rm で回収済みなら
+                # 無害な no-op になる。
+                if container_may_exist:
+                    try:
+                        subprocess.run(
+                            ["docker", "rm", "-f", container_name],
+                            capture_output=True,
+                            timeout=15,
+                        )
+                    except (OSError, subprocess.SubprocessError):
+                        pass
+
         except subprocess.TimeoutExpired:
-            subprocess.run(
-                ["docker", "kill", container_name],
-                capture_output=True,
-                timeout=15,
-            )
             return ExecutionResult(
                 success=False,
-                error=f"Execution timed out after {timeout}s",
+                error=f"Execution timed out after {_effective_timeout}s",
                 error_type="timeout",
                 execution_mode="container",
                 execution_time_ms=(time.time() - start_time) * 1000
@@ -584,7 +725,8 @@ else:
     ) -> ExecutionResult:
         """Dockerコンテナ内でlib実行"""
         import time
-        
+        _effective_timeout = min(timeout, MAX_HOST_EXECUTION_TIMEOUT)
+
         container_name = f"rumi-lib-{pack_id}-{lib_type}-{uuid.uuid4().hex[:12]}"
         lib_dir = lib_file.parent
         
@@ -654,50 +796,195 @@ else:
             builder.command(["python", "-c", self._get_lib_executor_script(lib_file.name)])
 
             docker_cmd = builder.build()
-            
-            proc_result = subprocess.run(
-                docker_cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout
-            )
-            
-            execution_time_ms = (time.time() - start_time) * 1000
-            
-            if proc_result.returncode == 0:
-                output = None
-                if proc_result.stdout.strip():
-                    try:
-                        output = json.loads(proc_result.stdout.strip())
-                    except json.JSONDecodeError:
-                        output = proc_result.stdout.strip()
-                return ExecutionResult(
-                    success=True,
-                    output=output,
-                    execution_mode="container",
-                    execution_time_ms=execution_time_ms,
-                    pack_id=pack_id,
-                    lib_type=lib_type
+
+            # Docker実行: stdout/stderr は上限付きバッファへ排出し、
+            # finally の rm -f でコンテナを確実に除去する
+            proc = None
+            container_may_exist = False
+            try:
+                proc = subprocess.Popen(
+                    docker_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                 )
-            else:
+                container_may_exist = True
+
+                stdout_pipe = proc.stdout
+                stderr_pipe = proc.stderr
+                if stdout_pipe is None or stderr_pipe is None:
+                    raise RuntimeError("executor output pipes were not created")
+
+                deadline = time.monotonic() + _effective_timeout
+
+                # communicate に頼らずパイプごとの排出スレッドで駆動し、
+                # 無制限出力によるホスト側メモリ枯渇を防ぐ
+                raw_stdout_buf = bytearray()
+                raw_stderr_buf = bytearray()
+                oversized_event = threading.Event()
+
+                def _drain_pipe(
+                    pipe: Any, buf: bytearray, cap: int, *, retain: bool
+                ) -> None:
+                    while True:
+                        try:
+                            chunk = pipe.read(65536)
+                        except (OSError, ValueError):
+                            return
+                        if not chunk:
+                            return
+                        if retain:
+                            buf += chunk
+                            if len(buf) > cap:
+                                oversized_event.set()
+                                return
+                        else:
+                            # stderr は上限まで保持し、残りは排出して捨てる
+                            keep = cap - len(buf)
+                            if keep > 0:
+                                buf += chunk[:keep]
+
+                stdout_reader = threading.Thread(
+                    target=_drain_pipe,
+                    args=(stdout_pipe, raw_stdout_buf, MAX_STDOUT_SIZE),
+                    kwargs={"retain": True},
+                    daemon=True,
+                )
+                stderr_reader = threading.Thread(
+                    target=_drain_pipe,
+                    args=(stderr_pipe, raw_stderr_buf, MAX_STDERR_SIZE),
+                    kwargs={"retain": False},
+                    daemon=True,
+                )
+                stdout_reader.start()
+                stderr_reader.start()
+
+                stdout_reader.join(max(0.0, deadline - time.monotonic()))
+                timed_out = stdout_reader.is_alive()
+                if not timed_out:
+                    # stdout が EOF ならプロセスは終了間際。stderr の排出に
+                    # 短い猶予を与えて残りを回収する
+                    stderr_reader.join(timeout=5.0)
+                oversized = oversized_event.is_set()
+                raw_stdout = bytes(raw_stdout_buf)
+                raw_stderr = bytes(raw_stderr_buf)
+                execution_time_ms = (time.time() - start_time) * 1000
+
+                if timed_out or oversized:
+                    proc.kill()
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        pass
+                    if oversized:
+                        return ExecutionResult(
+                            success=False,
+                            error=(
+                                "stdout exceeded size limit "
+                                f"({MAX_STDOUT_SIZE} bytes)"
+                            ),
+                            error_type="response_too_large",
+                            execution_mode="container",
+                            execution_time_ms=execution_time_ms,
+                            pack_id=pack_id,
+                            lib_type=lib_type
+                        )
+                    return ExecutionResult(
+                        success=False,
+                        error=(
+                            "Lib execution timed out after "
+                            f"{_effective_timeout}s"
+                        ),
+                        error_type="timeout",
+                        execution_mode="container",
+                        execution_time_ms=execution_time_ms,
+                        pack_id=pack_id,
+                        lib_type=lib_type
+                    )
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=5)
+                    return ExecutionResult(
+                        success=False,
+                        error=(
+                            "Lib execution timed out after "
+                            f"{_effective_timeout}s"
+                        ),
+                        error_type="timeout",
+                        execution_mode="container",
+                        execution_time_ms=execution_time_ms,
+                        pack_id=pack_id,
+                        lib_type=lib_type
+                    )
+
+                stderr_text = raw_stderr.decode("utf-8", errors="replace")
+                stdout_text = raw_stdout.decode("utf-8", errors="replace").strip()
+
+                if proc.returncode == 0:
+                    output = None
+                    if stdout_text:
+                        try:
+                            output = json.loads(stdout_text)
+                        except json.JSONDecodeError:
+                            output = stdout_text
+                    return ExecutionResult(
+                        success=True,
+                        output=output,
+                        execution_mode="container",
+                        execution_time_ms=execution_time_ms,
+                        pack_id=pack_id,
+                        lib_type=lib_type
+                    )
                 return ExecutionResult(
                     success=False,
-                    error=proc_result.stderr or f"Exit code: {proc_result.returncode}",
+                    error=stderr_text or f"Exit code: {proc.returncode}",
                     error_type="container_execution_error",
                     execution_mode="container",
                     execution_time_ms=execution_time_ms,
                     pack_id=pack_id,
                     lib_type=lib_type
                 )
+            except subprocess.TimeoutExpired:
+                # CLI 側の待機タイムアウト。コンテナ本体は finally の
+                # rm -f が回収する
+                if proc and proc.poll() is None:
+                    try:
+                        proc.kill()
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        pass
+                return ExecutionResult(
+                    success=False,
+                    error=(
+                        "Lib execution timed out after "
+                        f"{_effective_timeout}s"
+                    ),
+                    error_type="timeout",
+                    execution_mode="container",
+                    execution_time_ms=(time.time() - start_time) * 1000,
+                    pack_id=pack_id,
+                    lib_type=lib_type
+                )
+            finally:
+                # proc は docker CLI クライアントに過ぎず、CLI 終了後も
+                # daemon 側のコンテナは生き残り得る。rm -f は実行中・
+                # 作成済み未起動の双方を一回で回収し、--rm で回収済みなら
+                # 無害な no-op になる。
+                if container_may_exist:
+                    try:
+                        subprocess.run(
+                            ["docker", "rm", "-f", container_name],
+                            capture_output=True,
+                            timeout=15,
+                        )
+                    except (OSError, subprocess.SubprocessError):
+                        pass
+
         except subprocess.TimeoutExpired:
-            subprocess.run(
-                ["docker", "kill", container_name],
-                capture_output=True,
-                timeout=15,
-            )
             return ExecutionResult(
                 success=False,
-                error=f"Lib execution timed out after {timeout}s",
+                error=f"Lib execution timed out after {_effective_timeout}s",
                 error_type="timeout",
                 execution_mode="container",
                 execution_time_ms=(time.time() - start_time) * 1000,
