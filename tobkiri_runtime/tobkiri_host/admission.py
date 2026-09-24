@@ -13,6 +13,8 @@ from threading import RLock
 import time
 from typing import Callable, Iterable, Mapping
 
+from core_runtime.process_identity import process_start_identity
+
 from .errors import AdmissionError, QueueFullError, ResourceExhaustedError
 
 
@@ -108,16 +110,21 @@ class ResourceReservation:
     """Opaque reservation owned by an accepted queue item or workload.
 
     ``owner_pid`` records the supervisor process that journaled the
-    reservation; ``0`` means the owner was never recorded. ``detached`` marks
-    charges that may back an out-of-process allocation (for example a PackVM
-    domain) able to outlive the owner, so owner death alone cannot prove the
-    charge is reusable.
+    reservation; ``0`` means the owner was never recorded.
+    ``owner_identity`` binds that PID to its kernel process-start token so a
+    PID reused by an unrelated process cannot keep a dead owner's charge
+    claimed; ``None`` means the reservation predates identity binding and
+    falls back to the existence probe. ``detached`` marks charges that may
+    back an out-of-process allocation (for example a PackVM domain) able to
+    outlive the owner, so owner death alone cannot prove the charge is
+    reusable.
     """
 
     reservation_id: str
     profile_id: str
     amount: ResourceAmount
     owner_pid: int = 0
+    owner_identity: str | None = None
     detached: bool = False
 
 
@@ -167,6 +174,7 @@ class ResourceLedger:
                 profile_id=profile_id,
                 amount=amount,
                 owner_pid=os.getpid(),
+                owner_identity=_current_process_identity() or None,
                 detached=detached,
             )
             self._reservations[reservation.reservation_id] = reservation
@@ -214,6 +222,36 @@ def process_is_alive(pid: object) -> bool:
     return True
 
 
+def _current_process_identity() -> str:
+    """Return this process's kernel-bound start identity, or empty."""
+
+    evidence = process_start_identity(os.getpid())
+    return evidence.identity if evidence.state == "live" else ""
+
+
+def _recorded_owner_is_alive(reservation: ResourceReservation) -> bool:
+    """Return whether a journaled owner PID is provably the same process.
+
+    ``owner_identity`` binds the recorded PID to its kernel start token, so
+    a PID reused by an unrelated process no longer counts as a live owner.
+    Reservations written before identity binding fall back to the existence
+    probe.  An indeterminate answer stays alive: ambiguous evidence must
+    never release shared capacity.
+    """
+
+    if reservation.owner_pid <= 0:
+        return True
+    identity = reservation.owner_identity
+    if isinstance(identity, str) and identity:
+        evidence = process_start_identity(reservation.owner_pid)
+        if evidence.state == "dead":
+            return False
+        if evidence.state == "unknown":
+            return True
+        return evidence.identity == identity
+    return process_is_alive(reservation.owner_pid)
+
+
 def dead_owner_reservation_ids(
     reservations: Iterable[ResourceReservation],
 ) -> tuple[str, ...]:
@@ -232,7 +270,7 @@ def dead_owner_reservation_ids(
             for item in reservations
             if not item.detached
             and item.owner_pid > 0
-            and not process_is_alive(item.owner_pid)
+            and not _recorded_owner_is_alive(item)
         )
     )
 
@@ -368,12 +406,17 @@ class DurableResourceLedger(ResourceLedger):
                 if profile_id not in self._profile_limits:
                     raise ValueError("ledger reservation targets an unknown Profile")
                 owner_pid = row.get("owner_pid", 0)
+                owner_identity = row.get("owner_identity")
                 detached = row.get("detached", False)
                 if (
                     isinstance(owner_pid, bool)
                     or not isinstance(owner_pid, int)
                     or owner_pid < 0
                     or not isinstance(detached, bool)
+                    or (
+                        owner_identity is not None
+                        and not isinstance(owner_identity, str)
+                    )
                 ):
                     raise ValueError("ledger reservation owner metadata is invalid")
                 reservation = ResourceReservation(
@@ -381,6 +424,7 @@ class DurableResourceLedger(ResourceLedger):
                     profile_id=profile_id,
                     amount=amount,
                     owner_pid=owner_pid,
+                    owner_identity=owner_identity or None,
                     detached=detached,
                 )
                 loaded.append((reservation, float(expires_at)))
@@ -430,7 +474,7 @@ class DurableResourceLedger(ResourceLedger):
                 if (
                     not reservation.detached
                     and reservation.owner_pid > 0
-                    and not process_is_alive(reservation.owner_pid)
+                    and not _recorded_owner_is_alive(reservation)
                 ):
                     # A dead journaled owner proves the non-detached charge
                     # is reusable; swept rows stay durable on disk only until
@@ -475,6 +519,7 @@ class DurableResourceLedger(ResourceLedger):
                 },
                 "expires_at": self._expires_at[reservation.reservation_id],
                 "owner_pid": reservation.owner_pid,
+                "owner_identity": reservation.owner_identity,
                 "detached": reservation.detached,
             }
             for reservation in sorted(

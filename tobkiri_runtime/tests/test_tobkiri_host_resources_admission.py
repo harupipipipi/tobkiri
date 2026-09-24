@@ -12,6 +12,7 @@ import sys
 
 import pytest
 
+from core_runtime.process_identity import ProcessIdentityEvidence
 from tobkiri_host.admission import (
     AdmissionError,
     AdmissionEstimate,
@@ -538,9 +539,10 @@ def _ledger_row(
     *,
     owner_pid: int,
     detached: bool,
+    owner_identity: str | None = None,
     memory_bytes: int = 100,
 ) -> dict[str, object]:
-    return {
+    row: dict[str, object] = {
         "reservation_id": reservation_id,
         "profile_id": "p1",
         "amount": {
@@ -553,6 +555,9 @@ def _ledger_row(
         "owner_pid": owner_pid,
         "detached": detached,
     }
+    if owner_identity is not None:
+        row["owner_identity"] = owner_identity
+    return row
 
 
 def _write_ledger(
@@ -606,6 +611,110 @@ def test_dead_owner_reservation_ids_release_only_proven_rows() -> None:
     assert dead_owner_reservation_ids(rows) == ("dead",)
 
 
+def test_dead_owner_reservation_ids_release_reused_pid_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A live PID with a mismatched start identity is a dead reused owner."""
+    monkeypatch.setattr(
+        "tobkiri_host.admission.process_start_identity",
+        lambda pid: ProcessIdentityEvidence("live", f"darwin:{pid}:9:000001"),
+    )
+    rows = (
+        ResourceReservation(
+            "reused",
+            "p1",
+            ResourceAmount(1),
+            owner_pid=os.getpid(),
+            owner_identity="darwin:1:1:000000",
+        ),
+    )
+    assert dead_owner_reservation_ids(rows) == ("reused",)
+
+
+def test_dead_owner_reservation_ids_retain_matching_identity_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A live PID with a matching start identity is still the owner."""
+    identity = f"darwin:{os.getpid()}:9:000001"
+    monkeypatch.setattr(
+        "tobkiri_host.admission.process_start_identity",
+        lambda pid: ProcessIdentityEvidence("live", identity),
+    )
+    rows = (
+        ResourceReservation(
+            "owned",
+            "p1",
+            ResourceAmount(1),
+            owner_pid=os.getpid(),
+            owner_identity=identity,
+        ),
+    )
+    assert dead_owner_reservation_ids(rows) == ()
+
+
+def test_dead_owner_reservation_ids_retain_unknown_identity_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Indeterminate identity evidence never releases a journaled charge."""
+    monkeypatch.setattr(
+        "tobkiri_host.admission.process_start_identity",
+        lambda pid: ProcessIdentityEvidence("unknown"),
+    )
+    rows = (
+        ResourceReservation(
+            "owned",
+            "p1",
+            ResourceAmount(1),
+            owner_pid=os.getpid(),
+            owner_identity=f"darwin:{os.getpid()}:9:000001",
+        ),
+    )
+    assert dead_owner_reservation_ids(rows) == ()
+
+
+def test_dead_owner_reservation_ids_release_dead_identity_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A recorded identity whose PID is gone is a dead owner."""
+    monkeypatch.setattr(
+        "tobkiri_host.admission.process_start_identity",
+        lambda pid: ProcessIdentityEvidence("dead"),
+    )
+    rows = (
+        ResourceReservation(
+            "gone",
+            "p1",
+            ResourceAmount(1),
+            owner_pid=_dead_pid(),
+            owner_identity="darwin:1:1:000000",
+        ),
+    )
+    assert dead_owner_reservation_ids(rows) == ("gone",)
+
+
+def test_dead_owner_reservation_ids_legacy_rows_use_existence_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rows without a recorded identity keep the raw PID liveness fallback."""
+    monkeypatch.setattr(
+        "tobkiri_host.admission.process_start_identity",
+        lambda pid: pytest.fail("identity probe on a legacy row"),
+    )
+    monkeypatch.setattr(
+        "tobkiri_host.admission.process_is_alive",
+        lambda pid: pid != 4242,
+    )
+    rows = (
+        ResourceReservation(
+            "legacy-dead", "p1", ResourceAmount(1), owner_pid=4242
+        ),
+        ResourceReservation(
+            "legacy-live", "p1", ResourceAmount(1), owner_pid=7
+        ),
+    )
+    assert dead_owner_reservation_ids(rows) == ("legacy-dead",)
+
+
 def test_durable_ledger_persists_owner_pid_and_detached_flag(
     tmp_path: Path,
 ) -> None:
@@ -625,6 +734,26 @@ def test_durable_ledger_persists_owner_pid_and_detached_flag(
     assert rows[detached.reservation_id]["detached"] is True
     assert rows[plain.reservation_id]["owner_pid"] == os.getpid()
     assert rows[plain.reservation_id]["detached"] is False
+
+
+def test_durable_ledger_persists_owner_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """New reservations journal the owner's kernel process-start token."""
+    state_path = tmp_path / "reservations.json"
+    monkeypatch.setattr(
+        "tobkiri_host.admission.process_start_identity",
+        lambda pid: ProcessIdentityEvidence("live", f"darwin:{pid}:9:000001"),
+    )
+    ledger = DurableResourceLedger(
+        identity={"profile_id": "p1", "activation_id": "a"},
+        **_durable_options(state_path),
+    )
+    reservation = ledger.reserve("p1", ResourceAmount(10))
+    expected = f"darwin:{os.getpid()}:9:000001"
+    assert reservation.owner_identity == expected
+    rows = json.loads(state_path.read_text(encoding="utf-8"))["reservations"]
+    assert rows[0]["owner_identity"] == expected
 
 
 def test_durable_ledger_releases_dead_owner_rows_on_identity_change(
@@ -709,6 +838,138 @@ def test_durable_ledger_retains_row_without_recorded_owner(
         )
 
 
+def test_durable_ledger_releases_reused_pid_owner_on_identity_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A live PID bound to a different start token is a dead reused owner."""
+    state_path = tmp_path / "reservations.json"
+    _write_ledger(
+        state_path,
+        {"profile_id": "p1", "activation_id": "a"},
+        [
+            _ledger_row(
+                "reused",
+                owner_pid=os.getpid(),
+                detached=False,
+                owner_identity="darwin:1:1:000000",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        "tobkiri_host.admission.process_start_identity",
+        lambda pid: ProcessIdentityEvidence("live", f"darwin:{pid}:9:000001"),
+    )
+    ledger = DurableResourceLedger(
+        identity={"profile_id": "p1", "activation_id": "b"},
+        confirmed_supervisor_release=(
+            lambda _saved, rows: dead_owner_reservation_ids(rows)
+        ),
+        **_durable_options(state_path),
+    )
+    assert ledger.runtime_used == ResourceAmount(0, 0, 0, 0)
+
+
+def test_durable_ledger_retains_row_with_matching_owner_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A live owner with a matching start identity keeps its charge."""
+    state_path = tmp_path / "reservations.json"
+    identity_token = f"darwin:{os.getpid()}:9:000001"
+    _write_ledger(
+        state_path,
+        {"profile_id": "p1", "activation_id": "a"},
+        [
+            _ledger_row(
+                "owned",
+                owner_pid=os.getpid(),
+                detached=False,
+                owner_identity=identity_token,
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        "tobkiri_host.admission.process_start_identity",
+        lambda pid: ProcessIdentityEvidence("live", identity_token),
+    )
+    with pytest.raises(AdmissionError, match="confirmed supervisor release"):
+        DurableResourceLedger(
+            identity={"profile_id": "p1", "activation_id": "b"},
+            confirmed_supervisor_release=(
+                lambda _saved, rows: dead_owner_reservation_ids(rows)
+            ),
+            **_durable_options(state_path),
+        )
+
+
+def test_durable_ledger_retains_row_when_owner_identity_is_unknown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Indeterminate identity evidence never releases shared capacity."""
+    state_path = tmp_path / "reservations.json"
+    _write_ledger(
+        state_path,
+        {"profile_id": "p1", "activation_id": "a"},
+        [
+            _ledger_row(
+                "owned",
+                owner_pid=os.getpid(),
+                detached=False,
+                owner_identity="darwin:1:1:000000",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        "tobkiri_host.admission.process_start_identity",
+        lambda pid: ProcessIdentityEvidence("unknown"),
+    )
+    with pytest.raises(AdmissionError, match="confirmed supervisor release"):
+        DurableResourceLedger(
+            identity={"profile_id": "p1", "activation_id": "b"},
+            confirmed_supervisor_release=(
+                lambda _saved, rows: dead_owner_reservation_ids(rows)
+            ),
+            **_durable_options(state_path),
+        )
+
+
+def test_durable_ledger_sweeps_reused_pid_owner_on_same_identity_restart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Restarting one activation reclaims a reused-PID owner row."""
+    state_path = tmp_path / "reservations.json"
+    identity = {"profile_id": "p1", "activation_id": "a"}
+    _write_ledger(
+        state_path,
+        identity,
+        [
+            _ledger_row(
+                "reused",
+                owner_pid=os.getpid(),
+                detached=False,
+                owner_identity="darwin:1:1:000000",
+            ),
+            _ledger_row(
+                "pack",
+                owner_pid=os.getpid(),
+                detached=True,
+                owner_identity="darwin:1:1:000000",
+            ),
+        ],
+    )
+    monkeypatch.setattr(
+        "tobkiri_host.admission.process_start_identity",
+        lambda pid: ProcessIdentityEvidence("live", f"darwin:{pid}:9:000001"),
+    )
+    ledger = DurableResourceLedger(
+        identity=identity, **_durable_options(state_path)
+    )
+    assert ledger.runtime_used == ResourceAmount(100, 0, 1, 1)
+    saved = json.loads(state_path.read_text(encoding="utf-8"))
+    assert [item["reservation_id"] for item in saved["reservations"]] == [
+        "pack"
+    ]
+
+
 def test_durable_ledger_sweeps_dead_owner_rows_on_same_identity_restart(
     tmp_path: Path,
 ) -> None:
@@ -741,6 +1002,9 @@ def test_durable_ledger_sweeps_dead_owner_rows_on_same_identity_restart(
         ("owner_pid", "7"),
         ("owner_pid", True),
         ("owner_pid", 1.5),
+        ("owner_identity", 7),
+        ("owner_identity", True),
+        ("owner_identity", 1.5),
         ("detached", "yes"),
         ("detached", 1),
     ],
