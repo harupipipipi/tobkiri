@@ -6,12 +6,21 @@ from blocks.agent._state import get_multi_session, set_multi_session
 from domain.company.message_router import CompanySlackRuntime
 from domain.company.models import DEFAULT_COMPANY_ID
 from domain.company.store import CompanyStore
+from domain.subagent_team.availability import (
+    settings_owner_from_context,
+    subagent_delegation_enabled,
+    subagents_disabled_result,
+)
 
 
 def run(input_data, context, *, settings_owner=None):
     """Compatibility wrapper for posting into a CompanySlackRuntime thread."""
     if not isinstance(input_data, dict):
         return error("input_data must be a dict")
+    settings_owner = settings_owner_from_context(settings_owner, context)
+    if not subagent_delegation_enabled(settings_owner=settings_owner):
+        disabled = subagents_disabled_result()
+        return error(disabled["message"], disabled["code"])
     session_id = str(input_data.get("session_id") or "").strip()
     if not session_id:
         return error("session_id is required")

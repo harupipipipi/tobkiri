@@ -17,6 +17,7 @@ from .continuation_envelope import (
 from .saved_guest_dispatch import PROTOCOL, TARGETS
 from .saved_turn_plan import SavedToolFrame, SavedTurnPlan
 from tobkiri_protocol.saved_conversation import (
+    MAX_SAVED_FRAME_BYTES,
     is_saved_text_content, validate_saved_conversation_input,
 )
 from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_HOPS
@@ -44,10 +45,12 @@ class SavedHostExchange:
         self._ai_output_digest: str | None = None
         self._completion_digest: str | None = None
         self._tool_plan: SavedTurnPlan | None = None
+        self._max_frame_bytes = 64 * 1024
         if request is not None:
             initial = validate_saved_conversation_input({"request": dict(request)})
             plan = SavedTurnPlan(initial["request"])
             self._tool_plan = plan if plan.enabled else None
+            self._max_frame_bytes = MAX_SAVED_FRAME_BYTES
 
     @property
     def maximum_hops(self) -> int:
@@ -80,6 +83,7 @@ class SavedHostExchange:
             hop=self._hop, previous_digest=self._previous,
             target=self._tool_plan.target if self._tool_plan else TARGETS[self._hop],
             max_hops=self.maximum_hops,
+            max_frame_bytes=self._max_frame_bytes,
         )
         if frame.digest != wrapper["bridge_request_digest"]:
             raise ValueError("saved Host guest frame digest is invalid")
@@ -115,7 +119,9 @@ class SavedHostExchange:
             "kind": "tobkiri.packvm.continuation.result.v2", "version": 2,
             "request_digest": frame.digest, "outcome": dict(outcome),
         }
-        checked = validate_continuation_result(canonical_json(value), request=frame)
+        checked = validate_continuation_result(
+            canonical_json(value), request=frame, max_result_bytes=self._max_frame_bytes,
+        )
         # Bind completion and the bounded tool transcript to Host results before
         # exposing those results to the guest.
         owned = strict_loads(checked.frame)["outcome"].get("value", {})

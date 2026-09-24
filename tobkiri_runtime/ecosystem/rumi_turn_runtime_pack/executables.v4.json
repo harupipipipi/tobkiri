@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:fbbdf9e741aea5b844b34261fae9211f35a4183aa1015e68e2a227f815387d8c",
+  "catalog_digest": "sha256:a3a74e1ae60f7e195149f333ae9f95ad8cec0f65022539f9e3aae26bd785807e",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:b7b55914aa8bd53c320f6982f2783296ee9576ccb40c9d8468fb76aed655a0bb",
+  "source_identity": "sha256:32e4f5a7d6cc1505822325dd38142e85168371ea5a8ebc890cd78131d87890e0",
   "variants": [
     {
       "architecture": "any",
@@ -209,20 +209,85 @@
                 },
                 "pattern": "^[A-Za-z0-9]",
                 "type": "string"
+              },
+              "image_block": {
+                "additionalProperties": false,
+                "properties": {
+                  "image_url": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "url": {
+                        "maxLength": 1398127,
+                        "minLength": 1,
+                        "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
+                  },
+                  "type": {
+                    "const": "image_url"
+                  }
+                },
+                "required": [
+                  "type",
+                  "image_url"
+                ],
+                "type": "object"
+              },
+              "text_block": {
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "maxLength": 61440,
+                    "minLength": 1,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "text"
+                  }
+                },
+                "required": [
+                  "type",
+                  "text"
+                ],
+                "type": "object"
               }
             },
             "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "additionalProperties": false,
-            "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+            "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
             "properties": {
               "request": {
                 "additionalProperties": false,
                 "properties": {
                   "content": {
-                    "minLength": 1,
-                    "pattern": "\\S",
-                    "type": "string"
+                    "oneOf": [
+                      {
+                        "maxLength": 61440,
+                        "minLength": 1,
+                        "pattern": "\\S",
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "$ref": "#/$defs/image_block"
+                        },
+                        "maxItems": 3,
+                        "minItems": 1,
+                        "prefixItems": [
+                          {
+                            "$ref": "#/$defs/text_block"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ]
                   },
                   "conversation_id": {
                     "$ref": "#/$defs/identifier"
@@ -385,7 +450,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:8a5ba2543950c85126e9f6c79d5740076597473805ec53d6a453c9f5752d589f",
+          "revision_digest": "sha256:e0618b2c5c914086f7ba931d46b20d1cb4d5a48a86742275271a0a0b5ab4e81f",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

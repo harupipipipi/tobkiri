@@ -68,8 +68,11 @@ def test_four_steps_preserve_owner_revisions_and_validate_v2_frames(tmp_path: Pa
         assert json.loads(frame)["previous_digest"] == previous
         calls.append(deepcopy(intent["payload"]))
         if hop == 2:
-            assert intent["payload"]["messages"] == [{"role": "user", "content": "Hello"}]
             assert intent["payload"]["model_reference"] == "model-profile-1"
+            assert intent["payload"] == {
+                "model_reference": "model-profile-1",
+                "requirements": {"request_surface": "conversation.saved"},
+            }
             outcome = {"status": "ok", "value": {"status": "ok", "output": "Hi"}}
         else:
             outcome = _owner(store, intent)
@@ -178,7 +181,10 @@ def test_branch_context_uses_only_selected_ancestry(tmp_path: Path) -> None:
     append = saved.resume(first["state"], _owner(store, first))
     assert append["payload"]["message"]["parent_id"] == "selected"
     ai = saved.resume(append["state"], _owner(store, append))
-    assert [item["content"] for item in ai["payload"]["messages"]] == ["root", "selected", "Hello"]
+    assert ai["payload"] == {
+        "model_reference": "model-profile-1",
+        "requirements": {"request_surface": "conversation.saved"},
+    }
 
 
 @pytest.mark.parametrize(
@@ -240,20 +246,6 @@ def test_saved_step_imports_and_runs_with_isolated_stdlib_only(tmp_path: Path) -
         timeout=10,
     )
     assert json.loads(completed.stdout) == saved.start(request)
-
-
-def test_oversize_ai_context_is_rejected_before_user_write(tmp_path: Path) -> None:
-    store, request = _setup(tmp_path)
-    store.append_message(
-        "conversation-1",
-        {"id": "old", "role": "user", "content": "x" * 33000},
-        expected_conversation_revision=1,
-    )
-    first = saved.start({**request, "conversation_revision": 2})
-    result = saved.resume(first["state"], _owner(store, first))
-    assert result["status"] == "error"
-    assert result["user_persistence"] == "not_written"
-    assert len(store.get("conversation-1")["messages"]) == 1
 
 
 @pytest.mark.parametrize(

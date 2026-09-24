@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from functools import partial
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping
 
 from core_runtime.authority.v4 import AuthorityStore
 from core_runtime.credential_transport import CredentialMaterialStoreFactory
@@ -30,7 +30,10 @@ def _approve_chat_continuation(
     """Resolve the Defaultspack-owned approval operation at invocation time."""
 
     return chat_continuation.approve_continuation(
-        request_id, conversation_id, ui_operator, turn_id,
+        request_id,
+        conversation_id,
+        ui_operator,
+        turn_id,
     )
 
 
@@ -135,6 +138,7 @@ def _model_search(
         get_profile_catalog,
         search_models,
     )
+
     settings = {
         str(key): value
         for key, value in runtime_settings.items()
@@ -153,6 +157,55 @@ def _model_search(
     if not isinstance(projected, dict):
         raise PermissionError("model search is unavailable")
     return projected
+
+
+def _saved_thinking_parameters(
+    model_reference: str,
+    conversation_id: str,
+) -> Mapping[str, Any]:
+    """Resolve saved-turn thinking parameters through the explicit settings owner."""
+
+    import sys
+
+    pack_root = Path(__file__).resolve().parents[1]
+    pack_root_text = str(pack_root)
+    if pack_root_text not in sys.path:
+        sys.path.insert(0, pack_root_text)
+
+    from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
+    from domain.frontend_settings_store import defaultspack_frontend_settings_path
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    settings_owner = FrontendSettingsStore(
+        defaultspack_frontend_settings_path(pack_root)
+    )
+    return ModelRuntimeSettingsService(
+        pack_root,
+        settings_owner=settings_owner,
+    ).resolve_saved_thinking_parameters(model_reference, conversation_id)
+
+
+def _saved_input_capabilities(model_reference: str) -> Mapping[str, bool]:
+    """Resolve image-input support through the same explicit settings owner."""
+
+    import sys
+
+    pack_root = Path(__file__).resolve().parents[1]
+    pack_root_text = str(pack_root)
+    if pack_root_text not in sys.path:
+        sys.path.insert(0, pack_root_text)
+
+    from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
+    from domain.frontend_settings_store import defaultspack_frontend_settings_path
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    settings_owner = FrontendSettingsStore(
+        defaultspack_frontend_settings_path(pack_root)
+    )
+    return ModelRuntimeSettingsService(
+        pack_root,
+        settings_owner=settings_owner,
+    ).resolve_saved_input_capabilities(model_reference)
 
 
 def defaultspack_activation_snapshot_loader(
@@ -248,6 +301,8 @@ def defaultspack_runtime_capture_inputs(
         chat_continuation_resume=delegates.chat_continuation_resume,
         authority_approval_window_open=delegates.authority_approval_window_open,
         model_search=delegates.model_search,
+        saved_thinking_parameters=delegates.saved_thinking_parameters,
+        saved_input_capabilities=delegates.saved_input_capabilities,
     )
 
 
@@ -281,6 +336,8 @@ class DefaultspackDispatchDelegates:
         ],
         Mapping[str, object],
     ]
+    saved_thinking_parameters: Callable[[str, str], Mapping[str, Any]]
+    saved_input_capabilities: Callable[[str], Mapping[str, bool]]
 
 
 def defaultspack_dispatch_delegates() -> DefaultspackDispatchDelegates:
@@ -298,6 +355,8 @@ def defaultspack_dispatch_delegates() -> DefaultspackDispatchDelegates:
         chat_continuation_resume=_resume_chat_continuation,
         authority_approval_window_open=_open_authority_approval_window,
         model_search=_model_search,
+        saved_thinking_parameters=_saved_thinking_parameters,
+        saved_input_capabilities=_saved_input_capabilities,
     )
 
 
@@ -313,8 +372,11 @@ def _require_http_provider_selection(
     if not isinstance(plan, Mapping):
         raise RuntimeError("active Profile plan is unavailable")
     selected = {
-        (edge["contract_id"], edge["operation_id"],
-         edge["function_principal"]["function_id"])
+        (
+            edge["contract_id"],
+            edge["operation_id"],
+            edge["function_principal"]["function_id"],
+        )
         for edge in plan["bindings"]
     }
     for binding in bindings:
@@ -426,7 +488,9 @@ def _application_id(active: object | None, packs: Mapping[str, object]) -> str:
         plan = getattr(resolved, "plan", None)
         if isinstance(plan, Mapping):
             application = plan.get("application")
-            if isinstance(application, Mapping) and isinstance(application.get("pack_id"), str):
+            if isinstance(application, Mapping) and isinstance(
+                application.get("pack_id"), str
+            ):
                 return application["pack_id"]
         profile = getattr(resolved, "profile", None)
         if isinstance(profile, Mapping):
@@ -454,7 +518,11 @@ def _contract_context(active: object | None) -> dict[str, str]:
     profile = getattr(resolved, "profile", None)
     plan = getattr(resolved, "plan", None)
     activation = getattr(active, "activation", None)
-    if not isinstance(profile, Mapping) or not isinstance(plan, Mapping) or not isinstance(activation, Mapping):
+    if (
+        not isinstance(profile, Mapping)
+        or not isinstance(plan, Mapping)
+        or not isinstance(activation, Mapping)
+    ):
         raise RuntimeError("active Profile contract identity is unavailable")
     return {
         "profile_id": str(profile["profile_id"]),

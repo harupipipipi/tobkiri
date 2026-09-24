@@ -7,7 +7,7 @@ import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "../compone
 import type { ToolPreviewItem, ToolPreviewMode } from "../components/ToolPreview";
 import type { LocaleSetting } from "../lib/i18n";
 import type { RuntimeCapabilitySnapshot, ToolFilterEntry } from "../lib/toolStatus";
-import type { WorkspaceTab, WorkspaceTabKind } from "../components/WorkspaceTabs";
+import type { WorkspaceTab, WorkspaceTabCreateOption, WorkspaceTabKind } from "../components/WorkspaceTabs";
 import type { ActionApprovalMode } from "../features/tools/ActionApprovalControl";
 import type { PendingToolReview, ToolSelectionChip } from "../features/tools/types";
 import type { ComposerMentionMetadata } from "../lib/composerWidgets";
@@ -58,6 +58,10 @@ export type ComposerExtensionItem = {
   description?: string;
   tags?: string[];
   disabled?: boolean;
+  /** Catalog provenance used only to organize mention suggestions. */
+  sourcePackId?: string;
+  /** Explicit catalog service identifier, when this tool belongs to an integration. */
+  serviceId?: string;
   ui?: SidebarItem["ui"];
 };
 
@@ -136,6 +140,7 @@ export type HistoryBoardRendererProps = {
   isDesktopsActive?: boolean;
   onSettingsClick: () => void;
   onChatMetadataChange?: (chatId: string, updates: { is_pinned?: boolean; is_starred?: boolean; tags?: string[] }) => void;
+  onSearchOpen?: () => void;
   onMinimize?: () => void;
   onRestore?: () => void;
   isCompact?: boolean;
@@ -300,6 +305,8 @@ export type RightSidebarRendererProps = {
   showChatPromptUsage?: boolean;
   yoloMode?: boolean;
   workspaceTabs?: WorkspaceTab[];
+  workspaceTabsEnabled?: boolean;
+  workspaceTabCreateOptions?: WorkspaceTabCreateOption[];
   activeWorkspaceTabId?: string | null;
   activeConversationId?: string | null;
   onSettingChange: SettingChangeHandler;

@@ -27,6 +27,7 @@ import {
   type TransientAlertTone,
 } from "./components/TransientAlert";
 import { WarmActionIcon } from "./components/WarmActionIcon";
+import { useExitPresence } from "./ui/motion/useExitPresence";
 import {
   TobkiriLoadingScreen,
   type TobkiriLoadingStep,
@@ -54,7 +55,7 @@ import { ConversationShareLanding, ImportedConversationNotice } from "./pages/Co
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "./components/HistoryBoard";
 import type { ToolPreviewItem, ToolPreviewMode } from "./components/ToolPreview";
 import { buildToolPreviewDisplayItems, hasCanvasItems } from "./components/ToolPreview";
-import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, mergeComposerCommands, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
+import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, mergeComposerCommands, savedTurnContentFromAttachments, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
 import { applyCommandStateSnapshots, createCommandInvocationId } from "./lib/commandState";
 import type { ActionApprovalMode } from "./features/tools/ActionApprovalControl";
 import {
@@ -1646,7 +1647,7 @@ function CanvasPeek({
     <button
       type="button"
       onClick={onOpen}
-      className="mx-auto mb-2 flex w-[min(620px,calc(100%_-_40px))] items-center justify-between gap-3 rounded-xl border border-zinc-800/90 bg-zinc-950/85 px-3 py-2 text-left shadow-[0_14px_38px_rgba(0,0,0,0.24)] transition-colors hover:border-zinc-700 hover:bg-zinc-900/90"
+      className="rumi-composer-companion mx-auto mb-2 flex items-center justify-between gap-3 rounded-xl border border-zinc-800/90 bg-zinc-950/85 px-3 py-2 text-left shadow-[0_14px_38px_rgba(0,0,0,0.24)] transition-colors hover:border-zinc-700 hover:bg-zinc-900/90"
       title="Canvas を開く"
     >
       <span className="flex min-w-0 items-center gap-3">
@@ -2239,6 +2240,8 @@ function composerExtensionItems(items: SidebarItem[]): ComposerExtensionItem[] {
       category: item.category,
       description: item.description,
       tags: item.tags ?? [],
+      sourcePackId: item.tool_info?.source_pack_id,
+      serviceId: item.tool_info?.service_id ?? item.ui?.service_id,
       ui: item.ui,
     }));
 }
@@ -2801,6 +2804,14 @@ export function ChatApp() {
   const placeholder = String(settingsValues.general?.composer_placeholder ?? "メッセージを入力...");
   const locale = normalizeLocale(settingsValues.general?.language);
   const keyboardButtonNavigation = parseCommandBoolean(settingsValues.general?.keyboard_button_navigation, true);
+  const workspaceTabsEnabled = parseCommandBoolean(settingsValues.general?.workspace_tabs_enabled, true);
+  const subagentTeamsEnabled = parseCommandBoolean(settingsValues.automation?.subagent_teams_enabled, true);
+  const workspaceTabCreateOptions = useMemo(
+    () => WORKSPACE_TAB_CREATE_OPTIONS.filter((option) => (
+      option.kind !== "subagents" || subagentTeamsEnabled
+    )),
+    [subagentTeamsEnabled],
+  );
   const spotlightShortcut = String(settingsValues.general?.spotlight_shortcut ?? "Ctrl+K").trim() || "Ctrl+K";
   const spotlightShortcutEnabled = parseCommandBoolean(settingsValues.general?.spotlight_shortcut_enabled, true);
   const spotlightShortcutTextInput = parseCommandBoolean(settingsValues.general?.spotlight_shortcut_text_input, true);
@@ -3321,6 +3332,7 @@ export function ChatApp() {
     !isCanvasWorkspace &&
     !isDesktopsWorkspace &&
     !isSubagentWorkspace;
+  const isActivityPreviewPresent = useExitPresence(isActivityPreviewVisible, 240);
   const activityPreviewWidthPx = clampNumber(activityPreviewWidth, 220, 720, 340);
   const operationsProfileAvailable = hasOperationsProfile(catalog);
   const mimoCodingProfileAvailable = hasMimoCodingProfile(catalog);
@@ -4236,8 +4248,15 @@ export function ChatApp() {
   const handleNewTask = (options?: HistoryBoardNewTaskOptions) => {
     const nextContext = workspaceContextFromHistoryOptions(options);
     const nextTab = createWorkspaceTab("chat", { title: "New Conversation" });
-    setWorkspaceTabs((current) => [...current, nextTab]);
-    setActiveWorkspaceTabId(nextTab.id);
+    if (workspaceTabsEnabled) {
+      setWorkspaceTabs((current) => [...current, nextTab]);
+      setActiveWorkspaceTabId(nextTab.id);
+    } else {
+      setWorkspaceTabs((current) => current.map((tab) => (
+        tab.id === activeWorkspaceTabId ? nextTab : tab
+      )));
+      setActiveWorkspaceTabId(nextTab.id);
+    }
     setPendingNewTaskContext(nextContext);
     if (nextContext?.workspaceId) {
       setMode("coding");
@@ -4303,7 +4322,11 @@ export function ChatApp() {
     setPendingNewTaskContext(null);
     setActiveHistoryCompanyId(null);
     const activeTab = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId);
-    if (activeTab?.kind === "chat") {
+    if (!workspaceTabsEnabled) {
+      setWorkspaceTabs((current) => current.map((tab) => tab.id === activeWorkspaceTabId
+        ? { ...tab, kind: "chat", title: "AI Chat", conversationId }
+        : tab));
+    } else if (activeTab?.kind === "chat") {
       setWorkspaceTabs((current) => current.map((tab) => tab.id === activeWorkspaceTabId ? { ...tab, conversationId } : tab));
     } else {
       const nextTab = createWorkspaceTab("chat", { conversationId, title: "AI Chat" });
@@ -5552,11 +5575,18 @@ export function ChatApp() {
   };
 
   const handleWorkspaceTabCreate = (kind: WorkspaceTabKind) => {
-    const option = WORKSPACE_TAB_CREATE_OPTIONS.find((candidate) => candidate.kind === kind);
-    if (option?.disabled) return;
+    const option = workspaceTabCreateOptions.find((candidate) => candidate.kind === kind);
+    if (!option || option.disabled) return;
     const tab = createWorkspaceTab(kind, {
       title: kind === "chat" ? "New Conversation" : option?.label,
     });
+    if (!workspaceTabsEnabled) {
+      setWorkspaceTabs((current) => current.map((currentTab) => (
+        currentTab.id === activeWorkspaceTabId ? tab : currentTab
+      )));
+      activateWorkspaceTab(tab);
+      return;
+    }
     setWorkspaceTabs((current) => [...current, tab]);
     activateWorkspaceTab(tab);
   };
@@ -6653,20 +6683,23 @@ export function ChatApp() {
     let savedSubmissionStarted = false;
 
     try {
-      if (submittedAttachments.length || submittedSkillIds.length
+      const savedTurnContent = savedTurnContentFromAttachments(userText, submittedAttachments);
+      if (submittedSkillIds.length
         || submittedDroppedWidgets.some((widget) => widget.type !== "tool" || widget.widgetKind !== "tool_toggle") || isCodingWorkspaceSubmit
         || groupIdForSubmit || rumiDataPathForSubmit || deepthinkEnabled
-        || (activeProfile?.supports_thinking && selectedThinkingLevel)
         || Object.keys(templateAiInputParams).length || Object.keys(effectiveStructuredComposerValues).length
         || Object.keys(templatePolicyReferencePayload).length || composerInputMetadata?.id
         || toolSelectionRequest.mode === "review"
         || isOperationsConversation(activeConversation) || isMimoCodingConversation(activeConversation)) {
-        throw new Error("添付・スキル・特殊contextは保存付き送信に未対応のため、保存前に停止しました。");
+        throw new Error("スキルまたは特殊な会話コンテキストは保存付き送信に未対応のため、送信前に停止しました。");
       }
       let conversation = activeConversation;
       if (!conversation) {
         conversation = await api.createConversation({
           model: preferredModel || "stub/default",
+          system_prompt_id: cleanOptionalString(
+            settingsValues.personalization?.default_system_prompt_id,
+          ) ?? undefined,
           conversation_kind: isCodingWorkspaceSubmit ? "coding" : null,
           group_id: groupIdForSubmit ?? null,
           tags: isCodingWorkspaceSubmit ? ["coding"] : undefined,
@@ -6697,13 +6730,16 @@ export function ChatApp() {
         must_use: toolSelectionRequest.must_use ?? false,
       };
       const requestStartedAt = Date.now();
-      const requestFingerprint = JSON.stringify({
-        text: userText,
+      const requestFingerprintInput = JSON.stringify({
+        content: savedTurnContent,
         tool_selection: savedToolSelection,
-        attachments: submittedAttachments.map(({ name, size, type, source, sourcePath }) => (
-          { name, size, type, source, sourcePath }
-        )),
       });
+      const requestFingerprintBytes = await globalThis.crypto?.subtle?.digest(
+        "SHA-256", new TextEncoder().encode(requestFingerprintInput),
+      );
+      const requestFingerprint = requestFingerprintBytes
+        ? `sha256:${Array.from(new Uint8Array(requestFingerprintBytes), (byte) => byte.toString(16).padStart(2, "0")).join("")}`
+        : `unavailable:${requestStartedAt}`;
       const recoverablePending = pendingRequests[conversation.id];
       if (!Number.isSafeInteger(conversation.conversation_revision) || (conversation.conversation_revision ?? 0) < 1) {
         throw new Error("会話のrevisionが未確認です。会話を開き直してください。");
@@ -6733,7 +6769,7 @@ export function ChatApp() {
         turn_id: operationId,
         conversation_id: conversation.id,
         conversation_revision: conversation.conversation_revision!,
-        content: userText,
+        content: savedTurnContent,
         tool_selection: savedToolSelection,
       });
       if (result.turn.status !== "completed" || !result.turn.result_reference) {
@@ -6920,6 +6956,10 @@ export function ChatApp() {
   });
   const activeCompanyWorkspaceHint = activeConversationCompanyId ?? activeHistoryCompanyId;
   const handleCalendarModeToggle = () => {
+    if (!workspaceTabsEnabled) {
+      handleWorkspaceTabCreate("calendar");
+      return;
+    }
     const existingCalendarTab = workspaceTabs.find((tab) => tab.kind === "calendar");
     if (existingCalendarTab) {
       activateWorkspaceTab(existingCalendarTab);
@@ -6932,6 +6972,18 @@ export function ChatApp() {
     scope: KanbanBoardScope = { type: "global", id: "default" },
     label = "All Rumi Runs",
   ) => {
+    if (!workspaceTabsEnabled) {
+      const tab = createWorkspaceTab("kanban", {
+        title: label || "Kanban",
+        kanbanScope: scope,
+        kanbanScopeLabel: label || "Kanban",
+      });
+      setWorkspaceTabs((current) => current.map((currentTab) => (
+        currentTab.id === activeWorkspaceTabId ? tab : currentTab
+      )));
+      activateWorkspaceTab(tab);
+      return;
+    }
     const existingTab = workspaceTabs.find((tab) => (
       tab.kind === "kanban"
       && (tab.kanbanScope?.type ?? "global") === scope.type
@@ -6955,6 +7007,10 @@ export function ChatApp() {
   };
 
   const handleDesktopsModeOpen = () => {
+    if (!workspaceTabsEnabled) {
+      handleWorkspaceTabCreate("desktops");
+      return;
+    }
     const existingDesktopsTab = workspaceTabs.find((tab) => tab.kind === "desktops");
     if (existingDesktopsTab) {
       activateWorkspaceTab(existingDesktopsTab);
@@ -7070,12 +7126,15 @@ export function ChatApp() {
 
   return (
     <RendererBoundary>
-    <div className="rumi-app-shell flex h-screen min-h-0 w-full flex-col overflow-hidden bg-[#09090b] font-sans text-zinc-300 selection:bg-zinc-800">
+    <div className="rumi-app-shell flex h-screen min-h-0 w-full flex-col overflow-hidden bg-[var(--rumi-surface-base)] font-sans text-zinc-300 selection:bg-zinc-800">
       {showRegion("title_bar") && <Renderers.titleBar appName={composerHomeTitle || catalog?.app?.name} appIcon={catalog?.app?.icon} />}
 
       <div className="rumi-shell-body flex min-h-0 flex-1">
-        {showRegion("history") && !isHistoryMinimized && (
-          <div className="rumi-history-pane rumi-layer-panel w-[286px] max-w-[30vw] min-w-[240px] flex-shrink-0 overflow-hidden border-r border-zinc-800/60 animate-in slide-in-from-left-2 fade-in duration-200 ease-out max-[900px]:w-[260px] rumi-anim-fade-left">
+        {showRegion("history") && (
+          <div className={cn(
+            "rumi-history-sidebar flex-shrink-0 border-r border-zinc-800/60",
+            isHistoryMinimized ? "rumi-history-rail is-compact" : "rumi-history-pane rumi-layer-panel",
+          )}>
             <Renderers.historyBoard
               activeChatId={activeConversationId}
               chatItems={chatItems}
@@ -7100,45 +7159,16 @@ export function ChatApp() {
               isDesktopsActive={isDesktopsWorkspace}
               onSettingsClick={openSettingsHome}
               onChatMetadataChange={handleHistoryMetadataChange}
+              onSearchOpen={() => { setIsSpotlightOpen(true); setSpotlightSelectedIndex(0); }}
               onMinimize={() => setIsHistoryMinimized(true)}
-            />
-          </div>
-        )}
-
-        {showRegion("history") && isHistoryMinimized && (
-          <div className="rumi-history-rail w-14 flex-shrink-0 overflow-visible border-r border-zinc-800/60 animate-in slide-in-from-left-1 fade-in duration-150 ease-out rumi-anim-fade-left">
-            <Renderers.historyBoard
-              activeChatId={activeConversationId}
-              chatItems={chatItems}
-              account={catalog?.app?.account}
-              onChatSelect={handleHistoryClick}
-              onNewTask={handleNewTask}
-              codingWorkspaces={codingWorkspaces}
-              selectedCodingWorkspaceId={effectiveWorkspaceId}
-              onCodingWorkspaceCreate={handleCodingWorkspaceCreate}
-              onDirectorySelect={handleDirectorySelect}
-              onGroupDataPathPrepare={handlePrepareChatGroupStorage}
-              onCodingWorkspacesRefresh={async () => {
-                await loadCodingWorkspaces();
-              }}
-              onCalendarOpen={handleCalendarModeToggle}
-              isCalendarActive={isCalendarMode}
-              onKanbanOpen={handleKanbanModeToggle}
-              onGroupKanbanOpen={handleHistoryGroupKanbanOpen}
-              onGroupSelect={handleHistoryGroupSelect}
-              isKanbanActive={isKanbanMode}
-              onDesktopsOpen={handleDesktopsModeOpen}
-              isDesktopsActive={isDesktopsWorkspace}
-              onSettingsClick={openSettingsHome}
-              onChatMetadataChange={handleHistoryMetadataChange}
               onRestore={() => setIsHistoryMinimized(false)}
-              isCompact
+              isCompact={isHistoryMinimized}
             />
           </div>
         )}
 
         <main
-          className={cn("rumi-workspace-main relative flex min-h-0 min-w-0 flex-1 bg-[#09090b]", isActivityPreviewVisible && "has-activity-preview")}
+          className={cn("rumi-workspace-main relative flex min-h-0 min-w-0 flex-1 bg-[var(--rumi-surface-base)]", isActivityPreviewPresent && "has-activity-preview", isActivityPreviewPresent && !isActivityPreviewVisible && "is-closing-preview")}
           style={{ "--rumi-activity-preview-width": `${activityPreviewWidthPx}px` } as CSSProperties}
           onDragEnter={handleWorkspaceFileDragEnter}
           onDragOver={handleWorkspaceFileDragOver}
@@ -7159,13 +7189,16 @@ export function ChatApp() {
             </div>
           )}
           <div className={cn("rumi-chat-pane flex min-h-0 min-w-0 flex-1 flex-col rumi-anim-fade-up", isActivityPreviewVisible && "border-r border-zinc-800/40")}>
-            <WorkspaceTabBar
-              tabs={workspaceTabs}
-              activeTabId={activeWorkspaceTabId}
-              onSelect={handleWorkspaceTabSelect}
-              onClose={handleWorkspaceTabClose}
-              onCreate={handleWorkspaceTabCreate}
-            />
+            {workspaceTabsEnabled && (
+              <WorkspaceTabBar
+                tabs={workspaceTabs}
+                activeTabId={activeWorkspaceTabId}
+                createOptions={workspaceTabCreateOptions}
+                onSelect={handleWorkspaceTabSelect}
+                onClose={handleWorkspaceTabClose}
+                onCreate={handleWorkspaceTabCreate}
+              />
+            )}
 
             {showRegion("chat_header") && isChatWorkspace && !isCalendarMode && !isKanbanMode && (
               <Renderers.chatHeader
@@ -7237,9 +7270,16 @@ export function ChatApp() {
                   onWorkspacesRefresh={refreshCodingWorkspaces}
                 />
               </div>
-            ) : isSubagentWorkspace ? (
+            ) : isSubagentWorkspace && subagentTeamsEnabled ? (
               <div className="flex min-h-0 flex-1">
                 <SubagentTeamWorkspace activeConversationId={activeConversationId} activeConversationTitle={activeChatTitle} />
+              </div>
+            ) : isSubagentWorkspace ? (
+              <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+                <div className="max-w-sm rounded-xl border border-zinc-800 bg-zinc-950/45 p-5 text-center">
+                  <p className="text-sm font-medium text-zinc-200">サブエージェントは無効です</p>
+                  <p className="mt-2 text-xs leading-5 text-zinc-500">設定の「サブエージェントを使う」を有効にすると、チーム画面を開けます。</p>
+                </div>
               </div>
             ) : isCanvasWorkspace ? (
               <div className="flex min-h-0 flex-1 p-1.5">
@@ -7262,6 +7302,7 @@ export function ChatApp() {
               </div>
             ) : isToolsWorkspace ? (
               <WorkspaceLaunchpad
+                createOptions={workspaceTabCreateOptions}
                 sidebarItems={sidebarItems}
                 onCreate={handleWorkspaceTabCreate}
                 onOpenSidebarItem={(itemId) => {
@@ -7300,7 +7341,7 @@ export function ChatApp() {
                 onSuggestionClick={(text) => setInput(text)}
                 onOpenToolPreview={(previewId) => {
                   setActivePreviewId(previewId);
-                  setShowPreview(true);
+                  setShowPreview(!(effectiveShowPreview && activePreviewId === previewId));
                 }}
                 onLoadPromptTrace={promptResources.getTraceUsage}
                 onRetry={retryableSubmission && error === retryableSubmission.errorMessage ? handleRetryLastFailedSubmission : undefined}
@@ -7365,7 +7406,7 @@ export function ChatApp() {
                   </section>
                 )}
                 {commandProtocolInfo && (
-                  <details className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+                  <details className="rumi-composer-companion mx-auto rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
                     <summary className="cursor-pointer text-xs font-semibold text-zinc-300">
                       Command catalog inspector · {commandProtocolInfo.commands.length} commands
                     </summary>
@@ -7425,8 +7466,10 @@ export function ChatApp() {
             )}
           </div>
 
-          {isActivityPreviewVisible && (
+          {isActivityPreviewPresent && (
             <div
+              aria-hidden={!isActivityPreviewVisible}
+              inert={!isActivityPreviewVisible}
               role="separator"
               aria-label="Canvas幅を変更"
               title="Canvas幅を変更"
@@ -7435,12 +7478,12 @@ export function ChatApp() {
             />
           )}
 
-          {isActivityPreviewVisible && (
-            <aside className="rumi-activity-preview-pane rumi-anim-fade-right" aria-label="Activity preview">
+          {isActivityPreviewPresent && (
+            <aside className="rumi-activity-preview-pane" aria-label="Activity preview" aria-hidden={!isActivityPreviewVisible} inert={!isActivityPreviewVisible}>
               <Renderers.toolPreviewPanel
                 widgetContext={widgetContext}
                 previews={canvasPreviews}
-                showPreview={effectiveShowPreview}
+                showPreview={isActivityPreviewPresent}
                 onClose={() => setShowPreview(false)}
                 previewMode={previewMode}
                 onModeChange={setPreviewMode}
@@ -7483,6 +7526,8 @@ export function ChatApp() {
             onToggleChatPromptUsage={setShowPromptUsageInMessages}
             yoloMode={ultraYoloMode}
             workspaceTabs={workspaceTabs}
+            workspaceTabsEnabled={workspaceTabsEnabled}
+            workspaceTabCreateOptions={workspaceTabCreateOptions}
             activeWorkspaceTabId={activeWorkspaceTabId}
             activeConversationId={activeConversationId}
             onSettingChange={handleSettingChange}
@@ -7689,7 +7734,7 @@ export default function App() {
     return <ChatApp />;
   }
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#09090b] px-6 py-10">
+    <main className="flex min-h-screen items-center justify-center bg-[var(--rumi-surface-base)] px-6 py-10">
       <ErrorNotice
         className="w-full max-w-xl"
         copyLabel="Copy unavailable screen error"

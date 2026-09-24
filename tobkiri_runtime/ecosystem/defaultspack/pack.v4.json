@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:87964530fd144080acf52db9d1b847c0219bb179bd7e923d2af0260fb004c142",
+      "digest": "sha256:753156de5bc13290213eb46746a0306c13bac0b31db20813246228ead5f0a3ff",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -21,7 +21,7 @@
       "path": "host_contract_contributions.v1.json"
     },
     {
-      "digest": "sha256:712e2540875dc130c3d393c85a104c99b37f8d5d0248201b09c6e84c748157f2",
+      "digest": "sha256:fab83a66b7bd0492212a43487603b48876598672f0eb5525f55b0160834c529f",
       "kind": "executable",
       "path": "runtime/application_presentation.py"
     },
@@ -31,7 +31,7 @@
       "path": "runtime/conversation.py"
     },
     {
-      "digest": "sha256:5f83b9e96918fde5d36baa253d00862a416657c57bc83913a4e26e31d9ad5077",
+      "digest": "sha256:9252141def7180c94110a3d43e1fda2128744fcd5195dc3d14edb830346213e2",
       "kind": "executable",
       "path": "runtime/saved_conversation.py"
     },
@@ -632,7 +632,7 @@
       "operations": [
         "saved_complete"
       ],
-      "revision_digest": "sha256:63915151fb1d4ae599d26940f2ed6638a16a6ec7e5bac52c04a7ead0d15038bd"
+      "revision_digest": "sha256:b3eaa75863c5b2fe9a13e73bcc0652c2e4f0f5d07f0f6ed590a4aace8ec4dc5c"
     },
     {
       "contract_id": "tobkiri.resource.application.presentation.v1",
@@ -653,7 +653,7 @@
     {
       "contract_revision_digest": "sha256:d6e1d7af7ba7009863707c15c253dfe43728453b901c6db7c1d33e0861357967",
       "id": "defaultspack.application-presentation",
-      "implementation_digest": "sha256:712e2540875dc130c3d393c85a104c99b37f8d5d0248201b09c6e84c748157f2",
+      "implementation_digest": "sha256:fab83a66b7bd0492212a43487603b48876598672f0eb5525f55b0160834c529f",
       "isolation": "pack_vm",
       "operations": [
         "defaultspack.presentation.read"
@@ -671,9 +671,9 @@
       "role": "brokered"
     },
     {
-      "contract_revision_digest": "sha256:63915151fb1d4ae599d26940f2ed6638a16a6ec7e5bac52c04a7ead0d15038bd",
+      "contract_revision_digest": "sha256:b3eaa75863c5b2fe9a13e73bcc0652c2e4f0f5d07f0f6ed590a4aace8ec4dc5c",
       "id": "defaultspack.conversation.saved",
-      "implementation_digest": "sha256:5f83b9e96918fde5d36baa253d00862a416657c57bc83913a4e26e31d9ad5077",
+      "implementation_digest": "sha256:9252141def7180c94110a3d43e1fda2128744fcd5195dc3d14edb830346213e2",
       "isolation": "pack_vm",
       "operations": [
         "saved_complete"
@@ -682,9 +682,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:d9ad37600a3abbdac9de678af27b5d6b4c0178dace2accdca527893fd063d3e6",
-    "contract_catalog_digest": "sha256:55413561ab24dc3b929e09497b82ef5f820803781b7b716d7445dc1f6227c2e0",
-    "source_identity": "sha256:b91fbca49f3b97fe5d2aeea40666d688b750b831862606d97b58ddc7311fb328"
+    "artifact_set_digest": "sha256:6efc9f031befdaff755b1da04df9ce7d472e4034040add3516f653871d2466fe",
+    "contract_catalog_digest": "sha256:970243a2dd067dce819acc6ded087c9d8a6aba6d168fe829499bebbb42a63dd8",
+    "source_identity": "sha256:0c4109b0bf7848bf33cee21968c6a164099b489c29b567793c4c5d3f1e55bef9"
   },
   "migration": {
     "compatibility": "none",
@@ -719,7 +719,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:d9ad37600a3abbdac9de678af27b5d6b4c0178dace2accdca527893fd063d3e6",
+    "artifact_digest": "sha256:6efc9f031befdaff755b1da04df9ce7d472e4034040add3516f653871d2466fe",
     "display_name": "Tobkiri Defaults Providers",
     "id": "defaultspack",
     "kind": "normal_sandbox",
@@ -729,7 +729,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:b91fbca49f3b97fe5d2aeea40666d688b750b831862606d97b58ddc7311fb328",
+        "digest": "sha256:0c4109b0bf7848bf33cee21968c6a164099b489c29b567793c4c5d3f1e55bef9",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -740,7 +740,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:b91fbca49f3b97fe5d2aeea40666d688b750b831862606d97b58ddc7311fb328",
+    "source_digest": "sha256:0c4109b0bf7848bf33cee21968c6a164099b489c29b567793c4c5d3f1e55bef9",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
   },

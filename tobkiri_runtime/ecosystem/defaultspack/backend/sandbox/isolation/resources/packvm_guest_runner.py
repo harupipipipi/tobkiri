@@ -80,6 +80,7 @@ _BRIDGE_OPERATION_TARGETS = {
 MAX_BRIDGE_REQUEST_BYTES = 64 * 1024
 MAX_BRIDGE_RESULT_BYTES = 512 * 1024
 MAX_CHILD_REQUEST_BYTES = 1024 * 1024
+MAX_SAVED_TURN_CHILD_BYTES = 4 * 1024 * 1024
 PACKVM_GUEST_AGENT_PORT = 19001
 PACKVM_GUEST_AGENT_CONFIG = Path("/run/tobkiri-packvm/agent-config.json")
 PACKVM_GUEST_AGENT_KEY = Path("/run/tobkiri-packvm/agent-ed25519.pem")
@@ -403,6 +404,25 @@ def _spawn_staged_implementation(target: Path, implementation: Path) -> subproce
     )
 
 
+def _is_saved_turn_child_request(value: object) -> bool:
+    """Identify the one bounded image-capable PackVM request shape."""
+    return (
+        isinstance(value, dict)
+        and value.get("contract_id") == "conversation.saved-turn.v1"
+        and value.get("operation_id") == "saved_complete"
+        and isinstance(value.get("payload"), dict)
+    )
+
+
+def _child_request_limit(value: object) -> int:
+    """Keep the larger pipe allowance exclusive to saved-turn content frames."""
+    return (
+        MAX_SAVED_TURN_CHILD_BYTES
+        if _is_saved_turn_child_request(value)
+        else MAX_CHILD_REQUEST_BYTES
+    )
+
+
 def _communicate_staged_implementation(
     process: subprocess.Popen[bytes],
     child_request: dict[str, object],
@@ -415,7 +435,7 @@ def _communicate_staged_implementation(
 
         guest_deadline = _local_guest_deadline(guest_deadline)
         encoded = _bridge_canonical_json(child_request)
-        if len(encoded) > MAX_CHILD_REQUEST_BYTES:
+        if len(encoded) > _child_request_limit(child_request):
             raise ValueError("PackVM invocation payload exceeds size limit")
         stdout = communicate_bounded(
             process, encoded, stdout_limit=MAX_RESULT_BYTES,
@@ -1362,11 +1382,11 @@ def _read_agent_request(connection: socket.socket) -> dict[str, object]:
     connection.settimeout(AGENT_IO_TIMEOUT_SECONDS)
     content = bytearray()
     while True:
-        chunk = connection.recv(min(64 * 1024, MAX_AGENT_REQUEST_BYTES + 1 - len(content)))
+        chunk = connection.recv(min(64 * 1024, MAX_SAVED_TURN_CHILD_BYTES + 1 - len(content)))
         if not chunk:
             raise ValueError("PackVM guest agent request ended before newline")
         content.extend(chunk)
-        if len(content) > MAX_AGENT_REQUEST_BYTES:
+        if len(content) > MAX_SAVED_TURN_CHILD_BYTES:
             raise ValueError("PackVM guest agent request exceeds the size limit")
         if b"\n" in chunk:
             break
@@ -1378,6 +1398,10 @@ def _read_agent_request(connection: socket.socket) -> dict[str, object]:
         encoded, _bridge_canonical_json(value)
     ):
         raise ValueError("PackVM guest agent request is invalid")
+    if len(encoded) > MAX_AGENT_REQUEST_BYTES and not _is_saved_turn_child_request(
+        value.get("payload")
+    ):
+        raise ValueError("PackVM guest agent request exceeds the size limit")
     return value
 
 
@@ -1819,8 +1843,8 @@ def _execute_staged_module(path: Path) -> int:
         # Linux syscall boundary; enforce it before importing Pack code there.
         if sys.platform.startswith("linux"):
             _install_child_process_seccomp_filter()
-        raw_request = sys.stdin.buffer.read(MAX_CHILD_REQUEST_BYTES + 1)
-        if len(raw_request) > MAX_CHILD_REQUEST_BYTES:
+        raw_request = sys.stdin.buffer.read(MAX_SAVED_TURN_CHILD_BYTES + 1)
+        if len(raw_request) > MAX_SAVED_TURN_CHILD_BYTES:
             raise ValueError("PackVM child request exceeds size limit")
         request = json.loads(raw_request)
         if not isinstance(request, dict) or set(request) != {
@@ -1829,6 +1853,8 @@ def _execute_staged_module(path: Path) -> int:
             "payload",
         }:
             raise ValueError("PackVM child request is invalid")
+        if len(raw_request) > _child_request_limit(request):
+            raise ValueError("PackVM child request exceeds size limit")
         specification = importlib.util.spec_from_file_location("_tobkiri_packvm_entry", path)
         if specification is None or specification.loader is None:
             raise ValueError("PackVM implementation cannot be loaded")

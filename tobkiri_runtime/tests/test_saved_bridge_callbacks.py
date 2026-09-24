@@ -17,7 +17,9 @@ from tobkiri_protocol.saved_context import PROMPT_TARGET
 from ecosystem.rumi_prompt_studio_pack.runtime.store import PromptStudioStore
 
 
-def _setup(tmp_path: Path):
+def _setup(
+    tmp_path: Path, *, resolve_thinking_parameters=None, resolve_saved_input_capabilities=None
+):
     store = ConversationStore("defaults", user_data_root=tmp_path)
     store.create(
         {"id": "conversation-1", "model_reference": "model-profile-1"}, expected_revision=0
@@ -64,7 +66,12 @@ def _setup(tmp_path: Path):
             value = {"status": "ok", "output": "Hi"}
         return {"status": "ok", "value": value}
 
-    return store, outer, calls, SavedBridgeCallbacks(dispatch, require_targets)
+    return store, outer, calls, SavedBridgeCallbacks(
+        dispatch,
+        require_targets,
+        resolve_thinking_parameters,
+        resolve_saved_input_capabilities,
+    )
 
 
 def _frame(intent, request_id="host-request"):
@@ -108,6 +115,108 @@ def test_preflight_is_read_only_and_four_stages_use_real_owner(tmp_path: Path) -
         saved.TARGETS[2],
         saved.TARGETS[3],
     ]
+
+
+def test_saved_images_stay_host_owned_and_are_available_to_a_follow_up(
+    tmp_path: Path,
+) -> None:
+    """Readiness sees text, while Host-owned generation retains the image context."""
+    store, outer, calls, callbacks = _setup(
+        tmp_path,
+        resolve_saved_input_capabilities=lambda _model: {"supports_image_input": True},
+    )
+    image = "data:image/png;base64,AAE="
+    outer.payload["request"]["content"] = [
+        {"type": "text", "text": "What is shown here?"},
+        {"type": "image_url", "image_url": {"url": image}},
+    ]
+    callbacks.preflight(outer)
+    assert calls[-1] == (
+        READINESS,
+        {
+            "model_profile_id": "model-profile-1",
+            "messages": [{
+                "role": "user",
+                "content": "What is shown here?\n[Earlier inline image omitted from saved context.]",
+            }],
+            "modalities": ["image", "text"],
+        },
+    )
+
+    def complete_saved_turn() -> None:
+        intent = saved.start(outer.payload["request"])
+        for _ in range(4):
+            outcome = callbacks(outer, _frame(intent))
+            if intent["hop"] == 0:
+                messages = outcome["value"]["conversation"]["messages"]
+                assert all(set(message) == {"id"} for message in messages)
+                assert "system_prompt" not in outcome["value"]
+            intent = saved.resume(intent["state"], outcome)
+        assert intent["status"] == "ok"
+
+    complete_saved_turn()
+    assert store.get("conversation-1")["messages"][0]["content"] == outer.payload["request"]["content"]
+    generated = [payload for target, payload in calls if target == saved.TARGETS[2]][-1]
+    assert generated["messages"][-1] == {
+        "role": "user", "content": outer.payload["request"]["content"],
+    }
+
+    outer.payload["request"] = {
+        "turn_id": "turn-2",
+        "conversation_id": "conversation-1",
+        "conversation_revision": 3,
+        "content": "Describe that image in one sentence.",
+    }
+    complete_saved_turn()
+    follow_up = [payload for target, payload in calls if target == saved.TARGETS[2]][-1]
+    assert {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "What is shown here?"},
+            {"type": "image_url", "image_url": {"url": image}},
+        ],
+    } in follow_up["messages"]
+
+
+def test_saved_images_require_an_owner_verified_image_capability(tmp_path: Path) -> None:
+    store, outer, calls, callbacks = _setup(tmp_path)
+    outer.payload["request"]["content"] = [
+        {"type": "text", "text": "Inspect this image."},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAE="}},
+    ]
+    before = store.path.read_bytes()
+    with pytest.raises(AuthorityDenied, match="Choose an image-capable model"):
+        callbacks.preflight(outer)
+    assert store.path.read_bytes() == before
+    assert [target for target, _ in calls] == [saved.TARGETS[0]]
+
+
+def test_saved_ai_call_uses_only_owner_resolved_thinking_parameters(
+    tmp_path: Path,
+) -> None:
+    resolver_calls = []
+
+    def resolve(model_reference, conversation_id):
+        resolver_calls.append((model_reference, conversation_id))
+        return {"provider_reasoning_effort": "high"}
+
+    _, outer, calls, callbacks = _setup(
+        tmp_path, resolve_thinking_parameters=resolve
+    )
+    intent = saved.start(outer.payload["request"])
+    for _ in range(2):
+        intent = saved.resume(intent["state"], callbacks(outer, _frame(intent)))
+    frame = _frame(intent)
+    frame["payload"]["parameters"] = {"thinking_level": "none"}
+    with pytest.raises(AuthorityDenied, match="AI input differs"):
+        callbacks(outer, frame)
+    assert not resolver_calls
+
+    outcome = callbacks(outer, _frame(intent))
+    generated = [payload for target, payload in calls if target == saved.TARGETS[2]][-1]
+    assert generated["parameters"] == {"provider_reasoning_effort": "high"}
+    assert resolver_calls == [("model-profile-1", "conversation-1")]
+    assert outcome["status"] == "ok"
 
 
 @pytest.mark.parametrize(

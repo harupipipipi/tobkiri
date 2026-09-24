@@ -1,11 +1,13 @@
 from blocks._common import ok, error
 from domain.company.store import CompanyStore
 from domain.subagent_team.service import SubagentTeamService
+from domain.subagent_team.availability import settings_owner_from_context
 
 from ._helpers import company_id_from, denied, direct_lifecycle_denied, invalid, is_denied, missing_team, normalize_action, require_dict
 
 
 def run(input_data, context, *, settings_owner=None):
+    settings_owner = settings_owner_from_context(settings_owner, context)
     if require_dict(input_data) is None:
         return invalid("input_data must be a dict")
     raw_action = input_data.get("action") or input_data.get("tool_id")

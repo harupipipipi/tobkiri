@@ -5,6 +5,12 @@ from typing import Any
 from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from domain.input.envelope import RumiInputEnvelope
+from domain.subagent_team.availability import (
+    SUBAGENTS_DISABLED_CODE,
+    SUBAGENTS_DISABLED_MESSAGE,
+    settings_owner_from_context,
+    subagent_delegation_enabled,
+)
 
 
 _FAILED_DELEGATE_STATUSES = {"error", "failed", "failure", "timeout", "cancelled", "canceled"}
@@ -40,10 +46,18 @@ _TRUSTED_PLACEMENT_CONTEXT_KEYS = (
 
 
 def handle(envelope: RumiInputEnvelope, context: dict[str, Any] | None = None, *, settings_owner: SettingsOwnerPort | None = None) -> dict[str, Any]:
+    settings_owner = settings_owner_from_context(settings_owner, context)
     payload = _delegate_payload(envelope)
     task = str(payload.get("task") or payload.get("prompt") or envelope.input or "").strip()
     if not task:
         return {"status": "error", "code": "MISSING_INPUT", "error": "task is required", "assistant_text": ""}
+    if not subagent_delegation_enabled(settings_owner=settings_owner):
+        return {
+            "status": "error",
+            "code": SUBAGENTS_DISABLED_CODE,
+            "error": SUBAGENTS_DISABLED_MESSAGE,
+            "assistant_text": SUBAGENTS_DISABLED_MESSAGE,
+        }
     from blocks.agent.execute import run as execute_agent
 
     result = execute_agent(

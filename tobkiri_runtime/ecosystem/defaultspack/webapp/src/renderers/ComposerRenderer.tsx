@@ -101,10 +101,11 @@ import { ProjectPicker } from "../features/projects/ProjectPicker";
 import { ToolOverrideChips } from "../features/tools/ToolOverrideChips";
 import { ToolSelectionReviewCard } from "../features/tools/ToolSelectionReviewCard";
 import {
+  appendVoiceTranscript,
   isAudioAttachment,
-  modelSupportsAudioInput,
   readableTranscriptionError,
   requestComposerAudioTranscript,
+  shouldTranscribeVoiceInput,
   transcriptAttachmentFromAudio,
 } from "../features/voice/composerVoice";
 import { fileToAttachment } from "../lib/attachments";
@@ -202,14 +203,47 @@ const COMPOSER_CHROME_WIDTHS = {
   sendLarge: { basis: "44px", min: "44px", max: "44px" },
 } satisfies Record<string, ComposerChromeWidth>;
 
-const COMPOSER_CONTROL_SURFACE_CLASSNAME = "rumi-composer-control-surface flex h-[44px] min-h-[44px] min-w-0 items-center rounded-xl border border-white/[0.08] bg-white/[0.045] px-2.5";
+const COMPOSER_CONTROL_SURFACE_CLASSNAME = "rumi-composer-control-surface flex h-[44px] min-h-[44px] min-w-0 items-center rounded-lg px-2.5";
+export const COMPOSER_ATTACH_COMMAND_ID = "composer.attach_files";
+export const COMPOSER_ATTACH_IMAGE_COMMAND_ID = "composer.attach_images";
+
+export function composerMenuCommands(commands: ComposerCommandItem[], allowFiles: boolean, allowCommands: boolean): ComposerCommandItem[] {
+  const availableCommands = allowCommands ? commands : [];
+  if (!allowFiles) return availableCommands;
+  return [
+    {
+      id: COMPOSER_ATTACH_IMAGE_COMMAND_ID,
+      name: "image",
+      aliases: ["photo", "画像", "写真"],
+      label: "画像を追加",
+      description: "画像を選択して会話に添付",
+      category: "chat",
+      visibility: "default",
+      risk: "low",
+      execution: { type: "frontend", action: "attach_images" },
+    },
+    {
+      id: COMPOSER_ATTACH_COMMAND_ID,
+      name: "attach",
+      aliases: ["file", "添付"],
+      label: "ファイルを添付",
+      description: "写真やファイルを追加",
+      category: "chat",
+      visibility: "default",
+      risk: "low",
+      execution: { type: "frontend", action: "attach_files" },
+    },
+    ...availableCommands,
+  ];
+}
+
 const AT_MENTION_LISTBOX_ID = "composer-at-mention-listbox";
 const COMPOSER_MODEL_CONTROL_MIN_CH = 9;
 const COMPOSER_MODEL_CONTROL_MAX_CH = 18;
 const COMPOSER_MODEL_CONTROL_CHROME_CH = 6;
 const NEW_CONVERSATION_TEXTAREA_MIN_HEIGHT = 22;
 const NEW_CONVERSATION_TEXTAREA_MAX_HEIGHT = 240;
-const CONVERSATION_TEXTAREA_MIN_HEIGHT = 24;
+const CONVERSATION_TEXTAREA_MIN_HEIGHT = 56;
 const CONVERSATION_TEXTAREA_MAX_HEIGHT = 240;
 const COLLAPSED_TEXTAREA_MAX_HEIGHT = 72;
 const TEXTAREA_COLLAPSE_THRESHOLD = 104;
@@ -346,7 +380,7 @@ function ComposerTextareaResizeButton({
       aria-label={collapsed ? "入力欄を広げる" : "入力欄を小さくする"}
       title={collapsed ? "入力欄を広げる" : "入力欄を小さくする"}
       onClick={onToggle}
-      className="absolute right-1 top-1 rumi-layer-panel flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.07] bg-[#17181d]/90 text-zinc-500 shadow-sm transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+      className="absolute right-1 top-1 rumi-layer-panel flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
     >
       <Icon size={13} />
     </button>
@@ -575,6 +609,19 @@ export function shouldShowComposerCommandSuggestions({
   matchCount: number;
 }): boolean {
   return focused && slashCommandsEnabled && !hasModelCandidates && matchCount > 0;
+}
+
+/** A command surface owns the composer listbox while it is visible. */
+export function shouldShowComposerAtMentionSuggestions({
+  atMentionOpen,
+  commandMenuOpen,
+  commandSuggestionsOpen,
+}: {
+  atMentionOpen: boolean;
+  commandMenuOpen: boolean;
+  commandSuggestionsOpen: boolean;
+}): boolean {
+  return atMentionOpen && !commandMenuOpen && !commandSuggestionsOpen;
 }
 
 export function commandArgumentEntryPrefix(command: ComposerCommandItem | undefined): string | null {
@@ -1328,42 +1375,54 @@ function FilePreviewCard({
 function ComposerAttachmentRegion({
   attachedFiles,
   pendingPaths,
+  error,
   onFileRemove,
   onPendingRemove,
   onTranscribe,
 }: {
   attachedFiles: AttachedFile[];
   pendingPaths: string[];
+  error?: string | null;
   onFileRemove?: (id: string) => void;
   onPendingRemove?: (path: string) => void;
   onTranscribe?: (file: AttachedFile) => Promise<void>;
 }) {
   const hasAttachments = attachedFiles.length > 0 || pendingPaths.length > 0;
+  const isVisible = hasAttachments || Boolean(error);
   return (
     <div
       className="rumi-composer-attachment-reveal"
       data-composer-attachment-region
-      data-attachment-state={hasAttachments ? "expanded" : "collapsed"}
-      aria-hidden={!hasAttachments}
+      data-attachment-state={isVisible ? "expanded" : "collapsed"}
+      aria-hidden={!isVisible}
     >
       <div className="rumi-composer-attachment-reveal-inner">
-        <div
-          className="rumi-composer-attachment-strip flex gap-2 overflow-x-auto"
-          role="region"
-          aria-label="添付ファイル"
-        >
-          {pendingPaths.map((path) => (
-            <PendingFileChip key={path} path={path} onRemove={onPendingRemove} />
-          ))}
-          {attachedFiles.map((file) => (
-            <FilePreviewCard
-              key={file.id}
-              file={file}
-              onRemove={onFileRemove}
-              onTranscribe={onTranscribe}
-            />
-          ))}
-        </div>
+        {hasAttachments && (
+          <div
+            className="rumi-composer-attachment-strip flex gap-2 overflow-x-auto"
+            role="region"
+            aria-label="添付ファイル"
+          >
+            {pendingPaths.map((path) => (
+              <PendingFileChip key={path} path={path} onRemove={onPendingRemove} />
+            ))}
+            {attachedFiles.map((file) => (
+              <FilePreviewCard
+                key={file.id}
+                file={file}
+                onRemove={onFileRemove}
+                onTranscribe={onTranscribe}
+              />
+            ))}
+          </div>
+        )}
+        {error && (
+          <ErrorNotice
+            className="mt-1.5 rounded-lg px-2 py-1.5 text-[10px] leading-4"
+            copyLabel="画像添付エラーをコピー"
+            message={error}
+          />
+        )}
       </div>
     </div>
   );
@@ -1378,6 +1437,62 @@ export function composerClipboardFiles(
     .filter((item) => item.kind === "file")
     .map((item) => item.getAsFile())
     .filter((file): file is File => Boolean(file));
+}
+
+const INLINE_IMAGE_MIME_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+]);
+const MAX_INLINE_IMAGE_BYTES = 1024 * 1024;
+const MAX_INLINE_IMAGE_COUNT = 2;
+
+function isInlineImageAttachment(file: Pick<AttachedFile, "type">): boolean {
+  return INLINE_IMAGE_MIME_TYPES.has(String(file.type ?? "").trim().toLowerCase());
+}
+
+/**
+ * Keep the picker aligned with the saved-turn image contract before a user
+ * invests in a draft that the backend cannot safely persist or send.
+ */
+export function prepareComposerAttachments(
+  files: File[],
+  attachedFiles: AttachedFile[],
+): { files: File[]; error: string | null } {
+  let remainingImageSlots = Math.max(
+    0,
+    MAX_INLINE_IMAGE_COUNT - attachedFiles.filter(isInlineImageAttachment).length,
+  );
+  const accepted: File[] = [];
+  const rejected: string[] = [];
+
+  for (const file of files) {
+    const mimeType = String(file.type ?? "").trim().toLowerCase();
+    if (!mimeType.startsWith("image/")) {
+      accepted.push(file);
+      continue;
+    }
+    if (!INLINE_IMAGE_MIME_TYPES.has(mimeType)) {
+      rejected.push(`${file.name}: PNG、JPEG、WebP、GIFのみ対応`);
+      continue;
+    }
+    if (file.size > MAX_INLINE_IMAGE_BYTES) {
+      rejected.push(`${file.name}: 1 MB以下にしてください`);
+      continue;
+    }
+    if (remainingImageSlots <= 0) {
+      rejected.push(`${file.name}: 画像は1メッセージに最大2枚です`);
+      continue;
+    }
+    accepted.push(file);
+    remainingImageSlots -= 1;
+  }
+
+  return {
+    files: accepted,
+    error: rejected.length > 0 ? `画像を追加できませんでした。${rejected.join(" / ")}` : null,
+  };
 }
 
 function DroppedWidgetChip({
@@ -1989,16 +2104,94 @@ function ModeSelector({
   );
 }
 
-type ComposerAtMentionCandidate =
-  | { kind: "tool"; id: string; label: string; description?: string; item: ComposerExtensionItem }
-  | { kind: "service"; id: string; label: string; description?: string; service: ToolGroup }
-  | { kind: "skill"; id: string; label: string; description?: string; skill: ComposerSkillItem }
-  | { kind: "file"; id: string; label: string; description?: string; file: string };
+export type ComposerMentionSection = {
+  id: "plugin" | "builtin-tool" | "custom-tool" | "skill" | "service" | "file";
+  label: string;
+  badge: string;
+  tone: "sky" | "cyan" | "violet" | "blue" | "emerald" | "amber" | "rose" | "neutral";
+};
+
+const COMPOSER_MENTION_SECTIONS: Record<ComposerMentionSection["id"], ComposerMentionSection> = {
+  plugin: { id: "plugin", label: "プラグイン・接続", badge: "接続", tone: "cyan" },
+  "builtin-tool": { id: "builtin-tool", label: "内蔵ツール", badge: "内蔵", tone: "sky" },
+  "custom-tool": { id: "custom-tool", label: "追加したツール", badge: "追加", tone: "emerald" },
+  skill: { id: "skill", label: "スキル", badge: "スキル", tone: "violet" },
+  service: { id: "service", label: "ツールのまとまり", badge: "まとまり", tone: "blue" },
+  file: { id: "file", label: "ワークスペースのファイル", badge: "ファイル", tone: "neutral" },
+};
+
+const BUILTIN_TOOL_PACK_IDS = new Set([
+  "defaultspack",
+  "rumi_default_tools_pack",
+]);
+
+/**
+ * Separate catalog-backed integrations from bundled tools without inferring a
+ * provider from a tool name. A service id is an explicit catalog declaration;
+ * a pack outside the known bundled packs is likewise a separately installed
+ * capability.
+ */
+export function composerMentionSectionForTool(item: ComposerExtensionItem): ComposerMentionSection {
+  const sourcePackId = String(item.sourcePackId ?? "").trim().toLowerCase();
+  if (sourcePackId === "user_dynamic") return COMPOSER_MENTION_SECTIONS["custom-tool"];
+  if (String(item.serviceId ?? "").trim() || (sourcePackId && !BUILTIN_TOOL_PACK_IDS.has(sourcePackId))) {
+    return COMPOSER_MENTION_SECTIONS.plugin;
+  }
+  return COMPOSER_MENTION_SECTIONS["builtin-tool"];
+}
+
+/**
+ * Keep a service group beside the catalog entries it contains. Groups that
+ * span catalog origins intentionally remain a separate catch-all, since a
+ * label such as a provider name cannot reliably describe a mixed bundle.
+ */
+export function composerMentionSectionForToolGroup(
+  items: readonly ComposerExtensionItem[],
+): ComposerMentionSection {
+  let section: ComposerMentionSection | null = null;
+  for (const item of items) {
+    if (item.disabled) continue;
+    const itemSection = composerMentionSectionForTool(item);
+    if (section && section.id !== itemSection.id) {
+      return COMPOSER_MENTION_SECTIONS.service;
+    }
+    section = itemSection;
+  }
+  return section ?? COMPOSER_MENTION_SECTIONS.service;
+}
+
+const COMPOSER_MENTION_SECTION_ORDER: readonly ComposerMentionSection["id"][] = [
+  "plugin",
+  "builtin-tool",
+  "custom-tool",
+  "skill",
+  "service",
+  "file",
+];
+
+export type ComposerAtMentionCandidate =
+  | { kind: "tool"; id: string; label: string; displayLabel?: string; description?: string; item: ComposerExtensionItem; section: ComposerMentionSection }
+  | { kind: "service"; id: string; label: string; displayLabel?: string; description?: string; service: ToolGroup; section: ComposerMentionSection }
+  | { kind: "skill"; id: string; label: string; displayLabel?: string; description?: string; skill: ComposerSkillItem; section: ComposerMentionSection }
+  | { kind: "file"; id: string; label: string; displayLabel?: string; description?: string; file: string; section: ComposerMentionSection };
+
+/** Keep palette section headings contiguous while preserving each section's source order. */
+export function orderComposerAtMentionCandidates(
+  candidates: readonly ComposerAtMentionCandidate[],
+): ComposerAtMentionCandidate[] {
+  return COMPOSER_MENTION_SECTION_ORDER.flatMap((sectionId) => (
+    candidates.filter((candidate) => candidate.section.id === sectionId)
+  ));
+}
 
 export type JsonListPanelItem = {
   id: string;
   title: string;
   description?: string;
+  section?: {
+    id: string;
+    label: string;
+  };
   icon?: string;
   fallbackIcon: "tool" | "service" | "skill" | "file" | "command";
   badges?: Array<{
@@ -2128,9 +2321,17 @@ export function JsonListPanel({
         )}
         {payload.items.map((item, index) => {
           const Icon = composerIconForName(item.icon, JSON_LIST_FALLBACK_ICON[item.fallbackIcon]);
+          const section = item.section;
+          const previousSectionId = payload.items[index - 1]?.section?.id;
+          const startsSection = section && section.id !== previousSectionId;
           return (
-            <button
-              key={item.id}
+            <div key={item.id}>
+              {startsSection && (
+                <div aria-hidden="true" className="px-3 pb-1 pt-2 text-[10px] font-medium text-zinc-500">
+                  {section?.label}
+                </div>
+              )}
+              <button
               id={`${payload.id}-option-${index}`}
               type="button"
               role="option"
@@ -2163,7 +2364,8 @@ export function JsonListPanel({
                   ))}
                 </span>
               )}
-            </button>
+              </button>
+            </div>
           );
         })}
       </div>
@@ -2180,29 +2382,23 @@ export function atMentionPalettePayload(candidates: ComposerAtMentionCandidate[]
         : candidate.kind === "skill"
           ? String(candidate.skill.metadata?.icon ?? candidate.skill.id)
           : candidate.file;
-    const tone: NonNullable<JsonListPanelItem["badges"]>[number]["tone"] = candidate.kind === "tool"
-      ? "sky"
-      : candidate.kind === "service"
-        ? "cyan"
-        : candidate.kind === "skill"
-          ? "violet"
-          : "blue";
     return {
       id: candidate.id,
-      title: candidate.label,
+      title: candidate.displayLabel ?? candidate.label,
       description: candidate.description,
+      section: { id: candidate.section.id, label: candidate.section.label },
       icon,
       fallbackIcon: candidate.kind,
-      badges: [{ label: candidate.kind, tone }],
+      badges: [{ label: candidate.section.badge, tone: candidate.section.tone }],
     };
   });
 
   return jsonListPanelPayload({
     id: "composer-at-mention",
     listboxId: AT_MENTION_LISTBOX_ID,
-    ariaLabel: "Composer mentions",
+    ariaLabel: "メンション候補",
     testId: "composer-at-mention-candidates",
-    header: { label: "Mentions", icon: "wrench" },
+    header: { label: "メンション", icon: "wrench" },
     empty: { message: "一致する候補はありません。Enterで本文を送信、Tabで次の操作へ移動できます。" },
     item: { prefix: "@" },
     items,
@@ -2238,7 +2434,7 @@ export function commandPalettePayload(commands: ComposerCommandItem[]): JsonList
         icon: `${command.id} ${command.name} ${command.category}`,
         fallbackIcon: "command" as const,
         badges: [
-          { label: command.risk, tone: riskTone[command.risk] },
+          ...(command.risk !== "low" ? [{ label: command.risk, tone: riskTone[command.risk] }] : []),
           ...(command.availability?.status === "unavailable"
             ? [{ label: "unavailable", tone: "neutral" as const }]
             : []),
@@ -2688,7 +2884,9 @@ export function ComposerRenderer({
   onProjectStoragePrepare,
 }: ComposerRendererProps) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
+  const [commandMenuOpen, setCommandMenuOpen] = useState(false);
+  const previousTextareaCollapsed = useRef(false);
+  const textareaResizeAnimation = useRef<Animation | null>(null);
   const [openFolder, setOpenFolder] = useState<"tools" | "models" | "commands">("tools");
   const [openToolGroup, setOpenToolGroup] = useState<string | null>(null);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
@@ -2706,14 +2904,16 @@ export function ComposerRenderer({
   const [voiceStatus, setVoiceStatus] = useState<"idle" | "starting" | "listening" | "transcribing" | "error">("idle");
   const [voiceElapsedSeconds, setVoiceElapsedSeconds] = useState(0);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [textareaCollapsed, setTextareaCollapsed] = useState(false);
   const [textareaCanCollapse, setTextareaCanCollapse] = useState(false);
   const [textareaFocused, setTextareaFocused] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
-  const attachmentMenuRef = useRef<HTMLDivElement | null>(null);
-  const attachmentMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const commandMenuRef = useRef<HTMLDivElement | null>(null);
+  const commandMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const inlineMentionLayerRef = useRef<HTMLDivElement | null>(null);
   const voiceRecorderRef = useRef<ActiveAudioRecorder | null>(null);
@@ -2834,7 +3034,7 @@ export function ComposerRenderer({
     || toolId === "browser_companion"
   ));
   const hasAttachedImages = attachedFiles.some((file) => String(file.type ?? "").startsWith("image/"));
-  const imageBridgePlanned = hasAttachedImages && !selectedProfile?.supports_vision && !selectedProfile?.supports_image_input;
+  const imageRequiresVisionModel = hasAttachedImages && !selectedProfile?.supports_vision && !selectedProfile?.supports_image_input;
   const activeToolGroup = toolGroups.find((group) => group.id === openToolGroup) ?? toolGroups[0] ?? null;
   const showToolGroups = toolItems.length > 4;
   const isEscapedSlash = input.startsWith("//");
@@ -2845,7 +3045,7 @@ export function ComposerRenderer({
     placeholder,
     templatePlaceholder: templateComposerPlaceholder,
   });
-  const effectiveComposerHelp = composerHelperCopy({
+  const effectiveComposerHelp = !isSteerMode && (!templateComposerHelp || looksLikeInternalComposerCopy(templateComposerHelp)) ? "" : composerHelperCopy({
     isSteerMode,
     hasInput: Boolean(input.trim()),
     slashCommands: templateAllowsSlashCommands,
@@ -2858,7 +3058,8 @@ export function ComposerRenderer({
   const slashCommandName = slashText.trimStart().split(/\s+/, 1)[0] ?? "";
   const slashQuery = slashCommandName.toLowerCase();
   const staticSelectMatch = hasSlashCommandPrefix ? protocolStaticSelectMatch(input, commands) : null;
-  const matchedCommands = hasSlashCommandPrefix
+  const menuCommands = composerMenuCommands(commands, templateAllowsFileAttachments, templateAllowsSlashCommands);
+  const matchedCommands = hasSlashCommandPrefix || commandMenuOpen
     ? staticSelectMatch && staticSelectMatch.options.length > 0
       ? staticSelectMatch.options
           .filter((option) => !staticSelectMatch.query || `${option.value} ${option.label}`.toLocaleLowerCase().includes(staticSelectMatch.query))
@@ -2871,7 +3072,7 @@ export function ComposerRenderer({
             protocol_source_command_id: staticSelectMatch.command.id,
             protocol_option_value: option.value,
           }))
-      : commands.filter((command) => {
+      : menuCommands.filter((command) => {
           const haystack = `${command.id} ${command.name} ${(command.aliases ?? []).join(" ")} ${command.label} ${command.description ?? ""}`.toLowerCase();
           return !slashQuery || haystack.includes(slashQuery);
         })
@@ -2879,10 +3080,15 @@ export function ComposerRenderer({
   const activeCommandArgumentGuide = commandArgumentGuideForInput(input, commands);
   const hasModelCommandCandidates = textareaFocused && modelCommandCandidates.length > 0;
   const showCommandSuggestions = shouldShowComposerCommandSuggestions({
-    focused: textareaFocused,
-    slashCommandsEnabled: templateAllowsSlashCommands,
+    focused: textareaFocused || commandMenuOpen,
+    slashCommandsEnabled: templateAllowsSlashCommands || commandMenuOpen,
     hasModelCandidates: hasModelCommandCandidates,
-    matchCount: activeCommandArgumentGuide ? 0 : matchedCommands.length,
+    matchCount: activeCommandArgumentGuide && !commandMenuOpen ? 0 : matchedCommands.length,
+  });
+  const showAtMentionSuggestions = shouldShowComposerAtMentionSuggestions({
+    atMentionOpen,
+    commandMenuOpen,
+    commandSuggestionsOpen: showCommandSuggestions,
   });
   const persistentToggleCommands = persistentComposerToggleCommands(commands).slice(0, 3);
   const visibleSteerPreviewItems = steerPreviewItems.filter((item) => (
@@ -2903,7 +3109,7 @@ export function ComposerRenderer({
     ...(mode === "coding" ? codingContext?.files ?? [] : []),
   ], [codingContext?.files, mode, skillExtensions, toolGroups, toolItems]);
   const atMentionCandidates = useMemo<ComposerAtMentionCandidate[]>(() => {
-    const toolCandidates = filterComposerToolMentions(toolItems, atMentionQuery, 14).map((item) => {
+    const toolCandidates = filterComposerToolMentions(toolItems, atMentionQuery, 32).map((item) => {
       const display = composerToolMentionDisplay(item);
       return {
         kind: "tool" as const,
@@ -2911,8 +3117,12 @@ export function ComposerRenderer({
         label: display.label,
         description: display.description,
         item,
+        section: composerMentionSectionForTool(item),
       };
     });
+    const toolsInSection = (sectionId: ComposerMentionSection["id"]) => toolCandidates
+      .filter((candidate) => candidate.section.id === sectionId)
+      .slice(0, atMentionQuery.trim() ? 8 : 6);
     const skillCandidates = filterComposerSkillMentions(skillExtensions, atMentionQuery, 8).map((skill) => {
       const display = composerSkillMentionDisplay(skill);
       return {
@@ -2921,6 +3131,7 @@ export function ComposerRenderer({
         label: display.label,
         description: display.description,
         skill,
+        section: COMPOSER_MENTION_SECTIONS.skill,
       };
     });
     const normalizedServiceQuery = atMentionQuery.trim().toLowerCase();
@@ -2933,13 +3144,21 @@ export function ComposerRenderer({
           .includes(normalizedServiceQuery)
       ))
       .slice(0, 8)
-      .map((service) => ({
-        kind: "service" as const,
-        id: `service:${service.id}`,
-        label: service.label,
-        description: service.description,
-        service,
-      }));
+      .map((service) => {
+        const availableItemCount = service.items.filter((item) => !item.disabled).length;
+        return {
+          kind: "service" as const,
+          id: `service:${service.id}`,
+          label: service.label,
+          displayLabel: `${service.label}（まとめ）`,
+          description: [
+            service.description,
+            `${availableItemCount}件のツールをまとめて選択`,
+          ].filter(Boolean).join(" · "),
+          service,
+          section: composerMentionSectionForToolGroup(service.items),
+        };
+      });
     const fileCandidates = mode === "coding"
       ? filterAtMentionFiles(codingContext?.files ?? [], atMentionQuery).slice(0, 8).map((file) => ({
           kind: "file" as const,
@@ -2947,10 +3166,18 @@ export function ComposerRenderer({
           label: file,
           description: "workspace file",
           file,
+          section: COMPOSER_MENTION_SECTIONS.file,
         }))
       : [];
-	    return [...toolCandidates, ...skillCandidates, ...serviceCandidates, ...fileCandidates];
-	  }, [atMentionQuery, codingContext?.files, mode, skillExtensions, toolGroups, toolItems]);
+    return orderComposerAtMentionCandidates([
+      ...toolsInSection("plugin"),
+      ...toolsInSection("builtin-tool"),
+      ...toolsInSection("custom-tool"),
+      ...skillCandidates,
+      ...serviceCandidates,
+      ...fileCandidates,
+    ]);
+  }, [atMentionQuery, codingContext?.files, mode, skillExtensions, toolGroups, toolItems]);
 
   const atMentionPalette = useMemo(() => atMentionPalettePayload(atMentionCandidates), [atMentionCandidates]);
   const commandPalette = useMemo(() => commandPalettePayload(matchedCommands), [matchedCommands]);
@@ -2960,14 +3187,14 @@ export function ComposerRenderer({
       : null,
     [activeCommandArgumentGuide],
   );
-  const activeComposerListboxId = atMentionOpen
+  const activeComposerListboxId = showAtMentionSuggestions
     ? AT_MENTION_LISTBOX_ID
     : showCommandSuggestions
       ? COMMAND_LISTBOX_ID
       : commandArgumentPalette
         ? COMMAND_ARGUMENT_LISTBOX_ID
         : undefined;
-  const activeComposerOptionId = atMentionOpen && atMentionCandidates.length > 0
+  const activeComposerOptionId = showAtMentionSuggestions && atMentionCandidates.length > 0
     ? `composer-at-mention-option-${selectedAtMentionIndex}`
     : showCommandSuggestions && matchedCommands.length > 0
       ? `composer-slash-command-option-${selectedCommandIndex}`
@@ -2991,6 +3218,10 @@ export function ComposerRenderer({
   const resizeComposerTextarea = useCallback(
     (textarea: HTMLTextAreaElement | null = textareaRef.current) => {
       if (!textarea) return;
+      const previousHeight = textarea.getBoundingClientRect().height;
+      textareaResizeAnimation.current?.cancel();
+      const animateResize = previousTextareaCollapsed.current !== textareaCollapsed;
+      previousTextareaCollapsed.current = textareaCollapsed;
       textarea.style.height = "auto";
       const naturalHeight = Math.max(textarea.scrollHeight, 0);
       const minHeight = isNewConversation ? NEW_CONVERSATION_TEXTAREA_MIN_HEIGHT : CONVERSATION_TEXTAREA_MIN_HEIGHT;
@@ -3002,6 +3233,12 @@ export function ComposerRenderer({
         minHeight,
         maxHeight,
       );
+      if (animateResize && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        textareaResizeAnimation.current = textarea.animate(
+          [{ height: `${previousHeight}px` }, { height: textarea.style.height }],
+          { duration: 200, easing: "ease-out" },
+        );
+      }
     },
     [isNewConversation, textareaCollapsed],
   );
@@ -3070,15 +3307,15 @@ export function ComposerRenderer({
   }, [menuOpen]);
 
   useEffect(() => {
-    if (!attachmentMenuOpen) return;
+    if (!commandMenuOpen) return;
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
-      if (attachmentMenuRef.current?.contains(target) || attachmentMenuButtonRef.current?.contains(target)) return;
-      setAttachmentMenuOpen(false);
+      if (commandMenuRef.current?.contains(target) || commandMenuButtonRef.current?.contains(target)) return;
+      setCommandMenuOpen(false);
     };
     const handleDocumentKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setAttachmentMenuOpen(false);
+      if (event.key === "Escape") setCommandMenuOpen(false);
     };
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleDocumentKeyDown);
@@ -3086,7 +3323,14 @@ export function ComposerRenderer({
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleDocumentKeyDown);
     };
-  }, [attachmentMenuOpen]);
+  }, [commandMenuOpen]);
+
+  useIsomorphicLayoutEffect(() => {
+    if (!commandMenuOpen) return;
+    setAtMentionOpen(false);
+    setAtMentionQuery("");
+    setAtMentionStart(null);
+  }, [commandMenuOpen]);
 
   useEffect(() => {
     setSelectedCommandIndex((current) => {
@@ -3136,6 +3380,7 @@ export function ComposerRenderer({
 
   useEffect(() => {
     if (!suppressPopovers) return;
+    setCommandMenuOpen(false);
     setMenuOpen(false);
     setAtMentionOpen(false);
     setModelDropdownOpen(false);
@@ -3193,19 +3438,35 @@ export function ComposerRenderer({
     rawInput = input,
     intent: "execute" | "complete" = "execute",
   ) => {
+    if (commandId === COMPOSER_ATTACH_COMMAND_ID || commandId === COMPOSER_ATTACH_IMAGE_COMMAND_ID) {
+      if (!templateAllowsFileAttachments) return;
+      setCommandMenuOpen(false);
+      if (hasSlashCommandPrefix) onInputChange("");
+      const inputElement = commandId === COMPOSER_ATTACH_IMAGE_COMMAND_ID
+        ? imageInputRef.current
+        : fileInputRef.current;
+      inputElement?.click();
+      return;
+    }
     if (!templateAllowsSlashCommands) return;
+    setCommandMenuOpen(false);
+    if (commandMenuOpen && !hasSlashCommandPrefix) {
+      const selected = commands.find((command) => command.id === commandId);
+      rawInput = `/${selected?.name ?? commandId}`;
+    }
     const protocolOption = matchedCommands.find((command) => command.id === commandId) as (
       ComposerCommandItem & { protocol_source_command_id?: string; protocol_option_value?: string }
     ) | undefined;
     if (protocolOption?.protocol_source_command_id && protocolOption.protocol_option_value) {
       const source = commands.find((command) => command.id === protocolOption.protocol_source_command_id);
-      if (!source) return;
+      if (!source || source.availability?.status === "unavailable") return;
       onCommandSelect?.(source.id, `/${source.name} ${protocolOption.protocol_option_value}`);
       onInputChange("");
       return;
     }
 
     const command = commands.find((item) => item.id === commandId);
+    if (command?.availability?.status === "unavailable") return;
     const argumentEntryPrefix = commandArgumentEntryPrefix(command);
     if (intent === "complete" && argumentEntryPrefix) {
       onInputChange(argumentEntryPrefix);
@@ -3236,7 +3497,7 @@ export function ComposerRenderer({
       setMenuOpen(true);
     }
     onCommandSelect?.(commandId, rawInput);
-    if (!(command?.protocol_presentation?.input.kind === "search_select" && rawHasArgs)) {
+    if (hasSlashCommandPrefix && !(command?.protocol_presentation?.input.kind === "search_select" && rawHasArgs)) {
       onInputChange("");
     }
   };
@@ -3253,7 +3514,7 @@ export function ComposerRenderer({
     (value: string) => {
       const textarea = textareaRef.current;
       const textareaOwnsFocus = typeof document === "undefined" || document.activeElement === textarea;
-      if (!textarea || !textareaOwnsFocus || suppressPopovers || !templateAllowsAtMentions) {
+      if (!textarea || !textareaOwnsFocus || commandMenuOpen || suppressPopovers || !templateAllowsAtMentions) {
         setAtMentionOpen(false);
         setAtMentionQuery("");
         setAtMentionStart(null);
@@ -3272,7 +3533,7 @@ export function ComposerRenderer({
         setAtMentionStart(null);
       }
     },
-    [atMentionKnownValues, suppressPopovers, templateAllowsAtMentions],
+    [atMentionKnownValues, commandMenuOpen, suppressPopovers, templateAllowsAtMentions],
   );
 
   useEffect(() => {
@@ -3347,9 +3608,20 @@ export function ComposerRenderer({
   const attachFiles = useCallback(async (files: FileList | File[] | null) => {
     if (!files?.length) return;
     if (!templateAllowsFileAttachments) return;
-    const newFiles: AttachedFile[] = await Promise.all(Array.from(files).map(fileToAttachment));
-    onFileAttach?.(newFiles);
-  }, [onFileAttach, templateAllowsFileAttachments]);
+    const prepared = prepareComposerAttachments(Array.from(files), attachedFiles);
+    setAttachmentError(prepared.error);
+    if (prepared.files.length === 0) return;
+    const results = await Promise.allSettled(prepared.files.map(fileToAttachment));
+    const newFiles = results
+      .filter((result): result is PromiseFulfilledResult<AttachedFile> => result.status === "fulfilled")
+      .map((result) => result.value);
+    const readError = results.find((result): result is PromiseRejectedResult => result.status === "rejected")?.reason;
+    if (readError) {
+      const message = readError instanceof Error ? readError.message : "ファイルを読み込めませんでした。";
+      setAttachmentError(prepared.error ? `${prepared.error} / ${message}` : message);
+    }
+    if (newFiles.length > 0) onFileAttach?.(newFiles);
+  }, [attachedFiles, onFileAttach, templateAllowsFileAttachments]);
 
   const handleCopy = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const textarea = event.currentTarget;
@@ -3534,7 +3806,7 @@ export function ComposerRenderer({
         type: recording.mimeType,
         dataUrl: recording.dataUrl,
       };
-      if (modelSupportsAudioInput(selectedProfile)) {
+      if (!shouldTranscribeVoiceInput(selectedProfile, voiceInputUseAi)) {
         onFileAttach?.([audioFile]);
         setVoiceStatus("idle");
         setVoiceElapsedSeconds(0);
@@ -3542,12 +3814,11 @@ export function ComposerRenderer({
       }
       const transcript = await requestAudioTranscript(audioFile, {
         duration_ms: recording.durationMs,
-        action: "automatic_transcription_for_unsupported_model",
-        voice_input_use_ai: voiceInputUseAi,
+        action: voiceInputUseAi
+          ? "voice_input_transcription"
+          : "automatic_transcription_for_unsupported_model",
       });
-      const prefix = voiceInputUseAi ? "文字起こしして: " : "";
-      const base = input.trimEnd();
-      onInputChange(`${base}${base ? "\n" : ""}${prefix}${transcript}`);
+      onInputChange(appendVoiceTranscript(input, transcript));
       setVoiceStatus("idle");
       setVoiceElapsedSeconds(0);
     } catch (error) {
@@ -3632,17 +3903,18 @@ export function ComposerRenderer({
       }
 
       if (event.key === "Escape") {
-        const composerOwnsEscape = atMentionOpen
+        const composerOwnsEscape = showAtMentionSuggestions
           || hasSlashCommandPrefix
           || hasModelCommandCandidates
           || menuOpen
           || modelDropdownOpen
           || modeSelectorOpen
+          || commandMenuOpen
           || openModelStatusId !== null;
         if (composerOwnsEscape) {
           event.preventDefault();
           event.stopPropagation();
-          if (atMentionOpen) {
+          if (showAtMentionSuggestions) {
             // Read from the textarea as the source of truth here. A keydown can
             // arrive before the controlled `input` prop has caught up with the
             // browser's latest input event (notably immediately after typing @).
@@ -3656,6 +3928,7 @@ export function ComposerRenderer({
             }
           }
           setAtMentionOpen(false);
+          setCommandMenuOpen(false);
           setMenuOpen(false);
           setModelDropdownOpen(false);
           setModeSelectorOpen(false);
@@ -3666,7 +3939,7 @@ export function ComposerRenderer({
         }
       }
 
-      if (atMentionOpen) {
+      if (showAtMentionSuggestions) {
         const action = atMentionMenuKeyAction(
           event.key,
           event.shiftKey,
@@ -3738,9 +4011,10 @@ export function ComposerRenderer({
       }
     },
     [
+      commandMenuOpen,
       atMentionCandidates,
       atMentionKnownValues,
-      atMentionOpen,
+      showAtMentionSuggestions,
       atMentionQuery.length,
       atMentionStart,
       chooseModelCommandCandidate,
@@ -3796,50 +4070,30 @@ export function ComposerRenderer({
       slot: "leading",
       homeSlot: "editor-leading",
       order: 20,
-      visible: templateAllowsFileAttachments,
-      width: COMPOSER_CHROME_WIDTHS.icon,
+      visible: templateAllowsFileAttachments || templateAllowsSlashCommands,
+      width: { basis: "32px", min: "32px", max: "32px" },
       className: "relative overflow-visible",
       render: () => (
         <>
           <button
-            ref={attachmentMenuButtonRef}
+            ref={commandMenuButtonRef}
             type="button"
             tabIndex={chromeButtonTabIndex}
-            aria-label="ファイルを添付"
-            aria-expanded={attachmentMenuOpen}
-            disabled={!templateAllowsFileAttachments}
-            title="写真とファイルを追加"
-            onClick={() => setAttachmentMenuOpen((open) => !open)}
-            className="rumi-icon-button text-zinc-300"
+            aria-label="添付とコマンド"
+            aria-controls={COMMAND_LISTBOX_ID}
+            aria-expanded={showCommandSuggestions}
+            title="添付とコマンド"
+            onClick={() => {
+              setCommandMenuOpen(!showCommandSuggestions);
+              if (showCommandSuggestions && hasSlashCommandPrefix) onInputChange("");
+              setAtMentionOpen(false);
+              textareaRef.current?.focus({ preventScroll: true });
+            }}
+            className="rumi-icon-button rumi-attachment-button text-zinc-300"
           >
-            <Plus aria-hidden="true" size={isNewConversation ? 24 : 20} strokeWidth={1.8} />
+            <Plus aria-hidden="true" size={18} strokeWidth={1.8} />
           </button>
-          {attachmentMenuOpen && (
-            <div
-              ref={attachmentMenuRef}
-              role="menu"
-              aria-label="添付メニュー"
-              className="rumi-attachment-menu rumi-popover absolute left-0 top-full rumi-layer-modal mt-2 w-[min(360px,calc(100vw-32px))] p-2"
-            >
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setAttachmentMenuOpen(false);
-                  fileInputRef.current?.click();
-                }}
-                className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-zinc-100 transition-colors hover:bg-white/[0.06]"
-              >
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-zinc-200">
-                  <CloudUpload aria-hidden="true" size={17} />
-                </span>
-                <span className="min-w-0">
-                  <span className="block font-medium">写真とファイルを追加</span>
-                  <span className="block text-xs text-zinc-500">コンピューターからアップロード</span>
-                </span>
-              </button>
-            </div>
-          )}
+
         </>
       ),
     },
@@ -4045,17 +4299,17 @@ export function ComposerRenderer({
       ),
     },
     {
-      id: "vision-bridge-status",
+      id: "vision-model-required-status",
       slot: "leading",
       homeSlot: "toolbar-leading",
       order: 70,
-      visible: imageBridgePlanned,
+      visible: imageRequiresVisionModel,
       width: COMPOSER_CHROME_WIDTHS.badge,
       className: "overflow-hidden",
       render: () => (
-        <span aria-label="Vision Bridge" title="Vision Bridge" className="inline-flex items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-300 max-[430px]:px-1.5">
-          <FileText size={12} className="flex-shrink-0" />
-          <span className="truncate max-[430px]:hidden">Vision Bridge</span>
+        <span aria-label="画像対応モデルが必要" title="画像対応モデルが必要" className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300 max-[430px]:px-1.5">
+          <CircleAlert size={12} className="flex-shrink-0" />
+          <span className="truncate max-[430px]:hidden">画像対応モデルが必要</span>
         </span>
       ),
     },
@@ -4191,7 +4445,7 @@ export function ComposerRenderer({
               ? "ファイルを読み込み中"
               : "送信"}
           className={`rumi-send-button flex flex-shrink-0 items-center justify-center rounded-full transition-all duration-150 disabled:cursor-not-allowed ${
-            "h-[44px] min-h-[44px] w-[44px] min-w-[44px]"
+            "h-8 min-h-8 w-8 min-w-8"
           } ${
             isGenerating
               ? input.trim()
@@ -4207,7 +4461,7 @@ export function ComposerRenderer({
           ) : isGenerating ? (
             <CornerDownRight size={15} strokeWidth={2.4} />
           ) : (
-            <SendButtonIcon size={isNewConversation ? 18 : 16} />
+            <SendButtonIcon size={18} />
           )}
         </button>
       ),
@@ -4241,7 +4495,7 @@ export function ComposerRenderer({
     >
       <div className={`rumi-composer-shell ${isNewConversation ? "rumi-composer-shell-new mx-auto" : "mx-auto"}`}>
         <RuntimeCapabilityBanner
-          visible={imageBridgePlanned}
+          visible={imageRequiresVisionModel}
           onSwitchToVisionModel={onSwitchToVisionModel}
           onOpenModelManager={onOpenModelManager}
           onOpenToolSettings={onOpenToolSettings}
@@ -4272,12 +4526,14 @@ export function ComposerRenderer({
             />
           )}
           {showCommandSuggestions && (
+            <div ref={commandMenuRef}>
             <JsonListPanel
               payload={commandPalette}
               activeIndex={selectedCommandIndex}
               onActiveIndexChange={setSelectedCommandIndex}
               onSelect={(index) => chooseCommand(matchedCommands[index].id)}
             />
+            </div>
           )}
 
           {commandArgumentPalette && (
@@ -4289,7 +4545,7 @@ export function ComposerRenderer({
             />
           )}
 
-          {atMentionOpen && (
+          {showAtMentionSuggestions && (
             <>
               <button
                 type="button"
@@ -4618,6 +4874,7 @@ export function ComposerRenderer({
                 <ComposerAttachmentRegion
                   attachedFiles={attachedFiles}
                   pendingPaths={pendingMentionAttachmentPaths}
+                  error={attachmentError}
                   onFileRemove={onFileRemove}
                   onPendingRemove={onPendingMentionAttachmentRemove}
                   onTranscribe={transcribeAttachedAudio}
@@ -4660,11 +4917,11 @@ export function ComposerRenderer({
                         handleInputChange(event.currentTarget.value);
                       }}
                       placeholder={effectiveComposerPlaceholder}
-                      aria-label="Rumiにメッセージを送信"
+                      aria-label="Tobkiriにメッセージを送信"
                       aria-autocomplete="list"
                       aria-controls={activeComposerListboxId}
                       aria-activedescendant={activeComposerOptionId}
-                      aria-expanded={atMentionOpen || showCommandSuggestions || Boolean(commandArgumentPalette)}
+                      aria-expanded={showAtMentionSuggestions || showCommandSuggestions || Boolean(commandArgumentPalette)}
                       role="combobox"
                       className={`rumi-composer-input-new rumi-composer-textarea relative rumi-layer-panel block min-h-[44px] w-full max-h-[240px] select-text resize-none overflow-x-hidden overflow-y-auto border-none bg-transparent px-0 py-2.5 text-[16px] font-medium leading-[24px] caret-zinc-100 outline-none placeholder:text-zinc-500/70 ${hasInlineMentions ? "rumi-composer-textarea-highlighted text-transparent" : "text-zinc-100"} ${textareaCanCollapse ? "pr-9" : ""}`}
                       onScroll={(event) => syncInlineMentionScroll(event.currentTarget)}
@@ -4730,13 +4987,14 @@ export function ComposerRenderer({
               <ComposerAttachmentRegion
                 attachedFiles={attachedFiles}
                 pendingPaths={pendingMentionAttachmentPaths}
+                error={attachmentError}
                 onFileRemove={onFileRemove}
                 onPendingRemove={onPendingMentionAttachmentRemove}
                 onTranscribe={transcribeAttachedAudio}
               />
               <div className={`grid min-w-0 items-end gap-1 px-2 ${conversationFileAttachWidget ? "grid-cols-[44px_minmax(0,1fr)]" : "grid-cols-1"}`}>
                 {conversationFileAttachWidget && (
-                  <div className="self-end pb-0.5">
+                  <div className="self-start pb-0.5 pt-1.5">
                     <ComposerChromeWidget widget={conversationFileAttachWidget} />
                   </div>
                 )}
@@ -4763,11 +5021,11 @@ export function ComposerRenderer({
                       handleInputChange(event.currentTarget.value);
                     }}
                     placeholder={effectiveComposerPlaceholder}
-                    aria-label="Rumiにメッセージを送信"
+                    aria-label="Tobkiriにメッセージを送信"
                     aria-autocomplete="list"
                     aria-controls={activeComposerListboxId}
                     aria-activedescendant={activeComposerOptionId}
-                    aria-expanded={atMentionOpen || showCommandSuggestions || Boolean(commandArgumentPalette)}
+                    aria-expanded={showAtMentionSuggestions || showCommandSuggestions || Boolean(commandArgumentPalette)}
                     role="combobox"
                     className={`rumi-composer-textarea relative min-h-[24px] w-full max-h-[240px] select-text resize-none overflow-x-hidden overflow-y-auto border-none bg-transparent px-2 pb-0 pt-2.5 text-[15px] leading-[22px] caret-zinc-100 outline-none placeholder:text-zinc-500/70 max-[640px]:min-h-[24px] max-[640px]:pb-0 max-[640px]:pt-2.5 max-[640px]:text-[13px] ${hasInlineMentions ? "rumi-composer-textarea-highlighted text-transparent" : "text-zinc-100"} ${textareaCanCollapse ? "pr-11 max-[640px]:pr-10" : ""}`}
                     onScroll={(event) => syncInlineMentionScroll(event.currentTarget)}
@@ -4803,21 +5061,10 @@ export function ComposerRenderer({
             </>
           )}
 
-          {!isSteerMode && (effectiveComposerHelp || templateComposerInfoItems.length > 0) && (
-            <div className={`${isNewConversation ? "px-5 pt-1" : "px-5 pt-1 max-[640px]:px-3"} flex min-h-5 flex-wrap items-center gap-1.5 text-[10px] leading-none text-zinc-500`}>
-              {effectiveComposerHelp && (
-                <span className="min-w-[12rem] flex-1 break-words line-clamp-2" title={effectiveComposerHelp}>
-                  {effectiveComposerHelp}
-                </span>
-              )}
-              {!isNewConversation && templateComposerInfoItems.map((item) => (
-                <span
-                  key={item}
-                  className="flex-shrink-0 rounded-full bg-white/[0.04] px-2 py-0.5 text-[9px] uppercase tracking-wide text-zinc-500"
-                >
-                  {item}
-                </span>
-              ))}
+          {!isSteerMode && (effectiveComposerHelp || (!isNewConversation && templateComposerInfoItems.length > 0)) && (
+            <div className="flex flex-wrap gap-2 px-5 pt-1 text-[10px] text-zinc-500">
+              {effectiveComposerHelp && <span>{effectiveComposerHelp}</span>}
+              {!isNewConversation && templateComposerInfoItems.map((item) => <span key={item}>{item}</span>)}
             </div>
           )}
 
@@ -4842,6 +5089,19 @@ export function ComposerRenderer({
           <input
             ref={fileInputRef}
             type="file"
+            multiple
+            disabled={!templateAllowsFileAttachments}
+            className="hidden"
+            onChange={(event) => {
+              void attachFiles(event.target.files).finally(() => {
+                event.target.value = "";
+              });
+            }}
+          />
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
             multiple
             disabled={!templateAllowsFileAttachments}
             className="hidden"

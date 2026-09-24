@@ -26,6 +26,11 @@ from .security import (
     unsupported_execution_reason,
 )
 from domain.adaptive.guard import guard_tool_execution, tool_guard_response
+from domain.subagent_team.availability import (
+    settings_owner_from_context,
+    subagent_delegation_enabled,
+    subagents_disabled_result,
+)
 from domain.tool_policy.audit import audit_tool_policy
 from domain.tool_policy.internal_context import (
     internal_tool_decision_allows,
@@ -337,6 +342,10 @@ class ToolExecutor:
         """
         if _is_cancelled(context):
             return _cancelled_tool_result(tool_name)
+        if tool_name == "subagent" and not subagent_delegation_enabled(
+            settings_owner=settings_owner_from_context(self._settings_owner, context),
+        ):
+            return _subagents_disabled_tool_result()
         filtered_rejection = _filtered_tool_rejection(tool_name, context)
         if filtered_rejection is not None:
             return {
@@ -1520,6 +1529,10 @@ class ToolExecutor:
         """
         if _is_cancelled(context):
             return _cancelled_tool_result(tool_name)
+        if tool_name == "subagent" and not subagent_delegation_enabled(
+            settings_owner=settings_owner_from_context(self._settings_owner, context),
+        ):
+            return _subagents_disabled_tool_result()
         explicit_tool_def = tool_def if isinstance(tool_def, dict) else getattr(self, "_current_local_tool_def", None)
         if not isinstance(tool_def, dict):
             registry = getattr(self, "_registry", None)
@@ -1750,6 +1763,20 @@ class ToolExecutor:
                     "arguments": arguments,
                 },
             }
+
+
+def _subagents_disabled_tool_result() -> dict[str, Any]:
+    disabled = subagents_disabled_result()
+    return {
+        "result": disabled["message"],
+        "is_error": True,
+        "code": disabled["code"],
+        "widget": {
+            "type": "subagent",
+            "error_type": "subagents_disabled",
+            "code": disabled["code"],
+        },
+    }
 
 
 def _is_cancelled(context):

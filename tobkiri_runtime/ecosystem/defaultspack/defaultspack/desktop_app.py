@@ -488,6 +488,8 @@ def _restore_active_profile_contracts(
         chat_continuation_resume=delegates.chat_continuation_resume,
         authority_approval_window_open=delegates.authority_approval_window_open,
         model_search=delegates.model_search,
+        saved_thinking_parameters=delegates.saved_thinking_parameters,
+        saved_input_capabilities=delegates.saved_input_capabilities,
     )
     install_dispatch_session(get_container(), session)
     _write_launch_event(

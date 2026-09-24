@@ -51,6 +51,7 @@ class SettingsSections:
                         "type": "text",
                         "default": "メッセージを入力...",
                         "help": "チャット入力欄の placeholder。",
+                        "advanced": True,
                     },
                     {
                         "id": "show_activity_in_messages",
@@ -65,6 +66,7 @@ class SettingsSections:
                         "type": "toggle",
                         "default": True,
                         "help": "Tab/Shift+Tabでcomposerや右サイドバーの操作へ移動できます。アクセシビリティのため既定で有効です。",
+                        "advanced": True,
                     },
                     {
                         "id": "spotlight_shortcut_enabled",
@@ -76,9 +78,10 @@ class SettingsSections:
                     {
                         "id": "spotlight_shortcut",
                         "label": "Spotlight Keys",
-                        "type": "text",
+                        "type": "shortcut_recorder",
+                        "renderer": "shortcut_recorder",
                         "default": "Ctrl+K",
-                        "help": "Use combinations such as Ctrl+K, Ctrl+Alt+K, or Win+K where the browser receives Win-key events.",
+                        "help": "ボタンを押してから、使いたいキーの組み合わせを押します。",
                     },
                     {
                         "id": "spotlight_shortcut_text_input",
@@ -100,18 +103,27 @@ class SettingsSections:
                         "help": "frontend の表示言語です。未翻訳の拡張項目は元の文言を表示します。",
                     },
                     {
+                        "id": "workspace_tabs_enabled",
+                        "label": "Workspace Tabs",
+                        "type": "toggle",
+                        "default": True,
+                        "control_center_section": "features",
+                        "help": "会話・カレンダー等を上部タブで切り替えます。OFFでは現在の画面を直接切り替えます。",
+                    },
+                    {
                         "id": "voice_input_enabled",
                         "label": "音声入力",
                         "type": "toggle",
                         "default": True,
                         "help": "composer のマイクボタンでブラウザ音声入力を使います。",
+                        "advanced": True,
                     },
                     {
                         "id": "voice_input_use_ai",
                         "label": "AI文字起こしモード",
                         "type": "toggle",
                         "default": False,
-                        "help": "ON の時は入力文に「文字起こしして:」を付けて、モデルへ文字起こしタスクとして渡します。",
+                        "help": "録音を文字起こしして、送信せず入力欄に追加します。",
                     },
                     {
                         "id": "manual_runtime_mode_selection",
@@ -228,9 +240,11 @@ class SettingsSections:
                     {
                         "id": "agent_model",
                         "label": "Agent Model",
-                        "type": "text",
+                        "type": "model_select",
+                        "renderer": "model_select",
                         "default": "",
-                        "help": "空なら設定済みの非embeddingモデルを自動選択します。例: google/gemini-2.5-flash",
+                        "options": deepcopy(model_options),
+                        "help": "選択しない場合は、設定済みの会話用モデルを自動選択します。",
                     },
                     {
                         "id": "agent_current_chat",
@@ -344,6 +358,13 @@ class SettingsSections:
                         "help": "Fast model for quick replies and delegated rough work. Leave empty for automatic selection.",
                     },
                     {
+                        "id": "deepthink_enabled",
+                        "label": "DeepThink",
+                        "type": "toggle",
+                        "default": False,
+                        "help": "thinker型のDeepThink loopを有効にします。タスクには数時間かかる可能性があります。",
+                    },
+                    {
                         "id": "preferred_model",
                         "label": "Preferred Model",
                         "type": "select",
@@ -387,6 +408,7 @@ class SettingsSections:
                             {"value": "ignore", "label": "Ignore"},
                         ],
                         "help": "画像あり会話で画像非対応モデルへ切り替える時の挙動です。",
+                        "advanced": True,
                     },
                     {
                         "id": "utility_models",
@@ -438,27 +460,6 @@ class SettingsSections:
                         "advanced": True,
                     },
                     {
-                        "id": "thinking_level",
-                        "label": "Thinking Level",
-                        "type": "select",
-                        "default": "medium",
-                        "options": [
-                            {"value": "none", "label": "Off"},
-                            {"value": "low", "label": "Low"},
-                            {"value": "medium", "label": "Medium"},
-                            {"value": "high", "label": "High"},
-                            {"value": "xhigh", "label": "Extra High"},
-                        ],
-                        "help": "Rumi は none/low/medium/high/xhigh を送り、各 provider が対応する API パラメータへ変換します。Gemini/Gemma では未対応の値を自動で近い値へ落とします。",
-                    },
-                    {
-                        "id": "deepthink_enabled",
-                        "label": "DeepThink",
-                        "type": "toggle",
-                        "default": False,
-                        "help": "thinker型のDeepThink loopを有効にします。タスクには数時間かかる可能性があります。",
-                    },
-                    {
                         "id": "favorite_profiles",
                         "label": "Composer Model Pins",
                         "type": "textarea",
@@ -492,6 +493,36 @@ class SettingsSections:
                             "route_id": "",
                         },
                         "help": "Pairs destination nodes, probes provider route portability, and starts fenced handoff operations.",
+                    },
+                ],
+            },
+            {
+                "id": "automation",
+                "label": "Automation",
+                "description": "会話の自動化とサブエージェントの利用を設定します。",
+                "fields": [
+                    {
+                        "id": "subagent_teams_enabled",
+                        "label": "Use Subagents",
+                        "type": "toggle",
+                        "default": True,
+                        "control_center_section": "automation",
+                        "help": "会話を分担するチーム画面と委任を使います。",
+                    },
+                ],
+            },
+            {
+                "id": "personalization",
+                "label": "Personalization",
+                "description": "新しい会話で使う応答の方針を設定します。",
+                "fields": [
+                    {
+                        "id": "default_system_prompt_id",
+                        "label": "Response guidance",
+                        "type": "prompt_profile",
+                        "renderer": "prompt_profile",
+                        "default": "",
+                        "help": "新しい会話で使うシステムプロンプトを選び、内容を編集します。",
                     },
                 ],
             },
@@ -897,6 +928,14 @@ class SettingsSections:
                 "label": "機能と接続",
                 "description": "機能の既定動作、権限、接続、高度な選定方式。",
                 "fields": [
+                    {
+                        "id": "mcp_servers",
+                        "label": "MCPサーバー管理",
+                        "type": "mcp_servers",
+                        "renderer": "mcp_servers",
+                        "default": [],
+                        "help": "MCPサーバーの接続設定を登録します。接続やツール実行の前には実行内容を確認します。",
+                    },
                     {
                         "id": "default_target",
                         "label": "Default Target",

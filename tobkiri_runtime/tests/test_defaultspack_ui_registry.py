@@ -1794,11 +1794,8 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         self.assertIn("stub/default", model_option_values)
         self.assertNotIn("openrouter/openai/gpt-4o", model_option_values)
         self.assertEqual(len(model_option_values), len(model_fields["preferred_model"]["options"]))
-        self.assertEqual(model_fields["thinking_level"]["type"], "select")
-        self.assertIn(
-            "xhigh",
-            {option["value"] for option in model_fields["thinking_level"]["options"]},
-        )
+        self.assertNotIn("thinking_level", model_fields)
+        self.assertTrue(model_fields["on_switch_to_non_vision_with_images"]["advanced"])
         self.assertNotIn("model_profile", model_fields)
         self.assertNotIn("detected_provider_count", model_fields)
         self.assertEqual(values["models"]["preferred_model"], "stub/default")
@@ -2573,6 +2570,7 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
                             "parameters": {"type": "object", "properties": {}, "required": []}
                         },
                         "execution": {"type": "local"},
+                        "metadata": {"service_id": "github"},
                         "ui": {
                             "group_id": "declared_group",
                             "group_label": "Declared Group",
@@ -2593,6 +2591,7 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         self.assertEqual(item["ui"]["group_label"], "Declared Group")
         self.assertEqual(item["ui"]["drop_capabilities"], ["composer.toggle_chip"])
         self.assertEqual(item["ui"]["widget_kind"], "tool_toggle")
+        self.assertEqual(item["tool_info"]["service_id"], "github")
 
 
 if __name__ == "__main__":

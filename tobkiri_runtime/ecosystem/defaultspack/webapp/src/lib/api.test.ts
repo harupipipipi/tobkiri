@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, usesBrowserComputerApprovalEndpoint } from "./api";
+import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, usesBrowserComputerApprovalEndpoint, validSavedTurnContent } from "./api";
 import type { ComposerCommandItem } from "./api";
 import { authorityApprovalRuntimeContent } from "./authorityApproval";
 import { deleteCalendarScheduleBeforeLocalChange } from "./calendarScheduleDeletion";
@@ -193,6 +193,17 @@ test("saved turn rejects unsupported fields and invalid revisions before sending
     await assert.rejects(api.startSavedTurn({ ...input, ...patch }), /invalid|unsupported/);
   }
   assert.equal(calls, 0);
+});
+
+test("saved turn content validator rejects malformed image blocks without throwing", () => {
+  assert.equal(validSavedTurnContent([
+    { type: "text", text: "Inspect this" },
+    null,
+  ]), false);
+  assert.equal(validSavedTurnContent([
+    { type: "text", text: "Inspect this" },
+    { type: "image_url", image_url: { url: "https://example.test/image.png" } },
+  ]), false);
 });
 
 test("saved turn rejects another conversation outcome without replay", async (context) => {
@@ -1465,6 +1476,35 @@ test("updateUiSettingsPatches sends field-scoped settings mutations", async () =
   });
 });
 
+test("settings patches confirm nested model preferences after a JSON round trip", async () => {
+  const originalFetch = globalThis.fetch;
+  const submitted = { first: "high", second: "low", nested: [null, { enabled: true }] };
+  try {
+    for (const [acknowledged, valid] of [
+      [{ nested: [null, { enabled: true }], second: "low", first: "high" }, true],
+      [{ ...submitted, first: "low" }, false],
+      [{ ...submitted, extra: "high" }, false],
+      [{ ...submitted, nested: [{ enabled: true }, null] }, false],
+    ] as const) {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls += 1;
+        return new Response(JSON.stringify({ status: "ok", data: {
+          values: { models: { thinking_level_by_profile: acknowledged } }, document_revision: 8,
+        } }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }) as typeof fetch;
+      const save = api.updateUiSettingsPatches([
+        { section: "models", field: "thinking_level_by_profile", value: submitted },
+      ], 7);
+      if (valid) await save;
+      else await assert.rejects(save);
+      assert.equal(calls, 1);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("settings patches reject malformed or unrelated acknowledgements without resending", async () => {
   const originalFetch = globalThis.fetch;
   const changes = { general: { composer_placeholder: "Hello" } };
@@ -2140,6 +2180,46 @@ test("saveProviderApiKey sends canonical preparation and returns success only af
     if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
     else Reflect.deleteProperty(globalThis, "window");
   }
+});
+
+test("saveProviderApiKey fills a known provider endpoint before the approved configure flow", async () => {
+  const f = providerConfigurationFixture();
+  f.configuration.endpoint = "https://api.openai.com/v1";
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const originalFetch = globalThis.fetch;
+  const bodies: Record<string, unknown>[] = [];
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { sessionStorage: f.ports.storage, location: { hash: "" } },
+  });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    bodies.push(body);
+    const data = requestTarget(input).includes("interactive-approval")
+      ? { request_id: "approval-1", state: "approved" }
+      : f.status(body.phase === "resume" ? "succeeded" : "approval_pending");
+    return new Response(JSON.stringify({ status: "ok", data }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+  try {
+    await api.saveProviderApiKey("openai", "fixture-private-key", { apiId: "main" });
+    assert.deepEqual(bodies[0].request, f.configuration);
+    assert.equal(bodies[0].effect_kind, "provider_configure");
+    assert.doesNotMatch(JSON.stringify(bodies.slice(1)), /fixture-private-key|https:/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+test("saveProviderApiKey keeps Custom endpoints explicit", async () => {
+  await assert.rejects(
+    api.saveProviderApiKey("openai_compatible", "fixture-private-key", { apiId: "main", protocol: "openai-compatible" }),
+    /Custom ProviderにはHTTPSの接続先URL/,
+  );
 });
 
 test("saveProviderApiKey forwards an explicit custom LLM protocol unchanged", async () => {

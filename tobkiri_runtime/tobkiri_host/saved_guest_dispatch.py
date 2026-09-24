@@ -9,7 +9,11 @@ import time
 from typing import Any, Callable
 
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
-from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
+from tobkiri_protocol.saved_conversation import (
+    MAX_SAVED_CHAIN_BYTES,
+    MAX_SAVED_FRAME_BYTES,
+    validate_saved_conversation_input,
+)
 from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_HOPS
 from .saved_turn_plan import SavedTurnPlan, TOOL
 
@@ -52,7 +56,11 @@ class SavedGuestTurns:
 
     def __init__(self, *, clock: Callable[[], float] = time.monotonic) -> None:
         self._clock = clock
-        self._chains = ContinuationChains(clock=clock, max_hops=MAX_SAVED_TOOL_HOPS)
+        self._chains = ContinuationChains(
+            clock=clock,
+            max_hops=MAX_SAVED_TOOL_HOPS,
+            max_bytes=MAX_SAVED_CHAIN_BYTES,
+        )
         self._turns: dict[tuple[str, str], _Turn] = {}
         self._cancelled: dict[tuple[str, str], float] = {}
         self._fence = 0.0
@@ -62,7 +70,9 @@ class SavedGuestTurns:
         self, request: dict[str, Any], binding_digest: str, execute: Execute,
     ) -> dict[str, Any]:
         """Reserve the identity before the initial sandbox computation."""
-        request = strict_loads(canonical_json(request), max_bytes=1024 * 1024)
+        request = strict_loads(
+            canonical_json(request), max_bytes=MAX_SAVED_FRAME_BYTES,
+        )
         request["payload"] = validate_saved_conversation_input(request["payload"])
         key = (request["target_domain"], request["request_id"])
         with self._lock:
@@ -80,6 +90,9 @@ class SavedGuestTurns:
                 identity, tuple(dict.fromkeys((*TARGETS, TOOL))) if tool_plan else TARGETS,
                 chains=self._chains,
                 target_selector=(lambda: plan.target) if tool_plan else None,
+                max_intent_bytes=MAX_SAVED_FRAME_BYTES,
+                max_frame_bytes=MAX_SAVED_FRAME_BYTES,
+                max_result_bytes=MAX_SAVED_FRAME_BYTES,
             )
             turn = _Turn(request, session, deadline, binding_digest, tool_plan=tool_plan)
             self._turns[key] = turn

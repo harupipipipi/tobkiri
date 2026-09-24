@@ -21,7 +21,16 @@ from tobkiri_protocol.saved_tools import saved_tool_messages, saved_tool_logs
 
 
 class ToolTurn:
-    def __init__(self, path, *, rounds=1, store=None, turn="turn-1", selection=None):
+    def __init__(
+        self,
+        path,
+        *,
+        rounds=1,
+        store=None,
+        turn="turn-1",
+        selection=None,
+        thinking_parameters=None,
+    ):
         self.store = store or ConversationStore("defaults", user_data_root=path)
         if store is None:
             self.store.create({"id": "conversation-1", "model_reference": "model-1"}, expected_revision=0)
@@ -34,7 +43,13 @@ class ToolTurn:
         self.calls = []
         self.ai_calls = 0
         self.rounds = rounds
-        self.callbacks = SavedBridgeCallbacks(self.dispatch, lambda _outer, targets: self.require(targets))
+        self.callbacks = SavedBridgeCallbacks(
+            self.dispatch,
+            lambda _outer, targets: self.require(targets),
+            (lambda _model_reference, _conversation_id: thinking_parameters)
+            if thinking_parameters is not None
+            else None,
+        )
         self.guest = SavedGuestTurns(clock=lambda: 0)
         self.binding = "sha256:" + "a" * 64
         request_digest = canonical_digest(self.outer.payload)
@@ -135,6 +150,17 @@ def test_real_ledgers_save_tool_rounds_and_restore_provider_history(tmp_path, ro
     history = next(payload["messages"] for target, payload in second.calls if target == AI)
     assert history[1:1 + len(trace)] == trace
     assert len(first.store.get("conversation-1")["messages"]) == 4
+
+
+def test_owner_resolved_thinking_preserves_the_host_tool_choice(tmp_path):
+    turn = ToolTurn(
+        tmp_path, rounds=0, thinking_parameters={"provider_reasoning_effort": "high"}
+    )
+    assert turn.complete()["status"] == "ok"
+    payload = next(payload for target, payload in turn.calls if target == AI)
+    assert payload["parameters"] == {
+        "provider_reasoning_effort": "high", "tool_choice": "auto"
+    }
 
 
 @pytest.mark.parametrize("change", [None, "metadata", "logs", "unselected", "revision", "content"])

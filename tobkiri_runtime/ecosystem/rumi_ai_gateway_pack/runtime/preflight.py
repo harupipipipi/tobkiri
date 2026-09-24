@@ -64,10 +64,18 @@ def create_preflight_operation(
     def operation(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         if name != FUNCTION_ID:
             raise ValueError("AI preflight operation is invalid")
-        if set(payload) - {"tool_calling"} != {"model_profile_id", "messages"}:
+        if set(payload) - {"tool_calling", "modalities"} != {"model_profile_id", "messages"}:
             raise ValueError("AI preflight input fields are invalid")
         if type(payload.get("tool_calling", False)) is not bool:
             raise ValueError("AI preflight tool requirement is invalid")
+        modalities = payload.get("modalities", ["text"])
+        if (
+            not isinstance(modalities, list)
+            or any(type(modality) is not str for modality in modalities)
+            or set(modalities) not in ({"text"}, {"text", "image"})
+            or len(modalities) != len(set(modalities))
+        ):
+            raise ValueError("AI preflight modality requirement is invalid")
         identifier = payload["model_profile_id"]
         messages = payload["messages"]
         if (not isinstance(identifier, str) or not identifier.strip() or len(identifier) > 256
@@ -77,9 +85,13 @@ def create_preflight_operation(
                        or not isinstance(message["content"], str) for message in messages)
                 or len(canonical_json(dict(payload))) > 60 * 1024):
             raise ValueError("AI preflight input is invalid")
+        requirements: dict[str, Any] = {"modalities": modalities}
+        if payload.get("tool_calling"):
+            requirements["tool_calling"] = True
         resolved = resolve("resolve", {
-            "model_profile_id": identifier, "messages": messages,
-            **({"requirements": {"tool_calling": True}} if payload.get("tool_calling") else {}),
+            "model_profile_id": identifier,
+            "messages": messages,
+            "requirements": requirements,
         })
         selected = [item for item in readonly.providers(gateway.GENERATE_PROVIDER_CONTRACT)
                     if item.get("provider_instance_id") == resolved.get("provider_instance_id")

@@ -8,6 +8,11 @@ from tobkiri_protocol.settings_state import SettingsOwnerPort
 from domain.ai_client.model_call import call_model
 from domain.agent.subagent_roles import get_subagent_role
 from domain.agent.placement_catalog import compile_utility_effective_plan
+from domain.subagent_team.availability import (
+    settings_owner_from_context,
+    subagent_delegation_enabled,
+    subagents_disabled_result,
+)
 
 
 _DELEGATE_CONTEXT_KEYS = (
@@ -40,6 +45,9 @@ class SubagentOrchestrator:
         settings: dict[str, Any] | None = None,
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        settings_owner = settings_owner_from_context(self._settings_owner, context)
+        if not subagent_delegation_enabled(settings_owner=settings_owner):
+            return _subagents_disabled_orchestration_result(role_id)
         role = get_subagent_role(role_id)
         if role is None:
             raise ValueError("unknown subagent role: " + str(role_id))
@@ -206,6 +214,26 @@ def run_subagent_compat(
             **({"settings_owner": settings_owner} if settings_owner is not None else {}),
         )
     raise ValueError("unknown subagent role: " + cleaned_role_id)
+
+
+def _subagents_disabled_orchestration_result(role_id: str) -> dict[str, Any]:
+    disabled = subagents_disabled_result()
+    return {
+        "role_id": str(role_id or ""),
+        "status": "error",
+        "code": disabled["code"],
+        "error": disabled["message"],
+        "assistant_text": disabled["message"],
+        "agent_kind": "subagent",
+        "runtime_kind": "utility_model_call",
+        "output": {},
+        "events": [
+            {
+                "type": "subagent_rejected",
+                "code": disabled["code"],
+            }
+        ],
+    }
 
 
 def _model_for_role(role_id: str, settings: dict[str, Any]) -> str:

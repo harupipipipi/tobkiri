@@ -40,6 +40,18 @@ _PREFERENCE_TYPES = {
         "spotlight_shortcut": str,
         "spotlight_shortcut_text_input": bool,
         "language": str,
+        "workspace_tabs_enabled": bool,
+        "voice_input_enabled": bool,
+        "voice_input_use_ai": bool,
+    },
+    "calendar": {
+        "agent_model": str,
+    },
+    "automation": {
+        "subagent_teams_enabled": bool,
+    },
+    "personalization": {
+        "default_system_prompt_id": str,
     },
     "chat_rendering": {"show_widgets": bool, "unknown_block_strategy": str},
 }

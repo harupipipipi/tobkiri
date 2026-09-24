@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import ReactMarkdown from "react-markdown";
+import { remarkMessageMentions } from "../lib/messageMentions";
 
 import { AUTHORITY_FOLLOWUP_TEXT, ChatMessagesRenderer, compactLogPreviewText, formatMessageTimestamp, hasRunningToolActivityGroups, isAuthorityWaitingMessage, isCompactLogLikeMessageText, isHiddenAuthorityFollowupMessage, messageCopyText, previewableToolActivityKeys, sanitizeAssistantAuthorityBoilerplate, shouldRenderImageBlockInChat, shouldShowEmptyResponseWarning, streamedBrowserScreenshots, summarizePendingToolNames, summarizeToolActivityGroups, taskDurationForMessage, toolActivityPreviewId, visibleChatMessages } from "./ChatMessagesRenderer";
 import type { ChatUiMessage } from "./types";
@@ -78,7 +80,7 @@ test("debug unknown block disclosure is explicit, bounded, and value-free", () =
   assert.doesNotMatch(html, /secret-looking-value|never-render-token/);
 });
 
-test("user messages restore human mention badges from semantic metadata", () => {
+test("user messages highlight semantic mentions inline without duplicate badges", () => {
   const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
     error: null,
     isMessagesRegionVisible: true,
@@ -106,9 +108,22 @@ test("user messages restore human mention badges from semantic metadata", () => 
     onSuggestionClick: () => undefined,
   }));
 
-  assert.match(html, /data-testid="message-mention-badge"/);
+  assert.match(html, /Use <span class="rumi-message-mention">@Browser Computer<\/span>/);
+  assert.doesNotMatch(html, /message-mention-badge/);
   assert.match(html, /@Browser Computer/);
   assert.doesNotMatch(html, />@browser_computer</);
+});
+
+test("inline mentions preserve code, links, and unmatched text", () => {
+  const html = renderToStaticMarkup(createElement(ReactMarkdown, {
+    remarkPlugins: [[remarkMessageMentions, [{ id: "browser", kind: "tool", label: "Browser Computer", syntax: "@Browser Computer" }]]],
+    children: "Use **@Browser Computer** and @browser computer. Leave user@Browser Computer, @Browser Computerized, @Unknown, `@Browser Computer`, and [@Browser Computer](https://example.test) alone.",
+  }));
+  assert.equal((html.match(/class=\"rumi-message-mention\"/g) ?? []).length, 2);
+  assert.match(html, /<strong><span class=\"rumi-message-mention\">@Browser Computer<\/span><\/strong>/);
+  assert.match(html, /<code>@Browser Computer<\/code>/);
+  assert.match(html, /<a href=\"https:\/\/example.test\">@Browser Computer<\/a>/);
+  assert.match(html, /user@Browser Computer, @Browser Computerized, @Unknown/);
 });
 
 test("repository evidence widget renders trusted exact statistics", () => {
@@ -359,7 +374,7 @@ test("task duration is human-friendly while running and after completion", () =>
   assert.deepEqual(completed, { label: "実行時間 2分5秒", running: false });
 });
 
-test("assistant header replaces relative timestamps with task duration", () => {
+test("assistant header omits timing metadata", () => {
   const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
     error: null,
     isMessagesRegionVisible: true,
@@ -381,8 +396,8 @@ test("assistant header replaces relative timestamps with task duration", () => {
     onSuggestionClick: () => undefined,
   }));
 
-  assert.match(html, /Assistant/);
-  assert.match(html, /実行時間 1分2秒/);
+  assert.doesNotMatch(html, />Assistant</);
+  assert.doesNotMatch(html, /実行時間 1分2秒/);
   assert.doesNotMatch(html, /just now|thinking 1m 2s/);
 });
 
@@ -414,7 +429,7 @@ test("stale streaming metadata on a historical assistant message does not show a
     onSuggestionClick: () => undefined,
   }));
 
-  assert.match(html, /実行時間 45秒/);
+  assert.doesNotMatch(html, /実行時間 45秒/);
   assert.doesNotMatch(html, /実行中/);
 });
 

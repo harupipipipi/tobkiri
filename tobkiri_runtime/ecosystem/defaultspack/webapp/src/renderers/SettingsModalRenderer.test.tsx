@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { buildVisibleModelOptions, SettingsModalRenderer, settingsCloseRequiresConfirmation, toggleSettingsRowSelection } from "./SettingsModalRenderer";
+import { buildVisibleModelOptions, SettingsModalRenderer, sectionPreludeIsVisible, settingsCloseRequiresConfirmation, toggleSettingsRowSelection } from "./SettingsModalRenderer";
 import { CredentialTransferModal, credentialTransferCanClose, credentialTransferFocusTarget } from "../components/CredentialTransferModal";
 import { createSettingsFieldRendererRegistry, SettingsFieldRendererHost } from "./settings/fieldRendererRegistry";
 import { builtinSettingsFieldRendererEntries } from "./settings/builtinSettingsFieldRenderers";
@@ -14,6 +14,8 @@ import {
 } from "./settings/renderers/slashCommandsField";
 import { allowCleartextMobileQr } from "../lib/mobileCleartextQr";
 import { apiKeySetupTargetFieldId } from "./settings/renderers/settingsFieldRendererUtils";
+import { shortcutFromKeyEvent } from "./settings/renderers/shortcutRecorderField";
+import { shortcutSpecMatchesEvent } from "../lib/keyboardShortcuts";
 import { SettingsStatusBar } from "./settings/SettingsStatusBar";
 import { ProfileSettingsPanel } from "./settings/ProfileSettingsPanel";
 import { ModelSearchPicker } from "../features/models/ModelSearchPicker";
@@ -101,7 +103,11 @@ test("settings AI surface launches the normal chat with the Settings skill", () 
     },
     health: null,
     previewsCount: 0,
-    settingsSections: [],
+    settingsSections: [{
+      id: "personalization",
+      label: "Personalization",
+      fields: [{ id: "default_system_prompt_id", label: "Response guidance", type: "text" }],
+    }],
     settingsValues: {},
     saveState: { status: "idle", dirtyKeys: [] },
     locale: "ja",
@@ -111,7 +117,9 @@ test("settings AI surface launches the normal chat with the Settings skill", () 
   }));
 
   assert.match(html, /AIアシスタント/);
+  assert.match(html, /応答の方針/);
   assert.match(html, /AIと設定する/);
+  assert.ok(html.indexOf("応答の方針") < html.indexOf("AIと設定する"));
   assert.match(html, /Settings Modeを開く/);
   assert.match(html, /@Settings/);
   assert.doesNotMatch(html, /設定について相談する/);
@@ -370,7 +378,7 @@ test("SettingsModalRenderer keeps everyday model slots visible and hides interna
   assert.match(html, /Lightweight Model/);
   assert.match(html, /Main Choice/);
   assert.match(html, /Fast Choice/);
-  assert.match(html, /Advanced settings are hidden/);
+  assert.doesNotMatch(html, /Advanced settings are hidden/);
   assert.doesNotMatch(html, /Utility Models/);
   assert.equal((html.match(/data-settings-renderer="model_select"/g) ?? []).length, 2);
 });
@@ -470,11 +478,25 @@ test("SettingsModalRenderer keeps internal extension paths out of standard Pack 
     }),
   );
 
-  assert.match(html, /Advanced settings are hidden/);
+  assert.doesNotMatch(html, /Advanced settings are hidden/);
   assert.doesNotMatch(html, /Template Extension Path/);
   assert.doesNotMatch(html, /Profile Extension Paths/);
   assert.doesNotMatch(html, /ExternalCustomTemplateExtensionThatWouldOtherwiseOverflowColumns/);
   assert.doesNotMatch(html, /ExternalCustomProfileExtensionThatWouldOtherwiseOverlap/);
+});
+
+test("shortcut recorder saves keyboard combinations instead of accepting raw text", () => {
+  assert.equal(shortcutFromKeyEvent({ key: "k", ctrlKey: true, altKey: false, metaKey: false, shiftKey: false }), "Ctrl+K");
+  assert.equal(shortcutFromKeyEvent({ key: "p", ctrlKey: false, altKey: true, metaKey: true, shiftKey: false }), "Cmd+Alt+P");
+  assert.equal(shortcutFromKeyEvent({ key: "Shift", ctrlKey: false, altKey: false, metaKey: false, shiftKey: true }), null);
+  assert.equal(shortcutFromKeyEvent({ key: "k", ctrlKey: false, altKey: false, metaKey: false, shiftKey: false }), null);
+
+  const recordedArrow = shortcutFromKeyEvent({ key: "ArrowUp", ctrlKey: true, altKey: false, metaKey: false, shiftKey: false });
+  assert.equal(recordedArrow, "Ctrl+ArrowUp");
+  assert.equal(shortcutSpecMatchesEvent(recordedArrow, { key: "ArrowUp", ctrlKey: true }), true);
+  const recordedFunctionKey = shortcutFromKeyEvent({ key: "F6", ctrlKey: false, altKey: false, metaKey: false, shiftKey: false });
+  assert.equal(recordedFunctionKey, "F6");
+  assert.equal(shortcutSpecMatchesEvent(recordedFunctionKey, { key: "F6" }), true);
 });
 
 test("Settings Profiles presents active/default routing and keeps profile secrets out of markup", () => {
@@ -768,6 +790,52 @@ test("custom LLM API setup exposes only supported protocol choices", () => {
   assert.match(html, /aria-label="Custom LLM protocol"/);
   assert.match(html, /value="openai-compatible"/);
   assert.match(html, /value="anthropic"/);
+});
+
+test("Connections external-token setup omits LLM endpoint and model-route controls", () => {
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "apis",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [{
+        id: "apis",
+        label: "Connections",
+        fields: [{
+          id: "api_key_setup_template",
+          label: "API Keys / Tokens",
+          type: "api_key_setup",
+          provider_id: "cloudflare",
+          provider_scope: "non_llm",
+        } as unknown as TemplateSettingsField] as unknown as SettingsSection["fields"],
+      }],
+      settingsValues: {
+        apis: {
+          api_keys: [{
+            provider_id: "cloudflare",
+            label: "Cloudflare",
+            kind: "custom",
+          }],
+        },
+      },
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /data-provider-scope="non_llm"/);
+  assert.match(html, /placeholder="cloudflare token"/);
+  assert.doesNotMatch(html, /Custom LLM protocol/);
+  assert.doesNotMatch(html, /Provider HTTPS base URL/);
+  assert.doesNotMatch(html, /接続先は選んだAIプロバイダーに合わせて自動で設定されます/);
+  assert.doesNotMatch(html, /モデルルート作成/);
 });
 
 test("Connections API credential template excludes AI provider keys", () => {
@@ -1148,6 +1216,7 @@ test("Settings > Tools keeps selector internals out of standard mode", () => {
           id: "tools",
           label: "機能と接続",
           fields: [
+            { id: "mcp_servers", label: "MCPサーバー管理", type: "text", renderer: "mcp_servers" } as unknown as SettingsSection["fields"][number],
             { id: "default_mode", label: "既定の使い方", type: "select", default: "auto", options: [{ value: "auto", label: "自動で選ぶ" }] },
           ],
         },
@@ -1170,6 +1239,9 @@ test("Settings > Tools keeps selector internals out of standard mode", () => {
   assert.doesNotMatch(html, /高度な設定/);
   assert.match(html, /既定の使い方/);
   assert.match(html, /自動で選ぶ/);
+  assert.match(html, /MCPサーバーを追加/);
+  assert.ok(html.indexOf("MCPサーバーを追加") < html.indexOf("既定の使い方"));
+  assert.equal([...html.matchAll(/既定の使い方/g)].length, 1);
 });
 
 test("Settings > Tools defaults to the tool experience overview", () => {
@@ -1699,7 +1771,7 @@ test("settings accounts prelude renders Codex token credential without raw token
   assert.doesNotMatch(html, new RegExp(rawToken));
 });
 
-test("settings tools prelude renders Codex App Server status and controls", () => {
+test("settings tools hides technical Codex App Server controls in standard mode", () => {
   const rawToken = ["codex", "hidden", "token"].join("-");
   const html = renderToStaticMarkup(
     createElement(SettingsModalRenderer, {
@@ -1764,18 +1836,21 @@ test("settings tools prelude renders Codex App Server status and controls", () =
     }),
   );
 
-  assert.match(html, /Codex App Server/);
-  assert.match(html, /Tool source/);
-  assert.match(html, /Automation/);
-  assert.match(html, /http:\/\/127\.0\.0\.1:7331/);
-  assert.match(html, /ws:\/\/127\.0\.0\.1:7331\/ws/);
-  assert.match(html, /websocket_loopback/);
-  assert.match(html, /ws_token via file/);
-  assert.match(html, /Connected Codex provider via ChatGPT account: rumi-user@example.test/);
-  assert.match(html, /Save config/);
-  assert.match(html, /Probe/);
+  assert.doesNotMatch(html, /Codex App Server/);
+  assert.doesNotMatch(html, /http:\/\/127\.0\.0\.1:7331/);
+  assert.doesNotMatch(html, /ws:\/\/127\.0\.0\.1:7331\/ws/);
+  assert.doesNotMatch(html, /websocket_loopback/);
+  assert.doesNotMatch(html, /ws_token via file/);
+  assert.doesNotMatch(html, /Save config/);
+  assert.doesNotMatch(html, /Probe/);
   assert.doesNotMatch(html, new RegExp(rawToken));
   assert.doesNotMatch(html, /Connected ChatGPT account/);
+});
+
+test("settings tools keeps technical Codex App Server setup in advanced mode", () => {
+  assert.equal(sectionPreludeIsVisible("tools_mcp", "standard"), false);
+  assert.equal(sectionPreludeIsVisible("tools_mcp", "advanced"), true);
+  assert.equal(sectionPreludeIsVisible("computer_automation", "standard"), true);
 });
 
 test("settings help pane uses reported active profile with fallback when absent", () => {
@@ -1938,7 +2013,8 @@ test("Japanese Accounts modal does not expose English connection implementation 
     }),
   );
 
-  assert.match(html, /ログイン、認証情報、権限を分けて管理します/);
+  assert.match(html, /aria-label="接続の概要"/);
+  assert.doesNotMatch(html, /ログイン、認証情報、権限を分けて管理します/);
   assert.match(html, /Gmailの検索とメタデータ/);
   assert.match(html, /認証情報を読み込んで保存/);
   assert.match(html, /設定の提供元/);

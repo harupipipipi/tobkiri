@@ -7,6 +7,7 @@
     "spotlight_shortcut",
     "spotlight_shortcut_text_input",
     "language",
+    "workspace_tabs_enabled",
     "voice_input_enabled",
     "voice_input_use_ai",
     "manual_runtime_mode_selection"
@@ -34,6 +35,12 @@
     "task_color",
     "event_color",
     "max_items_per_day"
+  ],
+  "automation": [
+    "subagent_teams_enabled"
+  ],
+  "personalization": [
+    "default_system_prompt_id"
   ],
   "chat_rendering": [
     "show_widgets",
@@ -110,6 +117,7 @@
     "vector_threshold"
   ],
   "tools": [
+    "mcp_servers",
     "default_target",
     "default_mode",
     "selection_strategy",

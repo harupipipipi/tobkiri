@@ -205,6 +205,84 @@ function favoriteIdsFromValues(settingsValues: Record<string, Record<string, unk
   return new Set(stringList(settingsValues.models?.favorite_profiles));
 }
 
+function modelProfileIdentifiers(profile: ModelProfile): Set<string> {
+  const providerId = stringValue(profile.provider_id);
+  const modelId = stringValue(profile.model_id);
+  return new Set([
+    stringValue(profile.profile_id),
+    stringValue(profile.qualified_model_id),
+    providerId && modelId ? `${providerId}/${modelId}` : "",
+    modelId,
+  ].filter(Boolean));
+}
+
+function explicitModelProfileIdentifiers(
+  settingsValues: Record<string, Record<string, unknown>>,
+  activeProfileId: string,
+  defaultProfileId: string,
+): Set<string> {
+  const models = settingsValues.models ?? {};
+  const identifiers = new Set<string>([
+    activeProfileId,
+    defaultProfileId,
+    stringValue(models.preferred_model),
+    stringValue(models.main_model),
+    stringValue(models.lightweight_model),
+    stringValue(models.vision_model),
+  ].filter(Boolean));
+  const boundValue = models.api_bound_profiles;
+  const parsedBound = typeof boundValue === "string" ? (() => {
+    try {
+      return JSON.parse(boundValue) as unknown;
+    } catch {
+      return null;
+    }
+  })() : boundValue;
+  const boundProfiles = Array.isArray(parsedBound)
+    ? recordList(parsedBound)
+    : recordList(Object.values(recordValue(parsedBound)));
+  for (const bound of boundProfiles) {
+    const providerId = stringValue(bound.provider_id, bound.provider);
+    const modelId = stringValue(bound.model_id, bound.model);
+    for (const identifier of [
+      stringValue(bound.profile_id, bound.qualified_model_id),
+      modelId,
+      providerId && modelId ? `${providerId}/${modelId}` : "",
+    ]) {
+      if (identifier) identifiers.add(identifier);
+    }
+  }
+  return identifiers;
+}
+
+/**
+ * The Profiles settings page describes models the user has actually saved.
+ * A provider catalog can advertise available models after an account is
+ * connected, but advertising one is not a user-created profile or route.
+ */
+function modelProfileHasSavedRoute(
+  profile: ModelProfile,
+  modelRoutesText: string,
+  explicitIdentifiers: Set<string>,
+): boolean {
+  const identifiers = modelProfileIdentifiers(profile);
+  if (identifiers.has("stub/default")) return true;
+  if (profile.route_configured === true) return true;
+  if ([...identifiers].some((identifier) => explicitIdentifiers.has(identifier))) return true;
+  if ([...identifiers].some((identifier) => selectedApisForModel(modelRoutesText, identifier).length > 0)) {
+    return true;
+  }
+  const metadata = recordValue(profile.metadata);
+  const availability = recordValue(profile.availability);
+  return Boolean(stringValue(
+    metadata.provider_connection_id,
+    metadata.provider_instance_id,
+    availability.provider_connection_id,
+    availability.provider_instance_id,
+    availability.connection_id,
+  ));
+}
+
 function providerStatus(
   providerId: string,
   settingsValues: Record<string, Record<string, unknown>>,
@@ -382,42 +460,6 @@ function profileFromModel(
   };
 }
 
-function profileFromCatalogRecord(
-  raw: Record<string, unknown>,
-  activeProfileId: string,
-  defaultProfileId: string,
-  favoriteIds: Set<string>,
-  modelRoutesText: string,
-  settingsValues: Record<string, Record<string, unknown>>,
-): SettingsProfileRecord | null {
-  const id = stringValue(raw.profile_id, raw.id, raw.key);
-  if (!id) return null;
-  const modelId = stringValue(raw.model_profile_id, raw.preferred_model, raw.main_model, raw.qualified_model_id, raw.model_id);
-  const providerId = stringValue(raw.provider_id, modelId.includes("/") ? modelId.split("/")[0] : "");
-  const readiness = providerStatus(providerId, settingsValues);
-  return {
-    id,
-    name: displayStringValue(raw.display_name, raw.name, raw.label, id),
-    description: stringValue(raw.description, raw.summary, raw.purpose),
-    role: stringValue(raw.role, raw.purpose, raw.recommended_role, "Runtime preset"),
-    providerId,
-    modelId,
-    routeRefs: modelId ? selectedApisForModel(modelRoutesText, modelId) : [],
-    source: "catalog",
-    sourceLabel: stringValue(raw.source_label, raw.source, raw.origin, "Runtime catalog"),
-    editable: false,
-    managed: true,
-    active: activeProfileId ? id === activeProfileId || modelId === activeProfileId : raw.active === true,
-    default: defaultProfileId ? id === defaultProfileId || modelId === defaultProfileId : raw.default === true || raw.is_default === true,
-    favorite: favoriteIds.has(id),
-    readiness: readiness.readiness,
-    readinessReason: readiness.reason,
-    capabilityTags: stringList(raw.capability_tags ?? raw.capabilities),
-    raw,
-    collectionIndex: null,
-  };
-}
-
 export function buildSettingsProfileWorkspace({
   settingsSections,
   settingsValues,
@@ -435,6 +477,11 @@ export function buildSettingsProfileWorkspace({
   const defaultProfileId = defaultProfileIdFromValues(settingsValues, catalog);
   const favoriteIds = favoriteIdsFromValues(settingsValues);
   const modelRoutesText = routeTextFromValues(settingsValues);
+  const explicitModelIdentifiers = explicitModelProfileIdentifiers(
+    settingsValues,
+    activeProfileId,
+    defaultProfileId,
+  );
   const editableCollection = findEditableCollection(settingsSections, settingsValues);
   const profiles = new Map<string, SettingsProfileRecord>();
 
@@ -443,12 +490,8 @@ export function buildSettingsProfileWorkspace({
     if (profile) profiles.set(profile.id, profile);
   });
 
-  for (const raw of recordList(catalog?.agent_service?.profiles)) {
-    const profile = profileFromCatalogRecord(raw, activeProfileId, defaultProfileId, favoriteIds, modelRoutesText, settingsValues);
-    if (profile && !profiles.has(profile.id)) profiles.set(profile.id, profile);
-  }
-
   for (const modelProfile of modelProfiles) {
+    if (!modelProfileHasSavedRoute(modelProfile, modelRoutesText, explicitModelIdentifiers)) continue;
     const profile = profileFromModel(modelProfile, activeProfileId, defaultProfileId, favoriteIds, modelRoutesText, settingsValues);
     if (!profiles.has(profile.id)) profiles.set(profile.id, profile);
   }

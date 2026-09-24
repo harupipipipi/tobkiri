@@ -1,10 +1,18 @@
 from blocks._common import error, ok
 from domain.company.service import CompanyService
+from domain.subagent_team.availability import (
+    settings_owner_from_context,
+    subagent_delegation_enabled,
+    subagents_disabled_result,
+)
 
 
 def run(input_data, context, *, settings_owner=None):
-    del context
+    settings_owner = settings_owner_from_context(settings_owner, context)
     try:
+        if not subagent_delegation_enabled(settings_owner=settings_owner):
+            disabled = subagents_disabled_result()
+            return error(disabled["message"], disabled["code"])
         if not isinstance(input_data, dict):
             input_data = {}
         raw_metadata = input_data.get("metadata")

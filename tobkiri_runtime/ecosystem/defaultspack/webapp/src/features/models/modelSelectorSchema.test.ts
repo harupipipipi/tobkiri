@@ -82,6 +82,18 @@ test("the same model exclusion applies to settings options", () => {
   );
 });
 
+test("legacy registered options remain selectable when provider_id is inferred", () => {
+  const options: ModelSelectOption[] = [
+    { value: "stub/default", label: "Stub Default", provider: "stub", configured: true },
+    { value: "legacy/default", label: "Legacy Default", configured: true },
+  ];
+
+  assert.deepEqual(
+    filterModelOptionsBySelector(options, parseModelSelectorSchema({}), "settings").map((item) => item.value),
+    ["stub/default", "legacy/default"],
+  );
+});
+
 test("surface overrides preserve global layout and filters", () => {
   const schema = parseModelSelectorSchema({
     layout: {

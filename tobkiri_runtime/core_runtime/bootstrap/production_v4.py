@@ -1340,6 +1340,10 @@ def capture_production_dispatch(
         ]
         | None
     ) = None,
+    saved_thinking_parameters: (
+        Callable[[str, str], Mapping[str, Any]] | None
+    ) = None,
+    saved_input_capabilities: Callable[[str], Mapping[str, Any]] | None = None,
 ) -> V4DispatchSession:
     """Capture ProductionRuntimeV4 and its RequestBroker from verified records."""
 
@@ -2251,7 +2255,12 @@ def capture_production_dispatch(
             ),
         )
 
-    saved_callbacks = SavedBridgeCallbacks(saved_dispatch, require_saved_targets)
+    saved_callbacks = SavedBridgeCallbacks(
+        saved_dispatch,
+        require_saved_targets,
+        resolve_thinking_parameters=saved_thinking_parameters,
+        resolve_saved_input_capabilities=saved_input_capabilities,
+    )
 
     def saved_capability_bridge(
         outer_request: object,

@@ -10,6 +10,11 @@ from domain.input.dispatcher import dispatch_input
 from domain.input.envelope import RumiInputEnvelope
 from domain.ai_client.model_search import get_model_capabilities
 from domain.agent.placement_catalog import compatibility_effective_plan
+from domain.subagent_team.availability import (
+    settings_owner_from_context,
+    subagent_delegation_enabled,
+    subagents_disabled_result,
+)
 
 from .models import gen_id, timestamp
 from .runtime_store import CompanyRuntimeStore
@@ -33,6 +38,7 @@ class CompanyRunDispatcher:
     ) -> None:
         self.company_store = company_store or CompanyStore()
         self.runtime_store = runtime_store or CompanyRuntimeStore()
+        self.settings_owner = settings_owner
         self.dispatcher = dispatcher or (
             partial(dispatch_input, settings_owner=settings_owner)
             if settings_owner is not None
@@ -60,6 +66,20 @@ class CompanyRunDispatcher:
         task = self.runtime_store.get_task(task_id, company_id=company_id)
         if company is None or task is None:
             return None
+        settings_owner = settings_owner_from_context(self.settings_owner, context)
+        if not subagent_delegation_enabled(settings_owner=settings_owner):
+            disabled = subagents_disabled_result()
+            return {
+                "task": task,
+                "dispatch": {
+                    "id": "",
+                    "status": "disabled",
+                    "code": disabled["code"],
+                    "message": disabled["message"],
+                },
+                "results": [],
+                "run_links": [],
+            }
 
         target_agent_ids = list(task.get("target_agent_ids") or [])
         if not target_agent_ids:

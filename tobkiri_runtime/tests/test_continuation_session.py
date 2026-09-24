@@ -131,3 +131,12 @@ def test_terminal_result_is_required_and_cannot_be_an_unhandled_control_frame() 
     session.resume_arguments(permit)
     with pytest.raises(ValueError, match="not a final outcome"):
         session.finish(permit, _intent(1))
+
+
+def test_generic_terminal_result_keeps_the_original_sixty_four_kib_cap() -> None:
+    """Only saved Host acknowledgements raise an intermediate-result budget."""
+    _, session, frame = _session(max_bytes=1024 * 1024)
+    permit = session.receive(_result(frame))
+    session.resume_arguments(permit)
+    with pytest.raises(ValueError):
+        session.finish(permit, canonical_json({"output": "x" * (64 * 1024)}))

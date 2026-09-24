@@ -339,6 +339,10 @@ class RuntimeCaptureInputs:
         ]
         | None
     ) = None
+    saved_thinking_parameters: (
+        Callable[[str, str], Mapping[str, object]] | None
+    ) = None
+    saved_input_capabilities: Callable[[str], Mapping[str, object]] | None = None
 
 
 class ActivationSnapshotLoader(Protocol):
@@ -2928,6 +2932,8 @@ class PackAPIServer:
                             inputs.authority_approval_window_open
                         ),
                         model_search=inputs.model_search,
+                        saved_thinking_parameters=inputs.saved_thinking_parameters,
+                        saved_input_capabilities=inputs.saved_input_capabilities,
                     )
                 except Exception:
                     authority.close()

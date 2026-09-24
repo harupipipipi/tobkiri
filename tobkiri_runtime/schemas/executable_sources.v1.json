@@ -21,7 +21,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "defaultspack.application-presentation",
-      "implementation_digest": "sha256:712e2540875dc130c3d393c85a104c99b37f8d5d0248201b09c6e84c748157f2",
+      "implementation_digest": "sha256:fab83a66b7bd0492212a43487603b48876598672f0eb5525f55b0160834c529f",
       "implementation_path": "runtime/application_presentation.py",
       "input_schema": {
         "additionalProperties": false,
@@ -90,7 +90,7 @@
             ],
             "type": "object"
           },
-          "implementation_digest": "sha256:712e2540875dc130c3d393c85a104c99b37f8d5d0248201b09c6e84c748157f2",
+          "implementation_digest": "sha256:fab83a66b7bd0492212a43487603b48876598672f0eb5525f55b0160834c529f",
           "implementation_path": "runtime/application_presentation.py",
           "input_schema": {
             "additionalProperties": false,
@@ -327,7 +327,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "defaultspack.conversation.saved",
-      "implementation_digest": "sha256:5f83b9e96918fde5d36baa253d00862a416657c57bc83913a4e26e31d9ad5077",
+      "implementation_digest": "sha256:9252141def7180c94110a3d43e1fda2128744fcd5195dc3d14edb830346213e2",
       "implementation_path": "runtime/saved_conversation.py",
       "input_schema": {
         "$defs": {
@@ -339,20 +339,85 @@
             },
             "pattern": "^[A-Za-z0-9]",
             "type": "string"
+          },
+          "image_block": {
+            "additionalProperties": false,
+            "properties": {
+              "image_url": {
+                "additionalProperties": false,
+                "properties": {
+                  "url": {
+                    "maxLength": 1398127,
+                    "minLength": 1,
+                    "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url"
+                ],
+                "type": "object"
+              },
+              "type": {
+                "const": "image_url"
+              }
+            },
+            "required": [
+              "type",
+              "image_url"
+            ],
+            "type": "object"
+          },
+          "text_block": {
+            "additionalProperties": false,
+            "properties": {
+              "text": {
+                "maxLength": 61440,
+                "minLength": 1,
+                "pattern": "\\S",
+                "type": "string"
+              },
+              "type": {
+                "const": "text"
+              }
+            },
+            "required": [
+              "type",
+              "text"
+            ],
+            "type": "object"
           }
         },
         "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+        "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
         "properties": {
           "request": {
             "additionalProperties": false,
             "properties": {
               "content": {
-                "minLength": 1,
-                "pattern": "\\S",
-                "type": "string"
+                "oneOf": [
+                  {
+                    "maxLength": 61440,
+                    "minLength": 1,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "$ref": "#/$defs/image_block"
+                    },
+                    "maxItems": 3,
+                    "minItems": 1,
+                    "prefixItems": [
+                      {
+                        "$ref": "#/$defs/text_block"
+                      }
+                    ],
+                    "type": "array"
+                  }
+                ]
               },
               "conversation_id": {
                 "$ref": "#/$defs/identifier"
@@ -361,6 +426,136 @@
                 "maximum": 9007199254740991,
                 "minimum": 1,
                 "type": "integer"
+              },
+              "tool_selection": {
+                "additionalProperties": false,
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "mode": {
+                          "const": "none"
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "include": {
+                          "maxItems": 0
+                        },
+                        "must_use": {
+                          "const": false
+                        }
+                      }
+                    }
+                  }
+                ],
+                "properties": {
+                  "exclude": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "not": {
+                            "pattern": "[^A-Za-z0-9._:/-]"
+                          },
+                          "pattern": "^[A-Za-z0-9]",
+                          "type": "string"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "not": {
+                                "pattern": "[^A-Za-z0-9._:/-]"
+                              },
+                              "pattern": "^[A-Za-z0-9]",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "enum": [
+                                "tool",
+                                "service"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 256,
+                    "type": "array"
+                  },
+                  "include": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "not": {
+                            "pattern": "[^A-Za-z0-9._:/-]"
+                          },
+                          "pattern": "^[A-Za-z0-9]",
+                          "type": "string"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "not": {
+                                "pattern": "[^A-Za-z0-9._:/-]"
+                              },
+                              "pattern": "^[A-Za-z0-9]",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "enum": [
+                                "tool",
+                                "service"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 256,
+                    "type": "array"
+                  },
+                  "mode": {
+                    "enum": [
+                      "auto",
+                      "manual",
+                      "none"
+                    ]
+                  },
+                  "must_use": {
+                    "type": "boolean"
+                  },
+                  "scope": {
+                    "enum": [
+                      "turn",
+                      "conversation"
+                    ]
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "type": "object"
               },
               "turn_id": {
                 "$ref": "#/$defs/identifier"
@@ -403,7 +598,7 @@
             ],
             "type": "object"
           },
-          "implementation_digest": "sha256:5f83b9e96918fde5d36baa253d00862a416657c57bc83913a4e26e31d9ad5077",
+          "implementation_digest": "sha256:9252141def7180c94110a3d43e1fda2128744fcd5195dc3d14edb830346213e2",
           "implementation_path": "runtime/saved_conversation.py",
           "input_schema": {
             "$defs": {
@@ -415,20 +610,85 @@
                 },
                 "pattern": "^[A-Za-z0-9]",
                 "type": "string"
+              },
+              "image_block": {
+                "additionalProperties": false,
+                "properties": {
+                  "image_url": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "url": {
+                        "maxLength": 1398127,
+                        "minLength": 1,
+                        "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
+                  },
+                  "type": {
+                    "const": "image_url"
+                  }
+                },
+                "required": [
+                  "type",
+                  "image_url"
+                ],
+                "type": "object"
+              },
+              "text_block": {
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "maxLength": 61440,
+                    "minLength": 1,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "text"
+                  }
+                },
+                "required": [
+                  "type",
+                  "text"
+                ],
+                "type": "object"
               }
             },
             "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "additionalProperties": false,
-            "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+            "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
             "properties": {
               "request": {
                 "additionalProperties": false,
                 "properties": {
                   "content": {
-                    "minLength": 1,
-                    "pattern": "\\S",
-                    "type": "string"
+                    "oneOf": [
+                      {
+                        "maxLength": 61440,
+                        "minLength": 1,
+                        "pattern": "\\S",
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "$ref": "#/$defs/image_block"
+                        },
+                        "maxItems": 3,
+                        "minItems": 1,
+                        "prefixItems": [
+                          {
+                            "$ref": "#/$defs/text_block"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ]
                   },
                   "conversation_id": {
                     "$ref": "#/$defs/identifier"
@@ -437,6 +697,136 @@
                     "maximum": 9007199254740991,
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "tool_selection": {
+                    "additionalProperties": false,
+                    "allOf": [
+                      {
+                        "if": {
+                          "properties": {
+                            "mode": {
+                              "const": "none"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "include": {
+                              "maxItems": 0
+                            },
+                            "must_use": {
+                              "const": false
+                            }
+                          }
+                        }
+                      }
+                    ],
+                    "properties": {
+                      "exclude": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "not": {
+                                "pattern": "[^A-Za-z0-9._:/-]"
+                              },
+                              "pattern": "^[A-Za-z0-9]",
+                              "type": "string"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "id": {
+                                  "maxLength": 256,
+                                  "minLength": 1,
+                                  "not": {
+                                    "pattern": "[^A-Za-z0-9._:/-]"
+                                  },
+                                  "pattern": "^[A-Za-z0-9]",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "enum": [
+                                    "tool",
+                                    "service"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "id"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 256,
+                        "type": "array"
+                      },
+                      "include": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "not": {
+                                "pattern": "[^A-Za-z0-9._:/-]"
+                              },
+                              "pattern": "^[A-Za-z0-9]",
+                              "type": "string"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "id": {
+                                  "maxLength": 256,
+                                  "minLength": 1,
+                                  "not": {
+                                    "pattern": "[^A-Za-z0-9._:/-]"
+                                  },
+                                  "pattern": "^[A-Za-z0-9]",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "enum": [
+                                    "tool",
+                                    "service"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "id"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 256,
+                        "type": "array"
+                      },
+                      "mode": {
+                        "enum": [
+                          "auto",
+                          "manual",
+                          "none"
+                        ]
+                      },
+                      "must_use": {
+                        "type": "boolean"
+                      },
+                      "scope": {
+                        "enum": [
+                          "turn",
+                          "conversation"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "mode"
+                    ],
+                    "type": "object"
                   },
                   "turn_id": {
                     "$ref": "#/$defs/identifier"
@@ -2962,7 +3352,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
-      "implementation_digest": "sha256:5f3326f55e4badaf86d0624000c29455830431586ee56e4432ed11dc5c2e1169",
+      "implementation_digest": "sha256:c41f5af139a895337b4d33b19f5a6c5e15fdeb717bacafcd96820e702fbe3903",
       "implementation_path": "runtime/preflight.py",
       "input_schema": {
         "additionalProperties": false,
@@ -3013,7 +3403,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:5f3326f55e4badaf86d0624000c29455830431586ee56e4432ed11dc5c2e1169",
+          "implementation_digest": "sha256:c41f5af139a895337b4d33b19f5a6c5e15fdeb717bacafcd96820e702fbe3903",
           "implementation_path": "runtime/preflight.py",
           "input_schema": {
             "additionalProperties": false,
@@ -13186,20 +13576,85 @@
             },
             "pattern": "^[A-Za-z0-9]",
             "type": "string"
+          },
+          "image_block": {
+            "additionalProperties": false,
+            "properties": {
+              "image_url": {
+                "additionalProperties": false,
+                "properties": {
+                  "url": {
+                    "maxLength": 1398127,
+                    "minLength": 1,
+                    "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url"
+                ],
+                "type": "object"
+              },
+              "type": {
+                "const": "image_url"
+              }
+            },
+            "required": [
+              "type",
+              "image_url"
+            ],
+            "type": "object"
+          },
+          "text_block": {
+            "additionalProperties": false,
+            "properties": {
+              "text": {
+                "maxLength": 61440,
+                "minLength": 1,
+                "pattern": "\\S",
+                "type": "string"
+              },
+              "type": {
+                "const": "text"
+              }
+            },
+            "required": [
+              "type",
+              "text"
+            ],
+            "type": "object"
           }
         },
         "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+        "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
         "properties": {
           "request": {
             "additionalProperties": false,
             "properties": {
               "content": {
-                "minLength": 1,
-                "pattern": "\\S",
-                "type": "string"
+                "oneOf": [
+                  {
+                    "maxLength": 61440,
+                    "minLength": 1,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "$ref": "#/$defs/image_block"
+                    },
+                    "maxItems": 3,
+                    "minItems": 1,
+                    "prefixItems": [
+                      {
+                        "$ref": "#/$defs/text_block"
+                      }
+                    ],
+                    "type": "array"
+                  }
+                ]
               },
               "conversation_id": {
                 "$ref": "#/$defs/identifier"
@@ -13208,6 +13663,136 @@
                 "maximum": 9007199254740991,
                 "minimum": 1,
                 "type": "integer"
+              },
+              "tool_selection": {
+                "additionalProperties": false,
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "mode": {
+                          "const": "none"
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "include": {
+                          "maxItems": 0
+                        },
+                        "must_use": {
+                          "const": false
+                        }
+                      }
+                    }
+                  }
+                ],
+                "properties": {
+                  "exclude": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "not": {
+                            "pattern": "[^A-Za-z0-9._:/-]"
+                          },
+                          "pattern": "^[A-Za-z0-9]",
+                          "type": "string"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "not": {
+                                "pattern": "[^A-Za-z0-9._:/-]"
+                              },
+                              "pattern": "^[A-Za-z0-9]",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "enum": [
+                                "tool",
+                                "service"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 256,
+                    "type": "array"
+                  },
+                  "include": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "not": {
+                            "pattern": "[^A-Za-z0-9._:/-]"
+                          },
+                          "pattern": "^[A-Za-z0-9]",
+                          "type": "string"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "id": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "not": {
+                                "pattern": "[^A-Za-z0-9._:/-]"
+                              },
+                              "pattern": "^[A-Za-z0-9]",
+                              "type": "string"
+                            },
+                            "kind": {
+                              "enum": [
+                                "tool",
+                                "service"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 256,
+                    "type": "array"
+                  },
+                  "mode": {
+                    "enum": [
+                      "auto",
+                      "manual",
+                      "none"
+                    ]
+                  },
+                  "must_use": {
+                    "type": "boolean"
+                  },
+                  "scope": {
+                    "enum": [
+                      "turn",
+                      "conversation"
+                    ]
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "type": "object"
               },
               "turn_id": {
                 "$ref": "#/$defs/identifier"
@@ -13262,20 +13847,85 @@
                 },
                 "pattern": "^[A-Za-z0-9]",
                 "type": "string"
+              },
+              "image_block": {
+                "additionalProperties": false,
+                "properties": {
+                  "image_url": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "url": {
+                        "maxLength": 1398127,
+                        "minLength": 1,
+                        "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
+                  },
+                  "type": {
+                    "const": "image_url"
+                  }
+                },
+                "required": [
+                  "type",
+                  "image_url"
+                ],
+                "type": "object"
+              },
+              "text_block": {
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "maxLength": 61440,
+                    "minLength": 1,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "text"
+                  }
+                },
+                "required": [
+                  "type",
+                  "text"
+                ],
+                "type": "object"
               }
             },
             "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "additionalProperties": false,
-            "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+            "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
             "properties": {
               "request": {
                 "additionalProperties": false,
                 "properties": {
                   "content": {
-                    "minLength": 1,
-                    "pattern": "\\S",
-                    "type": "string"
+                    "oneOf": [
+                      {
+                        "maxLength": 61440,
+                        "minLength": 1,
+                        "pattern": "\\S",
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "$ref": "#/$defs/image_block"
+                        },
+                        "maxItems": 3,
+                        "minItems": 1,
+                        "prefixItems": [
+                          {
+                            "$ref": "#/$defs/text_block"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ]
                   },
                   "conversation_id": {
                     "$ref": "#/$defs/identifier"
@@ -13284,6 +13934,136 @@
                     "maximum": 9007199254740991,
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "tool_selection": {
+                    "additionalProperties": false,
+                    "allOf": [
+                      {
+                        "if": {
+                          "properties": {
+                            "mode": {
+                              "const": "none"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "include": {
+                              "maxItems": 0
+                            },
+                            "must_use": {
+                              "const": false
+                            }
+                          }
+                        }
+                      }
+                    ],
+                    "properties": {
+                      "exclude": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "not": {
+                                "pattern": "[^A-Za-z0-9._:/-]"
+                              },
+                              "pattern": "^[A-Za-z0-9]",
+                              "type": "string"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "id": {
+                                  "maxLength": 256,
+                                  "minLength": 1,
+                                  "not": {
+                                    "pattern": "[^A-Za-z0-9._:/-]"
+                                  },
+                                  "pattern": "^[A-Za-z0-9]",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "enum": [
+                                    "tool",
+                                    "service"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "id"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 256,
+                        "type": "array"
+                      },
+                      "include": {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "not": {
+                                "pattern": "[^A-Za-z0-9._:/-]"
+                              },
+                              "pattern": "^[A-Za-z0-9]",
+                              "type": "string"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "id": {
+                                  "maxLength": 256,
+                                  "minLength": 1,
+                                  "not": {
+                                    "pattern": "[^A-Za-z0-9._:/-]"
+                                  },
+                                  "pattern": "^[A-Za-z0-9]",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "enum": [
+                                    "tool",
+                                    "service"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "id"
+                              ],
+                              "type": "object"
+                            }
+                          ]
+                        },
+                        "maxItems": 256,
+                        "type": "array"
+                      },
+                      "mode": {
+                        "enum": [
+                          "auto",
+                          "manual",
+                          "none"
+                        ]
+                      },
+                      "must_use": {
+                        "type": "boolean"
+                      },
+                      "scope": {
+                        "enum": [
+                          "turn",
+                          "conversation"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "mode"
+                    ],
+                    "type": "object"
                   },
                   "turn_id": {
                     "$ref": "#/$defs/identifier"
@@ -14417,7 +15197,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "tobkiri.ui.catalog.read",
-      "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
+      "implementation_digest": "sha256:692cb5e900b0cbf3229f551dc23b875ee0851a5b8c4bfcd15726bb9338a971b3",
       "implementation_path": "runtime/settings.py",
       "input_schema": {
         "type": "object"
@@ -14431,7 +15211,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
+          "implementation_digest": "sha256:692cb5e900b0cbf3229f551dc23b875ee0851a5b8c4bfcd15726bb9338a971b3",
           "implementation_path": "runtime/settings.py",
           "input_schema": {
             "type": "object"
@@ -14867,7 +15647,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "tobkiri.ui.preferences.write",
-      "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
+      "implementation_digest": "sha256:692cb5e900b0cbf3229f551dc23b875ee0851a5b8c4bfcd15726bb9338a971b3",
       "implementation_path": "runtime/settings.py",
       "input_schema": {
         "additionalProperties": false,
@@ -14949,7 +15729,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
+          "implementation_digest": "sha256:692cb5e900b0cbf3229f551dc23b875ee0851a5b8c4bfcd15726bb9338a971b3",
           "implementation_path": "runtime/settings.py",
           "input_schema": {
             "additionalProperties": false,
@@ -15558,7 +16338,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "tobkiri.ui.settings.read",
-      "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
+      "implementation_digest": "sha256:692cb5e900b0cbf3229f551dc23b875ee0851a5b8c4bfcd15726bb9338a971b3",
       "implementation_path": "runtime/settings.py",
       "input_schema": {
         "type": "object"
@@ -15572,7 +16352,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
+          "implementation_digest": "sha256:692cb5e900b0cbf3229f551dc23b875ee0851a5b8c4bfcd15726bb9338a971b3",
           "implementation_path": "runtime/settings.py",
           "input_schema": {
             "type": "object"
@@ -16151,7 +16931,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 202,
-    "input_digest": "sha256:9b4949a098fff2754fa70d2c018f75726279a987334e2aebee5884df0e9ea15b",
+    "input_digest": "sha256:d8edbf87fa57fba67c1ea00a1362a2d62a052964cc5fe01cd7d27bc1cda39950",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -16888,7 +17668,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:00ce74f224a1394d1bd0b136e9069c6c83d93b6754aa1e21b32382c1d56d07e7",
+        "digest": "sha256:f8394029a92b40e3bdb619093c1f5391bdc8c4c81e79d55ae3c182ec23b77aa7",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },

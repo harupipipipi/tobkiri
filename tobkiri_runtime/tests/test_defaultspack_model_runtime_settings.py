@@ -13,7 +13,9 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
-from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService  # noqa: E402
+from domain.ai_client.model_runtime_settings import (
+    ModelRuntimeSettingsService,
+)  # noqa: E402
 from domain.ai_client.rumi_process import (  # noqa: E402
     RUMI_BASE_MODEL,
     RUMI_INTENDED_BASE_MODEL,
@@ -29,7 +31,9 @@ def _owner_bound_service(pack_root: Path) -> ModelRuntimeSettingsService:
 
     return ModelRuntimeSettingsService(
         pack_root,
-        settings_owner=FrontendSettingsStore(defaultspack_frontend_settings_path(pack_root)),
+        settings_owner=FrontendSettingsStore(
+            defaultspack_frontend_settings_path(pack_root)
+        ),
     )
 
 
@@ -93,9 +97,33 @@ def test_model_runtime_settings_preferred_model_and_thinking_level(tmp_path):
     assert service.get_thinking_level()["level"] == "high"
 
 
-def test_model_runtime_settings_reads_owner_for_each_resolution(
-    tmp_path, monkeypatch
-):
+def test_model_runtime_settings_persists_thinking_levels_per_model_profile(tmp_path):
+    service = _owner_bound_service(tmp_path)
+
+    service.set_thinking_level(
+        "high",
+        scope="profile",
+        profile_id="google/gemini-2.5-pro",
+    )
+    service.set_thinking_level(
+        "low",
+        scope="profile",
+        profile_id="openai/gpt-4.1",
+    )
+
+    settings = service.get_settings()
+    assert settings["thinking_level_by_profile"] == {
+        "stub/default": "medium",
+        "google/gemini-2.5-pro": "high",
+        "openai/gpt-4.1": "low",
+    }
+    assert (
+        service.get_effective_thinking_level("google/gemini-2.5-pro")["level"] == "high"
+    )
+    assert service.get_effective_thinking_level("openai/gpt-4.1")["level"] == "low"
+
+
+def test_model_runtime_settings_reads_owner_for_each_resolution(tmp_path, monkeypatch):
     calls = 0
     original_read_all = ModelRuntimeSettingsService._read_all
 
@@ -142,10 +170,12 @@ def test_model_settings_same_size_and_timestamp_replacement_is_visible(tmp_path)
 def test_model_settings_owner_response_is_not_cached_or_mutated(tmp_path, monkeypatch):
     """An owner read, not a filesystem probe, determines current model values."""
     service = _owner_bound_service(tmp_path)
-    snapshots = iter([
-        {"models": {"preferred_model": "stub/fast"}},
-        {"models": {"preferred_model": "stub/slow"}},
-    ])
+    snapshots = iter(
+        [
+            {"models": {"preferred_model": "stub/fast"}},
+            {"models": {"preferred_model": "stub/slow"}},
+        ]
+    )
     monkeypatch.setattr(service._settings_store, "read", lambda: next(snapshots))
     first = service.get_settings()
     first["preferred_model"] = "changed-by-caller"
@@ -229,7 +259,9 @@ def test_model_runtime_settings_utility_models_and_groups(tmp_path):
     settings = service.update_settings(
         {
             "utility_models": {"tool_selector": "google/gemini-2.5-flash"},
-            "model_groups": {"custom": {"label": "Custom", "allowed_models": ["stub/default"]}},
+            "model_groups": {
+                "custom": {"label": "Custom", "allowed_models": ["stub/default"]}
+            },
         }
     )
     assert settings["utility_models"]["tool_selector"] == "google/gemini-2.5-flash"
@@ -258,7 +290,9 @@ def test_simple_model_slots_sync_existing_runtime_settings(tmp_path):
     assert settings["utility_models"]["subagent_default"] == "google/gemini-2.5-flash"
 
 
-def test_simple_model_slots_preserve_advanced_utility_roles_and_allow_override(tmp_path):
+def test_simple_model_slots_preserve_advanced_utility_roles_and_allow_override(
+    tmp_path,
+):
     service = _owner_bound_service(tmp_path)
     service._runtime_rumi_base_model = lambda settings=None: RUMI_BASE_MODEL
     service.update_settings(
@@ -292,6 +326,7 @@ def test_simple_model_slots_preserve_advanced_utility_roles_and_allow_override(t
     assert cleared["utility_models"]["fast_reply"] == ""
     assert cleared["utility_models"]["subagent_default"] == ""
     assert cleared["model_slots"]["lightweight"] == ""
+    assert cleared["utility_models"]["vision_ocr"] == "custom/vision"
 
 
 def test_lightweight_model_sparse_update_preserves_unrelated_utility_roles(tmp_path):
@@ -316,7 +351,9 @@ def test_lightweight_model_sparse_update_preserves_unrelated_utility_roles(tmp_p
     assert updated["utility_models"]["subagent_default"] == "custom/fast"
 
 
-def test_structured_model_slots_write_translates_and_persists_canonical_settings(tmp_path):
+def test_structured_model_slots_write_translates_and_persists_canonical_settings(
+    tmp_path,
+):
     service = _owner_bound_service(tmp_path)
     service._runtime_rumi_base_model = lambda settings=None: RUMI_BASE_MODEL
 
@@ -349,11 +386,16 @@ def test_model_runtime_settings_includes_builtin_rumi_model_pack(tmp_path):
     settings = service.get_settings()
     rumi_pack = next(pack for pack in settings["model_packs"] if pack["id"] == "rumi")
     profiles = service.runtime_defined_profiles(settings)
-    rumi_profile = next(profile for profile in profiles if profile["profile_id"] == RUMI_MODEL_PACK_REF)
+    rumi_profile = next(
+        profile for profile in profiles if profile["profile_id"] == RUMI_MODEL_PACK_REF
+    )
 
     assert rumi_pack["display_name"] == "Rumi"
     assert rumi_pack["mode"] == "review_chain"
-    assert [member["model"] for member in rumi_pack["members"]] == [RUMI_BASE_MODEL, RUMI_BASE_MODEL]
+    assert [member["model"] for member in rumi_pack["members"]] == [
+        RUMI_BASE_MODEL,
+        RUMI_BASE_MODEL,
+    ]
     assert rumi_pack["metadata"]["base_model"] == RUMI_BASE_MODEL
     assert rumi_pack["safety"]["pre_action_assumption_block_required"] is True
     assert rumi_profile["provider_id"] == "modelpack"
@@ -362,7 +404,9 @@ def test_model_runtime_settings_includes_builtin_rumi_model_pack(tmp_path):
     assert rumi_profile["availability"]["status"] == "missing_member_model"
 
 
-def test_model_runtime_settings_materializes_builtin_rumi_against_available_provider(tmp_path):
+def test_model_runtime_settings_materializes_builtin_rumi_against_available_provider(
+    tmp_path,
+):
     service = _owner_bound_service(tmp_path)
     service._runtime_rumi_base_model = lambda settings=None: "google/gemini-2.5-flash"
     service._base_profile_catalog = lambda settings=None: [
@@ -385,9 +429,14 @@ def test_model_runtime_settings_materializes_builtin_rumi_against_available_prov
     settings = service.get_settings()
     rumi_pack = next(pack for pack in settings["model_packs"] if pack["id"] == "rumi")
     profiles = service.runtime_defined_profiles(settings)
-    rumi_profile = next(profile for profile in profiles if profile["profile_id"] == RUMI_MODEL_PACK_REF)
+    rumi_profile = next(
+        profile for profile in profiles if profile["profile_id"] == RUMI_MODEL_PACK_REF
+    )
 
-    assert [member["model"] for member in rumi_pack["members"]] == ["google/gemini-2.5-flash", "google/gemini-2.5-flash"]
+    assert [member["model"] for member in rumi_pack["members"]] == [
+        "google/gemini-2.5-flash",
+        "google/gemini-2.5-flash",
+    ]
     assert rumi_pack["metadata"]["base_model"] == "google/gemini-2.5-flash"
     assert rumi_profile["configured"] is True
     assert rumi_profile["availability"]["status"] == "configured"
@@ -395,7 +444,9 @@ def test_model_runtime_settings_materializes_builtin_rumi_against_available_prov
     assert rumi_profile["supports_thinking"] is True
 
 
-def test_runtime_rumi_base_model_prefers_configured_default_profile(tmp_path, monkeypatch):
+def test_runtime_rumi_base_model_prefers_configured_default_profile(
+    tmp_path, monkeypatch
+):
     service = _owner_bound_service(tmp_path)
     service._base_profile_catalog = lambda settings=None: [
         _profile(
@@ -413,20 +464,28 @@ def test_runtime_rumi_base_model_prefers_configured_default_profile(tmp_path, mo
             availability={"configured": True, "active": True, "status": "configured"},
         ),
     ]
-    monkeypatch.setattr("domain.ai_client.providers.detect_available_providers", lambda: {})
+    monkeypatch.setattr(
+        "domain.ai_client.providers.detect_available_providers", lambda: {}
+    )
     monkeypatch.setattr("domain.ai_client.providers.get_all_known_models", lambda: [])
 
-    resolved = service._runtime_rumi_base_model({"preferred_model": "openai/default-chat"})
+    resolved = service._runtime_rumi_base_model(
+        {"preferred_model": "openai/default-chat"}
+    )
 
     assert resolved == "openai/default-chat"
-    pack = service._ensure_rumi_model_packs([], settings={"preferred_model": "openai/default-chat"})[0]
+    pack = service._ensure_rumi_model_packs(
+        [], settings={"preferred_model": "openai/default-chat"}
+    )[0]
     assert [member["model"] for member in pack["members"]] == [
         "openai/default-chat",
         "openai/default-chat",
     ]
 
 
-def test_runtime_rumi_base_model_rejects_stub_non_chat_and_synthetic_profiles(tmp_path, monkeypatch):
+def test_runtime_rumi_base_model_rejects_stub_non_chat_and_synthetic_profiles(
+    tmp_path, monkeypatch
+):
     service = _owner_bound_service(tmp_path)
     configured = {"configured": True, "active": True, "status": "configured"}
     service._base_profile_catalog = lambda settings=None: [
@@ -474,7 +533,9 @@ def test_runtime_rumi_base_model_rejects_stub_non_chat_and_synthetic_profiles(tm
             availability=configured,
         ),
     ]
-    monkeypatch.setattr("domain.ai_client.providers.detect_available_providers", lambda: {})
+    monkeypatch.setattr(
+        "domain.ai_client.providers.detect_available_providers", lambda: {}
+    )
     monkeypatch.setattr("domain.ai_client.providers.get_all_known_models", lambda: [])
 
     for preferred in (
@@ -484,11 +545,16 @@ def test_runtime_rumi_base_model_rejects_stub_non_chat_and_synthetic_profiles(tm
         "composite/review",
         "synthetic/generated",
     ):
-        assert service._runtime_rumi_base_model({"preferred_model": preferred}) == "openai/gpt-4o"
+        assert (
+            service._runtime_rumi_base_model({"preferred_model": preferred})
+            == "openai/gpt-4o"
+        )
 
 
 def test_resolve_rumi_base_model_fallback_is_deterministic():
-    assert resolve_rumi_base_model([], available_providers=[]) == RUMI_INTENDED_BASE_MODEL
+    assert (
+        resolve_rumi_base_model([], available_providers=[]) == RUMI_INTENDED_BASE_MODEL
+    )
     assert (
         resolve_rumi_base_model(
             ["google/gemini-2.5-flash", "openai/gpt-4o"],
@@ -560,8 +626,14 @@ def test_effective_thinking_level_resolution_order(tmp_path):
     service.set_thinking_level("medium", scope="profile", profile_id="stub/default")
     service.set_thinking_level("xhigh", scope="conversation", conversation_id="conv-1")
 
-    assert service.get_effective_thinking_level("stub/default", "conv-1")["level"] == "xhigh"
-    assert service.get_effective_thinking_level("stub/default", "conv-2")["level"] == "medium"
+    assert (
+        service.get_effective_thinking_level("stub/default", "conv-1")["level"]
+        == "xhigh"
+    )
+    assert (
+        service.get_effective_thinking_level("stub/default", "conv-2")["level"]
+        == "medium"
+    )
     assert service.get_effective_thinking_level("other", "conv-2")["level"] == "low"
 
 
@@ -582,8 +654,95 @@ def test_thinking_level_validation_and_provider_normalization(tmp_path):
     nvidia = service.normalize_for_provider("nvidia", nvidia_model, "high")
     assert nvidia["provider_params"] == {"reasoning_effort": "high"}
 
-    nvidia_qualified = service.normalize_for_provider("nvidia", f"nvidia/{nvidia_model}", "medium")
+    nvidia_qualified = service.normalize_for_provider(
+        "nvidia", f"nvidia/{nvidia_model}", "medium"
+    )
     assert nvidia_qualified["provider_params"] == {"reasoning_effort": "medium"}
+
+    google = service.normalize_for_provider("google", "gemini-3-pro-preview", "medium")
+    assert google["provider_params"] == {"reasoning_effort": "high"}
+    assert "thinking_level" not in google["provider_params"]
+
+
+def test_saved_thinking_parameters_use_owner_profile_level_and_provider_compiler(
+    tmp_path, monkeypatch
+):
+    service = _owner_bound_service(tmp_path)
+
+    def capabilities(profile_id, *, settings):
+        assert profile_id == "google/gemini-3-pro-preview"
+        assert isinstance(settings, dict)
+        return {
+            "profile_id": profile_id,
+            "provider_id": "google",
+            "model_id": "gemini-3-pro-preview",
+            "supports_thinking": True,
+        }
+
+    monkeypatch.setattr(
+        "domain.ai_client.model_search.get_model_capabilities", capabilities
+    )
+    service.set_thinking_level(
+        "low", scope="profile", profile_id="google/gemini-3-pro-preview"
+    )
+    service.set_thinking_level("high", scope="conversation", conversation_id="c-1")
+
+    assert service.resolve_saved_thinking_parameters(
+        "google/gemini-3-pro-preview", "c-1"
+    ) == {"reasoning_effort": "high"}
+    assert service.resolve_saved_thinking_parameters(
+        "google/gemini-3-pro-preview", "c-2"
+    ) == {"reasoning_effort": "low"}
+
+
+def test_saved_thinking_parameters_fail_closed_for_unknown_capability_or_invalid_level(
+    tmp_path, monkeypatch
+):
+    service = _owner_bound_service(tmp_path)
+    monkeypatch.setattr(
+        "domain.ai_client.model_search.get_model_capabilities",
+        lambda *_args, **_kwargs: {
+            "provider_id": "custom",
+            "model_id": "unknown",
+            "supports_thinking": True,
+        },
+    )
+    # An unrecognized provider normalization would be a raw canonical setting;
+    # it must not escape to the generic Provider adapter.
+    assert service.resolve_saved_thinking_parameters("custom/unknown", "c-1") == {}
+
+    service.update_settings({"thinking_level_by_conversation": {"c-1": "not-a-level"}})
+    with pytest.raises(ValueError, match="saved thinking level is invalid"):
+        service.resolve_saved_thinking_parameters("custom/unknown", "c-1")
+
+
+def test_saved_input_capabilities_require_explicit_image_support(tmp_path, monkeypatch):
+    service = _owner_bound_service(tmp_path)
+    monkeypatch.setattr(
+        "domain.ai_client.model_search.get_model_capabilities",
+        lambda profile_id, **_kwargs: {
+            "profile_id": profile_id,
+            "supports_vision": True,
+        },
+    )
+    assert service.resolve_saved_input_capabilities("google/gemini") == {
+        "supports_image_input": True
+    }
+
+    monkeypatch.setattr(
+        "domain.ai_client.model_search.get_model_capabilities",
+        lambda *_args, **_kwargs: {"supports_image_input": False},
+    )
+    assert service.resolve_saved_input_capabilities("custom/text") == {
+        "supports_image_input": False
+    }
+
+    monkeypatch.setattr(
+        "domain.ai_client.model_search.get_model_capabilities",
+        lambda *_args, **_kwargs: None,
+    )
+    with pytest.raises(ValueError, match="saved model capabilities are unavailable"):
+        service.resolve_saved_input_capabilities("unknown/model")
 
 
 def test_resolve_model_candidates_exact_and_ambiguous_matches(tmp_path, monkeypatch):
@@ -626,7 +785,9 @@ def test_resolve_model_candidates_exact_and_ambiguous_matches(tmp_path, monkeypa
     assert missing == {"query": "does-not-exist", "exact": None, "candidates": []}
 
 
-def test_resolve_model_candidates_ranking_uses_match_and_runtime_tie_breaks(tmp_path, monkeypatch):
+def test_resolve_model_candidates_ranking_uses_match_and_runtime_tie_breaks(
+    tmp_path, monkeypatch
+):
     service = _owner_bound_service(tmp_path)
     service.update_settings({"favorite_profiles": ["favorite/alpha-favorite"]})
     profiles = [
@@ -680,7 +841,9 @@ def test_resolve_model_candidates_ranking_uses_match_and_runtime_tie_breaks(tmp_
     assert result["candidates"][2]["favorite"] is True
 
 
-def test_resolve_model_candidates_limits_model_command_to_chat_profiles(tmp_path, monkeypatch):
+def test_resolve_model_candidates_limits_model_command_to_chat_profiles(
+    tmp_path, monkeypatch
+):
     service = _owner_bound_service(tmp_path)
     profiles = [
         _profile(

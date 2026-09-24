@@ -42,6 +42,7 @@ export function ModelSearchPicker({
   open: controlledOpen,
   onOpenChange,
   onChange,
+  onSelectedOptionChange,
   onQueryChange,
   onSearch,
 }: {
@@ -61,6 +62,7 @@ export function ModelSearchPicker({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   onChange: (value: string) => void;
+  onSelectedOptionChange?: (option: ModelSelectOption | null) => void;
   onQueryChange: (value: string) => void;
   onSearch?: (query: string) => void;
 }) {
@@ -135,8 +137,12 @@ export function ModelSearchPicker({
     onOpenChange?.(nextOpen);
   }
 
-  function pick(value: string) {
-    onChange(value);
+  function pick(nextValue: string) {
+    const picked = visibleOptions.find((option) => (
+      option.value === nextValue || option.qualified_model_id === nextValue
+    )) ?? findSelectedModelOption(options, nextValue, remoteOptions);
+    onSelectedOptionChange?.(nextValue ? picked : null);
+    onChange(nextValue);
     setOpen(false);
   }
 

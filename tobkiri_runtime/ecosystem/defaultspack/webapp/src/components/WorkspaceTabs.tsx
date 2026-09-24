@@ -235,7 +235,7 @@ export function WorkspaceTabBar({
   };
 
   return (
-    <div className="rumi-workspace-tabbar flex h-10 shrink-0 items-end gap-1 border-b border-zinc-800/60 bg-[#09090b] px-2 pt-1">
+    <div className="rumi-workspace-tabbar flex h-10 shrink-0 items-end gap-1 border-b border-zinc-800/60 bg-[var(--rumi-surface-base)] px-2 pt-1">
       <div role="tablist" aria-label="Open workspaces" className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto overflow-y-hidden pb-0.5 scrollbar-none">
         {tabs.map((tab) => {
           const Icon = iconForKind(tab.kind);
@@ -247,7 +247,7 @@ export function WorkspaceTabBar({
               className={cn(
                 "group/tab flex h-9 max-w-52 min-w-24 items-center gap-1.5 rounded-t-lg border px-1.5 text-left text-[12px] transition-colors",
                 isActive
-                  ? "border-zinc-700 border-b-[#09090b] bg-[#111116] text-zinc-100"
+                  ? "border-zinc-700 border-b-[var(--rumi-surface-base)] bg-[var(--rumi-surface-raised)] text-zinc-100"
                   : "border-transparent bg-zinc-950/40 text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200",
               )}
               title={title}

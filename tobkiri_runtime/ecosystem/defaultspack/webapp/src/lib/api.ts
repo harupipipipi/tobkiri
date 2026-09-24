@@ -5,6 +5,8 @@ import { chatContinuationPacketMatchesTurn } from "./pendingChat";
 import { defaultspackUrlWithLocalAuthToken } from "./defaultspackLocalAuth";
 import { configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
 import { openAuthorityApprovalWindow } from "./desktopApproval";
+import { jsonValueMatches } from "./jsonValueMatches";
+import { isCustomProviderSetup, providerSetupPreset } from "./providerPresets";
 
 const PANEL_CSRF_STORAGE_KEY = "rumi-panel-csrf";
 const DEFAULTSPACK_CSRF_STORAGE_KEY = "rumi-defaultspack-csrf";
@@ -67,11 +69,92 @@ export function validSavedToolSelection(value: unknown): value is SavedToolSelec
   return selection.mode !== "none" || (!selection.must_use && !(selection.include as unknown[] | undefined)?.length);
 }
 
+export const MAX_SAVED_TURN_TEXT_BYTES = 60 * 1024;
+export const MAX_SAVED_TURN_IMAGE_COUNT = 2;
+export const MAX_SAVED_TURN_IMAGE_BYTES = 1024 * 1024;
+export const MAX_SAVED_TURN_INPUT_BYTES = 3 * 1024 * 1024;
+
+export type SavedTurnTextBlock = { type: "text"; text: string };
+export type SavedTurnImageBlock = { type: "image_url"; image_url: { url: string } };
+export type SavedTurnContent = string | [SavedTurnTextBlock, ...SavedTurnImageBlock[]];
+export type SavedTurnImageAttachment = {
+  type?: string;
+  dataUrl?: string;
+  truncated?: boolean;
+};
+
+const SAVED_TURN_IMAGE_DATA_URL = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/]+={0,2})$/;
+
+const savedTurnImageByteLength = (value: string): number | null => {
+  const match = SAVED_TURN_IMAGE_DATA_URL.exec(value);
+  if (!match) return null;
+  const encoded = match[2];
+  const maximum = Math.ceil(MAX_SAVED_TURN_IMAGE_BYTES / 3) * 4;
+  if (!encoded.length || encoded.length % 4 || encoded.length > maximum) return null;
+  const padding = encoded.endsWith("==") ? 2 : encoded.endsWith("=") ? 1 : 0;
+  return encoded.length / 4 * 3 - padding;
+};
+
+export function validSavedTurnContent(value: unknown): value is SavedTurnContent {
+  if (typeof value === "string") {
+    return Boolean(value.trim()) && new TextEncoder().encode(value).length <= MAX_SAVED_TURN_TEXT_BYTES;
+  }
+  if (!Array.isArray(value) || value.length < 1 || value.length > 1 + MAX_SAVED_TURN_IMAGE_COUNT) {
+    return false;
+  }
+  const [text, ...images] = value;
+  const textBlock = text as Record<string, unknown>;
+  return Boolean(text && typeof text === "object" && !Array.isArray(text)
+    && Object.keys(textBlock).length === 2 && textBlock.type === "text"
+    && typeof textBlock.text === "string" && textBlock.text.trim()
+    && new TextEncoder().encode(textBlock.text).length <= MAX_SAVED_TURN_TEXT_BYTES)
+    && images.every((image) => {
+      if (!image || typeof image !== "object" || Array.isArray(image)) return false;
+      const imageBlock = image as Record<string, unknown>;
+      if (Object.keys(imageBlock).length !== 2 || imageBlock.type !== "image_url") return false;
+      const imageUrl = imageBlock.image_url as Record<string, unknown> | null;
+      if (!imageUrl || typeof imageUrl !== "object"
+        || Array.isArray(imageUrl) || Object.keys(imageUrl).length !== 1
+        || typeof imageUrl.url !== "string") return false;
+      const bytes = savedTurnImageByteLength(imageUrl.url);
+      return bytes !== null && bytes > 0 && bytes <= MAX_SAVED_TURN_IMAGE_BYTES;
+    });
+}
+
+export function savedTurnContentFromAttachments(
+  text: string,
+  attachments: readonly SavedTurnImageAttachment[],
+): SavedTurnContent {
+  if (!attachments.length) {
+    if (!validSavedTurnContent(text)) throw new Error("送信するメッセージを入力してください。");
+    return text;
+  }
+  if (attachments.length > MAX_SAVED_TURN_IMAGE_COUNT) {
+    throw new Error("保存付き送信では画像は2枚までです。");
+  }
+  const message = text.trim() || "添付画像を確認してください。";
+  const images = attachments.map((attachment) => {
+    if (attachment.truncated || typeof attachment.dataUrl !== "string") {
+      throw new Error("画像を読み込めませんでした。1 MiB以下のPNG、JPEG、WebP、GIFを選択してください。");
+    }
+    const bytes = savedTurnImageByteLength(attachment.dataUrl);
+    const dataMime = SAVED_TURN_IMAGE_DATA_URL.exec(attachment.dataUrl)?.[1];
+    if (bytes === null || bytes > MAX_SAVED_TURN_IMAGE_BYTES
+      || (attachment.type && attachment.type.toLowerCase() !== dataMime)) {
+      throw new Error("保存付き送信では1 MiB以下のPNG、JPEG、WebP、GIF画像のみ送信できます。");
+    }
+    return { type: "image_url" as const, image_url: { url: attachment.dataUrl } };
+  });
+  const content: SavedTurnContent = [{ type: "text", text: message }, ...images];
+  if (!validSavedTurnContent(content)) throw new Error("保存付き送信の画像が無効です。");
+  return content;
+}
+
 export type SavedTurnRequest = {
   turn_id: string;
   conversation_id: string;
   conversation_revision: number;
-  content: string;
+  content: SavedTurnContent;
   tool_selection?: SavedToolSelection;
 };
 
@@ -1585,6 +1668,8 @@ export type ModelSearchItem = ModelCommandCandidate & {
   supports_tool_calling?: boolean;
   supports_thinking?: boolean;
   supports_fast?: boolean;
+  thinking_levels?: string[];
+  default_thinking_level?: string | null;
   speed_tier?: string;
   quality_tier?: string;
   cost_tier?: string;
@@ -1742,6 +1827,8 @@ export type SidebarFieldOption = {
   supports_tool_calling?: boolean;
   supports_thinking?: boolean;
   supports_fast?: boolean;
+  thinking_levels?: string[];
+  default_thinking_level?: string | null;
   speed_tier?: string;
   quality_tier?: string;
   cost_tier?: string;
@@ -1899,6 +1986,8 @@ export type ComposerWidgetAction =
   | { type: "toggle_tool"; tool_id?: string };
 
 export type ToolUiMetadata = {
+  /** Explicit integration or plugin identifier supplied by the tool catalog. */
+  service_id?: string;
   group_id?: string;
   group_label?: string;
   group_icon?: string;
@@ -1934,6 +2023,7 @@ export type ToolInfo = {
   setup_state?: ToolSetupState;
   trusted?: boolean;
   source_pack_id?: string;
+  service_id?: string;
 };
 
 export type SidebarItem = {
@@ -3866,8 +3956,8 @@ export const api = {
       || typeof input.conversation_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(input.conversation_id)
       || !Number.isSafeInteger(input.conversation_revision) || input.conversation_revision < 1
       || (input.tool_selection !== undefined && !validSavedToolSelection(input.tool_selection))
-      || typeof input.content !== "string" || !input.content.trim()
-      || new TextEncoder().encode(JSON.stringify(input)).length > 60 * 1024) {
+      || !validSavedTurnContent(input.content)
+      || new TextEncoder().encode(JSON.stringify(input)).length > MAX_SAVED_TURN_INPUT_BYTES) {
       throw new Error("Saved conversation request is invalid or requires unsupported context.");
     }
     const result = await request<SavedTurnResult>(defaultspackContractRoute("api/chat/turn"), {
@@ -4415,7 +4505,7 @@ export const api = {
       return Object.keys(values).length === sections.size && [...sections].every(([section, fields]) => (
         Object.prototype.hasOwnProperty.call(values, section)
         && Object.keys(values[section]).length === fields.size
-        && [...fields].every(([field, submitted]) => Object.prototype.hasOwnProperty.call(values[section], field) && values[section][field] === submitted)
+        && [...fields].every(([field, submitted]) => Object.prototype.hasOwnProperty.call(values[section], field) && jsonValueMatches(values[section][field], submitted))
       ));
     };
     return request<Acknowledgement>(defaultspackContractRoute("api/ui/settings"), {
@@ -4568,11 +4658,9 @@ export const api = {
     kind?: string;
     protocol?: "openai-compatible" | "anthropic";
   }) {
-    const protocol = options?.protocol ?? (
-      providerId === "anthropic" ? "anthropic"
-        : ["openai", "openai_compatible", "deepseek", "openrouter"].includes(providerId)
-          ? "openai-compatible" : null
-    );
+    const preset = providerSetupPreset(providerId);
+    const customSetup = isCustomProviderSetup(providerId);
+    const protocol = options?.protocol ?? preset?.protocol ?? null;
     if (!protocol || options?.kind === "custom") {
       throw new Error("このProviderの設定には対応するLLM protocolの選択が必要です。");
     }
@@ -4580,7 +4668,10 @@ export const api = {
       throw new Error("モデル・メモ・quotaの同時保存は未対応です。接続設定とは別に設定してください。");
     }
     const connection = `${providerId}.${options?.apiId || "default"}`;
-    const endpoint = options?.baseUrl?.trim() ?? "";
+    const endpoint = options?.baseUrl?.trim() || preset?.endpoint || "";
+    if (customSetup && !options?.baseUrl?.trim()) {
+      throw new Error("Custom ProviderにはHTTPSの接続先URLを入力してください。");
+    }
     let url: URL;
     try { url = new URL(endpoint); } catch { throw new Error("HTTPSのProvider接続先URLを入力してください。"); }
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(connection)

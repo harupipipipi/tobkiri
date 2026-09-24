@@ -137,6 +137,22 @@ def test_ambiguous_or_unbounded_json_is_rejected(encoded: bytes) -> None:
         _check(encoded)
 
 
+def test_generic_intent_keeps_the_original_sixty_kib_cap() -> None:
+    """Saved-turn callers opt in separately; generic intents stay at 60 KiB."""
+    intent = {
+        "kind": "tobkiri.packvm.continuation.intent.v2",
+        "hop": 0,
+        "target": {"contract_id": TARGET[0], "operation_id": TARGET[1]},
+        "payload": {"text": "x" * (60 * 1024)},
+        "state": {},
+    }
+    with pytest.raises(ValueError):
+        seal_continuation_intent(
+            canonical_json(intent), identity=IDENTITY, hop=0,
+            previous_digest=None, target=TARGET, nonce="b" * 48,
+        )
+
+
 @pytest.mark.parametrize(
     "outcome",
     [

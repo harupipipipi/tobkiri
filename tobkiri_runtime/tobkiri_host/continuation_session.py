@@ -31,6 +31,9 @@ class ContinuationSession:
         *,
         chains: ContinuationChains,
         target_selector: Callable[[], tuple[str, str]] | None = None,
+        max_intent_bytes: int = 60 * 1024,
+        max_frame_bytes: int = 64 * 1024,
+        max_result_bytes: int = 512 * 1024,
     ) -> None:
         """Capture an immutable bounded target plan, never an application plan."""
         if (
@@ -46,7 +49,19 @@ class ContinuationSession:
             raise ValueError("continuation target plan is invalid")
         if target_selector is not None and not callable(target_selector):
             raise ValueError("continuation target selector is invalid")
+        if (
+            type(max_intent_bytes) is not int
+            or type(max_frame_bytes) is not int
+            or type(max_result_bytes) is not int
+            or not 1 <= max_intent_bytes <= 4 * 1024 * 1024
+            or not 1 <= max_frame_bytes <= 4 * 1024 * 1024
+            or not 1 <= max_result_bytes <= 4 * 1024 * 1024
+        ):
+            raise ValueError("continuation byte budget is invalid")
         self._selector = target_selector
+        self._max_intent_bytes = max_intent_bytes
+        self._max_frame_bytes = max_frame_bytes
+        self._max_result_bytes = max_result_bytes
         self._limit = MAX_SAVED_TOOL_HOPS if target_selector else len(targets)
         self._identity = identity
         self._targets = targets
@@ -68,6 +83,8 @@ class ContinuationSession:
             frame = seal_continuation_intent(
                 intent, identity=self._identity, hop=0, previous_digest=None,
                 target=self._target(0), nonce=nonce, max_hops=self._limit,
+                max_intent_bytes=self._max_intent_bytes,
+                max_frame_bytes=self._max_frame_bytes,
             )
             self._chains.start(self._identity, frame=frame.frame, nonce=frame.nonce)
             self._pending = frame
@@ -81,7 +98,9 @@ class ContinuationSession:
                 raise ValueError("continuation result is not pending")
             self._pending = None
             try:
-                result = validate_continuation_result(encoded, request=pending)
+                result = validate_continuation_result(
+                    encoded, request=pending, max_result_bytes=self._max_result_bytes,
+                )
                 permit = self._chains.take(
                     self._identity, nonce=pending.nonce, result=result.frame
                 )
@@ -100,8 +119,12 @@ class ContinuationSession:
             if self._resumed:
                 raise ValueError("continuation resume arguments have already been taken")
             self._resumed = True
-            request = strict_loads(permit.frame, max_bytes=64 * 1024, max_depth=16)
-            result = strict_loads(permit.result, max_bytes=512 * 1024, max_depth=16)
+            request = strict_loads(
+                permit.frame, max_bytes=self._max_frame_bytes, max_depth=16,
+            )
+            result = strict_loads(
+                permit.result, max_bytes=self._max_result_bytes, max_depth=16,
+            )
             return {"state": request["state"], "outcome": result["outcome"]}
 
     def advance(self, permit: ResumePermit, intent: bytes, *, nonce: str) -> bytes:
@@ -117,7 +140,8 @@ class ContinuationSession:
                 frame = seal_continuation_intent(
                     intent, identity=self._identity, hop=hop,
                     previous_digest=self._previous, target=self._target(hop), nonce=nonce,
-                    max_hops=self._limit,
+                    max_hops=self._limit, max_intent_bytes=self._max_intent_bytes,
+                    max_frame_bytes=self._max_frame_bytes,
                 )
                 self._chains.advance(permit, frame=frame.frame, nonce=frame.nonce)
             except Exception:

@@ -1,3 +1,5 @@
+import { isCustomProviderSetup } from "../../lib/providerPresets";
+
 export const BUILTIN_API_PROVIDER_IDS: string[] = [
   "anthropic",
   "avian",
@@ -248,8 +250,11 @@ export function requiresExplicitApiProviderProtocol(
   providerId: string,
   kind: ApiProviderKind,
 ): boolean {
-  return kind === "llm"
-    && !BUILTIN_API_PROVIDER_IDS.includes(providerId.trim().toLowerCase());
+  if (kind !== "llm") return false;
+  // The custom endpoint is deliberately the only built-in LLM path that asks
+  // people to choose a protocol. Registered LLM providers also remain custom
+  // connections because their endpoint cannot be safely inferred.
+  return isCustomProviderSetup(providerId);
 }
 
 /** Keep non-LLM credentials out of the typed AI provider registry. */
@@ -285,7 +290,11 @@ export function buildApiKeySavePayload(draft: ApiKeySetupDraft, fallbackKind: Ap
   const name = draft.name.trim();
   const value = draft.value;
   const credentialMode = draft.credential_mode === "none" ? "none" : "api_key";
-  if (!providerId || !name || (credentialMode === "api_key" && !value.trim()) || (credentialMode === "none" && !draft.base_url?.trim())) return null;
+  const kind = draft.kind ?? fallbackKind;
+  const customLlm = requiresExplicitApiProviderProtocol(providerId, kind);
+  if (!providerId || !name || (credentialMode === "api_key" && !value.trim())
+    || (credentialMode === "none" && !draft.base_url?.trim())
+    || (customLlm && !draft.base_url?.trim())) return null;
   const allowedModels = parseAllowedModels(draft.allowed_models);
   return {
     provider_id: providerId,
@@ -293,7 +302,7 @@ export function buildApiKeySavePayload(draft: ApiKeySetupDraft, fallbackKind: Ap
     options: {
       apiId: name,
       name,
-      kind: draft.kind ?? fallbackKind,
+      kind,
       protocol: draft.protocol,
       baseUrl: draft.base_url?.trim() || undefined,
       allowedModels: allowedModels.length ? allowedModels : undefined,

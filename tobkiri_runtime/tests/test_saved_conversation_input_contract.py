@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from copy import deepcopy
 from pathlib import Path
 import json
@@ -40,7 +41,118 @@ def test_valid_input_matches_pure_initial_abi(field: str, value: object) -> None
     assert validate_saved_conversation_input(payload) == checked
     intent = saved.tobkiri_packvm_invoke("saved_complete", checked)
     assert intent["hop"] == 0
-    assert intent["state"]["request"] == payload["request"]
+    assert intent["state"]["request"] == {
+        key: value for key, value in payload["request"].items() if key != "content"
+    }
+
+
+def test_bounded_inline_image_matches_the_external_and_guest_contracts() -> None:
+    """A saved turn permits only its exact, self-contained raster block form."""
+    payload = _input()
+    payload["request"]["content"] = [
+        {"type": "text", "text": "What is in this image?"},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAE="}},
+    ]
+    checked = validate_document(payload, "saved_conversation_input")
+    assert validate_saved_conversation_input(checked) == checked
+    intent = saved.tobkiri_packvm_invoke("saved_complete", checked)
+    assert intent["state"]["user_content"] == payload["request"]["content"]
+
+
+def _inline_png(byte_count: int) -> str:
+    encoded = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\0" * byte_count).decode()
+    return f"data:image/png;base64,{encoded}"
+
+
+def test_saved_inline_image_limits_reject_oversized_and_third_images() -> None:
+    oversized = _input()
+    oversized["request"]["content"] = [
+        {"type": "text", "text": "Inspect this"},
+        {"type": "image_url", "image_url": {"url": _inline_png(1024 * 1024)}},
+    ]
+    with pytest.raises(SchemaValidationError):
+        validate_document(oversized, "saved_conversation_input")
+    with pytest.raises(ValueError):
+        validate_saved_conversation_input(oversized)
+
+    third_image = _input()
+    third_image["request"]["content"] = [
+        {"type": "text", "text": "Inspect these"},
+        *[
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAE="}}
+            for _ in range(3)
+        ],
+    ]
+    with pytest.raises(SchemaValidationError):
+        validate_document(third_image, "saved_conversation_input")
+    with pytest.raises(ValueError):
+        validate_saved_conversation_input(third_image)
+
+
+def test_saved_request_rejects_an_over_three_mebib_serialized_content() -> None:
+    oversized = _input()
+    oversized["request"]["content"] = "x" * (3 * 1024 * 1024)
+    with pytest.raises(SchemaValidationError):
+        validate_document(oversized, "saved_conversation_input")
+    with pytest.raises(ValueError):
+        validate_saved_conversation_input(oversized)
+
+
+def test_two_large_saved_images_fit_the_user_acknowledgement_budget() -> None:
+    image = _inline_png(768 * 1024)
+    payload = _input()
+    payload["request"]["content"] = [
+        {"type": "text", "text": "Compare these screenshots."},
+        {"type": "image_url", "image_url": {"url": image}},
+        {"type": "image_url", "image_url": {"url": image}},
+    ]
+    checked = validate_saved_conversation_input(payload)
+    initial = saved.start(checked["request"])
+    append = saved.resume(
+        initial["state"],
+        {
+            "status": "ok",
+            "value": {
+                "conversation": {
+                    "id": "conversation-1",
+                    "conversation_revision": 1,
+                    "model_reference": "stub/default",
+                    "current_node_id": None,
+                    "agent_id": None,
+                    "system_prompt_id": None,
+                    "messages": [],
+                }
+            },
+        },
+    )
+    acknowledgement = {
+        "status": "ok",
+        "value": {
+            "action": "message_appended",
+            "conversation_revision": 2,
+            "message": append["payload"]["message"],
+        },
+    }
+    assert len(json.dumps(acknowledgement).encode()) > 512 * 1024
+    ai = saved.resume(append["state"], acknowledgement)
+    assert ai["state"]["stage"] == "ai"
+
+
+@pytest.mark.parametrize("url", [
+    "https://example.test/image.png",
+    "data:image/svg+xml;base64,PHN2Zy8+",
+    "data:image/png;base64,A===",
+])
+def test_saved_inline_image_rejects_non_raster_or_invalid_data_url(url: str) -> None:
+    payload = _input()
+    payload["request"]["content"] = [
+        {"type": "text", "text": "Inspect this"},
+        {"type": "image_url", "image_url": {"url": url}},
+    ]
+    with pytest.raises(SchemaValidationError):
+        validate_document(payload, "saved_conversation_input")
+    with pytest.raises(ValueError):
+        validate_saved_conversation_input(payload)
 
 
 @pytest.mark.parametrize("field,value", [

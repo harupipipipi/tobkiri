@@ -1,10 +1,12 @@
-import type { ModelSearchItem, SettingsSection } from "../../lib/api";
+import type { ModelProfile, ModelSearchItem, SettingsSection } from "../../lib/api";
 
 export const MODEL_PICKER_QUERY_RESULT_LIMIT = 60;
 
 export type ModelSelectOption = {
   value: string;
   label: string;
+  /** Legacy aliases are accepted while older catalogs migrate to provider_id. */
+  provider?: string;
   provider_id?: string;
   provider_display_name?: string;
   model_id?: string;
@@ -19,6 +21,8 @@ export type ModelSelectOption = {
   supports_tool_calling?: boolean;
   supports_thinking?: boolean;
   supports_fast?: boolean;
+  thinking_levels?: string[];
+  default_thinking_level?: string | null;
   speed_tier?: string;
   quality_tier?: string;
   cost_tier?: string;
@@ -73,6 +77,7 @@ export function modelFieldOptionToModelSelectOption(option: SettingsFieldOption)
   return {
     value: String(option.value ?? ""),
     label: String(option.label ?? option.value ?? ""),
+    provider: typeof optionRecord.provider === "string" ? optionRecord.provider : undefined,
     provider_id: option.provider_id,
     provider_display_name: option.provider_display_name,
     model_id: option.model_id,
@@ -87,6 +92,8 @@ export function modelFieldOptionToModelSelectOption(option: SettingsFieldOption)
     supports_tool_calling: option.supports_tool_calling,
     supports_thinking: option.supports_thinking,
     supports_fast: option.supports_fast,
+    thinking_levels: option.thinking_levels,
+    default_thinking_level: option.default_thinking_level,
     speed_tier: option.speed_tier,
     quality_tier: option.quality_tier,
     cost_tier: option.cost_tier,
@@ -95,6 +102,56 @@ export function modelFieldOptionToModelSelectOption(option: SettingsFieldOption)
     recommended_roles: option.recommended_roles,
     notes: option.notes,
   };
+}
+
+/**
+ * Reattach model-registry capability metadata to the intentionally minimal
+ * settings-catalog options. The catalog owns values and labels; profiles are a
+ * separate, Host-read resource used only to render capability-aware controls.
+ */
+export function enrichModelSelectOptions(
+  options: ModelSelectOption[],
+  modelProfiles: ModelProfile[] = [],
+): ModelSelectOption[] {
+  const profiles = new Map<string, ModelProfile>();
+  for (const profile of modelProfiles) {
+    const providerId = String(profile.provider_id ?? "").trim();
+    const modelId = String(profile.model_id ?? "").trim();
+    for (const identifier of [
+      profile.profile_id,
+      profile.qualified_model_id,
+      providerId && modelId ? `${providerId}/${modelId}` : "",
+    ]) {
+      const key = String(identifier ?? "").trim();
+      if (key) profiles.set(key, profile);
+    }
+  }
+  return options.map((option) => {
+    const profile = profiles.get(option.value)
+      ?? profiles.get(String(option.qualified_model_id ?? "").trim());
+    if (!profile) return option;
+    return {
+      ...option,
+      provider_id: option.provider_id ?? profile.provider_id,
+      provider_display_name: option.provider_display_name ?? profile.provider_display_name,
+      model_id: option.model_id ?? profile.model_id,
+      qualified_model_id: option.qualified_model_id ?? profile.qualified_model_id,
+      local: option.local ?? profile.local,
+      supports_vision: option.supports_vision ?? profile.supports_vision,
+      supports_image_input: option.supports_image_input ?? profile.supports_image_input,
+      supports_tool_calling: option.supports_tool_calling ?? profile.supports_tool_calling,
+      supports_thinking: option.supports_thinking ?? profile.supports_thinking,
+      supports_fast: option.supports_fast ?? profile.supports_fast,
+      thinking_levels: option.thinking_levels ?? profile.thinking_levels,
+      default_thinking_level: option.default_thinking_level ?? profile.default_thinking_level,
+      speed_tier: option.speed_tier ?? profile.speed_tier,
+      quality_tier: option.quality_tier ?? profile.quality_tier,
+      cost_tier: option.cost_tier ?? profile.cost_tier,
+      knowledge_level: option.knowledge_level ?? profile.knowledge_level,
+      capability_tags: option.capability_tags ?? profile.capability_tags,
+      recommended_roles: option.recommended_roles ?? profile.recommended_roles,
+    };
+  });
 }
 
 export function modelSearchItemToModelSelectOption(item: ModelSearchItem): ModelSelectOption {
@@ -119,6 +176,8 @@ export function modelSearchItemToModelSelectOption(item: ModelSearchItem): Model
     supports_tool_calling: item.supports_tool_calling,
     supports_thinking: item.supports_thinking,
     supports_fast: item.supports_fast,
+    thinking_levels: item.thinking_levels,
+    default_thinking_level: item.default_thinking_level,
     speed_tier: item.speed_tier,
     quality_tier: item.quality_tier,
     cost_tier: item.cost_tier,
@@ -127,6 +186,41 @@ export function modelSearchItemToModelSelectOption(item: ModelSearchItem): Model
     recommended_roles: item.recommended_roles,
     notes: item.notes,
   };
+}
+
+export function modelOptionProviderId(option: ModelSelectOption): string {
+  const explicit = String(option.provider_id ?? option.provider ?? "").trim();
+  if (explicit) return explicit;
+  const value = String(option.value ?? "").trim();
+  return value.includes("/") ? value.split("/", 1)[0] : "";
+}
+
+export function modelOptionProviderIds(option: ModelSelectOption): string[] {
+  return Array.from(new Set([
+    modelOptionProviderId(option),
+    String(option.provider_display_name ?? "").trim(),
+  ].filter(Boolean)));
+}
+
+export const DEFAULT_THINKING_LEVELS = ["none", "low", "medium", "high", "xhigh"] as const;
+
+export function modelOptionThinkingLevels(option: ModelSelectOption | null | undefined): string[] {
+  const levels = Array.from(new Set(
+    (option?.thinking_levels ?? [])
+      .map((level) => String(level ?? "").trim().toLowerCase())
+      .filter((level): level is typeof DEFAULT_THINKING_LEVELS[number] => (
+        (DEFAULT_THINKING_LEVELS as readonly string[]).includes(level)
+      )),
+  ));
+  if (levels.length > 0) return levels;
+  return option?.supports_thinking === true ? [...DEFAULT_THINKING_LEVELS] : [];
+}
+
+export function modelOptionNeedsVisionRecommendation(
+  option: ModelSelectOption | null | undefined,
+  value: string,
+): boolean {
+  return Boolean(value && option?.supports_vision === false && option.supports_image_input !== true);
 }
 
 export function modelSelectOptionSearchText(option: ModelSelectOption): string {
@@ -167,7 +261,7 @@ function normalizedProviderId(value: unknown): string {
 export function modelProviderOptions(options: ModelSelectOption[]): ModelProviderOption[] {
   const providers = new Map<string, ModelProviderOption>();
   for (const option of options) {
-    const providerId = String(option.provider_id ?? "").trim();
+    const providerId = modelOptionProviderId(option);
     if (!providerId) continue;
     const key = normalizedProviderId(providerId);
     const current = providers.get(key);
@@ -228,7 +322,9 @@ export function filterModelOptionsByProvider(
 ): ModelSelectOption[] {
   const target = normalizedProviderId(providerId);
   if (!target) return options;
-  return options.filter((option) => normalizedProviderId(option.provider_id) === target);
+  return options.filter((option) => (
+    modelOptionProviderIds(option).some((providerId) => normalizedProviderId(providerId) === target)
+  ));
 }
 
 export function dedupeModelSelectOptions(options: ModelSelectOption[]): ModelSelectOption[] {
@@ -292,11 +388,11 @@ export function modelOptionBadges(option: ModelSelectOption): ModelSelectBadgeDe
 }
 
 export function modelSelectDisplay(option: ModelSelectOption): ModelSelectDisplay {
-  const providerLabel = String(option.provider_display_name ?? option.provider_id ?? "").trim();
+  const providerLabel = String(option.provider_display_name ?? modelOptionProviderId(option)).trim();
   const modelLabel = String(option.model_id ?? option.qualified_model_id ?? option.value).trim();
   return {
     label: option.label || option.value,
-    subtitle: [option.provider_id, modelLabel].filter(Boolean).join(" / "),
+    subtitle: [modelOptionProviderId(option), modelLabel].filter(Boolean).join(" / "),
     badges: modelOptionBadges(option),
     providerLabel,
     modelLabel,

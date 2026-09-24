@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:358615ded73bb4e9fb45e5e66c499ef422947427c3ba872ed984273e8a0b2d64",
+  "source_identity": "sha256:9eb46f8d383d87d24ec807670bd0eb50325f7a4baec34ddedd21181b4ce08a8b",
   "variants": [
     {
       "variant_id": "defaultspack.application-presentation.python",
       "function_id": "defaultspack.application-presentation",
       "implementation_path": "runtime/application_presentation.py",
-      "implementation_digest": "sha256:712e2540875dc130c3d393c85a104c99b37f8d5d0248201b09c6e84c748157f2",
+      "implementation_digest": "sha256:fab83a66b7bd0492212a43487603b48876598672f0eb5525f55b0160834c529f",
       "execution_kind": "pack_vm",
       "platform": "any",
       "architecture": "any",
@@ -177,7 +177,7 @@
       "variant_id": "defaultspack.conversation.saved.python",
       "function_id": "defaultspack.conversation.saved",
       "implementation_path": "runtime/saved_conversation.py",
-      "implementation_digest": "sha256:5f83b9e96918fde5d36baa253d00862a416657c57bc83913a4e26e31d9ad5077",
+      "implementation_digest": "sha256:9252141def7180c94110a3d43e1fda2128744fcd5195dc3d14edb830346213e2",
       "execution_kind": "pack_vm",
       "platform": "any",
       "architecture": "any",
@@ -189,7 +189,7 @@
         {
           "contract_id": "conversation.saved-turn.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:63915151fb1d4ae599d26940f2ed6638a16a6ec7e5bac52c04a7ead0d15038bd",
+          "revision_digest": "sha256:b3eaa75863c5b2fe9a13e73bcc0652c2e4f0f5d07f0f6ed590a4aace8ec4dc5c",
           "operation_id": "saved_complete",
           "input_schema": {
             "$defs": {
@@ -201,20 +201,85 @@
                 },
                 "pattern": "^[A-Za-z0-9]",
                 "type": "string"
+              },
+              "image_block": {
+                "additionalProperties": false,
+                "properties": {
+                  "image_url": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "url": {
+                        "maxLength": 1398127,
+                        "minLength": 1,
+                        "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
+                  },
+                  "type": {
+                    "const": "image_url"
+                  }
+                },
+                "required": [
+                  "type",
+                  "image_url"
+                ],
+                "type": "object"
+              },
+              "text_block": {
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "maxLength": 61440,
+                    "minLength": 1,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "text"
+                  }
+                },
+                "required": [
+                  "type",
+                  "text"
+                ],
+                "type": "object"
               }
             },
             "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "additionalProperties": false,
-            "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+            "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
             "properties": {
               "request": {
                 "additionalProperties": false,
                 "properties": {
                   "content": {
-                    "minLength": 1,
-                    "pattern": "\\S",
-                    "type": "string"
+                    "oneOf": [
+                      {
+                        "maxLength": 61440,
+                        "minLength": 1,
+                        "pattern": "\\S",
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "$ref": "#/$defs/image_block"
+                        },
+                        "maxItems": 3,
+                        "minItems": 1,
+                        "prefixItems": [
+                          {
+                            "$ref": "#/$defs/text_block"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ]
                   },
                   "conversation_id": {
                     "$ref": "#/$defs/identifier"
@@ -400,6 +465,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:e80ac906e940c64c1ed71109ce3236449dd965712f8fc7e8a57375014724fd50",
-  "catalog_digest": "sha256:802a88ed57339d4e0df72f372550a5320d36edf32cceae0a521741d903da0127"
+  "materialization_catalog_digest": "sha256:93a8efce90fc922067a8857f9f07757a2f1c272475a3dc0d693346aeff493340",
+  "catalog_digest": "sha256:622ba5a2d93037da6f0351a17c46f5df698cc456fd112407bdab4a3955639600"
 }

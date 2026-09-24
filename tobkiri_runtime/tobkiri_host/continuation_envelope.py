@@ -61,6 +61,8 @@ def seal_continuation_intent(
     target: tuple[str, str],
     nonce: str,
     max_hops: int = 4,
+    max_intent_bytes: int = 60 * 1024,
+    max_frame_bytes: int = 64 * 1024,
 ) -> ValidatedContinuation:
     """Add root-owned framing to an application intent, without authorizing it.
 
@@ -70,7 +72,14 @@ def seal_continuation_intent(
     """
     if type(encoded) is not bytes:
         raise ValueError("continuation intent must be encoded bytes")
-    value = strict_loads(encoded, max_bytes=60 * 1024, max_depth=16)
+    if (
+        type(max_intent_bytes) is not int
+        or type(max_frame_bytes) is not int
+        or not 1 <= max_intent_bytes <= 4 * 1024 * 1024
+        or not 1 <= max_frame_bytes <= 4 * 1024 * 1024
+    ):
+        raise ValueError("continuation frame budget is invalid")
+    value = strict_loads(encoded, max_bytes=max_intent_bytes, max_depth=16)
     if (
         not isinstance(value, dict)
         or set(value) != {"kind", "hop", "target", "payload", "state"}
@@ -95,6 +104,7 @@ def seal_continuation_intent(
     return validate_continuation_request(
         canonical_json(frame), identity=identity, hop=hop,
         previous_digest=previous_digest, target=target, max_hops=max_hops,
+        max_frame_bytes=max_frame_bytes,
     )
 
 
@@ -102,11 +112,14 @@ def validate_continuation_result(
     encoded: bytes,
     *,
     request: ValidatedContinuation,
+    max_result_bytes: int = 512 * 1024,
 ) -> ValidatedResult:
     """Reject swapped results and ambiguous success/error envelopes."""
     if type(encoded) is not bytes:
         raise ValueError("continuation result must be encoded bytes")
-    value = strict_loads(encoded, max_bytes=512 * 1024, max_depth=16)
+    if type(max_result_bytes) is not int or not 1 <= max_result_bytes <= 4 * 1024 * 1024:
+        raise ValueError("continuation result budget is invalid")
+    value = strict_loads(encoded, max_bytes=max_result_bytes, max_depth=16)
     if (
         not isinstance(value, dict)
         or set(value) != {"kind", "version", "request_digest", "outcome"}
@@ -147,6 +160,7 @@ def validate_continuation_request(
     previous_digest: str | None,
     target: tuple[str, str],
     max_hops: int = 4,
+    max_frame_bytes: int = 64 * 1024,
 ) -> ValidatedContinuation:
     """Validate one bounded request against independently captured expectations.
 
@@ -155,6 +169,8 @@ def validate_continuation_request(
     """
     if type(encoded) is not bytes:
         raise ValueError("continuation request must be encoded bytes")
+    if type(max_frame_bytes) is not int or not 1 <= max_frame_bytes <= 4 * 1024 * 1024:
+        raise ValueError("continuation frame budget is invalid")
     if (type(max_hops) is not int or not 1 <= max_hops <= MAX_SAVED_TOOL_HOPS
             or type(hop) is not int or not 0 <= hop < max_hops):
         raise ValueError("expected continuation hop is invalid")
@@ -163,7 +179,7 @@ def validate_continuation_request(
         and (not isinstance(previous_digest, str) or _DIGEST.fullmatch(previous_digest) is None)
     ):
         raise ValueError("expected continuation predecessor is invalid")
-    value = strict_loads(encoded, max_bytes=64 * 1024, max_depth=16)
+    value = strict_loads(encoded, max_bytes=max_frame_bytes, max_depth=16)
     if not isinstance(value, dict) or set(value) != _FIELDS:
         raise ValueError("continuation request fields are invalid")
     if (

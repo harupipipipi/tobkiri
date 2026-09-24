@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
   "title": "Saved conversation initial input",
-  "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+  "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -31,9 +31,27 @@
           "maximum": 9007199254740991
         },
         "content": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "\\S"
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 61440,
+              "pattern": "\\S"
+            },
+            {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 3,
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/text_block"
+                }
+              ],
+              "items": {
+                "$ref": "#/$defs/image_block"
+              }
+            }
+          ]
         },
         "tool_selection": {
           "type": "object",
@@ -169,6 +187,53 @@
     }
   },
   "$defs": {
+    "text_block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "text"
+      ],
+      "properties": {
+        "type": {
+          "const": "text"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 61440,
+          "pattern": "\\S"
+        }
+      }
+    },
+    "image_block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "image_url"
+      ],
+      "properties": {
+        "type": {
+          "const": "image_url"
+        },
+        "image_url": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "url"
+          ],
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1398127,
+              "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$"
+            }
+          }
+        }
+      }
+    },
     "identifier": {
       "type": "string",
       "minLength": 1,

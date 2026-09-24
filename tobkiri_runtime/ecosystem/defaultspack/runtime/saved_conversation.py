@@ -7,6 +7,7 @@ Intents are not authority; registration and the captured Broker remain required.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import re
@@ -19,9 +20,17 @@ TARGETS = (
     ("tobkiri.action.message.manage.v1", "rumi_conversation_store_pack.message-manage"),
 )
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
+_SAVED_IMAGE_URL = re.compile(
+    r"data:(image/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/]+={0,2})\Z"
+)
 _REQUEST_FIELDS = {"turn_id", "conversation_id", "conversation_revision", "content"}
 _TOOL_TARGET = ("tobkiri.service.tool.invoke.v1", "rumi_tool_broker_pack.tool-invoke")
 _MAX_TOOL_CALLS = 8
+_MAX_SAVED_TEXT_BYTES = 60 * 1024
+_MAX_SAVED_IMAGE_COUNT = 2
+_MAX_SAVED_IMAGE_BYTES = 1024 * 1024
+_MAX_SAVED_IMAGE_BASE64_CHARS = ((_MAX_SAVED_IMAGE_BYTES + 2) // 3) * 4
+_MAX_SAVED_FRAME_BYTES = 4 * 1024 * 1024
 _STAGE_TARGETS = {
     "read": TARGETS[0],
     "user": TARGETS[1],
@@ -43,10 +52,12 @@ _STATE_FIELDS = {
     "tool_count",
     "seen_tools",
     "system_prompt_digest",
+    "user_content",
+    "user_content_digest",
 }
 
 
-def _json(value: Any, *, limit: int = 60 * 1024) -> bytes:
+def _json(value: Any, *, limit: int = _MAX_SAVED_FRAME_BYTES) -> bytes:
     def validate(item: Any, depth: int = 0) -> None:
         if depth > 12:
             raise ValueError("saved conversation nesting exceeds limit")
@@ -85,14 +96,61 @@ def _revision(value: Any) -> int:
     return value
 
 
+def _saved_image_url(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    match = _SAVED_IMAGE_URL.fullmatch(value)
+    if (
+        match is None
+        or len(match.group(2)) % 4
+        or len(match.group(2)) > _MAX_SAVED_IMAGE_BASE64_CHARS
+    ):
+        return False
+    try:
+        decoded = base64.b64decode(match.group(2), validate=True)
+    except (TypeError, ValueError):
+        return False
+    return 0 < len(decoded) <= _MAX_SAVED_IMAGE_BYTES
+
+
+def _saved_user_content(value: Any) -> bool:
+    if (
+        isinstance(value, str)
+        and bool(value.strip())
+        and len(value.encode("utf-8")) <= _MAX_SAVED_TEXT_BYTES
+    ):
+        return True
+    if not isinstance(value, list) or not 1 <= len(value) <= 1 + _MAX_SAVED_IMAGE_COUNT:
+        return False
+    text = value[0]
+    if (
+        not isinstance(text, dict)
+        or set(text) != {"type", "text"}
+        or text.get("type") != "text"
+        or not isinstance(text.get("text"), str)
+        or not text["text"].strip()
+        or len(text["text"].encode("utf-8")) > _MAX_SAVED_TEXT_BYTES
+    ):
+        return False
+    return all(
+        isinstance(part, dict)
+        and set(part) == {"type", "image_url"}
+        and part.get("type") == "image_url"
+        and isinstance(part.get("image_url"), dict)
+        and set(part["image_url"]) == {"url"}
+        and _saved_image_url(part["image_url"].get("url"))
+        for part in value[1:]
+    )
+
+
 def _request(value: Any) -> dict[str, Any]:
     if type(value) is not dict or set(value) - {"tool_selection"} != _REQUEST_FIELDS:
         raise ValueError("saved conversation request fields are invalid")
     _identifier(value["turn_id"])
     _identifier(value["conversation_id"])
     _revision(value["conversation_revision"])
-    if not isinstance(value["content"], str) or not value["content"].strip():
-        raise ValueError("saved conversation requires nonempty user text")
+    if not _saved_user_content(value["content"]):
+        raise ValueError("saved conversation user content is invalid")
     selection = value.get("tool_selection", {})
     if "tool_selection" in value:
         if (
@@ -121,7 +179,22 @@ def _request(value: Any) -> dict[str, Any]:
                     raise ValueError("saved tool target is invalid")
         if selection["mode"] == "none" and (selection.get("include") or selection.get("must_use")):
             raise ValueError("disabled saved tools cannot be required")
-    _json(value)
+    _json(value, limit=3 * 1024 * 1024)
+    return value
+
+
+def _state_request(value: Any) -> dict[str, Any]:
+    """Validate the compact request identity retained after the user append."""
+    if type(value) is not dict or set(value) - {"tool_selection"} != {
+        "turn_id", "conversation_id", "conversation_revision"
+    }:
+        raise ValueError("saved continuation request fields are invalid")
+    _identifier(value["turn_id"])
+    _identifier(value["conversation_id"])
+    _revision(value["conversation_revision"])
+    selection = value.get("tool_selection", {})
+    if "tool_selection" in value:
+        _request({**value, "content": "saved content"})
     return value
 
 
@@ -149,12 +222,19 @@ def _tool_logs(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return logs
 
 
-def _message(state: dict[str, Any], role: str) -> dict[str, Any]:
+def _message(
+    state: dict[str, Any], role: str, *, user_content: Any | None = None,
+) -> dict[str, Any]:
     request = state["request"]
+    content = state["assistant"]
+    if role == "user":
+        content = state["user_content"] if user_content is None else user_content
+        if not _saved_user_content(content):
+            raise ValueError("saved conversation user content is unavailable")
     message = {
         "id": _message_id(request, role),
         "role": role,
-        "content": request["content"] if role == "user" else state["assistant"],
+        "content": content,
         "parent_id": state["parent_id"] if role == "user" else _message_id(request, "user"),
         "metadata": {"turn_id": request["turn_id"]},
         "status": "complete",
@@ -165,7 +245,7 @@ def _message(state: dict[str, Any], role: str) -> dict[str, Any]:
     return message
 
 
-def _intent(state: dict[str, Any]) -> dict[str, Any]:
+def _intent(state: dict[str, Any], *, user_content: Any | None = None) -> dict[str, Any]:
     stage, request = state["stage"], state["request"]
     prompt_digest = state["system_prompt_digest"]
     if prompt_digest is not None and (
@@ -180,17 +260,12 @@ def _intent(state: dict[str, Any]) -> dict[str, Any]:
             "operation": "append",
             "conversation_id": request["conversation_id"],
             "expected_conversation_revision": state["revision"],
-            "message": _message(state, stage),
+            "message": _message(state, stage, user_content=user_content),
         }
     elif stage == "tool":
         payload = state["pending_tools"][0]
     else:
         payload = {
-            "messages": [
-                *state["history"],
-                {"role": "user", "content": request["content"]},
-                *state["tool_messages"],
-            ],
             "model_reference": state["model_reference"],
             "requirements": {"request_surface": "conversation.saved"},
         }
@@ -227,57 +302,10 @@ def _failure(state: dict[str, Any], code: str) -> dict[str, Any]:
     }
 
 
-def _history(conversation: dict[str, Any]) -> tuple[list[dict[str, Any]], str | None]:
-    messages = conversation.get("messages")
-    if not isinstance(messages, list) or len(messages) > 200:
-        raise ValueError("conversation history is invalid or too large")
-    by_id = {_identifier(item["id"]): item for item in messages}
-    if len(by_id) != len(messages):
-        raise ValueError("conversation history contains duplicate IDs")
-    current = conversation.get("current_node_id")
-    if not messages:
-        if current is not None:
-            raise ValueError("empty conversation has a current node")
-        return [], None
-    current = _identifier(current)
-    if current not in by_id:
-        raise ValueError("conversation current node is unavailable")
-    if all(item.get("parent_id") is None for item in messages):
-        # Legacy linear records predate explicit parent links.
-        selected = messages[: messages.index(by_id[current]) + 1]
-    else:
-        selected = []
-        seen: set[str] = set()
-        node: str | None = current
-        while node is not None:
-            if node in seen or node not in by_id:
-                raise ValueError("conversation branch is cyclic or incomplete")
-            seen.add(node)
-            selected.append(by_id[node])
-            node = by_id[node].get("parent_id")
-        selected.reverse()
-    history = []
-    for item in selected:
-        if (
-            item.get("role") not in {"user", "assistant", "system"}
-            or item.get("status") != "complete"
-        ):
-            raise ValueError(
-                "conversation history requires explicit tool or incomplete-turn handling"
-            )
-        trace = (item.get("metadata") or {}).get("saved_tool_messages", [])
-        if not isinstance(trace, list) or (trace and item["role"] != "assistant"):
-            raise ValueError("saved tool history is invalid")
-        if item.get("parts") or item.get("widget") or (item.get("tool_logs") and not trace):
-            raise ValueError("conversation history requires additional content resolution")
-        history.extend(trace)
-        history.append({"role": item["role"], "content": item["content"]})
-    return history, current
-
-
 def start(payload: dict[str, Any]) -> dict[str, Any]:
     """Request the exact owned conversation before attempting any write."""
-    request = json.loads(_json(_request(payload)))
+    request = json.loads(_json(_request(payload), limit=3 * 1024 * 1024))
+    user_content = request.pop("content")
     return _intent(
         {
             "hop": 0,
@@ -293,6 +321,8 @@ def start(payload: dict[str, Any]) -> dict[str, Any]:
             "tool_count": 0,
             "seen_tools": [],
             "system_prompt_digest": None,
+            "user_content": user_content,
+            "user_content_digest": None,
         }
     )
 
@@ -303,7 +333,7 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
     if type(state) is not dict or set(state) != _STATE_FIELDS:
         raise ValueError("saved continuation fields are invalid")
     state = json.loads(_json(state))
-    request = _request(state["request"])
+    request = _state_request(state["request"])
     stage, hop = state["stage"], state["hop"]
     if stage not in _STAGE_TARGETS or type(hop) is not int or not 0 <= hop < 20:
         raise ValueError("saved continuation hop is invalid")
@@ -317,15 +347,17 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
     acknowledged = False
     try:
         value = outcome["value"]
-        _json(value, limit=512 * 1024)
+        _json(value, limit=3 * 1024 * 1024 if stage == "user" else 512 * 1024)
         if not isinstance(value, dict):
             raise ValueError("owner response must be an object")
         if stage == "read":
             conversation = value["conversation"]
             if conversation["id"] != request["conversation_id"]:
                 raise ValueError("conversation identity mismatch")
-            if any(
-                item["id"] in {_message_id(request, "user"), _message_id(request, "assistant")}
+            if not isinstance(conversation.get("messages"), list) or any(
+                not isinstance(item, dict) or item.get("id") in {
+                    _message_id(request, "user"), _message_id(request, "assistant")
+                }
                 for item in conversation["messages"]
             ):
                 return _failure(state, "TURN_RECONCILIATION_REQUIRED")
@@ -336,39 +368,52 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
             model = conversation.get("model_reference")
             if not isinstance(model, str) or not model.strip():
                 return _failure(state, "MODEL_REFERENCE_REQUIRED")
-            state["history"], state["parent_id"] = _history(conversation)
+            state["parent_id"] = conversation.get("current_node_id")
+            if state["parent_id"] is not None:
+                _identifier(state["parent_id"])
             prompt_id = conversation.get("system_prompt_id")
             if prompt_id:
-                prompt = value.get("system_prompt")
+                prompt_digest = value.get("system_prompt_digest")
                 if (
-                    not isinstance(prompt, dict)
-                    or set(prompt) != {"prompt_id", "body", "body_hash"}
-                    or prompt["prompt_id"] != prompt_id
-                    or not isinstance(prompt["body"], str)
-                    or prompt["body_hash"]
-                    != "sha256:" + hashlib.sha256(prompt["body"].encode("utf-8")).hexdigest()
+                    not isinstance(prompt_digest, str)
+                    or re.fullmatch(r"sha256:[0-9a-f]{64}", prompt_digest) is None
                 ):
                     return _failure(state, "CONTEXT_RESOLUTION_REQUIRED")
-                state["system_prompt_digest"] = (
-                    "sha256:"
-                    + hashlib.sha256(
-                        _json({key: prompt[key] for key in ("prompt_id", "body_hash")})
-                    ).hexdigest()
-                )
-                if prompt["body"]:
-                    state["history"].insert(0, {"role": "system", "content": prompt["body"]})
-            elif "system_prompt" in value:
+                state["system_prompt_digest"] = prompt_digest
+            elif "system_prompt_digest" in value:
                 raise ValueError("unexpected saved system prompt")
             state["model_reference"] = model
-            _intent({**state, "hop": 2, "stage": "ai"})
+            user_content = state["user_content"]
+            if not _saved_user_content(user_content) or state["user_content_digest"] is not None:
+                raise ValueError("saved conversation user content is unavailable")
+            state["user_content"] = None
+            state["user_content_digest"] = "sha256:" + hashlib.sha256(
+                _json(user_content, limit=3 * 1024 * 1024)
+            ).hexdigest()
             state["stage"] = "user"
+            return _intent({**state, "hop": hop + 1}, user_content=user_content)
         elif stage in {"user", "assistant"}:
-            expected = _message(state, stage)
             message = value["message"]
+            expected = _message(state, stage) if stage == "assistant" else None
             if (
                 not isinstance(message, dict)
                 or value.get("action") != "message_appended"
-                or any(message.get(key) != item for key, item in expected.items())
+                or (
+                    stage == "user"
+                    and (
+                        message.get("id") != _message_id(request, "user")
+                        or message.get("role") != "user"
+                        or message.get("parent_id") != state["parent_id"]
+                        or message.get("metadata") != {"turn_id": request["turn_id"]}
+                        or message.get("status") != "complete"
+                        or not _saved_user_content(message.get("content"))
+                        or "sha256:" + hashlib.sha256(
+                            _json(message.get("content"), limit=3 * 1024 * 1024)
+                        ).hexdigest()
+                        != state["user_content_digest"]
+                    )
+                )
+                or (stage == "assistant" and any(message.get(key) != item for key, item in expected.items()))
             ):
                 raise ValueError("message owner acknowledgement mismatch")
             revision = _revision(value["conversation_revision"])
@@ -412,6 +457,8 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError("tool intents are invalid")
             selection = request.get("tool_selection", {})
             output = value.get("output")
+            if isinstance(output, (str, list)):
+                _json(output, limit=_MAX_SAVED_TEXT_BYTES)
             if intents:
                 definitions = value.get("tool_definitions")
                 if (

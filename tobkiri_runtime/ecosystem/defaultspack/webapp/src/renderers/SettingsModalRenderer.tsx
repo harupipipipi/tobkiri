@@ -3,12 +3,10 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { AlertTriangle, ArrowRight, Check, ChevronDown, Copy, Loader2, MessageCircle, MoreVertical, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 
 import { cn } from "../lib/cn";
-import { ModelRouteSetup } from "../features/models/ModelRouteSetup";
 import type { CodexAppServerConfig, ModelSearchItem, SettingsSection } from "../lib/api";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { PlacementHtmlRenderer } from "../components/PlacementHtmlRenderer";
 import { AppsSettingsPanel } from "../components/AppsSettingsPanel";
-import { CredentialTransferModal } from "../components/CredentialTransferModal";
 import { ToolExperienceSettingsPanel } from "../components/ToolExperienceSettingsPanel";
 import { MobilePairingApproval } from "../components/MobilePairingApproval";
 import { normalizeLocale, t } from "../lib/i18n";
@@ -17,7 +15,6 @@ import { selectedApisForModel, toggleModelApiRoute, updateModelApiRouteText } fr
 import { settingsFieldSearchText, settingsSectionSearchText } from "../lib/settingsSearch";
 import { reviewConnectionDraft, reviewOAuthDestination, type CredentialImportReview, type OAuthDestinationReview } from "../lib/oauthConnectionReview";
 import { settingsApiResources } from "../features/settings/resources/settingsApiResources";
-import { availabilityCopy, type ModelAvailabilityAfterKeySave } from "../features/settings/resources/useModelAvailability";
 import { providerBrandAsset } from "../features/connections/providerBrandAssets";
 import { ContinuitySettingsField } from "../features/continuity/ContinuitySettingsField";
 import {
@@ -77,6 +74,26 @@ const settingsModalFieldRendererRegistry = createSettingsFieldRendererRegistry([
     render: ContinuitySettingsField,
   },
 ]);
+
+const TOOL_EXPERIENCE_OWNED_FIELD_IDS = new Set([
+  "default_mode",
+  "show_selection_summary",
+  "show_selection_reasons",
+  "selection_strategy",
+  "selector_trace",
+  "final_tool_limit",
+  "semantic_candidate_limit",
+]);
+
+type SettingsDisplayMode = "standard" | "advanced";
+
+/** Technical App Server setup belongs to the advanced Tools experience. */
+export function sectionPreludeIsVisible(
+  sectionId: ControlCenterSection["id"],
+  displayMode: SettingsDisplayMode,
+): boolean {
+  return sectionId !== "tools_mcp" || displayMode === "advanced";
+}
 
 export function settingsCloseRequiresConfirmation(saveState: SettingsSaveState): boolean {
   // Setting changes are persisted by App.tsx's parent-owned save queue, so
@@ -1230,7 +1247,7 @@ function connectionDraftHelp(providerId: string, locale: "en" | "ja" = "en"): st
   return "Do not paste secrets into .env as the primary path. Import here so Rumi can store a credential_ref and keep raw values out of Settings.";
 }
 
-function ProviderOAuthPanel({
+export function ProviderOAuthPanel({
   sectionId,
   fieldId,
   providers,
@@ -2218,26 +2235,18 @@ function SettingsField({
   const [secretDraft, setSecretDraft] = useState("");
   const [secretState, setSecretState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [secretError, setSecretError] = useState("");
-  const [apiProvider, setApiProvider] = useState(() => preferredApiProviderId(value));
+  const [apiProvider, setApiProvider] = useState(() => {
+    if (field.type !== "api_keys") return preferredApiProviderId(value);
+    return collectApiProviderOptions(apiProviderRows(value))
+      .find((option) => option.kind === "custom")?.provider_id ?? "";
+  });
   const [apiName, setApiName] = useState("main");
   const [apiSecret, setApiSecret] = useState("");
-  const [apiBaseUrl, setApiBaseUrl] = useState("");
-  const [apiAllowedModels, setApiAllowedModels] = useState("");
-  const [apiDefaultModel, setApiDefaultModel] = useState("");
-  const [apiQuotaLabel, setApiQuotaLabel] = useState("");
-  const [apiNotes, setApiNotes] = useState("");
   const [apiSaveState, setApiSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [apiSaveError, setApiSaveError] = useState("");
-  const [apiAvailability, setApiAvailability] = useState<ModelAvailabilityAfterKeySave | null>(null);
   const [apiActionBusyKey, setApiActionBusyKey] = useState("");
   const [apiActionMessage, setApiActionMessage] = useState("");
   const [pendingApiDeleteKey, setPendingApiDeleteKey] = useState("");
-  const [credentialTransfer, setCredentialTransfer] = useState<{
-    providerId: string;
-    providerLabel?: string;
-    apiId?: string;
-    refreshOnClose?: boolean;
-  } | null>(null);
   const [tokenProvider, setTokenProvider] = useState("line");
   const [tokenName, setTokenName] = useState("main");
   const [tokenKind, setTokenKind] = useState("channel_access_token");
@@ -2515,57 +2524,50 @@ function SettingsField({
     case "api_keys": {
       const providers = apiProviderRows(value);
       const allProviderOptions = collectApiProviderOptions(providers);
-      const providerOptions = allProviderOptions.filter((option) => option.kind === "custom");
-      const registeredApis = registeredApiRows(providers).filter((api) => {
-        const option = allProviderOptions.find((candidate) => candidate.provider_id === String(api.provider_id ?? ""));
-        return normalizeProviderKind(api.kind ?? option?.kind) === "custom";
-      });
-      const selectedProviderOption = providerOptions.find((option) => option.provider_id === apiProvider);
-      const selectedKind: "llm" | "custom" = selectedProviderOption?.kind ?? "llm";
-      const isCustomProvider = !selectedProviderOption?.builtin;
+      const providerOptions = allProviderOptions
+        .filter((option) => option.kind === "custom");
+      const registeredTokens = registeredExternalTokenRows(providers);
       const resetApiSaveFeedback = () => {
         setApiSaveState("idle");
         setApiSaveError("");
-        setApiAvailability(null);
         setApiActionMessage("");
       };
-      const refreshApiKeyField = () => onChange(sectionId, field.id, { action: "oauth_refresh" });
-      const renameProviderApiKey = async (apiRow: Record<string, unknown>) => {
-        const providerId = String(apiRow.provider_id ?? "").trim();
-        const apiId = String(apiRow.api_id ?? "").trim();
+      const renameExternalToken = async (token: Record<string, unknown>) => {
+        const providerId = String(token.provider_id ?? "").trim();
+        const tokenId = String(token.token_id ?? "").trim();
         const nextName = renameDraft.trim();
-        const key = String(apiRow.key ?? `${providerId}:${apiId}`);
-        if (!providerId || !apiId || !nextName || apiActionBusyKey) return;
+        const key = String(token.key ?? `${providerId}:${tokenId}`);
+        if (!providerId || !tokenId || !nextName || apiActionBusyKey) return;
         setApiActionBusyKey(key);
         setApiSaveError("");
         setApiActionMessage("");
         try {
-          await settingsApiResources.renameProviderApiKey(providerId, apiId, nextName);
+          await settingsApiResources.renameExternalToken(providerId, tokenId, nextName);
           setRenamingKey("");
-          setApiActionMessage(`Renamed “${String(apiRow.name ?? apiId)}” to “${nextName}”.`);
-          refreshApiKeyField();
+          setApiActionMessage(`Renamed “${String(token.name ?? tokenId)}” to “${nextName}”.`);
+          refreshSensitiveField();
         } catch (errorValue) {
-          setApiSaveError(errorValue instanceof Error ? errorValue.message : "API key rename failed.");
+          setApiSaveError(errorValue instanceof Error ? errorValue.message : "External token rename failed.");
         } finally {
           setApiActionBusyKey("");
         }
       };
-      const deleteProviderApiKey = async (apiRow: Record<string, unknown>) => {
-        const providerId = String(apiRow.provider_id ?? "").trim();
-        const apiId = String(apiRow.api_id ?? "").trim();
-        const key = String(apiRow.key ?? `${providerId}:${apiId}`);
-        if (!providerId || !apiId || apiActionBusyKey) return;
+      const deleteExternalToken = async (token: Record<string, unknown>) => {
+        const providerId = String(token.provider_id ?? "").trim();
+        const tokenId = String(token.token_id ?? "").trim();
+        const key = String(token.key ?? `${providerId}:${tokenId}`);
+        if (!providerId || !tokenId || apiActionBusyKey) return;
         setApiActionBusyKey(key);
         setApiSaveError("");
         setApiActionMessage("");
         try {
-          await settingsApiResources.deleteProviderApiKey(providerId, apiId);
+          await settingsApiResources.deleteExternalToken(providerId, tokenId);
           setPendingApiDeleteKey("");
           setOpenApiMenuKey("");
-          setApiActionMessage(`Deleted API key “${String(apiRow.name ?? apiId)}”.`);
-          refreshApiKeyField();
+          setApiActionMessage(`Deleted external token “${String(token.name ?? tokenId)}”.`);
+          refreshSensitiveField();
         } catch (errorValue) {
-          setApiSaveError(errorValue instanceof Error ? errorValue.message : "API key delete failed.");
+          setApiSaveError(errorValue instanceof Error ? errorValue.message : "External token delete failed.");
         } finally {
           setApiActionBusyKey("");
         }
@@ -2574,64 +2576,30 @@ function SettingsField({
         if (!apiProvider.trim() || !apiName.trim() || !apiSecret.trim() || apiActionBusyKey) return;
         setApiSaveState("saving");
         setApiSaveError("");
-        setApiAvailability(null);
         setApiActionMessage("");
-        const allowedModels = apiAllowedModels.split(",").map((item) => item.trim()).filter(Boolean);
         try {
-          const result = await settingsApiResources.saveProviderApiKey(apiProvider, apiSecret, {
-            apiId: apiName,
+          await settingsApiResources.saveExternalToken(apiProvider, apiSecret, {
+            tokenId: apiName,
             name: apiName,
-            baseUrl: apiBaseUrl.trim() || undefined,
-            allowedModels: allowedModels.length ? allowedModels : undefined,
-            defaultModel: apiDefaultModel.trim() || undefined,
-            quotaLabel: apiQuotaLabel.trim() || undefined,
-            notes: apiNotes.trim() || undefined,
-            kind: selectedKind,
-          });
-          setApiAvailability(result.model_availability ?? {
-            status: "route_required",
-            provider_id: apiProvider,
-            api_id: apiName,
-            candidate_models: [],
-            reason: "Saved, but the backend did not confirm model availability. Choose a model route before using this key.",
-          });
-          const savedProviderId = apiProvider;
-          const savedApiId = apiName;
-          setCredentialTransfer({
-            providerId: savedProviderId,
-            providerLabel: selectedProviderOption?.label,
-            apiId: savedApiId,
-            refreshOnClose: true,
+            kind: "token",
           });
           setApiSecret("");
-          setApiBaseUrl("");
-          setApiAllowedModels("");
-          setApiDefaultModel("");
-          setApiQuotaLabel("");
-          setApiNotes("");
           setApiSaveState("saved");
+          setApiActionMessage(`Saved “${apiName}” and verified the backend response.`);
+          refreshSensitiveField();
         } catch (saveError) {
           setApiSaveState("idle");
-          setApiSaveError(saveError instanceof Error ? saveError.message : "API key save failed.");
+          setApiSaveError(saveError instanceof Error ? saveError.message : "External token save failed.");
         }
       };
-      const apiFeedback = apiSaveState === "saved" ? availabilityCopy(apiAvailability) : null;
       control = (
         <div className="space-y-4">
-          <ProviderOAuthPanel
-            sectionId={sectionId}
-            fieldId={field.id}
-            providers={providers}
-            onRefresh={onChange}
-          />
           <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/70">
             <div className="divide-y divide-zinc-800/80">
-              {registeredApis.length > 0 ? registeredApis.map((api) => {
-                const key = String(api.key ?? `${api.provider_id}:${api.api_id}`);
+              {registeredTokens.length > 0 ? registeredTokens.map((token) => {
+                const key = String(token.key ?? `${token.provider_id}:${token.token_id}`);
                 const isRenaming = renamingKey === key;
                 const isMenuOpen = openApiMenuKey === key;
-                const apiProviderOption = providerOptions.find((option) => option.provider_id === String(api.provider_id ?? ""));
-                const apiKind = normalizeProviderKind(api.kind ?? apiProviderOption?.kind);
                 return (
                   <div
                     key={key}
@@ -2648,7 +2616,7 @@ function SettingsField({
                             onKeyDown={(event) => {
                               if (event.key !== "Enter") return;
                               event.preventDefault();
-                              void renameProviderApiKey(api);
+                              void renameExternalToken(token);
                             }}
                             className="min-w-0 flex-1 rounded-md border border-white/[0.09] bg-white/[0.04] px-2 py-1 text-xs text-zinc-200 outline-none"
                           />
@@ -2657,7 +2625,7 @@ function SettingsField({
                             disabled={!renameDraft.trim() || Boolean(apiActionBusyKey)}
                             onClick={(event) => {
                               event.stopPropagation();
-                              void renameProviderApiKey(api);
+                              void renameExternalToken(token);
                             }}
                             className="rounded-md border border-zinc-700 p-1 text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
                             title={apiActionBusyKey === key ? "Renaming…" : "Rename"}
@@ -2678,16 +2646,11 @@ function SettingsField({
                         </div>
                       ) : (
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-medium text-zinc-200">{String(api.name ?? api.api_id ?? "")}</span>
+                          <span className="text-sm font-medium text-zinc-200">{String(token.name ?? token.token_id ?? "")}</span>
                           <span className="rounded-full border border-white/[0.09] bg-white/[0.04] px-2 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400">
-                            {String(api.provider_id ?? "")}
+                            {String(token.provider_id ?? "")}
                           </span>
-                          {apiKind === "custom" && (
-                            <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-200">
-                              non-llm
-                            </span>
-                          )}
-                          <MaskedApiLabel api={api} />
+                          <MaskedExternalTokenLabel token={token} />
                         </div>
                       )}
                     </div>
@@ -2721,15 +2684,15 @@ function SettingsField({
                           <div role="menu" className="absolute right-0 top-[calc(100%+6px)] rumi-layer-local-popover w-52 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950 py-1 shadow-2xl">
                             {pendingApiDeleteKey === key ? (
                               <div role="none" className="space-y-2 px-3 py-2.5">
-                                <p className="break-words text-xs font-medium text-rose-200">Delete “{String(api.name ?? api.api_id ?? "API key")}”?</p>
-                                <p className="text-[10px] leading-4 text-zinc-500">The credential reference and its routing entry will be removed. This cannot be undone.</p>
+                                <p className="break-words text-xs font-medium text-rose-200">Delete “{String(token.name ?? token.token_id ?? "token")}”?</p>
+                                <p className="text-[10px] leading-4 text-zinc-500">The stored external credential will be removed. This cannot be undone.</p>
                                 <div className="flex gap-1.5">
                                   <button
                                     type="button"
                                     disabled={Boolean(apiActionBusyKey)}
                                     onClick={(event) => {
                                       event.stopPropagation();
-                                      void deleteProviderApiKey(api);
+                                      void deleteExternalToken(token);
                                     }}
                                     className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-rose-400/30 bg-rose-400/[0.08] px-2 py-1.5 text-[11px] font-medium text-rose-100 hover:bg-rose-400/[0.13] disabled:opacity-40"
                                   >
@@ -2758,7 +2721,7 @@ function SettingsField({
                                   onClick={(event) => {
                                     event.stopPropagation();
                                     setRenamingKey(key);
-                                    setRenameDraft(String(api.name ?? api.api_id ?? ""));
+                                    setRenameDraft(String(token.name ?? token.token_id ?? ""));
                                     setOpenApiMenuKey("");
                                   }}
                                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
@@ -2788,7 +2751,7 @@ function SettingsField({
                   </div>
                 );
               }) : (
-                <div className="px-3 py-5 text-xs text-zinc-600">No registered API keys yet.</div>
+                <div className="px-3 py-5 text-xs text-zinc-600">No registered external tokens yet.</div>
               )}
             </div>
           </div>
@@ -2812,6 +2775,9 @@ function SettingsField({
                   setApiProvider(option.providerId);
                   resetApiSaveFeedback();
                 }}
+                addCustomLabel="Add external provider..."
+                showKindControls={false}
+                showProviderBadges={false}
               />
               <input
                 value={apiName}
@@ -2830,7 +2796,7 @@ function SettingsField({
                   setApiSecret(event.target.value);
                   resetApiSaveFeedback();
                 }}
-                placeholder={`${apiProvider || "provider"} API key`}
+                placeholder={`${apiProvider || "provider"} token`}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
@@ -2853,83 +2819,7 @@ function SettingsField({
                 {apiSaveState === "saving" ? "承認・保存結果を確認中" : "Save"}
               </button>
             </div>
-            {isCustomProvider && (
-              <p className="text-[11px] text-zinc-500">
-                {selectedKind === "custom"
-                  ? "Non-LLM provider として保存されます。AI provider 自動切替には使われず、認識用にだけ保存します。"
-                  : "Custom LLM provider として保存されます。"}
-              </p>
-            )}
-            <details open className="rounded-lg border border-white/[0.07] bg-white/[0.03] px-3 py-2 text-xs">
-              <summary className="cursor-pointer select-none text-zinc-400 hover:text-zinc-200">接続先HTTPS URL（必須）・モデル設定（別途）</summary>
-              <div className="mt-3 grid gap-2 md:grid-cols-2">
-                <input
-                  value={apiBaseUrl}
-                  onChange={(event) => {
-                    setApiBaseUrl(event.target.value);
-                    resetApiSaveFeedback();
-                  }}
-                  placeholder="HTTPS base URL (required)"
-                  aria-label="Provider HTTPS base URL"
-                  className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none"
-                />
-                <input
-                  value={apiDefaultModel}
-                  onChange={(event) => {
-                    setApiDefaultModel(event.target.value);
-                    resetApiSaveFeedback();
-                  }}
-                  placeholder="default model for this API"
-                  className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none"
-                />
-                <input
-                  value={apiAllowedModels}
-                  onChange={(event) => {
-                    setApiAllowedModels(event.target.value);
-                    resetApiSaveFeedback();
-                  }}
-                  placeholder="allowed models, comma separated"
-                  className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none"
-                />
-                <input
-                  value={apiQuotaLabel}
-                  onChange={(event) => {
-                    setApiQuotaLabel(event.target.value);
-                    resetApiSaveFeedback();
-                  }}
-                  placeholder="quota label"
-                  className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none"
-                />
-                <textarea
-                  value={apiNotes}
-                  onChange={(event) => {
-                    setApiNotes(event.target.value);
-                    resetApiSaveFeedback();
-                  }}
-                  placeholder="notes for routing"
-                  className="min-h-20 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none md:col-span-2"
-                />
-              </div>
-              <p className="mt-2 text-[10px] text-zinc-600">
-                次に保存する API key にだけ適用されます。通常はそのまま空欄で大丈夫です。
-              </p>
-            </details>
-            <ModelRouteSetup />
           </div>
-          {apiFeedback?.text && (
-            apiFeedback.tone === "success" ? (
-              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-300">
-                {apiFeedback.text}
-              </div>
-            ) : (
-              <ErrorNotice
-                className="px-3 py-2 text-[11px]"
-                copyLabel="APIキー設定の警告をコピー"
-                message={apiFeedback.text}
-                severity="warning"
-              />
-            )
-          )}
           {apiActionMessage && (
             <div role="status" className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-300">
               {apiActionMessage}
@@ -3411,6 +3301,7 @@ function SettingsField({
           value={formFieldString(value, field.default)}
           onChange={(nextValue) => onChange(sectionId, field.id, nextValue)}
           options={(field.options ?? []).map((option) => ({ value: String(option.value), label: option.label }))}
+          className="w-fit min-w-44 max-w-full"
         />
       );
       break;
@@ -3504,22 +3395,6 @@ function SettingsField({
         {control}
       </div>
       {field.help && <p className="text-[11px] text-zinc-500">{field.help}</p>}
-      {credentialTransfer && (
-        <CredentialTransferModal
-          providerId={credentialTransfer.providerId}
-          providerLabel={credentialTransfer.providerLabel}
-          apiId={credentialTransfer.apiId}
-          onClose={() => {
-            const shouldRefresh = credentialTransfer.refreshOnClose;
-            setCredentialTransfer(null);
-            if (shouldRefresh) {
-              onChange(sectionId, field.id, {
-                action: "oauth_refresh",
-              });
-            }
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -3579,8 +3454,8 @@ export function SettingsModalRenderer({
       return sourceSection?.id ?? "packs_extensions";
     },
   );
-  const [settingsDisplayMode, setSettingsDisplayMode] = useState<"standard" | "advanced" | "developer">(
-    () => requestedSectionId === "external_custom" || requestedSectionId === "debug" ? "developer" : "standard",
+  const [settingsDisplayMode, setSettingsDisplayMode] = useState<SettingsDisplayMode>(
+    () => requestedSectionId === "external_custom" || requestedSectionId === "debug" ? "advanced" : "standard",
   );
   const [settingsSearch, setSettingsSearch] = useState("");
   const [profileSelectionRequest, setProfileSelectionRequest] = useState<{ id: string; version: number } | null>(null);
@@ -3697,18 +3572,28 @@ export function SettingsModalRenderer({
     ].join(" ").toLowerCase().includes(normalizedSearch)));
   }, [normalizedSearch, profileWorkspace.profiles]);
   const visibleSections = useMemo(() => {
-    const filtered = filterControlCenterSections(controlCenterSections, settingsSearch);
+    const filtered = filterControlCenterSections(controlCenterSections, settingsSearch)
+      .filter((section) => settingsDisplayMode !== "standard" || (
+        section.id === "quick_setup"
+        || section.id === "profiles"
+        || section.id === "accounts_connections"
+        || section.id === "tools_mcp"
+        || section.id === "computer_automation"
+        || section.fields.some((field) => !field.advanced)
+      ));
     if (!normalizedSearch || profileSearchMatches.length === 0 || filtered.some((section) => section.id === "profiles")) return filtered;
     const profilesSection = controlCenterSections.find((section) => section.id === "profiles");
     return profilesSection ? [...filtered, profilesSection].sort((left, right) => left.order - right.order) : filtered;
-  }, [controlCenterSections, normalizedSearch, profileSearchMatches.length, settingsSearch]);
+  }, [controlCenterSections, normalizedSearch, profileSearchMatches.length, settingsDisplayMode, settingsSearch]);
   const settingsSearchMatches = useMemo(() => {
     if (!normalizedSearch) return [];
     return controlCenterSections.flatMap((section) => section.fields
       .filter((field) => !profileOwnedFieldKeys.has(`${field.sourceSectionId}:${field.id}`))
+      .filter((field) => !(section.id === "tools_mcp" && TOOL_EXPERIENCE_OWNED_FIELD_IDS.has(field.id)))
+      .filter((field) => settingsDisplayMode === "advanced" || !field.advanced)
       .filter((field) => settingsFieldSearchText(field).includes(normalizedSearch))
       .map((field) => ({ section, field })));
-  }, [controlCenterSections, normalizedSearch, profileOwnedFieldKeys]);
+  }, [controlCenterSections, normalizedSearch, profileOwnedFieldKeys, settingsDisplayMode]);
   const navigationGroups = useMemo(() => ([
     {
       id: "everyday",
@@ -3905,6 +3790,35 @@ export function SettingsModalRenderer({
   );
   const visiblePrimaryFields = primaryFields.filter(fieldFilter);
   const visibleAdvancedFields = advancedFields.filter(fieldFilter);
+  const previewPrimaryFields = activeSection?.id === "workspace_ui"
+    ? visiblePrimaryFields.filter((field) => field.sourceSectionId === "preview")
+    : [];
+  const nonPreviewPrimaryFields = previewPrimaryFields.length > 0
+    ? visiblePrimaryFields.filter((field) => field.sourceSectionId !== "preview")
+    : visiblePrimaryFields;
+  const priorityAutomationFields = activeSection?.id === "computer_automation"
+    ? nonPreviewPrimaryFields.filter((field) => (
+      field.sourceSectionId === "automation" && field.id === "subagent_teams_enabled"
+    ))
+    : [];
+  const priorityToolFields = activeSection?.id === "tools_mcp"
+    ? nonPreviewPrimaryFields.filter((field) => (
+      field.sourceSectionId === "tools" && field.id === "mcp_servers"
+    ))
+    : [];
+  const priorityQuickSetupFields = activeSection?.id === "quick_setup"
+    ? nonPreviewPrimaryFields.filter((field) => (
+      field.sourceSectionId === "personalization" && field.id === "default_system_prompt_id"
+    ))
+    : [];
+  const priorityFields = [...priorityQuickSetupFields, ...priorityAutomationFields, ...priorityToolFields];
+  const remainingPrimaryFields = nonPreviewPrimaryFields.filter((field) => (
+    !priorityFields.includes(field)
+    && !(activeSection?.id === "tools_mcp" && TOOL_EXPERIENCE_OWNED_FIELD_IDS.has(field.id))
+  ));
+  const remainingAdvancedFields = activeSection?.id === "tools_mcp"
+    ? visibleAdvancedFields.filter((field) => !TOOL_EXPERIENCE_OWNED_FIELD_IDS.has(field.id))
+    : visibleAdvancedFields;
   const updatePinnedPlacements = (
     updater: (current: ReturnType<typeof normalizePinnedPlacements>) => ReturnType<typeof normalizePinnedPlacements>,
   ) => {
@@ -4197,7 +4111,7 @@ export function SettingsModalRenderer({
         settingsFieldTakesFullWidth(field) ? "lg:col-span-2" : "",
       )}
     >
-      {field.sourceSectionLabel && field.sourceSectionId !== activeSection?.id && (
+      {field.sourceSectionLabel && field.sourceSectionId !== activeSection?.id && !(activeSection?.id === "workspace_ui" && field.sourceSectionId === "preview") && (
         <div className="mb-3 flex items-center justify-between gap-3">
           <span className="rounded-md border border-white/[0.07] bg-white/[0.045] px-2 py-1 text-[10px] font-medium uppercase tracking-normal text-zinc-500">
             {field.sourceSectionLabel}
@@ -4216,6 +4130,7 @@ export function SettingsModalRenderer({
             : settingsValues[field.sourceSectionId]?.[field.id] ?? field.default
         }
         sectionValues={settingsValues[field.sourceSectionId] ?? {}}
+        modelProfiles={modelProfiles}
         onChange={onSettingChange}
       />
     </div>
@@ -4337,37 +4252,10 @@ export function SettingsModalRenderer({
       const blockedCount = accountConnectionCards.filter((card) => card.disabledReason && !card.connected && !card.credential?.configured).length;
       return (
         <div className="space-y-4">
-          <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-white/[0.03]">
-            <div className="px-4 py-4 sm:px-5">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="max-w-2xl">
-                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-cyan-200/80">{localizedCopy("Accounts & Connections", "アカウントと接続")}</div>
-                  <h3 className="mt-2 text-base font-semibold text-zinc-50">{localizedCopy("Manage sign-in, credentials, and permissions separately", "ログイン、認証情報、権限を分けて管理します")}</h3>
-                  <p className="mt-2 text-xs leading-5 text-zinc-400">
-                    {localizedCopy("OAuth and API tokens stay in secret storage. Settings shows only connection state and the permissions Rumi may request.", "OAuthやAPIのトークンは秘密情報ストレージへ保存します。この画面には接続状態と、Rumiが利用を求める権限だけを表示します。")}
-                  </p>
-                </div>
-                <div className="grid min-w-[220px] grid-cols-3 gap-2 text-center text-[11px]">
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-zinc-200">
-                    <div className="text-base font-semibold">{connectedCount}</div>
-                    <div className="text-[10px] text-emerald-200/70">{localizedCopy("connected", "接続済み")}</div>
-                  </div>
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-zinc-200">
-                    <div className="text-base font-semibold">{approvalCount}</div>
-                    <div className="text-[10px] text-amber-100/70">{localizedCopy("approval", "承認待ち")}</div>
-                  </div>
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-zinc-200">
-                    <div className="text-base font-semibold">{blockedCount}</div>
-                    <div className="text-[10px] text-zinc-500">{localizedCopy("needs setup", "設定が必要")}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="grid gap-3 border-t border-zinc-800 px-4 py-3 text-[11px] text-zinc-500 sm:grid-cols-3 sm:px-5">
-              <div><span className="text-zinc-300">{localizedCopy("1. Connect", "1. 接続")}</span> — {localizedCopy("Use browser sign-in or import a credential bundle.", "ブラウザでログインするか、認証情報セットを読み込みます。")}</div>
-              <div><span className="text-zinc-300">{localizedCopy("2. Store", "2. 保存")}</span> — {localizedCopy("Raw secrets stay in Rumi secret storage.", "秘密情報そのものはTobkiriの秘密情報ストレージに保存します。")}</div>
-              <div><span className="text-zinc-300">{localizedCopy("3. Govern", "3. 権限管理")}</span> — {localizedCopy("High-risk capabilities require approval.", "影響の大きい操作には承認が必要です。")}</div>
-            </div>
+          <div className="flex items-center justify-end gap-1.5" aria-label={localizedCopy("Connection summary", "接続の概要")}>
+            <span title={localizedCopy("Connected", "接続済み")} aria-label={localizedCopy(`${connectedCount} connected`, `接続済み ${connectedCount}件`)} className="inline-flex h-7 min-w-7 items-center justify-center rounded-md border border-emerald-500/20 bg-emerald-500/[0.06] px-1.5 text-xs font-medium text-emerald-200">{connectedCount}</span>
+            <span title={localizedCopy("Approval required", "承認が必要")} aria-label={localizedCopy(`${approvalCount} need approval`, `承認が必要 ${approvalCount}件`)} className="inline-flex h-7 min-w-7 items-center justify-center rounded-md border border-amber-500/20 bg-amber-500/[0.06] px-1.5 text-xs font-medium text-amber-100">{approvalCount}</span>
+            <span title={localizedCopy("Needs setup", "設定が必要")} aria-label={localizedCopy(`${blockedCount} need setup`, `設定が必要 ${blockedCount}件`)} className="inline-flex h-7 min-w-7 items-center justify-center rounded-md border border-zinc-700 bg-zinc-900/60 px-1.5 text-xs font-medium text-zinc-400">{blockedCount}</span>
           </div>
 
           <div className="grid gap-4 xl:grid-cols-2">
@@ -4953,12 +4841,12 @@ export function SettingsModalRenderer({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setSettingsDisplayMode((current) => current === "standard" ? "advanced" : current === "advanced" ? "developer" : "standard")}
+                  onClick={() => setSettingsDisplayMode((current) => current === "standard" ? "advanced" : "standard")}
                   className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs font-medium text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
                   aria-label={localizedCopy("Change settings display mode", "設定の表示モードを変更")}
-                  title={localizedCopy("Cycle standard, advanced, and developer settings", "標準・上級者・開発者向け設定を切り替えます")}
+                  title={localizedCopy("Switch between standard and advanced settings", "標準・上級者向け設定を切り替えます")}
                 >
-                  {localizedCopy("View", "表示")}: {settingsDisplayMode === "standard" ? localizedCopy("Standard", "標準") : settingsDisplayMode === "advanced" ? localizedCopy("Advanced", "上級者") : localizedCopy("Developer", "開発者")}
+                  {localizedCopy("View", "表示")}: {settingsDisplayMode === "standard" ? localizedCopy("Standard", "標準") : localizedCopy("Advanced", "上級者")}
                 </button>
                 <div className="relative">
                   <button
@@ -5154,7 +5042,12 @@ export function SettingsModalRenderer({
                       {activeSection.description && <p className="mt-1 max-w-2xl text-xs leading-5 text-zinc-500">{activeSection.description}</p>}
                       </div>
                     </div>
-                    {renderSectionPrelude(activeSection)}
+                    {priorityFields.length > 0 && (
+                      <div className="grid gap-4 2xl:grid-cols-2">
+                        {priorityFields.map(renderField)}
+                      </div>
+                    )}
+                    {sectionPreludeIsVisible(activeSection.id, settingsDisplayMode) && renderSectionPrelude(activeSection)}
                     {activeSection.id === "tools_mcp" && (
                       <ToolExperienceSettingsPanel
                         tools={(catalog?.sidebar.items ?? []).filter((item) => item.category === "tool")}
@@ -5167,8 +5060,16 @@ export function SettingsModalRenderer({
                       <SystemInfoPanel info={desktopSystemInfo} />
                     )}
                     <div className="grid gap-4 2xl:grid-cols-2">
-                      {visiblePrimaryFields.map(renderField)}
+                      {remainingPrimaryFields.map(renderField)}
                     </div>
+                    {previewPrimaryFields.length > 0 && (
+                      <section className="space-y-1 border-t border-white/[0.07] pt-4">
+                        <h4 className="text-sm font-medium text-zinc-200">{localizedCopy("Preview", "プレビュー")}</h4>
+                        <div className="grid gap-4 2xl:grid-cols-2">
+                          {previewPrimaryFields.map(renderField)}
+                        </div>
+                      </section>
+                    )}
                     {normalizedSearch && activeSection.id !== "profiles" && visiblePrimaryFields.length === 0 && visibleAdvancedFields.length === 0 && (
                       <div className="rounded-lg border border-white/[0.07] bg-white/[0.03] p-4 text-sm text-zinc-500">
                         {t(locale, "settings.noFields")}
@@ -5190,26 +5091,16 @@ export function SettingsModalRenderer({
                         )}
                       </div>
                     )}
-                    {visibleAdvancedFields.length > 0 && settingsDisplayMode !== "standard" && (
+                    {remainingAdvancedFields.length > 0 && settingsDisplayMode === "advanced" && (
                       <details className="rounded-lg border border-white/[0.07] bg-white/[0.03]">
                         <summary className="cursor-pointer list-none px-4 py-3 text-xs font-medium text-zinc-400 transition-colors hover:text-zinc-200">
                           {t(locale, "settings.advanced")}
                           <span className="mt-1 block font-normal leading-5 text-zinc-600">{t(locale, "settings.advancedHelp")}</span>
                         </summary>
                         <div className="grid gap-4 border-t border-zinc-800 p-4 lg:grid-cols-2">
-                          {visibleAdvancedFields.map(renderField)}
+                          {remainingAdvancedFields.map(renderField)}
                         </div>
                       </details>
-                    )}
-                    {visibleAdvancedFields.length > 0 && settingsDisplayMode === "standard" && activeSection.id !== "quick_setup" && (
-                      <button
-                        type="button"
-                        onClick={() => setSettingsDisplayMode("advanced")}
-                        className="w-full rounded-xl border border-dashed border-white/[0.09] px-4 py-3 text-left text-xs text-zinc-500 transition-colors hover:border-zinc-600 hover:bg-white/[0.025] hover:text-zinc-300"
-                      >
-                        <span className="font-medium text-zinc-400">{localizedCopy("Advanced settings are hidden", "上級者向け設定は非表示です")}</span>
-                        <span className="mt-1 block text-[11px]">{localizedCopy(`${visibleAdvancedFields.length} low-frequency controls · Show advanced settings`, `低頻度の項目 ${visibleAdvancedFields.length}件 · 上級者向け設定を表示`)}</span>
-                      </button>
                     )}
                   </section>
                 )}

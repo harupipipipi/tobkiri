@@ -4,6 +4,11 @@ from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from blocks._common import ok, error
 from domain.agent.subagent_orchestrator import run_subagent_compat
+from domain.subagent_team.availability import (
+    settings_owner_from_context,
+    subagent_delegation_enabled,
+    subagents_disabled_result,
+)
 
 
 def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None):
@@ -11,8 +16,10 @@ def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None)
     role_id = str(data.get("role_id") or data.get("role") or "").strip()
     payload = data.get("payload") if isinstance(data.get("payload"), dict) else data
     runtime_context = _runtime_context_for_subagent(data, payload, context)
-    if settings_owner is None:
-        settings_owner = runtime_context.get("_settings_owner_port")
+    settings_owner = settings_owner_from_context(settings_owner, runtime_context)
+    if not subagent_delegation_enabled(settings_owner=settings_owner):
+        disabled = subagents_disabled_result()
+        return error(disabled["message"], disabled["code"])
     if payload is not data and "timeout_seconds" in data and "timeout_seconds" not in payload:
         payload = dict(payload)
         payload["timeout_seconds"] = data.get("timeout_seconds")

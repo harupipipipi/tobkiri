@@ -61,7 +61,10 @@ from typing import Any, Callable, Mapping, Protocol
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from tobkiri_protocol.canonical import canonical_digest, canonical_json
-from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
+from tobkiri_protocol.saved_conversation import (
+    MAX_SAVED_CHAIN_BYTES,
+    validate_saved_conversation_input,
+)
 
 from .continuation_chain import ChainIdentity, ContinuationChains
 from .saved_host_exchange import SavedHostExchange
@@ -540,7 +543,10 @@ class MacOSVZSupervisorDriver:
         self._max_nonce_ledger_entries = max_nonce_ledger_entries
         self._capability_bridge: CapabilityBridge | None = None
         self._saved_bridge: tuple[SavedCapabilityBridge, Callable[[object], None]] | None = None
-        self._saved_chains = ContinuationChains(max_hops=MAX_SAVED_TOOL_HOPS)
+        self._saved_chains = ContinuationChains(
+            max_hops=MAX_SAVED_TOOL_HOPS,
+            max_bytes=MAX_SAVED_CHAIN_BYTES,
+        )
         self._compromised_reason: str | None = None
         self._lock = threading.RLock()
 

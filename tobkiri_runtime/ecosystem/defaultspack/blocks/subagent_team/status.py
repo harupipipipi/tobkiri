@@ -1,10 +1,12 @@
 from blocks._common import ok, error
 from domain.subagent_team.service import SubagentTeamService
+from domain.subagent_team.availability import settings_owner_from_context
 
-from ._helpers import company_id_from, invalid, missing_team, require_dict
+from ._helpers import company_id_from, denied, invalid, is_denied, missing_team, require_dict
 
 
 def run(input_data, context, *, settings_owner=None):
+    settings_owner = settings_owner_from_context(settings_owner, context)
     if input_data is None:
         input_data = {}
     if require_dict(input_data) is None:
@@ -15,6 +17,8 @@ def run(input_data, context, *, settings_owner=None):
         result = service.status(company_id) if company_id else None
         if result is None:
             ensured = service.ensure_team({**input_data, "bootstrap": bool(input_data.get("bootstrap"))})
+            if is_denied(ensured):
+                return denied(ensured)
             if ensured.get("company") is None:
                 return missing_team(company_id or "")
             result = service.status(str(ensured["company"]["id"]))

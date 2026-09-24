@@ -536,6 +536,11 @@ class FrontendRegistry:
             schema = tool.get("schema", {}).get("parameters", {})
             execution_type = tool.get("execution", {}).get("type", "local")
             ui = dict(tool.get("ui", {})) if isinstance(tool.get("ui"), dict) else {}
+            metadata = (
+                dict(tool.get("metadata", {}))
+                if isinstance(tool.get("metadata"), dict)
+                else {}
+            )
             ui["advanced_only"] = True
             label = self._tool_display_label(tool, ui)
             risk = str(tool.get("risk") or tool.get("metadata", {}).get("risk") or "low").strip().lower()
@@ -580,6 +585,7 @@ class FrontendRegistry:
                         "setup_state": {"status": "ok", "missing": []},
                         "trusted": bool(tool.get("trusted", False)),
                         "source_pack_id": str(tool.get("source_pack_id") or ""),
+                        "service_id": str(metadata.get("service_id") or "").strip(),
                     },
                     "origin": {"kind": "tool_registry", "path": "domain/tool/registry.py"},
                     "panel": {
@@ -1801,17 +1807,97 @@ class FrontendRegistry:
             },
         }
 
-    def _model_options(self, *, lightweight: bool = False) -> list[dict[str, str]]:
+    def _model_options(self, *, lightweight: bool = False) -> list[dict[str, Any]]:
         if lightweight:
             return [{"value": "stub/default", "label": "Stub Default"}]
         profiles = self._selectable_model_profiles()
         return [
-            {
-                "value": profile["profile_id"],
-                "label": self._model_option_label(profile),
-            }
+            self._model_selector_option(profile)
             for profile in profiles
         ] or [{"value": "stub/default", "label": "Stub Default"}]
+
+    def _model_selector_option(self, profile: dict[str, Any]) -> dict[str, Any]:
+        """Project selectable-model capability metadata for the settings picker."""
+        profile_id = str(
+            profile.get("profile_id")
+            or profile.get("qualified_model_id")
+            or profile.get("id")
+            or ""
+        ).strip()
+        provider_id = str(profile.get("provider_id") or profile.get("provider") or "").strip()
+        model_id = str(profile.get("model_id") or profile.get("model") or "").strip()
+        if not provider_id and "/" in profile_id:
+            provider_id, inferred_model = profile_id.split("/", 1)
+            model_id = model_id or inferred_model
+        availability = _validated_dict(profile.get("availability"))
+        configured = bool(
+            availability.get("configured")
+            or availability.get("active")
+            or str(availability.get("status", "")).lower() in {"configured", "active"}
+        )
+        local = bool(
+            profile.get("local")
+            or availability.get("local")
+            or availability.get("offline")
+            or provider_id in {"stub", "ollama", "lmstudio", "vllm"}
+        )
+        requires_api_key = bool(
+            provider_id
+            and provider_id not in {"stub", "rumi"}
+            and not local
+            and not configured
+        )
+        raw_levels = profile.get("thinking_levels")
+        thinking_levels = [
+            str(level).strip().lower()
+            for level in raw_levels
+            if str(level).strip().lower()
+            in {"none", "low", "medium", "high", "xhigh"}
+        ] if isinstance(raw_levels, list) else []
+        raw_supports_vision = profile.get("supports_vision")
+        raw_supports_image_input = profile.get("supports_image_input")
+        supports_vision = (
+            raw_supports_vision if isinstance(raw_supports_vision, bool) else None
+        )
+        supports_image_input = (
+            raw_supports_image_input
+            if isinstance(raw_supports_image_input, bool)
+            else True if supports_vision is True else None
+        )
+        option = {
+            "value": profile_id,
+            "label": self._model_option_label(profile),
+            "provider_id": provider_id,
+            "provider_display_name": str(
+                profile.get("provider_display_name") or provider_id
+            ),
+            "model_id": model_id,
+            "qualified_model_id": str(profile.get("qualified_model_id") or profile_id),
+            "configured": configured,
+            "local": local,
+            "requires_api_key": requires_api_key,
+            "api_key_required": requires_api_key,
+            "api_key_configured": configured,
+            "supports_tool_calling": bool(profile.get("supports_tool_calling")),
+            "supports_thinking": bool(profile.get("supports_thinking")),
+            "thinking_levels": list(dict.fromkeys(thinking_levels)),
+            "default_thinking_level": str(
+                profile.get("default_thinking_level") or ""
+            ).strip().lower(),
+            "supports_fast": bool(profile.get("supports_fast")),
+            "speed_tier": str(profile.get("speed_tier") or ""),
+            "quality_tier": str(profile.get("quality_tier") or ""),
+            "cost_tier": str(profile.get("cost_tier") or ""),
+            "knowledge_level": profile.get("knowledge_level"),
+            "capability_tags": list(profile.get("capability_tags") or []),
+            "recommended_roles": list(profile.get("recommended_roles") or []),
+            "notes": str(profile.get("notes") or ""),
+        }
+        if supports_vision is not None:
+            option["supports_vision"] = supports_vision
+        if supports_image_input is not None:
+            option["supports_image_input"] = supports_image_input
+        return option
 
     def _model_route_options(self, *, lightweight: bool = False) -> list[dict[str, Any]]:
         if lightweight:
@@ -1827,69 +1913,11 @@ class FrontendRegistry:
         profiles = self._selectable_model_profiles()
         options: list[dict[str, Any]] = []
         for profile in profiles:
-            profile_id = str(
-                profile.get("profile_id")
-                or profile.get("qualified_model_id")
-                or profile.get("id")
-                or ""
-            ).strip()
+            option = self._model_selector_option(profile)
+            profile_id = str(option.get("value") or "").strip()
             if not profile_id:
                 continue
-            provider_id = str(profile.get("provider_id") or profile.get("provider") or "").strip()
-            model_id = str(profile.get("model_id") or profile.get("model") or "").strip()
-            if not provider_id and "/" in profile_id:
-                provider_id, inferred_model = profile_id.split("/", 1)
-                model_id = model_id or inferred_model
-            availability = _validated_dict(profile.get("availability"))
-            configured = bool(
-                availability.get("configured")
-                or availability.get("active")
-                or str(availability.get("status", "")).lower() in {"configured", "active"}
-            )
-            local = bool(
-                profile.get("local")
-                or availability.get("local")
-                or availability.get("offline")
-                or provider_id in {"stub", "ollama", "lmstudio", "vllm"}
-            )
-            requires_api_key = bool(
-                provider_id
-                and provider_id not in {"stub", "rumi"}
-                and not local
-                and not configured
-            )
-            options.append(
-                {
-                    "value": profile_id,
-                    "label": self._model_option_label(profile),
-                    "provider_id": provider_id,
-                    "provider_display_name": str(
-                        profile.get("provider_display_name") or provider_id
-                    ),
-                    "model_id": model_id,
-                    "qualified_model_id": str(profile.get("qualified_model_id") or profile_id),
-                    "configured": configured,
-                    "local": local,
-                    "requires_api_key": requires_api_key,
-                    "api_key_required": requires_api_key,
-                    "api_key_configured": configured,
-                    "supports_vision": bool(profile.get("supports_vision")),
-                    "supports_image_input": bool(
-                        profile.get("supports_image_input")
-                        or profile.get("supports_vision")
-                    ),
-                    "supports_tool_calling": bool(profile.get("supports_tool_calling")),
-                    "supports_thinking": bool(profile.get("supports_thinking")),
-                    "supports_fast": bool(profile.get("supports_fast")),
-                    "speed_tier": str(profile.get("speed_tier") or ""),
-                    "quality_tier": str(profile.get("quality_tier") or ""),
-                    "cost_tier": str(profile.get("cost_tier") or ""),
-                    "knowledge_level": profile.get("knowledge_level"),
-                    "capability_tags": list(profile.get("capability_tags") or []),
-                    "recommended_roles": list(profile.get("recommended_roles") or []),
-                    "notes": str(profile.get("notes") or ""),
-                }
-            )
+            options.append(option)
         return options or [{"value": "stub/default", "label": "Stub Default", "provider_id": "stub", "model_id": "default", "local": True}]
 
     def _selectable_model_profiles(self) -> list[dict[str, Any]]:

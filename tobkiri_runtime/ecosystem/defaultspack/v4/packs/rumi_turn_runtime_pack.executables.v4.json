@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:d80e3e30b463ffb0d92691145c0572a7d9bc52a57c0128c8b561abea493ab998",
+  "source_identity": "sha256:2dfcae29c1119593f702f57c8c6bf7a82b0264594e9f9e598120da2a12221d90",
   "variants": [
     {
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.events.python",
@@ -183,7 +183,7 @@
         {
           "contract_id": "tobkiri.action.turn.saved.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:8a5ba2543950c85126e9f6c79d5740076597473805ec53d6a453c9f5752d589f",
+          "revision_digest": "sha256:e0618b2c5c914086f7ba931d46b20d1cb4d5a48a86742275271a0a0b5ab4e81f",
           "operation_id": "rumi_turn_runtime_pack.turn-saved",
           "input_schema": {
             "$defs": {
@@ -195,20 +195,85 @@
                 },
                 "pattern": "^[A-Za-z0-9]",
                 "type": "string"
+              },
+              "image_block": {
+                "additionalProperties": false,
+                "properties": {
+                  "image_url": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "url": {
+                        "maxLength": 1398127,
+                        "minLength": 1,
+                        "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
+                  },
+                  "type": {
+                    "const": "image_url"
+                  }
+                },
+                "required": [
+                  "type",
+                  "image_url"
+                ],
+                "type": "object"
+              },
+              "text_block": {
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "maxLength": 61440,
+                    "minLength": 1,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "text"
+                  }
+                },
+                "required": [
+                  "type",
+                  "text"
+                ],
+                "type": "object"
               }
             },
             "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "additionalProperties": false,
-            "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+            "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
             "properties": {
               "request": {
                 "additionalProperties": false,
                 "properties": {
                   "content": {
-                    "minLength": 1,
-                    "pattern": "\\S",
-                    "type": "string"
+                    "oneOf": [
+                      {
+                        "maxLength": 61440,
+                        "minLength": 1,
+                        "pattern": "\\S",
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "$ref": "#/$defs/image_block"
+                        },
+                        "maxItems": 3,
+                        "minItems": 1,
+                        "prefixItems": [
+                          {
+                            "$ref": "#/$defs/text_block"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ]
                   },
                   "conversation_id": {
                     "$ref": "#/$defs/identifier"
@@ -498,6 +563,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:fbbdf9e741aea5b844b34261fae9211f35a4183aa1015e68e2a227f815387d8c",
-  "catalog_digest": "sha256:6ef0c6e133432b4dfd46404339783148287412015d0d921b3d1295f4b3ce57aa"
+  "materialization_catalog_digest": "sha256:a3a74e1ae60f7e195149f333ae9f95ad8cec0f65022539f9e3aae26bd785807e",
+  "catalog_digest": "sha256:7bd99a2fcde07e0eea0c540a266a56b99c70d1d79b30ad9da5a0af8e8b900560"
 }

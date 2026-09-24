@@ -1,5 +1,6 @@
 """Fixed guest continuation routing and cancellation, without provider authority."""
 
+import base64
 from copy import deepcopy
 from typing import Any
 
@@ -100,3 +101,25 @@ def test_wrong_initial_target_cannot_be_sealed_or_retried() -> None:
         ledger.begin(request(), "sha256:" + "c" * 64, wrong)
     with pytest.raises(ValueError, match="unavailable"):
         ledger.begin(request(), "sha256:" + "c" * 64, initial)
+
+
+def test_saved_dispatch_accepts_a_realistic_encoded_inline_image_frame() -> None:
+    """The authenticated saved-only transport admits a ~1 MiB encoded raster.
+
+    The raw image is deliberately below the one-MiB decoded image limit. Its
+    encoded data URL exceeds the old generic one-MiB envelope guard, proving
+    this bounded exception is evaluated before a saved turn reaches the guest.
+    """
+    encoded_image = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\0" * (768 * 1024)).decode()
+    assert len(encoded_image) > 1024 * 1024
+    large_request = request()
+    large_request["payload"]["request"]["content"] = [
+        {"type": "text", "text": "Inspect the attached screenshot."},
+        {"type": "image_url", "image_url": {
+            "url": f"data:image/png;base64,{encoded_image}",
+        }},
+    ]
+    pending = SavedGuestTurns(clock=lambda: 10.0).begin(
+        large_request, "sha256:" + "c" * 64, initial,
+    )
+    assert pending["state"] == "pending"

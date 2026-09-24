@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:feb39a36a9578124f0a623d2693236cb96e2fb7fc350575e293fa9f7e223a292",
+  "catalog_digest": "sha256:4fd31316415d46eccf56458384338f4c92c71e16b02addc96b134c957d1cc74c",
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:2f2e94a89e859d66c5bd247a82e9b1e856f2b5044a36cce4c0ca2af998bb50be",
+  "source_identity": "sha256:404f988cc88da6b84b364730300fdfb589162d518baaa109e37796d928b5a566",
   "variants": [
     {
       "architecture": "any",
@@ -121,7 +121,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri.ui.catalog.read",
-      "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
+      "implementation_digest": "sha256:692cb5e900b0cbf3229f551dc23b875ee0851a5b8c4bfcd15726bb9338a971b3",
       "implementation_path": "runtime/settings.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -380,7 +380,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri.ui.preferences.write",
-      "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
+      "implementation_digest": "sha256:692cb5e900b0cbf3229f551dc23b875ee0851a5b8c4bfcd15726bb9338a971b3",
       "implementation_path": "runtime/settings.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -751,7 +751,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri.ui.settings.read",
-      "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
+      "implementation_digest": "sha256:692cb5e900b0cbf3229f551dc23b875ee0851a5b8c4bfcd15726bb9338a971b3",
       "implementation_path": "runtime/settings.py",
       "materialization_mode": "on_demand",
       "operations": [

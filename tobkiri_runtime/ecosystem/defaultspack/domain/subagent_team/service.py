@@ -7,11 +7,16 @@ from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from domain.company.message_router import CompanySlackRuntime
 from domain.company.mention import CompanyMentionService
-from domain.company.models import DEFAULT_CHANNEL_ID, timestamp
+from domain.company.models import DEFAULT_CHANNEL_ID, DEFAULT_COMPANY_ID, timestamp
 from domain.company.runtime_store import CompanyRuntimeStore
 from domain.company.service import CompanyService
 from domain.company.store import CompanyStore
 
+from .availability import (
+    settings_owner_from_context,
+    subagent_delegation_enabled,
+    subagents_disabled_result,
+)
 from .creator_service import CreatorService
 from .ids import slug_id, stable_short_id
 from .mention_parser import parse_mentions
@@ -50,6 +55,8 @@ class SubagentTeamService:
         if company_id:
             company = self.company_store.get_company(company_id)
             if company is None and data.get("bootstrap"):
+                if not subagent_delegation_enabled(settings_owner=self.settings_owner):
+                    return _subagents_disabled_team_result(company_id)
                 company = CompanyService(
                     self.company_store,
                     settings_owner=self.settings_owner,
@@ -63,13 +70,27 @@ class SubagentTeamService:
                 )
             return {"company_id": company_id, "company": company, "bootstrapped": company is not None}
         if conversation_id:
+            existing = self.company_store.find_company_by_conversation_id(conversation_id)
+            bootstrap = bool(data.get("bootstrap", True))
+            if (
+                existing is None
+                and bootstrap
+                and not subagent_delegation_enabled(settings_owner=self.settings_owner)
+            ):
+                return _subagents_disabled_team_result(conversation_id)
             return CompanyService(
                 self.company_store,
                 settings_owner=self.settings_owner,
             ).status_for_conversation(
                 conversation_id,
-                bootstrap=bool(data.get("bootstrap", True)),
+                bootstrap=bootstrap,
             )
+        default_company = self.company_store.get_company(DEFAULT_COMPANY_ID)
+        if (
+            default_company is None
+            and not subagent_delegation_enabled(settings_owner=self.settings_owner)
+        ):
+            return _subagents_disabled_team_result(DEFAULT_COMPANY_ID)
         return CompanyService(
             self.company_store,
             settings_owner=self.settings_owner,
@@ -326,6 +347,10 @@ class SubagentTeamService:
     def send_message(self, company_id: str, data: dict[str, Any], *, context: dict[str, Any] | None = None) -> dict[str, Any] | None:
         if self.company_store.get_company(company_id) is None:
             return None
+        settings_owner = settings_owner_from_context(self.settings_owner, context)
+        if not subagent_delegation_enabled(settings_owner=settings_owner):
+            disabled = subagents_disabled_result()
+            return _deny(disabled["message"], disabled["code"])
         message = normalize_message_request(data)
         sender_id = self._effective_actor_id(company_id, data, context=context, fallback="user")
         message["sender_id"] = sender_id
@@ -397,7 +422,7 @@ class SubagentTeamService:
         result = CompanySlackRuntime(
             company_store=self.company_store,
             runtime_store=self.runtime_store,
-            settings_owner=self.settings_owner,
+            settings_owner=settings_owner,
         ).post_message(
             company_id,
             content=routed_content,
@@ -442,10 +467,16 @@ class SubagentTeamService:
         ).preview(company_id, data)
 
     def creator_request(self, company_id: str, data: dict[str, Any], *, context: dict[str, Any] | None = None) -> dict[str, Any] | None:
+        settings_owner = settings_owner_from_context(self.settings_owner, context)
+        if _creator_request_starts_work(data) and not subagent_delegation_enabled(
+            settings_owner=settings_owner,
+        ):
+            disabled = subagents_disabled_result()
+            return _deny(disabled["message"], disabled["code"])
         return CreatorService(
             company_store=self.company_store,
             runtime_store=self.runtime_store,
-            settings_owner=self.settings_owner,
+            settings_owner=settings_owner,
         ).request(
             company_id,
             data,
@@ -1029,6 +1060,44 @@ def _deny(message: str, code: str, **extra: Any) -> dict[str, Any]:
         "code": str(code or "FORBIDDEN"),
         "message": str(message or "denied"),
         **extra,
+    }
+
+
+def _subagents_disabled_team_result(identifier: str) -> dict[str, Any]:
+    disabled = subagents_disabled_result()
+    return {
+        "company_id": identifier,
+        "company": None,
+        "bootstrapped": False,
+        **_deny(disabled["message"], disabled["code"]),
+    }
+
+
+def _creator_request_starts_work(data: dict[str, Any]) -> bool:
+    """Keep read-only creator status available while blocking new delegation."""
+    action = str(data.get("action") or data.get("tool_id") or "").strip().lower()
+    return action in {
+        "request",
+        "submit",
+        "send",
+        "create",
+        "create_agent",
+        "dm_send",
+        "channel_join",
+        "create_goal",
+        "goal_approve",
+        "subagent_request",
+        "subagent.request",
+        "subagent_create",
+        "subagent.create",
+        "subagent_dm_send",
+        "subagent.dm.send",
+        "subagent_channel_join",
+        "subagent.channel.join",
+        "subagent_goal_propose",
+        "subagent.goal.propose",
+        "subagent_goal_approve",
+        "subagent.goal.approve",
     }
 
 

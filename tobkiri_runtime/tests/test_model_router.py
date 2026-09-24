@@ -49,6 +49,71 @@ def test_router_returns_bridge_plan_when_no_vision_model_available():
     assert decision.bridge_plan["type"] == "vision_bridge"
 
 
+def test_vision_bridge_prefers_a_vision_capable_lightweight_model():
+    from domain.ai_client.model_router import _resolve_utility_models
+
+    candidates = [
+        {
+            "profile_id": "demo/fast-vision",
+            "configured": True,
+            "supports_vision": True,
+            "speed_tier": "fast",
+            "knowledge_level": 40,
+        },
+        {
+            "profile_id": "demo/fallback-vision",
+            "configured": True,
+            "supports_vision": True,
+            "speed_tier": "balanced",
+            "knowledge_level": 95,
+        },
+    ]
+
+    resolved = _resolve_utility_models(
+        {"lightweight_model": "demo/fast-vision", "utility_models": {}},
+        candidates,
+    )
+
+    assert resolved["vision_ocr"] == "demo/fast-vision"
+
+
+def test_vision_bridge_preserves_explicit_override_and_falls_back_from_nonvision_lightweight_model():
+    from domain.ai_client.model_router import _resolve_utility_models
+
+    candidates = [
+        {
+            "profile_id": "demo/text-fast",
+            "configured": True,
+            "supports_vision": False,
+            "supports_image_input": False,
+            "speed_tier": "fast",
+            "knowledge_level": 50,
+        },
+        {
+            "profile_id": "demo/fallback-vision",
+            "configured": True,
+            "supports_image_input": True,
+            "speed_tier": "balanced",
+            "knowledge_level": 90,
+        },
+    ]
+
+    fallback = _resolve_utility_models(
+        {"lightweight_model": "demo/text-fast", "utility_models": {}},
+        candidates,
+    )
+    explicit = _resolve_utility_models(
+        {
+            "lightweight_model": "demo/text-fast",
+            "utility_models": {"vision_ocr": "custom/vision"},
+        },
+        candidates,
+    )
+
+    assert fallback["vision_ocr"] == "demo/fallback-vision"
+    assert explicit["vision_ocr"] == "custom/vision"
+
+
 def test_router_honors_explicit_model_outside_active_group():
     from domain.ai_client.model_router import ModelRoutingRequest, route_model_request
 

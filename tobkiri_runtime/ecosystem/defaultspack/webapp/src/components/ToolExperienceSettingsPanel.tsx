@@ -13,7 +13,7 @@ type ToolSettings = Record<string, unknown>;
 type SettingsValues = Record<string, Record<string, unknown>>;
 
 const MODE_OPTIONS: Array<{ value: ToolSelectionMode; label: string; note: string; badge?: string }> = [
-  { value: "auto", label: "自動で選ぶ", note: "依頼に必要な機能だけをRumiが選びます", badge: "推奨" },
+  { value: "auto", label: "自動で選ぶ", note: "依頼に必要な機能だけをTobkiriが選びます", badge: "推奨" },
   { value: "review", label: "使う前に確認", note: "候補を確認してから回答を開始します" },
   { value: "manual", label: "自分で選ぶ", note: "選んだ機能だけを候補にします" },
   { value: "none", label: "機能を使わない", note: "このメッセージでは外部機能を使いません" },
@@ -331,7 +331,7 @@ export function ToolExperienceSettingsPanel({
   tools: SidebarItem[];
   settingsValues: SettingsValues;
   onSettingChange: (sectionId: string, fieldId: string, value: unknown) => void;
-  displayMode?: "standard" | "advanced" | "developer";
+  displayMode?: "standard" | "advanced";
 }) {
   const [activeTab, setActiveTab] = useState<typeof TABS[number]["id"]>("basic");
   const [catalog, setCatalog] = useState<ToolCatalogResponse | null>(null);
@@ -469,16 +469,16 @@ export function ToolExperienceSettingsPanel({
       </section>
       <section className="grid gap-3 lg:grid-cols-2">
         <ToggleRow
-          checked={boolValue(toolSettings.show_selected_tools_in_answer, true)}
+          checked={boolValue(toolSettings.show_selection_summary ?? toolSettings.show_selected_tools_in_answer, true)}
           title="選んだ機能を回答内に表示"
           note="どの機能を使ったかを、必要な場面で回答に含めます。"
-          onChange={(value) => updateToolSetting("show_selected_tools_in_answer", value)}
+          onChange={(value) => updateToolSetting("show_selection_summary", value)}
         />
         <ToggleRow
-          checked={boolValue(toolSettings.expand_selection_reasoning, false)}
+          checked={boolValue(toolSettings.show_selection_reasons ?? toolSettings.expand_selection_reasoning, false)}
           title="選定理由を最初から展開して表示"
           note="候補選定の理由を折りたたまずに表示します。"
-          onChange={(value) => updateToolSetting("expand_selection_reasoning", value)}
+          onChange={(value) => updateToolSetting("show_selection_reasons", value)}
         />
       </section>
     </div>
@@ -738,7 +738,7 @@ export function ToolExperienceSettingsPanel({
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap gap-2 border-b border-zinc-800 pb-3">
-        {TABS.filter((tab) => tab.id !== "advanced" || displayMode === "developer").map((tab) => (
+        {TABS.filter((tab) => tab.id !== "advanced" || displayMode === "advanced").map((tab) => (
           <button
             key={tab.id}
             type="button"
@@ -752,7 +752,7 @@ export function ToolExperienceSettingsPanel({
       {activeTab === "basic" && renderBasic()}
       {activeTab === "permissions" && renderPermissions()}
       {activeTab === "connections" && renderConnections()}
-      {activeTab === "advanced" && displayMode === "developer" && renderAdvanced()}
+      {activeTab === "advanced" && displayMode === "advanced" && renderAdvanced()}
     </div>
   );
 }

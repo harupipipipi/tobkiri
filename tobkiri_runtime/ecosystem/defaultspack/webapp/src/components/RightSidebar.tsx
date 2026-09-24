@@ -75,7 +75,7 @@ import { buildBuiltinPlacementManifests, filterPlacementCandidates, normalizePin
 import { compareToolUiItems, sortedToolGroups, sortedToolUiItems, supportedComposerDropKind, supportsComposerDrop, toolGroupFor } from "../lib/toolUi";
 import { PlacementHtmlRenderer } from "./PlacementHtmlRenderer";
 import { ToolFilterLogWidget, ToolManagerWidget } from "./ToolStatusWidgets";
-import { WorkspaceTabRailPanel, type WorkspaceTab, type WorkspaceTabKind } from "./WorkspaceTabs";
+import { WorkspaceTabRailPanel, type WorkspaceTab, type WorkspaceTabCreateOption, type WorkspaceTabKind } from "./WorkspaceTabs";
 import { LayerPortal } from "../ui/layers/LayerPortal";
 import { PromptSidebarWidget } from "./prompts/PromptSidebarWidget";
 import type { ContextUsageInfo } from "../renderers/types";
@@ -984,10 +984,11 @@ export function RightSidebar({
   showChatPromptUsage = true,
   yoloMode = false,
   workspaceTabs = [],
+  workspaceTabsEnabled = true,
+  workspaceTabCreateOptions,
   activeWorkspaceTabId = null,
   activeConversationId = null,
   onSettingChange,
-  onOpenSettings,
   onOpenSettingsSection,
   onToggleYolo,
   onWorkspaceTabSelect,
@@ -1018,6 +1019,8 @@ export function RightSidebar({
   showChatPromptUsage?: boolean;
   yoloMode?: boolean;
   workspaceTabs?: WorkspaceTab[];
+  workspaceTabsEnabled?: boolean;
+  workspaceTabCreateOptions?: WorkspaceTabCreateOption[];
   activeWorkspaceTabId?: string | null;
   activeConversationId?: string | null;
   onSettingChange: (sectionId: string, fieldId: string, value: unknown) => void;
@@ -1197,14 +1200,14 @@ export function RightSidebar({
     if (activePanel === "__prompt_usage__" && hasPromptWidget) return;
     if (activePanel === "__company_workspace__" && companyPanel) return;
     if (activePanel === "__coding_widget__" && codingPanel) return;
-    if (activePanel === "__workspace_tabs__" && workspaceTabs.length > 0) return;
+    if (activePanel === "__workspace_tabs__" && workspaceTabsEnabled && workspaceTabs.length > 0) return;
     if (activePanel.startsWith(PLACEMENT_PANEL_PREFIX) && placementManifestMap.has(activePanel.slice(PLACEMENT_PANEL_PREFIX.length))) {
       return;
     }
     if (!items.some((item) => item.id === activePanel)) {
       setActivePanel(null);
     }
-  }, [activePanel, codingPanel, companyPanel, hasPromptWidget, items, placementManifestMap, workspaceTabs.length]);
+  }, [activePanel, codingPanel, companyPanel, hasPromptWidget, items, placementManifestMap, workspaceTabs.length, workspaceTabsEnabled]);
 
   useEffect(() => {
     if (!activePanel || categoryFilter === "all") return;
@@ -1429,7 +1432,7 @@ export function RightSidebar({
   const isPromptUsageActive = activePanel === "__prompt_usage__" && hasPromptWidget;
   const isCompanyPanelActive = activePanel === "__company_workspace__" && Boolean(companyPanel);
   const isCodingPanelActive = activePanel === "__coding_widget__" && Boolean(codingPanel);
-  const isWorkspaceTabsActive = activePanel === "__workspace_tabs__" && workspaceTabs.length > 0;
+  const isWorkspaceTabsActive = activePanel === "__workspace_tabs__" && workspaceTabsEnabled && workspaceTabs.length > 0;
   const isPlacementPanelActive = Boolean(activePlacementManifest);
   const activeToolGroupId = activeItem?.category === "tool" ? toolGroupFor(activeItem).id : null;
   const shouldCompactToolRail = categoryFilter === "tool" && !searchQuery.trim() && !activeTagFilter && !showStarredOnly;
@@ -1946,6 +1949,7 @@ export function RightSidebar({
               <WorkspaceTabRailPanel
                 tabs={workspaceTabs}
                 activeTabId={activeWorkspaceTabId ?? ""}
+                createOptions={workspaceTabCreateOptions}
                 onSelect={(tabId) => onWorkspaceTabSelect?.(tabId)}
                 onClose={(tabId) => onWorkspaceTabClose?.(tabId)}
                 onCreate={(kind) => onWorkspaceTabCreate?.(kind)}
@@ -2431,7 +2435,7 @@ export function RightSidebar({
             </div>
           )}
                   <CategorySwitcher active={categoryFilter} counts={counts} keyboardButtonNavigation={keyboardButtonNavigation} onChange={(id) => { setCategoryFilter(id); setOpenToolGroupMenu(null); }} />
-                  {workspaceTabs.length > 0 && (
+                  {workspaceTabsEnabled && workspaceTabs.length > 0 && (
                     <button
                       type="button"
                       tabIndex={buttonTabIndex}
@@ -2852,20 +2856,6 @@ export function RightSidebar({
             );
           })()}
 
-          <div className="mt-auto w-5 h-px bg-zinc-800 my-1" />
-
-                  <button
-                    type="button"
-                    tabIndex={buttonTabIndex}
-                    onClick={onOpenSettings}
-                    className={cn(RAIL_BUTTON_CLASS, "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50 group/btn")}
-                    title="Settings"
-                  >
-            <Settings size={16} className="h-4 w-4 shrink-0" />
-            <span className="absolute right-full mr-2 px-2 py-1 bg-zinc-800 text-zinc-200 text-[10px] rounded-md opacity-0 group-hover/btn:opacity-100 pointer-events-none transition-opacity whitespace-nowrap border border-zinc-700 shadow-lg rumi-layer-modal">
-              Settings
-            </span>
-          </button>
         </div>
       </div>
     </aside>
