@@ -529,7 +529,7 @@ class _MacOSVZHelperProcess:
         try:
             with self._send_lock:
                 self._write_line(payload, send_deadline)
-        except _HelperRequestOversized:
+        except _HelperRequestInvalid:
             raise
         except (OSError, ValueError) as exc:
             self._expire_channel(f"PackVM VZ helper send failed: {exc}")
@@ -547,7 +547,16 @@ class _MacOSVZHelperProcess:
 
         if self._process.stdin is None:
             raise ValueError("PackVM VZ helper pipes are unavailable")
-        encoded = _canonical_bytes(payload)
+        try:
+            encoded = _canonical_bytes(payload)
+        except (TypeError, ValueError) as exc:
+            # A request the canonicalizer cannot serialize is a caller bug
+            # (lone surrogates, circular values), not a channel failure:
+            # expiring here would tear down the whole domain for one bad
+            # envelope.
+            raise _HelperRequestInvalid(
+                "PackVM VZ helper request is not serializable"
+            ) from exc
         if len(encoded) > _MAX_HELPER_PROTOCOL_BYTES:
             raise _HelperRequestOversized(
                 "PackVM VZ helper request exceeds its bound"
@@ -632,17 +641,25 @@ class _MacOSVZHelperProcess:
             # still mark the channel dead or pending waiters wedge forever.
             with self._lock:
                 # Late exchanges must observe the dead channel instead of
-                # registering a waiter no response can ever reach.
-                self._reader_failure = (
-                    failure or "PackVM VZ helper transport closed"
-                )
+                # registering a waiter no response can ever reach.  Keep the
+                # first reason: a send-side expiry carries a more precise
+                # message than this loop's exit.
+                if self._reader_failure is None:
+                    self._reader_failure = (
+                        failure or "PackVM VZ helper transport closed"
+                    )
+                reason = self._reader_failure
                 pending_all = list(self._pending.values())
                 self._pending.clear()
             for exchange in pending_all:
-                exchange.fail(failure or "PackVM VZ helper transport closed")
+                exchange.fail(reason)
 
 
-class _HelperRequestOversized(ValueError):
+class _HelperRequestInvalid(ValueError):
+    """Caller-side request construction failure; the channel is healthy."""
+
+
+class _HelperRequestOversized(_HelperRequestInvalid):
     """Caller-side envelope bound violation; the channel itself is healthy."""
 
 

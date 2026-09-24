@@ -2306,3 +2306,27 @@ def test_helper_oversized_request_does_not_expire_channel() -> None:
         )
 
     assert transport.alive()
+
+
+def test_helper_unserializable_request_does_not_expire_channel() -> None:
+    """A caller-side serialization failure leaves a healthy channel up.
+
+    A payload the canonicalizer cannot encode is a per-request error; the
+    helper is still alive and the domain must not be reclaimed for it.
+    """
+
+    transport = _helper_process_for_test(b"{}")
+    transport._domain_id = "domain-1"
+    transport._launch_binding_digest = "binding-1"
+    envelope: dict[str, object] = {
+        "domain_id": "domain-1",
+        "launch_binding_digest": "binding-1",
+        "host_nonce": "nonce-1",
+        "operation": "invoke",
+    }
+    envelope["payload"] = envelope
+
+    with pytest.raises(ValueError, match="not serializable"):
+        transport.exchange(envelope)
+
+    assert transport.alive()
