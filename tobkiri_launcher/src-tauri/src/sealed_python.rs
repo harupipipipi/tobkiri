@@ -1293,7 +1293,8 @@ pub(crate) fn sweep_stale_macos_snapshots() {
     }
 
     fn owner_is_dead(pid: i32) -> bool {
-        unsafe { libc::kill(pid, 0) } == -1
+        let result = unsafe { libc::kill(pid, 0) };
+        result == -1
             && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
     }
 
