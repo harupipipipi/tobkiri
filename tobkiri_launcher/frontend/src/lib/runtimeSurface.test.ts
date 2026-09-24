@@ -249,6 +249,32 @@ test('generated Contract Map is pinned to the canonical raw artifact and include
     function_id: 'rumi_tool_registry_pack.tool-registry.definition',
     allowed_payload_keys: [],
   }]);
+  // The model-search route raised the map to 62 entries; pin its exact broker
+  // binding so the installer-facing contract cannot silently drop it again.
+  const modelSearch = GENERATED_FRONTEND_CONTRACT_MAP.routes.find(
+    (route) => route.method === 'POST' && route.path === '/api/ai/models/search',
+  );
+  assert.equal(modelSearch?.presentation, 'broker_result');
+  assert.deepEqual(modelSearch?.targets, [{
+    contribution_id: 'defaults.ui.model-search.read',
+    contract_id: 'tobkiri.resource.ui.model-search.v1',
+    operation_id: 'tobkiri_ui_settings_pack.model-search',
+    provider_id: 'tobkiri.ui.model-search.read',
+    function_id: 'tobkiri.ui.model-search.read',
+    allowed_payload_keys: [
+      'query',
+      'type',
+      'model_type',
+      'requires',
+      'speed_tier',
+      'provider_id',
+      'provider',
+      'configured_only',
+      'local_only',
+      'min_knowledge_level',
+      'max_results',
+    ],
+  }]);
   assert.doesNotThrow(() => validateGeneratedFrontendContractMap(GENERATED_FRONTEND_CONTRACT_MAP));
 
   const tampered = structuredClone(GENERATED_FRONTEND_CONTRACT_MAP);
