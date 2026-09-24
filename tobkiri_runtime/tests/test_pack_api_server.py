@@ -667,6 +667,87 @@ def test_typed_error_initial_lost_response_and_restart_replay_are_exact(
 
 
 @pytest.mark.parametrize(
+    ("code", "expected_status"),
+    [
+        ("UNAPPROVED", 403),
+        ("STALE_REVISION", 409),
+        ("API_FAILURE", 503),
+    ],
+)
+def test_typed_error_outcome_skips_application_presentation(
+    code: str,
+    expected_status: int,
+) -> None:
+    """Bounded error results must bypass success-shape presentations.
+
+    Application presentations only project successful payloads; running one
+    over a sanitized error result raises and drops the client response.
+    """
+
+    handler = object.__new__(PackAPIHandler)
+    handler._application_presentation = DefaultspackHTTPPresentation()
+    captured: list[tuple[int, str]] = []
+    handler._send_response = (  # type: ignore[method-assign]
+        lambda response, status=200: captured.append((status, response.to_json()))
+    )
+    binding = FrontendContractBinding(
+        method="GET",
+        path="/test/turn-events",
+        presentation="turn_events",
+        targets=(),
+    )
+    handler._send_contract_outcome(
+        binding,
+        {
+            "state": "error",
+            "code": code,
+            "message": "sqlite /private/token.db DigestError token=secret",
+        },
+    )
+    assert captured[-1][0] == expected_status
+    payload = json.loads(captured[-1][1])
+    assert payload["success"] is False
+    assert payload["data"]["state"] == "error"
+    assert payload["data"]["code"] == code
+    serialized = captured[-1][1].lower()
+    for secret in ("sqlite", "/private", "digesterror", "token"):
+        assert secret not in serialized
+
+
+def test_success_outcome_still_runs_application_presentation() -> None:
+    """Successful results keep their application presentation projection."""
+
+    handler = object.__new__(PackAPIHandler)
+    handler._application_presentation = DefaultspackHTTPPresentation()
+    handler._dispatch_session = None
+    handler._contract_routes = {}
+    captured: list[tuple[int, str]] = []
+    handler._send_response = (  # type: ignore[method-assign]
+        lambda response, status=200: captured.append((status, response.to_json()))
+    )
+    binding = FrontendContractBinding(
+        method="GET",
+        path="/test/turn-events",
+        presentation="turn_events",
+        targets=(),
+    )
+    turn = {
+        "id": "turn-1",
+        "conversation_id": "conversation-1",
+        "request_id": "request-1",
+        "revision": 1,
+        "status": "completed",
+        "events": [],
+    }
+    handler._send_contract_outcome(binding, turn)
+    assert captured[-1][0] == 200
+    payload = json.loads(captured[-1][1])
+    assert payload["success"] is True
+    assert payload["data"]["turn_id"] == "turn-1"
+    assert payload["data"]["terminal"]["status"] == "completed"
+
+
+@pytest.mark.parametrize(
     ("error_type", "expected_code", "expected_status", "retryable"),
     [
         (PackControlConflict, "STALE_REVISION", 409, False),

@@ -1631,18 +1631,21 @@ class PackAPIHandler(
 
         safe_result = self._safe_contract_result(result)
         status = self._contract_result_status(safe_result)
-        presented = self._present_contract_result(binding, safe_result)
-        if status == 200:
-            self._send_response(APIResponse(True, data=presented), status)
+        if status != 200:
+            # Typed error results already carry the bounded public shape.
+            # Application presentations project successful payloads and must
+            # never run over a sanitized error result.
+            self._send_response(
+                APIResponse(
+                    False,
+                    data=safe_result,
+                    error=_PUBLIC_ERROR_MESSAGES[str(safe_result["code"])],
+                ),
+                status,
+            )
             return
-        self._send_response(
-            APIResponse(
-                False,
-                data=presented,
-                error=_PUBLIC_ERROR_MESSAGES[str(safe_result["code"])],
-            ),
-            status,
-        )
+        presented = self._present_contract_result(binding, safe_result)
+        self._send_response(APIResponse(True, data=presented), status)
 
     def _handle_packvm_lifecycle(self, method: str, path: str) -> bool:
         """Serve the finite authenticated v4 PackVM lifecycle contract."""
