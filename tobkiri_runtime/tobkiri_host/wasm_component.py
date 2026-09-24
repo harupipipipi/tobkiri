@@ -135,9 +135,14 @@ def worker_main() -> int:
     if not sys.flags.isolated:
         return 2
     raw_rss_limit = os.environ.get("TOBKIRI_WASM_WORKER_RSS_LIMIT_BYTES")
+    raw_guard_cap = os.environ.get("TOBKIRI_WASM_GUARD_CAP_BYTES")
+    raw_guard_headroom = os.environ.get("TOBKIRI_WASM_GUARD_HEADROOM_BYTES")
     os.environ.clear()
     try:
         rss_limit = _parse_worker_rss_limit(raw_rss_limit)
+        guard_headroom = _verify_worker_memory_guard(
+            raw_guard_cap, raw_guard_headroom
+        )
         _install_worker_resource_limits(resource, sys.platform)
         request = strict_loads(
             sys.stdin.buffer.read(45 * 1024 * 1024 + 1),
@@ -153,6 +158,9 @@ def worker_main() -> int:
             raise ValueError("invalid payload")
         binary = base64.b64decode(request["artifact"], validate=True)
         engine = PureComponent(binary, request["digest"])
+        # Compilation is covered by the guard's lifetime committed cap; the
+        # optional headroom tightens the same cap for the guest phase.
+        _arm_worker_memory_guard(guard_headroom)
         result = engine.invoke(request["operation_id"], request["payload"])
         response = {"status": "ok", "data": result}
         encoded_response = canonical_json(response)
@@ -232,6 +240,71 @@ def _parse_worker_rss_limit(raw: str | None) -> int | None:
     if limit > 2 * 1024 * 1024 * 1024:
         raise ValueError("invalid worker resident memory limit")
     return limit
+
+
+_GUARD_MARKER = 0x54424731
+_GUARD_MAX_BYTES = 16 * 1024 * 1024 * 1024
+
+
+def _parse_guard_bytes(raw: str | None, label: str) -> int | None:
+    """Parse one trusted supervisor guard knob as strict decimal bytes."""
+    if raw is None:
+        return None
+    if not raw.isascii() or not raw.isdecimal() or raw.startswith("0"):
+        raise ValueError(f"invalid worker memory guard {label}")
+    value = int(raw)
+    if value > _GUARD_MAX_BYTES:
+        raise ValueError(f"invalid worker memory guard {label}")
+    return value
+
+
+def _verify_worker_memory_guard(
+    raw_cap: str | None, raw_headroom: str | None
+) -> int | None:
+    """Validate the supervisor's guard configuration and prove it is loaded.
+
+    The guard is a sealed ``worker_memory_guard`` dylib the supervisor
+    injects via ``DYLD_INSERT_LIBRARIES``. If the supervisor asked for a cap
+    or headroom but the marker symbol is absent — an unsigned library
+    rejected by a hardened interpreter, a missing file, or a mismatched
+    binary — the worker must not run unguarded, so this fails closed.
+    """
+    if raw_cap is None and raw_headroom is None:
+        return None
+    _parse_guard_bytes(raw_cap, "cap")
+    headroom = _parse_guard_bytes(raw_headroom, "headroom")
+    import ctypes
+
+    try:
+        marker = ctypes.c_uint32.in_dll(
+            ctypes.CDLL(None), "tobkiri_wasm_guard_marker"
+        ).value
+    except (ValueError, OSError):
+        marker = None
+    if marker != _GUARD_MARKER:
+        raise OSError("the worker memory guard library is not loaded")
+    return headroom
+
+
+def _arm_worker_memory_guard(headroom: int | None) -> None:
+    """Tighten the loaded guard to ``used + headroom`` for the guest phase.
+
+    Compilation already ran under the lifetime cap; this bound lets the
+    guest grow committed bytes by only its declared budget. A missing or
+    refusing guard entry point fails closed.
+    """
+    if headroom is None:
+        return
+    import ctypes
+
+    try:
+        arm = ctypes.CDLL(None).tobkiri_wasm_guard_arm_headroom
+        arm.argtypes = (ctypes.c_uint64,)
+        arm.restype = ctypes.c_uint64
+    except (AttributeError, OSError):
+        raise OSError("worker memory guard headroom control is missing") from None
+    if arm(headroom) == 0:
+        raise OSError("worker memory guard refused the headroom")
 
 
 def _enforce_worker_peak_rss(resource: Any, platform: str, limit: int | None) -> None:

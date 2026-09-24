@@ -43,6 +43,7 @@
     "wasm_backend.py",
     "wasm_component.py",
     "wasm_worker.py",
+    "worker_memory_guard.c",
     "workspace_mutation.py"
   ]
 }

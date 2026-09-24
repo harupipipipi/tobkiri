@@ -31,7 +31,7 @@ from .resource_controller import (
     WorkerResourceController,
     detect_production_resource_controller,
 )
-from .wasm_worker import ComponentWorker
+from .wasm_worker import ComponentWorker, MemoryGuardConfig
 
 WASMTIME_PULLEY_BACKEND = "tobkiri.wasmtime-pulley-v1"
 
@@ -64,6 +64,7 @@ class WasmComponentBackend:
         backend_id: str = WASMTIME_PULLEY_BACKEND,
         resource_controller: WorkerResourceController | None = None,
         resource_controller_status: ResourceControllerStatus | None = None,
+        memory_guard: MemoryGuardConfig | None = None,
     ) -> None:
         require_digest(worker_command_digest, "Wasm worker command")
         require_digest(worker_runtime_digest, "Wasm worker runtime")
@@ -74,15 +75,19 @@ class WasmComponentBackend:
             or not 0 < memory_reservation_bytes <= 2 * 1024 * 1024 * 1024
         ):
             raise ValueError("Wasm worker memory reservation is invalid")
+        if memory_guard is not None and type(memory_guard) is not MemoryGuardConfig:
+            raise ValueError("Wasm memory guard configuration is invalid")
         # ComponentWorker validates the trusted executable and complete argv.
         probe = ComponentWorker(
             worker_command,
             rss_limit=memory_reservation_bytes,
             resource_controller=resource_controller,
+            memory_guard=memory_guard,
         )
         probe.close()
         self._worker_command = tuple(worker_command)
         self._resource_controller = resource_controller
+        self._memory_guard = memory_guard
         if resource_controller is not None:
             if (
                 resource_controller_status is not None
@@ -141,6 +146,15 @@ class WasmComponentBackend:
                         "hard_physical_memory_limit": self.resource_controller_status.hard_physical_memory_limit,
                         "production_eligible": self.resource_controller_status.production_eligible,
                     },
+                    "memory_guard": (
+                        None
+                        if memory_guard is None
+                        else {
+                            "library_path": memory_guard.library_path,
+                            "cap_bytes": memory_guard.cap_bytes,
+                            "headroom_bytes": memory_guard.headroom_bytes,
+                        }
+                    ),
                 }
             ),
             production_enabled=controller_ready,
@@ -247,6 +261,7 @@ class WasmComponentBackend:
             self._worker_command,
             rss_limit=self.memory_reservation_bytes,
             resource_controller=self._resource_controller,
+            memory_guard=self._memory_guard,
         )
         with self._lock:
             if reservation_id in self._reservations:
