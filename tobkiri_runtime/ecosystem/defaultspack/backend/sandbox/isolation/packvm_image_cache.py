@@ -884,8 +884,10 @@ class PackVMImageCache:
     def _root_quota_lock(self, pinned: _PinnedEntry) -> Iterator[int]:
         """Hold the stable cache-wide OS reservation until publication finishes."""
 
+        # Holder occupancy is the portable-lock wait plus the download, so a
+        # waiter must allow for both before declaring the holder wedged.
         if not self._capacity_lock.acquire(
-            timeout=self._overall_timeout + 3600.0
+            timeout=(2 * self._overall_timeout) + 3600.0
         ):
             raise PackVMImageError(
                 "packvm_image_reservation_timeout",

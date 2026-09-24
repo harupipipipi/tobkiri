@@ -91,13 +91,15 @@ _ACTIVE_DATABASE_GUARDS: set[int] = set()
 # The cache never crosses fork or process boundaries, so every process still
 # verifies the full history at least once.
 _AUDIT_FULL_VERIFY_INTERVAL_SECONDS = 300.0
-_VERIFIED_AUDIT_TIPS: dict[FileIdentity, tuple[int, str, str, float]] = {}
+_VERIFIED_AUDIT_TIPS: dict[
+    FileIdentity, tuple[int, str, str, int, float]
+] = {}
 _VERIFIED_AUDIT_TIPS_GUARD = threading.Lock()
 
 
 def _verified_audit_tip(
     identity: FileIdentity,
-) -> tuple[int, str, str, float] | None:
+) -> tuple[int, str, str, int, float] | None:
     with _VERIFIED_AUDIT_TIPS_GUARD:
         return _VERIFIED_AUDIT_TIPS.get(identity)
 
@@ -107,6 +109,7 @@ def _record_verified_audit_tip(
     sequence: int,
     previous_digest: str,
     event_digest: str,
+    row_count: int,
     verified_at: float | None = None,
 ) -> None:
     with _VERIFIED_AUDIT_TIPS_GUARD:
@@ -115,9 +118,10 @@ def _record_verified_audit_tip(
             sequence,
             previous_digest,
             event_digest,
+            row_count,
             time.monotonic()
             if verified_at is None
-            else (existing[3] if existing is not None else verified_at),
+            else (existing[4] if existing is not None else verified_at),
         )
 
 
@@ -3378,9 +3382,16 @@ class AuthorityStore:
                     int(rows[-1]["sequence"]),
                     str(rows[-1]["previous_digest"]),
                     str(rows[-1]["event_digest"]),
+                    len(rows),
                 )
             return
-        tip_sequence, tip_previous_digest, tip_event_digest, verified_at = cached
+        (
+            tip_sequence,
+            tip_previous_digest,
+            tip_event_digest,
+            tip_row_count,
+            verified_at,
+        ) = cached
         # Structural gate: pre-tip history must stay row-contiguous and the
         # tip row must survive a full decrypt and digest recompute.  Any
         # divergence fails this open and evicts the cached tip so a
@@ -3394,7 +3405,10 @@ class AuthorityStore:
             "SELECT * FROM authority_audit WHERE sequence=?",
             (tip_sequence,),
         ).fetchone()
-        incremental_ok = below_tip == tip_sequence and tip_row is not None
+        # The count is compared against what was verified rather than the
+        # sequence number itself so a gapped but valid chain converges on
+        # the same answer as a contiguous one.
+        incremental_ok = below_tip == tip_row_count and tip_row is not None
         if incremental_ok:
             try:
                 self._verify_audit_rows(
@@ -3425,6 +3439,7 @@ class AuthorityStore:
                 int(rows[-1]["sequence"]),
                 str(rows[-1]["previous_digest"]),
                 str(rows[-1]["event_digest"]),
+                tip_row_count + len(rows),
                 verified_at,
             )
         if (
@@ -3446,6 +3461,7 @@ class AuthorityStore:
                 int(rows[-1]["sequence"]),
                 str(rows[-1]["previous_digest"]),
                 str(rows[-1]["event_digest"]),
+                len(rows),
             )
 
     def _verify_audit_rows(

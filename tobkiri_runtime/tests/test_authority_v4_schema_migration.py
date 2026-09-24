@@ -525,13 +525,14 @@ def test_periodic_full_verify_catches_mid_chain_edit(tmp_path: Path) -> None:
     # Age the recorded verification past the full-verify interval so the
     # next open re-verifies the complete chain.
     with _v4_store._VERIFIED_AUDIT_TIPS_GUARD:
-        for key, (seq, prev, event, verified_at) in list(
+        for key, (seq, prev, event, row_count, verified_at) in list(
             _v4_store._VERIFIED_AUDIT_TIPS.items()
         ):
             _v4_store._VERIFIED_AUDIT_TIPS[key] = (
                 seq,
                 prev,
                 event,
+                row_count,
                 verified_at - _v4_store._AUDIT_FULL_VERIFY_INTERVAL_SECONDS - 1,
             )
 

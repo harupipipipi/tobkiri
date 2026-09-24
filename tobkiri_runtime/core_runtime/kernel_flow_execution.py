@@ -119,6 +119,56 @@ def _approval_check_allowed(value: object) -> bool:
         return bool(value) and value[0] is True
     return value is True
 
+
+async def _drain_stream_capped(
+    stream: asyncio.StreamReader, cap: int
+) -> bytes:
+    """Drain a stream to EOF while retaining at most ``cap`` bytes."""
+    retained = bytearray()
+    while True:
+        chunk = await stream.read(65536)
+        if not chunk:
+            return bytes(retained)
+        keep = cap - len(retained)
+        if keep > 0:
+            retained += chunk[:keep]
+
+
+async def _uc_run_process_capped(
+    proc: asyncio.subprocess.Process,
+    input_bytes: bytes,
+    timeout: float,
+) -> tuple[bytes, bytes]:
+    """Feed stdin and drain stdout/stderr with capped retention.
+
+    Unlike ``proc.communicate()``, retained output stays bounded even for a
+    noisy child, and timeout, cancellation, or any other failure kills the
+    child before the error propagates so no spawned process is leaked.
+    """
+
+    async def _pump() -> tuple[bytes, bytes]:
+        assert proc.stdin is not None
+        try:
+            proc.stdin.write(input_bytes)
+            await proc.stdin.drain()
+            proc.stdin.close()
+        except (BrokenPipeError, ConnectionResetError):
+            # The child exited without reading stdin.
+            pass
+        assert proc.stdout is not None and proc.stderr is not None
+        stdout, stderr, _ = await asyncio.gather(
+            _drain_stream_capped(proc.stdout, _UC_MAX_RESPONSE_SIZE),
+            _drain_stream_capped(proc.stderr, 4096),
+            proc.wait(),
+        )
+        return stdout, stderr
+
+    try:
+        return await asyncio.wait_for(_pump(), timeout=timeout)
+    except BaseException:
+        proc.kill()
+        raise
+
 class KernelFlowExecutionMixin:
     """
     Flow実行系 Mixin
@@ -1398,14 +1448,9 @@ class KernelFlowExecutionMixin:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        try:
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(input=input_json.encode("utf-8")),
-                timeout=timeout,
-            )
-        except asyncio.TimeoutError:
-            proc.kill()
-            raise
+        stdout, stderr = await _uc_run_process_capped(
+            proc, input_json.encode("utf-8"), timeout
+        )
         stdout_str = stdout.decode("utf-8", errors="replace")[:_UC_MAX_RESPONSE_SIZE]
         try:
             return json.loads(stdout_str)
@@ -1429,14 +1474,9 @@ class KernelFlowExecutionMixin:
             stderr=asyncio.subprocess.PIPE,
             cwd=os.path.dirname(target) or None,
         )
-        try:
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(input=input_json.encode("utf-8")),
-                timeout=timeout,
-            )
-        except asyncio.TimeoutError:
-            proc.kill()
-            raise
+        stdout, stderr = await _uc_run_process_capped(
+            proc, input_json.encode("utf-8"), timeout
+        )
         stdout_str = stdout.decode("utf-8", errors="replace")[:_UC_MAX_RESPONSE_SIZE]
         try:
             return json.loads(stdout_str)
@@ -1493,17 +1533,12 @@ class KernelFlowExecutionMixin:
                 stderr=asyncio.subprocess.PIPE,
             )
             container_may_exist = True
-            try:
-                stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(input=input_bytes),
-                    timeout=timeout,
-                )
-            except BaseException:
-                # Timeout, cancellation, or any other failure: stop the
-                # docker CLI client.  The daemon-side container is reaped
-                # by the finally block below.
-                proc.kill()
-                raise
+            # The capped pump kills the docker CLI client on timeout,
+            # cancellation, or any other failure; the daemon-side container
+            # is reaped by the finally block below.
+            stdout, stderr = await _uc_run_process_capped(
+                proc, input_bytes, timeout
+            )
             stdout_str = stdout.decode("utf-8", errors="replace")[:_UC_MAX_RESPONSE_SIZE]
             try:
                 return json.loads(stdout_str)

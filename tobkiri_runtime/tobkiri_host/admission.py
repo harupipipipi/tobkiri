@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import math
 import os
@@ -124,7 +124,7 @@ class ResourceReservation:
     profile_id: str
     amount: ResourceAmount
     owner_pid: int = 0
-    owner_identity: str | None = None
+    owner_identity: str | None = field(default=None, kw_only=True)
     detached: bool = False
 
 
