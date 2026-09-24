@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:1ca7b31d9115fe0d76e6b3d07a60551332dea04c4e66fb8f18b5ac4cb925fc8d",
+      "digest": "sha256:91d7d52e26302c6e82a25e009e9ca3cb5f19585ca4c8845a5c37a77a96f561e1",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -133,7 +133,7 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:6af847b4c2b2616b021346f4bde957bc899f33adc002c4b9f4fd12fb06c55517",
+    "artifact_set_digest": "sha256:f8283a0f84a65589c760ff0f314a5f2faf3c697c84c7d43bd5020e7603e01ca3",
     "contract_catalog_digest": "sha256:863a5da53fd717e2051fe1a542c31ced68c87a9811a9312c5ea400fb226ddc0d",
     "source_identity": "sha256:b7b55914aa8bd53c320f6982f2783296ee9576ccb40c9d8468fb76aed655a0bb"
   },
@@ -218,7 +218,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:6af847b4c2b2616b021346f4bde957bc899f33adc002c4b9f4fd12fb06c55517",
+    "artifact_digest": "sha256:f8283a0f84a65589c760ff0f314a5f2faf3c697c84c7d43bd5020e7603e01ca3",
     "display_name": "Tobkiri Turn Runtime",
     "id": "rumi_turn_runtime_pack",
     "kind": "host_extension",
