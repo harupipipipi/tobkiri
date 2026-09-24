@@ -17,18 +17,26 @@ pytestmark = pytest.mark.contract
 ROOT = Path(__file__).resolve().parent.parent
 PACK_ID = 'rumi_artifact_app_runtime_pack'
 PACK_DIR = ROOT / "ecosystem" / PACK_ID
+V4_AUTHORITY_ARTIFACTS = {"pack.v4.json", "contracts.v4.json", "artifact-index.v4.json"}
 SETUP_PACK_JSON = ROOT / "ecosystem" / "setup_pack" / PACK_ID / "pack.json"
+PACK_METADATA_FILES = {
+    "ecosystem.json",
+    "rumi.pack.v3.json",
+    "artifact-manifest.json",
+    "executables.v4.json",
+    "frontend/contributions/artifact-app-runtime.json",
+}
 REQUIRED_ASSETS = ['README.md', 'asset_index.json', 'asset_index.yaml', 'catalog/handoff_matrix.yaml', 'catalog/quality_matrix.yaml', 'catalog/renderer_capability_catalog.yaml', 'catalog/taxonomy.yaml', 'catalog/workflows.yaml', 'checklists/review.checklist.yaml', 'docs/README.md', 'docs/architecture.md', 'docs/interfaces.md', 'docs/operations.md', 'docs/security.md', 'examples/export_package.example.yaml', 'examples/mcp_approval_prompt.example.yaml', 'examples/sample_calculator_manifest.example.yaml', 'examples/version_rollback.example.yaml', 'fixtures/contract_fixture.yaml', 'fixtures/negative_cases.yaml', 'ledgers/evidence_ledger.schema.yaml', 'policies/handoff.policy.yaml', 'policies/safety.policy.yaml', 'policies/sandbox_renderer.policy.yaml', 'policies/tool_mcp_approval.policy.yaml', 'presets/handoff_review.preset.yaml', 'presets/quality_gate.preset.yaml', 'presets/safe_default.preset.yaml', 'profiles/artifact_runtime_reviewer.profile.yaml', 'prompts/artifact_runtime_reviewer.system.md', 'schemas/artifact_app_error.schema.json', 'schemas/artifact_app_manifest.schema.json', 'schemas/artifact_state_snapshot.schema.json', 'schemas/export_package.schema.json', 'schemas/renderer_sandbox_contract.schema.json', 'schemas/runtime_error_boundary.schema.json', 'schemas/share_package.schema.json', 'schemas/storage_version_selector.schema.json', 'schemas/tool_approval_prompt.schema.json', 'schemas/version_record.schema.json', 'templates/handoff.template.md', 'templates/review_report.template.md', 'templates/ui_contract.template.md']
 SCHEMA_EXPECTATIONS = {'schemas/artifact_app_error.schema.json': ['error_id', 'artifact_id', 'error_class', 'safe_message', 'stack_redacted', 'recovery_handoff', 'correlation_id', 'details_redacted', 'raw_stack_included', 'handoff_packet_required'], 'schemas/artifact_app_manifest.schema.json': ['app_id', 'artifact_id', 'name', 'schema_version', 'entrypoint', 'content_ref', 'permissions', 'state_schema_id', 'version_id', 'network_default', 'renderer', 'storage_selector', 'approval_policy', 'export_share', 'error_boundary'], 'schemas/artifact_state_snapshot.schema.json': ['snapshot_id', 'artifact_id', 'version_id', 'state_digest', 'created_from_event_ids', 'storage_handoff'], 'schemas/export_package.schema.json': ['export_id', 'artifact_id', 'version_id', 'included_files', 'excluded_capabilities', 'review_state', 'workspace_handoff', 'package_digest', 'package_contract_only', 'file_persistence_owner', 'zip_creation_owner', 'execution_effect'], 'schemas/renderer_sandbox_contract.schema.json': ['sandbox_id', 'artifact_id', 'csp', 'allowed_origins', 'runtime_owner', 'host_execution', 'sandbox_tokens', 'untrusted_forbidden_token_pairs', 'remote_modules_allowed', 'same_origin_required', 'trusted_renderer_prefixes'], 'schemas/runtime_error_boundary.schema.json': ['boundary_id', 'artifact_id', 'error_class', 'safe_fallback', 'captured_event_ids', 'handoff_owner', 'error_envelope_schema_id', 'raw_stack_included', 'fallback_mode'], 'schemas/share_package.schema.json': ['share_id', 'artifact_id', 'version_id', 'visibility', 'permission_scope', 'checksum', 'workspace_handoff', 'share_contract_only', 'link_creation_owner', 'file_persistence_owner', 'token_creation_allowed'], 'schemas/storage_version_selector.schema.json': ['selector_id', 'artifact_id', 'selector_kind', 'pinned_version_id', 'checksum', 'storage_owner', 'path_policy', 'source_owner', 'source_ref', 'read_only', 'allowed_sources', 'client_supplied_path_trusted'], 'schemas/tool_approval_prompt.schema.json': ['approval_id', 'artifact_id', 'tool_ref', 'scope', 'approval_state', 'first_call', 'receipt', 'approval_required', 'requires_approval', 'approval_request_id', 'operation', 'risk_level', 'args_hash', 'expires_at', 'display_summary', 'redacted_arguments', 'client_supplied_approved_trusted', 'tool_call_id', 'payload', 'execution_owner', 'trusted_authority', 'server_issued_approval_token_required'], 'schemas/version_record.schema.json': ['version_id', 'artifact_id', 'parent_version_id', 'change_summary', 'rollback_allowed', 'source_snapshot_id']}
 WORKFLOW_IDS = set(['manifest_validation', 'sandbox_render_contract', 'state_snapshot_versioning', 'tool_mcp_approval_gate', 'error_boundary_review', 'export_package_build'])
 QUALITY_CHECK_IDS = set(['network_denied_by_default', 'first_tool_call_approval', 'client_approved_never_trusted', 'export_share_package_only', 'sandbox_owner_named', 'workspace_handoff_for_storage', 'rollback_parent_present', 'error_boundary_safe_fallback', 'no_direct_execution', 'asset_index_complete'])
 OWNER_EXPECTED = set(['artifact_app_manifest', 'sandbox_renderer_contract', 'artifact_state_snapshot', 'artifact_version_selector', 'tool_mcp_approval_prompt', 'runtime_error_boundary', 'share_export_manifest', 'artifact_runtime_ui_contract'])
 NON_OWNER_EXPECTED = set(['frontend design generation', 'file persistence', 'sandbox isolation runtime', 'MCP execution', 'API execution', 'media transforms', 'browser automation'])
-OVERLAP_EXPECTED = {'frontend_design_generation': 'handoff_to_rumi_reference_ui_pack', 'file_persistence': 'handoff_to_defaultspack', 'sandbox_isolation_runtime': 'handoff_to_defaultspack', 'mcp_execution': 'handoff_to_defaultspack', 'api_execution': 'handoff_to_defaultspack', 'media_transform': 'handoff_to_defaultspack', 'browser_automation': 'handoff_to_rumi_default_tools_pack', 'defaultspack_artifact_store': 'do_not_override', 'defaultspack_chat_artifact_file': 'read_only_selector_only', 'defaultspack_share_links': 'do_not_override', 'defaultspack_tool_execution': 'do_not_override', 'defaultspack_mcp_execution': 'do_not_override', 'artifact_manifest_contract': 'owned_by_rumi_artifact_app_runtime_pack', 'tool_approval_prompt': 'owned_by_rumi_artifact_app_runtime_pack', 'tool_aliases': 'prefer_explicit_pack_namespace'}
+OVERLAP_EXPECTED = {'frontend_design_generation': 'handoff_to_rumi_frontend_design_pack', 'file_persistence': 'handoff_to_defaultspack', 'sandbox_isolation_runtime': 'handoff_to_defaultspack', 'mcp_execution': 'handoff_to_defaultspack', 'api_execution': 'handoff_to_defaultspack', 'media_transform': 'handoff_to_defaultspack', 'browser_automation': 'handoff_to_rumi_default_tools_pack', 'defaultspack_artifact_store': 'do_not_override', 'defaultspack_chat_artifact_file': 'read_only_selector_only', 'defaultspack_share_links': 'do_not_override', 'defaultspack_tool_execution': 'do_not_override', 'defaultspack_mcp_execution': 'do_not_override', 'artifact_manifest_contract': 'owned_by_rumi_artifact_app_runtime_pack', 'tool_approval_prompt': 'owned_by_rumi_artifact_app_runtime_pack', 'tool_aliases': 'prefer_explicit_pack_namespace'}
 PROMOTION_BLOCKERS = set(['no_renderer_registry_runtime', 'no_per_artifact_storage_runtime', 'sandbox_execution_owned_elsewhere', 'mcp_api_execution_owned_elsewhere', 'approval_receipts_required_for_tool_calls', 'supports_all_ok_false_required', 'no_file_persistence_owner', 'no_media_transform_owner', 'no_mcp_api_execution_owner', 'client_supplied_approved_never_trusted', 'schema_contracts_only'])
 PROMOTION_EVIDENCE = set(['sample_app_manifest_cases', 'tool_approval_denial_cases', 'version_rollback_cases', 'error_boundary_cases', 'export_manifest_cases', 'sandbox_token_cases', 'storage_selector_cases', 'share_export_checksum_cases'])
 BLOCKED_BY_DEFAULT = set(['execute artifact code directly', 'call MCP tools before approval', 'allow network by default', 'persist files without workspace handoff', 'bypass sandbox runtime owner', 'trust client supplied approved flag', 'create share links directly', 'zip/export files directly', 'run media transforms', 'mutate defaultspack stores'])
-HANDOFF_TARGETS = set(['defaultspack', 'rumi_default_tools_pack', 'rumi_reference_ui_pack'])
+HANDOFF_TARGETS = set(['defaultspack', 'rumi_default_tools_pack', 'rumi_frontend_design_pack'])
 
 
 def read_json(path: Path) -> dict:
@@ -49,9 +57,13 @@ def test_required_assets_and_ecosystem_contract() -> None:
     ecosystem = read_json(PACK_DIR / "ecosystem.json")
     assert validate_ecosystem(ecosystem, raise_on_error=False) == []
     assert ecosystem["pack_identity"] == f"rumi:ecosystem/{PACK_ID}"
-    assert ecosystem["dependencies"] == {"defaultspack": ">=2.0.0"}
+    assert ecosystem["dependencies"] == {}
+    assert all((PACK_DIR / name).is_file() for name in V4_AUTHORITY_ARTIFACTS)
     assert ecosystem["required_secrets"] == []
-    assert ecosystem["required_network"] == []
+    assert ecosystem["required_network"] == {
+        "allowed_domains": [],
+        "allowed_ports": [],
+    }
     assert ecosystem["host_execution"] is False
     metadata = ecosystem["metadata"]
     assert metadata["runtime_type"] == "declarative_setup_pack"
@@ -60,24 +72,30 @@ def test_required_assets_and_ecosystem_contract() -> None:
     assert metadata["declarative_only"] is True
     assert metadata["consumes_existing_sources_only"] is True
     assert metadata["output_effect"] == "draft_and_handoff_only"
-    assert metadata["defaultspack_promotion_eligible"] is False
+    assert metadata["base_pack_promotion_eligible"] is False
     assert set(metadata["owner_surfaces"]) >= OWNER_EXPECTED
     assert set(metadata["non_owner_surfaces"]) >= NON_OWNER_EXPECTED
     available = available_setup_pack_ids()
     assert HANDOFF_TARGETS <= available
     optional_integrations = {item["pack_id"]: item["reason"] for item in metadata["optional_integrations"]}
     assert HANDOFF_TARGETS <= set(optional_integrations)
-    assert "UI" in optional_integrations["rumi_reference_ui_pack"]
+    assert "UI" in optional_integrations["rumi_frontend_design_pack"]
     assert "sandbox" in optional_integrations["defaultspack"]
     assert "browser" in optional_integrations["rumi_default_tools_pack"]
-    actual = {path.relative_to(PACK_DIR).as_posix() for path in PACK_DIR.rglob("*") if path.is_file() and path.name != "ecosystem.json"}
+    actual = {
+        path.relative_to(PACK_DIR).as_posix()
+        for path in PACK_DIR.rglob("*")
+        if path.is_file()
+        and path.relative_to(PACK_DIR).as_posix() not in PACK_METADATA_FILES
+    }
+    actual -= V4_AUTHORITY_ARTIFACTS
     indexed = {item for values in metadata["asset_index"].values() for item in values}
     assert actual == indexed == set(REQUIRED_ASSETS)
     asset_index = read_yaml(PACK_DIR / "asset_index.yaml")["asset_index"]
     indexed_file_assets = {item for values in asset_index["categories"].values() for item in values}
     assert indexed_file_assets == actual
     assert asset_index["invariants"]["external_actions_are_handoffs"] is True
-    assert asset_index["invariants"]["defaultspack_promotion_eligible"] is False
+    assert asset_index["invariants"]["base_pack_promotion_eligible"] is False
 
 
 def test_yaml_json_assets_parse() -> None:
@@ -101,9 +119,9 @@ def test_setup_pack_discoverable_and_overlap_scoped() -> None:
         assert candidate.overlap_policy[key] == value
     assert any(value.startswith("owned_by_") for value in candidate.overlap_policy.values())
     assert any("handoff" in value for value in candidate.overlap_policy.values())
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert set(candidate.defaultspack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
-    assert set(candidate.defaultspack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert set(candidate.base_pack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
+    assert set(candidate.base_pack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
     assert candidate.marketplace["status"] == "verified"
     assert candidate.marketplace["category"] == 'artifact-app-runtime'
     assert candidate.signing["verified"] is True

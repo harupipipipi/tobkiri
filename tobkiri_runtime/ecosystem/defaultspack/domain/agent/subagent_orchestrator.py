@@ -3,8 +3,16 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from domain.ai_client.model_call import call_model
 from domain.agent.subagent_roles import get_subagent_role
+from domain.agent.placement_catalog import compile_utility_effective_plan
+from domain.subagent_team.availability import (
+    settings_owner_from_context,
+    subagent_delegation_enabled,
+    subagents_disabled_result,
+)
 
 
 _DELEGATE_CONTEXT_KEYS = (
@@ -19,8 +27,14 @@ _TRUSTED_AUTHORITY_KEYS = ("principal_id", "authority_principal_id")
 
 
 class SubagentOrchestrator:
-    def __init__(self, *, call_handler: Any = None) -> None:
+    def __init__(
+        self,
+        *,
+        call_handler: Any = None,
+        settings_owner: SettingsOwnerPort | None = None,
+    ) -> None:
         self._call_handler = call_handler
+        self._settings_owner = settings_owner
 
     def run(
         self,
@@ -31,6 +45,9 @@ class SubagentOrchestrator:
         settings: dict[str, Any] | None = None,
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        settings_owner = settings_owner_from_context(self._settings_owner, context)
+        if not subagent_delegation_enabled(settings_owner=settings_owner):
+            return _subagents_disabled_orchestration_result(role_id)
         role = get_subagent_role(role_id)
         if role is None:
             raise ValueError("unknown subagent role: " + str(role_id))
@@ -43,10 +60,25 @@ class SubagentOrchestrator:
         )
         if output is None:
             output = self._deterministic_output(role_id, payload)
+        effective_plan = compile_utility_effective_plan(
+            role_id,
+            model=selected_model or "default",
+            output_schema=str(role.get("output_schema") or "object"),
+            maximum_tokens=int(role.get("max_tokens") or 800),
+        )
         return {
             "role_id": role_id,
             "model": selected_model,
             "role": role,
+            "agent_kind": "subagent",
+            "runtime_kind": "utility_model_call",
+            "subagent_role": str(
+                role.get("subagent_role") or role_id
+            ),
+            "placement_id": effective_plan["placement"]["id"],
+            "placement_revision": effective_plan["placement"]["revision"],
+            "effective_plan_hash": effective_plan["plan_hash"],
+            "effective_subagent_plan": effective_plan,
             "output": output,
             "events": [
                 {
@@ -54,6 +86,9 @@ class SubagentOrchestrator:
                     "role_id": role_id,
                     "model": selected_model,
                     "output_schema": role.get("output_schema"),
+                    "runtime_kind": "utility_model_call",
+                    "placement_id": effective_plan["placement"]["id"],
+                    "effective_plan_hash": effective_plan["plan_hash"],
                 }
             ],
         }
@@ -82,6 +117,11 @@ class SubagentOrchestrator:
                 },
                 runtime_context,
                 call_handler=self._call_handler,
+                **(
+                    {"settings_owner": self._settings_owner}
+                    if self._settings_owner is not None
+                    else {}
+                ),
             )
         except Exception:
             return None
@@ -126,8 +166,12 @@ def run_subagent(
     settings: dict[str, Any] | None = None,
     call_handler: Any = None,
     context: dict[str, Any] | None = None,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> dict[str, Any]:
-    return SubagentOrchestrator(call_handler=call_handler).run(
+    return SubagentOrchestrator(
+        call_handler=call_handler,
+        settings_owner=settings_owner,
+    ).run(
         role_id,
         payload,
         model=model,
@@ -144,6 +188,7 @@ def run_subagent_compat(
     settings: dict[str, Any] | None = None,
     call_handler: Any = None,
     context: dict[str, Any] | None = None,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> dict[str, Any]:
     cleaned_role_id = str(role_id or "").strip()
     cleaned_payload = payload if isinstance(payload, dict) else {}
@@ -155,13 +200,40 @@ def run_subagent_compat(
             settings=settings,
             call_handler=call_handler,
             context=context,
+            **({"settings_owner": settings_owner} if settings_owner is not None else {}),
         )
         result["compatibility_alias"] = "subagent"
         result["route_kind"] = "utility_model_call"
         return result
     if cleaned_role_id in {"delegate", "agent_delegate", "task"} or str(cleaned_payload.get("task") or cleaned_payload.get("prompt") or "").strip():
-        return _delegate_via_input(cleaned_role_id, cleaned_payload, model=model, context=context)
+        return _delegate_via_input(
+            cleaned_role_id,
+            cleaned_payload,
+            model=model,
+            context=context,
+            **({"settings_owner": settings_owner} if settings_owner is not None else {}),
+        )
     raise ValueError("unknown subagent role: " + cleaned_role_id)
+
+
+def _subagents_disabled_orchestration_result(role_id: str) -> dict[str, Any]:
+    disabled = subagents_disabled_result()
+    return {
+        "role_id": str(role_id or ""),
+        "status": "error",
+        "code": disabled["code"],
+        "error": disabled["message"],
+        "assistant_text": disabled["message"],
+        "agent_kind": "subagent",
+        "runtime_kind": "utility_model_call",
+        "output": {},
+        "events": [
+            {
+                "type": "subagent_rejected",
+                "code": disabled["code"],
+            }
+        ],
+    }
 
 
 def _model_for_role(role_id: str, settings: dict[str, Any]) -> str:
@@ -265,6 +337,7 @@ def _delegate_via_input(
     *,
     model: str = "",
     context: dict[str, Any] | None = None,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> dict[str, Any]:
     from domain.input.dispatcher import dispatch_input
     from domain.input.envelope import RumiInputEnvelope
@@ -312,6 +385,7 @@ def _delegate_via_input(
             tools=list(payload.get("tools") if isinstance(payload.get("tools"), list) else []),
         ),
         dispatch_context,
+        **({"settings_owner": settings_owner} if settings_owner is not None else {}),
     )
     if isinstance(result, dict):
         assistant_text = extract_assistant_text_from_result(result)

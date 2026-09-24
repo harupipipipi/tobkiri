@@ -1,0 +1,192 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "isolate",
+        "id": "rumi.service.ai.tokenize.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_ai_usage_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "ai-usage.tokenize",
+        "required_capabilities": [
+          "ai.tokenize"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "isolate",
+        "id": "rumi.service.ai.usage.cost.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_ai_usage_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "ai-usage.cost",
+        "required_capabilities": [
+          "ai.usage.cost"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:16b80027e2859cff8515525ee87e16e4c33a6c222d54168d1f5fa9a145195316",
+      "contract_id": "rumi.service.ai.tokenize.v1",
+      "id": "ai-tokenize",
+      "loader": "python",
+      "module": "ecosystem.rumi_ai_usage_pack.runtime.usage",
+      "symbol": "create_tokenize_operation"
+    },
+    {
+      "artifact_hash": "sha256:16b80027e2859cff8515525ee87e16e4c33a6c222d54168d1f5fa9a145195316",
+      "contract_id": "rumi.service.ai.usage.cost.v1",
+      "id": "ai-usage-cost",
+      "loader": "python",
+      "module": "ecosystem.rumi_ai_usage_pack.runtime.usage",
+      "symbol": "create_cost_operation"
+    }
+  ],
+  "extensions": {
+    "rumi.ai_usage.boundary": {
+      "exact_tokenizer_claim": false,
+      "unknown_cost_zero": false,
+      "unknown_usage_zero": false
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.ai.tokenize.v1",
+            "rumi.service.ai.usage.cost.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Replaceable token estimation and usage-cost normalization.",
+        "display_name": "Rumi AI Usage",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:ed8f91da4b22cae647640fae3952bcf9816006506bdb694774f2c30cef986981",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:e9d186ec3c1c0e99fa368d248a8160bb2f76f618c03e0a2069459c8e8aaad3c5"
+          },
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "owner_surfaces": [
+            "token_estimates",
+            "normalized_usage_cost"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "network": false,
+            "provider_branches": false,
+            "unknown_cost_preserved": true
+          }
+        },
+        "pack_id": "rumi_ai_usage_pack",
+        "pack_identity": "rumi:ecosystem/rumi_ai_usage_pack",
+        "provenance": {
+          "build_identity": "rumi_ai_usage_pack:1.0.0",
+          "content_hash": "sha256:9e2236e965019d67898af10baa0dfba08486a7353b13252fd98e8d994c3230fd",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "ai.tokenize",
+          "ai.usage.cost"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_ai_usage_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_ai_usage_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:e9d186ec3c1c0e99fa368d248a8160bb2f76f618c03e0a2069459c8e8aaad3c5"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.ai_client.tokenizer",
+      "defaultspack.ai_client.usage"
+    ],
+    "removal_wave": 10,
+    "rollback": "Remove the usage pack and restore the pinned previous selected usage provider.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Replaceable token estimation and usage-cost normalization.",
+    "display_name": "Rumi AI Usage",
+    "id": "rumi.ai_usage",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "ai.tokenize"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "ai.usage.cost"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_ai_usage_pack:1.0.0",
+    "content_hash": "sha256:9e2236e965019d67898af10baa0dfba08486a7353b13252fd98e8d994c3230fd",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
+}

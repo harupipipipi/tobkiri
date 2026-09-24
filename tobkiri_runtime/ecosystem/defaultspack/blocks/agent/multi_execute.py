@@ -1,21 +1,27 @@
-import os
 import re
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import error, ok
 from blocks.agent._state import set_multi_session
 from domain.company.message_router import CompanySlackRuntime
 from domain.company.models import DEFAULT_COMPANY_ID, DEFAULT_COMPANY_NAME, normalize_agent
 from domain.company.store import CompanyStore
+from domain.subagent_team.availability import (
+    settings_owner_from_context,
+    subagent_delegation_enabled,
+    subagents_disabled_result,
+)
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner=None):
     """Compatibility wrapper for the legacy multi-agent execute endpoint."""
     if not isinstance(input_data, dict):
         return error("input_data must be a dict")
     context = context or {}
+    settings_owner = settings_owner_from_context(settings_owner, context)
+    if not subagent_delegation_enabled(settings_owner=settings_owner):
+        disabled = subagents_disabled_result()
+        return error(disabled["message"], disabled["code"])
     task = str(input_data.get("task") or "").strip()
     if not task:
         return error("task is required")
@@ -36,7 +42,10 @@ def run(input_data, context):
             store.upsert_agent(company_id, agent)
 
     target_agent_ids = [agent["agent_id"] for agent in agents] if agents else ["operations_manager"]
-    result = CompanySlackRuntime(company_store=store).post_message(
+    result = CompanySlackRuntime(
+        company_store=store,
+        settings_owner=settings_owner,
+    ).post_message(
         company_id,
         content=task,
         sender_id=str(input_data.get("sender_id") or "legacy_multi"),

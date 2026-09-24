@@ -3,6 +3,24 @@
 
 ## Canonical implementation
 
+The captured full-UI conversation CRUD routes use the conversation
+owner Pack through Authority/Broker. Creation requires a stable client UUID and
+the list's `store_revision`; a stale write is rejected, not retried with a fresh
+identity. The source Profile includes the required conversation-manage edge;
+existing activations must review that addition before using it. Record updates and
+deletion require the displayed record's revision; stale writes fail unchanged.
+See [Chat API](docs/chat.md) for the canonical/legacy distinction.
+
+The full-UI send path uses the saved-turn computation in
+`runtime/saved_conversation.py` for bounded read, append-user, generate, and
+append-assistant operations. It preserves stable IDs and owner revisions and
+reports uncertain writes without retrying them. Text and bounded inline images
+are supported; image turns require an owner-verified image-capable model.
+The legacy Vision Bridge does not run on this path. Unsupported special
+conversation contexts stop before submission. Guest resume state remains
+internal and must not be exposed as an HTTP input. See
+[saved-turn integration requirements](../../docs/saved-turn-bridge-v2.md).
+
 For Tobkiri, the canonical defaultspack implementation is
 `tobkiri_runtime/ecosystem/defaultspack/`.
 
@@ -34,6 +52,21 @@ runtime 本体はドメイン知識を持たない汎用カーネルです。def
 defaults 単体で既存の AI サービス（ChatGPT / Claude / Cursor / Devin）と正面から戦えるレベルの品質を目指す。
 
 ---
+
+## Tobkiri の画面操作
+
+- 入力欄の `+` と `/` は同じ候補一覧を開きます。`/attach` で写真やファイルを添付できます。`+` から添付する場合は入力中の文章を保持します。テンプレートで無効にした添付・コマンドは一覧に出ません。
+- サイドバー上部の検索アイコン、または設定済みの検索ショートカット（標準は `Ctrl+K`）で最近のチャットと検索結果を開けます。上下キーで選択し、Enterで会話を開きます。
+- プロジェクトは矢印で開閉し、名前をダブルクリックすると編集できます。
+- New Projectは画面全体のモーダルで作成します。チャット行の「…」からPin・Starを切り替えられます。
+- 長文の入力欄は右上のアイコンで縮小・展開できます。OSの「動きを減らす」設定では伸縮アニメーションを省略します。
+- 送信したメッセージのメンションは本文内で青く表示します。作業状況から開いたCanvasは、同じ作業行をもう一度押すと閉じます。
+- `@` の候補はプラグイン・接続、内蔵ツール、追加したツール、スキルなどに分けて表示します。
+- `+` の `/image` から画像を選べます。PNG・JPEG・WebP・GIFを1枚1MiBまで、1回に2枚まで添付できます。通常の会話で、画像対応モデルを選んで送信してください。
+- 設定の表示は「標準」と「上級者」の2段階です。表示言語は「表示と入力」の先頭、プレビュー関連は同じグループにあります。検索キーはボタンを押してキーの組み合わせを記録します。
+- モデルと考える深さは同じモデル欄で選びます。軽量モデルには画像を読めるモデルを推奨し、非対応の場合は案内を表示します。通常のAPI接続はプロバイダー・名前・キーを入力し、Customを選んだ場合だけ接続先と方式を指定します。
+- 「機能」でタブ表示、「自動化と権限」でサブエージェントの使用を切り替えられます。サブエージェントをOFFにすると、新しい委任の開始を止めます。「ツール」のMCPサーバー管理では接続設定を登録し、接続・実行時には既存の承認手順を使います。
+- 「AIアシスタント」の応答の方針で、新しい会話に使うシステムプロンプトを選択・編集できます。AI文字起こしは録音を文字にして入力欄へ追加し、送信前に確認できます。
 
 ## 思想
 
@@ -83,7 +116,7 @@ defaults 単体で既存の AI サービス（ChatGPT / Claude / Cursor / Devin�
 | HTTP エンドポイントを見たい | `docs/chat.md`, `transport/http.py` |
 | viewer 経由の起動フローを知りたい | `../../docs/tobkiri_launcher_start.md` |
 
-`webapp/` は `rumi DP` の standalone frontend source です。`defaultspack` の `/api/chat/...`、`/api/ui/...`、`/api/health` に接続します。`npm run build` の出力先は `ui/` で、HTTP サーバーはその build 済み asset を `/` と `/static/...` で配信します。
+`webapp/` は `Tobkiri` の standalone frontend source です。`defaultspack` の `/api/chat/...`、`/api/ui/...`、`/api/health` に接続します。`npm run build` の出力先は `ui/` で、HTTP サーバーはその build 済み asset を `/` と `/static/...` で配信します。
 
 ## AI Agent Service Defaults
 

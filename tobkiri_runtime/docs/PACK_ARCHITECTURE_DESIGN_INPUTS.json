@@ -1,0 +1,39 @@
+{
+  "schema": "io.tobkiri.architecture.design-inputs.v1",
+  "status": "normative-provenance",
+  "repository": "https://github.com/harupipipipi/tobkiri",
+  "target_branch": "codex/pack-architecture-program-soon",
+  "implementation_baseline_commit": "b04ca0bff0220d83a03625acd5e53afe60bf7d9a",
+  "normative_documents": [
+    "tobkiri_runtime/docs/TOBKIRI_PACK_ARCHITECTURE_IMPLEMENTATION_PLAN.txt",
+    "tobkiri_runtime/docs/ADR-014_BOUNDARY_CAPABILITY_GRANTS.txt",
+    "tobkiri_runtime/docs/ADR-015_RUNTIME_SECURITY_LIFECYCLE.txt",
+    "tobkiri_runtime/docs/ADR-016_BASE_SHELL_APPLICATION_MODEL.txt"
+  ],
+  "informative_external_inputs": [
+    {
+      "name": "Tobkiri Pack Architecture v1.1 bundle",
+      "sha256": "507b8c42044c9931a3d10ab5fefbc31eb397f2093ce82f4c01f75a86acb07834",
+      "tracked": false,
+      "normative": false,
+      "reason": "The bundle body, immutable URI, byte size, media type, component hashes, and source commit are not tracked. No implementation or conformance decision may require this input."
+    },
+    {
+      "name": "three read-only subagent investigations",
+      "tracked": false,
+      "normative": false,
+      "reason": "Private agent output is design-time context only. Claims used by implementation must be regenerated from the repository inventory and evidence paths."
+    }
+  ],
+  "required_generated_inventory": {
+    "format": "io.tobkiri.architecture.inventory.v1",
+    "inputs": [
+      "repository commit and tree",
+      "scanner source digest and version",
+      "included and excluded paths",
+      "per-finding evidence path and stable rule ID",
+      "artifact, manifest, execution-route, state-owner, and legacy-bypass records"
+    ],
+    "ci_rule": "Regeneration must produce no uncommitted diff and every evidence path must exist."
+  }
+}

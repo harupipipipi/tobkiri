@@ -1,0 +1,57 @@
+{
+  "artifact_set_digest": "sha256:be819966eca264fcc1674f7625970411f3d93935e2202b962da2b5ad208e4b34",
+  "artifacts": [
+    {
+      "digest": "sha256:172ca5b6533e47c0c339181eca0307d0dc6acabdd1ab526933683dff5f80bcbf",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:9cb12b834cae464d9350e65ae688bd0ba372c1f17e042aa6228af03ff036e135",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:7f8d9f25ba5e80e8ff5bd45cfeca0c99b3adb581200315c522f62dc3409f356e",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:4f3bd4ae8b82c5e6190a243610bfb897eab50d6d730d4d1f5c9e246c487e93aa",
+      "path": "runtime/model_search.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea",
+      "path": "runtime/projects.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:f9a58a900107b63b599136be11042aa089b8d5280037b2607540fb290270d66d",
+      "path": "runtime/public-settings-fields.v1.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:692cb5e900b0cbf3229f551dc23b875ee0851a5b8c4bfcd15726bb9338a971b3",
+      "path": "runtime/settings.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+      "path": "runtime/state_changes.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:4b1813a4c9059254dcbd7b23234ca4b7ddcae1184aa806ffdcb3d290b1e223b2",
+      "path": "runtime/store.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:349c2b66b69249f4041aa7c4a14a483cd305d1991f87d7e73193606d8bf055bd"
+  },
+  "pack_id": "tobkiri_ui_settings_pack",
+  "source_identity": "sha256:404f988cc88da6b84b364730300fdfb589162d518baaa109e37796d928b5a566"
+}

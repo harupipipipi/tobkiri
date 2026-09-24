@@ -1,20 +1,26 @@
-import os
 import re
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import error, ok
 from blocks.agent._state import get_multi_session, set_multi_session
 from domain.company.message_router import CompanySlackRuntime
 from domain.company.models import DEFAULT_COMPANY_ID
 from domain.company.store import CompanyStore
+from domain.subagent_team.availability import (
+    settings_owner_from_context,
+    subagent_delegation_enabled,
+    subagents_disabled_result,
+)
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner=None):
     """Compatibility wrapper for posting into a CompanySlackRuntime thread."""
     if not isinstance(input_data, dict):
         return error("input_data must be a dict")
+    settings_owner = settings_owner_from_context(settings_owner, context)
+    if not subagent_delegation_enabled(settings_owner=settings_owner):
+        disabled = subagents_disabled_result()
+        return error(disabled["message"], disabled["code"])
     session_id = str(input_data.get("session_id") or "").strip()
     if not session_id:
         return error("session_id is required")
@@ -28,7 +34,7 @@ def run(input_data, context):
         return error("team workspace not found: " + company_id, "NOT_FOUND")
     target_agent = str(input_data.get("target_agent") or "").strip()
     target_agent_ids = [_slug(target_agent)] if target_agent else None
-    result = CompanySlackRuntime().post_message(
+    result = CompanySlackRuntime(settings_owner=settings_owner).post_message(
         company_id,
         content=message,
         sender_id=str(input_data.get("sender_id") or "legacy_multi"),

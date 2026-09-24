@@ -1,0 +1,1 @@
+{"schema_version":"rumi.artifact-manifest.v1","artifacts":[{"path":"runtime/mutate.py","sha256":"738c06d2712518cd7a32769eb9a2eaf967eecdf5607a907d1a397f5ff131c100","role":"runtime"}]}

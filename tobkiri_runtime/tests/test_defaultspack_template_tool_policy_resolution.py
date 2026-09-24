@@ -3,10 +3,14 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+
+pytestmark = pytest.mark.usefixtures("defaultspack_v4_tool_dispatch")
 
 from domain.chat.run_request import _available_tools  # noqa: E402
 from domain.templates import ResolvedTemplate, parse_template, project_resolved_templates  # noqa: E402
@@ -128,7 +132,10 @@ def test_resolved_template_policy_filters_requested_tools_in_backend_pipeline():
     )
 
     raw_tools, _provider_tools, _tool_context = _available_tools(
-        {"profile_policy": resolution.policy},
+        {
+            "profile_policy": resolution.policy,
+            "principal_capabilities": ["developer"],
+        },
         {
             "tools": ["web_search", "coding_terminal_exec"],
             "params": {"tool_policy": resolution.policy},

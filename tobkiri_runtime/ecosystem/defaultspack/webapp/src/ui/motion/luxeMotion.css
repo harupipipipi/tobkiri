@@ -57,13 +57,6 @@
     filter var(--rumi-dur-base) var(--rumi-ease-out);
 }
 
-#root button:not(:disabled):active,
-#root [role="button"]:not([aria-disabled="true"]):active,
-#root summary:active {
-  transform: translateY(0.5px) scale(0.985);
-  transition-duration: var(--rumi-dur-fast);
-}
-
 #root button:not(:disabled):hover,
 #root [role="button"]:not([aria-disabled="true"]):hover,
 #root a:hover {

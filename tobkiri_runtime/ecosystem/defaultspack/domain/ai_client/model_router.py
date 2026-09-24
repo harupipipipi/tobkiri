@@ -1,7 +1,3 @@
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-
 """
 model_router.py — モデルルーティングロジック
 
@@ -9,19 +5,23 @@ AIClient をラップし、入力を分析して最適モデルに自動ルー�
 AIClient 自体は変更しない。
 """
 
-import time
-import json
 import copy
+import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from domain.ai_client.task_analyzer import analyze_fast, analyze_heavy
-from domain.ai_client.model_profiles import ModelProfileManager
-from domain.ai_client.model_groups import normalize_model_groups
 from domain.ai_client.model_pack_router import select_model_pack
 from domain.ai_client.model_pack_store import ModelPackStore
-from domain.ai_client.model_roles import normalize_utility_model_policy, normalize_utility_models
-from domain.ai_client.model_search import get_model_capabilities, models_for_group
+from domain.ai_client.model_profiles import ModelProfileManager
+from domain.ai_client.model_roles import (
+    normalize_utility_model_policy,
+    normalize_utility_models,
+)
+from domain.ai_client.model_search import (
+    get_model_capabilities,
+    models_for_group,
+)
+from domain.ai_client.task_analyzer import analyze_fast, analyze_heavy
 
 
 @dataclass
@@ -112,7 +112,11 @@ def route_model_request(
     candidates = models_for_group(selected_group, settings, profiles=profiles)
     if not candidates:
         candidates = models_for_group("default", settings, profiles=profiles)
-    original_caps = get_model_capabilities(original, profiles=profiles)
+    original_caps = get_model_capabilities(
+        original,
+        profiles=profiles,
+        settings=settings,
+    )
     selected = original_caps or (candidates[0] if candidates else {"profile_id": original})
     reason_codes: list[str] = ["preferred_model"]
     warnings: list[str] = []
@@ -342,6 +346,18 @@ def _resolve_utility_models(settings: dict[str, Any], candidates: list[dict[str,
     policy = normalize_utility_model_policy(settings.get("utility_model_policy") if isinstance(settings, dict) else None)
     if not policy.get("allow_auto_select", True):
         return configured
+    # The lightweight slot is the everyday default for the image bridge too.
+    # An explicitly assigned vision_ocr role continues to win; when the
+    # lightweight model cannot read images, the normal vision-capable fallback
+    # below remains available instead of sending images to a text-only model.
+    if not configured.get("vision_ocr"):
+        lightweight = _lightweight_model_reference(settings, configured)
+        lightweight_candidate = next(
+            (item for item in candidates if _same_model(item, lightweight)),
+            None,
+        )
+        if lightweight_candidate and _model_supports_images(lightweight_candidate):
+            configured["vision_ocr"] = _model_reference(lightweight_candidate)
     for role, current in list(configured.items()):
         if current:
             continue
@@ -349,16 +365,36 @@ def _resolve_utility_models(settings: dict[str, Any], candidates: list[dict[str,
     return configured
 
 
+def _lightweight_model_reference(settings: dict[str, Any], configured: dict[str, str]) -> str:
+    slots = settings.get("model_slots") if isinstance(settings.get("model_slots"), dict) else {}
+    return str(
+        slots.get("lightweight")
+        or settings.get("lightweight_model")
+        or configured.get("fast_reply")
+        or configured.get("subagent_default")
+        or ""
+    ).strip()
+
+
+def _model_supports_images(model: dict[str, Any]) -> bool:
+    return bool(model.get("supports_vision") or model.get("supports_image_input"))
+
+
+def _model_reference(model: dict[str, Any]) -> str:
+    return str(model.get("profile_id") or model.get("qualified_model_id") or "").strip()
+
+
 def _auto_select_role(role: str, candidates: list[dict[str, Any]], policy: dict[str, Any]) -> str:
     min_levels = policy.get("min_knowledge_level") if isinstance(policy.get("min_knowledge_level"), dict) else {}
     floor = int(min_levels.get(role, 0) or 0)
     filtered = [item for item in candidates if item.get("configured") and int(item.get("knowledge_level") or 0) >= floor]
     if role == "vision_ocr":
-        filtered = [item for item in filtered if item.get("supports_vision")]
+        filtered = [item for item in filtered if _model_supports_images(item)]
     if role == "tool_selector":
         filtered = [item for item in filtered if item.get("supports_tool_calling") or item.get("supports_fast")]
     if not filtered:
-        filtered = [item for item in candidates if item.get("configured")] or candidates
+        fallback = [item for item in candidates if item.get("configured")] or candidates
+        filtered = [item for item in fallback if _model_supports_images(item)] if role == "vision_ocr" else fallback
     if not filtered:
         return ""
     if policy.get("prefer_fast_for_utility", True):

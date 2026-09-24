@@ -78,7 +78,8 @@ test("private targets and unsafe SVG data render an accessible blocked state onl
       alt: "Unsafe image",
       intent: "show_to_user",
     }]));
-    assert.match(html, /role="alert"/);
+    assert.match(html, /role="status"/);
+    assert.match(html, /aria-live="polite"/);
     assert.match(html, /Image blocked for safety/);
     assert.match(html, /aria-label="Image: Unsafe image"/);
     assert.doesNotMatch(html, /<img\b/i);
