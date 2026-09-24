@@ -137,6 +137,15 @@ class MacOSVZSupervisorTransport(Protocol):
     def exchange(self, envelope: Mapping[str, Any]) -> Mapping[str, Any]:
         """Send one canonical supervisor request and return one response."""
 
+    def alive(self) -> bool:
+        """Report whether the helper can still answer exchanges.
+
+        A transport returning ``False`` lets ``terminate`` reclaim the
+        domain through the dead-helper path instead of wedging on a
+        live-but-unresponsive process.  Transports without a liveness
+        signal are treated as alive.
+        """
+
     def close(self) -> None:
         """Close this one-domain helper only after verified cleanup."""
 
@@ -422,12 +431,27 @@ def _is_gate_busy_error(exc: BaseException) -> bool:
 
     The allocator is injected through :class:`MacOSVZDomainAllocator`, so the
     concrete error type stays provisioner-side; it is matched by name across
-    the exception's MRO without importing the provisioner module.
+    the exception's MRO without importing the provisioner module.  Wrappers
+    that chain the busy error through ``__cause__``/``__context__`` count as
+    busy too — a wrapped retryable error must never latch compromise.
     """
 
-    return "PackVMGateBusyError" in {
-        cls.__name__ for cls in type(exc).__mro__
-    }
+    seen: set[int] = set()
+    pending: list[BaseException] = [exc]
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if "PackVMGateBusyError" in {
+            cls.__name__ for cls in type(current).__mro__
+        }:
+            return True
+        if current.__cause__ is not None:
+            pending.append(current.__cause__)
+        if current.__context__ is not None:
+            pending.append(current.__context__)
+    return False
 
 
 class MacOSVZDomainAllocator(Protocol):

@@ -396,8 +396,7 @@ class _MacOSVZHelperProcess:
         bound = _exchange_wait_bound(envelope)
         send_deadline = time.monotonic() + min(bound, _MAX_HELPER_SEND_SECONDS)
         try:
-            with self._send_lock:
-                self._write_line(dict(envelope), send_deadline)
+            self._send_payload(dict(envelope), send_deadline)
             try:
                 return pending.take(bound)
             except ValueError:
@@ -485,8 +484,7 @@ class _MacOSVZHelperProcess:
         bound = _exchange_wait_bound(payload)
         send_deadline = time.monotonic() + min(bound, _MAX_HELPER_SEND_SECONDS)
         try:
-            with self._send_lock:
-                self._write_line(dict(payload), send_deadline)
+            self._send_payload(dict(payload), send_deadline)
             try:
                 return pending.take(bound)
             except ValueError:
@@ -497,24 +495,45 @@ class _MacOSVZHelperProcess:
             with self._lock:
                 self._pending.pop(key, None)
 
-    def _expire_channel(self) -> None:
-        """Fail the transport after a helper misses its response deadline.
+    def _expire_channel(
+        self, reason: str = "PackVM VZ helper response deadline expired"
+    ) -> None:
+        """Fail the transport after a helper misses its exchange deadline.
 
-        A live-but-silent helper can never answer later exchanges either, so
-        the channel is declared dead: ``alive`` flips false and the
-        supervisor's dead-helper reclaim completes teardown instead of
-        wedging the domain forever.
+        A live-but-silent or never-draining helper can never answer later
+        exchanges either, so the channel is declared dead: ``alive`` flips
+        false and the supervisor's dead-helper reclaim completes teardown
+        instead of wedging the domain forever.
         """
 
         with self._lock:
             if self._reader_failure is None:
-                self._reader_failure = (
-                    "PackVM VZ helper response deadline expired"
-                )
+                self._reader_failure = reason
             pending_all = list(self._pending.values())
             self._pending.clear()
         for exchange in pending_all:
-            exchange.fail("PackVM VZ helper response deadline expired")
+            exchange.fail(reason)
+
+    def _send_payload(
+        self, payload: dict[str, object], send_deadline: float
+    ) -> None:
+        """Write one request line, expiring the channel on send failures.
+
+        A helper that cannot drain a complete line inside the send deadline
+        can never answer it either, so deadline and I/O failures kill the
+        channel and let the supervisor reclaim the domain through the
+        dead-helper path.  Oversized envelopes are a caller error and leave
+        the channel untouched.
+        """
+
+        try:
+            with self._send_lock:
+                self._write_line(payload, send_deadline)
+        except _HelperRequestOversized:
+            raise
+        except (OSError, ValueError) as exc:
+            self._expire_channel(f"PackVM VZ helper send failed: {exc}")
+            raise
 
     def _write_line(self, payload: dict[str, object], deadline: float) -> None:
         """Write one request line without allowing a wedged helper to block.
@@ -530,7 +549,9 @@ class _MacOSVZHelperProcess:
             raise ValueError("PackVM VZ helper pipes are unavailable")
         encoded = _canonical_bytes(payload)
         if len(encoded) > _MAX_HELPER_PROTOCOL_BYTES:
-            raise ValueError("PackVM VZ helper request exceeds its bound")
+            raise _HelperRequestOversized(
+                "PackVM VZ helper request exceeds its bound"
+            )
         try:
             fd = self._process.stdin.fileno()
         except (OSError, io.UnsupportedOperation):
@@ -619,6 +640,10 @@ class _MacOSVZHelperProcess:
                 self._pending.clear()
             for exchange in pending_all:
                 exchange.fail(failure or "PackVM VZ helper transport closed")
+
+
+class _HelperRequestOversized(ValueError):
+    """Caller-side envelope bound violation; the channel itself is healthy."""
 
 
 class _PendingHelperExchange:
@@ -838,13 +863,14 @@ class MacOSVZProvisioner:
             {"version": 1, "entries": retained},
         )
 
-    def _orphaned_allocation_claim(
+    def _orphaned_allocation_claims(
         self, domain_id: str, reservation_id: str
-    ) -> dict[str, Any] | None:
-        """Return the adopted dead ``allocate`` claim for this binding, if any."""
+    ) -> list[dict[str, Any]]:
+        """Return every adopted dead ``allocate`` claim for this binding."""
 
         domain_digest = _digest_text(domain_id)
         reservation_digest = _digest_text(reservation_id)
+        entries: list[dict[str, Any]] = []
         for entry in self._orphaned_allocation_entries():
             if not isinstance(entry, Mapping):
                 continue
@@ -857,8 +883,8 @@ class MacOSVZProvisioner:
                 and binding.get("domain_digest") == domain_digest
                 and binding.get("reservation_digest") == reservation_digest
             ):
-                return dict(entry)
-        return None
+                entries.append(dict(entry))
+        return entries
 
     def _drop_orphaned_allocation_claim(self, claim: Mapping[str, Any]) -> None:
         """Consume a preserved claim once its recovery ceremony completes."""
@@ -1495,7 +1521,10 @@ class MacOSVZProvisioner:
             raise ValueError("PackVM VZ recovery executable digest is invalid")
         claim = _read_json_if_present(self.mutation_claim_path)
         receipt_hint = _read_json_if_present(self.allocation_recovery_path)
-        orphaned = self._orphaned_allocation_claim(domain_id, reservation_id)
+        orphaned_entries = self._orphaned_allocation_claims(
+            domain_id, reservation_id
+        )
+        orphaned = orphaned_entries[0] if orphaned_entries else None
         if claim is not None:
             # Residue from an unrelated mutation must not shadow the tombstone
             # journal or the recovery receipt for this exact allocation; the
@@ -1578,13 +1607,31 @@ class MacOSVZProvisioner:
             "binding": binding,
         }
         receipt_matches = self._allocation_recovery_receipt_matches(binding, root)
-        effective_claim = claim if claim is not None else orphaned
+        if claim is not None and not self._stale_allocation_claim_matches(
+            claim, expected_claim
+        ):
+            # Residue from a dead mutation (different operation or lease on
+            # the same domain/reservation) must not shadow this allocation's
+            # orphaned claim or receipt; the locked section below drops it.
+            claim = None
+        if claim is not None:
+            effective_claim = claim
+        else:
+            # Several orphaned claims can share the domain/reservation
+            # digests while differing on lease; adopt the one matching this
+            # exact allocation binding.
+            effective_claim = next(
+                (
+                    entry
+                    for entry in orphaned_entries
+                    if self._stale_allocation_claim_matches(
+                        entry, expected_claim
+                    )
+                ),
+                None,
+            )
         if effective_claim is None:
             return receipt_matches
-        if not self._stale_allocation_claim_matches(
-            effective_claim, expected_claim
-        ):
-            return False
         if root.exists() or root.is_symlink():
             if not _safe_private_domain_root(root):
                 raise ValueError("PackVM VZ interrupted allocation root is unsafe")

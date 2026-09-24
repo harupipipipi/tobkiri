@@ -2250,3 +2250,59 @@ def _helper_process_for_test(response: bytes) -> _MacOSVZHelperProcess:
     )
     instance._reader.start()
     return instance
+
+
+def test_helper_send_failure_expires_channel() -> None:
+    """A send-side I/O failure kills the channel for dead-helper reclaim.
+
+    A live helper that cannot accept a complete request line can never
+    answer it; the transport must report ``alive()`` false so the
+    supervisor reclaims the domain instead of retrying a dead pipe.
+    """
+
+    transport = _helper_process_for_test(b"{}")
+    dead_fd = os.open(os.devnull, os.O_RDONLY)
+    os.close(dead_fd)
+
+    class _ClosedFd:
+        def fileno(self) -> int:
+            return dead_fd
+
+    transport._process.stdin = _ClosedFd()
+    transport._domain_id = "domain-1"
+    transport._launch_binding_digest = "binding-1"
+    assert transport.alive()
+
+    with pytest.raises(ValueError):
+        transport.exchange(
+            {
+                "domain_id": "domain-1",
+                "launch_binding_digest": "binding-1",
+                "host_nonce": "nonce-1",
+                "operation": "terminate",
+            }
+        )
+
+    assert not transport.alive()
+
+
+def test_helper_oversized_request_does_not_expire_channel() -> None:
+    """A caller-side envelope bound violation leaves a healthy channel up."""
+
+    transport = _helper_process_for_test(b"{}")
+    transport._domain_id = "domain-1"
+    transport._launch_binding_digest = "binding-1"
+    assert transport.alive()
+
+    with pytest.raises(ValueError, match="exceeds its bound"):
+        transport.exchange(
+            {
+                "domain_id": "domain-1",
+                "launch_binding_digest": "binding-1",
+                "host_nonce": "nonce-1",
+                "operation": "invoke",
+                "payload": "x" * (macos_vz_provisioner._MAX_HELPER_PROTOCOL_BYTES + 1),
+            }
+        )
+
+    assert transport.alive()
