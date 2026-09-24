@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import hmac
 import importlib
@@ -909,7 +910,9 @@ class PackVMImageCache:
                     "packvm_image_reservation_unsafe",
                     "PackVM image capacity reservation is unsafe",
                 )
-            _acquire_portable_lock(descriptor)
+            _acquire_portable_lock(
+                descriptor, self._overall_timeout + 3600.0
+            )
             locked = True
             current = os.stat(
                 name, dir_fd=pinned.root_descriptor, follow_symlinks=False
@@ -1804,20 +1807,35 @@ def _try_portable_lock(descriptor: int) -> None:
     backend.flock(descriptor, backend.LOCK_EX | backend.LOCK_NB)
 
 
-def _acquire_portable_lock(descriptor: int) -> None:
-    """Acquire one blocking cache-wide reservation released by process exit."""
+_RETRYABLE_LOCK_ERRNOS = {errno.EACCES, errno.EAGAIN, errno.EDEADLK}
 
-    if os.name == "nt":
-        backend = importlib.import_module("msvcrt")
-        os.lseek(descriptor, 0, os.SEEK_SET)
-        if os.fstat(descriptor).st_size == 0:
-            os.write(descriptor, b"\0")
-            os.fsync(descriptor)
-        os.lseek(descriptor, 0, os.SEEK_SET)
-        backend.locking(descriptor, backend.LK_LOCK, 1)
-        return
-    backend = importlib.import_module("fcntl")
-    backend.flock(descriptor, backend.LOCK_EX)
+
+def _acquire_portable_lock(descriptor: int, wait_seconds: float) -> None:
+    """Acquire the cache-wide reservation within a bounded wait.
+
+    The holder publishes inside its own download deadline, so a waiter that
+    outlasts the download bound plus the publication margin is blocked by a
+    provably wedged holder rather than a legitimate transfer.
+    """
+
+    deadline = time.monotonic() + max(0.0, wait_seconds)
+    while True:
+        try:
+            _try_portable_lock(descriptor)
+            return
+        except OSError as error:
+            if (
+                not isinstance(error, PermissionError)
+                and error.errno not in _RETRYABLE_LOCK_ERRNOS
+            ):
+                raise
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise PackVMImageError(
+                    "packvm_image_reservation_timeout",
+                    "PackVM image capacity reservation wait expired",
+                ) from error
+            time.sleep(min(0.05, remaining))
 
 
 def _release_portable_lock(descriptor: int) -> None:
