@@ -884,7 +884,13 @@ class PackVMImageCache:
     def _root_quota_lock(self, pinned: _PinnedEntry) -> Iterator[int]:
         """Hold the stable cache-wide OS reservation until publication finishes."""
 
-        self._capacity_lock.acquire()
+        if not self._capacity_lock.acquire(
+            timeout=self._overall_timeout + 3600.0
+        ):
+            raise PackVMImageError(
+                "packvm_image_reservation_timeout",
+                "PackVM image capacity reservation timed out",
+            )
         name = "capacity-reservation.lock"
         flags = os.O_CREAT | os.O_RDWR
         if hasattr(os, "O_NOFOLLOW"):
