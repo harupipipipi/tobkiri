@@ -4790,7 +4790,13 @@ def test_home_and_pack_workflow_use_only_real_broker_contracts(
 def test_workroom_pack_lifecycle_persists_through_production_http(
     production_server,
 ) -> None:
-    """Workroom lifecycle state, journal results, and selection stay aligned."""
+    """Workroom lifecycle state, journal results, and selection stay aligned.
+
+    Disable removes the Pack from the active selection without touching
+    install/approval, a plain re-enable restores the selection exactly once,
+    and both the durable journal results and the catalog state survive
+    pack-control restarts.
+    """
 
     server, _session, _authority = production_server
     auth: dict[str, str] = {}
@@ -4831,15 +4837,26 @@ def test_workroom_pack_lifecycle_persists_through_production_http(
         path = _contract("GET", target)
         if request_id is not None:
             path = f"{path}?request_id={quote(request_id, safe='')}"
-        return _request(
-            server,
-            "GET",
-            path,
-            headers={
-                "Cookie": auth["cookie"],
-                "X-Tobkiri-Request-ID": str(uuid.uuid4()),
-            },
-        )
+        # A mutation commits before the runtime recapture finishes. Reads that
+        # land inside that window get the designed bounded 504/TIMEOUT answer;
+        # re-read until the projection is fresh, then assert on real data.
+        read_deadline = time.monotonic() + EVENTUAL_RECONCILIATION_TIMEOUT_SECONDS
+        while True:
+            status, payload, headers = _request(
+                server,
+                "GET",
+                path,
+                headers={
+                    "Cookie": auth["cookie"],
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                },
+                timeout_seconds=max(0.1, read_deadline - time.monotonic()),
+            )
+            if status != 504 or payload.get("data", {}).get("code") != "TIMEOUT":
+                return status, payload, headers
+            if time.monotonic() >= read_deadline:
+                return status, payload, headers
+            time.sleep(0.1)
 
     def post(target: str, body: Mapping[str, object]):
         request_id = str(uuid.uuid4())
@@ -4854,6 +4871,10 @@ def test_workroom_pack_lifecycle_persists_through_production_http(
                 "X-Rumi-CSRF": auth["csrf"],
                 "X-Tobkiri-Request-ID": request_id,
             },
+            # enable/disable/restart synchronously recapture the runtime;
+            # allow twice the reconciliation bound so a loaded host cannot
+            # turn committed work into a spurious client timeout.
+            timeout_seconds=2 * EVENTUAL_RECONCILIATION_TIMEOUT_SECONDS,
         )
         return request_id, status, payload
 
@@ -4949,6 +4970,31 @@ def test_workroom_pack_lifecycle_persists_through_production_http(
     assert_succeeded(disable_id, "pack.disable")
     assert lifecycle_state(pack_id) == (True, True, False)
     assert pack_id not in selected_pack_ids()
+    assert lifecycle_state("defaultspack") == defaultspack_before
+
+    # The approval survives disable, so a plain re-enable must restore the
+    # active selection exactly once with no duplicate registration.
+    reenable_id, status, reenabled = post(
+        "/api/pack-control/enable",
+        {"pack_id": pack_id},
+    )
+    assert status == 200, reenabled
+    authenticate()
+    assert_succeeded(reenable_id, "pack.enable")
+    assert lifecycle_state(pack_id) == (True, True, True)
+    selected = selected_pack_ids()
+    assert selected.count(pack_id) == 1
+    assert len(selected) == len(set(selected))
+    assert lifecycle_state("defaultspack") == defaultspack_before
+
+    _, status, restarted = post("/api/pack-control/restart", {})
+    assert status == 200, restarted
+    authenticate()
+    assert_succeeded(reenable_id, "pack.enable")
+    assert lifecycle_state(pack_id) == (True, True, True)
+    selected = selected_pack_ids()
+    assert selected.count(pack_id) == 1
+    assert len(selected) == len(set(selected))
     assert lifecycle_state("defaultspack") == defaultspack_before
 
 
