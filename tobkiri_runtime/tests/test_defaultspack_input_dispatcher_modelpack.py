@@ -1318,3 +1318,242 @@ def test_composite_models_compat_with_model_pack():
 
     assert pack is not None
     assert pack.source == "composite_compat"
+
+
+def _deepthink_preflight_owner(tmp_path: Path, models: dict | None = None):
+    """Settings owner carrying a custom ``models`` subtree for preflight tests."""
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    settings_path = tmp_path / "deepthink_preflight_settings.json"
+    settings_path.write_text(
+        json.dumps({"models": dict(models or {})}, indent=2),
+        encoding="utf-8",
+    )
+    return FrontendSettingsStore(settings_path)
+
+
+def _prepare_for_model(monkeypatch, tmp_path: Path, *, model: str, params: dict, models: dict | None = None):
+    """Drive ``prepare_chat_run`` with routing pinned to *model*."""
+    _configure_paths(monkeypatch, tmp_path)
+    conversation = _conversation(tmp_path)
+    monkeypatch.setattr(
+        "domain.chat.run_request.route_model_request",
+        lambda request: _fake_route_decision(model),
+    )
+    monkeypatch.setattr(
+        "domain.chat.run_request.get_model_capabilities",
+        lambda model, **kwargs: {
+            "supports_thinking": True,
+            "supports_tool_calling": False,
+        },
+    )
+    return prepare_chat_run(
+        {
+            "conversation_id": conversation["id"],
+            "message": {"role": "user", "content": "hello"},
+            "params": dict(params),
+        },
+        {},
+        settings_owner=_deepthink_preflight_owner(tmp_path, models),
+    )
+
+
+def test_prepare_chat_run_deepthink_preflight_rejects_plain_provider_model(
+    monkeypatch, tmp_path
+):
+    """A51: deepthink on a non-review_chain model must fail loudly, not silently."""
+    from domain.chat.run_request import DeepThinkPreflightError
+
+    with pytest.raises(DeepThinkPreflightError) as excinfo:
+        _prepare_for_model(
+            monkeypatch,
+            tmp_path,
+            model="openai/gpt-4o",
+            params={"deepthink_enabled": True, "model": "openai/gpt-4o"},
+        )
+
+    exc = excinfo.value
+    assert exc.code == "DEEPTHINK_REQUIRES_REVIEW_CHAIN"
+    assert exc.model == "openai/gpt-4o"
+    assert "not chain-capable" in exc.cause
+    assert "modelpack/rumi" in exc.fix
+    assert "review_chain" in str(exc)
+    assert exc.to_dict()["code"] == exc.code
+    assert exc.to_dict()["model"] == "openai/gpt-4o"
+
+
+def test_prepare_chat_run_deepthink_preflight_rejects_non_chain_pack(
+    monkeypatch, tmp_path
+):
+    """A model pack in a non-review_chain mode cannot host DeepThink either."""
+    from domain.chat.run_request import DeepThinkPreflightError
+
+    with pytest.raises(DeepThinkPreflightError) as excinfo:
+        _prepare_for_model(
+            monkeypatch,
+            tmp_path,
+            model="modelpack/fallback-pack",
+            params={"deepthink_enabled": True, "model": "modelpack/fallback-pack"},
+            models={
+                "model_packs": [
+                    {
+                        "id": "fallback-pack",
+                        "mode": "fallback_chain",
+                        "members": [{"model": "demo/text"}],
+                    }
+                ]
+            },
+        )
+
+    exc = excinfo.value
+    assert exc.code == "DEEPTHINK_REQUIRES_REVIEW_CHAIN"
+    assert "fallback-pack" in exc.cause
+    assert "fallback_chain" in exc.cause
+
+
+def test_prepare_chat_run_deepthink_preflight_allows_review_chain_pack(
+    monkeypatch, tmp_path
+):
+    prepared = _prepare_for_model(
+        monkeypatch,
+        tmp_path,
+        model="modelpack/review-pack",
+        params={"deepthink_enabled": True, "model": "modelpack/review-pack"},
+        models={
+            "model_packs": [
+                {
+                    "id": "review-pack",
+                    "mode": "review_chain",
+                    "members": [
+                        {"model": "demo/generator"},
+                        {"model": "demo/reviewer"},
+                    ],
+                }
+            ]
+        },
+    )
+
+    assert prepared.model == "modelpack/review-pack"
+    assert prepared.input_data["params"]["deepthink_enabled"] is True
+
+
+def test_prepare_chat_run_deepthink_preflight_allows_builtin_rumi_pack(
+    monkeypatch, tmp_path
+):
+    """The builtin ``modelpack/rumi`` pack is always chain-capable."""
+    prepared = _prepare_for_model(
+        monkeypatch,
+        tmp_path,
+        model="modelpack/rumi",
+        params={"deepthink_enabled": True, "model": "modelpack/rumi"},
+    )
+
+    assert prepared.model == "modelpack/rumi"
+
+
+def test_prepare_chat_run_deepthink_preflight_allows_rumi_process_model(
+    monkeypatch, tmp_path
+):
+    """``rumi/*`` process models route into the review_chain rumi pack."""
+    prepared = _prepare_for_model(
+        monkeypatch,
+        tmp_path,
+        model="rumi/rumi",
+        params={"deepthink_enabled": True, "model": "rumi/rumi"},
+    )
+
+    assert prepared.model == "rumi/rumi"
+
+
+def test_prepare_chat_run_deepthink_preflight_allows_review_chain_composite(
+    monkeypatch, tmp_path
+):
+    """Legacy ``composite_models`` entries in review_chain mode are chain-capable."""
+    prepared = _prepare_for_model(
+        monkeypatch,
+        tmp_path,
+        model="demo/review-comp",
+        params={"deepthink_enabled": True, "model": "demo/review-comp"},
+        models={
+            "composite_models": [
+                {
+                    "id": "review-comp",
+                    "mode": "review_chain",
+                    "members": [{"model": "demo/gen"}, {"model": "demo/rev"}],
+                }
+            ]
+        },
+    )
+
+    assert prepared.model == "demo/review-comp"
+
+
+def test_prepare_chat_run_deepthink_preflight_reports_routed_member_model(
+    monkeypatch, tmp_path
+):
+    """Routing that demotes a pack ref to a member model still fails loudly."""
+    from domain.ai_client.model_router import ModelRoutingDecision
+    from domain.chat.run_request import DeepThinkPreflightError
+
+    _configure_paths(monkeypatch, tmp_path)
+    conversation = _conversation(tmp_path)
+    monkeypatch.setattr(
+        "domain.chat.run_request.route_model_request",
+        lambda request: ModelRoutingDecision(
+            selected_model="openai/gpt-4o",
+            original_model="modelpack/rumi",
+            selected_group="default",
+            reason_codes=["model_pack_selected"],
+        ),
+    )
+    monkeypatch.setattr(
+        "domain.chat.run_request.get_model_capabilities",
+        lambda model, **kwargs: {"supports_thinking": True},
+    )
+
+    with pytest.raises(DeepThinkPreflightError) as excinfo:
+        prepare_chat_run(
+            {
+                "conversation_id": conversation["id"],
+                "message": {"role": "user", "content": "hello"},
+                "params": {"deepthink_enabled": True},
+            },
+            {},
+            settings_owner=_deepthink_preflight_owner(tmp_path),
+        )
+
+    exc = excinfo.value
+    assert exc.model == "openai/gpt-4o"
+    assert exc.original_model == "modelpack/rumi"
+    assert "modelpack/rumi" in str(exc)
+
+
+def test_prepare_chat_run_deepthink_settings_toggle_rejects_non_chain_model(
+    monkeypatch, tmp_path
+):
+    """The global DeepThink toggle must fail loudly on non-chain selections."""
+    from domain.chat.run_request import DeepThinkPreflightError
+
+    with pytest.raises(DeepThinkPreflightError) as excinfo:
+        _prepare_for_model(
+            monkeypatch,
+            tmp_path,
+            model="demo/plain",
+            params={"model": "demo/plain"},
+            models={"deepthink_enabled": True},
+        )
+
+    assert excinfo.value.model == "demo/plain"
+
+
+def test_prepare_chat_run_deepthink_off_path_unaffected(monkeypatch, tmp_path):
+    """With DeepThink off, ordinary provider models still prepare normally."""
+    prepared = _prepare_for_model(
+        monkeypatch,
+        tmp_path,
+        model="demo/plain",
+        params={"model": "demo/plain"},
+    )
+
+    assert prepared.model == "demo/plain"
+    assert prepared.input_data["params"]["deepthink_enabled"] is False

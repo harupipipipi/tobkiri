@@ -20,6 +20,8 @@ from core_runtime.authority.principal import build_principal_id
 from domain.ai_client.capabilities.registry import get_model_provider_capabilities
 from blocks.chat._context_helpers import enrich_messages, extract_user_text
 from domain.capabilities.runtime_snapshot import build_runtime_capability_snapshot
+from domain.ai_client import rumi_process
+from domain.ai_client.model_pack_store import ModelPackStore
 from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 from domain.ai_client.model_router import ModelRoutingRequest, route_model_request
 from domain.ai_client.model_search import get_model_capabilities
@@ -263,6 +265,58 @@ class PreparedChatRun:
     settings_owner: SettingsOwnerPort | None = None
 
 
+class DeepThinkPreflightError(ValueError):
+    """DeepThink was requested for a selection that cannot run review_chain.
+
+    ``_run_deepthink_chain`` only executes inside the ``review_chain``
+    composite; for any other resolved model/composite/provider key the flag
+    used to be stripped from provider params and silently ignored (A51).
+    ``prepare_chat_run`` raises this before send instead, carrying a
+    machine-readable cause and the corrective fix.
+    """
+
+    code = "DEEPTHINK_REQUIRES_REVIEW_CHAIN"
+
+    def __init__(
+        self,
+        *,
+        model: str,
+        cause: str,
+        fix: str,
+        original_model: str = "",
+    ) -> None:
+        self.model = str(model or "")
+        self.original_model = str(original_model or "")
+        self.cause = str(cause or "")
+        self.fix = str(fix or "")
+        super().__init__(self._compose_message())
+
+    def _compose_message(self) -> str:
+        requested = ""
+        if self.original_model and self.original_model != self.model:
+            requested = f" (requested {self.original_model!r})"
+        return (
+            "DeepThink requires the review_chain composite — "
+            f"{self.cause}{requested}. {self.fix}"
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "code": self.code,
+            "model": self.model,
+            "original_model": self.original_model,
+            "cause": self.cause,
+            "fix": self.fix,
+            "message": str(self),
+        }
+
+
+_DEEPTHINK_REVIEW_CHAIN_FIX = (
+    "Select a review_chain model pack (for example 'modelpack/rumi' or a "
+    "'rumi/*' process model) or turn DeepThink off"
+)
+
+
 def validate_chat_run_input(input_data: dict[str, Any]) -> str | None:
     if not isinstance(input_data, dict):
         return "input_data dict is required"
@@ -292,6 +346,134 @@ def _resolve_template_tool_policy(
 ) -> Any:
     resolver_module = importlib.import_module("domain.templates.tool_policy_resolution")
     return resolver_module.resolve_template_tool_policy(request_policy, metadata=metadata)
+
+
+def _deepthink_model_pack(model: str, model_settings: dict[str, Any]) -> Any:
+    try:
+        return ModelPackStore(
+            model_settings if isinstance(model_settings, dict) else {}
+        ).get(model)
+    except Exception:
+        return None
+
+
+def _deepthink_composite_entries(
+    model_settings: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Mirror ``AIClient._composite_models`` over the models settings subtree."""
+    raw = model_settings.get("composite_models") if isinstance(model_settings, dict) else None
+    if isinstance(raw, str):
+        text = raw.strip()
+        try:
+            raw = json.loads(text) if text else []
+        except json.JSONDecodeError:
+            raw = []
+    if isinstance(raw, dict):
+        items = [
+            {"id": key, **(item if isinstance(item, dict) else {})}
+            for key, item in raw.items()
+        ]
+    elif isinstance(raw, list):
+        items = raw
+    else:
+        items = []
+    composites: dict[str, dict[str, Any]] = {}
+    for item in items:
+        if not isinstance(item, dict) or item.get("enabled", True) is False:
+            continue
+        composite_id = str(
+            item.get("id") or item.get("profile_id") or item.get("name") or ""
+        ).strip()
+        if composite_id:
+            composites[composite_id] = item
+    return composites
+
+
+def _deepthink_composite_for_model(
+    model: str,
+    model_settings: dict[str, Any],
+) -> tuple[str, dict[str, Any]] | None:
+    """Mirror ``AIClient._composite_for_model`` (exact + provider/tail match)."""
+    composites = _deepthink_composite_entries(model_settings)
+    if model in composites:
+        return model, composites[model]
+    if "/" in model:
+        tail = model.split("/", 1)[1]
+        if tail in composites:
+            return tail, composites[tail]
+    return None
+
+
+def _deepthink_is_rumi_process_model(model: str) -> bool:
+    """True for ``rumi/*`` selections that RumiProvider maps to the rumi pack."""
+    text = str(model or "").strip()
+    provider_key, _, tail = text.partition("/")
+    if provider_key.strip().lower() != "rumi" or not tail:
+        return False
+    try:
+        from domain.ai_client.providers.rumi_provider import RumiProvider
+    except Exception:
+        return False
+    return bool(RumiProvider._is_rumi_process_model(text))
+
+
+def _deepthink_capability_cause(model: str, model_settings: dict[str, Any]) -> str:
+    """Return "" when *model* can host the review_chain composite, else why not.
+
+    Mirrors the same resolution the composite dispatch performs before
+    ``RumiProcessRunner._run_deepthink_chain`` can ever execute: a model pack
+    or composite whose mode is ``review_chain``, or a ``rumi/*`` process model
+    that routes to the builtin ``modelpack/rumi`` pack.
+    """
+    pack = _deepthink_model_pack(model, model_settings)
+    if pack is not None:
+        mode = str(getattr(pack, "mode", "") or "fallback_chain").strip() or "fallback_chain"
+        if mode == "review_chain":
+            return ""
+        pack_id = str(getattr(pack, "id", "") or model)
+        return (
+            f"model pack {pack_id!r} uses mode {mode!r}, "
+            "which cannot run the review chain"
+        )
+    if ModelPackStore.is_model_pack_ref(model):
+        return f"model pack reference {model!r} has no configured pack"
+    composite_match = _deepthink_composite_for_model(model, model_settings)
+    if composite_match is not None:
+        composite_id, composite = composite_match
+        mode = (
+            str(composite.get("mode") or composite.get("type") or "fallback_chain").strip()
+            or "fallback_chain"
+        )
+        if mode == "review_chain":
+            return ""
+        return (
+            f"composite {composite_id!r} uses mode {mode!r}, "
+            "which cannot run the review chain"
+        )
+    if _deepthink_is_rumi_process_model(model):
+        return ""
+    return f"selected model {model!r} is not chain-capable"
+
+
+def _enforce_deepthink_preflight(
+    model: str,
+    params: dict[str, Any],
+    model_settings: dict[str, Any],
+    *,
+    original_model: str = "",
+) -> None:
+    """Fail loudly when DeepThink is requested for a non-chain selection."""
+    if not rumi_process.deepthink_enabled(params):
+        return
+    cause = _deepthink_capability_cause(str(model or ""), model_settings)
+    if not cause:
+        return
+    raise DeepThinkPreflightError(
+        model=str(model or ""),
+        original_model=str(original_model or ""),
+        cause=cause,
+        fix=_DEEPTHINK_REVIEW_CHAIN_FIX,
+    )
 
 
 def prepare_chat_run(
@@ -685,6 +867,12 @@ def prepare_chat_run(
             routing_decision.explanation = f"{model} selected because it was explicitly requested."
     else:
         model = routing_decision.selected_model
+    _enforce_deepthink_preflight(
+        model,
+        params,
+        model_settings,
+        original_model=str(getattr(routing_decision, "original_model", "") or ""),
+    )
     selected_capabilities = get_model_capabilities(
         model,
         settings=model_settings,
