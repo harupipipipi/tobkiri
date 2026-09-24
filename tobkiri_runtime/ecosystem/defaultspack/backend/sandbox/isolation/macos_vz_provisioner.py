@@ -143,6 +143,15 @@ _DIRECT_IMAGE_SHA512 = (
 )
 
 
+class PackVMGateBusyError(ValueError):
+    """The lifecycle mutation gate is held by another live operation.
+
+    Contention is transient by definition — a live owner finishes its
+    bounded mutation and releases the claim — so callers must treat this
+    as retryable rather than an integrity failure.
+    """
+
+
 class MacOSVZTransportFactory(Protocol):
     """Build an already authenticated Host adapter for one provisioned VM.
 
@@ -388,7 +397,16 @@ class _MacOSVZHelperProcess:
         try:
             with self._send_lock:
                 self._write_line(dict(envelope), send_deadline)
-            return pending.take(bound)
+            try:
+                return pending.take(bound)
+            except ValueError:
+                # A helper which misses its response deadline violates the
+                # protocol: a late response would be dropped as unbound and
+                # kill the channel anyway, so fail it now and let the
+                # supervisor reclaim the domain through the dead-helper path.
+                if not pending._event.is_set():
+                    self._expire_channel()
+                raise
         finally:
             with self._lock:
                 self._pending.pop(key, None)
@@ -468,10 +486,34 @@ class _MacOSVZHelperProcess:
         try:
             with self._send_lock:
                 self._write_line(dict(payload), send_deadline)
-            return pending.take(bound)
+            try:
+                return pending.take(bound)
+            except ValueError:
+                if not pending._event.is_set():
+                    self._expire_channel()
+                raise
         finally:
             with self._lock:
                 self._pending.pop(key, None)
+
+    def _expire_channel(self) -> None:
+        """Fail the transport after a helper misses its response deadline.
+
+        A live-but-silent helper can never answer later exchanges either, so
+        the channel is declared dead: ``alive`` flips false and the
+        supervisor's dead-helper reclaim completes teardown instead of
+        wedging the domain forever.
+        """
+
+        with self._lock:
+            if self._reader_failure is None:
+                self._reader_failure = (
+                    "PackVM VZ helper response deadline expired"
+                )
+            pending_all = list(self._pending.values())
+            self._pending.clear()
+        for exchange in pending_all:
+            exchange.fail("PackVM VZ helper response deadline expired")
 
     def _write_line(self, payload: dict[str, object], deadline: float) -> None:
         """Write one request line without allowing a wedged helper to block.
@@ -563,14 +605,19 @@ class _MacOSVZHelperProcess:
                     pending.complete(dict(response))
         except (OSError, ValueError):
             failure = "PackVM VZ helper transport failed"
-        with self._lock:
-            # Late exchanges must observe the dead channel instead of
-            # registering a waiter no response can ever reach.
-            self._reader_failure = failure or "PackVM VZ helper transport closed"
-            pending_all = list(self._pending.values())
-            self._pending.clear()
-        for exchange in pending_all:
-            exchange.fail(failure or "PackVM VZ helper transport closed")
+        finally:
+            # Any abnormal exit — not just the expected I/O failures — must
+            # still mark the channel dead or pending waiters wedge forever.
+            with self._lock:
+                # Late exchanges must observe the dead channel instead of
+                # registering a waiter no response can ever reach.
+                self._reader_failure = (
+                    failure or "PackVM VZ helper transport closed"
+                )
+                pending_all = list(self._pending.values())
+                self._pending.clear()
+            for exchange in pending_all:
+                exchange.fail(failure or "PackVM VZ helper transport closed")
 
 
 class _PendingHelperExchange:
@@ -899,7 +946,15 @@ class MacOSVZProvisioner:
                 # still adopt a dead claim left by a routine operation.
                 stale_orphaned = (
                     (
-                        operation in {"allocate", "release", "stop", "cleanup"}
+                        operation
+                        in {
+                            "allocate",
+                            "release",
+                            "stop",
+                            "cleanup",
+                            "prepare",
+                            "consent",
+                        }
                         or (
                             operation == "provision"
                             and existing.get("operation") != "provision"
@@ -917,6 +972,12 @@ class MacOSVZProvisioner:
                     and not stale_attested_cleanup
                     and not stale_orphaned
                 ):
+                    if _valid_process_id(
+                        existing.get("owner_pid")
+                    ) and _process_is_alive(existing.get("owner_pid")):
+                        raise PackVMGateBusyError(
+                            "PackVM VZ mutation has an unresolved owner claim"
+                        )
                     raise ValueError("PackVM VZ mutation has an unresolved owner claim")
                 if stale_recovery or stale_attested_cleanup or stale_orphaned:
                     if stale_orphaned and existing.get("operation") == "allocate":
@@ -1431,11 +1492,20 @@ class MacOSVZProvisioner:
             raise ValueError("PackVM VZ recovery executable digest is invalid")
         claim = _read_json_if_present(self.mutation_claim_path)
         receipt_hint = _read_json_if_present(self.allocation_recovery_path)
-        orphaned = (
-            None
-            if claim is not None
-            else self._orphaned_allocation_claim(domain_id, reservation_id)
-        )
+        orphaned = self._orphaned_allocation_claim(domain_id, reservation_id)
+        if claim is not None:
+            # Residue from an unrelated mutation must not shadow the tombstone
+            # journal or the recovery receipt for this exact allocation; the
+            # locked section below drops any mismatched current entry anyway.
+            claim_binding = (
+                claim.get("binding") if isinstance(claim, Mapping) else None
+            )
+            if not isinstance(claim_binding, Mapping) or (
+                claim_binding.get("domain_digest") != _digest_text(domain_id)
+                or claim_binding.get("reservation_digest")
+                != _digest_text(reservation_id)
+            ):
+                claim = None
         hint = claim if claim is not None else (orphaned or receipt_hint)
         hint_binding = hint.get("binding") if isinstance(hint, Mapping) else None
         if not isinstance(hint_binding, Mapping) or (
@@ -3631,7 +3701,9 @@ def _try_lock(descriptor: int) -> None:
     try:
         fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError as exc:
-        raise ValueError("PackVM VZ lifecycle operation is already active") from exc
+        raise PackVMGateBusyError(
+            "PackVM VZ lifecycle operation is already active"
+        ) from exc
 
 
 def _unlock(descriptor: int) -> None:

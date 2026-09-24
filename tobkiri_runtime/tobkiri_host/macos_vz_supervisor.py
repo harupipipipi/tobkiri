@@ -417,6 +417,19 @@ class MacOSVZDomainAllocation:
         }
 
 
+def _is_gate_busy_error(exc: BaseException) -> bool:
+    """Whether the allocator reported transient lifecycle-gate contention.
+
+    The allocator is injected through :class:`MacOSVZDomainAllocator`, so the
+    concrete error type stays provisioner-side; it is matched by name across
+    the exception's MRO without importing the provisioner module.
+    """
+
+    return "PackVMGateBusyError" in {
+        cls.__name__ for cls in type(exc).__mro__
+    }
+
+
 class MacOSVZDomainAllocator(Protocol):
     """Create/release one unique private COW disk and EFI store per domain."""
 
@@ -966,6 +979,13 @@ class MacOSVZSupervisorDriver:
                 raise RuntimeError("allocator unavailable")
             self._domain_allocator.release(session.allocation)
         except Exception as exc:
+            # Gate contention means another live lifecycle operation holds
+            # the mutation lock; the allocation stays tracked so a later
+            # terminate or close retries instead of latching compromise.
+            if _is_gate_busy_error(exc):
+                raise BackendUnavailableError(
+                    "macOS VZ allocation cleanup is busy"
+                ) from exc
             self._compromise("macOS VZ allocation cleanup failed")
             raise BackendUnavailableError("macOS VZ allocation cleanup failed") from exc
         self._drop_domain_session(domain_id, session)
@@ -989,7 +1009,13 @@ class MacOSVZSupervisorDriver:
         try:
             if self._domain_allocator is not None:
                 self._domain_allocator.release(session.allocation)
-        except Exception:
+        except Exception as exc:
+            # Gate contention is transient, not an integrity failure: keep
+            # the session so a later terminate retries the release.
+            if _is_gate_busy_error(exc):
+                raise BackendUnavailableError(
+                    "macOS VZ dead helper allocation cleanup is busy"
+                ) from exc
             # The on-disk allocation may now be orphaned; surface it instead
             # of silently leaking the domain root.
             self._compromise("macOS VZ dead helper allocation cleanup failed")
@@ -1562,7 +1588,11 @@ class MacOSVZSupervisorDriver:
                 transport.close()
             if self._domain_allocator is not None:
                 self._domain_allocator.release(allocation)
-        except Exception:
+        except Exception as exc:
+            if _is_gate_busy_error(exc):
+                raise BackendUnavailableError(
+                    "macOS VZ failed allocation cleanup is busy"
+                ) from exc
             self._compromise("macOS VZ failed allocation cleanup")
         finally:
             if transport is not None:
