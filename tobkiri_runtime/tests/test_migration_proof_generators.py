@@ -357,7 +357,7 @@ def test_independent_proof_preserves_named_identity_and_transactional_receipt() 
     }
     assert proof["packs"]["tobkiri_ui_settings_pack"]["status"] == "generated-draft"
     assert proof["packs"]["tobkiri_ui_settings_pack"]["semantic_comparison"]["equivalent"] is None
-    assert proof["packs"]["rumi_command_protocol_pack"]["status"] == "generated-draft"
+    assert proof["packs"]["rumi_command_protocol_pack"]["status"] == "semantically-reviewed"
     assert identity["all_ids_distinct"] is True
     assert identity["defaults_collapsed"] is False
     assert identity["profile_ids"] == ["profile-aoi", "profile-bora", "profile-cleo"]
@@ -371,12 +371,12 @@ def test_independent_proof_preserves_named_identity_and_transactional_receipt() 
     # Durable captured execution differs from the old in-process lifecycle;
     # retain draft status until its new semantics have independent proof.
     assert proof["packs"]["rumi_turn_runtime_pack"]["status"] == "generated-draft"
-    draft_count = len(proof["packs"]) - 39
-    assert statuses == {"semantically-reviewed": 39, "generated-draft": draft_count}
+    draft_count = len(proof["packs"]) - 75
+    assert statuses == {"semantically-reviewed": 75, "generated-draft": draft_count}
     assert source["migration_status_counts"] == {
         "generated-draft": draft_count,
         "release-verified": 0,
-        "semantically-reviewed": 39,
+        "semantically-reviewed": 75,
     }
 
 

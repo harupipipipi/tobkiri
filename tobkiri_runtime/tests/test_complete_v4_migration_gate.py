@@ -3872,7 +3872,7 @@ def test_migration_status_promotes_only_pack_specific_semantic_proof() -> None:
     statuses = Counter(
         _migration_status(path.name, path, proof) for path in _production_pack_dirs()
     )
-    assert statuses == {"release-verified": 78, "generated-draft": 63}
+    assert statuses == {"release-verified": 114, "generated-draft": 27}
     assert proof["rumi_turn_runtime_pack"]["status"] == "generated-draft"
     assert proof["tobkiri_ui_settings_pack"]["status"] == "generated-draft"
     assert proof["tobkiri_mcp_connection_pack"]["status"] == "generated-draft"
@@ -3892,8 +3892,8 @@ def test_current_sha_evidence_is_red_while_pack_semantics_are_unproved() -> None
     assert report["pack_inventory"]["catalog_pack_directories"] == pack_count
     assert report["pack_inventory"]["v4_artifact_files"] == pack_count * len(PACK_ARTIFACTS)
     assert report["pack_inventory"]["migration_status_counts"] == {
-        "generated-draft": 63,
-        "release-verified": 78,
+        "generated-draft": 27,
+        "release-verified": 114,
     }
     assert report["gates"]["artifact_contracts"]["status"] == "GREEN"
     assert report["gates"]["declaration_disk_runtime"]["status"] == "GREEN"

@@ -3353,15 +3353,15 @@
     {
       "path": "scripts/quality/evidence/complete_v4_migration_red_64b2240e.json",
       "type": "regular-file",
-      "size": 84073,
-      "sha256": "4085b1594082c70f5229220ab250db463a3b74e470dc2528d80c54f227ad5c2a",
+      "size": 84108,
+      "sha256": "75a52ce2f5e559e017f103505d18e09f7f0d757f6fb9ddb5b95cd0f862d570b4",
       "executable": false
     },
     {
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 1096961,
-      "sha256": "e971ae26443f5dd50e0568ca0b1d87e55f2e86f7e44ed5c1fe6808458ec1e504",
+      "sha256": "850ae6fb3d8f4c18d61ed0213da711e98d2880efb109cdd767d6ec24baaa649f",
       "executable": false
     },
     {
@@ -3374,8 +3374,8 @@
     {
       "path": "scripts/quality/evidence/pack_migration_runtime_receipts.v1.json",
       "type": "regular-file",
-      "size": 276684,
-      "sha256": "a1171e0c9bfc94a0e48536c7c5943c0e3d2f8da82b9683fe5ea86f66eaabf3ae",
+      "size": 404762,
+      "sha256": "f34ba3f2c310ff47debdeeabc46fc54848b92672d16cce3871c63c27c922a1db",
       "executable": false
     },
     {
