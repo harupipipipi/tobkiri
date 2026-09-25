@@ -417,7 +417,7 @@ def _approval_required_response(
             "turn_id": _context_value(context, "turn_id"),
             "tool_call_id": _context_value(context, "tool_call_id"),
             "profile_id": _context_value(context, "profile_id"),
-            "permission_subject": "Rumi Viewer",
+            "permission_subject": "Tobkiri Launcher",
         },
     )
     wrapped = dict(result)
