@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "752667cd3787159e9687982bd3cc94958ac59345f016101b19737f5a332c2ea6",
+    "digest": "97eba515a294abb2c5cb3ac6f1da62a334f6447d8e0388a38ecf4c0016591a9a",
     "entries": [
       {
         "path": "index.html",
@@ -585,8 +585,8 @@
       },
       {
         "path": "src/components/coding/TerminalPanel.tsx",
-        "size": 8669,
-        "sha256": "c96a31285e260ffb80756ae69410028aa6acc5f0f8739ce8a61655b79e881fde"
+        "size": 8670,
+        "sha256": "912adaf23ac0279a75dbfdba547f4671b8c042fe48ee90f430b474551c654825"
       },
       {
         "path": "src/components/coding/approvalQueueSync.ts",
@@ -1931,7 +1931,7 @@
     ]
   },
   "bundle": {
-    "digest": "8ac203be7df476d2a9fd3108ee2a361d32259e40f9c1da2a8dc371ae16122f3f",
+    "digest": "a4cf439b1177cd50b2dcc70e7df8544b01984c71b0d60732d37b60833fb6515e",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1945,8 +1945,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2239224,
-        "sha256": "c475c0b32af8b76b9cc825bf7061a09e6e1f493a6f910f18d2319bbd85eb9758"
+        "size": 2239234,
+        "sha256": "0cae4ab30b7a979bdc3522c8cfeaccd7297384aace4cb47e0d274e6fc85ff178"
       },
       {
         "path": "shell-rolldown-runtime.js",
