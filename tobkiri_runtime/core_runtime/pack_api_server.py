@@ -18,7 +18,12 @@ from typing import Any, Callable, Mapping, Protocol, cast, runtime_checkable
 from urllib.parse import parse_qs, parse_qsl, quote, urlencode, urlparse
 
 from .api.api_response import APIResponse
-from .api.auth_gate import AuthGateMixin
+from .api.auth_gate import (
+    APPROVAL_SESSION_COOKIE,
+    PANEL_SESSION_COOKIE,
+    SESSION_COOKIE_NAMES,
+    AuthGateMixin,
+)
 from .api.http_response import ResponseWriterMixin
 from .api.request_body import RequestBodyMixin
 from .api.setup_handlers import SetupHandlersMixin
@@ -2098,11 +2103,25 @@ class PackAPIHandler(
             request_id_value.strip() if isinstance(request_id_value, str) else ""
         )
         binding = self._current_panel_auth_binding()
+        # ``previous_session`` resolves through every surface cookie with the
+        # same panel-first precedence the auth gate applies: a panel session
+        # always wins in a shared jar, while an isolated approval window —
+        # whose jar carries only the confined ``rumi_approval_session``
+        # cookie — still names its own session.  Without this a confined
+        # re-exchange would miss the carryover and mint an unconfined
+        # session under the panel name.  The raw value is passed through:
+        # ``exchange_code`` itself decides whether the named session may
+        # carry ownership across the capture refresh.
+        jar = self._parse_cookie_header()
+        previous_session = next(
+            (jar[name] for name in SESSION_COOKIE_NAMES if jar.get(name)),
+            "",
+        )
         exchange = (
             manager.exchange_code(
                 code,
                 binding,
-                previous_session=self._parse_cookie_header().get("rumi_panel_session", ""),
+                previous_session=previous_session,
                 presenter_request_id=presenter_request_id,
             )
             if manager is not None and binding is not None
@@ -2111,8 +2130,20 @@ class PackAPIHandler(
         if exchange is None:
             self._send_response(APIResponse(False, error="Invalid or expired code"), 401)
             return
+        # Presenter-scoped sessions mint under the approval surface's own
+        # cookie name so an approval exchange never overwrites the main
+        # window's ``rumi_panel_session`` in a shared cookie store.  The
+        # minted scope — not the client-supplied request id — selects the
+        # name: a foreign ``request_id`` on an unmarked code still mints an
+        # ordinary session and keeps the panel cookie.
+        request_scope = exchange.get("request_scope")
+        cookie_name = (
+            APPROVAL_SESSION_COOKIE
+            if isinstance(request_scope, str) and request_scope
+            else PANEL_SESSION_COOKIE
+        )
         cookie = self._build_set_cookie(
-            "rumi_panel_session",
+            cookie_name,
             str(exchange["session_id"]),
             path="/",
             max_age=int(exchange["expires_in"]),

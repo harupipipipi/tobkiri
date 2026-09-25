@@ -845,3 +845,352 @@ def test_approval_navigation_retargets_reused_scoped_webview(
         assert manager._presenter_grants == {}
     finally:
         server.stop()
+
+
+def test_presenter_exchange_mints_dedicated_approval_cookie(
+    tmp_path: Path,
+) -> None:
+    """A confined presenter session lives under its own cookie name.
+
+    The approval window and the main window share an origin; only distinct
+    cookie names keep one surface's session from overwriting the other's in
+    a shared store.
+    """
+
+    web_root = tmp_path / "approval-ui"
+    web_root.mkdir()
+    (web_root / "shell.html").write_text(
+        "approval application", encoding="utf-8"
+    )
+    binding = _binding(activation_id="activation:presenter", security_epoch=7)
+    current = [binding]
+    manager = PanelAuthManager(bootstrap_secret="desktop-bootstrap")
+    owner = manager.exchange_code(
+        str(manager.issue_login_code(binding)["code"]), binding
+    )
+    assert owner is not None
+    owner_session = manager.verify_session(str(owner["session_id"]), binding)
+    assert owner_session is not None
+    owner_journal = str(owner_session["session_id"])
+    lifecycle = _PackVMLifecycle()
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=manager,
+        dispatch_session=_CapturedDispatch(binding, current),
+        packvm_lifecycle=lifecycle,  # type: ignore[arg-type]
+        web_mounts=(
+            {
+                "path_prefix": "/approval",
+                "web_root": web_root,
+                "spa_fallback": True,
+                "index_file": "shell.html",
+                "auth_required": True,
+                "auth_bootstrap": True,
+            },
+        ),
+    )
+    server.start()
+    try:
+        origin = f"http://127.0.0.1:{server.port}"
+        manager.record_approval_presenter_grant(
+            "req-presenter", owner_journal, binding
+        )
+        status, bootstrap, _ = _request(
+            server,
+            "POST",
+            "/api/panel/auth/bootstrap",
+            body={"request_id": "req-presenter"},
+            headers={"X-Rumi-Desktop-Bootstrap": "desktop-bootstrap"},
+        )
+        assert status == 200, bootstrap
+        status, response, headers = _request(
+            server,
+            "POST",
+            "/api/panel/auth/exchange",
+            body={
+                "code": bootstrap["data"]["code"],
+                "request_id": "req-presenter",
+            },
+            headers={"Origin": origin},
+        )
+        assert status == 200, response
+        approval_cookie = next(
+            value for key, value in headers if key.lower() == "set-cookie"
+        )
+        assert approval_cookie.startswith("rumi_approval_session=")
+        assert "Path=/" in approval_cookie
+        assert "HttpOnly" in approval_cookie
+        assert "SameSite=Strict" in approval_cookie
+        assert "request_scope" not in json.dumps(response.get("data") or {})
+
+        # An ordinary exchange still mints the panel cookie, even when a
+        # foreign request id rides along on an unmarked code.
+        status, bootstrap, _ = _request(
+            server,
+            "POST",
+            "/api/panel/auth/bootstrap",
+            body={},
+            headers={"X-Rumi-Desktop-Bootstrap": "desktop-bootstrap"},
+        )
+        assert status == 200, bootstrap
+        status, response, headers = _request(
+            server,
+            "POST",
+            "/api/panel/auth/exchange",
+            body={
+                "code": bootstrap["data"]["code"],
+                "request_id": "req-presenter",
+            },
+            headers={"Origin": origin},
+        )
+        assert status == 200, response
+        panel_cookie = next(
+            value for key, value in headers if key.lower() == "set-cookie"
+        )
+        assert panel_cookie.startswith("rumi_panel_session=")
+        assert "Path=/" in panel_cookie
+    finally:
+        server.stop()
+
+
+def test_approval_cookie_authenticates_without_fencing_the_panel(
+    tmp_path: Path,
+) -> None:
+    """Coexisting cookies resolve per surface and never clobber each other."""
+
+    web_root = tmp_path / "approval-ui"
+    web_root.mkdir()
+    (web_root / "shell.html").write_text(
+        "approval application", encoding="utf-8"
+    )
+    binding = _binding(activation_id="activation:presenter", security_epoch=7)
+    current = [binding]
+    manager = PanelAuthManager(bootstrap_secret="desktop-bootstrap")
+    lifecycle = _PackVMLifecycle()
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=manager,
+        dispatch_session=_CapturedDispatch(binding, current),
+        packvm_lifecycle=lifecycle,  # type: ignore[arg-type]
+        web_mounts=(
+            {
+                "path_prefix": "/approval",
+                "web_root": web_root,
+                "spa_fallback": True,
+                "index_file": "shell.html",
+                "auth_required": True,
+                "auth_bootstrap": True,
+            },
+        ),
+    )
+    server.start()
+    try:
+        origin = f"http://127.0.0.1:{server.port}"
+
+        def bootstrap_code(request_id: str = "") -> str:
+            body = {"request_id": request_id} if request_id else {}
+            status, bootstrap, _ = _request(
+                server,
+                "POST",
+                "/api/panel/auth/bootstrap",
+                body=body,
+                headers={"X-Rumi-Desktop-Bootstrap": "desktop-bootstrap"},
+            )
+            assert status == 200, bootstrap
+            return str(bootstrap["data"]["code"])
+
+        def exchange(code: str, request_id: str = "") -> str:
+            body = (
+                {"code": code, "request_id": request_id}
+                if request_id
+                else {"code": code}
+            )
+            status, response, headers = _request(
+                server,
+                "POST",
+                "/api/panel/auth/exchange",
+                body=body,
+                headers={"Origin": origin},
+            )
+            assert status == 200, response
+            return next(
+                value
+                for key, value in headers
+                if key.lower() == "set-cookie"
+            ).split(";", 1)[0]
+
+        # The main window's session.
+        panel_cookie = exchange(bootstrap_code())
+
+        # The approval window's dedicated exchange must not overwrite the
+        # panel session above — it mints under `rumi_approval_session`.
+        owner_session = manager.verify_session(
+            panel_cookie.split("=", 1)[1], binding
+        )
+        assert owner_session is not None
+        manager.record_approval_presenter_grant(
+            "req-presenter", str(owner_session["session_id"]), binding
+        )
+        approval_cookie = exchange(
+            bootstrap_code("req-presenter"), "req-presenter"
+        )
+        assert approval_cookie.startswith("rumi_approval_session=")
+
+        # The approval cookie alone authenticates the approval surface.
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", server.port, timeout=5
+        )
+        connection.request(
+            "GET", "/approval", headers={"Cookie": approval_cookie}
+        )
+        mount_response = connection.getresponse()
+        assert mount_response.read() == b"approval application"
+        connection.close()
+        assert mount_response.status == 200
+
+        # The confined session stays fenced away from ordinary panel routes,
+        # and the fenced refresh still reissues under its own name rather
+        # than clobbering the panel cookie.
+        status, denied, headers = _request(
+            server,
+            "GET",
+            "/api/v4/packvm/doctor",
+            headers={"Cookie": approval_cookie},
+        )
+        assert status == 401, denied
+        assert lifecycle.doctor_calls == 0
+        refreshed = next(
+            value for key, value in headers if key.lower() == "set-cookie"
+        )
+        assert refreshed.startswith("rumi_approval_session=")
+
+        # With both cookies in one jar the panel session still wins, so a
+        # presenter cookie can never fence the main window's traffic.
+        status, healthy, headers = _request(
+            server,
+            "GET",
+            "/api/v4/packvm/doctor",
+            headers={"Cookie": f"{panel_cookie}; {approval_cookie}"},
+        )
+        assert status == 200, healthy
+        assert lifecycle.doctor_calls == 1
+        refreshed = next(
+            value for key, value in headers if key.lower() == "set-cookie"
+        )
+        assert refreshed.startswith("rumi_panel_session=")
+    finally:
+        server.stop()
+
+
+def test_approval_session_reexchange_keeps_its_confinement(
+    tmp_path: Path,
+) -> None:
+    """A confined session's re-exchange stays under the approval cookie.
+
+    ``previous_session`` resolves the caller's own surface cookie — not just
+    ``rumi_panel_session`` — so an approval-window re-auth carries its
+    ``request_scope`` confinement forward instead of minting an unconfined
+    session under the panel name.
+    """
+
+    web_root = tmp_path / "approval-ui"
+    web_root.mkdir()
+    (web_root / "shell.html").write_text(
+        "approval application", encoding="utf-8"
+    )
+    binding = _binding(activation_id="activation:reauth", security_epoch=7)
+    current = [binding]
+    manager = PanelAuthManager(bootstrap_secret="desktop-bootstrap")
+    owner = manager.exchange_code(
+        str(manager.issue_login_code(binding)["code"]), binding
+    )
+    assert owner is not None
+    owner_session = manager.verify_session(str(owner["session_id"]), binding)
+    assert owner_session is not None
+    lifecycle = _PackVMLifecycle()
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=manager,
+        dispatch_session=_CapturedDispatch(binding, current),
+        packvm_lifecycle=lifecycle,  # type: ignore[arg-type]
+        web_mounts=(
+            {
+                "path_prefix": "/approval",
+                "web_root": web_root,
+                "spa_fallback": True,
+                "index_file": "shell.html",
+                "auth_required": True,
+                "auth_bootstrap": True,
+            },
+        ),
+    )
+    server.start()
+    try:
+        origin = f"http://127.0.0.1:{server.port}"
+        manager.record_approval_presenter_grant(
+            "req-presenter", str(owner_session["session_id"]), binding
+        )
+        status, bootstrap, _ = _request(
+            server,
+            "POST",
+            "/api/panel/auth/bootstrap",
+            body={"request_id": "req-presenter"},
+            headers={"X-Rumi-Desktop-Bootstrap": "desktop-bootstrap"},
+        )
+        assert status == 200, bootstrap
+        status, response, headers = _request(
+            server,
+            "POST",
+            "/api/panel/auth/exchange",
+            body={
+                "code": bootstrap["data"]["code"],
+                "request_id": "req-presenter",
+            },
+            headers={"Origin": origin},
+        )
+        assert status == 200, response
+        approval_cookie = next(
+            value for key, value in headers if key.lower() == "set-cookie"
+        ).split(";", 1)[0]
+        assert approval_cookie.startswith("rumi_approval_session=")
+
+        # Re-auth: a fresh unmarked code exchanged by the isolated approval
+        # window — whose jar carries only the approval cookie — must carry
+        # the confinement forward and keep minting under its own name.
+        status, bootstrap, _ = _request(
+            server,
+            "POST",
+            "/api/panel/auth/bootstrap",
+            body={},
+            headers={"X-Rumi-Desktop-Bootstrap": "desktop-bootstrap"},
+        )
+        assert status == 200, bootstrap
+        status, response, headers = _request(
+            server,
+            "POST",
+            "/api/panel/auth/exchange",
+            body={"code": bootstrap["data"]["code"]},
+            headers={"Origin": origin, "Cookie": approval_cookie},
+        )
+        assert status == 200, response
+        refreshed = next(
+            value for key, value in headers if key.lower() == "set-cookie"
+        )
+        assert refreshed.startswith("rumi_approval_session=")
+        assert "Path=/" in refreshed
+        new_session_id = refreshed.split(";", 1)[0].split("=", 1)[1]
+        session = manager.verify_session(new_session_id, binding)
+        assert session is not None
+        assert session["request_scope"] == "req-presenter"
+
+        # The carried-over confinement still fences ordinary panel routes.
+        status, denied, _ = _request(
+            server,
+            "GET",
+            "/api/v4/packvm/doctor",
+            headers={"Cookie": refreshed.split(";", 1)[0]},
+        )
+        assert status == 401, denied
+        assert lifecycle.doctor_calls == 0
+    finally:
+        server.stop()

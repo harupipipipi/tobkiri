@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hmac
 from http import cookies
-from typing import Mapping, TYPE_CHECKING
+from typing import Any, Dict, Mapping, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from http.server import BaseHTTPRequestHandler as _HTTPHandlerBase
@@ -13,6 +13,19 @@ else:
 
 from .api_response import APIResponse
 from ..panel_auth import PanelAuthBinding, PanelAuthManager
+
+
+# Session cookies are split per surface so the dedicated approval window's
+# confined presenter session can never overwrite — or be overwritten by — the
+# main window's ``rumi_panel_session`` cookie when both webviews share one
+# cookie store.  The approval window additionally runs in a non-persistent
+# webview data store, so in practice its jar carries only the approval cookie.
+PANEL_SESSION_COOKIE = "rumi_panel_session"
+APPROVAL_SESSION_COOKIE = "rumi_approval_session"
+# Lookup order matters: where a shared store still presents both cookies, the
+# panel cookie must win so a confined presenter session in the jar cannot
+# fence ordinary panel traffic.
+SESSION_COOKIE_NAMES = (PANEL_SESSION_COOKIE, APPROVAL_SESSION_COOKIE)
 
 
 class AuthGateMixin(_HTTPHandlerBase):
@@ -80,8 +93,19 @@ class AuthGateMixin(_HTTPHandlerBase):
         binding = self._current_panel_auth_binding()
         if binding is None:
             return False
-        session_id = self._parse_cookie_header().get("rumi_panel_session", "")
-        session = manager.verify_session(session_id, binding)
+        jar = self._parse_cookie_header()
+        session_id = ""
+        cookie_name = PANEL_SESSION_COOKIE
+        session: Optional[Dict[str, Any]] = None
+        for name in SESSION_COOKIE_NAMES:
+            candidate = jar.get(name, "")
+            if not candidate:
+                continue
+            session = manager.verify_session(candidate, binding)
+            if session is not None:
+                session_id = candidate
+                cookie_name = name
+                break
         if session is None:
             return False
         if method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
@@ -95,8 +119,11 @@ class AuthGateMixin(_HTTPHandlerBase):
             ):
                 return False
         self._panel_session = session
+        # Refresh under the same name the session arrived on: reissuing a
+        # presenter session as ``rumi_panel_session`` in a shared store would
+        # clobber the main window's own cookie.
         self._panel_session_cookie = self._build_set_cookie(
-            "rumi_panel_session",
+            cookie_name,
             session_id,
             path="/",
             max_age=int(

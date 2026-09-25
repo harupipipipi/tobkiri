@@ -305,6 +305,10 @@ class PanelAuthManager:
             "csrf_token": csrf_token,
             "expires_in": self._session_ttl_seconds,
             "journal_scope": self._journal_scope,
+            # Internal to the HTTP boundary: the exchange handler reads the
+            # minted session's confinement to name its Set-Cookie per surface.
+            # It is never forwarded to the client response body.
+            "request_scope": request_scope,
         }
 
     def verify_session(

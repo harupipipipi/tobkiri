@@ -71,6 +71,14 @@ const DEFAULTSPACK_MAIN_WINDOW_LABEL: &str = "defaultspack-main";
 const AUTHORITY_APPROVAL_WINDOW_LABEL: &str = "authority-approval";
 const AUTHORITY_APPROVAL_ARGUMENT: &str = "--tobkiri-open-authority-approval";
 const AUTHORITY_APPROVAL_WINDOW_TITLE: &str = "Tobkiriの許可";
+/// The dedicated approval window must run on an isolated, non-persistent
+/// webview data store so its presenter-scoped `rumi_approval_session`
+/// cookie can neither read nor overwrite the main window's
+/// `rumi_panel_session` jar. `WebviewWindowBuilder::incognito` maps to
+/// `WKWebsiteDataStore.nonPersistentDataStore` on macOS, a WebKitGTK
+/// ephemeral `WebContext` on Linux, and a WebView2 InPrivate profile on
+/// Windows. This must stay enabled for the approval surface.
+const AUTHORITY_APPROVAL_WINDOW_ISOLATED_DATA_STORE: bool = true;
 const AMBIENT_TRIGGER_WINDOW_LABEL: &str = "ambient-trigger";
 const AMBIENT_TRIGGER_WINDOW_TITLE: &str = "合図待ち";
 const AMBIENT_AUTHORITY_REQUEST_ID: &str = "rumi_ambient_trigger_pack";
@@ -559,9 +567,10 @@ fn authority_approval_bootstrap_window_url(
 ) -> Result<Url, String> {
     let url = authority_approval_url(request_id)?;
     // `/approval` is an `auth_bootstrap` mount: its page is only served once a
-    // verified `rumi_panel_session` cookie exists, which the one-time `?code=`
-    // exchange mints. A `rumi_local_auth` fragment never reaches the server on
-    // the initial navigation, so it cannot open this surface.
+    // verified session cookie exists, which the one-time `?code=` exchange
+    // mints under the approval surface's own `rumi_approval_session` name.
+    // A `rumi_local_auth` fragment never reaches the server on the initial
+    // navigation, so it cannot open this surface.
     let bootstrap_secret = load_or_create_panel_bootstrap_secret(config)
         .map_err(|error| format!("failed to load panel bootstrap secret: {error:#}"))?;
     let code = request_panel_presenter_code_with_retry(
@@ -709,6 +718,14 @@ pub(crate) fn open_authority_approval_window_at_url(
     .focused(true)
     .visible(true)
     .always_on_top(true)
+    // The approval window must run on an isolated, non-persistent webview
+    // data store: its confined `rumi_approval_session` cookie can then
+    // neither read nor overwrite the main window's `rumi_panel_session`
+    // jar, and the presenter session never touches disk. Incognito maps to
+    // `WKWebsiteDataStore.nonPersistentDataStore` on macOS, a WebKitGTK
+    // ephemeral `WebContext` on Linux, and a WebView2 InPrivate profile on
+    // Windows.
+    .incognito(AUTHORITY_APPROVAL_WINDOW_ISOLATED_DATA_STORE)
     .build()
     .map_err(|error| format!("failed to open approval window: {error}"))?;
     focus_authority_approval_window(&window)
@@ -4654,6 +4671,16 @@ mod tests {
             url.as_str(),
             "http://127.0.0.1:8766/approval?request_id=auth_123"
         );
+    }
+
+    #[test]
+    fn authority_approval_window_isolates_its_webview_data_store() {
+        // The approval window's confined `rumi_approval_session` cookie must
+        // live in its own non-persistent webview data store so it can never
+        // overwrite — or read — the main window's `rumi_panel_session` jar.
+        // This flag feeds `WebviewWindowBuilder::incognito`; removing it
+        // silently re-shares one cookie jar across both surfaces.
+        assert!(AUTHORITY_APPROVAL_WINDOW_ISOLATED_DATA_STORE);
     }
 
     #[test]
