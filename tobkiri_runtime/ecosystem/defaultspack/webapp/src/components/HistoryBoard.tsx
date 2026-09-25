@@ -1918,6 +1918,8 @@ export function HistoryBoard({
       setGroups(prev => mapGroups(prev, g => g.id === id ? { ...g, title: newTitle } : g));
     } catch (error) {
       setNewGroupError(error instanceof Error ? error.message : "Failed to rename project.");
+      setSaveState({ kind: "unsaved", message: "Project rename could not be saved. The previous name was restored." });
+      setHistoryAnnouncement("Project rename was not saved. The previous name was restored.");
     }
   };
 
@@ -2094,6 +2096,7 @@ export function HistoryBoard({
       setIsCreateGroupOpen(false);
     } catch (error) {
       setNewGroupError(error instanceof Error ? error.message : "Failed to create project.");
+      setHistoryAnnouncement("Project could not be saved. Check local storage and retry.");
     } finally {
       setIsCreatingGroup(false);
     }

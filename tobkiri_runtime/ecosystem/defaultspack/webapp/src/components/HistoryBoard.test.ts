@@ -15,7 +15,16 @@ import {
   type CustomGroupInfo,
 } from "./HistoryBoard";
 import { droppedWidgetFromHistoryChat, historyChatDragPayload, parseHistoryChatDrop } from "../lib/historyComposer";
-import { filterProjects, newProjectId, projectFromStorageItem, projectTaskContext } from "../features/projects/projectStorage";
+import {
+  filterProjects,
+  loadProjectsResult,
+  newProjectId,
+  projectFromStorageItem,
+  projectTaskContext,
+  saveProjects,
+} from "../features/projects/projectStorage";
+import { HISTORY_ORGANIZATION_STORAGE_KEY } from "../features/history/historyOrganization";
+import "../features/history/historyOrganization.test";
 
 test("buildGroupsFromChats places LINE conversations into a dedicated group", () => {
   const chats: ChatItem[] = [
@@ -257,7 +266,7 @@ test("HistoryBoard exposes recovery controls when organization storage is corrup
   }
 });
 
-test("project storage reports corrupt data and write failures", () => {
+test("project storage reports corrupt data and write failures", async () => {
   const previousDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
   Object.defineProperty(globalThis, "localStorage", {
     configurable: true,
@@ -272,7 +281,7 @@ test("project storage reports corrupt data and write failures", () => {
     const loaded = loadProjectsResult();
     assert.equal(loaded.status, "corrupt");
     assert.deepEqual(loaded.projects, []);
-    assert.equal(saveProjects([{ id: "alpha", title: "Alpha" }]), false);
+    await assert.rejects(saveProjects([{ id: "alpha", title: "Alpha" }]));
   } finally {
     if (previousDescriptor) Object.defineProperty(globalThis, "localStorage", previousDescriptor);
     else Reflect.deleteProperty(globalThis, "localStorage");
