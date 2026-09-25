@@ -125,6 +125,9 @@ type InteractiveApprovalFixture = {
   typed_confirmation_required: boolean;
   typed_confirmation_digest: string | null;
   redacted_metadata: Record<string, string>;
+  conversationSearch?: (
+    payload: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>> | Record<string, unknown>;
 };
 
 function ok(data: unknown) {
@@ -269,6 +272,24 @@ function dynamicHostCatalog() {
   };
 }
 
+function spotlightResult(id: string, title: string, index: number) {
+    conversation_id: id,
+    title,
+    created_at: now - index * 60_000,
+    updated_at: now - index * 60_000,
+    is_starred: true,
+    is_archived: false,
+    score: 1,
+    exact_score: 1,
+    semantic_score: 0,
+    match_count: 1,
+    matches: [{
+      message_id: `spotlight-message-${index}`,
+      role: "user",
+      created_at: now - index * 60_000,
+      snippet: `Search result excerpt ${index}`,
+      exact: true,
+      score: 1,
 const smokeProfile = {
   profile_id: "stub/default",
   qualified_model_id: "stub/default",
