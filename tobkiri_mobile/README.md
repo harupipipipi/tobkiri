@@ -1,6 +1,6 @@
-# Rumi Mobile
+# Tobkiri Mobile
 
-Rumi Mobile is the Flutter client for Rumi. It ships a ChatGPT-style chat UI
+Tobkiri Mobile is the Flutter client for Tobkiri. It ships a ChatGPT-style chat UI
 that runs **on-device** against any OpenAI-compatible endpoint, plus QR-based
 PC pairing.
 
