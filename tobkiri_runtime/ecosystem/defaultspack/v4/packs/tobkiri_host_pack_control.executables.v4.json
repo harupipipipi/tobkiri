@@ -1,44 +1,29 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:adc0c47ba7aa016b333726cb73757faee8b363159a9c079168fbc7403ee5ff0d",
   "pack_id": "tobkiri_host_pack_control",
-  "source_identity": "sha256:11efaed2ccbc3d373a03c447e9387c2ccb9df16d4dea3665e7fa6cfc89209e83",
+  "source_identity": "sha256:6090ec8545f5bcfc6309137d7a974c2dbff3e88c4be71cc82f4c4d102e0add7c",
   "variants": [
     {
-      "architecture": "any",
-      "backend": "tobkiri.python-host-v4",
-      "execution_domain_profile": "host.extension.default.v1",
-      "execution_kind": "host_extension",
+      "variant_id": "tobkiri.host.control-presentation.python",
       "function_id": "tobkiri.host.control-presentation",
-      "implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
       "implementation_path": "runtime/catalog.py",
+      "implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
       "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.host.control-presentation.v4",
           "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "code": {
-                "type": "string"
-              },
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "code",
-              "message"
-            ],
-            "type": "object"
-          },
-          "idempotency": "none",
-          "input_schema": {
-            "type": "object"
-          },
+          "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
           "operation_id": "profile.change.activate",
+          "input_schema": {
+            "type": "object"
+          },
           "output_schema": {
             "oneOf": [
               {
@@ -286,17 +271,109 @@
                   "state"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "contract_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "created_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "operation_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "operation_status_api_version": {
+                    "const": "io.tobkiri.control-operation-status.v1"
+                  },
+                  "record_refs": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "digest": {
+                          "pattern": "^sha256:[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "request_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "result": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "result_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "safe_error_code": {
+                    "minLength": 1,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "state": {
+                    "enum": [
+                      "pending",
+                      "succeeded",
+                      "failed",
+                      "indeterminate"
+                    ]
+                  },
+                  "updated_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "operation_status_api_version",
+                  "request_id",
+                  "operation_id",
+                  "contract_id",
+                  "request_digest",
+                  "state",
+                  "result",
+                  "result_digest",
+                  "record_refs",
+                  "safe_error_code",
+                  "created_at",
+                  "updated_at"
+                ],
+                "type": "object"
               }
             ]
           },
-          "revision_digest": "sha256:83cbce7734a5026885e1c4012d4cf3e37ac7882d8dc8cb03bcb903257ddc8b02",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -313,11 +390,19 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
-          "input_schema": {
-            "type": "object"
-          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
           "operation_id": "profile.change.approve",
+          "input_schema": {
+            "type": "object"
+          },
           "output_schema": {
             "oneOf": [
               {
@@ -565,17 +650,109 @@
                   "state"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "contract_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "created_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "operation_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "operation_status_api_version": {
+                    "const": "io.tobkiri.control-operation-status.v1"
+                  },
+                  "record_refs": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "digest": {
+                          "pattern": "^sha256:[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "request_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "result": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "result_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "safe_error_code": {
+                    "minLength": 1,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "state": {
+                    "enum": [
+                      "pending",
+                      "succeeded",
+                      "failed",
+                      "indeterminate"
+                    ]
+                  },
+                  "updated_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "operation_status_api_version",
+                  "request_id",
+                  "operation_id",
+                  "contract_id",
+                  "request_digest",
+                  "state",
+                  "result",
+                  "result_digest",
+                  "record_refs",
+                  "safe_error_code",
+                  "created_at",
+                  "updated_at"
+                ],
+                "type": "object"
               }
             ]
           },
-          "revision_digest": "sha256:83cbce7734a5026885e1c4012d4cf3e37ac7882d8dc8cb03bcb903257ddc8b02",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -592,11 +769,19 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
-          "input_schema": {
-            "type": "object"
-          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
           "operation_id": "profile.change.resolve",
+          "input_schema": {
+            "type": "object"
+          },
           "output_schema": {
             "oneOf": [
               {
@@ -844,17 +1029,109 @@
                   "state"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "contract_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "created_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "operation_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "operation_status_api_version": {
+                    "const": "io.tobkiri.control-operation-status.v1"
+                  },
+                  "record_refs": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "digest": {
+                          "pattern": "^sha256:[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "request_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "result": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "result_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "safe_error_code": {
+                    "minLength": 1,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "state": {
+                    "enum": [
+                      "pending",
+                      "succeeded",
+                      "failed",
+                      "indeterminate"
+                    ]
+                  },
+                  "updated_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "operation_status_api_version",
+                  "request_id",
+                  "operation_id",
+                  "contract_id",
+                  "request_digest",
+                  "state",
+                  "result",
+                  "result_digest",
+                  "record_refs",
+                  "safe_error_code",
+                  "created_at",
+                  "updated_at"
+                ],
+                "type": "object"
               }
             ]
           },
-          "revision_digest": "sha256:83cbce7734a5026885e1c4012d4cf3e37ac7882d8dc8cb03bcb903257ddc8b02",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -871,11 +1148,19 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
-          "input_schema": {
-            "type": "object"
-          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
           "operation_id": "profile.change.review",
+          "input_schema": {
+            "type": "object"
+          },
           "output_schema": {
             "oneOf": [
               {
@@ -1123,17 +1408,109 @@
                   "state"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "contract_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "created_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "operation_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "operation_status_api_version": {
+                    "const": "io.tobkiri.control-operation-status.v1"
+                  },
+                  "record_refs": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "digest": {
+                          "pattern": "^sha256:[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "request_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "result": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "result_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "safe_error_code": {
+                    "minLength": 1,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "state": {
+                    "enum": [
+                      "pending",
+                      "succeeded",
+                      "failed",
+                      "indeterminate"
+                    ]
+                  },
+                  "updated_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "operation_status_api_version",
+                  "request_id",
+                  "operation_id",
+                  "contract_id",
+                  "request_digest",
+                  "state",
+                  "result",
+                  "result_digest",
+                  "record_refs",
+                  "safe_error_code",
+                  "created_at",
+                  "updated_at"
+                ],
+                "type": "object"
               }
             ]
           },
-          "revision_digest": "sha256:83cbce7734a5026885e1c4012d4cf3e37ac7882d8dc8cb03bcb903257ddc8b02",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -1150,11 +1527,19 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
-          "input_schema": {
-            "type": "object"
-          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
           "operation_id": "profile.catalog.read",
+          "input_schema": {
+            "type": "object"
+          },
           "output_schema": {
             "oneOf": [
               {
@@ -1402,17 +1787,109 @@
                   "state"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "contract_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "created_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "operation_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "operation_status_api_version": {
+                    "const": "io.tobkiri.control-operation-status.v1"
+                  },
+                  "record_refs": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "digest": {
+                          "pattern": "^sha256:[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "request_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "result": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "result_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "safe_error_code": {
+                    "minLength": 1,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "state": {
+                    "enum": [
+                      "pending",
+                      "succeeded",
+                      "failed",
+                      "indeterminate"
+                    ]
+                  },
+                  "updated_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "operation_status_api_version",
+                  "request_id",
+                  "operation_id",
+                  "contract_id",
+                  "request_digest",
+                  "state",
+                  "result",
+                  "result_digest",
+                  "record_refs",
+                  "safe_error_code",
+                  "created_at",
+                  "updated_at"
+                ],
+                "type": "object"
               }
             ]
           },
-          "revision_digest": "sha256:83cbce7734a5026885e1c4012d4cf3e37ac7882d8dc8cb03bcb903257ddc8b02",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -1429,11 +1906,19 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
-          "input_schema": {
-            "type": "object"
-          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
           "operation_id": "operation.status.read",
+          "input_schema": {
+            "type": "object"
+          },
           "output_schema": {
             "oneOf": [
               {
@@ -1681,17 +2166,109 @@
                   "state"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "contract_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "created_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "operation_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "operation_status_api_version": {
+                    "const": "io.tobkiri.control-operation-status.v1"
+                  },
+                  "record_refs": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "digest": {
+                          "pattern": "^sha256:[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "request_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "result": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "result_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "safe_error_code": {
+                    "minLength": 1,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "state": {
+                    "enum": [
+                      "pending",
+                      "succeeded",
+                      "failed",
+                      "indeterminate"
+                    ]
+                  },
+                  "updated_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "operation_status_api_version",
+                  "request_id",
+                  "operation_id",
+                  "contract_id",
+                  "request_digest",
+                  "state",
+                  "result",
+                  "result_digest",
+                  "record_refs",
+                  "safe_error_code",
+                  "created_at",
+                  "updated_at"
+                ],
+                "type": "object"
               }
             ]
           },
-          "revision_digest": "sha256:83cbce7734a5026885e1c4012d4cf3e37ac7882d8dc8cb03bcb903257ddc8b02",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -1708,11 +2285,19 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
-          "input_schema": {
-            "type": "object"
-          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
           "operation_id": "profile.read",
+          "input_schema": {
+            "type": "object"
+          },
           "output_schema": {
             "oneOf": [
               {
@@ -1960,17 +2545,109 @@
                   "state"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "contract_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "created_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "operation_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "operation_status_api_version": {
+                    "const": "io.tobkiri.control-operation-status.v1"
+                  },
+                  "record_refs": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "digest": {
+                          "pattern": "^sha256:[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "request_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "result": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "result_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "safe_error_code": {
+                    "minLength": 1,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "state": {
+                    "enum": [
+                      "pending",
+                      "succeeded",
+                      "failed",
+                      "indeterminate"
+                    ]
+                  },
+                  "updated_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "operation_status_api_version",
+                  "request_id",
+                  "operation_id",
+                  "contract_id",
+                  "request_digest",
+                  "state",
+                  "result",
+                  "result_digest",
+                  "record_refs",
+                  "safe_error_code",
+                  "created_at",
+                  "updated_at"
+                ],
+                "type": "object"
               }
             ]
           },
-          "revision_digest": "sha256:83cbce7734a5026885e1c4012d4cf3e37ac7882d8dc8cb03bcb903257ddc8b02",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -1987,11 +2664,19 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
-          "input_schema": {
-            "type": "object"
-          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
           "operation_id": "settings.read",
+          "input_schema": {
+            "type": "object"
+          },
           "output_schema": {
             "oneOf": [
               {
@@ -2239,17 +2924,109 @@
                   "state"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "contract_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "created_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "operation_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "operation_status_api_version": {
+                    "const": "io.tobkiri.control-operation-status.v1"
+                  },
+                  "record_refs": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "digest": {
+                          "pattern": "^sha256:[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "request_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "result": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "result_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "safe_error_code": {
+                    "minLength": 1,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "state": {
+                    "enum": [
+                      "pending",
+                      "succeeded",
+                      "failed",
+                      "indeterminate"
+                    ]
+                  },
+                  "updated_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "operation_status_api_version",
+                  "request_id",
+                  "operation_id",
+                  "contract_id",
+                  "request_digest",
+                  "state",
+                  "result",
+                  "result_digest",
+                  "record_refs",
+                  "safe_error_code",
+                  "created_at",
+                  "updated_at"
+                ],
+                "type": "object"
               }
             ]
           },
-          "revision_digest": "sha256:83cbce7734a5026885e1c4012d4cf3e37ac7882d8dc8cb03bcb903257ddc8b02",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -2266,11 +3043,19 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
-          "input_schema": {
-            "type": "object"
-          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
           "operation_id": "topology.contracts.read",
+          "input_schema": {
+            "type": "object"
+          },
           "output_schema": {
             "oneOf": [
               {
@@ -2518,17 +3303,109 @@
                   "state"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "contract_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "created_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "operation_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "operation_status_api_version": {
+                    "const": "io.tobkiri.control-operation-status.v1"
+                  },
+                  "record_refs": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "digest": {
+                          "pattern": "^sha256:[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "request_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "result": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "result_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "safe_error_code": {
+                    "minLength": 1,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "state": {
+                    "enum": [
+                      "pending",
+                      "succeeded",
+                      "failed",
+                      "indeterminate"
+                    ]
+                  },
+                  "updated_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "operation_status_api_version",
+                  "request_id",
+                  "operation_id",
+                  "contract_id",
+                  "request_digest",
+                  "state",
+                  "result",
+                  "result_digest",
+                  "record_refs",
+                  "safe_error_code",
+                  "created_at",
+                  "updated_at"
+                ],
+                "type": "object"
               }
             ]
           },
-          "revision_digest": "sha256:83cbce7734a5026885e1c4012d4cf3e37ac7882d8dc8cb03bcb903257ddc8b02",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -2545,11 +3422,19 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
-          "input_schema": {
-            "type": "object"
-          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
           "operation_id": "topology.operations.read",
+          "input_schema": {
+            "type": "object"
+          },
           "output_schema": {
             "oneOf": [
               {
@@ -2797,17 +3682,109 @@
                   "state"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "contract_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "created_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "operation_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "operation_status_api_version": {
+                    "const": "io.tobkiri.control-operation-status.v1"
+                  },
+                  "record_refs": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "digest": {
+                          "pattern": "^sha256:[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "request_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "result": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "result_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "safe_error_code": {
+                    "minLength": 1,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "state": {
+                    "enum": [
+                      "pending",
+                      "succeeded",
+                      "failed",
+                      "indeterminate"
+                    ]
+                  },
+                  "updated_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "operation_status_api_version",
+                  "request_id",
+                  "operation_id",
+                  "contract_id",
+                  "request_digest",
+                  "state",
+                  "result",
+                  "result_digest",
+                  "record_refs",
+                  "safe_error_code",
+                  "created_at",
+                  "updated_at"
+                ],
+                "type": "object"
               }
             ]
           },
-          "revision_digest": "sha256:83cbce7734a5026885e1c4012d4cf3e37ac7882d8dc8cb03bcb903257ddc8b02",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.control-presentation.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -2824,11 +3801,19 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
-          "input_schema": {
-            "type": "object"
-          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
           "operation_id": "topology.packs.read",
+          "input_schema": {
+            "type": "object"
+          },
           "output_schema": {
             "oneOf": [
               {
@@ -3076,38 +4061,138 @@
                   "state"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "contract_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "created_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "operation_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "operation_status_api_version": {
+                    "const": "io.tobkiri.control-operation-status.v1"
+                  },
+                  "record_refs": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "digest": {
+                          "pattern": "^sha256:[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "request_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "result": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "result_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "safe_error_code": {
+                    "minLength": 1,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "state": {
+                    "enum": [
+                      "pending",
+                      "succeeded",
+                      "failed",
+                      "indeterminate"
+                    ]
+                  },
+                  "updated_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "operation_status_api_version",
+                  "request_id",
+                  "operation_id",
+                  "contract_id",
+                  "request_digest",
+                  "state",
+                  "result",
+                  "result_digest",
+                  "record_refs",
+                  "safe_error_code",
+                  "created_at",
+                  "updated_at"
+                ],
+                "type": "object"
               }
             ]
           },
-          "revision_digest": "sha256:83cbce7734a5026885e1c4012d4cf3e37ac7882d8dc8cb03bcb903257ddc8b02",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
         },
         {
           "contract_id": "tobkiri.host.control-presentation.v4",
           "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "code": {
-                "type": "string"
-              },
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "code",
-              "message"
-            ],
-            "type": "object"
-          },
-          "idempotency": "none",
+          "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
+          "operation_id": "topology.principals.read",
           "input_schema": {
             "type": "object"
           },
-          "operation_id": "topology.principals.read",
           "output_schema": {
             "oneOf": [
               {
@@ -3355,109 +4440,150 @@
                   "state"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "contract_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "created_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "operation_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "operation_status_api_version": {
+                    "const": "io.tobkiri.control-operation-status.v1"
+                  },
+                  "record_refs": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "digest": {
+                          "pattern": "^sha256:[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "id"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "request_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "request_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "result": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "result_digest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "safe_error_code": {
+                    "minLength": 1,
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "state": {
+                    "enum": [
+                      "pending",
+                      "succeeded",
+                      "failed",
+                      "indeterminate"
+                    ]
+                  },
+                  "updated_at": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "operation_status_api_version",
+                  "request_id",
+                  "operation_id",
+                  "contract_id",
+                  "request_digest",
+                  "state",
+                  "result",
+                  "result_digest",
+                  "record_refs",
+                  "safe_error_code",
+                  "created_at",
+                  "updated_at"
+                ],
+                "type": "object"
               }
             ]
           },
-          "revision_digest": "sha256:83cbce7734a5026885e1c4012d4cf3e37ac7882d8dc8cb03bcb903257ddc8b02",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
         }
-      ],
-      "platform": "any",
-      "runtime_abi": "python3.13",
-      "variant_id": "tobkiri.host.control-presentation.python"
+      ]
     },
     {
-      "architecture": "any",
-      "backend": "tobkiri.python-host-v4",
-      "execution_domain_profile": "host.extension.default.v1",
-      "execution_kind": "host_extension",
+      "variant_id": "tobkiri.host.mobile-pairing.python",
       "function_id": "tobkiri.host.mobile-pairing",
-      "implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
       "implementation_path": "runtime/catalog.py",
+      "implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
       "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.host.mobile-pairing.v4",
           "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "code": {
-                "type": "string"
-              },
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "code",
-              "message"
-            ],
-            "type": "object"
-          },
-          "idempotency": "none",
-          "input_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "claim_hash": {
-                "pattern": "^sha256:[0-9a-f]{64}$",
-                "type": "string"
-              },
-              "pairing_id": {
-                "maxLength": 160,
-                "minLength": 1,
-                "type": "string"
-              },
-              "reason": {
-                "maxLength": 512,
-                "type": "string"
-              },
-              "scopes": {
-                "items": {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "maxItems": 32,
-                "type": "array"
-              }
-            },
-            "required": [
-              "pairing_id"
-            ],
-            "type": "object"
-          },
+          "revision_digest": "sha256:0de3d2e4a5473d697c713265e55deffd2d35157a916f9bbee5db753e6ac59fd8",
           "operation_id": "pairing.approve",
-          "output_schema": {
-            "type": "object"
-          },
-          "revision_digest": "sha256:0de3d2e4a5473d697c713265e55deffd2d35157a916f9bbee5db753e6ac59fd8",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.mobile-pairing.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "code": {
-                "type": "string"
-              },
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "code",
-              "message"
-            ],
-            "type": "object"
-          },
-          "idempotency": "none",
           "input_schema": {
             "additionalProperties": false,
             "properties": {
@@ -3489,35 +4615,35 @@
             ],
             "type": "object"
           },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.mobile-pairing.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:0de3d2e4a5473d697c713265e55deffd2d35157a916f9bbee5db753e6ac59fd8",
           "operation_id": "pairing.reject",
-          "output_schema": {
-            "type": "object"
-          },
-          "revision_digest": "sha256:0de3d2e4a5473d697c713265e55deffd2d35157a916f9bbee5db753e6ac59fd8",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.mobile-pairing.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "code": {
-                "type": "string"
-              },
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "code",
-              "message"
-            ],
-            "type": "object"
-          },
-          "idempotency": "none",
           "input_schema": {
             "additionalProperties": false,
             "properties": {
@@ -3549,35 +4675,35 @@
             ],
             "type": "object"
           },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.mobile-pairing.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:0de3d2e4a5473d697c713265e55deffd2d35157a916f9bbee5db753e6ac59fd8",
           "operation_id": "pairing.review.read",
-          "output_schema": {
-            "type": "object"
-          },
-          "revision_digest": "sha256:0de3d2e4a5473d697c713265e55deffd2d35157a916f9bbee5db753e6ac59fd8",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.mobile-pairing.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "code": {
-                "type": "string"
-              },
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "code",
-              "message"
-            ],
-            "type": "object"
-          },
-          "idempotency": "none",
           "input_schema": {
             "additionalProperties": false,
             "properties": {
@@ -3609,74 +4735,125 @@
             ],
             "type": "object"
           },
-          "operation_id": "pairing.status.read",
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:0de3d2e4a5473d697c713265e55deffd2d35157a916f9bbee5db753e6ac59fd8",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "effect_class": "privileged",
           "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.mobile-pairing.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:0de3d2e4a5473d697c713265e55deffd2d35157a916f9bbee5db753e6ac59fd8",
+          "operation_id": "pairing.status.read",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "claim_hash": {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "pairing_id": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "reason": {
+                "maxLength": 512,
+                "type": "string"
+              },
+              "scopes": {
+                "items": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 32,
+                "type": "array"
+              }
+            },
+            "required": [
+              "pairing_id"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
         }
-      ],
-      "platform": "any",
-      "runtime_abi": "python3.13",
-      "variant_id": "tobkiri.host.mobile-pairing.python"
+      ]
     },
     {
-      "architecture": "any",
-      "backend": "tobkiri.python-host-v4",
-      "execution_domain_profile": "host.extension.default.v1",
-      "execution_kind": "host_extension",
+      "variant_id": "tobkiri.host.pack-control.python",
       "function_id": "tobkiri.host.pack-control",
-      "implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
       "implementation_path": "runtime/catalog.py",
+      "implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
       "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.host.pack-control.v4",
           "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "code": {
-                "type": "string"
-              },
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "code",
-              "message"
-            ],
-            "type": "object"
-          },
-          "idempotency": "none",
-          "input_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "candidate_id": {
-                "type": "string"
-              },
-              "pack_id": {
-                "type": "string"
-              }
-            },
-            "type": "object"
-          },
+          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
           "operation_id": "approval.approve",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "candidate_id": {
+                "type": "string"
+              },
+              "pack_id": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.pack-control.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -3693,31 +4870,31 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
-          "input_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "candidate_id": {
-                "type": "string"
-              },
-              "pack_id": {
-                "type": "string"
-              }
-            },
-            "type": "object"
-          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
           "operation_id": "approval.candidate",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "candidate_id": {
+                "type": "string"
+              },
+              "pack_id": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.pack-control.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -3734,31 +4911,31 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
-          "input_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "candidate_id": {
-                "type": "string"
-              },
-              "pack_id": {
-                "type": "string"
-              }
-            },
-            "type": "object"
-          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
           "operation_id": "approval.revoke",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "candidate_id": {
+                "type": "string"
+              },
+              "pack_id": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.pack-control.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -3775,31 +4952,31 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
-          "input_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "candidate_id": {
-                "type": "string"
-              },
-              "pack_id": {
-                "type": "string"
-              }
-            },
-            "type": "object"
-          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
           "operation_id": "catalog.read",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "candidate_id": {
+                "type": "string"
+              },
+              "pack_id": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.pack-control.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -3816,31 +4993,31 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
-          "input_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "candidate_id": {
-                "type": "string"
-              },
-              "pack_id": {
-                "type": "string"
-              }
-            },
-            "type": "object"
-          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
           "operation_id": "dashboard.read",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "candidate_id": {
+                "type": "string"
+              },
+              "pack_id": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.pack-control.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -3857,31 +5034,31 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
-          "input_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "candidate_id": {
-                "type": "string"
-              },
-              "pack_id": {
-                "type": "string"
-              }
-            },
-            "type": "object"
-          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
           "operation_id": "pack.disable",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "candidate_id": {
+                "type": "string"
+              },
+              "pack_id": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.pack-control.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -3898,31 +5075,31 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
-          "input_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "candidate_id": {
-                "type": "string"
-              },
-              "pack_id": {
-                "type": "string"
-              }
-            },
-            "type": "object"
-          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
           "operation_id": "pack.enable",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "candidate_id": {
+                "type": "string"
+              },
+              "pack_id": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.pack-control.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -3939,31 +5116,31 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
-          "input_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "candidate_id": {
-                "type": "string"
-              },
-              "pack_id": {
-                "type": "string"
-              }
-            },
-            "type": "object"
-          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
           "operation_id": "pack.install",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "candidate_id": {
+                "type": "string"
+              },
+              "pack_id": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.pack-control.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -3980,31 +5157,31 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
-          "input_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "candidate_id": {
-                "type": "string"
-              },
-              "pack_id": {
-                "type": "string"
-              }
-            },
-            "type": "object"
-          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
           "operation_id": "pack.status",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "candidate_id": {
+                "type": "string"
+              },
+              "pack_id": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.pack-control.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -4021,31 +5198,31 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
-          "input_schema": {
-            "additionalProperties": false,
-            "properties": {
-              "candidate_id": {
-                "type": "string"
-              },
-              "pack_id": {
-                "type": "string"
-              }
-            },
-            "type": "object"
-          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
           "operation_id": "profile.reload",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "candidate_id": {
+                "type": "string"
+              },
+              "pack_id": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
-          "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
-        },
-        {
-          "contract_id": "tobkiri.host.pack-control.v4",
-          "contract_version": "1.0.0",
-          "effect_class": "privileged",
           "error_schema": {
             "additionalProperties": false,
             "properties": {
@@ -4062,7 +5239,16 @@
             ],
             "type": "object"
           },
-          "idempotency": "none",
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+          "operation_id": "runtime.restart",
           "input_schema": {
             "additionalProperties": false,
             "properties": {
@@ -4075,18 +5261,33 @@
             },
             "type": "object"
           },
-          "operation_id": "runtime.restart",
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "effect_class": "privileged",
           "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
         }
-      ],
-      "platform": "any",
-      "runtime_abi": "python3.13",
-      "variant_id": "tobkiri.host.pack-control.python"
+      ]
     }
-  ]
+  ],
+  "materialization_catalog_digest": "sha256:4e4f92b6eea3cf1f1cacaf1db59970c1f3ed1d5dc316a7fee4ab9833fbfbe3a5",
+  "catalog_digest": "sha256:b3ae7ca27482e27925406b46d57b3409bded532fd78a65e7d0798fdd522e21e7"
 }
