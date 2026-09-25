@@ -41,29 +41,32 @@
           return value === 'Rumi' || value === 'Standard' ? 'Rounded' : null;
         }
 
-        try {
-          var storedTheme = localStorage.getItem('tobkiri-theme');
-          var storedMode = localStorage.getItem('tobkiri-color-mode');
-          if (storedTheme === null) storedTheme = localStorage.getItem('rumi-theme');
-          var normalizedTheme = normalizeTheme(storedTheme);
-          if (normalizedTheme && normalizedTheme !== storedTheme) {
-            try { localStorage.setItem('tobkiri-theme', normalizedTheme); } catch (error) {}
-          } else if (storedTheme !== null && normalizedTheme) {
-            try { localStorage.setItem('tobkiri-theme', normalizedTheme); } catch (error) {}
+        function readStoredValue(key) {
+          try {
+            return localStorage.getItem(key);
+          } catch (error) {
+            return null;
           }
-          if (storedMode === null) {
-            var legacyMode = localStorage.getItem('rumi-color-mode');
-            if (legacyMode === 'light' || legacyMode === 'dark') {
-              storedMode = legacyMode;
-              try { localStorage.setItem('tobkiri-color-mode', legacyMode); } catch (error) {}
-            }
-          }
-          if (normalizedTheme) theme = normalizedTheme;
-          if (storedMode === 'light' || storedMode === 'dark') mode = storedMode;
-        } catch (error) {
-          theme = 'Rounded';
-          mode = 'dark';
         }
+
+        var storedTheme = readStoredValue('tobkiri-theme');
+        var storedMode = readStoredValue('tobkiri-color-mode');
+        if (storedTheme === null) storedTheme = readStoredValue('rumi-theme');
+        var normalizedTheme = normalizeTheme(storedTheme);
+        if (normalizedTheme && normalizedTheme !== storedTheme) {
+          try { localStorage.setItem('tobkiri-theme', normalizedTheme); } catch (error) {}
+        } else if (storedTheme !== null && normalizedTheme) {
+          try { localStorage.setItem('tobkiri-theme', normalizedTheme); } catch (error) {}
+        }
+        if (storedMode === null) {
+          var legacyMode = readStoredValue('rumi-color-mode');
+          if (legacyMode === 'light' || legacyMode === 'dark') {
+            storedMode = legacyMode;
+            try { localStorage.setItem('tobkiri-color-mode', legacyMode); } catch (error) {}
+          }
+        }
+        if (normalizedTheme) theme = normalizedTheme;
+        if (storedMode === 'light' || storedMode === 'dark') mode = storedMode;
 
         root.classList.add(themes[theme]);
         if (mode === 'dark') {

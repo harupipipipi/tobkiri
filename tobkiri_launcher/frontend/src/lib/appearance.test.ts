@@ -97,10 +97,37 @@ test('appearance migration falls back safely when storage access throws', () => 
 
 test('preboot appearance migration uses the same canonical-first contract', () => {
   const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
-  assert.ok(html.indexOf("getItem('tobkiri-theme')") < html.indexOf("getItem('rumi-theme')"));
-  assert.ok(html.indexOf("getItem('tobkiri-color-mode')") < html.indexOf("getItem('rumi-color-mode')"));
+  assert.ok(html.indexOf("readStoredValue('tobkiri-theme')") < html.indexOf("readStoredValue('rumi-theme')"));
+  assert.ok(html.indexOf("readStoredValue('tobkiri-color-mode')") < html.indexOf("readStoredValue('rumi-color-mode')"));
   assert.match(html, /normalizeTheme\(storedTheme\)[\s\S]*setItem\('tobkiri-theme'/);
   assert.match(html, /legacyMode === 'light' \|\| legacyMode === 'dark'[\s\S]*setItem\('tobkiri-color-mode'/);
+});
+
+test('preboot appearance reads each storage key with its own fallback', () => {
+  const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+  // One blocked getItem must not reset the other appearance value: every
+  // read goes through the per-key helper, the same per-key isolation
+  // readStoredAppearance gets from readStorageValue.
+  assert.equal(html.match(/localStorage\.getItem\(/g)?.length, 1);
+  assert.match(
+    html,
+    /function readStoredValue\(key\) \{\s*try \{\s*return localStorage\.getItem\(key\);\s*\} catch \(error\) \{\s*return null;\s*\}\s*\}/,
+  );
+});
+
+test('preboot appearance script stays identical in the packaged panel copy', () => {
+  const preboot = /\(function \(\) \{[\s\S]*?\}\)\(\);/;
+  const launcher = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+  const panel = readFileSync(
+    new URL(
+      '../../../../tobkiri_runtime/core_runtime/core_pack/core_control_panel/web/index.html',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+  const launcherScript = launcher.match(preboot)?.[0];
+  assert.ok(launcherScript);
+  assert.equal(panel.match(preboot)?.[0], launcherScript);
 });
 
 test('appearance application keeps one theme class and toggles dark before paint', () => {
