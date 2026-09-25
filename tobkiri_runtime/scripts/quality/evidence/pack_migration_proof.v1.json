@@ -5868,131 +5868,26 @@
       }
     },
     "rumi_kanban_state_store_pack": {
-      "migration_receipt_digest": "sha256:4b4580104bbb45be3a1b816dfe00c6567c7574bb5dbacf3be9441d9e290fb3a5",
       "semantic_comparison": {
-        "equivalent": true,
+        "equivalent": false,
+        "errors": [
+          "artifact_digest_mapping_mismatch:rumi_kanban_state_store_pack.kanban-state.action",
+          "artifact_digest_mapping_mismatch:rumi_kanban_state_store_pack.kanban-state.resource"
+        ],
         "method": "legacy-to-v4-semantic-comparator.v1",
-        "missing_categories": [],
+        "missing_categories": [
+          "artifact_digest_mapping_mismatch"
+        ],
         "operation_inventory": {
           "legacy_count": 2,
           "v4_count": 2
         },
-        "operation_mappings": [
-          {
-            "authority_mapping": {
-              "legacy": {
-                "artifact_role": "runtime",
-                "cardinality": "one",
-                "contract_id": "rumi.action.kanban.v1",
-                "failure": "fail_closed",
-                "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_kanban_state_store_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
-                "provider_instance_id": "kanban-state.action",
-                "required_capabilities": [
-                  "kanban.state.manage"
-                ],
-                "security": "restricted"
-              },
-              "status": "verified",
-              "v4": {
-                "cardinality": "one",
-                "contract_id": "tobkiri.action.kanban.v1",
-                "failure": "fail_closed",
-                "function_role": "brokered",
-                "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_kanban_state_store_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
-                "provider_id": "rumi_kanban_state_store_pack.kanban-state.action",
-                "required_capabilities": [
-                  "kanban.state.manage"
-                ],
-                "security": "restricted"
-              }
-            },
-            "function_id": "rumi_kanban_state_store_pack.kanban-state.action",
-            "legacy_operation_id": "kanban-state-action",
-            "legacy_operation_kind": "legacy-v3-entrypoint",
-            "parameter_mapping": {
-              "legacy_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-              "method": "canonical-json-schema-equality",
-              "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-              "rules": [
-                "input:identity",
-                "output:identity"
-              ],
-              "status": "verified",
-              "v4_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0"
-            },
-            "v4_contract_id": "tobkiri.action.kanban.v1",
-            "v4_operation_id": "rumi_kanban_state_store_pack.kanban-state-action"
-          },
-          {
-            "authority_mapping": {
-              "legacy": {
-                "artifact_role": "runtime",
-                "cardinality": "one",
-                "contract_id": "rumi.resource.kanban.v1",
-                "failure": "fail_closed",
-                "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_kanban_state_store_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
-                "provider_instance_id": "kanban-state.resource",
-                "required_capabilities": [
-                  "kanban.state.read"
-                ],
-                "security": "sensitive"
-              },
-              "status": "verified",
-              "v4": {
-                "cardinality": "one",
-                "contract_id": "tobkiri.resource.kanban.v1",
-                "failure": "fail_closed",
-                "function_role": "brokered",
-                "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_kanban_state_store_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
-                "provider_id": "rumi_kanban_state_store_pack.kanban-state.resource",
-                "required_capabilities": [
-                  "kanban.state.read"
-                ],
-                "security": "sensitive"
-              }
-            },
-            "function_id": "rumi_kanban_state_store_pack.kanban-state.resource",
-            "legacy_operation_id": "kanban-state-resource",
-            "legacy_operation_kind": "legacy-v3-entrypoint",
-            "parameter_mapping": {
-              "legacy_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-              "method": "canonical-json-schema-equality",
-              "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-              "rules": [
-                "input:identity",
-                "output:identity"
-              ],
-              "status": "verified",
-              "v4_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0"
-            },
-            "v4_contract_id": "tobkiri.resource.kanban.v1",
-            "v4_operation_id": "rumi_kanban_state_store_pack.kanban-state-resource"
-          }
-        ],
-        "status": "verified"
+        "operation_mappings": [],
+        "reason": "Pack-specific legacy and v4 semantic records do not compare exactly",
+        "status": "unverified"
       },
       "source": {
-        "digest": "sha256:93b8e55981173036862bbd7904a7f4a5c7ce4e0e7180e40acce4b9efaeece002",
+        "digest": "sha256:38e85fc8f74ce67d3c986fc515259e82a246d7d7daf9880ddd5a57e8da931299",
         "executable_source_registry": {
           "digest": "sha256:623bcce01cdeb83a620b3e4f2ddb4371c2ecd633a6d6980c9f518bf2de29d473",
           "path": "tobkiri_runtime/schemas/executable_sources.v1.json",
@@ -6000,11 +5895,11 @@
         },
         "files": [
           {
-            "digest": "sha256:6c1abbf9c9e46c9c7bd7d65654f6fc0147391f6583e6e674c2f545be816e3329",
+            "digest": "sha256:d1729209feccbfd0563202ca0d22f5861844f59bf8f60d5b60b9f24149bf85ba",
             "path": "tobkiri_runtime/ecosystem/rumi_kanban_state_store_pack/rumi.pack.v3.json"
           },
           {
-            "digest": "sha256:c7803db70a6303f44e97ec559b3c9944701fceb25249d332f0f65f93abf87f60",
+            "digest": "sha256:43bd8ac4d9d5b05d537c4e3bf3a978af42fa127be068c47f605bb6c8d2134c02",
             "path": "tobkiri_runtime/ecosystem/rumi_kanban_state_store_pack/artifact-manifest.json"
           }
         ],
@@ -6012,22 +5907,22 @@
         "pack_id": "rumi_kanban_state_store_pack",
         "status": "available"
       },
-      "status": "semantically-reviewed",
+      "status": "generated-draft",
       "target": {
         "artifact_verification": {
           "artifact_count": 4,
-          "artifact_index_digest": "sha256:ad496fab706eb1f4cf166d537915f7dfbfeaaa2e7657a4848350d6688585120c",
-          "artifact_set_digest": "sha256:5d3b69b5258e320b73c23efa3ca44575321bfb848d51bc306a5d1dedd12b6334",
-          "executable_catalog_digest": "sha256:89d908b7e51c1f9331d475ed5cf7e88e933099c0f674fa51dac6d4e94265e81a",
+          "artifact_index_digest": "sha256:a97445fda4538d821fecc002346f3d29378ad1ca1e158932aa651a639adaaf02",
+          "artifact_set_digest": "sha256:9baa8181bf927e7fc149554aea348f54c1f95e3f020faac053d280d7e78fed39",
+          "executable_catalog_digest": "sha256:77471aa2f01264f9da6ae706fb5c86a3d89a9c3d2998f30ca13e4f937b0bc47a",
           "pack_id": "rumi_kanban_state_store_pack",
           "quartet": {
-            "artifact-index.v4.json": "sha256:ad496fab706eb1f4cf166d537915f7dfbfeaaa2e7657a4848350d6688585120c",
-            "contracts.v4.json": "sha256:076b56dcd9ae158aeec947c0f391f6a9d1e61b39761987acc70cc5e3dbe39f98",
-            "executables.v4.json": "sha256:485441952e1a2ed967f01ef92d7029f93de13c5b6c976e9293c5d9604c5cf1ba",
-            "pack.v4.json": "sha256:9acd73dbda2832f4d1d2c713323c63fb366f80fe21ee77c856a2768e3c68bc80"
+            "artifact-index.v4.json": "sha256:a97445fda4538d821fecc002346f3d29378ad1ca1e158932aa651a639adaaf02",
+            "contracts.v4.json": "sha256:e6e5e62d1b15b80c723370a2bb5c976ba0b91ddc624e1470922a5562d734d4c1",
+            "executables.v4.json": "sha256:2abf8453a32386c66730b1078283c15a29642e3f590099394855af8f1bc36d20",
+            "pack.v4.json": "sha256:437e73e2e6c41f3f1836fccd09edf0a64c3259d6892c85f65f3a6156961b9399"
           }
         },
-        "digest": "sha256:5d3b69b5258e320b73c23efa3ca44575321bfb848d51bc306a5d1dedd12b6334",
+        "digest": "sha256:9baa8181bf927e7fc149554aea348f54c1f95e3f020faac053d280d7e78fed39",
         "format": "tobkiri-pack-v4-quartet",
         "pack_id": "rumi_kanban_state_store_pack",
         "status": "artifact-integrity-verified"
@@ -11668,10 +11563,10 @@
   "source": {
     "attestation": "none",
     "authority": "evidence-only",
-    "content_digest": "sha256:3038f2d2b10e711e6bb247091a2b52d2af4ccfdf238aebef98cc6f89a4897c8c",
+    "content_digest": "sha256:2de7bc6f2c52cc4ce5e8a4c154481a9abfc96cef45d524e4298bc54e1f8da59c",
     "feasibility_audit": {
       "semantically_reviewed": {
-        "count": 39,
+        "count": 38,
         "pack_ids": [
           "rumi_agent_runtime_service_pack",
           "rumi_agent_state_store_pack",
@@ -11697,7 +11592,6 @@
           "rumi_ide_bridge_service_pack",
           "rumi_job_action_broker_pack",
           "rumi_kanban_conversation_adapter_pack",
-          "rumi_kanban_state_store_pack",
           "rumi_knowledge_store_pack",
           "rumi_line_connector_pack",
           "rumi_memory_store_pack",
@@ -11715,6 +11609,12 @@
         ]
       },
       "unresolved": {
+        "artifact_digest_mapping_mismatch": {
+          "count": 1,
+          "pack_ids": [
+            "rumi_kanban_state_store_pack"
+          ]
+        },
         "authority_semantics": {
           "count": 6,
           "pack_ids": [
@@ -11910,7 +11810,7 @@
     "freshness_basis": "exact-input-digests-and-deterministic-recomputation",
     "generator_id": "tobkiri.quality.migration-proof-generator",
     "generator_version": "2.1.0",
-    "input_digest": "sha256:6c9ddae74b264cdfe8f31b3e79fe9afb462d66d530fd0b1543f0751fb5f668b1",
+    "input_digest": "sha256:fab4b41fd0d6928d7d761ac9e00a914e36d70567d157e391718647c20444d781",
     "input_paths": [
       "tobkiri_runtime/core_runtime/profile_definition_store_v4.py",
       "tobkiri_runtime/ecosystem/defaultspack/artifact-index.v4.json",
@@ -16187,37 +16087,37 @@
         "path": "tobkiri_runtime/ecosystem/rumi_kanban_conversation_adapter_pack/runtime/adapter.py"
       },
       {
-        "digest": "sha256:ad496fab706eb1f4cf166d537915f7dfbfeaaa2e7657a4848350d6688585120c",
+        "digest": "sha256:a97445fda4538d821fecc002346f3d29378ad1ca1e158932aa651a639adaaf02",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_kanban_state_store_pack/artifact-index.v4.json"
       },
       {
-        "digest": "sha256:c7803db70a6303f44e97ec559b3c9944701fceb25249d332f0f65f93abf87f60",
+        "digest": "sha256:43bd8ac4d9d5b05d537c4e3bf3a978af42fa127be068c47f605bb6c8d2134c02",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_kanban_state_store_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:076b56dcd9ae158aeec947c0f391f6a9d1e61b39761987acc70cc5e3dbe39f98",
+        "digest": "sha256:e6e5e62d1b15b80c723370a2bb5c976ba0b91ddc624e1470922a5562d734d4c1",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_kanban_state_store_pack/contracts.v4.json"
       },
       {
-        "digest": "sha256:485441952e1a2ed967f01ef92d7029f93de13c5b6c976e9293c5d9604c5cf1ba",
+        "digest": "sha256:2abf8453a32386c66730b1078283c15a29642e3f590099394855af8f1bc36d20",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_kanban_state_store_pack/executables.v4.json"
       },
       {
-        "digest": "sha256:9acd73dbda2832f4d1d2c713323c63fb366f80fe21ee77c856a2768e3c68bc80",
+        "digest": "sha256:437e73e2e6c41f3f1836fccd09edf0a64c3259d6892c85f65f3a6156961b9399",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_kanban_state_store_pack/pack.v4.json"
       },
       {
-        "digest": "sha256:6c1abbf9c9e46c9c7bd7d65654f6fc0147391f6583e6e674c2f545be816e3329",
+        "digest": "sha256:d1729209feccbfd0563202ca0d22f5861844f59bf8f60d5b60b9f24149bf85ba",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_kanban_state_store_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:231757dc3254c011cf190b1195fc7bf92e6782321c0b33f902a5ee6a9bcd278c",
+        "digest": "sha256:1fc836ddbd4c6b04cdd85b2bf2a43bac19398bf26295f34c60ecf16f0068daff",
         "kind": "v4-indexed-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_kanban_state_store_pack/runtime/store.py"
       },
@@ -18769,11 +18669,11 @@
     ],
     "kind": "repository-generated-evidence",
     "migration_status_counts": {
-      "generated-draft": 102,
+      "generated-draft": 103,
       "release-verified": 0,
-      "semantically-reviewed": 39
+      "semantically-reviewed": 38
     },
-    "observed_head_sha": "c1ced2e765e7de3f67835fba852903f65d3186c7",
+    "observed_head_sha": "cf5e8d0b14ae1762908f7135baa3be3a27b95de6",
     "pack_count": 141,
     "profile_collection_proof": {
       "identity_proof": {
@@ -18839,7 +18739,7 @@
         }
       }
     },
-    "semantic_unproved_pack_count": 102,
+    "semantic_unproved_pack_count": 103,
     "unproved_pack_count": 141
   }
 }
