@@ -50,7 +50,7 @@
   "pack_identity": "rumi:ecosystem/rumi_model_registry_pack",
   "provenance": {
     "build_identity": "rumi_model_registry_pack:1.0.0",
-    "content_hash": "sha256:4e4bb91778c4b73b9376041b10eec7c0237080009f6086e86e9bde60b4411799",
+    "content_hash": "sha256:493bbb34937dcbfa88f51efde14e9b0ed11767a3df813fa33a2a368e57d0dc8c",
     "signature": null,
     "trust_class": "local"
   },

@@ -85,7 +85,7 @@
         "pack_identity": "rumi:ecosystem/rumi_ai_stream_pack",
         "provenance": {
           "build_identity": "rumi_ai_stream_pack:1.0.0",
-          "content_hash": "sha256:a1661c0a769c3f4ab0d9d82b861af5cb01a6492f405c9c22a81ce6e1a900805b",
+          "content_hash": "sha256:bce79e54a6521420de8c666a7948469ee999201915d32c16a0aaa7ee98dbdb48",
           "signature": null,
           "trust_class": "local"
         },
@@ -142,7 +142,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_ai_stream_pack:1.0.0",
-    "content_hash": "sha256:a1661c0a769c3f4ab0d9d82b861af5cb01a6492f405c9c22a81ce6e1a900805b",
+    "content_hash": "sha256:bce79e54a6521420de8c666a7948469ee999201915d32c16a0aaa7ee98dbdb48",
     "signature": null,
     "trust_class": "local"
   },

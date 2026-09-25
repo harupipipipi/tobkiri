@@ -44,7 +44,7 @@
   "pack_identity": "rumi:ecosystem/rumi_tool_policy_pack",
   "provenance": {
     "build_identity": "rumi_tool_policy_pack:1.0.0",
-    "content_hash": "sha256:e2088425d6e0dc5c4ee87974670f925e23923de11dfc12967656026304002ccf",
+    "content_hash": "sha256:e512d988c9e5f8c142fd5e436e5d4165b70f3096770a58a5f2c8bc8407e9d4ad",
     "signature": null,
     "trust_class": "local"
   },

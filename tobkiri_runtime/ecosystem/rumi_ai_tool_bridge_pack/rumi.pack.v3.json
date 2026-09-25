@@ -85,7 +85,7 @@
         "pack_identity": "rumi:ecosystem/rumi_ai_tool_bridge_pack",
         "provenance": {
           "build_identity": "rumi_ai_tool_bridge_pack:1.0.0",
-          "content_hash": "sha256:926155d93570769e805cdc34dbbd1025e0da2a30bcccd0a3b0ca044588ba8a6a",
+          "content_hash": "sha256:a39f50ea8a2fd9c01c00fe88eff8ca3cae0c0a76e836cdae25b514bf31b29181",
           "signature": null,
           "trust_class": "local"
         },
@@ -142,7 +142,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_ai_tool_bridge_pack:1.0.0",
-    "content_hash": "sha256:926155d93570769e805cdc34dbbd1025e0da2a30bcccd0a3b0ca044588ba8a6a",
+    "content_hash": "sha256:a39f50ea8a2fd9c01c00fe88eff8ca3cae0c0a76e836cdae25b514bf31b29181",
     "signature": null,
     "trust_class": "local"
   },

@@ -199,6 +199,31 @@
       "pack_id": "rumi_git_write_pack",
       "entrypoint_id": "git-write",
       "operation_id": "rumi_git_write_pack.git-commit"
+    },
+    {
+      "pack_id": "rumi_command_protocol_pack",
+      "entrypoint_id": "catalog-read",
+      "operation_id": "command.catalog.read"
+    },
+    {
+      "pack_id": "rumi_command_protocol_pack",
+      "entrypoint_id": "datasource-query",
+      "operation_id": "command.datasource.query"
+    },
+    {
+      "pack_id": "rumi_command_protocol_pack",
+      "entrypoint_id": "state-query",
+      "operation_id": "command.state.query"
+    },
+    {
+      "pack_id": "rumi_command_protocol_pack",
+      "entrypoint_id": "invoke",
+      "operation_id": "command.invoke"
+    },
+    {
+      "pack_id": "rumi_command_protocol_pack",
+      "entrypoint_id": "high-risk-manage",
+      "operation_id": "high_risk_command.manage"
     }
   ],
   "function_id_overrides": [
@@ -209,19 +234,6 @@
     }
   ],
   "packs": {
-    "rumi_default_tools_pack": {
-      "entries": [
-        {
-          "function_id": "rumi_default_tools_pack.calculator",
-          "operation_ids": [
-            "rumi_default_tools_pack.calculator-evaluate"
-          ],
-          "contract_id": "tobkiri.service.tool.local.operation.v1",
-          "contract_version": "1.0.0",
-          "implementation_path": "runtime/calculator.py"
-        }
-      ]
-    },
     "rumi_turn_runtime_pack": {
       "entries": [
         {
@@ -1162,146 +1174,6 @@
                 }
               },
               "required": ["request_id"],
-              "type": "object"
-            },
-            "output": {
-              "type": "object"
-            },
-            "error": {
-              "type": "object"
-            }
-          }
-        }
-      ]
-    },
-    "rumi_command_protocol_pack": {
-      "entries": [
-        {
-          "function_id": "rumi_command_protocol_pack.catalog.read",
-          "operation_ids": [
-            "command.catalog.read"
-          ],
-          "contract_id": "tobkiri.resource.command.catalog.v1",
-          "contract_version": "1.0.0",
-          "implementation_path": "runtime/catalog.py",
-          "schemas": {
-            "input": {
-              "type": "object"
-            },
-            "output": {
-              "type": "object"
-            },
-            "error": {
-              "type": "object"
-            }
-          }
-        },
-        {
-          "function_id": "rumi_command_protocol_pack.command.datasource",
-          "operation_ids": ["command.datasource.query"],
-          "contract_id": "tobkiri.resource.command.datasource.v1",
-          "contract_version": "1.0.0",
-          "implementation_path": "runtime/datasource.py",
-          "schemas": {
-            "input": {"additionalProperties": false, "properties": {"cursor": {"maxLength": 8, "pattern": "^[0-9]+$", "type": "string"}, "datasource_ref": {"enum": ["tobkiri:model_catalog", "tobkiri:provider_catalog"]}, "limit": {"maximum": 100, "minimum": 1, "type": "integer"}, "profile_id": {"maxLength": 128, "minLength": 1, "type": "string"}, "query": {"maxLength": 200, "type": "string"}, "request_id": {"maxLength": 160, "minLength": 1, "type": "string"}, "selected_values": {"items": {"maxLength": 256, "minLength": 1, "type": "string"}, "maxItems": 100, "type": "array"}}, "required": ["profile_id", "datasource_ref"], "type": "object"},
-            "output": {"type": "object"},
-            "error": {"type": "object"}
-          }
-        },
-        {
-          "function_id": "rumi_command_protocol_pack.command.state",
-          "operation_ids": ["command.state.query"],
-          "contract_id": "tobkiri.resource.command.state.v1",
-          "contract_version": "1.0.0",
-          "implementation_path": "runtime/state.py",
-          "schemas": {
-            "input": {"additionalProperties": false, "properties": {"profile_id": {"maxLength": 128, "minLength": 1, "type": "string"}, "state_refs": {"items": {"const": "defaultspack:models.deepthink_enabled"}, "maxItems": 16, "type": "array", "uniqueItems": true}}, "required": ["profile_id", "state_refs"], "type": "object"},
-            "output": {"type": "object"},
-            "error": {"type": "object"}
-          }
-        },
-        {
-          "function_id": "rumi_command_protocol_pack.command.invoke",
-          "operation_ids": [
-            "command.invoke"
-          ],
-          "contract_id": "tobkiri.action.command.invoke.v1",
-          "contract_version": "1.0.0",
-          "implementation_path": "runtime/invoke.py",
-          "schemas": {
-            "input": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "maxProperties": 0,
-                  "type": "object"
-                },
-                "catalog_revision": {
-                  "maxLength": 160,
-                  "type": "string"
-                },
-                "client_sequence": {
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "command_ref": {
-                  "const": "defaultspack:help"
-                },
-                "conversation_id": {
-                  "maxLength": 256,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "idempotency_key": {
-                  "maxLength": 160,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "invocation_id": {
-                  "maxLength": 160,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "mode": {
-                  "enum": [
-                    "chat",
-                    "coding",
-                    "agent"
-                  ]
-                },
-                "profile_id": {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "type": "string"
-                }
-              },
-              "required": [
-                "profile_id",
-                "command_ref",
-                "args",
-                "invocation_id",
-                "mode"
-              ],
-              "type": "object"
-            },
-            "output": {
-              "type": "object"
-            },
-            "error": {
-              "type": "object"
-            }
-          }
-        },
-        {
-          "function_id": "rumi_command_protocol_pack.high-risk-command.service",
-          "operation_ids": [
-            "high_risk_command.manage"
-          ],
-          "contract_id": "tobkiri.service.command.high-risk.v1",
-          "contract_version": "1.0.0",
-          "implementation_path": "runtime/high_risk_adapter.py",
-          "schemas": {
-            "input": {
               "type": "object"
             },
             "output": {

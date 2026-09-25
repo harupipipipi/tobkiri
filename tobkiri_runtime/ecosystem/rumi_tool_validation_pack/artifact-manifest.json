@@ -2,8 +2,9 @@
   "artifacts": [
     {
       "path": "runtime/validator.py",
+      "role": "runtime",
       "sha256": "sha256:e95eb6a40fb2d786b2a7818ab830ee747c9965d3c6aeb4c7dac8414436b9d19f"
     }
   ],
-  "version": "rumi.pack-artifacts.v1"
+  "schema_version": "rumi.artifact-manifest.v1"
 }

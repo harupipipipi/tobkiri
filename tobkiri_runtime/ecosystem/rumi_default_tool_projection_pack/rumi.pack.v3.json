@@ -130,7 +130,7 @@
         "pack_identity": "rumi:ecosystem/rumi_default_tool_projection_pack",
         "provenance": {
           "build_identity": "rumi_default_tool_projection_pack:1.0.0",
-          "content_hash": "sha256:0098b2095b9913e21fa912cc5dc658e4781fc98f1f9952020fd24dc0de138f4a",
+          "content_hash": "sha256:e00e8801b5f5c60a302aa5a0bda76cdeb6368340f87fec2173fa101301ed1b1e",
           "signature": null,
           "trust_class": "local"
         },
@@ -206,7 +206,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_default_tool_projection_pack:1.0.0",
-    "content_hash": "sha256:0098b2095b9913e21fa912cc5dc658e4781fc98f1f9952020fd24dc0de138f4a",
+    "content_hash": "sha256:e00e8801b5f5c60a302aa5a0bda76cdeb6368340f87fec2173fa101301ed1b1e",
     "signature": null,
     "trust_class": "local"
   },

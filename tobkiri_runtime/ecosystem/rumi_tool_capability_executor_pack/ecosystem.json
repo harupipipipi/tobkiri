@@ -43,7 +43,7 @@
   "pack_identity": "rumi:ecosystem/rumi_tool_capability_executor_pack",
   "provenance": {
     "build_identity": "rumi_tool_capability_executor_pack:1.0.0",
-    "content_hash": "sha256:dc9082521f822926a6040c8e5d20c543aef31d072cc9d59b6ef4f533aa66c9f9",
+    "content_hash": "sha256:b5d466b9d2785d1770ccae02c7e4617b233cd00a83011084aa2cdc7dbef542e1",
     "signature": null,
     "trust_class": "local"
   },

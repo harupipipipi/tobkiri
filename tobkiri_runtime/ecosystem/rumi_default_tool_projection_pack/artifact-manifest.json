@@ -2,8 +2,9 @@
   "artifacts": [
     {
       "path": "runtime/projection.py",
+      "role": "runtime",
       "sha256": "sha256:2c08521080b597e5c7ca53ac5bc546447dc7ba71165961a7dd2e030e21db3ebd"
     }
   ],
-  "version": "rumi.pack-artifacts.v1"
+  "schema_version": "rumi.artifact-manifest.v1"
 }

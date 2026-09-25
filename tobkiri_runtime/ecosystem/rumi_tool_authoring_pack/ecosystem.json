@@ -46,7 +46,7 @@
   "pack_identity": "rumi:ecosystem/rumi_tool_authoring_pack",
   "provenance": {
     "build_identity": "rumi_tool_authoring_pack:1.0.0",
-    "content_hash": "sha256:c087e86dee58038320571e8422c4679cb49fd2650a0e058db4e4fa83adfc1f3a",
+    "content_hash": "sha256:56741d4313b8ad8282fc75dad8c5e5098ede4730ac520a23c267e73be3fa5d9a",
     "signature": null,
     "trust_class": "local"
   },

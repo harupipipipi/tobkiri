@@ -47,7 +47,7 @@
   "pack_identity": "rumi:ecosystem/rumi_ai_routing_pack",
   "provenance": {
     "build_identity": "rumi_ai_routing_pack:1.0.0",
-    "content_hash": "sha256:ff98fe3636ece6146dbd5db3ff9696d476a2f46c6b888132f3149070b848b100",
+    "content_hash": "sha256:4311457556eda1466069e5a6102e24ac99169c8d117e84ba6afe4389d28d2c04",
     "signature": null,
     "trust_class": "local"
   },

@@ -81,7 +81,7 @@
         "pack_identity": "rumi:ecosystem/rumi_tool_sandbox_executor_pack",
         "provenance": {
           "build_identity": "rumi_tool_sandbox_executor_pack:1.0.0",
-          "content_hash": "sha256:651498c5fadbda3e62dea1b80a5a3d540ae768fcd7e902ae80c14fc63bf39eee",
+          "content_hash": "sha256:712200ecdc832ee234ee6f3aa794d72a62696eeedc1ba43c02cd916425eedbf6",
           "signature": null,
           "trust_class": "local"
         },
@@ -144,7 +144,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_tool_sandbox_executor_pack:1.0.0",
-    "content_hash": "sha256:651498c5fadbda3e62dea1b80a5a3d540ae768fcd7e902ae80c14fc63bf39eee",
+    "content_hash": "sha256:712200ecdc832ee234ee6f3aa794d72a62696eeedc1ba43c02cd916425eedbf6",
     "signature": null,
     "trust_class": "local"
   },

@@ -46,7 +46,7 @@
   "pack_identity": "rumi:ecosystem/rumi_human_operator_provider_pack",
   "provenance": {
     "build_identity": "rumi_human_operator_provider_pack:1.0.0",
-    "content_hash": "sha256:1d317ae9644959f9a96662829c3d96066f65e5b70f06a71da6abb2af784cb0c5",
+    "content_hash": "sha256:6de8944b81296494223b367565ee4b5d2e05d78a8f8a8904d11e4d8ba04859ff",
     "signature": null,
     "trust_class": "local"
   },

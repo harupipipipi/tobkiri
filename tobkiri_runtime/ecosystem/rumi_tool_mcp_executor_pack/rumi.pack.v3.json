@@ -90,7 +90,7 @@
         "pack_identity": "rumi:ecosystem/rumi_tool_mcp_executor_pack",
         "provenance": {
           "build_identity": "rumi_tool_mcp_executor_pack:1.0.0",
-          "content_hash": "sha256:e3e049fc846f0780ff364d2bf6d1cd15fe2d0c4db805ce807a71473dd6594ddc",
+          "content_hash": "sha256:1d07ddb64e1d308bbe927027f6dab19b38e0ca235c6655255badc960a3408743",
           "signature": null,
           "trust_class": "local"
         },
@@ -152,7 +152,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_tool_mcp_executor_pack:1.0.0",
-    "content_hash": "sha256:e3e049fc846f0780ff364d2bf6d1cd15fe2d0c4db805ce807a71473dd6594ddc",
+    "content_hash": "sha256:1d07ddb64e1d308bbe927027f6dab19b38e0ca235c6655255badc960a3408743",
     "signature": null,
     "trust_class": "local"
   },

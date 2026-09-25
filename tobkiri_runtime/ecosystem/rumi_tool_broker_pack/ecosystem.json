@@ -54,7 +54,7 @@
   "pack_identity": "rumi:ecosystem/rumi_tool_broker_pack",
   "provenance": {
     "build_identity": "rumi_tool_broker_pack:1.0.0",
-    "content_hash": "sha256:14d8b9f7e44bf5e0c541174282b4e1ba4c3cf748963c53ca7ab591b8bb02fcda",
+    "content_hash": "sha256:0ecc7792eea7cdbe690ba8e2de0baaf703f9a659206219b772f5d994b6b964b9",
     "signature": null,
     "trust_class": "local"
   },

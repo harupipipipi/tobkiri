@@ -43,7 +43,7 @@
   "pack_identity": "rumi:ecosystem/rumi_tool_result_pack",
   "provenance": {
     "build_identity": "rumi_tool_result_pack:1.0.0",
-    "content_hash": "sha256:f77d5dc6f1eb09189967bb007fb2844efd4bbd08583c77e3fe01273e6710cb09",
+    "content_hash": "sha256:c4fc7f21bf255dd5f899c4a3c4b3865185980528e461dad1a81c6a3d885febda",
     "signature": null,
     "trust_class": "local"
   },

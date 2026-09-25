@@ -203,7 +203,7 @@
         "pack_identity": "rumi:ecosystem/rumi_provider_adapters_pack",
         "provenance": {
           "build_identity": "rumi_provider_adapters_pack:1.0.0",
-          "content_hash": "sha256:a43b32dce30432ab46b342ca54f6d77d13f82ee1d30cf390fa7b6c0d46cc3ffd",
+          "content_hash": "sha256:cc1c4711238bc3d236a00fff99120148e1fd97ce24e06a0a1677da4e539d6b04",
           "signature": null,
           "trust_class": "local"
         },
@@ -285,7 +285,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_provider_adapters_pack:1.0.0",
-    "content_hash": "sha256:a43b32dce30432ab46b342ca54f6d77d13f82ee1d30cf390fa7b6c0d46cc3ffd",
+    "content_hash": "sha256:cc1c4711238bc3d236a00fff99120148e1fd97ce24e06a0a1677da4e539d6b04",
     "signature": null,
     "trust_class": "local"
   },

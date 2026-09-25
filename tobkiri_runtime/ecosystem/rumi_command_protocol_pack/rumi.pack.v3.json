@@ -1,0 +1,459 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.resource.command.catalog.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "catalog.read",
+        "required_capabilities": [
+          "command.catalog.read"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.resource.command.datasource.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "command.datasource",
+        "required_capabilities": [
+          "command.catalog.read"
+        ],
+        "schemas": {
+          "input": {
+            "additionalProperties": false,
+            "properties": {
+              "cursor": {
+                "maxLength": 8,
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              "datasource_ref": {
+                "enum": [
+                  "tobkiri:model_catalog",
+                  "tobkiri:provider_catalog"
+                ]
+              },
+              "limit": {
+                "maximum": 100,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "profile_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              "query": {
+                "maxLength": 200,
+                "type": "string"
+              },
+              "request_id": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "selected_values": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              }
+            },
+            "required": [
+              "profile_id",
+              "datasource_ref"
+            ],
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.command.invoke.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "command.invoke",
+        "required_capabilities": [
+          "command.invoke"
+        ],
+        "schemas": {
+          "input": {
+            "additionalProperties": false,
+            "properties": {
+              "args": {
+                "additionalProperties": false,
+                "maxProperties": 1,
+                "properties": {
+                  "query": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "section": {
+                    "maxLength": 200,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "catalog_revision": {
+                "maxLength": 160,
+                "type": "string"
+              },
+              "client_sequence": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "command_ref": {
+                "enum": [
+                  "defaultspack:help",
+                  "defaultspack:new",
+                  "defaultspack:clear",
+                  "defaultspack:tools",
+                  "defaultspack:status",
+                  "defaultspack:settings",
+                  "defaultspack:history",
+                  "defaultspack:context",
+                  "defaultspack:permissions",
+                  "defaultspack:approvals",
+                  "defaultspack:usage",
+                  "defaultspack:theme",
+                  "defaultspack:keymap",
+                  "defaultspack:plugins",
+                  "defaultspack:mcp",
+                  "defaultspack:skills",
+                  "defaultspack:hooks",
+                  "defaultspack:diff",
+                  "defaultspack:files"
+                ]
+              },
+              "conversation_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "idempotency_key": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "invocation_id": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "chat",
+                  "coding",
+                  "agent"
+                ]
+              },
+              "profile_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "command_ref",
+              "args",
+              "invocation_id",
+              "mode"
+            ],
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.resource.command.state.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "command.state",
+        "required_capabilities": [
+          "command.catalog.read"
+        ],
+        "schemas": {
+          "input": {
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              "state_refs": {
+                "items": {
+                  "const": "defaultspack:models.deepthink_enabled"
+                },
+                "maxItems": 16,
+                "type": "array",
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "profile_id",
+              "state_refs"
+            ],
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.service.command.high-risk.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "high-risk-command.service",
+        "required_capabilities": [
+          "host.authority.consume"
+        ],
+        "schemas": {
+          "input": {
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "type": "object"
+              },
+              "command_ref": {
+                "enum": [
+                  "terminal",
+                  "commit",
+                  "push",
+                  "patch",
+                  "restore"
+                ]
+              },
+              "invocation_id": {
+                "maxLength": 160,
+                "type": "string"
+              },
+              "phase": {
+                "enum": [
+                  "prepare",
+                  "resume",
+                  "status",
+                  "cancel",
+                  "list_pending"
+                ]
+              },
+              "presentation": {
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:ff8ff76a53f685a2febdcc5555e8e619f82d774591ad2d7e546a3571d2120935",
+      "contract_id": "rumi.resource.command.catalog.v1",
+      "id": "catalog-read",
+      "loader": "python",
+      "module": "ecosystem.rumi_command_protocol_pack.runtime.catalog",
+      "symbol": "HOST_PROVIDER_FACTORY"
+    },
+    {
+      "artifact_hash": "sha256:77b83ccd9223b51aa89c8e0203693cc6d76eb7dd6d0189ca6d570d585c1129c7",
+      "contract_id": "rumi.resource.command.datasource.v1",
+      "id": "datasource-query",
+      "loader": "python",
+      "module": "ecosystem.rumi_command_protocol_pack.runtime.datasource",
+      "symbol": "HOST_PROVIDER_FACTORY"
+    },
+    {
+      "artifact_hash": "sha256:2344b4bfa7b1e0211fb4067875e873c93c71a1351ee5d92300074eceaa011761",
+      "contract_id": "rumi.action.command.invoke.v1",
+      "id": "invoke",
+      "loader": "python",
+      "module": "ecosystem.rumi_command_protocol_pack.runtime.invoke",
+      "symbol": "HOST_PROVIDER_FACTORY"
+    },
+    {
+      "artifact_hash": "sha256:9171d03ffe8847830e788dc7edfd99c508ead810f71019bd680fd2d5ddd7c5f4",
+      "contract_id": "rumi.resource.command.state.v1",
+      "id": "state-query",
+      "loader": "python",
+      "module": "ecosystem.rumi_command_protocol_pack.runtime.state",
+      "symbol": "HOST_PROVIDER_FACTORY"
+    },
+    {
+      "artifact_hash": "sha256:b168952a90bd931d9562239ed57644d9bb355bb377ff31ec8cccbe4c55c30813",
+      "contract_id": "rumi.service.command.high-risk.v1",
+      "id": "high-risk-manage",
+      "loader": "python",
+      "module": "ecosystem.rumi_command_protocol_pack.runtime.high_risk_adapter",
+      "symbol": "HOST_PROVIDER_FACTORY"
+    }
+  ],
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.command.invoke.v1",
+            "rumi.resource.command.catalog.v1",
+            "rumi.resource.command.datasource.v1",
+            "rumi.resource.command.state.v1",
+            "rumi.service.command.high-risk.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Command catalog, state, datasource, invoke, and high-risk command services for the typed command protocol.",
+        "display_name": "Tobkiri Command Protocol",
+        "host_execution": false,
+        "metadata": {
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:5ecbd66b3e2691b3ab9f55e65db79981547a9c267756df56aaf7647c9a1eb72c",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:a53c0b45c77e2f8950d5b7962423f36e890bc4194dbe3ef259bfb5a9a4da0a65"
+          },
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_command_protocol_pack",
+        "pack_identity": "rumi:ecosystem/rumi_command_protocol_pack",
+        "provenance": {
+          "build_identity": "rumi_command_protocol_pack:1.0.0",
+          "content_hash": "sha256:bf6752bc6fbb0d612e44a9a8141af15b0d8d92fe2ef37815facff326b58c72cc",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "command.catalog.read",
+          "command.invoke",
+          "host.authority.consume"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_command_protocol_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_command_protocol_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:a53c0b45c77e2f8950d5b7962423f36e890bc4194dbe3ef259bfb5a9a4da0a65"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "none",
+    "from": [
+      "defaultspack.domain.frontend_command_catalog"
+    ],
+    "removal_wave": 0,
+    "rollback": "Deselect the command protocol providers; command surfaces fail closed.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Command catalog, state, datasource, invoke, and high-risk command services for the typed command protocol.",
+    "display_name": "Tobkiri Command Protocol",
+    "id": "rumi.command_protocol",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "command.catalog.read"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "command.invoke"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "host.authority.consume"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_command_protocol_pack:1.0.0",
+    "content_hash": "sha256:bf6752bc6fbb0d612e44a9a8141af15b0d8d92fe2ef37815facff326b58c72cc",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
+}

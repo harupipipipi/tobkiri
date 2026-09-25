@@ -43,7 +43,7 @@
   "pack_identity": "rumi:ecosystem/rumi_tool_approval_bridge_pack",
   "provenance": {
     "build_identity": "rumi_tool_approval_bridge_pack:1.0.0",
-    "content_hash": "sha256:6fa3365a03542b990453151845e59b62424513f9c8dff2398b99744130347cec",
+    "content_hash": "sha256:693bcc3019e7a24b355f8411a82e73bc3d5a786fa4948877f5f3770bb8c75be4",
     "signature": null,
     "trust_class": "local"
   },

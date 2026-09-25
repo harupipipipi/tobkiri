@@ -91,7 +91,7 @@
         "pack_identity": "rumi:ecosystem/rumi_tool_remote_executor_pack",
         "provenance": {
           "build_identity": "rumi_tool_remote_executor_pack:1.0.0",
-          "content_hash": "sha256:59098fa917f79189b1ee657882ffe5df4e43656c15c20c2a362a1bc74355978e",
+          "content_hash": "sha256:8bd75c6ef2a0dd45cacb78bba6e80178164b2ddbe5f920a1faafe5eac6937300",
           "signature": null,
           "trust_class": "local"
         },
@@ -154,7 +154,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_tool_remote_executor_pack:1.0.0",
-    "content_hash": "sha256:59098fa917f79189b1ee657882ffe5df4e43656c15c20c2a362a1bc74355978e",
+    "content_hash": "sha256:8bd75c6ef2a0dd45cacb78bba6e80178164b2ddbe5f920a1faafe5eac6937300",
     "signature": null,
     "trust_class": "local"
   },

@@ -2,8 +2,9 @@
   "artifacts": [
     {
       "path": "runtime/audit.py",
+      "role": "runtime",
       "sha256": "sha256:b789436190c19ec3f436dee86dc740293bdface12fdc0d531a1452c303eef888"
     }
   ],
-  "version": "rumi.pack-artifacts.v1"
+  "schema_version": "rumi.artifact-manifest.v1"
 }
