@@ -3620,23 +3620,41 @@ def test_chat_store_splits_loaded_inline_thoughts(tmp_path, monkeypatch):
     assert message["raw_text"] == "<thought>hidden</thought>shown"
 
 
-def test_builtin_calculator_returns_real_arithmetic_result():
+def test_builtin_calculator_function_dispatch_fails_closed_without_plan(
+    defaultspack_component_catalog_selected,
+    defaultspack_capability_plan_context,
+):
+    """Pack function dispatch must not bypass the Capability Plan gate.
+
+    The calculator Tool is a global_contract action with no locally declared
+    contract, so the public function surface now fails closed: first at the
+    plan gate, then at the declared-connection gate instead of falling back
+    to a hidden local implementation.
+    """
+
     from domain.function_runtime.dispatcher import run_defaultspack_function
 
-    result = run_defaultspack_function(
+    missing_plan = run_defaultspack_function(
         "tool_calculator",
         {"expression": "2 + 2 * 3"},
         {"flow_id": "v4_pack_function_test"},
     )
 
-    assert result == {
-        "status": "ok",
-        "data": {
-            "result": "Calculated: 2 + 2 * 3 = 8",
-            "is_error": False,
-            "widget": None,
-        },
-    }
+    assert missing_plan["status"] == "ok"
+    assert missing_plan["data"]["is_error"] is True
+    assert missing_plan["data"]["error_type"] == "capability_plan_required"
+
+    planned = run_defaultspack_function(
+        "tool_calculator",
+        {"expression": "2 + 2 * 3"},
+        defaultspack_capability_plan_context("calculator"),
+    )
+
+    assert planned["status"] == "ok"
+    assert planned["data"]["is_error"] is True
+    assert planned["data"]["result"] == (
+        "Global contract was not declared by the Tool"
+    )
 
 
 def test_coding_tools_are_exposed_through_tool_registry():
@@ -3678,14 +3696,13 @@ def test_tool_executor_dispatches_coding_handler_with_yolo_policy(
         ),
     )
 
-    assert result == {
-        "result": (
-            "Capability execution failed: CapabilityExecutor is not bound; "
-            "implicit executor creation is forbidden"
-        ),
-        "is_error": True,
-        "widget": None,
-    }
+    # The plan gate passes, but the canonical executor still stops at the
+    # approval boundary: with no bound settings owner the frontend permission
+    # resolution fails closed, so nothing reaches the retired capability
+    # executor or a local fallback and no file is written.
+    assert result["is_error"] is False
+    assert result["widget"]["approval_required"] is True
+    assert result["widget"]["tool_name"] == "coding_file_create"
     assert not (tmp_path / "created.txt").exists()
 
     ToolRegistry._instance = None

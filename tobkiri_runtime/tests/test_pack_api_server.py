@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import logging
 import threading
 import time
 import uuid
@@ -745,6 +746,71 @@ def test_success_outcome_still_runs_application_presentation() -> None:
     assert payload["success"] is True
     assert payload["data"]["turn_id"] == "turn-1"
     assert payload["data"]["terminal"]["status"] == "completed"
+
+
+@pytest.mark.parametrize(
+    "malformed_turn",
+    [
+        # Missing every durable identity the projection requires.
+        {},
+        # Success-typed owner result missing the stable identities the
+        # turn_event projection validates first.
+        {"status": "running", "revision": 1, "events": []},
+        # Identifier fields present but not stable strings.
+        {
+            "id": None,
+            "conversation_id": "conversation-1",
+            "request_id": "request-1",
+            "revision": 1,
+            "status": "running",
+            "events": [],
+        },
+    ],
+)
+def test_malformed_success_outcome_returns_bounded_error_not_traceback(
+    malformed_turn: dict,
+) -> None:
+    """A rejected projection must not escape the request handler.
+
+    Strict presentations raise ValueError when a success-typed owner result
+    lacks stable identities; the outcome path must convert that rejection
+    into the same bounded public error envelope used by dispatch failures
+    instead of dropping the response and logging a handler traceback.
+    """
+
+    handler = object.__new__(PackAPIHandler)
+    handler._application_presentation = DefaultspackHTTPPresentation()
+    handler._dispatch_session = None
+    handler._contract_routes = {}
+    captured: list[tuple[int, str]] = []
+    handler._send_response = (  # type: ignore[method-assign]
+        lambda response, status=200: captured.append((status, response.to_json()))
+    )
+    binding = FrontendContractBinding(
+        method="GET",
+        path="/test/turn-events",
+        presentation="turn_events",
+        targets=(),
+    )
+
+    handler._send_contract_outcome(binding, malformed_turn)
+
+    assert len(captured) == 1
+    assert captured[0][0] == 503
+    payload = json.loads(captured[0][1])
+    assert payload["success"] is False
+    assert payload["data"]["state"] == "error"
+    assert payload["data"]["code"] == "API_FAILURE"
+    serialized = captured[0][1].lower()
+    for secret in ("turn-1", "conversation-1", "request-1", "stable identities"):
+        assert secret not in serialized
+
+    deferred = getattr(handler, "_completed_diagnostic_logs", [])
+    assert len(deferred) == 1
+    _log, level, message, _args, error = deferred[0]
+    assert level == logging.WARNING
+    assert "presentation" in message
+    assert isinstance(error, ValueError)
 
 
 @pytest.mark.parametrize(

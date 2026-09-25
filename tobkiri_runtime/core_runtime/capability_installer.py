@@ -79,9 +79,9 @@ def _get_trust_store():
 
 
 def _get_executor():
-    """遅延 import: CapabilityExecutor"""
-    from .capability_executor import get_capability_executor
-    return get_capability_executor()
+    """Retired executor: resolve through the explicit fail-closed tombstone."""
+    from .legacy_runtime_removed import removed_capability_executor
+    return removed_capability_executor()
 
 
 # ======================================================================

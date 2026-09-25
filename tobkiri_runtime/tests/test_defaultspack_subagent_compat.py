@@ -622,21 +622,42 @@ def test_agent_run_subagent_delegate_timeout_surfaces_failed_result(monkeypatch)
     assert data["result"]["error_redacted"] is True
 
 
-def test_tool_subagent_compat_returns_structured_result(monkeypatch, tmp_path):
+def test_tool_subagent_compat_returns_structured_result(
+    monkeypatch, tmp_path, defaultspack_capability_plan_context
+):
     _configure_paths(monkeypatch, tmp_path)
     parent = _parent_conversation()
+
+    def fake_dispatch(envelope, context):
+        ChatStore().add_message(
+            envelope.target["conversation_id"],
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": envelope.input}],
+                "metadata": envelope.metadata,
+            },
+        )
+        return {"status": "ok", "assistant_text": "done"}
+
     monkeypatch.setattr(
-        "blocks.chat.send.run",
-        lambda request, context: {
-            "status": "ok",
-            "data": {"id": "assistant-1", "content": [{"type": "text", "text": "done"}]},
-        },
+        "ecosystem.rumi_default_tools_pack.domain.tool.subagent.dispatch_input",
+        fake_dispatch,
     )
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
 
     result = run_defaultspack_function(
         "tool_subagent",
         {"task": "hello from child"},
-        {"conversation_id": parent["id"], "model": "stub/default"},
+        {
+            **defaultspack_capability_plan_context("subagent"),
+            "profile_policy": {"yolo_mode": True},
+            "_settings_owner_port": FrontendSettingsStore(
+                tmp_path / "settings" / "frontend_settings.json"
+            ),
+            "conversation_id": parent["id"],
+            "model": "stub/default",
+        },
+        subagent_factory=SubagentController,
     )
 
     assert result["status"] == "ok"
@@ -1188,11 +1209,17 @@ def test_tool_subagent_returns_error_and_marks_child_failed_when_dispatch_times_
 
     monkeypatch.setattr("ecosystem.rumi_default_tools_pack.domain.tool.subagent.dispatch_input", fake_dispatch)
 
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
     result = run_defaultspack_function(
         "tool_subagent",
         {"task": "simple json probe"},
         {
             **defaultspack_capability_plan_context("subagent"),
+            "profile_policy": {"yolo_mode": True},
+            "_settings_owner_port": FrontendSettingsStore(
+                tmp_path / "settings" / "frontend_settings.json"
+            ),
             "conversation_id": parent["id"],
         },
         subagent_factory=SubagentController,

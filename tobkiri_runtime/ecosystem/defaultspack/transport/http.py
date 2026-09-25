@@ -495,6 +495,9 @@ class DefaultsHttpServer:
             pass
 
     def _build_context(self):
+        # Note: the Capability Plan executor is bound in-process by
+        # blocks/capability/api.py (domain.capability.plan_executor), never
+        # through this caller-supplied context, so execution stays fail-closed.
         context = {
             "flow_id": "transport_direct",
             "step_id": "http_request",

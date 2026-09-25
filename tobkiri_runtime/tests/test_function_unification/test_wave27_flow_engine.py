@@ -11,12 +11,11 @@ Wave 27-D3: Flow エンジン コアロジック ユニットテスト
 """
 from __future__ import annotations
 
-import asyncio
 import sys
 import types
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -223,21 +222,24 @@ class TestExecuteFunctionStepAsync:
     """_execute_function_step_async のユニットテスト。"""
 
     @pytest.mark.asyncio
-    async def test_function_step_success(self, kernel, di_mock):
-        """11. function step が正常に実行され結果が ctx に格納される。"""
+    async def test_function_step_executor_retired_fails_closed(self, kernel, di_mock):
+        """11. function step は退役済み executor tombstone でフェイルクローズ。"""
         step = {"id": "s1", "type": "function", "function": "math.add", "args": {"a": 1, "b": 2}}
         ctx = {"_flow_run_principal_id": "user1", "_flow_execution_id": "exec1"}
 
-        mock_resp = _make_executor_resp(success=True, output={"sum": 3})
+        # The retired capability_executor can no longer be bound through DI;
+        # any injected lookup is dead code and the step must fail closed.
         mock_executor = MagicMock()
-        mock_executor.execute = MagicMock(return_value=mock_resp)
+        mock_executor.execute = MagicMock(
+            return_value=_make_executor_resp(success=True, output={"sum": 3})
+        )
         di_mock.get_or_none = MagicMock(return_value=mock_executor)
 
         ctx, result = await kernel._execute_function_step_async(step, ctx)
 
-        assert result == {"sum": 3}
-        assert ctx.get("_step_out.s1") == {"sum": 3}
-        mock_executor.execute.assert_called_once()
+        assert result == {"_error": "capability_executor not available"}
+        assert ctx.get("_step_out.s1") == result
+        mock_executor.execute.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_function_step_no_principal_id(self, kernel, di_mock):
@@ -266,76 +268,64 @@ class TestExecuteFunctionStepAsync:
         assert "capability_executor" in result["_error"]
 
     @pytest.mark.asyncio
-    async def test_function_step_execution_error(self, kernel, di_mock):
-        """14. executor.execute がエラーを返した場合の処理。"""
+    async def test_function_step_retired_executor_error(self, kernel, di_mock):
+        """14. executor 解決は tombstone で失敗し注入済み executor は呼ばれない。"""
         step = {"id": "s1", "type": "function", "function": "math.add"}
         ctx = {"_flow_run_principal_id": "user1", "_flow_execution_id": "exec1"}
 
-        mock_resp = _make_executor_resp(success=False, error="division by zero")
         mock_executor = MagicMock()
-        mock_executor.execute = MagicMock(return_value=mock_resp)
+        mock_executor.execute = MagicMock(
+            return_value=_make_executor_resp(success=False, error="division by zero")
+        )
         di_mock.get_or_none = MagicMock(return_value=mock_executor)
 
         ctx, result = await kernel._execute_function_step_async(step, ctx)
 
-        assert "_error" in result
-        assert result["_error"] == "division by zero"
+        assert result == {"_error": "capability_executor not available"}
+        mock_executor.execute.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_function_step_output_storage_explicit(self, kernel, di_mock):
-        """15. 明示 output キーに結果が格納される。"""
+        """15. 明示 output キーにはフェイルクローズエラーが格納される。"""
         step = {"id": "s1", "type": "function", "function": "math.add", "output": "my_result"}
         ctx = {"_flow_run_principal_id": "user1", "_flow_execution_id": "exec1"}
 
-        mock_resp = _make_executor_resp(success=True, output={"sum": 10})
-        mock_executor = MagicMock()
-        mock_executor.execute = MagicMock(return_value=mock_resp)
-        di_mock.get_or_none = MagicMock(return_value=mock_executor)
-
         ctx, result = await kernel._execute_function_step_async(step, ctx)
 
-        assert ctx.get("my_result") == {"sum": 10}
+        assert result == {"_error": "capability_executor not available"}
+        assert ctx.get("_step_out.my_result") == result
         assert "_step_out.s1" not in ctx  # auto key は使われない
 
     @pytest.mark.asyncio
     async def test_function_step_output_storage_auto(self, kernel, di_mock):
-        """16. 自動 _step_out.{id} に結果が格納される。"""
+        """16. 自動 _step_out.{id} にもフェイルクローズエラーが格納される。"""
         step = {"id": "calc_step", "type": "function", "function": "math.add"}
         ctx = {"_flow_run_principal_id": "user1", "_flow_execution_id": "exec1"}
 
-        mock_resp = _make_executor_resp(success=True, output={"sum": 7})
-        mock_executor = MagicMock()
-        mock_executor.execute = MagicMock(return_value=mock_resp)
-        di_mock.get_or_none = MagicMock(return_value=mock_executor)
-
         ctx, result = await kernel._execute_function_step_async(step, ctx)
 
-        assert ctx.get("_step_out.calc_step") == {"sum": 7}
+        assert result == {"_error": "capability_executor not available"}
+        assert ctx.get("_step_out.calc_step") == result
 
     @pytest.mark.asyncio
     async def test_function_step_vocab_normalize(self, kernel, di_mock):
-        """17. vocab_normalize が適用される（Wave 27-D2）。"""
+        """17. executor 退役により vocab_normalize は適用されない。"""
         step = {
             "id": "s1", "type": "function", "function": "math.add",
             "vocab_normalize": True,
         }
         ctx = {"_flow_run_principal_id": "user1", "_flow_execution_id": "exec1"}
 
-        mock_resp = _make_executor_resp(success=True, output={"raw_key": "value"})
-        mock_executor = MagicMock()
-        mock_executor.execute = MagicMock(return_value=mock_resp)
-        di_mock.get_or_none = MagicMock(return_value=mock_executor)
-
-        # _vocab_normalize_output をモック化して変換を確認
+        # _vocab_normalize_output must never run: the step fails closed first.
         kernel._vocab_normalize_output = MagicMock(
             return_value={"normalized_key": "value"}
         )
 
         ctx, result = await kernel._execute_function_step_async(step, ctx)
 
-        kernel._vocab_normalize_output.assert_called_once()
-        assert result == {"normalized_key": "value"}
-        assert ctx.get("_step_out.s1") == {"normalized_key": "value"}
+        kernel._vocab_normalize_output.assert_not_called()
+        assert result == {"_error": "capability_executor not available"}
+        assert ctx.get("_step_out.s1") == result
 
 
 # ======================================================================
@@ -345,8 +335,10 @@ class TestExecuteFunctionStepAsync:
 class TestSyncFunctionStep:
     """_execute_flow_step (同期版) の function step テスト。"""
 
-    def test_sync_function_step_success(self, kernel, di_mock):
-        """18. 同期 pipeline で function step が実行される（Wave 27-D1）。"""
+    def test_sync_function_step_retired_executor_fails_closed(
+        self, kernel, di_mock
+    ):
+        """18. 同期 pipeline の function step も tombstone でフェイルクローズ。"""
         step = {
             "id": "sync_s1",
             "function": "math.multiply",
@@ -357,21 +349,20 @@ class TestSyncFunctionStep:
             "_flow_defaults": {"fail_soft": True, "on_missing_handler": "skip"},
         }
 
-        mock_resp = _make_executor_resp(success=True, output={"product": 12})
         mock_executor = MagicMock()
-        mock_executor.execute = MagicMock(return_value=mock_resp)
+        mock_executor.execute = MagicMock(
+            return_value=_make_executor_resp(success=True, output={"product": 12})
+        )
         di_mock.get_or_none = MagicMock(return_value=mock_executor)
 
         aborted = kernel._execute_flow_step(step, phase="startup", ctx=ctx)
 
+        # fail_soft=True → continue (False), but nothing is stored and the
+        # retired executor is never invoked.
         assert aborted is False
-        assert ctx.get("_step_out.sync_s1") == {"product": 12}
-        mock_executor.execute.assert_called_once()
-        # request の内容を検証
-        call_args = mock_executor.execute.call_args
-        actual_request = call_args[0][1]
-        assert actual_request["type"] == "function.call"
-        assert actual_request["qualified_name"] == "math.multiply"
+        assert ctx.get("_step_out.sync_s1") is None
+        mock_executor.execute.assert_not_called()
+        kernel.diagnostics.record_step.assert_called()
 
     def test_sync_function_step_no_principal_id(self, kernel, di_mock):
         """19. 同期版でも trusted flow principal がない場合に拒否される。"""

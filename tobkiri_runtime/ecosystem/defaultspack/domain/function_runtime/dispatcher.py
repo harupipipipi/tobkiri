@@ -193,12 +193,12 @@ def _run_tool_function(
             str(filtered_rejection.get("code") or "TOOL_REJECTED"),
             details=filtered_rejection,
         )
-    # The public function is the safety boundary; call the local implementation
-    # directly here to avoid recursing through the AI tool facade.
+    # The gated executor is the single execution boundary; pack function
+    # dispatch must not bypass its Capability Plan, policy, and approval gates.
     result = ToolExecutor(
         subagent_factory=subagent_factory,
         settings_owner=_settings_owner_from_context(context),
-    )._execute_local(tool_name, arguments, context)
+    ).execute(tool_name, arguments, context)
     if function_id in {"browser_open_url", "browser_screenshot", "browser_session"} and isinstance(result, dict):
         try:
             from domain.browser.browser_artifacts import BrowserArtifactStore

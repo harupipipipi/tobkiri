@@ -193,3 +193,58 @@ def test_legacy_tool_invoke_requires_a_capability_plan() -> None:
 
     assert result["status"] == "error"
     assert result["error"]["code"] == "CAPABILITY_PLAN_REQUIRED"
+
+
+def test_capability_plan_required_parity_across_execution_entries(
+    defaultspack_component_catalog_selected,
+) -> None:
+    """Every execution entry fails closed on the same plan gate.
+
+    The gated ToolExecutor, the pack function dispatcher, and the retired
+    tool-invoke block must all reject a plan-less call instead of letting one
+    surface bypass the single Capability Plan executor.
+    """
+    from blocks.tool.invoke import run as invoke_tool
+    from domain.function_runtime.dispatcher import run_defaultspack_function
+    from domain.tool.executor import ToolExecutor
+
+    tool_result = ToolExecutor().execute(
+        "file_reader",
+        {"path": "secret.txt"},
+        {},
+    )
+    assert tool_result["is_error"] is True
+    assert tool_result["error_type"] == "capability_plan_required"
+
+    function_result = run_defaultspack_function(
+        "tool_file_reader",
+        {"path": "secret.txt"},
+        {},
+    )
+    assert function_result["status"] == "ok"
+    assert function_result["data"]["is_error"] is True
+    assert function_result["data"]["error_type"] == "capability_plan_required"
+
+    invoke_result = invoke_tool(
+        {"tool_name": "file_reader", "arguments": {"path": "secret.txt"}},
+        {},
+    )
+    assert invoke_result["status"] == "error"
+    assert invoke_result["error"]["code"] == "CAPABILITY_PLAN_REQUIRED"
+
+
+def test_dispatcher_cannot_bypass_plan_gate_for_signed_context(
+    defaultspack_component_catalog_selected,
+    defaultspack_capability_plan_context,
+) -> None:
+    """A mismatched plan must not authorize a different tool."""
+    from domain.function_runtime.dispatcher import run_defaultspack_function
+
+    mismatched = run_defaultspack_function(
+        "tool_file_reader",
+        {"path": "secret.txt"},
+        defaultspack_capability_plan_context("web_search"),
+    )
+    assert mismatched["status"] == "ok"
+    assert mismatched["data"]["is_error"] is True
+    assert mismatched["data"]["error_type"] == "tool_not_attached"

@@ -5,7 +5,6 @@ from __future__ import annotations
 import importlib.util
 import os
 import sys
-import time
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -240,13 +239,6 @@ def _call_context_for_entry(entry: Any, context: Optional[Dict[str, Any]] = None
     return call_context
 
 
-def _raise_for_capability_response(response: Any) -> Any:
-    if getattr(response, "success", False):
-        return getattr(response, "output", None)
-    error = getattr(response, "error", None) or "Function execution failed"
-    raise RuntimeError(str(error))
-
-
 def _execute_direct_python_entry(
     entry: Any,
     args: Optional[Dict[str, Any]] = None,
@@ -275,11 +267,7 @@ def execute_function_entry(
     args: Optional[Dict[str, Any]] = None,
     context: Optional[Dict[str, Any]] = None,
 ) -> Any:
-    from .capability_executor import (
-        DEFAULT_FUNCTION_TIMEOUT,
-        _HandlerDefAdapter,
-        get_capability_executor,
-    )
+    from .legacy_runtime_removed import removed_capability_executor
 
     calling_convention = str(getattr(entry, "calling_convention", "") or "").strip()
     if calling_convention in {"", "block"}:
@@ -287,62 +275,6 @@ def execute_function_entry(
     if calling_convention == "kernel":
         raise RuntimeError("kernel calling_convention functions must be executed via kernel dispatch")
 
-    executor = get_capability_executor()
-    request_id = str((context or {}).get("request_id") or uuid.uuid4())
-    start_time = time.time()
-    grant_config = dict(getattr(entry, "_pack_function_grant_config", {}) or {})
-    request_context = _call_context_for_entry(entry, context)
-    timeout = float((context or {}).get("timeout_seconds") or DEFAULT_FUNCTION_TIMEOUT)
-
-    if calling_convention == "subprocess":
-        entrypoint = entry.entrypoint or "main.py:run"
-        function_dir = Path(entry.function_dir)
-        ep_file = entrypoint.rsplit(":", 1)[0] if ":" in entrypoint else entrypoint
-        adapter = _HandlerDefAdapter(
-            handler_id=entry.qualified_name,
-            permission_id=permission_id_for_entry(entry),
-            entrypoint=entrypoint,
-            handler_dir=function_dir,
-            handler_py_path=function_dir / ep_file,
-            is_builtin=bool(getattr(entry, "is_builtin", False)),
-            pack_id=str(getattr(entry, "pack_id", "") or ""),
-        )
-        response = executor._execute_handler_subprocess(
-            handler_def=adapter,
-            principal_id=entry.pack_id,
-            permission_id=permission_id_for_entry(entry),
-            grant_config=grant_config,
-            args=dict(args or {}),
-            timeout_seconds=timeout,
-            request_id=request_id,
-            start_time=start_time,
-            request_context=request_context,
-        )
-        return _raise_for_capability_response(response)
-
-    if calling_convention == "python_docker":
-        response = executor._execute_user_function(
-            principal_id=entry.pack_id,
-            entry=entry,
-            args=dict(args or {}),
-            request_id=request_id,
-            start_time=start_time,
-            grant_config=grant_config,
-            request_context=request_context,
-            force_docker=True,
-        )
-        return _raise_for_capability_response(response)
-
-    response = executor._dispatch_by_calling_convention(
-        calling_convention=calling_convention,
-        entry=entry,
-        principal_id=entry.pack_id,
-        effective_permission_id=permission_id_for_entry(entry),
-        grant_config=grant_config,
-        args=dict(args or {}),
-        timeout_seconds=timeout,
-        request_id=request_id,
-        start_time=start_time,
-        request_context=request_context,
-    )
-    return _raise_for_capability_response(response)
+    # Every other calling convention was dispatched through the removed
+    # capability_executor service; fail closed through the explicit tombstone.
+    return removed_capability_executor()

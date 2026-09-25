@@ -1649,7 +1649,45 @@ class PackAPIHandler(
                 status,
             )
             return
-        presented = self._present_contract_result(binding, safe_result)
+        try:
+            presented = self._present_contract_result(binding, safe_result)
+        except (
+            HostCoreError,
+            KeyError,
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ) as error:
+            # A projection that rejects a success-typed owner result must
+            # degrade to the bounded public error envelope like every other
+            # dispatch failure. Letting it escape drops the client response
+            # and surfaces a traceback in the request handler.
+            #
+            # The projection runs over an owner-produced result, not client
+            # input: a malformed success outcome is an upstream failure, so a
+            # bare INVALID_REQUEST classification is promoted to API_FAILURE.
+            public_code = _exception_error_code(error)
+            if public_code == HTTPRuntimeErrorCode.INVALID_REQUEST.value:
+                public_code = HTTPRuntimeErrorCode.API_FAILURE.value
+            public_result = _public_error_result(public_code)
+            self._send_response(
+                APIResponse(
+                    False,
+                    data=public_result,
+                    error=_PUBLIC_ERROR_MESSAGES[str(public_result["code"])],
+                ),
+                self._contract_result_status(public_result),
+            )
+            self._defer_response_log(
+                logger,
+                logging.WARNING,
+                "Contract result presentation failed for %s %s",
+                binding.method,
+                binding.path,
+                exc_info=error,
+            )
+            return
         self._send_response(APIResponse(True, data=presented), status)
 
     def _handle_packvm_lifecycle(self, method: str, path: str) -> bool:

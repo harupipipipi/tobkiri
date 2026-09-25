@@ -489,18 +489,11 @@ class HostCapabilityProxyServer:
                 )
                 self._windows_tcp_warning_emitted = True
 
-            # executor 初期化
-            from .capability_executor import get_capability_executor
-            self._executor = get_capability_executor()
-            init_ok = self._executor.initialize()
+            # executor 初期化 — capability_executor service is retired;
+            # resolve through the explicit tombstone so startup fails closed.
+            from .legacy_runtime_removed import removed_capability_executor
 
-            if not init_ok:
-                # ハンドラーレジストリのロード失敗（重複等）
-                # audit は executor/registry 側で既に記録済み
-                pass
-
-            self._initialized = True
-            return init_ok
+            removed_capability_executor()
 
     def ensure_principal_socket(self, principal_id: str) -> Tuple[bool, Optional[str], Optional[Path]]:
         """

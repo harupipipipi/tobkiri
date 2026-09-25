@@ -1039,10 +1039,13 @@ class KernelFlowExecutionMixin:
 
         resolved_args = self._resolve_value(step.get("args", {}), ctx)
 
-        # DI コンテナ経由で capability_executor を取得（循環インポート回避）
+        # capability_executor service is retired; resolve through the explicit
+        # tombstone so this step fails closed instead of touching a dead DI name.
+        executor = None
         try:
-            from .di_container import get_container as _get_di
-            executor = _get_di().get_or_none("capability_executor")
+            from .legacy_runtime_removed import removed_capability_executor
+
+            removed_capability_executor()
         except Exception:
             executor = None
 
@@ -1205,10 +1208,13 @@ class KernelFlowExecutionMixin:
 
             resolved_args = self._resolve_value(step.get("args", {}), ctx)
 
-            # DI コンテナ経由で capability_executor を取得
+            # capability_executor service is retired; resolve through the
+            # explicit tombstone so this step fails closed.
+            executor = None
             try:
-                from .di_container import get_container as _get_di
-                executor = _get_di().get_or_none("capability_executor")
+                from .legacy_runtime_removed import removed_capability_executor
+
+                removed_capability_executor()
             except Exception:
                 executor = None
 

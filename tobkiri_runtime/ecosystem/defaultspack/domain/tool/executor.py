@@ -35,10 +35,6 @@ from domain.tool_policy.internal_context import (
 )
 from domain.tool_policy.profile_permission import resolve_profile_tool_permission
 from domain.tool_policy.risk import resolve_tool_risk
-from core_runtime.capability_plan import (
-    CapabilityPlanValidationError,
-    validate_capability_plan,
-)
 from pathlib import Path
 import hashlib
 import inspect
@@ -164,128 +160,18 @@ def _capability_plan_tool_rejection(
 ):
     """Fail closed unless a canonical plan attaches this exact Tool.
 
-    The public Capability API owns persisted approval and owner binding.  The
-    executor still validates the detached plan at the last non-core boundary,
-    so a direct adapter call cannot use a legacy alias or an unsigned plan to
-    reach a reviewed pack function.
+    The single Capability Plan executor owns plan validation; this delegate
+    keeps every execution entry behind the same gate.
     """
 
-    if not isinstance(context, dict):
-        if not require_plan:
-            return None
-        return {
-            "result": "CapabilityPlan is required for tool execution",
-            "is_error": True,
-            "widget": None,
-            "error_type": "capability_plan_required",
-        }
-    plan = context.get("capability_plan")
-    if not isinstance(plan, dict):
-        if not require_plan:
-            return None
-        return {
-            "result": "CapabilityPlan is required for tool execution",
-            "is_error": True,
-            "widget": None,
-            "error_type": "capability_plan_required",
-        }
-    try:
-        plan = validate_capability_plan(plan)
-    except (CapabilityPlanValidationError, TypeError, ValueError):
-        return {
-            "result": "CapabilityPlan authority is invalid",
-            "is_error": True,
-            "widget": None,
-            "error_type": "capability_plan_invalid",
-        }
-    tools = plan.get("tools")
-    if not isinstance(tools, dict):
-        return {
-            "result": "CapabilityPlan Tool authority is invalid",
-            "is_error": True,
-            "widget": None,
-            "error_type": "capability_plan_invalid",
-        }
-    attached = {
-        str(item).strip()
-        for item in tools.get("attached") or []
-        if str(item or "").strip()
-    }
-    canonical_name = str(
-        tool_def.get("tool_id")
-        or tool_def.get("name")
-        or tool_name
-        or ""
-    ).strip()
-    requested_name = str(tool_name or "").strip()
-    if requested_name != canonical_name:
-        return {
-            "result": "Legacy Tool aliases cannot authorize execution",
-            "is_error": True,
-            "widget": None,
-            "error_type": "legacy_tool_alias",
-        }
-    if canonical_name not in attached:
-        return {
-            "result": "Tool is not attached by the active CapabilityPlan",
-            "is_error": True,
-            "widget": None,
-            "error_type": "tool_not_attached",
-        }
-    schema_hashes = tools.get("schema_hashes")
-    expected_hash = (
-        str(schema_hashes.get(canonical_name) or "").strip()
-        if isinstance(schema_hashes, dict)
-        else ""
+    from domain.capability.plan_executor import validate_tool_plan_authority
+
+    return validate_tool_plan_authority(
+        tool_name,
+        tool_def,
+        context,
+        require_plan=require_plan,
     )
-    schema = tool_def.get("schema")
-    if not isinstance(schema, dict):
-        contract = tool_def.get("contract")
-        schema = (
-            contract.get("input_schema")
-            if isinstance(contract, dict)
-            and isinstance(contract.get("input_schema"), dict)
-            else {}
-        )
-    actual_hash = hashlib.sha256(
-        json.dumps(
-            schema,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-            default=str,
-        ).encode("utf-8")
-    ).hexdigest()
-    if not expected_hash or expected_hash != actual_hash:
-        return {
-            "result": "Tool schema does not match the active CapabilityPlan",
-            "is_error": True,
-            "widget": None,
-            "error_type": "tool_schema_revision_mismatch",
-        }
-    plan_owner = plan.get("owner") or plan.get("authority_owner")
-    if plan_owner is not None:
-        if not isinstance(plan_owner, dict):
-            return {
-                "result": "CapabilityPlan owner binding is invalid",
-                "is_error": True,
-                "widget": None,
-                "error_type": "capability_plan_owner_mismatch",
-            }
-        context_owner = context.get("capability_plan_owner")
-        if not isinstance(context_owner, dict):
-            context_owner = context
-        for field in ("principal_id", "workspace_id", "conversation_id", "profile_id"):
-            expected = str(plan_owner.get(field) or "").strip()
-            actual = str(context_owner.get(field) or "").strip()
-            if expected and actual != expected:
-                return {
-                    "result": "CapabilityPlan owner does not match execution scope",
-                    "is_error": True,
-                    "widget": None,
-                    "error_type": "capability_plan_owner_mismatch",
-                }
-    return None
 
 
 def _tool_requires_capability_plan(tool_def):
@@ -1066,6 +952,16 @@ class ToolExecutor:
         principal_id = self._principal_id(tool_def, context)
         try:
             executor = self._capability_executor(context)
+        except Exception as exc:
+            # The capability dispatch port is unbound: nothing ran, so this is
+            # a deterministic pre-effect rejection, not an unknown outcome.
+            return {
+                "result": "Capability execution failed: {}".format(exc),
+                "is_error": True,
+                "widget": None,
+                "error_type": "capability_executor_unbound",
+            }
+        try:
             approval_error = self._prepare_deferred_tool_approval(
                 tool_def,
                 request,

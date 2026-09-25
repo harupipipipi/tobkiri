@@ -191,7 +191,10 @@ def test_operating_profile_activate_honors_route_id_without_body_profile(
 
 
 def test_adaptive_freeze_blocks_real_tool_and_public_function_dispatch(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    defaultspack_component_catalog_selected,
+    defaultspack_capability_plan_context,
 ) -> None:
     monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path))
     from domain.adaptive.service import dispatch
@@ -225,10 +228,17 @@ def test_adaptive_freeze_blocks_real_tool_and_public_function_dispatch(
     assert tool_result["is_error"] is True
     assert tool_result["adaptive_policy"]["code"] == "ADAPTIVE_FROZEN"
 
+    browser_capability_context = defaultspack_capability_plan_context(
+        "browser_computer"
+    )
     browser_result = run_defaultspack_function(
         "browser_open_url",
         {"url": "https://example.invalid", "approved": True},
-        {"profile_id": "coding", "_tool_server_approved": True},
+        {
+            **browser_capability_context,
+            "profile_id": "coding",
+            "_tool_server_approved": True,
+        },
     )
     assert browser_result["status"] == "ok"
     assert browser_result["data"]["adaptive_policy"]["code"] == "ADAPTIVE_FROZEN"

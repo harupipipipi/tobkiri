@@ -1156,16 +1156,81 @@ def test_tool_file_reader_ignores_caller_supplied_workspace_root(
     (outside / "secret.txt").write_text("SECRET", encoding="utf-8")
     bind_verified_coding_contracts(monkeypatch, workspace)
 
+    captured = {}
+
+    class _FileReadCapabilityExecutor:
+        """Serve the function.call through the verified workspace contract."""
+
+        def execute(self, principal_id, request):
+            captured["principal_id"] = principal_id
+            captured["request"] = request
+            from blocks.coding.file_read import run as file_read_run
+
+            call_context = dict(request.get("context") or {})
+            response = file_read_run(
+                {
+                    "path": (request.get("args") or {}).get("path"),
+                    "workspace_id": call_context.get("workspace_id"),
+                },
+                call_context,
+            )
+            if response.get("status") != "ok":
+                error_payload = response.get("error") or {}
+                return SimpleNamespace(
+                    success=False,
+                    output=None,
+                    error=str(error_payload.get("message") or "file read failed"),
+                )
+            return SimpleNamespace(
+                success=True,
+                output={
+                    "result": str(
+                        (response.get("data") or {}).get("content") or ""
+                    ),
+                    "is_error": False,
+                },
+                error=None,
+            )
+
+    context = {
+        **_capability_plan_context("file_reader"),
+        "workspace_root": str(workspace),
+        "workspace_id": "trusted",
+        "capability_executor": _FileReadCapabilityExecutor(),
+    }
     result = run_defaultspack_function(
         "tool_file_reader",
         {"path": "secret.txt", "workspace_root": str(outside)},
-        {"workspace_root": str(workspace), "workspace_id": "trusted"},
+        context,
     )
 
     assert result["status"] == "ok"
     assert result["data"]["is_error"] is False
     assert result["data"]["result"] == "SELECTED WORKSPACE"
     assert "SECRET" not in str(result)
+    request = captured["request"]
+    assert captured["principal_id"] == "defaultspack"
+    assert request["type"] == "function.call"
+    assert request["qualified_name"] == "defaultspack:tool_file_reader"
+    assert request["context"]["workspace_id"] == "trusted"
+    assert request["context"]["workspace_root"] == str(workspace)
+    # The caller-supplied workspace_root stays inside args only; the trusted
+    # workspace binding is forwarded through the request context instead.
+    assert request["args"]["workspace_root"] == str(outside)
+
+
+def test_tool_file_reader_function_dispatch_requires_capability_plan():
+    from domain.function_runtime.dispatcher import run_defaultspack_function
+
+    result = run_defaultspack_function(
+        "tool_file_reader",
+        {"path": "secret.txt"},
+        {"workspace_root": "/tmp", "workspace_id": "trusted"},
+    )
+
+    assert result["status"] == "ok"
+    assert result["data"]["is_error"] is True
+    assert result["data"]["error_type"] == "capability_plan_required"
 
 
 def test_sandbox_exec_ignores_client_supplied_approval_flags(

@@ -6,10 +6,11 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
-from blocks._common import error, ok, timestamp
+from blocks._common import error, ok
 from domain.capability.activity_registry import ActivityRegistry
 from domain.capability.orchestrator import CapabilityOrchestrator
 from domain.capability.models import stable_revision
+from domain.capability import plan_executor
 from domain.capability.repository import (
     CapabilityOwnerMismatch,
     CapabilityPlanAlreadyExecuted,
@@ -252,44 +253,34 @@ def _execute(
     if int(plan.get("policy_generation") or 0) != repository.policy_generation():
         return error("Capability policy generation changed", "STALE_PLAN")
 
-    executor = context.get("capability_plan_executor")
-    if not callable(executor):
-        return error(
-            "No capability_plan_executor is bound; execution fails closed",
-            "EXECUTOR_UNAVAILABLE",
-        )
+    # The single in-process Capability Plan executor owns the
+    # validate -> claim -> dispatch -> complete boundary.  It is bound
+    # directly (never via caller-supplied context) so execution fails closed.
     try:
-        repository.claim_execution(
-            plan_id,
-            {"at": timestamp(), "status": "running"},
+        invocation = _validated_invocation(payload, plan)
+    except (TypeError, ValueError) as exc:
+        return error(str(exc), "INVALID_INPUT")
+    try:
+        stored = plan_executor.execute(
+            plan,
+            approval,
+            invocation,
+            context,
             owner=owner,
-            invocation=_validated_invocation(payload, plan),
+            repository=repository,
         )
     except CapabilityPlanAlreadyExecuted:
         return error("Capability Plan was already executed", "ALREADY_EXECUTED")
     except StaleCapabilityPlan as exc:
         return error(str(exc), "STALE_PLAN")
-    try:
-        result = executor(plan, approval, payload.get("input"))
-    except Exception as exc:
-        repository.complete_execution(
-            plan_id,
-            {
-                "at": timestamp(),
-                "status": "outcome_unknown",
-                "error": str(exc),
-            },
-            owner=owner,
-        )
-        return error(
-            "Capability Plan execution outcome is unknown; automatic retry is forbidden",
-            "OUTCOME_UNKNOWN",
-        )
-    stored = repository.complete_execution(
-        plan_id,
-        {"at": timestamp(), "status": "succeeded", "result": result},
-        owner=owner,
-    )
+    except CapabilityOwnerMismatch:
+        raise
+    except PermissionError as exc:
+        return error(str(exc), "APPROVAL_REQUIRED")
+    except KeyError:
+        return error("Capability Plan not found", "NOT_FOUND")
+    except plan_executor.CapabilityPlanExecutionFailed as exc:
+        return error(str(exc), exc.error_code)
     return ok(stored)
 
 
