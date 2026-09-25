@@ -433,6 +433,7 @@ _APPROVAL_WINDOW_OPERATION = "authority_approval.open"
 # The Launcher host broker only accepts this bounded request identifier shape.
 _APPROVAL_WINDOW_REQUEST_ID = re.compile(r"[A-Za-z0-9_-]{1,160}")
 _V4_OPERATIONS = frozenset(
+_V4_SINGLE_OPERATIONS = frozenset(
     {
         _V4_GET_OPERATION,
         _V4_LIST_OPERATION,
