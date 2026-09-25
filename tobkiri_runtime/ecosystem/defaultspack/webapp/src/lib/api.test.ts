@@ -13,11 +13,14 @@ import {
   MIMO_CODING_DEFAULT_FAST_MODEL,
   MIMO_CODING_DEFAULT_MODEL,
   MIMO_CODING_DEFAULT_VISION_MODEL,
+  clearComposerDraft,
   commandSupportsMode,
   frontendCommandArgs,
+  isClearComposerCommandInput,
   keepSelectedToolsAfterSend,
   parseCommandBoolean,
   parseSlashCommandInput,
+  restorePersistedComposerDraft,
   resolveMimoCodingModel,
   resolveMimoFastModel,
   resolveMimoVisionModel,
@@ -1033,6 +1036,65 @@ test("composer command feedback surfaces pack block result messages and paths", 
     }),
     "Command wrote /tmp/rumi/context.txt",
   );
+});
+
+test("New Chat composer reset clears slash draft and menu state", () => {
+  let input = "/";
+  let attachedFiles: unknown[] = [{ id: "file-1", name: "note.txt", size: 12 }];
+  let droppedWidgets: unknown[] = [{ id: "tool-1", type: "tool", label: "Tool" }];
+  let structuredComposerValues: Record<string, string> = { intent: "review" };
+  let candidateMenu: unknown = {
+    mode: "model",
+    query: "",
+    candidates: [{ profile_id: "stub/default", display_name: "Stub" }],
+  };
+  let resetToken = 0;
+
+  clearComposerDraft({
+    setInput: (value) => {
+      input = value;
+    },
+    setAttachedFiles: (value) => {
+      attachedFiles = value;
+    },
+    setDroppedWidgets: (value) => {
+      droppedWidgets = value;
+    },
+    setStructuredComposerValues: (value) => {
+      structuredComposerValues = value;
+    },
+    setComposerCandidateMenu: (value) => {
+      candidateMenu = value;
+    },
+    bumpResetToken: () => {
+      resetToken += 1;
+    },
+  });
+
+  assert.equal(input, "");
+  assert.deepEqual(attachedFiles, []);
+  assert.deepEqual(droppedWidgets, []);
+  assert.deepEqual(structuredComposerValues, {});
+  assert.equal(candidateMenu, null);
+  assert.equal(resetToken, 1);
+});
+
+test("/clear resets local composer state even without command catalog entries", () => {
+  assert.equal(isClearComposerCommandInput("/clear"), true);
+  assert.equal(isClearComposerCommandInput(" /clear  "), true);
+  assert.equal(isClearComposerCommandInput("/clear please"), true);
+  assert.equal(isClearComposerCommandInput("//clear"), false);
+  assert.equal(isClearComposerCommandInput("/status"), false);
+  assert.equal(parseSlashCommandInput("/clear", []), null);
+});
+
+test("reload discards active slash drafts while preserving ordinary and escaped text", () => {
+  assert.equal(restorePersistedComposerDraft("/"), "");
+  assert.equal(restorePersistedComposerDraft("/clear"), "");
+  assert.equal(restorePersistedComposerDraft("/model stub/default"), "");
+  assert.equal(restorePersistedComposerDraft("//clear"), "//clear");
+  assert.equal(restorePersistedComposerDraft("ordinary recovery draft"), "ordinary recovery draft");
+  assert.equal(restorePersistedComposerDraft({ draft: "/clear" }), "");
 });
 
 test("deepthink command feedback uses warning only while the mode is enabled", () => {

@@ -201,6 +201,7 @@ export type ComposerRendererProps = {
   structuredInputValues?: Record<string, string>;
   modelCommandCandidates?: ModelCommandCandidate[];
   modelPickerRequestId?: number;
+  composerResetToken?: number;
   modelStatusIndicators?: ComposerModelStatusIndicator[];
   voiceInputEnabled?: boolean;
   voiceInputUseAi?: boolean;

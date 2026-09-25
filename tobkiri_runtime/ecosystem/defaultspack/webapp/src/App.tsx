@@ -143,11 +143,34 @@ import { RendererBoundary } from "./renderers/trustedRendererLoader";
 import type { AppMode, AttachedFile, ChatUiMessage, CodingContext, ComposerExtensionItem, ComposerModelStatusIndicator, ComposerSkillItem, ComposerSteerStatus, ContextUsageInfo, DroppedWidget, SettingsLoadState, SettingsSaveState } from "./renderers/types";
 import { LayerPortal } from "./ui/layers/LayerPortal";
 
-type ComposerCandidateMenuState = {
+export type ComposerCandidateMenuState = {
   mode: "model";
   query: string;
   candidates: ModelCommandCandidate[];
 } | null;
+
+type ComposerDraftResetTargets = {
+  setInput: (value: string) => void;
+  setAttachedFiles: (value: AttachedFile[]) => void;
+  setDroppedWidgets: (value: DroppedWidget[]) => void;
+  setStructuredComposerValues: (value: Record<string, string>) => void;
+  setComposerCandidateMenu: (value: ComposerCandidateMenuState) => void;
+  bumpResetToken?: () => void;
+};
+
+export function clearComposerDraft(targets: ComposerDraftResetTargets) {
+  targets.setInput("");
+  targets.setAttachedFiles([]);
+  targets.setDroppedWidgets([]);
+  targets.setStructuredComposerValues({});
+  targets.setComposerCandidateMenu(null);
+  targets.bumpResetToken?.();
+}
+
+export function restorePersistedComposerDraft(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.startsWith("/") && !value.startsWith("//") ? "" : value;
+}
 
 type BackendConnectionState = "online" | "degraded" | "offline";
 
@@ -1321,11 +1344,17 @@ function CalendarComposerPanel({
   );
 }
 
-function useLocalStorage<T>(key: string, defaultValue: T): [T, (v: T | ((prev: T) => T)) => void] {
+function useLocalStorage<T>(
+  key: string,
+  defaultValue: T,
+  restoreValue?: (value: unknown) => T,
+): [T, (v: T | ((prev: T) => T)) => void] {
   const [value, setValue] = useState<T>(() => {
     try {
       const saved = localStorage.getItem(key);
-      return saved ? JSON.parse(saved) : defaultValue;
+      if (saved === null) return defaultValue;
+      const parsed = JSON.parse(saved) as unknown;
+      return restoreValue ? restoreValue(parsed) : parsed as T;
     } catch {
       return defaultValue;
     }
@@ -2309,6 +2338,12 @@ function matchCommandName(body: string, candidate: string): string | null {
   return flexibleMatch ? flexibleMatch[0].trimEnd() : null;
 }
 
+export function isClearComposerCommandInput(input: string): boolean {
+  const trimmed = input.trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) return false;
+  return matchCommandName(trimmed.slice(1).trim().toLowerCase(), "clear") !== null;
+}
+
 function normalizeCommandText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -2553,13 +2588,19 @@ export function ChatApp() {
   );
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [activeHistoryCompanyId, setActiveHistoryCompanyId] = useState<string | null>(null);
-  const [input, setInput] = useLocalStorage("rumi-input", "");
+  const [input, setInput] = useLocalStorage(
+    "rumi-input",
+    "",
+    restorePersistedComposerDraft,
+  );
   const [customHomeTitle, setCustomHomeTitle] = useLocalStorage(
     "rumi-home-title",
     DEFAULT_COMPOSER_HOME_TITLE,
   );
   const [structuredComposerValues, setStructuredComposerValues] = useState<Record<string, string>>({});
   const [composerCandidateMenu, setComposerCandidateMenu] = useState<ComposerCandidateMenuState>(null);
+  const [composerResetToken, setComposerResetToken] = useState(0);
+  const composerResetGenerationRef = useRef(0);
   const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
   const [spotlightQuery, setSpotlightQuery] = useState("");
   const [spotlightFilter, setSpotlightFilter] = useState<SpotlightFilter>("all");
@@ -2677,6 +2718,21 @@ export function ChatApp() {
       pendingMentionAttachmentRequestsRef.current.clear();
     }
     syncPendingMentionAttachmentPaths();
+  };
+
+  const resetComposerDraft = () => {
+    composerResetGenerationRef.current += 1;
+    clearComposerDraft({
+      setInput,
+      setAttachedFiles,
+      setDroppedWidgets,
+      setStructuredComposerValues,
+      setComposerCandidateMenu,
+      bumpResetToken: () => setComposerResetToken((value) => value + 1),
+    });
+    cancelPendingMentionAttachments();
+    dismissedComposerMentionToolsRef.current.clear();
+    setComposerEntityReferences([]);
   };
 
   const semanticAttachmentPathsIncludingPending = (files: AttachedFile[]) => [
@@ -4259,11 +4315,7 @@ export function ChatApp() {
     setPreviews([]);
     setError(null);
     setIsGenerating(false);
-    cancelPendingMentionAttachments();
-    setAttachedFiles([]);
-    setDroppedWidgets([]);
-    dismissedComposerMentionToolsRef.current.clear();
-    setComposerEntityReferences([]);
+    resetComposerDraft();
     replaceChatIdInUrl(null, false);
   };
 
@@ -4996,12 +5048,7 @@ export function ChatApp() {
         handleNewTask();
         return;
       case "clear_composer_state":
-        setInput("");
-        cancelPendingMentionAttachments();
-        setAttachedFiles([]);
-        setDroppedWidgets([]);
-        dismissedComposerMentionToolsRef.current.clear();
-        setComposerEntityReferences([]);
+        resetComposerDraft();
         if (activeConversationId) {
           forgetPendingRequest(activeConversationId);
           replaceChatIdInUrl(activeConversationId, false);
@@ -5291,6 +5338,10 @@ export function ChatApp() {
       setError(`/${parsed.command.name} は ${mode} mode では利用できません。`);
       return false;
     }
+    if (isClearComposerCommandInput(rawInput)) {
+      resetComposerDraft();
+    }
+    const composerResetGeneration = composerResetGenerationRef.current;
     try {
       setError(null);
       const highRiskRef = highRiskCommandRef(parsed.command);
@@ -5418,6 +5469,9 @@ export function ChatApp() {
         return;
       }
       if (isModelCommand(parsed.command)) {
+        if (composerResetGeneration !== composerResetGenerationRef.current) {
+          return true;
+        }
         if (result.action === "show_model_candidates") {
           setComposerCandidateMenu({
             mode: "model",
@@ -5569,6 +5623,13 @@ export function ChatApp() {
     const tab = createWorkspaceTab(kind, {
       title: kind === "chat" ? "New Conversation" : option?.label,
     });
+    if (kind === "chat") {
+      setActiveConversationId(null);
+      setActiveConversation(null);
+      setPreviews([]);
+      resetComposerDraft();
+      replaceChatIdInUrl(null, false);
+    }
     setWorkspaceTabs((current) => [...current, tab]);
     activateWorkspaceTab(tab);
   };
@@ -6524,6 +6585,15 @@ export function ChatApp() {
 
   const handleSubmit = async (event?: FormEvent, override?: SubmitOverride) => {
     event?.preventDefault();
+    const inputForSubmit = override?.input ?? input;
+    if (!override && isClearComposerCommandInput(inputForSubmit)) {
+      resetComposerDraft();
+      if (activeConversationId) {
+        forgetPendingRequest(activeConversationId);
+        replaceChatIdInUrl(activeConversationId, false);
+      }
+      return;
+    }
     if (activeConversationId && pendingRequests[activeConversationId]?.savedTurn) {
       setError("前の送信結果を確認中です。新しいturnとして再送しません。");
       return;
@@ -6536,7 +6606,6 @@ export function ChatApp() {
       setError("workspace file の読み込みが終わるまでお待ちください。");
       return;
     }
-    const inputForSubmit = override?.input ?? input;
     const attachmentsForSubmit = override?.attachments ?? attachedFiles;
     const requestedDroppedWidgets = override?.droppedWidgets ?? droppedWidgets;
     if ((!inputForSubmit.trim() && attachmentsForSubmit.length === 0) || isGenerating) return;
@@ -7003,6 +7072,7 @@ export function ChatApp() {
       structuredInputValues={effectiveStructuredComposerValues}
       modelCommandCandidates={modelCommandCandidates}
       modelPickerRequestId={modelPickerRequestId}
+      composerResetToken={composerResetToken}
       modelStatusIndicators={composerModelStatusIndicators}
       voiceInputEnabled={settingsValues.general?.voice_input_enabled !== false}
       voiceInputUseAi={settingsValues.general?.voice_input_use_ai === true}
