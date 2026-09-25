@@ -200,6 +200,13 @@ def _install_worker_resource_limits(resource: Any, platform: str) -> None:
       operation: CPU overage dies by SIGXCPU, descriptor exhaustion fails with
       EMFILE, and regular-file writes past the size cap fail with EFBIG
       (accompanied by SIGXFSZ on platforms that deliver it).
+    - ``RLIMIT_CPU`` keeps a one-second soft/hard gap. The kernel raises
+      SIGXCPU at the soft bound and SIGKILL only at the hard bound, so an
+      equal pair would queue both signals in the same check and SIGKILL
+      dequeues first on Linux — the worker would die by SIGKILL instead
+      of the SIGXCPU stop documented above. The hard bound one second
+      later still guarantees a SIGKILL stop if SIGXCPU is caught,
+      blocked, or ignored.
     - ``RLIMIT_NPROC`` 0 is installed on macOS only, where it is settable and
       enforced per process: every ``fork``/``posix_spawn`` from this worker
       fails with EAGAIN, so the supervisor's "the worker cannot create
@@ -216,18 +223,26 @@ def _install_worker_resource_limits(resource: Any, platform: str) -> None:
       ``_enforce_worker_peak_rss``; a hard cap requires the Linux cgroup
       controller or a PackVM boundary.
     """
+    # Entries are (kind, soft ceiling, hard ceiling); only RLIMIT_CPU
+    # carries distinct bounds, for the SIGXCPU-before-SIGKILL ordering
+    # documented above.
     ceilings = [
-        (resource.RLIMIT_CORE, 0),
-        (resource.RLIMIT_CPU, 10),
-        (resource.RLIMIT_NOFILE, 64),
-        (resource.RLIMIT_FSIZE, 2 * 1024 * 1024),
+        (resource.RLIMIT_CORE, 0, 0),
+        (resource.RLIMIT_CPU, 10, 11),
+        (resource.RLIMIT_NOFILE, 64, 64),
+        (resource.RLIMIT_FSIZE, 2 * 1024 * 1024, 2 * 1024 * 1024),
     ]
     if platform == "darwin":
-        ceilings.append((resource.RLIMIT_NPROC, 0))
-    for kind, ceiling in ceilings:
+        ceilings.append((resource.RLIMIT_NPROC, 0, 0))
+    for kind, soft_ceiling, hard_ceiling in ceilings:
         _, hard = resource.getrlimit(kind)
-        limit = ceiling if hard == resource.RLIM_INFINITY else min(ceiling, hard)
-        resource.setrlimit(kind, (limit, limit))
+        if hard != resource.RLIM_INFINITY:
+            # An external hard cap is never raised; squeeze the soft
+            # bound under it so a designed soft/hard gap still holds.
+            gap = hard_ceiling - soft_ceiling
+            hard_ceiling = min(hard_ceiling, hard)
+            soft_ceiling = min(soft_ceiling, max(hard_ceiling - gap, 0))
+        resource.setrlimit(kind, (soft_ceiling, hard_ceiling))
 
 
 def _parse_worker_rss_limit(raw: str | None) -> int | None:
