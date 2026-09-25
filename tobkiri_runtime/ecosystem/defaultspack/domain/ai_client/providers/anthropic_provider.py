@@ -259,6 +259,35 @@ class AnthropicProvider(BaseProvider):
                 }
 
     @staticmethod
+    def _private_reasoning_text(value):
+        if isinstance(value, str):
+            return value if value.strip() else ""
+        if not isinstance(value, dict):
+            return ""
+        for key in ("text", "thinking", "reasoning", "trace", "content", "summary"):
+            item = value.get(key)
+            if isinstance(item, str) and item.strip():
+                return item
+            if item not in (None, "", [], {}):
+                try:
+                    return json.dumps(item, ensure_ascii=False)
+                except (TypeError, ValueError):
+                    return str(item)
+        return ""
+
+    @classmethod
+    def _anthropic_private_reasoning_event(cls, delta):
+        if not isinstance(delta, dict):
+            return None
+        delta_type = str(delta.get("type") or "").strip()
+        if delta_type not in {"thinking_delta", "reasoning_delta", "trace_delta"}:
+            return None
+        text = cls._private_reasoning_text(delta)
+        if not text:
+            return None
+        return {"type": "reasoning_delta", "delta": {"type": "text", "text": text}}
+
+    @staticmethod
     def _anthropic_stream_tool_call_end_events(state):
         for current in state.values():
             if current.get("started") and not current.get("ended"):
@@ -406,6 +435,7 @@ class AnthropicProvider(BaseProvider):
         """Translate Anthropic Messages JSON to the standard response shape."""
         content_blocks = raw.get("content", [])
         content = []
+        thinking_parts = []
         for block in content_blocks:
             if block.get("type") == "text":
                 content.append({"type": "text", "text": block.get("text", "")})
@@ -418,6 +448,10 @@ class AnthropicProvider(BaseProvider):
                         "input": block.get("input", {}),
                     }
                 )
+            elif block.get("type") in {"thinking", "reasoning", "trace"}:
+                text = self._private_reasoning_text(block)
+                if text:
+                    thinking_parts.append(text)
             else:
                 content.append(block)
         stop = raw.get("stop_reason", "end_turn") or "end_turn"
@@ -434,10 +468,18 @@ class AnthropicProvider(BaseProvider):
             "output_tokens": usage_raw.get("output_tokens", 0),
             "total_tokens": usage_raw.get("input_tokens", 0) + usage_raw.get("output_tokens", 0),
         }
+        metadata = {}
+        if thinking_parts:
+            metadata["thinking"] = {
+                "state": "completed",
+                "transcript": "\n\n".join(thinking_parts),
+                "source": "provider_reasoning_trace",
+            }
         return {
             "content": content,
             "finish_reason": finish,
             "usage": usage,
+            "metadata": metadata,
             "raw_extra": {"id": raw.get("id", ""), "model": raw.get("model", "")},
         }
 
@@ -510,6 +552,9 @@ class AnthropicProvider(BaseProvider):
                             "type": "content_delta",
                             "delta": {"type": "text", "text": delta.get("text", "")},
                         }
+                    reasoning_event = self._anthropic_private_reasoning_event(delta)
+                    if reasoning_event:
+                        yield reasoning_event
                     yield from self._anthropic_stream_tool_call_events(
                         event_type, obj, tool_call_state
                     )

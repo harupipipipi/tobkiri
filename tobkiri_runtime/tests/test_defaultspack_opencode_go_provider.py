@@ -516,6 +516,49 @@ def test_opencode_go_stream_parses_openai_sse(monkeypatch):
     assert response.closed is True
 
 
+def test_opencode_go_openai_stream_treats_trace_as_reasoning(monkeypatch):
+    provider = _provider(monkeypatch)
+    response = _FakeSseResponse(
+        [
+            b'data: {"choices":[{"delta":{"trace":"private plan"},"finish_reason":null}]}\n\n'
+            b'data: {"choices":[{"delta":{"content":"OK"},"finish_reason":null}]}\n\n'
+            b'data: {"choices":[{"delta":{},"finish_reason":"stop"}],'
+            b'"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}\n\n'
+            b"data: [DONE]\n\n",
+        ]
+    )
+
+    with patch.object(provider, "_request_stream", return_value=response):
+        events = list(provider.stream("kimi-k2.6", [{"role": "user", "content": "Say OK"}], [], {"max_tokens": 8}))
+
+    assert events[0] == {"type": "reasoning_delta", "delta": {"type": "text", "text": "private plan"}}
+    assert events[1] == {"type": "content_delta", "delta": {"type": "text", "text": "OK"}}
+    assert events[-1]["type"] == "stream_end"
+
+
+def test_opencode_go_complete_stores_trace_as_private_thinking_metadata(monkeypatch):
+    provider = _provider(monkeypatch)
+
+    def fake_request_json(path, body, **kwargs):
+        del path, body, kwargs
+        return {
+            "id": "chatcmpl_test",
+            "model": "kimi-k2.6",
+            "choices": [{"message": {"trace": "private plan", "content": "OK"}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        }
+
+    with patch.object(provider, "_request_json", side_effect=fake_request_json):
+        result = provider.complete("kimi-k2.6", [{"role": "user", "content": "Say OK"}], [], {})
+
+    assert result["content"] == [{"type": "text", "text": "OK"}]
+    assert result["metadata"]["thinking"] == {
+        "state": "completed",
+        "transcript": "private plan",
+        "source": "provider_reasoning_trace",
+    }
+
+
 def test_opencode_go_stream_parses_anthropic_sse(monkeypatch):
     provider = _provider(monkeypatch)
     captured = {}
@@ -544,6 +587,54 @@ def test_opencode_go_stream_parses_anthropic_sse(monkeypatch):
     assert events[-1]["type"] == "stream_end"
     assert events[-1]["usage"] == {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}
     assert response.closed is True
+
+
+def test_opencode_go_messages_stream_treats_thinking_as_reasoning(monkeypatch):
+    provider = _provider(monkeypatch)
+    response = _FakeSseResponse(
+        [
+            b'event: message_start\ndata: {"message":{"usage":{"input_tokens":1}}}\n\n'
+            b'event: content_block_delta\ndata: {"delta":{"type":"thinking_delta","thinking":"private plan"}}\n\n'
+            b'event: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"OK"}}\n\n'
+            b'event: message_delta\ndata: {"delta":{"stop_reason":"end_turn"},'
+            b'"usage":{"output_tokens":1}}\n\n'
+            b"event: message_stop\ndata: {}\n\n",
+        ]
+    )
+
+    with patch.object(provider, "_request_messages_stream", return_value=response):
+        events = list(provider.stream("minimax-m2.7", [{"role": "user", "content": "Say OK"}], [], {"max_tokens": 8}))
+
+    assert events[0] == {"type": "reasoning_delta", "delta": {"type": "text", "text": "private plan"}}
+    assert events[1] == {"type": "content_delta", "delta": {"type": "text", "text": "OK"}}
+    assert events[-1]["type"] == "stream_end"
+
+
+def test_opencode_go_messages_complete_stores_thinking_as_private_metadata(monkeypatch):
+    provider = _provider(monkeypatch)
+
+    def fake_request_messages_json(path, body, **kwargs):
+        del path, body, kwargs
+        return {
+            "id": "msg_test",
+            "model": "minimax-m2.7",
+            "content": [
+                {"type": "thinking", "thinking": "private plan", "signature": "redacted-test-signature"},
+                {"type": "text", "text": "OK"},
+            ],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        }
+
+    with patch.object(provider, "_request_messages_json", side_effect=fake_request_messages_json):
+        result = provider.complete("minimax-m2.7", [{"role": "user", "content": "Say OK"}], [], {})
+
+    assert result["content"] == [{"type": "text", "text": "OK"}]
+    assert result["metadata"]["thinking"] == {
+        "state": "completed",
+        "transcript": "private plan",
+        "source": "provider_reasoning_trace",
+    }
 
 
 def _live_enabled():

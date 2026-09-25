@@ -339,7 +339,7 @@ class OpenAIProvider(BaseProvider):
 
     @staticmethod
     def _message_reasoning_content(msg):
-        for key in ("reasoning_content", "reasoning", "thinking"):
+        for key in ("reasoning_content", "reasoning", "thinking", "trace"):
             value = msg.get(key)
             if isinstance(value, str) and value.strip():
                 return value
@@ -355,6 +355,21 @@ class OpenAIProvider(BaseProvider):
                     return transcript
         return ""
 
+    @staticmethod
+    def _reasoning_text_from_mapping(value):
+        if not isinstance(value, dict):
+            return ""
+        for key in ("reasoning_content", "reasoning", "thinking", "trace"):
+            item = value.get(key)
+            if isinstance(item, str) and item.strip():
+                return item
+            if item not in (None, "", [], {}):
+                try:
+                    return json.dumps(item, ensure_ascii=False)
+                except (TypeError, ValueError):
+                    return str(item)
+        return ""
+
     def parse_response(self, raw):
         """OpenAI chat completion JSON → StandardResponse"""
         choice = raw.get("choices", [{}])[0]
@@ -368,13 +383,7 @@ class OpenAIProvider(BaseProvider):
             "total_tokens": usage_raw.get("total_tokens", 0),
         }
         content = [{"type": "text", "text": text}]
-        reasoning_content = (
-            message.get("reasoning_content")
-            or message.get("reasoning")
-            or message.get("thinking")
-            or ""
-        )
-        reasoning_content = str(reasoning_content) if reasoning_content else ""
+        reasoning_content = self._reasoning_text_from_mapping(message)
         tool_calls = message.get("tool_calls")
         if tool_calls:
             for tc in tool_calls:
@@ -389,7 +398,11 @@ class OpenAIProvider(BaseProvider):
         metadata: dict[str, object] = {}
         if reasoning_content:
             metadata["reasoning_content"] = reasoning_content
-            metadata["thinking"] = {"transcript": reasoning_content}
+            metadata["thinking"] = {
+                "state": "completed",
+                "transcript": reasoning_content,
+                "source": "provider_reasoning_trace",
+            }
         return {
             "content": content,
             "finish_reason": finish,
@@ -529,15 +542,11 @@ class OpenAIProvider(BaseProvider):
                     text = delta.get("content")
                     if text:
                         yield {"type": "content_delta", "delta": {"type": "text", "text": text}}
-                    reasoning_text = (
-                        delta.get("reasoning_content")
-                        or delta.get("reasoning")
-                        or delta.get("thinking")
-                    )
+                    reasoning_text = self._reasoning_text_from_mapping(delta)
                     if reasoning_text:
                         yield {
                             "type": "reasoning_delta",
-                            "delta": {"type": "text", "text": str(reasoning_text)},
+                            "delta": {"type": "text", "text": reasoning_text},
                         }
                     yield from self._stream_tool_call_events(delta, tool_call_state)
                     finish = choices[0].get("finish_reason")
