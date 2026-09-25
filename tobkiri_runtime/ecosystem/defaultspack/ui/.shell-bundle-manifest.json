@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "752667cd3787159e9687982bd3cc94958ac59345f016101b19737f5a332c2ea6",
+    "digest": "c535f81fa4655ebaba2a60749b39a44a89bf7d800057f1fdfc3d807b6bd9fa85",
     "entries": [
       {
         "path": "index.html",
@@ -1710,13 +1710,13 @@
       },
       {
         "path": "src/renderers/ChatMessagesRenderer.test.ts",
-        "size": 31742,
-        "sha256": "c9c615f10d13de2b038942c182d0060088ee1447441700a1aa1e96534695e928"
+        "size": 35023,
+        "sha256": "f92d1fb7dbc3f69a913a77dc8c58f4101fd2bbffe78346159ad83b9080c00189"
       },
       {
         "path": "src/renderers/ChatMessagesRenderer.tsx",
-        "size": 81170,
-        "sha256": "e9810e15d0f2425f23c62368e5a1b2486df4540a29d04388b07cea7aa0ad29e7"
+        "size": 81992,
+        "sha256": "6c75fe97d095fee9ac570ad2acda2d6ff2782d13d612d9a4030c2f00b3a945a7"
       },
       {
         "path": "src/renderers/ComposerRenderer.test.ts",
@@ -1931,7 +1931,7 @@
     ]
   },
   "bundle": {
-    "digest": "8ac203be7df476d2a9fd3108ee2a361d32259e40f9c1da2a8dc371ae16122f3f",
+    "digest": "ac761bc1f63dc7d4266119305ce2cb632db3110eccec124e515dacfafed57237",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1945,8 +1945,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2239224,
-        "sha256": "c475c0b32af8b76b9cc825bf7061a09e6e1f493a6f910f18d2319bbd85eb9758"
+        "size": 2239250,
+        "sha256": "66d40216078b1b137092b549bdcf17ef41f8252324e2c494bdd956cb91546ad1"
       },
       {
         "path": "shell-rolldown-runtime.js",
