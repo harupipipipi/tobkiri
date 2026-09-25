@@ -814,6 +814,29 @@ export type CodingAgentSession = {
   [key: string]: unknown;
 };
 
+export type CodexAppServerModel = {
+  id: string;
+  display_name?: string;
+  is_default?: boolean;
+  default_reasoning_effort?: string;
+  supported_reasoning_efforts?: Array<string | { reasoningEffort?: string; effort?: string; value?: string }>;
+};
+
+export type CodexAppServerRuntimeStatus = {
+  configured: boolean;
+  connected: boolean;
+  workspace_id: string;
+  thread_id: string;
+  session_id: string;
+  active_turn_id: string;
+  turn?: Record<string, unknown>;
+  models: CodexAppServerModel[];
+  events: Array<{ sequence?: number; method?: string; params?: Record<string, unknown> }>;
+  account?: Record<string, unknown>;
+  usage?: Record<string, unknown>;
+  mcp_servers?: Array<Record<string, unknown>>;
+};
+
 export type CompanyAgent = {
   id?: string;
   agent_id: string;
@@ -3504,6 +3527,8 @@ export type CodexAppServerConfig = {
   sharedSecretFile?: string;
   toolSourceEnabled?: boolean;
   automationEndpointEnabled?: boolean;
+  requiredMcpServers?: string[];
+  approvalTimeoutSeconds?: number;
 };
 
 export type CodexConnectionStatusResponse = {
@@ -4803,6 +4828,8 @@ export const api = {
           shared_secret_file: config.sharedSecretFile,
           tool_source_enabled: config.toolSourceEnabled,
           automation_endpoint_enabled: config.automationEndpointEnabled,
+          required_mcp_servers: config.requiredMcpServers,
+          approval_timeout_seconds: config.approvalTimeoutSeconds,
         },
       }),
     });
@@ -6118,6 +6145,32 @@ export const api = {
     return request<CodingAgentSession>(
       withQuery(defaultspackContractRoute("api/coding/agent/sessions/status"), { session_id: sessionId }),
       { cache: "no-store" },
+    );
+  },
+
+  getCodexAppServerRuntimeStatus(workspaceId: string) {
+    return request<CodexAppServerRuntimeStatus>(
+      withQuery(defaultspackContractRoute("api/coding/codex-app-server"), { workspace_id: workspaceId }),
+      { cache: "no-store" },
+    );
+  },
+
+  startCodexAppServerTurn(payload: {
+    workspace_id: string;
+    message: string;
+    model?: string;
+    effort?: string;
+  }) {
+    return request<CodexAppServerRuntimeStatus>(
+      defaultspackContractRoute("api/coding/codex-app-server/turns"),
+      { method: "POST", body: JSON.stringify(payload) },
+    );
+  },
+
+  interruptCodexAppServerTurn(workspaceId: string) {
+    return request<CodexAppServerRuntimeStatus>(
+      defaultspackContractRoute("api/coding/codex-app-server/interrupt"),
+      { method: "POST", body: JSON.stringify({ workspace_id: workspaceId }) },
     );
   },
 

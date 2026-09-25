@@ -20,4 +20,7 @@ export const codingResources = {
   listBrowserArtifacts: api.listBrowserArtifacts,
   createCodingAgentSession: api.createCodingAgentSession,
   getCodingAgentSessionStatus: api.getCodingAgentSessionStatus,
+  getCodexAppServerRuntimeStatus: api.getCodexAppServerRuntimeStatus,
+  startCodexAppServerTurn: api.startCodexAppServerTurn,
+  interruptCodexAppServerTurn: api.interruptCodexAppServerTurn,
 };

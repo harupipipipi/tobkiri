@@ -3603,6 +3603,8 @@ export function SettingsModalRenderer({
     sharedSecretFile: "",
     toolSourceEnabled: false,
     automationEndpointEnabled: false,
+    requiredMcpServers: [],
+    approvalTimeoutSeconds: 120,
   });
   const normalizedSearch = settingsSearch.trim().toLowerCase();
   const dirtySettingsKeys = saveState.dirtyKeys ?? [];
@@ -3718,7 +3720,7 @@ export function SettingsModalRenderer({
     {
       id: "connections_features",
       label: localizedCopy("Connections & features", "接続と機能"),
-      sectionIds: ["accounts_connections", "features", "tools_mcp", "computer_automation"],
+      sectionIds: ["accounts_connections", "features", "coding_backends", "tools_mcp", "computer_automation"],
     },
     {
       id: "management",
@@ -3870,12 +3872,16 @@ export function SettingsModalRenderer({
       sharedSecretFile: codexAppServerPrelude.sharedSecretFile,
       toolSourceEnabled: codexAppServerPrelude.toolSourceStatus !== "disabled",
       automationEndpointEnabled: codexAppServerPrelude.automationEndpointStatus !== "disabled",
+      requiredMcpServers: codexAppServerPrelude.requiredMcpServers,
+      approvalTimeoutSeconds: codexAppServerPrelude.approvalTimeoutSeconds,
     });
   }, [
     codexAppServerPrelude.automationEndpointStatus,
+    codexAppServerPrelude.approvalTimeoutSeconds,
     codexAppServerPrelude.baseUrl,
     codexAppServerPrelude.enabled,
     codexAppServerPrelude.sharedSecretFile,
+    codexAppServerPrelude.requiredMcpServers,
     codexAppServerPrelude.toolSourceStatus,
     codexAppServerPrelude.transport,
     codexAppServerPrelude.unixSocketPath,
@@ -4706,7 +4712,7 @@ export function SettingsModalRenderer({
         </div>
       );
     }
-    if (section.id === "tools_mcp") {
+    if (section.id === "coding_backends") {
       const appServerMessage = connectionMessages.codex_app_server;
       const appServerTransportOptions: Array<{ value: NonNullable<CodexAppServerConfig["transport"]>; label: string; detail: string }> = [
         { value: "off", label: "Off", detail: "Disable Codex App Server integration." },
@@ -4716,7 +4722,7 @@ export function SettingsModalRenderer({
         { value: "websocket_remote", label: "WebSocket remote", detail: "Requires separate App Server auth before use." },
       ];
       const appServerToggleFields: Array<["enabled" | "toolSourceEnabled" | "automationEndpointEnabled", string, string]> = [
-        ["enabled", "Enabled", "Allow Rumi to use this App Server configuration."],
+        ["enabled", "Enabled", "Allow Tobkiri to use this App Server configuration."],
         ["toolSourceEnabled", "Tool source", "Expose threads, turns, approvals, and events as tool capabilities."],
         ["automationEndpointEnabled", "Automation endpoint", "Show readiness in Computer & Automation."],
       ];
@@ -4726,13 +4732,13 @@ export function SettingsModalRenderer({
           <div className="grid gap-4 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
             <div className="space-y-4">
               <div className="rounded-xl border border-zinc-800 bg-zinc-950/45 p-4">
-                <div className="text-[11px] font-medium text-zinc-500">Tools & MCP</div>
-                <h3 className="mt-1 text-sm font-semibold text-zinc-50">ツールとログインは別に管理されます</h3>
-                <p className="mt-2 text-xs leading-5 text-zinc-500">MCP servers and tool sources define callable actions. Account login, OAuth tokens, and access tokens remain in Accounts & Connections.</p>
+                <div className="text-[11px] font-medium text-zinc-500">Coding Backends</div>
+                <h3 className="mt-1 text-sm font-semibold text-zinc-50">モデルAPIとは独立したコーディングruntimeです</h3>
+                <p className="mt-2 text-xs leading-5 text-zinc-500">Codex App Server owns coding threads and turns. Account secrets remain in Connections, while MCP tools remain in Tools.</p>
                 <div className="mt-4 grid gap-2 text-[11px]">
                   <div className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-2"><span className="text-zinc-300">Credential</span> → Accounts & Connections</div>
-                  <div className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-2"><span className="text-zinc-300">Tool source</span> → Tools & MCP</div>
-                  <div className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-2"><span className="text-zinc-300">Readiness</span> → Computer & Automation</div>
+                  <div className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-2"><span className="text-zinc-300">Coding session</span> → Coding Backends</div>
+                  <div className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-2"><span className="text-zinc-300">MCP tools</span> → Tools</div>
                 </div>
               </div>
               <div className="rounded-xl border border-amber-500/20 bg-amber-500/8 p-4">
@@ -4799,6 +4805,8 @@ export function SettingsModalRenderer({
                   <label className="space-y-1 text-[11px] text-zinc-500"><span>WebSocket URL</span><input value={codexAppServerDraft.websocketUrl ?? ""} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, websocketUrl: event.target.value }))} placeholder="ws://127.0.0.1:7331/ws" className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-700" /></label>
                   <label className="space-y-1 text-[11px] text-zinc-500"><span>WS token file</span><input value={codexAppServerDraft.wsTokenFile ?? ""} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, wsTokenFile: event.target.value }))} placeholder="~/.config/rumi/codex-app-server.token" className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-700" /></label>
                   <label className="space-y-1 text-[11px] text-zinc-500 sm:col-span-2"><span>Shared secret file</span><input value={codexAppServerDraft.sharedSecretFile ?? ""} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, sharedSecretFile: event.target.value }))} placeholder="~/.config/rumi/codex-app-server.secret" className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-700" /></label>
+                  <label className="space-y-1 text-[11px] text-zinc-500 sm:col-span-2"><span>Required MCP servers</span><input value={(codexAppServerDraft.requiredMcpServers ?? []).join(", ")} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, requiredMcpServers: event.target.value.split(",").map((item) => item.trim()).filter(Boolean) }))} placeholder="filesystem, github" className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-700" /></label>
+                  <label className="space-y-1 text-[11px] text-zinc-500"><span>Approval timeout (seconds)</span><input type="number" min={15} max={600} value={codexAppServerDraft.approvalTimeoutSeconds ?? 120} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, approvalTimeoutSeconds: Number(event.target.value) }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none focus:border-cyan-700" /></label>
                 </div>
 
                 <div className="mt-4 grid gap-2 sm:grid-cols-3">

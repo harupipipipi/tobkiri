@@ -170,6 +170,7 @@ test("coding cockpit renders workspace and sidecar sections", () => {
   assert.match(html, /Terminal/);
   assert.match(html, /Browser/);
   assert.match(html, /MCP/);
+  assert.match(html, /Codex App Server/);
   assert.match(html, /Agents/);
 });
 

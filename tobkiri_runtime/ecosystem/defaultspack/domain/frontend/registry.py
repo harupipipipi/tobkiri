@@ -2214,6 +2214,9 @@ class FrontendRegistry:
         tools_mcp = sanitized.get("tools_mcp")
         if isinstance(tools_mcp, dict):
             tools_mcp.pop("codex_app_server", None)
+        coding_backends = sanitized.get("coding_backends")
+        if isinstance(coding_backends, dict):
+            coding_backends.pop("codex_app_server", None)
         models = sanitized.get("models")
         if isinstance(models, dict):
             sanitized["models"] = ModelRuntimeSettingsService(
@@ -2564,11 +2567,14 @@ class FrontendRegistry:
             accounts_connections["providers"] = connection_providers
         connection_providers.update(provider_oauth_statuses(pack_root=self._pack_root))
         connection_providers["codex"] = codex_connection_status(pack_root=self._pack_root)
-        tools_mcp = refreshed.setdefault("tools_mcp", {})
-        if not isinstance(tools_mcp, dict):
-            tools_mcp = {}
-            refreshed["tools_mcp"] = tools_mcp
-        tools_mcp["codex_app_server"] = codex_app_server_status(pack_root=self._pack_root)
+        coding_backends = refreshed.setdefault("coding_backends", {})
+        if not isinstance(coding_backends, dict):
+            coding_backends = {}
+            refreshed["coding_backends"] = coding_backends
+        coding_backends["codex_app_server"] = codex_app_server_status(pack_root=self._pack_root)
+        tools_mcp = refreshed.get("tools_mcp")
+        if isinstance(tools_mcp, dict):
+            tools_mcp.pop("codex_app_server", None)
         refreshed["models"] = ModelRuntimeSettingsService(self._pack_root).refresh_models_settings(models)
         line = refreshed.setdefault("line", {})
         if not isinstance(line, dict):

@@ -2,10 +2,10 @@
   "id": "codex-app-server",
   "category": "coding_backends",
   "kind": "coding_backend",
-  "version": "1",
+  "version": "2",
   "status": "experimental",
   "display_name": "Codex App Server",
-  "description": "External or local Codex-style app server backend for approval-aware coding sessions.",
+  "description": "First-class Codex App Server backend for approval-aware coding sessions, dynamic model discovery, and secret-safe diagnostics.",
   "entrypoints": {
     "adapter": "blocks/coding/codex_app_server.py",
     "schema": "schema.json"
@@ -19,17 +19,26 @@
   },
   "capabilities": {
     "coding_session": true,
-    "workspace_sync": true,
-    "terminal": true,
-    "patch": true,
-    "git": true,
+    "dynamic_model_inventory": true,
+    "account_auth": true,
+    "thread_start_resume_fork": true,
+    "turn_streaming": true,
     "approval_requests": true,
-    "remote_review": true
+    "permission_profiles": true,
+    "mcp_diagnostics": true,
+    "rate_limit_usage": true,
+    "reconnect_rehydration": true
   },
   "policy": {
     "do_not_treat_as_llm_provider": true,
     "server_side_approval_required": true,
-    "client_supplied_approved_ignored": true
+    "client_supplied_approved_ignored": true,
+    "read_only_by_default": true,
+    "required_mcp_fail_closed": true,
+    "permissions_and_sandbox_mutually_exclusive": true,
+    "secret_payloads_not_retained_in_diagnostics": true
   },
+  "official_source": "https://developers.openai.com/codex/app-server/",
+  "verified_at": "2026-08-27",
   "source_pack_id": "defaultspack"
 }

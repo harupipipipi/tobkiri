@@ -1699,12 +1699,12 @@ test("settings accounts prelude renders Codex token credential without raw token
   assert.doesNotMatch(html, new RegExp(rawToken));
 });
 
-test("settings tools prelude renders Codex App Server status and controls", () => {
+test("settings coding backends prelude renders Codex App Server status and controls", () => {
   const rawToken = ["codex", "hidden", "token"].join("-");
   const html = renderToStaticMarkup(
     createElement(SettingsModalRenderer, {
       isOpen: true,
-      activeSectionId: "tools",
+      activeSectionId: "coding_backends",
       catalog: {
         sidebar: { filters: [], items: [] },
         settings: { sections: [], values: {} },
@@ -1713,9 +1713,7 @@ test("settings tools prelude renders Codex App Server status and controls", () =
       },
       health: null,
       previewsCount: 0,
-      settingsSections: [
-        { id: "tools", label: "Tools", fields: [] },
-      ],
+      settingsSections: [],
       settingsValues: {
         accounts_connections: {
           providers: {
@@ -1726,7 +1724,7 @@ test("settings tools prelude renders Codex App Server status and controls", () =
             },
           },
         },
-        tools_mcp: {
+        coding_backends: {
           codex_app_server: {
             configured: true,
             enabled: true,
