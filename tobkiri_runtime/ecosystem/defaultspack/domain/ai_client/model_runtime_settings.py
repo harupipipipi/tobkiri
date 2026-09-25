@@ -111,7 +111,8 @@ class ModelRuntimeSettingsService:
                 "settings": updated_models,
             }
 
-        updated = self._settings_store.mutate_state(
+        updated = update_settings_state(
+            self._settings_store,
             PREFERRED_MODEL_STATE_REF,
             mutate,
             expected_revision=expected_revision,
@@ -122,7 +123,6 @@ class ModelRuntimeSettingsService:
                 expected_revision,
             ),
         )
-        _invalidate_settings_cache(self._settings_path, self._pack_root)
         updated["state_snapshot"] = self._state_snapshot(
             PREFERRED_MODEL_STATE_REF,
             str(updated["profile_id"]),
@@ -307,7 +307,8 @@ class ModelRuntimeSettingsService:
                 "settings": updated_models,
             }
 
-        updated = self._settings_store.mutate_state(
+        updated = update_settings_state(
+            self._settings_store,
             GLOBAL_THINKING_LEVEL_STATE_REF,
             mutate,
             expected_revision=expected_revision,
@@ -318,7 +319,6 @@ class ModelRuntimeSettingsService:
                 expected_revision,
             ),
         )
-        _invalidate_settings_cache(self._settings_path, self._pack_root)
         updated["state_snapshot"] = self._state_snapshot(
             GLOBAL_THINKING_LEVEL_STATE_REF,
             str(updated["level"]),
@@ -367,14 +367,15 @@ class ModelRuntimeSettingsService:
         ):
             document_revision = 0
         values = {
+            # DeepThink first: it was the original sole query_states state.
+            DEEPTHINK_STATE_REF: bool(
+                resolved.get("deepthink_enabled", DEFAULT_DEEPTHINK_ENABLED)
+            ),
             PREFERRED_MODEL_STATE_REF: str(
                 resolved.get("preferred_model") or DEFAULT_MODEL
             ),
             GLOBAL_THINKING_LEVEL_STATE_REF: self._normalize_level(
                 resolved.get("thinking_level")
-            ),
-            DEEPTHINK_STATE_REF: bool(
-                resolved.get("deepthink_enabled", DEFAULT_DEEPTHINK_ENABLED)
             ),
         }
         states = [

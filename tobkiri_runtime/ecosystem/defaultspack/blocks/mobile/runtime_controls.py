@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from blocks._common import error, ok
 from domain.frontend.command_protocol import CommandProtocolRegistry
 
@@ -21,12 +23,22 @@ _INVOKE_FIELDS = {
 }
 
 
-def run(input_data: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
+def run(
+    input_data: dict[str, Any],
+    context: dict[str, Any],
+    *,
+    settings_owner: SettingsOwnerPort | None = None,
+) -> dict[str, Any]:
     """Query or request PC-authoritative control state for a scoped device."""
 
     payload = input_data if isinstance(input_data, dict) else {}
     operation = str(payload.get("_mobile_control_operation") or "").strip()
-    registry = CommandProtocolRegistry()
+    owner = (
+        settings_owner
+        if settings_owner is not None
+        else (context or {}).get("_settings_owner_port")
+    )
+    registry = CommandProtocolRegistry(settings_owner=owner)
     if operation == "query_states":
         state_refs = payload.get("state_refs", [])
         if not isinstance(state_refs, list) or any(

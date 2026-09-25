@@ -872,24 +872,18 @@ class CommandProtocolRegistry(CommandCatalogProjection):
         }
 
     def query_states(self, state_refs: list[str] | None = None) -> dict[str, Any]:
-        requested = {str(item or "").strip() for item in state_refs or [] if str(item or "").strip()}
-        states: list[dict[str, Any]] = []
-        deepthink_ref = "defaultspack:models.deepthink_enabled"
-        if not requested or deepthink_ref in requested:
-            from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
+        """Return one authoritative, document-consistent model-control snapshot."""
+        requested = {
+            str(item or "").strip()
+            for item in state_refs or []
+            if str(item or "").strip()
+        }
+        from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 
-            value = ModelRuntimeSettingsService(
-                self.pack_root, settings_owner=self._settings_store,
-            ).get_deepthink_enabled()
-            states.append(
-                {
-                    "state_ref": deepthink_ref,
-                    "value": bool(value.get("enabled")),
-                    "revision": int(value.get("revision") or 0),
-                    "freshness": "authoritative",
-                }
-            )
-        return {"api_version": API_VERSION, "states": states}
+        snapshot = ModelRuntimeSettingsService(
+            self.pack_root, settings_owner=self._settings_store,
+        ).authoritative_state_snapshot(requested or None)
+        return {"api_version": API_VERSION, **snapshot}
 
     def enqueue_offline(
         self,

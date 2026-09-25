@@ -21,6 +21,10 @@ from domain.frontend.command_protocol import CommandProtocolRegistry  # noqa: E4
 from domain.frontend.command_registry import SlashCommandRegistry  # noqa: E402
 from domain.frontend_settings_store import (  # noqa: E402
     FrontendSettingsRevisionConflict,
+    defaultspack_frontend_settings_path,
+)
+from ecosystem.tobkiri_ui_settings_pack.runtime.store import (  # noqa: E402
+    FrontendSettingsStore as IsolatedSettingsStore,
 )
 from domain.mobile.contract import match_mobile_route, required_device_scope  # noqa: E402
 
@@ -28,7 +32,12 @@ from domain.mobile.contract import match_mobile_route, required_device_scope  # 
 def test_model_controls_have_independent_idempotent_authoritative_revisions(
     tmp_path: Path,
 ) -> None:
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = ModelRuntimeSettingsService(
+        tmp_path,
+        settings_owner=IsolatedSettingsStore(
+            defaultspack_frontend_settings_path(tmp_path)
+        ),
+    )
 
     preferred = service.set_preferred_model(
         "stub/reasoning",
@@ -71,10 +80,11 @@ def test_query_states_returns_one_model_control_snapshot_with_document_metadata(
     monkeypatch.setenv(
         "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(tmp_path / "settings.json")
     )
-    service = ModelRuntimeSettingsService(DEFAULTSPACK_ROOT)
+    owner = IsolatedSettingsStore(tmp_path / "settings.json")
+    service = ModelRuntimeSettingsService(DEFAULTSPACK_ROOT, settings_owner=owner)
     service.set_preferred_model("stub/selected", expected_revision=0)
     service.set_thinking_level("xhigh", expected_revision=0)
-    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT, settings_owner=owner)
 
     snapshot = protocol.query_states()
     states = {item["state_ref"]: item for item in snapshot["states"]}
@@ -149,7 +159,10 @@ def test_protocol_invocation_returns_global_thinking_authoritative_state(
     monkeypatch.setenv(
         "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(tmp_path / "settings.json")
     )
-    protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    protocol = CommandProtocolRegistry(
+        DEFAULTSPACK_ROOT,
+        settings_owner=IsolatedSettingsStore(tmp_path / "settings.json"),
+    )
 
     result = protocol.invoke(
         {
