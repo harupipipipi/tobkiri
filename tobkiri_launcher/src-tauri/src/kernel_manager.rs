@@ -254,12 +254,18 @@ impl KernelManager {
         // execution; hashing `app_dir` here would repeat that work without
         // improving the fail-closed launch boundary.
 
-        fs::create_dir_all(&self.config.log_dir)?;
-        let log_file = fs::File::create(self.config.log_dir.join("kernel.log"))
-            .context("failed to create kernel.log")?;
-        let log_stderr = log_file
-            .try_clone()
-            .context("failed to clone log file handle")?;
+        // Kernel output is piped through bounded, redacting drain threads so
+        // kernel.log stays strictly bounded per launch (previous launch
+        // rotates to kernel.log.prev) instead of growing without limit, and
+        // secret-shaped values cannot be persisted verbatim. Failing to open
+        // the log aborts the launch (fail-closed), matching the previous
+        // File::create behavior.
+        let kernel_log_path = self.config.log_dir.join("kernel.log");
+        let kernel_log = crate::process_utils::open_child_log(
+            &kernel_log_path,
+            crate::process_utils::CHILD_LOG_MAX_BYTES,
+        )
+        .context("failed to create kernel.log")?;
 
         let working_dir = kernel_working_dir(&self.config);
         fs::create_dir_all(working_dir)?;
@@ -278,11 +284,17 @@ impl KernelManager {
             write_kernel_host_contract(&self.config, &self.panel_bootstrap_secret)?;
         let next_launch_generation = self.next_launch_generation()?;
 
+        let kernel_log_for_spawn = std::sync::Arc::clone(&kernel_log);
         let child = crate::python_env::spawn_python_role(
             &self.config,
             crate::python_env::PythonRole::Kernel,
             crate::python_env::RoleArguments::default(),
             |command| {
+                // The bounded drain attaches at spawn time inside
+                // `spawn_python_role`, so bootstrap output is consumed before
+                // the sealed-environment attestation wait instead of wedging
+                // a >pipe-buffer emitter behind it.
+                command.attach_output_log(kernel_log_for_spawn, "Kernel");
                 if self.config.is_dev_workspace() {
                     command.env("RUMI_APP_DIR", &self.config.app_dir);
                 }
@@ -327,8 +339,8 @@ impl KernelManager {
                             "production"
                         },
                     )
-                    .stdout(Stdio::from(log_file))
-                    .stderr(Stdio::from(log_stderr));
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped());
                 // Own process group so shutdown can terminate the Kernel and
                 // any runtime descendants together (mirrors Defaultspack).
                 #[cfg(unix)]

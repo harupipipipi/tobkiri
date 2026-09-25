@@ -377,11 +377,41 @@ where
             );
         }
     }
-    configure(&mut RoleCommand::new(&mut command))?;
-    command
+    let output_log = {
+        let mut role_command = RoleCommand::new(&mut command);
+        configure(&mut role_command)?;
+        role_command.take_output_log()
+    };
+    let mut spawned = command
         .spawn()
-        .map(PythonChild::development)
-        .context("failed to spawn development Python role")
+        .context("failed to spawn development Python role")?;
+    // Drain piped output immediately at spawn rather than leaving it to the
+    // caller, so a fast-emitting child can never fill its pipe buffer and
+    // wedge before the drains attach.
+    if let Some((sink, product)) = output_log {
+        let pid = spawned.id();
+        if let Some(stdout) = spawned.stdout.take() {
+            process_utils::spawn_bounded_log_drain(
+                stdout,
+                Some(std::sync::Arc::clone(&sink)),
+                pid,
+                "stdout",
+                product,
+                false,
+            );
+        }
+        if let Some(stderr) = spawned.stderr.take() {
+            process_utils::spawn_bounded_log_drain(
+                stderr,
+                Some(sink),
+                pid,
+                "stderr",
+                product,
+                false,
+            );
+        }
+    }
+    Ok(PythonChild::development(spawned))
 }
 
 fn development_packvm_bundle_root(config: &AppConfig) -> Option<PathBuf> {
@@ -452,6 +482,19 @@ fn provision_log_path(config: &AppConfig) -> Result<PathBuf> {
     restrict_private_directory(&config.log_dir)?;
     let path = config.log_dir.join("python-provision.log");
     reject_link(&path, "Python provisioning log")?;
+    // The diagnostics log appends across runs, so it rotates to a single
+    // `.prev` generation once it reaches the persistence cap. A rotation
+    // failure fails closed instead of letting the log grow without limit.
+    process_utils::bound_persistent_log(&path, process_utils::PERSISTENT_LOG_MAX_BYTES)
+        .map_err(|error| {
+            typed_error(
+                PythonProvisioningCode::DiagnosticsUnavailable,
+                format!(
+                    "cannot rotate Python provisioning diagnostics at {}: {error}; retry the launcher",
+                    path.display()
+                ),
+            )
+        })?;
     open_append_nofollow(&path)
         .map(|_| path.clone())
         .map_err(|error| {
@@ -1793,6 +1836,11 @@ fn append_command_log(
             format!("cannot write Python provisioning diagnostics: {error}; Retry"),
         )
     })?;
+    // argv/env diagnostics and captured output may echo secret-shaped
+    // values; they are redacted before reaching durable storage.
+    let command_summary = process_utils::redact_log_text(command_summary);
+    let stdout_text = process_utils::redact_log_text(&stdout.text);
+    let stderr_text = process_utils::redact_log_text(&stderr.text);
     writeln!(file, "command={command_summary}").map_err(|error| {
         typed_error(
             PythonProvisioningCode::DiagnosticsUnavailable,
@@ -1813,16 +1861,16 @@ fn append_command_log(
             )
         })?;
     }
-    if !stdout.text.is_empty() {
-        writeln!(file, "stdout:\n{}", stdout.text).map_err(|error| {
+    if !stdout_text.is_empty() {
+        writeln!(file, "stdout:\n{stdout_text}").map_err(|error| {
             typed_error(
                 PythonProvisioningCode::DiagnosticsUnavailable,
                 format!("cannot write Python provisioning diagnostics: {error}; Retry"),
             )
         })?;
     }
-    if !stderr.text.is_empty() {
-        writeln!(file, "stderr:\n{}", stderr.text).map_err(|error| {
+    if !stderr_text.is_empty() {
+        writeln!(file, "stderr:\n{stderr_text}").map_err(|error| {
             typed_error(
                 PythonProvisioningCode::DiagnosticsUnavailable,
                 format!("cannot write Python provisioning diagnostics: {error}; Retry"),

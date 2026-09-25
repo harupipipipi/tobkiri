@@ -2511,20 +2511,12 @@ fn run_computer_helper(
     drop(child.stdin.take());
 
     let helper_marker = crate::process_utils::process_start_marker(child.id());
-    let stdout_handle = child.stdout.take().map(|mut stdout| {
-        thread::spawn(move || {
-            let mut bytes = Vec::new();
-            let _ = stdout.read_to_end(&mut bytes);
-            bytes
-        })
-    });
-    let stderr_handle = child.stderr.take().map(|mut stderr| {
-        thread::spawn(move || {
-            let mut bytes = Vec::new();
-            let _ = stderr.read_to_end(&mut bytes);
-            bytes
-        })
-    });
+    // Helper output is held entirely in memory before parsing, so both
+    // streams drain through the shared bounded reader. The pipe itself is
+    // always fully drained; retention stops at the cap so a hostile or
+    // wedged helper cannot grow the buffer without limit.
+    let stdout_handle = child.stdout.take().map(crate::process_utils::drain_capped);
+    let stderr_handle = child.stderr.take().map(crate::process_utils::drain_capped);
 
     let status = wait_for_helper_status(&mut child, HELPER_TIMEOUT, helper_marker)?;
     // A helper that exits while leaving a descendant attached to its pipes

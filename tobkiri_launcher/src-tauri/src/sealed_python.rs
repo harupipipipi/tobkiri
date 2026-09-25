@@ -20,6 +20,7 @@ use std::ops::{Deref, DerefMut};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -100,6 +101,7 @@ pub struct RoleCommand<'a> {
     packaged_role: Option<PythonRole>,
     environment: BTreeMap<OsString, OsString>,
     rejected_environment: Vec<OsString>,
+    output_log: Option<(Arc<crate::process_utils::ChildLog>, &'static str)>,
 }
 
 impl<'a> RoleCommand<'a> {
@@ -109,6 +111,7 @@ impl<'a> RoleCommand<'a> {
             packaged_role: None,
             environment: BTreeMap::new(),
             rejected_environment: Vec::new(),
+            output_log: None,
         }
     }
 
@@ -118,7 +121,26 @@ impl<'a> RoleCommand<'a> {
             packaged_role: Some(role),
             environment: BTreeMap::new(),
             rejected_environment: Vec::new(),
+            output_log: None,
         }
+    }
+
+    /// Attach a bounded, redacting sink drained from the instant the child is
+    /// spawned — before any startup attestation wait — so piped stdout/stderr
+    /// can never fill the kernel pipe buffer and wedge the bootstrap.
+    pub(crate) fn attach_output_log(
+        &mut self,
+        log: Arc<crate::process_utils::ChildLog>,
+        product: &'static str,
+    ) -> &mut Self {
+        self.output_log = Some((log, product));
+        self
+    }
+
+    pub(crate) fn take_output_log(
+        &mut self,
+    ) -> Option<(Arc<crate::process_utils::ChildLog>, &'static str)> {
+        self.output_log.take()
     }
 
     fn finish(mut self) -> Result<()> {
@@ -869,11 +891,13 @@ where
         packvm_bundle.as_ref(),
         role_arguments,
     )?;
-    {
+    let output_log = {
         let mut role_command = RoleCommand::packaged(&mut command, role);
         configure(&mut role_command)?;
+        let output_log = role_command.take_output_log();
         role_command.finish()?;
-    }
+        output_log
+    };
     let path = if cfg!(windows) {
         format!(
             "{};{}",
@@ -895,10 +919,37 @@ where
     command.current_dir(&verified.root);
 
     verified.revalidate()?;
-    let child = command
+    let mut spawned = command
         .spawn()
         .with_context(|| format!("failed to spawn sealed Python {} role", role.name()))?;
-    let mut child = PythonChild::packaged(child, verified);
+    // Piped output must drain before the attestation wait below: a child
+    // emitting more than the pipe buffer during bootstrap would otherwise
+    // wedge until the startup deadline expires, and pre-attestation output
+    // would be lost to the post-spawn log rotation.
+    if let Some((sink, product)) = output_log {
+        let pid = spawned.id();
+        if let Some(stdout) = spawned.stdout.take() {
+            process_utils::spawn_bounded_log_drain(
+                stdout,
+                Some(Arc::clone(&sink)),
+                pid,
+                "stdout",
+                product,
+                false,
+            );
+        }
+        if let Some(stderr) = spawned.stderr.take() {
+            process_utils::spawn_bounded_log_drain(
+                stderr,
+                Some(sink),
+                pid,
+                "stderr",
+                product,
+                false,
+            );
+        }
+    }
+    let mut child = PythonChild::packaged(spawned, verified);
     let attestation_result = {
         let PythonChildState::Running {
             child: process,
@@ -3374,6 +3425,28 @@ fn verify_macos_static_code_for_policy(bundle: &Path, policy: &str, identity: &s
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn role_command_output_log_attaches_and_is_taken_once() {
+        let dir = std::env::temp_dir().join(format!(
+            "tobkiri-role-cmd-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let log = crate::process_utils::open_child_log(&dir.join("x.log"), 8)
+            .expect("test log");
+        let mut command = Command::new("/bin/true");
+        let mut role_command = RoleCommand::new(&mut command);
+        assert!(role_command.take_output_log().is_none());
+        role_command.attach_output_log(log, "Test");
+        assert!(role_command.take_output_log().is_some());
+        // The sink is consumed exactly once so only one spawn path drains.
+        assert!(role_command.take_output_log().is_none());
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     fn digest(byte: char) -> String {
         byte.to_string().repeat(64)
