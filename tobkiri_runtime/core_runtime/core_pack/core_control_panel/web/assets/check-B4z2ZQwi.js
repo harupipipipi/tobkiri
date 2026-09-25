@@ -1,0 +1,1 @@
+import{Mt as e}from"./Card-Clov8Y_q.js";var t=e(`check`,[[`path`,{d:`M20 6 9 17l-5-5`,key:`1gmf2c`}]]);export{t};
