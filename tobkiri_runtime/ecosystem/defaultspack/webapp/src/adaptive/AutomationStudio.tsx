@@ -89,6 +89,7 @@ export function AutomationStudio({ initialState }: { initialState?: AdaptiveAuto
   const [enabledOverrides, setEnabledOverrides] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
+  const [pendingAutomationId, setPendingAutomationId] = useState<string | null>(null);
   const automations = useMemo(
     () => (data?.automations ?? []).map((automation) => ({
       ...automation,
@@ -103,13 +104,20 @@ export function AutomationStudio({ initialState }: { initialState?: AdaptiveAuto
     setPendingAutomationId(automation.id);
     setEnabledOverrides((current) => ({ ...current, [automation.id]: nextEnabled }));
     setOperationError(null);
-    setMessage(nextEnabled ? "Automation enabled locally." : "Automation paused locally.");
+    setMessage(`${nextEnabled ? "Enabling" : "Pausing"} ${automation.name}.`);
     try {
       await updateAdaptiveAutomation(automation.id, { enabled: nextEnabled });
       setMessage(`${automation.name} ${nextEnabled ? "enabled" : "paused"}.`);
     } catch (err) {
+      setEnabledOverrides((current) => {
+        const next = { ...current };
+        delete next[automation.id];
+        return next;
+      });
       setMessage(null);
-      setOperationError(`Kept local automation state. ${err instanceof Error ? err.message : String(err)}`);
+      setOperationError(`Could not ${nextEnabled ? "enable" : "pause"} ${automation.name}. ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setPendingAutomationId(null);
     }
   };
 
@@ -142,7 +150,14 @@ export function AutomationStudio({ initialState }: { initialState?: AdaptiveAuto
           message={operationError}
         />
       ) : null}
-      {message ? <div className="border-t border-zinc-800/70 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-300">{message}</div> : null}
+      {message ? (
+        <AdaptiveStatusMessage
+          urgent={message.startsWith("Could not")}
+          className="border-t border-zinc-800/70 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-300"
+        >
+          {message}
+        </AdaptiveStatusMessage>
+      ) : null}
       {!data ? (
         <AdaptiveEmptyState>Adaptive automations are unavailable until the API returns live state.</AdaptiveEmptyState>
       ) : (

@@ -121,7 +121,7 @@ export function ResourceBanner({
     );
   }
   return (
-    <div className="flex flex-col gap-2 border-t border-zinc-800/70 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+    <div role="status" aria-live="polite" aria-atomic="true" className="flex flex-col gap-2 border-t border-zinc-800/70 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-100 sm:flex-row sm:items-center sm:justify-between">
       <span className="flex min-w-0 items-center gap-2">
         <AlertTriangle size={13} className="shrink-0" aria-hidden="true" />
         <span className="min-w-0 whitespace-normal break-words" title={error ?? undefined}>

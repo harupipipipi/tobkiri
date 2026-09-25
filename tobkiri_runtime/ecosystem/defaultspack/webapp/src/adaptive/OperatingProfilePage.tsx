@@ -38,6 +38,7 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
   const [autonomyDraft, setAutonomyDraft] = useState(initialDraft.autonomy.level);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!data) return;
@@ -53,6 +54,7 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
       return;
     }
     setSaveError(null);
+    setSaving(true);
     setSaveStatus("Saving profile draft...");
     try {
       await saveAdaptiveOperatingProfile({
@@ -68,6 +70,8 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
     } catch (err) {
       setSaveStatus(null);
       setSaveError(`Kept local draft. ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -146,7 +150,14 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
               message={saveError}
             />
           ) : null}
-          {saveStatus ? <p className="mt-2 rounded-md border border-zinc-800 bg-zinc-950/45 px-3 py-2 text-xs text-zinc-300">{saveStatus}</p> : null}
+          {saveStatus ? (
+            <AdaptiveStatusMessage
+              urgent={saveStatus.startsWith("Kept local") || saveStatus.startsWith("Cannot save")}
+              className="mt-2 rounded-md border border-zinc-800 bg-zinc-950/45 px-3 py-2 text-xs text-zinc-300"
+            >
+              {saveStatus}
+            </AdaptiveStatusMessage>
+          ) : null}
         </div>
 
         <aside className={adaptiveSectionClass} aria-label="Profile guardrails">
