@@ -2023,16 +2023,31 @@ class ChatRunEngine:
                     status = "failed"
                 yield event
         except Exception as exc:
+            error_payload: dict[str, Any] = {
+                "code": "CHAT_RUN_FAILED",
+                "message": str(exc),
+            }
+            # Structured domain errors (for example the DeepThink readiness
+            # gate) carry a machine-readable to_dict() contract; surface the
+            # whole payload instead of reducing it to the message string.
+            to_dict = getattr(exc, "to_dict", None)
+            error_code = getattr(exc, "code", None)
+            if callable(to_dict) and isinstance(error_code, str) and error_code:
+                try:
+                    structured = to_dict()
+                except Exception:
+                    structured = None
+                if isinstance(structured, dict) and structured.get("code") == error_code:
+                    error_payload = dict(structured)
+                    if not isinstance(error_payload.get("message"), str):
+                        error_payload["message"] = str(exc)
             failure = run_event(
                 "error",
                 run_id=self._run_id,
                 conversation_id=str(input_data.get("conversation_id") or ""),
                 seq=self._event_seq + 1,
                 data={
-                    "error": {
-                        "code": "CHAT_RUN_FAILED",
-                        "message": str(exc),
-                    },
+                    "error": error_payload,
                     "terminal": True,
                 },
             )
