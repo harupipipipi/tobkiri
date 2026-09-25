@@ -213,6 +213,29 @@ test("composer skill mentions resolve aliases and create prompt widgets", () => 
   });
 });
 
+test("composer tool and skill references preserve shared display images", () => {
+  const image = "/static/assets/catalog/release-review.png";
+  const tool = composerToolMentionWidget({
+    id: "release_review_tool",
+    label: "Release Review Tool",
+    ui: { icon: "shield-check", image },
+  });
+  const skill = composerSkillMentionWidget({
+    id: "release_review_skill",
+    label: "Release Review Skill",
+    ui: { icon: "shield-check", image },
+  });
+
+  assert.deepEqual(
+    { icon: tool.icon, image: tool.image },
+    { icon: "shield-check", image },
+  );
+  assert.deepEqual(
+    { icon: skill.icon, image: skill.image },
+    { icon: "shield-check", image },
+  );
+});
+
 test("composer mention display keeps internal ids out of normal UI", () => {
   assert.deepEqual(composerToolMentionDisplay({
     id: "coding_file_read",

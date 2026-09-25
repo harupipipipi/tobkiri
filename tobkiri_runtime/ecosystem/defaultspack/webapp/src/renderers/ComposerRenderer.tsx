@@ -109,6 +109,7 @@ import {
 } from "../features/voice/composerVoice";
 import { fileToAttachment } from "../lib/attachments";
 import { composerFileMentionWidget, composerKnownMentionValues, composerMentionToolIdsFromWidgets, composerServiceMentionWidget, composerSkillMentionDisplay, composerSkillMentionWidget, composerToolMentionDisplay, composerToolMentionWidget, filterComposerSkillMentions, filterComposerToolMentions, resolveComposerWidgetDrop, skillMentionIdsFromText, toolMentionIdsFromText } from "../lib/composerWidgets";
+import { resolveCatalogDisplay, safeCatalogImagePath } from "../lib/catalogDisplay";
 import {
   COMPOSER_REFERENCE_MIME,
   composerReferencesAsMarkdown,
@@ -1389,6 +1390,7 @@ function DroppedWidgetChip({
   onAction?: (widget: DroppedWidget) => void;
   onToggle?: (id: string) => void;
 }) {
+  const image = safeCatalogImagePath(widget.image);
   if (widget.type === "conversation") {
     const ConversationIcon = composerIconForName(widget.icon, MessageSquare);
     return (
@@ -1402,7 +1404,9 @@ function DroppedWidgetChip({
             : "border-amber-500/30 bg-amber-500/10 text-amber-200 hover:bg-amber-500/15"
         }`}
       >
-        <ConversationIcon size={11} className="flex-shrink-0" />
+        {image
+          ? <img src={image} alt="" decoding="async" draggable={false} className="h-3 w-3 flex-shrink-0 rounded object-cover" />
+          : <ConversationIcon size={11} className="flex-shrink-0" />}
         <span className="truncate">{widget.label}</span>
       </button>
     );
@@ -1422,7 +1426,9 @@ function DroppedWidgetChip({
         onClick={() => onAction?.(widget)}
         className="inline-flex max-w-[160px] items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.05] px-2 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-zinc-100"
       >
-        <Icon size={10} />
+        {image
+          ? <img src={image} alt="" decoding="async" draggable={false} className="h-3 w-3 flex-shrink-0 rounded object-cover" />
+          : <Icon size={10} />}
         <span className="truncate">{widget.label}</span>
       </button>
     );
@@ -1436,7 +1442,9 @@ function DroppedWidgetChip({
   }`;
   const toolToggleContent = (
     <>
-      <ToolIcon size={11} className="flex-shrink-0" />
+      {image
+        ? <img src={image} alt="" decoding="async" draggable={false} className="h-3 w-3 flex-shrink-0 rounded object-cover" />
+        : <ToolIcon size={11} className="flex-shrink-0" />}
       <span className="truncate">{widget.label}</span>
     </>
   );
@@ -2000,6 +2008,7 @@ export type JsonListPanelItem = {
   title: string;
   description?: string;
   icon?: string;
+  image?: string;
   fallbackIcon: "tool" | "service" | "skill" | "file" | "command";
   badges?: Array<{
     label: string;
@@ -2128,6 +2137,7 @@ export function JsonListPanel({
         )}
         {payload.items.map((item, index) => {
           const Icon = composerIconForName(item.icon, JSON_LIST_FALLBACK_ICON[item.fallbackIcon]);
+          const image = safeCatalogImagePath(item.image);
           return (
             <button
               key={item.id}
@@ -2147,7 +2157,9 @@ export function JsonListPanel({
             >
               <span className="flex min-w-0 items-center gap-2">
                 <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.04] text-zinc-300">
-                  <Icon size={14} />
+                  {image
+                    ? <img src={image} alt="" loading="lazy" decoding="async" draggable={false} className="h-4 w-4 rounded object-cover" />
+                    : <Icon size={14} />}
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-[13px] text-zinc-200">{payload.item.prefix ?? ""}{item.title}</span>
@@ -2173,13 +2185,16 @@ export function JsonListPanel({
 
 export function atMentionPalettePayload(candidates: ComposerAtMentionCandidate[]): JsonListPanelPayload {
   const items: JsonListPanelItem[] = candidates.map((candidate) => {
-    const icon = candidate.kind === "tool"
-      ? candidate.item.ui?.composer_icon ?? candidate.item.ui?.item_icon ?? candidate.item.ui?.group_icon
-      : candidate.kind === "service"
-        ? candidate.service.id
-        : candidate.kind === "skill"
-          ? String(candidate.skill.metadata?.icon ?? candidate.skill.id)
-          : candidate.file;
+    const display = candidate.kind === "tool"
+      ? resolveCatalogDisplay(candidate.item, "composer")
+      : candidate.kind === "skill"
+        ? resolveCatalogDisplay(candidate.skill, "composer")
+        : {};
+    const icon = display.icon ?? (candidate.kind === "service"
+      ? candidate.service.id
+      : candidate.kind === "file"
+        ? candidate.file
+        : undefined);
     const tone: NonNullable<JsonListPanelItem["badges"]>[number]["tone"] = candidate.kind === "tool"
       ? "sky"
       : candidate.kind === "service"
@@ -2192,6 +2207,7 @@ export function atMentionPalettePayload(candidates: ComposerAtMentionCandidate[]
       title: candidate.label,
       description: candidate.description,
       icon,
+      image: display.image,
       fallbackIcon: candidate.kind,
       badges: [{ label: candidate.kind, tone }],
     };
@@ -2296,6 +2312,7 @@ export function insertAtMentionText(
 }
 
 export type ComposerInlineMentionPart = {
+  image?: string;
   mention: boolean;
   text: string;
 };
@@ -2326,11 +2343,18 @@ export function composerInlineMentionParts(
   widgets: DroppedWidget[],
 ): ComposerInlineMentionPart[] {
   if (!input) return [];
-  const syntaxes = [...new Set(
-    widgets
-      .map(composerMentionSyntaxFromWidget)
-      .filter((syntax): syntax is string => Boolean(syntax)),
-  )].sort((left, right) => right.length - left.length);
+  const displayBySyntax = new Map<string, { image?: string }>();
+  for (const widget of widgets) {
+    const syntax = composerMentionSyntaxFromWidget(widget);
+    if (!syntax) continue;
+    const image = safeCatalogImagePath(widget.image);
+    const current = displayBySyntax.get(syntax);
+    if (!current || (!current.image && image)) {
+      displayBySyntax.set(syntax, image ? { image } : {});
+    }
+  }
+  const syntaxes = [...displayBySyntax.keys()]
+    .sort((left, right) => right.length - left.length);
   if (syntaxes.length === 0) return [{ mention: false, text: input }];
 
   const matches: Array<{ end: number; start: number }> = [];
@@ -2357,11 +2381,41 @@ export function composerInlineMentionParts(
   cursor = 0;
   for (const match of matches) {
     if (match.start > cursor) parts.push({ mention: false, text: input.slice(cursor, match.start) });
-    parts.push({ mention: true, text: input.slice(match.start, match.end) });
+    const text = input.slice(match.start, match.end);
+    const image = displayBySyntax.get(text)?.image;
+    parts.push({
+      mention: true,
+      text,
+      ...(image ? { image } : {}),
+    });
     cursor = match.end;
   }
   if (cursor < input.length) parts.push({ mention: false, text: input.slice(cursor) });
   return parts;
+}
+
+function ComposerInlineMentionPartView({
+  part,
+}: {
+  part: ComposerInlineMentionPart;
+}) {
+  return (
+    <span
+      className={part.mention ? "rumi-composer-inline-mention" : undefined}
+      data-composer-inline-reference={part.mention || undefined}
+    >
+      {part.mention && part.image ? (
+        <img
+          src={part.image}
+          alt=""
+          decoding="async"
+          draggable={false}
+          className="mr-1 inline-block h-4 w-4 rounded object-cover align-[-0.18em]"
+        />
+      ) : null}
+      {part.text}
+    </span>
+  );
 }
 
 export function atomicComposerMentionEdit(
@@ -4645,7 +4699,10 @@ export function ComposerRenderer({
                         className={`rumi-composer-inline-mention-layer absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-0 py-2.5 text-[16px] font-medium leading-[24px] text-zinc-100 ${textareaCanCollapse ? "pr-9" : ""}`}
                       >
                         {inlineMentionParts.map((part, index) => (
-                          <span key={`${index}:${part.text}`} className={part.mention ? "rumi-composer-inline-mention" : undefined}>{part.text}</span>
+                          <ComposerInlineMentionPartView
+                            key={`${index}:${part.text}`}
+                            part={part}
+                          />
                         ))}
                       </div>
                     )}
@@ -4749,7 +4806,10 @@ export function ComposerRenderer({
                       className={`rumi-composer-inline-mention-layer absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-2 pb-0 pt-2.5 text-[15px] leading-[22px] text-zinc-100 max-[640px]:pb-0 max-[640px]:pt-2.5 max-[640px]:text-[13px] ${textareaCanCollapse ? "pr-11 max-[640px]:pr-10" : ""}`}
                     >
                       {inlineMentionParts.map((part, index) => (
-                        <span key={`${index}:${part.text}`} className={part.mention ? "rumi-composer-inline-mention" : undefined}>{part.text}</span>
+                        <ComposerInlineMentionPartView
+                          key={`${index}:${part.text}`}
+                          part={part}
+                        />
                       ))}
                     </div>
                   )}

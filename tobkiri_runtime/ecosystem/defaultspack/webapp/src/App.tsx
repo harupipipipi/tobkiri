@@ -2923,6 +2923,7 @@ export function ChatApp() {
       triggers: skill.triggers ?? [],
       appliesToTools: skill.applies_to_tools ?? [],
       aliases: skill.aliases ?? [],
+      ui: skill.ui,
       metadata: skill.metadata,
     }))
   ), [catalog?.skills]);

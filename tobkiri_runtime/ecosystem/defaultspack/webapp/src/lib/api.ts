@@ -1898,7 +1898,12 @@ export type ComposerWidgetAction =
   | { type: "select_model"; profile_id?: string }
   | { type: "toggle_tool"; tool_id?: string };
 
-export type ToolUiMetadata = {
+export type CatalogDisplayMetadata = {
+  icon?: string;
+  image?: string;
+};
+
+export type ToolUiMetadata = CatalogDisplayMetadata & {
   group_id?: string;
   group_label?: string;
   group_icon?: string;
@@ -2251,6 +2256,7 @@ export type SkillCatalogItem = {
   triggers?: string[];
   applies_to_tools?: string[];
   aliases?: string[];
+  ui?: CatalogDisplayMetadata;
   metadata?: Record<string, unknown>;
 };
 

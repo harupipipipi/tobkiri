@@ -54,6 +54,11 @@ _GENERAL_SETTINGS_VERSION = 2
 _KEYBOARD_NAVIGATION_SOURCE_DEFAULT = "default"
 _KEYBOARD_NAVIGATION_SOURCE_LEGACY_MIGRATION = "legacy_default_migrated"
 _KEYBOARD_NAVIGATION_SOURCE_USER = "user"
+_STATIC_CATALOG_IMAGE = re.compile(
+    r"^/static/(?!\.{1,2}(?:/|$))(?!.*?/\.{1,2}(?:/|$))"
+    r"(?:[A-Za-z0-9._-]+/)*[A-Za-z0-9._-]+\.(?:avif|gif|jpe?g|png|webp)$",
+    re.IGNORECASE,
+)
 
 
 def _validated_dict(value: object) -> dict[str, object]:
@@ -68,6 +73,14 @@ def _validated_dict_list(value: object) -> list[dict[str, object]]:
     if not isinstance(value, list):
         return []
     return [dict(item) for item in value if isinstance(item, dict)]
+
+
+def _catalog_image_path(value: object) -> str | None:
+    """Return a catalog image path only when it is a safe bundled raster."""
+    if not isinstance(value, str):
+        return None
+    image = value.strip()
+    return image if _STATIC_CATALOG_IMAGE.fullmatch(image) else None
 
 
 class FrontendRegistry:
@@ -654,20 +667,29 @@ class FrontendRegistry:
             applies_to = skill.get("applies_to_tools") if isinstance(skill.get("applies_to_tools"), list) else []
             metadata = skill.get("metadata") if isinstance(skill.get("metadata"), dict) else {}
             aliases = skill.get("aliases") if isinstance(skill.get("aliases"), list) else metadata.get("aliases", [])
-            items.append(
-                {
-                    "id": skill_id,
-                    "label": display_name,
-                    "description": str(skill.get("description") or metadata.get("feedback") or ""),
-                    "triggers": [str(item) for item in triggers if str(item).strip()],
-                    "applies_to_tools": [str(item) for item in applies_to if str(item).strip()],
-                    "aliases": [str(item) for item in aliases if str(item).strip()] if isinstance(aliases, list) else [],
-                    "metadata": {
-                        "source": metadata.get("source", "skill"),
-                        "source_path": skill.get("source_path", ""),
-                    },
-                }
-            )
+            raw_ui = skill.get("ui") if isinstance(skill.get("ui"), dict) else {}
+            display_ui = {}
+            icon = str(raw_ui.get("icon") or "").strip()
+            if icon:
+                display_ui["icon"] = icon
+            image = _catalog_image_path(raw_ui.get("image"))
+            if image:
+                display_ui["image"] = image
+            item = {
+                "id": skill_id,
+                "label": display_name,
+                "description": str(skill.get("description") or metadata.get("feedback") or ""),
+                "triggers": [str(item) for item in triggers if str(item).strip()],
+                "applies_to_tools": [str(item) for item in applies_to if str(item).strip()],
+                "aliases": [str(item) for item in aliases if str(item).strip()] if isinstance(aliases, list) else [],
+                "metadata": {
+                    "source": metadata.get("source", "skill"),
+                    "source_path": skill.get("source_path", ""),
+                },
+            }
+            if display_ui:
+                item["ui"] = display_ui
+            items.append(item)
         return sorted(items, key=lambda item: (item["label"].casefold(), item["id"].casefold()))
 
     @staticmethod

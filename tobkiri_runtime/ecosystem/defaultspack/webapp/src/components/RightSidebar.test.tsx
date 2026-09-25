@@ -118,6 +118,39 @@ test("right sidebar initially focuses the rail on activities", () => {
   assert.doesNotMatch(html, /title="Widget A"/);
 });
 
+test("right sidebar renders a catalog image for its active item", () => {
+  const html = renderToStaticMarkup(
+    createElement(RightSidebar, {
+      items: [
+        {
+          id: "release_review",
+          label: "Release Review",
+          category: "activity",
+          ui: { image: "/static/assets/catalog/release-review.png" },
+        },
+      ],
+      settingsValues: {
+        sidebar: {
+          pinned_item_ids: [],
+          starred_item_ids: [],
+          custom_tool_tags: {},
+          ui_placements: [],
+        },
+        tools: { disabled_tool_ids: [], hidden_tool_ids: [] },
+      },
+      settingsSections: [],
+      selectedToolIds: [],
+      onSettingChange: noop,
+      onOpenSettings: noop,
+    }),
+  );
+
+  assert.match(
+    html,
+    /src="\/static\/assets\/catalog\/release-review\.png"/,
+  );
+});
+
 test("right sidebar rail avoids transform and replayed entrance animations", () => {
   const html = renderToStaticMarkup(
     createElement(RightSidebar, {
