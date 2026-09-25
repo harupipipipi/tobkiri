@@ -58,9 +58,12 @@ export function CompanyChannelView({
   activeChannelId?: string | null;
   busy?: boolean;
   onChannelChange?: (channelId: string) => void;
-  onSendMessage?: (content: string, channelId: string) => void;
+  onSendMessage?: (content: string, channelId: string) => void | Promise<void>;
 }) {
   const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendStatus, setSendStatus] = useState("");
+  const [sendError, setSendError] = useState("");
   const selectedChannelId = activeChannelId || channels[0]?.id || "ops-company";
   const activeChannel = useMemo(
     () => channels.find((channel) => channel.id === selectedChannelId) ?? channels[0] ?? null,
@@ -79,15 +82,21 @@ export function CompanyChannelView({
     }
     return scopedMessages;
   }, [channels, expectedMessageCount, messages, selectedChannelId]);
+  const controlsDisabled = busy || sending;
+  const activeChannelName = activeChannel?.name || activeChannel?.id || selectedChannelId;
 
   return (
-    <section className="space-y-2 p-2">
+    <section aria-labelledby="company-channels-title" aria-busy={controlsDisabled} className="space-y-2 p-2">
       <div className="flex items-center justify-between gap-2">
-        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Channels</h4>
+        <h4 id="company-channels-title" className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Channels</h4>
+        <label htmlFor="company-channel-select" className="sr-only">Active company channel</label>
         <select
+          id="company-channel-select"
           value={selectedChannelId}
           onChange={(event) => onChannelChange?.(event.target.value)}
-          className="max-w-[150px] bg-transparent text-[11px] text-zinc-300 outline-none"
+          disabled={controlsDisabled}
+          aria-describedby="company-channel-help"
+          className="min-h-11 max-w-[180px] bg-transparent text-[11px] text-zinc-300 outline-none"
         >
           {channels.map((channel) => (
             <option key={channel.id} value={channel.id} className="bg-zinc-900">
@@ -97,8 +106,9 @@ export function CompanyChannelView({
           {channels.length === 0 && <option value="ops-company">ops-company</option>}
         </select>
       </div>
+      <p id="company-channel-help" className="sr-only">Choose which Company channel to read and send messages to.</p>
 
-      <div className="max-h-48 space-y-1 overflow-y-auto">
+      <div role="log" aria-live="polite" aria-relevant="additions" aria-label={`Messages in ${activeChannelName}`} className="max-h-48 space-y-1 overflow-y-auto">
         {visibleMessages.map((message) => (
           <div key={message.id} className="rounded-md border border-zinc-800/70 bg-zinc-950/40 px-2 py-1.5">
             <div className="mb-0.5 flex items-center gap-1.5 text-[10px] text-zinc-500">
@@ -119,32 +129,53 @@ export function CompanyChannelView({
 
       {onSendMessage && (
         <form
+          aria-label={`Send a message to ${activeChannelName}`}
           className="flex items-center gap-1.5"
-          onSubmit={(event) => {
+          onSubmit={async (event) => {
             event.preventDefault();
             const content = draft.trim();
             if (!content) return;
-            onSendMessage(content, selectedChannelId);
-            setDraft("");
+            setSending(true);
+            setSendError("");
+            setSendStatus(`Sending message to ${activeChannelName}`);
+            try {
+              await onSendMessage(content, selectedChannelId);
+              setDraft("");
+              setSendStatus(`Message sent to ${activeChannelName}`);
+            } catch (error) {
+              setSendStatus("");
+              setSendError(error instanceof Error ? error.message : `Message failed for ${activeChannelName}`);
+            } finally {
+              setSending(false);
+            }
           }}
         >
+          <label htmlFor="company-channel-message" className="sr-only">Message for {activeChannelName}</label>
           <input
+            id="company-channel-message"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
-            disabled={busy}
+            disabled={controlsDisabled}
+            required
+            aria-required="true"
+            aria-describedby="company-channel-message-help company-channel-send-status"
             placeholder="@pm handoff note"
-            className="h-8 min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-950 px-2 text-[12px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-600"
+            className="h-11 min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-950 px-2 text-[12px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-600"
           />
           <button
             type="submit"
-            disabled={busy || !draft.trim()}
-            className="flex h-8 w-8 items-center justify-center rounded-md bg-zinc-100 text-zinc-950 hover:bg-white disabled:opacity-30"
+            disabled={controlsDisabled || !draft.trim()}
+            aria-label={`Send message to ${activeChannelName}`}
+            className="flex h-11 w-11 items-center justify-center rounded-md bg-zinc-100 text-zinc-950 hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300 disabled:opacity-30"
             title="Send company message"
           >
             <Send size={13} />
           </button>
         </form>
       )}
+      <p id="company-channel-message-help" className="sr-only">The draft is cleared only after the Company message request succeeds.</p>
+      <div id="company-channel-send-status" role="status" aria-live="polite" aria-atomic="true" className="sr-only">{sendStatus}</div>
+      {sendError ? <p role="alert" className="text-[11px] text-red-300">{sendError}</p> : null}
     </section>
   );
 }

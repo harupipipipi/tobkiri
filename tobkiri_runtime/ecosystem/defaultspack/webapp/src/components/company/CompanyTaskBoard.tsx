@@ -55,15 +55,17 @@ export function CompanyTaskBoard({
   const displayedTaskCount = Math.max(tasks.length, expectedTaskCount ?? 0);
 
   return (
-    <section className="space-y-2 p-2">
+    <section aria-labelledby="company-task-board-title" aria-busy={busy} className="space-y-2 p-2">
       <div className="flex items-center justify-between gap-2">
-        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Delegated Tasks</h4>
-        <span className="text-[10px] text-zinc-600">{displayedTaskCount}</span>
+        <h4 id="company-task-board-title" className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Delegated Tasks</h4>
+        <span role="status" aria-live="polite" aria-label={`${displayedTaskCount} delegated tasks`} className="text-[10px] text-zinc-600">{displayedTaskCount}</span>
       </div>
 
       {onCreateTask && (
         <form
-          className={onCreateResearchTask ? "grid grid-cols-[minmax(0,1fr)_92px_28px_28px] gap-1.5" : "grid grid-cols-[minmax(0,1fr)_92px_28px] gap-1.5"}
+          aria-label="Create a delegated task"
+          aria-describedby="company-task-create-help"
+          className={onCreateResearchTask ? "grid grid-cols-[minmax(0,1fr)_112px_44px_44px] gap-1.5" : "grid grid-cols-[minmax(0,1fr)_112px_44px] gap-1.5"}
           onSubmit={(event) => {
             event.preventDefault();
             const cleanTitle = title.trim();
@@ -72,18 +74,26 @@ export function CompanyTaskBoard({
             setTitle("");
           }}
         >
+          <span id="company-task-create-help" className="sr-only">Enter a task, optionally choose a target Subagent, then create or start deep research.</span>
+          <label htmlFor="company-task-title" className="sr-only">Task for the Subagent Team</label>
           <input
+            id="company-task-title"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             disabled={busy}
+            required
+            aria-required="true"
+            aria-describedby="company-task-create-help"
             placeholder="Ask a Subagent"
-            className="h-8 min-w-0 rounded-md border border-zinc-800 bg-zinc-950 px-2 text-[12px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-600"
+            className="h-11 min-w-0 rounded-md border border-zinc-800 bg-zinc-950 px-2 text-[12px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-600"
           />
+          <label htmlFor="company-task-agent" className="sr-only">Target Subagent</label>
           <select
+            id="company-task-agent"
             value={targetAgentId}
             onChange={(event) => setTargetAgentId(event.target.value)}
             disabled={busy}
-            className="h-8 rounded-md border border-zinc-800 bg-zinc-950 px-1.5 text-[11px] text-zinc-300 outline-none"
+            className="h-11 rounded-md border border-zinc-800 bg-zinc-950 px-1.5 text-[11px] text-zinc-300 outline-none"
           >
             <option value="">Subagent</option>
             {agents.map((agent) => (
@@ -95,7 +105,8 @@ export function CompanyTaskBoard({
           <button
             type="submit"
             disabled={busy || !title.trim()}
-            className="flex h-8 w-8 items-center justify-center rounded-md bg-zinc-100 text-zinc-950 hover:bg-white disabled:opacity-30"
+            aria-label={title.trim() ? `Create task: ${title.trim()}` : "Create task"}
+            className="flex h-11 w-11 items-center justify-center rounded-md bg-zinc-100 text-zinc-950 hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300 disabled:opacity-30"
             title="Create task"
           >
             <Plus size={13} />
@@ -110,7 +121,8 @@ export function CompanyTaskBoard({
                 onCreateResearchTask(query, targetAgentId ? [targetAgentId] : []);
                 setTitle("");
               }}
-              className="flex h-8 w-8 items-center justify-center rounded-md border border-sky-500/30 text-sky-300 hover:bg-sky-500/10 disabled:opacity-30"
+              aria-label={title.trim() ? `Deep research task: ${title.trim()}` : "Create a deep research task"}
+              className="flex h-11 w-11 items-center justify-center rounded-md border border-sky-500/30 text-sky-300 hover:bg-sky-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300 disabled:opacity-30"
               title="Deep research with DuckDuckGo"
             >
               <Search size={13} />
@@ -124,8 +136,8 @@ export function CompanyTaskBoard({
           const items = grouped.get(status) ?? [];
           if (items.length === 0) return null;
           return (
-            <div key={status} className="space-y-1">
-              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-zinc-600">
+            <div key={status} role="group" aria-labelledby={`company-task-status-${status}`} className="space-y-1">
+              <div id={`company-task-status-${status}`} className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-zinc-600">
                 <ClipboardList size={10} />
                 <span>{status}</span>
                 <span>{items.length}</span>
@@ -143,7 +155,8 @@ export function CompanyTaskBoard({
                             type="button"
                             onClick={() => onDispatchTask(task.id)}
                             disabled={busy}
-                            className="flex h-6 w-6 items-center justify-center rounded border border-sky-500/30 text-sky-300 hover:bg-sky-500/10 disabled:opacity-40"
+                            aria-label={`Dispatch ${task.title} to ${task.target_agent_ids?.join(", ") || "an available Subagent"}`}
+                            className="flex h-11 w-11 items-center justify-center rounded border border-sky-500/30 text-sky-300 hover:bg-sky-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300 disabled:opacity-40"
                             title="Dispatch task to agent"
                           >
                             <Send size={11} />
@@ -155,7 +168,7 @@ export function CompanyTaskBoard({
                             onChange={(event) => onUpdateTask(task.id, { status: event.target.value })}
                             disabled={busy}
                             aria-label={`Move ${task.title} to status`}
-                            className="h-6 max-w-28 rounded border border-zinc-800 bg-zinc-950 px-1 text-[10px] text-zinc-400 disabled:opacity-40"
+                            className="h-11 max-w-32 rounded border border-zinc-800 bg-zinc-950 px-1 text-[10px] text-zinc-400 disabled:opacity-40"
                           >
                             {visibleStatuses.map((option) => (
                               <option key={option} value={option}>{option}</option>
@@ -167,7 +180,7 @@ export function CompanyTaskBoard({
                             type="button"
                             onClick={() => setDeleteCandidateId(task.id)}
                             disabled={busy}
-                            className="flex h-6 w-6 items-center justify-center rounded border border-red-500/20 text-red-300/70 hover:bg-red-500/10 hover:text-red-200 disabled:opacity-40"
+                            className="flex h-11 w-11 items-center justify-center rounded border border-red-500/20 text-red-300/70 hover:bg-red-500/10 hover:text-red-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300 disabled:opacity-40"
                             title={`Delete ${task.title}`}
                             aria-label={`Delete ${task.title}`}
                           >
@@ -183,7 +196,8 @@ export function CompanyTaskBoard({
                                 setDeleteCandidateId(null);
                               }}
                               disabled={busy}
-                              className="h-6 rounded border border-red-500/30 px-1.5 text-[10px] text-red-200 hover:bg-red-500/10 disabled:opacity-40"
+                              aria-label={`Confirm delete ${task.title}`}
+                              className="min-h-11 rounded border border-red-500/30 px-2 text-[10px] text-red-200 hover:bg-red-500/10 disabled:opacity-40"
                               title={`Confirm delete ${task.title}`}
                             >
                               Delete
@@ -192,9 +206,9 @@ export function CompanyTaskBoard({
                               type="button"
                               onClick={() => setDeleteCandidateId(null)}
                               disabled={busy}
-                              className="flex h-6 w-6 items-center justify-center rounded border border-zinc-800 text-zinc-500 hover:bg-zinc-800 disabled:opacity-40"
+                              aria-label={`Cancel deletion of ${task.title}`}
+                              className="flex h-11 w-11 items-center justify-center rounded border border-zinc-800 text-zinc-500 hover:bg-zinc-800 disabled:opacity-40"
                               title="Cancel delete"
-                              aria-label="Cancel delete"
                             >
                               <X size={11} />
                             </button>
@@ -226,7 +240,7 @@ export function CompanyTaskBoard({
           );
         })}
         {tasks.length === 0 && (
-          <div className="rounded-md border border-zinc-800/70 bg-zinc-950/40 px-2 py-2 text-[11px] text-zinc-500">
+          <div role="status" className="rounded-md border border-zinc-800/70 bg-zinc-950/40 px-2 py-2 text-[11px] text-zinc-500">
             {displayedTaskCount > 0
               ? `${displayedTaskCount} tasks recorded. Refreshing task details...`
               : "No delegated tasks."}
