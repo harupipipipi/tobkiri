@@ -4,32 +4,27 @@ import {
   answerInput,
   loadModelSettings,
   loadModels,
-  loadRouteState,
   MODEL_SETTINGS_KEY,
-  persistRouteStateRemotely,
   routeInput,
   setPreferredModel,
   type SearchHomeModel,
 } from "./api";
 import {
-  buildBrowserCompanionRouteMessage,
   normalizeSelectedIndex,
-  persistRouteSessionState,
   reviewRouteDestination,
-  ROUTE_SESSION_STORAGE_KEY,
   selectedCandidateUrl,
-  type RouteCandidate,
   type RouteDecision,
-  type RouteSessionState,
 } from "./routerTypes";
 import { NavigationReview } from "./NavigationReview";
 import { conversationHref, normalizeAnswerResponse, type AnswerResult } from "./answerState";
 import { evaluateExplicitDestinationInput } from "./destinationPolicy";
 
-const ROUTE_DECISION_STORAGE_KEY = "rumi-search-home-route-decision";
+const LEGACY_ROUTE_STORAGE_KEYS = [
+  "rumi-search-home-route-decision",
+  "rumi-search-home-route-state",
+] as const;
 const ANSWER_ROUTE_TYPES = new Set(["ASK_AI", "ASK_AI_WITH_SEARCH"]);
 
-type HydratedRouteState = RouteDecision | null;
 type SearchAction = "smart" | "answer" | "google" | "open";
 
 const ACTIONS: Array<{ id: SearchAction; title: string; subtitle: (query: string) => string }> = [
@@ -55,137 +50,8 @@ const ACTIONS: Array<{ id: SearchAction; title: string; subtitle: (query: string
   },
 ];
 
-function isObjectLike(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object";
-}
-
 function googleSearchUrl(query: string): string {
   return `https://www.google.com/search?q=${encodeURIComponent(query).replace(/%20/g, "+")}`;
-}
-
-function coerceCandidate(value: unknown): RouteCandidate | null {
-  if (!isObjectLike(value)) {
-    return null;
-  }
-  const url = typeof value.url === "string" ? value.url : "";
-  const finalUrl = typeof value.final_url === "string" ? value.final_url : url;
-  if (!url && !finalUrl) {
-    return null;
-  }
-  return {
-    url: url || finalUrl,
-    final_url: finalUrl || url,
-    title: typeof value.title === "string" ? value.title : "",
-    snippet: typeof value.snippet === "string" ? value.snippet : "",
-    domain: typeof value.domain === "string" ? value.domain : "",
-    source: typeof value.source === "string" ? value.source : "session",
-    status: typeof value.status === "number" ? value.status : null,
-    canonical_url: typeof value.canonical_url === "string" ? value.canonical_url : "",
-    content_type: typeof value.content_type === "string" ? value.content_type : "",
-    redirected: Boolean(value.redirected),
-    looks_like_login: Boolean(value.looks_like_login),
-    looks_like_paywall: Boolean(value.looks_like_paywall),
-    looks_like_404: Boolean(value.looks_like_404),
-    looks_like_ad_heavy: Boolean(value.looks_like_ad_heavy),
-    is_search_results: Boolean(value.is_search_results),
-    heuristic_score: typeof value.heuristic_score === "number" ? value.heuristic_score : null,
-    screenshot_path: typeof value.screenshot_path === "string" ? value.screenshot_path : "",
-  };
-}
-
-function coerceRouteDecision(value: unknown): RouteDecision | null {
-  if (!isObjectLike(value)) {
-    return null;
-  }
-  const query = typeof value.query === "string" ? value.query : "";
-  const targetUrl = typeof value.target_url === "string" ? value.target_url : "";
-  const fallbackUrl = typeof value.fallback_url === "string" ? value.fallback_url : "";
-  if (!query && !targetUrl && !fallbackUrl) {
-    return null;
-  }
-  const targetCandidates = Array.isArray(value.target_candidates)
-    ? value.target_candidates
-        .map((candidate) => coerceCandidate(candidate))
-        .filter((candidate): candidate is RouteCandidate => candidate !== null)
-    : [];
-  return {
-    route_type: typeof value.route_type === "string" ? value.route_type : "GOOGLE_REDIRECT",
-    query,
-    target_url: targetUrl || fallbackUrl,
-    target_candidates: targetCandidates,
-    selected_index: typeof value.selected_index === "number" ? value.selected_index : 0,
-    fallback_url: fallbackUrl || targetUrl,
-    resolution_reason: typeof value.resolution_reason === "string" ? value.resolution_reason : "restored_state",
-    used_ai_judge: Boolean(value.used_ai_judge),
-    used_visual_judge: Boolean(value.used_visual_judge),
-    metadata: isObjectLike(value.metadata) ? value.metadata : {},
-  };
-}
-
-function decisionFromSessionState(value: unknown): RouteDecision | null {
-  if (!isObjectLike(value)) {
-    return null;
-  }
-  const query = typeof value.query === "string" ? value.query : "";
-  const targetUrl = typeof value.target_url === "string" ? value.target_url : "";
-  const fallbackUrl = typeof value.fallback_url === "string" ? value.fallback_url : "";
-  const selectedIndex = typeof value.selected_index === "number" ? value.selected_index : 0;
-  const candidates = Array.isArray(value.target_candidates)
-    ? value.target_candidates
-        .map((candidate) => coerceCandidate(candidate))
-        .filter((candidate): candidate is RouteCandidate => candidate !== null)
-    : [];
-  if (!query && !targetUrl && !fallbackUrl && candidates.length === 0) {
-    return null;
-  }
-  return {
-    route_type: "GOOGLE_REDIRECT",
-    query,
-    target_url: targetUrl || fallbackUrl,
-    target_candidates: candidates,
-    selected_index: selectedIndex,
-    fallback_url: fallbackUrl || targetUrl,
-    resolution_reason: "restored_session_state",
-    used_ai_judge: false,
-    used_visual_judge: false,
-    metadata: {},
-  };
-}
-
-function loadDecisionFromSessionStorage(storage: Storage | null): HydratedRouteState {
-  if (!storage) {
-    return null;
-  }
-  storage.removeItem(ROUTE_DECISION_STORAGE_KEY);
-  try {
-    const session = storage.getItem(ROUTE_SESSION_STORAGE_KEY);
-    if (session) {
-      const parsed = JSON.parse(session) as Partial<RouteSessionState>;
-      const issuedAt = Date.parse(String(parsed.issued_at || ""));
-      const expiresAt = Date.parse(String(parsed.expires_at || ""));
-      const now = Date.now();
-      if (!/^[A-Za-z0-9_-]{16,128}$/.test(String(parsed.state_id || "")) ||
-          !Number.isFinite(issuedAt) || !Number.isFinite(expiresAt) ||
-          issuedAt > now + 30_000 || expiresAt <= now ||
-          expiresAt - issuedAt > 6 * 60 * 60 * 1000) {
-        storage.removeItem(ROUTE_SESSION_STORAGE_KEY);
-        return null;
-      }
-      return decisionFromSessionState(parsed);
-    }
-  } catch {
-    // Ignore malformed session payloads.
-  }
-  return null;
-}
-
-function saveDecisionToSessionStorage(storage: Storage | null, decision: RouteDecision, selectedIndex: number): RouteSessionState | null {
-  if (!storage) {
-    return null;
-  }
-  const session = persistRouteSessionState(storage, decision, selectedIndex);
-  storage.removeItem(ROUTE_DECISION_STORAGE_KEY);
-  return session;
 }
 
 function isAnswerRoute(decision: RouteDecision): boolean {
@@ -335,57 +201,28 @@ export default function App() {
     });
   }, [modelFilter, models]);
 
-  const persistRouteState = useCallback((nextDecision: RouteDecision, nextIndex: number) => {
-    const storage = typeof window !== "undefined" ? window.sessionStorage : null;
-    const session = saveDecisionToSessionStorage(storage, nextDecision, nextIndex);
-    if (session) {
-      persistRouteStateRemotely(session);
-      window.postMessage(
-        buildBrowserCompanionRouteMessage(nextDecision, nextIndex),
-        window.location.origin,
-      );
-    }
-  }, []);
-
   const navigate = useCallback(
-    (nextDecision: RouteDecision, nextIndex: number, rawDestination: string) => {
+    (_nextDecision: RouteDecision, nextIndex: number, rawDestination: string) => {
       const destination = reviewRouteDestination(rawDestination);
       if (!destination.ok || committedNavigationRef.current) {
         return;
       }
       committedNavigationRef.current = true;
       setSelectedIndex(nextIndex);
-      persistRouteState(nextDecision, nextIndex);
       window.location.assign(destination.url);
     },
-    [persistRouteState],
+    [],
   );
 
   useEffect(() => {
     committedNavigationRef.current = false;
-    const restored = loadDecisionFromSessionStorage(typeof window !== "undefined" ? window.sessionStorage : null);
-    if (restored) {
-      const normalizedIndex = normalizeSelectedIndex(restored, restored.selected_index);
-      setDecision(restored);
-      setSelectedIndex(normalizedIndex);
-      setInput(restored.query);
-      return;
+    try {
+      for (const key of LEGACY_ROUTE_STORAGE_KEYS) {
+        window.sessionStorage.removeItem(key);
+      }
+    } catch {
+      // Restricted WebViews may deny storage; no route state is read or written.
     }
-
-    void loadRouteState().then((payload) => {
-      if (!payload) {
-        return;
-      }
-      const restoredDecision = coerceRouteDecision(payload) ?? decisionFromSessionState(payload);
-      if (!restoredDecision) {
-        return;
-      }
-      setDecision(restoredDecision);
-      setSelectedIndex(normalizeSelectedIndex(restoredDecision, restoredDecision.selected_index));
-      if (restoredDecision.query) {
-        setInput(restoredDecision.query);
-      }
-    });
   }, []);
 
   useEffect(() => {
@@ -429,7 +266,6 @@ export default function App() {
     async (query: string, baseDecision: RouteDecision = syntheticAnswerDecision(query)) => {
       setDecision(baseDecision);
       setSelectedIndex(-1);
-      persistRouteState(baseDecision, -1);
       const requestRevision = ++answerRequestRef.current;
       setAnswerResult(null);
       setAnswerTransportError("");
@@ -445,7 +281,7 @@ export default function App() {
         if (requestRevision === answerRequestRef.current) setAnswerLoading(false);
       }
     },
-    [persistRouteState, selectedModel],
+    [selectedModel],
   );
 
   const executeSearch = useCallback(
@@ -502,7 +338,6 @@ export default function App() {
         const nextIndex = normalizeSelectedIndex(nextDecision, nextDecision.selected_index);
         setDecision(nextDecision);
         setSelectedIndex(nextIndex);
-        persistRouteState(nextDecision, nextIndex);
         if (isAnswerRoute(nextDecision)) {
           await runAnswer(query, nextDecision);
           return;
@@ -517,8 +352,6 @@ export default function App() {
       answerLoading,
       input,
       loading,
-      navigate,
-      persistRouteState,
       runAnswer,
       selectedModel,
     ],
@@ -783,7 +616,6 @@ export default function App() {
           selectedIndex={selectedIndex}
           onSelectIndex={(nextIndex) => {
             setSelectedIndex(nextIndex);
-            persistRouteState(currentDecision, nextIndex);
           }}
           onOpenSelected={() =>
             navigate(currentDecision, selectedIndex, selectedCandidateUrl(currentDecision, selectedIndex))

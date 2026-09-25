@@ -25,11 +25,16 @@ test("explicit unsafe URL input is blocked before resolver, answer, or Google se
   assert.match(appSource, /input_policy_blocked: true/);
 });
 
-test("route shortcuts are not installed globally and sensitive route data is not wildcard-posted", () => {
+test("route data stays memory-only and Browser Companion sync is explicitly unavailable", () => {
   assert.doesNotMatch(appSource, /routeHotkeyActionFromKeyboardEvent/);
   assert.doesNotMatch(appSource, /routeNavigationForHotkey/);
-  assert.doesNotMatch(appSource, /postMessage\([\s\S]*?,\s*["']\*["']\s*\)/);
-  assert.match(appSource, /window\.location\.origin/);
+  assert.doesNotMatch(appSource, /postMessage\(/);
+  assert.doesNotMatch(appSource, /sessionStorage\.(?:getItem|setItem)\(/);
+  assert.doesNotMatch(appSource, /loadRouteState|persistRouteStateRemotely/);
+  assert.match(appSource, /LEGACY_ROUTE_STORAGE_KEYS/);
+  assert.match(appSource, /sessionStorage\.removeItem\(key\)/);
+  assert.match(reviewSource, /Browser Companion同期は無効です/);
+  assert.match(reviewSource, /この画面のメモリだけに保持/);
 });
 
 test("390px layout wraps the heading, input actions, and action descriptions", () => {

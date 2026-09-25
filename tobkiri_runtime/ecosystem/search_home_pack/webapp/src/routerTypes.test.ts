@@ -2,12 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  buildBrowserCompanionRouteMessage,
-  buildRouteSessionState,
   cycleCandidateIndex,
   normalizeSelectedIndex,
   reviewRouteDestination,
-  sanitizeRouteDecisionForStorage,
   selectedCandidateUrl,
   type RouteDecision,
 } from "./routerTypes";
@@ -112,62 +109,4 @@ test("flags punycode and non-standard ports for explicit review", () => {
   assert.equal(review.warnings.length, 2);
   assert.match(review.warnings.join(" "), /Punycode/);
   assert.match(review.warnings.join(" "), /8443/);
-});
-
-test("session state excludes blocked candidates and ignores backend domain labels", () => {
-  const unsafeDecision: RouteDecision = {
-    ...decision,
-    target_candidates: [
-      decision.target_candidates[0],
-      {
-        url: "http://127.0.0.1/admin",
-        title: "Internal admin",
-        domain: "totally-safe.example",
-      },
-    ],
-  };
-  const state = buildRouteSessionState(unsafeDecision, 0);
-  assert.equal(state.target_candidates.length, 1);
-  assert.equal(state.target_candidates[0]?.domain, "example.com");
-  assert.equal(state.target_candidates[0]?.final_url, "https://example.com/a");
-  assert.equal(JSON.stringify(state).includes("127.0.0.1"), false);
-  assert.equal(JSON.stringify(state).includes("totally-safe.example"), false);
-});
-
-test("stored decisions discard arbitrary metadata and unsafe URLs", () => {
-  const sanitized = sanitizeRouteDecisionForStorage(
-    {
-      ...decision,
-      target_url: "javascript:alert(1)",
-      metadata: { secret: "do-not-store" },
-    },
-    0,
-  );
-  assert.deepEqual(sanitized.metadata, {});
-  assert.equal(JSON.stringify(sanitized).includes("do-not-store"), false);
-  assert.equal(JSON.stringify(sanitized).includes("javascript:"), false);
-});
-
-test("browser companion message is origin-bound, expiring, and secret-free", () => {
-  const message = buildBrowserCompanionRouteMessage(decision, 2);
-  assert.equal(message.type, "rumi:search-home:set-route-state");
-  assert.equal(message.source, "rumi-search-home");
-  assert.equal(message.payload.target_url, "https://example.com/c");
-  assert.equal(message.payload.target_candidates.length, 3);
-  assert.match(message.payload.state_id, /^[a-f0-9]{32}$/);
-  assert.ok(Date.parse(message.payload.expires_at) > Date.parse(message.payload.issued_at));
-});
-
-test("session state never persists fragments or credential-like query values", () => {
-  const secret = "fake-secret-do-not-store";
-  const state = buildRouteSessionState({
-    ...decision,
-    query: `https://example.com/?access_token=${secret}`,
-    target_url: `https://example.com/?access_token=${secret}`,
-    fallback_url: "https://www.google.com/search?q=safe",
-    target_candidates: [{ url: `https://example.com/path#${secret}` }],
-  });
-  assert.equal(JSON.stringify(state).includes(secret), false);
-  assert.equal(state.target_candidates.length, 0);
-  assert.equal(state.target_url, state.fallback_url);
 });

@@ -1,6 +1,6 @@
 # Search Home Pack
 
-`search_home_pack` is a Startup Profile surface pack that gives Rumi a local
+`search_home_pack` is a Startup Profile surface pack that gives Tobkiri a local
 search-first home screen while reusing `defaultspack` for AI classification,
 chat responses, and web search.
 
@@ -10,6 +10,20 @@ chat responses, and web search.
 - deterministic URL safety checks
 - route selection for URL, Google, AI, and AI-with-search
 - cross-pack function bridge to `defaultspack`
+
+## Route Privacy
+
+Search queries, candidate URLs, and route decisions remain in the current
+Search Home component memory. They are not sent through page-wide
+`postMessage`, copied to Browser Companion, written to browser storage, or
+restored from a local route-state file. Reloading or closing the surface drops
+the review state. Startup removes legacy browser, extension, and backend route
+records created by older releases.
+
+Browser Companion route synchronization is deliberately unavailable until a
+dedicated authenticated, least-data channel with an explicit user-visible
+retention contract exists. Destination review and manual navigation continue
+to work without that integration.
 
 ## What It Does Not Own
 
@@ -25,8 +39,11 @@ Those stay inside `defaultspack`, which remains the source of truth.
 
 - `GET /health`
 - `GET /api/health`
+- `GET /api/models`
+- `GET /api/settings`
 - `POST /api/route`
-- `POST /api/ask`
+- `POST /api/answer`
+- `POST /api/settings/model`
 
 ## Webapp
 
