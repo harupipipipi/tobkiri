@@ -445,3 +445,9 @@ exceptions:
   from: ambient
   import: domain/chat
   reason: ambient trigger routing creates destination conversations through the chat store
+- file: domain/capability/plan_executor.py
+  from: capability
+  import: domain/tool/executor
+  reason: the plan executor is the single journaled bridge that wires capability
+    plans into the gated tool executor; the import stays lazy so the capability
+    and tool domains do not form a module cycle
