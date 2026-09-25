@@ -113,6 +113,31 @@ struct DirectRequestLedgerTests {
     }
 
     @Test
+    func saturatedTombstonesRefuseNewBeginsAndOverflowedCancelStillWins() throws {
+        let ledger = DirectRequestLedger()
+        for index in 0..<128 {
+            ledger.cancel("early-\(index)", now: 0)
+        }
+        // While the tombstone set is full a new identity cannot be made
+        // cancellable, so begin fails closed instead of registering it.
+        #expect(throws: HelperError.invalidState("CANCEL_TOMBSTONE_LIMIT")) {
+            try ledger.begin("fresh", maximumBridges: 1, now: 1)
+        }
+        // The 129th tombstone cannot be stored; its window is still
+        // enforced fail-closed even after the recorded tombstones expire.
+        ledger.cancel("overflow", now: 30)
+        #expect(throws: HelperError.invalidState("CANCEL_TOMBSTONE_LIMIT")) {
+            try ledger.begin("overflow", maximumBridges: 1, now: 61)
+        }
+        #expect(throws: HelperError.invalidState("CANCEL_TOMBSTONE_LIMIT")) {
+            try ledger.begin("other", maximumBridges: 1, now: 89)
+        }
+        // Once the dropped cancellation's window lapses, begins proceed.
+        let ticket = try ledger.begin("overflow", maximumBridges: 1, now: 90)
+        try ledger.settle(ticket, pending: false, now: 91)
+    }
+
+    @Test
     func capacityIsBoundedAndExpiredEntriesAreReclaimed() throws {
         let ledger = DirectRequestLedger()
         for index in 0..<128 {

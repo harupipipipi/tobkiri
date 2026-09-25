@@ -19,6 +19,10 @@ final class DirectRequestLedger {
     private let lock = NSLock()
     private var entries: [String: Entry] = [:]
     private var cancelled: [String: TimeInterval] = [:]
+    /// Fail-closed deadline covering a tombstone which could not be recorded
+    /// because ``cancelled`` was saturated; new identities stay refused until
+    /// the dropped cancellation would have expired.
+    private var tombstoneOverflowUntil: TimeInterval = 0
 
     func begin(
         _ requestID: String, maximumBridges: Int,
@@ -40,6 +44,12 @@ final class DirectRequestLedger {
         }
         guard entries[requestID] == nil else {
             throw HelperError.invalidState("REQUEST_ALREADY_ACTIVE")
+        }
+        // A cancellation tombstone must never be silently droppable: while
+        // the tombstone set is saturated, or a tombstone dropped at the cap
+        // would still be live, a new identity could not be cancelled safely.
+        guard cancelled.count < 128, tombstoneOverflowUntil <= now else {
+            throw HelperError.invalidState("CANCEL_TOMBSTONE_LIMIT")
         }
         guard entries.count < 128 else {
             throw HelperError.invalidState("ACTIVE_REQUEST_LIMIT")
@@ -116,7 +126,9 @@ final class DirectRequestLedger {
     /// Retire before sending cancellation; late transport completions stay retired.
     /// A request which already finished or has not registered yet leaves a
     /// tombstone so cancellation remains idempotent and still wins a later
-    /// racing ``begin`` for the same identity.
+    /// racing ``begin`` for the same identity. When the tombstone set is
+    /// saturated the tombstone cannot be stored, so its expiry window is
+    /// enforced fail-closed by refusing new ``begin`` calls instead.
     func cancel(
         _ requestID: String,
         now: TimeInterval = ProcessInfo.processInfo.systemUptime
@@ -127,8 +139,10 @@ final class DirectRequestLedger {
             return
         }
         cancelled = cancelled.filter { $0.value > now }
-        if cancelled.count < 128 {
+        if cancelled[requestID] != nil || cancelled.count < 128 {
             cancelled[requestID] = now + 60
+        } else {
+            tombstoneOverflowUntil = max(tombstoneOverflowUntil, now + 60)
         }
     }
 }
