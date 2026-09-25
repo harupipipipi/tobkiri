@@ -1,52 +1,1898 @@
 {
   "counts": {
-    "canonical_source_packs": 141,
-    "catalog_pack_directories": 141,
+    "canonical_source_packs": 145,
+    "catalog_pack_directories": 143,
     "gates": {
-      "artifact_contracts": 0,
-      "authority_resolved_plan_scope": 0,
-      "command_protocol_activation": 0,
-      "declaration_disk_runtime": 0,
+      "artifact_contracts": 17,
+      "authority_resolved_plan_scope": 1,
+      "command_protocol_activation": 1,
+      "declaration_disk_runtime": 172,
       "double_authority": 0,
-      "executable_source_registry": 0,
-      "launcher_safety": 0,
+      "executable_source_registry": 1,
+      "launcher_safety": 1,
       "legacy_registry_and_installed_lookup": 0,
-      "migration_evidence": 1,
+      "migration_evidence": 3,
       "offline_projection": 0
     },
     "legacy_manifest_declared_packs": 141,
     "migration_status": {
       "generated-draft": 63,
-      "semantically-reviewed": 78
+      "not-migrated": 4,
+      "release-verified": 78
     },
-    "production_pack_directories": 141,
-    "v4_artifact_files": 564,
+    "production_pack_directories": 145,
+    "v4_artifact_files": 580,
     "v4_artifacts_per_pack": 4,
-    "v4_only_packs": 4,
-    "v4_pack_artifacts": 141,
+    "v4_only_packs": 8,
+    "v4_pack_artifacts": 145,
     "v4_profile_artifacts": 1
   },
   "findings": {
-    "artifact_contracts": [],
-    "authority_resolved_plan_scope": [],
-    "command_protocol_activation": [],
-    "declaration_disk_runtime": [],
+    "artifact_contracts": [
+      {
+        "artifact": "artifact-index.v4.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_agent_services_pack/artifact-index.v4.json",
+        "rule": "missing_v4_artifact",
+        "symbol": "missing_v4_artifact"
+      },
+      {
+        "artifact": "pack.v4.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_agent_services_pack/pack.v4.json",
+        "rule": "missing_v4_artifact",
+        "symbol": "missing_v4_artifact"
+      },
+      {
+        "artifact": "contracts.v4.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_agent_services_pack/contracts.v4.json",
+        "rule": "missing_v4_artifact",
+        "symbol": "missing_v4_artifact"
+      },
+      {
+        "artifact": "executables.v4.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_agent_services_pack/executables.v4.json",
+        "rule": "missing_v4_artifact",
+        "symbol": "missing_v4_artifact"
+      },
+      {
+        "artifact": "artifact-index.v4.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_local_agent_pack/artifact-index.v4.json",
+        "rule": "missing_v4_artifact",
+        "symbol": "missing_v4_artifact"
+      },
+      {
+        "artifact": "pack.v4.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_local_agent_pack/pack.v4.json",
+        "rule": "missing_v4_artifact",
+        "symbol": "missing_v4_artifact"
+      },
+      {
+        "artifact": "contracts.v4.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_local_agent_pack/contracts.v4.json",
+        "rule": "missing_v4_artifact",
+        "symbol": "missing_v4_artifact"
+      },
+      {
+        "artifact": "executables.v4.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_local_agent_pack/executables.v4.json",
+        "rule": "missing_v4_artifact",
+        "symbol": "missing_v4_artifact"
+      },
+      {
+        "error": "InvalidArtifactError: executable implementation digest mismatch",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/executables.v4.json",
+        "rule": "production_compiler_rejected_pack",
+        "symbol": "production_compiler_rejected_pack"
+      },
+      {
+        "artifact": "artifact-index.v4.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_pack_suite_pack/artifact-index.v4.json",
+        "rule": "missing_v4_artifact",
+        "symbol": "missing_v4_artifact"
+      },
+      {
+        "artifact": "pack.v4.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_pack_suite_pack/pack.v4.json",
+        "rule": "missing_v4_artifact",
+        "symbol": "missing_v4_artifact"
+      },
+      {
+        "artifact": "contracts.v4.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_pack_suite_pack/contracts.v4.json",
+        "rule": "missing_v4_artifact",
+        "symbol": "missing_v4_artifact"
+      },
+      {
+        "artifact": "executables.v4.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_pack_suite_pack/executables.v4.json",
+        "rule": "missing_v4_artifact",
+        "symbol": "missing_v4_artifact"
+      },
+      {
+        "artifact": "artifact-index.v4.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_reference_ui_pack/artifact-index.v4.json",
+        "rule": "missing_v4_artifact",
+        "symbol": "missing_v4_artifact"
+      },
+      {
+        "artifact": "pack.v4.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_reference_ui_pack/pack.v4.json",
+        "rule": "missing_v4_artifact",
+        "symbol": "missing_v4_artifact"
+      },
+      {
+        "artifact": "contracts.v4.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_reference_ui_pack/contracts.v4.json",
+        "rule": "missing_v4_artifact",
+        "symbol": "missing_v4_artifact"
+      },
+      {
+        "artifact": "executables.v4.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_reference_ui_pack/executables.v4.json",
+        "rule": "missing_v4_artifact",
+        "symbol": "missing_v4_artifact"
+      }
+    ],
+    "authority_resolved_plan_scope": [
+      {
+        "extra": [
+          "rumi_command_protocol_pack",
+          "tobkiri_mcp_connection_pack",
+          "tobkiri_ui_settings_pack"
+        ],
+        "line": 1,
+        "missing": [
+          "defaults"
+        ],
+        "path": "tobkiri_runtime/schemas/pack_v4_catalog.v1.json",
+        "rule": "v4_catalog_disk_scope_mismatch",
+        "symbol": "pack_v4_catalog"
+      }
+    ],
+    "command_protocol_activation": [
+      {
+        "error": "bundle artifact digest changed: packs/defaults-basepack.pack.v4.json (sha256:0bba6dad19637b2dd8b2a149093715e8641f10894dd93c48b5b33fea588da0d7 != sha256:e2e10d829f25b8dc7e421091f42d62b8ab02a12fd92abe6d9dbf874e17290f83)",
+        "line": 1,
+        "path": "tobkiri_runtime/core_runtime/pack_api_server.py",
+        "rule": "signed_application_route_map_unavailable",
+        "symbol": "signed_application_route_map_unavailable"
+      }
+    ],
+    "declaration_disk_runtime": [
+      {
+        "artifact": "runtime/conversation.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "defaultspack.application-presentation",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "defaultspack.conversation",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "defaultspack.conversation.saved",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/conversation.py"
+        ],
+        "indexed": [
+          "extensions/tools/settings_inspect/manifest.json",
+          "extensions/tools/settings_update/manifest.json",
+          "host_contract_contributions.v1.json",
+          "runtime/application_presentation.py",
+          "runtime/conversation.py",
+          "runtime/saved_conversation.py",
+          "tools/artifact_export/manifest.json",
+          "tools/artifact_file_delete/manifest.json",
+          "tools/artifact_file_list/manifest.json",
+          "tools/artifact_file_patch/manifest.json",
+          "tools/artifact_file_read/manifest.json",
+          "tools/artifact_file_write/manifest.json",
+          "tools/artifact_preview/manifest.json",
+          "tools/artifact_zip/manifest.json",
+          "tools/audio_transcribe/manifest.json",
+          "tools/audio_transcribe_local/manifest.json",
+          "tools/browser_download_collect/manifest.json",
+          "tools/browser_extract_table/manifest.json",
+          "tools/browser_save_page/manifest.json",
+          "tools/browser_upload_file/manifest.json",
+          "tools/calendar_create/manifest.json",
+          "tools/chart_create/manifest.json",
+          "tools/desktop_access_grant/manifest.json",
+          "tools/desktop_access_request/manifest.json",
+          "tools/desktop_control_acquire/manifest.json",
+          "tools/desktop_control_release/manifest.json",
+          "tools/desktop_control_renew/manifest.json",
+          "tools/desktop_create/manifest.json",
+          "tools/desktop_frame/manifest.json",
+          "tools/desktop_input/manifest.json",
+          "tools/desktop_list/manifest.json",
+          "tools/desktop_rules_update/manifest.json",
+          "tools/discord_send/manifest.json",
+          "tools/doc_create/manifest.json",
+          "tools/doc_export/manifest.json",
+          "tools/doc_to_pdf/manifest.json",
+          "tools/doc_update/manifest.json",
+          "tools/drive_create/manifest.json",
+          "tools/drive_export/manifest.json",
+          "tools/external_send/manifest.json",
+          "tools/github_issue_create/manifest.json",
+          "tools/github_issue_list/manifest.json",
+          "tools/github_issue_update/manifest.json",
+          "tools/github_pr_create/manifest.json",
+          "tools/github_search/manifest.json",
+          "tools/gmail_draft/manifest.json",
+          "tools/gmail_search/manifest.json",
+          "tools/html_preview/manifest.json",
+          "tools/human_operator_canvas_open/manifest.json",
+          "tools/image_convert/manifest.json",
+          "tools/image_generate_local_or_provider/manifest.json",
+          "tools/image_render/manifest.json",
+          "tools/image_resize/manifest.json",
+          "tools/jira_issue_sync/manifest.json",
+          "tools/job_artifacts/manifest.json",
+          "tools/job_cancel/manifest.json",
+          "tools/job_create/manifest.json",
+          "tools/job_history/manifest.json",
+          "tools/job_resume/manifest.json",
+          "tools/job_status/manifest.json",
+          "tools/line_push/manifest.json",
+          "tools/linear_issue_sync/manifest.json",
+          "tools/memo_create_note/manifest.json",
+          "tools/memo_folder_upsert/manifest.json",
+          "tools/memo_get/manifest.json",
+          "tools/memo_list/manifest.json",
+          "tools/memo_list_notes/manifest.json",
+          "tools/memo_note_upsert/manifest.json",
+          "tools/memo_search/manifest.json",
+          "tools/memo_search_notes/manifest.json",
+          "tools/node_exec/manifest.json",
+          "tools/ocr_extract/manifest.json",
+          "tools/package_install_plan/manifest.json",
+          "tools/pdf_export/manifest.json",
+          "tools/pdf_extract/manifest.json",
+          "tools/pdf_extract_tables/manifest.json",
+          "tools/pdf_preview/manifest.json",
+          "tools/project_scaffold/manifest.json",
+          "tools/python_exec/manifest.json",
+          "tools/research_report_export/manifest.json",
+          "tools/sandbox_exec/manifest.json",
+          "tools/sandbox_files_apply_patch/manifest.json",
+          "tools/sandbox_files_read/manifest.json",
+          "tools/sandbox_port_expose/manifest.json",
+          "tools/sheet_analyze/manifest.json",
+          "tools/sheet_create/manifest.json",
+          "tools/sheet_export/manifest.json",
+          "tools/sheet_read/manifest.json",
+          "tools/sheet_update/manifest.json",
+          "tools/slack_send/manifest.json",
+          "tools/slides_create/manifest.json",
+          "tools/slides_export/manifest.json",
+          "tools/slides_from_markdown/manifest.json",
+          "tools/slides_update/manifest.json",
+          "tools/source_extract/manifest.json",
+          "tools/source_rank/manifest.json",
+          "tools/static_site_export/manifest.json",
+          "tools/tool_names/manifest.json",
+          "tools/tool_search/manifest.json",
+          "tools/tool_task_board/manifest.json",
+          "tools/tool_task_board_agent_session/manifest.json",
+          "tools/tool_ui_build_recursive/manifest.json",
+          "tools/tool_ui_commit_plan/manifest.json",
+          "tools/tool_ui_compile_plan/manifest.json",
+          "tools/tool_ui_compose_page/manifest.json",
+          "tools/tool_ui_generate_candidates/manifest.json",
+          "tools/tool_ui_generate_foundation/manifest.json",
+          "tools/tool_ui_inspect_compression/manifest.json",
+          "tools/tool_ui_render_matrix/manifest.json",
+          "tools/tool_ui_select_candidates/manifest.json",
+          "tools/tool_ui_verify_recursive_build/manifest.json",
+          "tools/tts_generate/manifest.json",
+          "tools/tts_generate_local/manifest.json",
+          "tools/webapp_build/manifest.json",
+          "tools/webapp_export_static/manifest.json",
+          "tools/webapp_lint/manifest.json",
+          "tools/webapp_preview/manifest.json",
+          "tools/wide_research/manifest.json",
+          "tools/workflow_cancel/manifest.json",
+          "tools/workflow_define/manifest.json",
+          "tools/workflow_retry/manifest.json",
+          "tools/workflow_run/manifest.json",
+          "tools/workflow_status/manifest.json",
+          "update_metadata.v1.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "asset_index.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_agent_continuity_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_agent_services_pack/executables.v4.json",
+        "rule": "runtime_variant_declaration_invalid",
+        "symbol": "runtime_variant_declaration_invalid"
+      },
+      {
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_agent_services_pack/pack.v4.json",
+        "rule": "runtime_function_declaration_invalid",
+        "symbol": "runtime_function_declaration_invalid"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "asset_index.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_agent_workroom_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "catalog/acceptance_rubric.yaml"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_agentic_qa_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/gateway.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/__init__.py",
+          "runtime/gateway.py"
+        ],
+        "indexed": [
+          "runtime/__init__.py",
+          "runtime/gateway.py",
+          "runtime/preflight.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "frontend_extensions/ambient_trigger.ui.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_ambient_trigger_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "catalog/api_toolsmith_workflows.yaml"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_api_toolsmith_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "catalog/element_schema.yaml"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_browser_element_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "catalog/form_action_recipes.yaml"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_browser_form_operator_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "asset_index.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_browser_session_replay_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "catalog/business_ops_workflows.yaml"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_business_ops_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "asset_index.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_code_migration_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack",
+        "rule": "pack_missing_from_v4_catalog",
+        "symbol": "pack_missing_from_v4_catalog"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "catalog/connectors.gateway.yaml"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_connector_gateway_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/store.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_conversation_store_pack.conversation-store.message-manage",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_conversation_store_pack.conversation-store.message-resource",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_conversation_store_pack.conversation-store.migrate",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_conversation_store_pack.conversation-store.resource",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/store.py"
+        ],
+        "indexed": [
+          "runtime/host.py",
+          "runtime/manage_host.py",
+          "runtime/message_host.py",
+          "runtime/saved_receipt.py",
+          "runtime/store.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/process.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "runtime/service.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "runtime/store.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_credential_broker_pack.credential-broker.manage",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_credential_broker_pack.credential-broker.migrate",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_credential_broker_pack.credential-broker.resolve",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_credential_broker_pack.credential-broker.status",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/__init__.py",
+          "runtime/process.py",
+          "runtime/service.py",
+          "runtime/store.py"
+        ],
+        "indexed": [
+          "runtime/__init__.py",
+          "runtime/process.py",
+          "runtime/service.py",
+          "runtime/store.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/projection.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_default_tool_projection_pack.default-tools.migration-source",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_default_tool_projection_pack.tool-adapter.defaultspack-compat",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/projection.py"
+        ],
+        "indexed": [
+          "runtime/projection.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "function_id": "rumi_default_tools_pack.calculator",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "domain/tool/calculator.py",
+          "host_contract_contributions.v1.json",
+          "runtime/calculator.py",
+          "tools/browser_companion/manifest.json",
+          "tools/browser_computer/manifest.json",
+          "tools/browser_use/manifest.json",
+          "tools/calculator/manifest.json",
+          "tools/coding_file_create/manifest.json",
+          "tools/coding_file_delete/manifest.json",
+          "tools/coding_file_list/manifest.json",
+          "tools/coding_file_patch/manifest.json",
+          "tools/coding_file_read/manifest.json",
+          "tools/coding_file_restore/manifest.json",
+          "tools/coding_file_search/manifest.json",
+          "tools/coding_file_write/manifest.json",
+          "tools/coding_git_commit/manifest.json",
+          "tools/coding_git_diff/manifest.json",
+          "tools/coding_git_push/manifest.json",
+          "tools/coding_git_status/manifest.json",
+          "tools/coding_terminal_exec/manifest.json",
+          "tools/computer_use/manifest.json",
+          "tools/file_reader/manifest.json",
+          "tools/reddit_search/manifest.json",
+          "tools/rumi_api/manifest.json",
+          "tools/sandbox_artifact_export/manifest.json",
+          "tools/sandbox_diff_preview/manifest.json",
+          "tools/sandbox_file_patch/manifest.json",
+          "tools/sandbox_file_read/manifest.json",
+          "tools/sandbox_file_write/manifest.json",
+          "tools/sandbox_terminal_exec/manifest.json",
+          "tools/subagent/manifest.json",
+          "tools/todo/manifest.json",
+          "tools/web_search/manifest.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "schemas/citation_trace.schema.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_document_intelligence_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "asset_index.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_evidence_dossier_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "asset_index.yaml"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_experiment_design_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "schemas/component_acceptance.schema.yaml"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_frontend_design_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/publish.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_git_publish_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_git_publish_pack.git-publish.service",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_git_publish_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_git_publish_pack.git-push-prepare.service",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_git_publish_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/publish.py"
+        ],
+        "indexed": [
+          "runtime/publish.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_git_publish_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/read.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_git_read_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_git_read_pack.git-read.service",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_git_read_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/read.py"
+        ],
+        "indexed": [
+          "runtime/read.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_git_read_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/write.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_git_write_pack.git-apply-patch-prepare.service",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_git_write_pack.git-apply-patch.service",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_git_write_pack.git-commit-prepare.service",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_git_write_pack.git-commit.service",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_git_write_pack.git-restore-prepare.service",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_git_write_pack.git-restore.service",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/write.py"
+        ],
+        "indexed": [
+          "runtime/write.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/bridge.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_host_authority_bridge_pack.host-authority.authorize",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/bridge.py"
+        ],
+        "indexed": [
+          "runtime/bridge.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "policies/host_capability_boundary.policy.yaml"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_host_capabilities_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "frontend_extensions/marketplace_preview.ui.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_knowledge_marketplace_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_local_agent_pack/executables.v4.json",
+        "rule": "runtime_variant_declaration_invalid",
+        "symbol": "runtime_variant_declaration_invalid"
+      },
+      {
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_local_agent_pack/pack.v4.json",
+        "rule": "runtime_function_declaration_invalid",
+        "symbol": "runtime_function_declaration_invalid"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "schemas/locale_issue.schema.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_localization_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/gateway.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_mcp_gateway_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_mcp_gateway_pack.mcp-gateway.call",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_mcp_gateway_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/gateway.py"
+        ],
+        "indexed": [
+          "runtime/gateway.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_mcp_gateway_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "asset_index.yaml"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_meeting_intelligence_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "catalog/capabilities.memory.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_memory_knowledge_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/catalog.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_model_catalog_pack.model-catalog.bundled",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_digest_mismatch",
+        "symbol": "runtime_entrypoint_digest_mismatch"
+      },
+      {
+        "artifact": "runtime/process.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "runtime/registry.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_model_registry_pack.model-registry.manage",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_model_registry_pack.model-registry.migrate",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_model_registry_pack.model-registry.profile",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/__init__.py",
+          "runtime/process.py",
+          "runtime/registry.py",
+          "runtime/service.py"
+        ],
+        "indexed": [
+          "runtime/__init__.py",
+          "runtime/process.py",
+          "runtime/registry.py",
+          "runtime/service.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "catalog/artifact_schema.media.yaml"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_multimodal_media_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "schemas/observability_event.schema.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_observability_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "asset_index.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_omnichannel_agent_inbox_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "frontend_extensions/operations_company.ui.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_operations_company_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_pack_suite_pack/executables.v4.json",
+        "rule": "runtime_variant_declaration_invalid",
+        "symbol": "runtime_variant_declaration_invalid"
+      },
+      {
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_pack_suite_pack/pack.v4.json",
+        "rule": "runtime_function_declaration_invalid",
+        "symbol": "runtime_function_declaration_invalid"
+      },
+      {
+        "artifact": "runtime/service.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "runtime/store.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_prompt_studio_pack.prompt-studio.resource",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "catalog/prompt_studio_prompt_library.yaml",
+          "frontend/contributions/prompt-studio.json",
+          "runtime/__init__.py",
+          "runtime/process.py",
+          "runtime/service.py",
+          "runtime/store.py",
+          "ui/app.js",
+          "ui/index.html",
+          "ui/style.css"
+        ],
+        "indexed": [
+          "catalog/prompt_studio_prompt_library.yaml",
+          "frontend/contributions/prompt-studio.json",
+          "runtime/__init__.py",
+          "runtime/process.py",
+          "runtime/resource_host.py",
+          "runtime/service.py",
+          "runtime/store.py",
+          "ui/app.js",
+          "ui/index.html",
+          "ui/style.css"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/adapter.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_provider_adapters_pack.provider.compatibility.embedding",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_provider_adapters_pack.provider.compatibility.generate",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_provider_adapters_pack.provider.compatibility.image",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_provider_adapters_pack.provider.compatibility.stream",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/__init__.py",
+          "runtime/adapter.py"
+        ],
+        "indexed": [
+          "runtime/__init__.py",
+          "runtime/adapter.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/health_process.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "runtime/process.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_provider_registry_pack.provider-configure.execute",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_provider_registry_pack.provider-configure.prepare",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_provider_registry_pack.provider-registry.health",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_provider_registry_pack.provider-registry.manage",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_provider_registry_pack.provider-registry.resource",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/__init__.py",
+          "runtime/health_process.py",
+          "runtime/process.py",
+          "runtime/registry.py",
+          "runtime/service.py"
+        ],
+        "indexed": [
+          "runtime/__init__.py",
+          "runtime/configuration.py",
+          "runtime/health_process.py",
+          "runtime/process.py",
+          "runtime/registry.py",
+          "runtime/service.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_reference_ui_pack/executables.v4.json",
+        "rule": "runtime_variant_declaration_invalid",
+        "symbol": "runtime_variant_declaration_invalid"
+      },
+      {
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_reference_ui_pack/pack.v4.json",
+        "rule": "runtime_function_declaration_invalid",
+        "symbol": "runtime_function_declaration_invalid"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "schemas/metric_record.schema.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_runtime_benchmark_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "catalog/runtime_matrix.yaml"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_sandbox_runtime_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "function_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/adapter.py"
+        ],
+        "indexed": [
+          "runtime/adapter.py",
+          "runtime/definitions_component.wasm"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "catalog/finding_schema.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_security_review_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/execute.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_shell_execute_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_shell_execute_pack.shell-execute.service",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_shell_execute_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_shell_execute_pack.shell-prepare.service",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_shell_execute_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/execute.py"
+        ],
+        "indexed": [
+          "runtime/execute.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_shell_execute_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/policy.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_shell_policy_pack.shell-policy.inspect",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/policy.py"
+        ],
+        "indexed": [
+          "runtime/policy.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "schemas/sop_mining_record.schema.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_sop_mining_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "asset_index.yaml"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_study_coach_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "catalog/pr_acceptance_rubric.yaml"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_subagent_pr_manager_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "asset_index.yaml"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_telephony_delegate_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/broker.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_broker_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_tool_broker_pack.tool-broker.invoke",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_broker_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/broker.py"
+        ],
+        "indexed": [
+          "runtime/broker.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_broker_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/executor.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_tool_local_executor_pack.tool-executor.local",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/executor.py"
+        ],
+        "indexed": [
+          "runtime/executor.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/executor.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_mcp_executor_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_tool_mcp_executor_pack.tool-executor.mcp",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_mcp_executor_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/executor.py"
+        ],
+        "indexed": [
+          "runtime/executor.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_mcp_executor_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/registry.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_tool_registry_pack.tool-registry.definition",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_tool_registry_pack.tool-registry.manage",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_tool_registry_pack.tool-registry.migrate",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/__init__.py",
+          "runtime/registry.py"
+        ],
+        "indexed": [
+          "runtime/__init__.py",
+          "runtime/host.py",
+          "runtime/pack_data.py",
+          "runtime/registry.py",
+          "runtime/selection.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/normalizer.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_result_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_tool_result_pack.tool-result.normalize",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_result_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/normalizer.py"
+        ],
+        "indexed": [
+          "runtime/normalizer.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_result_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/validator.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_tool_validation_pack.tool-validation.arguments",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/validator.py"
+        ],
+        "indexed": [
+          "runtime/validator.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/turns.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/turns.py"
+        ],
+        "indexed": [
+          "runtime/durable.py",
+          "runtime/host.py",
+          "runtime/saved.py",
+          "runtime/turns.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "catalog/voice_mobile_workflows.yaml"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_voice_mobile_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "catalog/delivery_handoffs.yaml"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_workflow_scheduler_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "artifact": "runtime/mounts.py",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "function_id": "rumi_workspace_mount_pack.workspace-mount.manage",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "function_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/executables.v4.json",
+        "rule": "runtime_entrypoint_not_declared",
+        "symbol": "runtime_entrypoint_not_declared"
+      },
+      {
+        "declared": [
+          "runtime/mounts.py"
+        ],
+        "indexed": [
+          "runtime/mounts.py"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "catalog/artifact_types.workspace.yaml"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_workspace_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "declared": [],
+        "indexed": [
+          "nodes/search_home_surface.node.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/search_home_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      },
+      {
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/tobkiri_mcp_connection_pack",
+        "rule": "pack_missing_from_v4_catalog",
+        "symbol": "pack_missing_from_v4_catalog"
+      },
+      {
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack",
+        "rule": "pack_missing_from_v4_catalog",
+        "symbol": "pack_missing_from_v4_catalog"
+      },
+      {
+        "artifact": "backend-integrity.v4.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "declared": [
+          "backend-integrity.v4.json",
+          "frontend_contract_map.v4.json",
+          "runtime/provider.py",
+          "schemas/frontend-contract-map.v4.schema.json",
+          "schemas/workflow-definition.v4.schema.json",
+          "schemas/workflow-error.v4.schema.json",
+          "schemas/workflow-operation.v4.schema.json",
+          "schemas/workflow-result.v4.schema.json"
+        ],
+        "indexed": [
+          "backend-integrity.v4.json",
+          "frontend_contract_map.v4.json",
+          "runtime/provider.py",
+          "schemas/frontend-contract-map.v4.schema.json",
+          "schemas/workflow-definition.v4.schema.json",
+          "schemas/workflow-error.v4.schema.json",
+          "schemas/workflow-operation.v4.schema.json",
+          "schemas/workflow-result.v4.schema.json"
+        ],
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/artifact-index.v4.json",
+        "rule": "runtime_artifact_index_mismatch",
+        "symbol": "runtime_artifact_index_mismatch"
+      }
+    ],
     "double_authority": [],
-    "executable_source_registry": [],
-    "launcher_safety": [],
+    "executable_source_registry": [
+      {
+        "actual_function_count": 202,
+        "actual_operation_count": 265,
+        "duplicate_count": 0,
+        "expected_function_count": 202,
+        "expected_operation_count": 265,
+        "invalid_count": 0,
+        "line": 1,
+        "mismatched_count": 3,
+        "missing_count": 0,
+        "missing_sample": [],
+        "path": "tobkiri_runtime/schemas/executable_sources.v1.json",
+        "rule": "executable_source_registry_incomplete",
+        "symbol": "executable_source_registry_incomplete",
+        "unexpected_count": 0,
+        "unexpected_sample": []
+      }
+    ],
+    "launcher_safety": [
+      {
+        "actual": "sha256:66fa549d83a39bf64428e2326d7b19f3664ca5e3f6fedad9a9233a45f0c6dd0e",
+        "declared": "sha256:753ac0abbd287ee98ed03907b1ea9ad0f52ca3f845301d66767a3fe1aa020fac",
+        "line": 1,
+        "loader": "python",
+        "module": "ecosystem.rumi_model_catalog_pack.runtime.catalog",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/rumi.pack.v3.json",
+        "rule": "unverified_v3_entrypoint",
+        "symbol": "unverified_v3_entrypoint"
+      }
+    ],
     "legacy_registry_and_installed_lookup": [],
     "migration_evidence": [
+      {
+        "diagnostic": "RED: canonical Pack roots are missing: defaults",
+        "line": 1,
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "migration_proof_generator_drift",
+        "symbol": "migration_proof_generator_drift"
+      },
+      {
+        "extra": [],
+        "line": 1,
+        "missing": [
+          "rumi_agent_services_pack",
+          "rumi_local_agent_pack",
+          "rumi_pack_suite_pack",
+          "rumi_reference_ui_pack"
+        ],
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "independent_migration_proof_scope_mismatch",
+        "symbol": "independent_migration_proof_scope_mismatch"
+      },
       {
         "line": 1,
         "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
         "rule": "migration_release_proof_missing",
         "sample_pack_ids": [
           "defaultspack",
-          "rumi_agent_continuity_pack",
-          "rumi_agent_runtime_service_pack",
-          "rumi_agent_state_store_pack",
-          "rumi_agent_workroom_pack",
-          "rumi_agentic_qa_pack",
+          "rumi_agent_services_pack",
           "rumi_ai_gateway_pack",
           "rumi_ai_modality_pack",
           "rumi_ai_pipeline_pack",
@@ -54,20 +1900,25 @@
           "rumi_ai_stream_pack",
           "rumi_ai_tool_bridge_pack",
           "rumi_ai_usage_pack",
-          "rumi_ambient_trigger_pack",
-          "rumi_api_toolsmith_pack",
           "rumi_artifact_app_runtime_pack",
-          "rumi_browser_automation_pack",
-          "rumi_browser_element_pack",
-          "rumi_browser_form_operator_pack",
-          "rumi_browser_host_service_pack"
+          "rumi_browser_host_service_pack",
+          "rumi_clipboard_host_service_pack",
+          "rumi_command_protocol_pack",
+          "rumi_company_surface_pack",
+          "rumi_connector_settings_surface_pack",
+          "rumi_conversation_store_pack",
+          "rumi_credential_broker_pack",
+          "rumi_customer_research_pack",
+          "rumi_data_analysis_pack",
+          "rumi_default_tool_projection_pack"
         ],
         "status_counts": {
           "generated-draft": 63,
-          "semantically-reviewed": 78
+          "not-migrated": 4,
+          "release-verified": 78
         },
         "symbol": "migration_release_proof_missing",
-        "unverified_count": 141
+        "unverified_count": 67
       }
     ],
     "offline_projection": []
@@ -90,32 +1941,1861 @@
   },
   "gates": {
     "artifact_contracts": {
-      "findings": [],
-      "status": "GREEN"
+      "findings": [
+        {
+          "artifact": "artifact-index.v4.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_agent_services_pack/artifact-index.v4.json",
+          "rule": "missing_v4_artifact",
+          "symbol": "missing_v4_artifact"
+        },
+        {
+          "artifact": "pack.v4.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_agent_services_pack/pack.v4.json",
+          "rule": "missing_v4_artifact",
+          "symbol": "missing_v4_artifact"
+        },
+        {
+          "artifact": "contracts.v4.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_agent_services_pack/contracts.v4.json",
+          "rule": "missing_v4_artifact",
+          "symbol": "missing_v4_artifact"
+        },
+        {
+          "artifact": "executables.v4.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_agent_services_pack/executables.v4.json",
+          "rule": "missing_v4_artifact",
+          "symbol": "missing_v4_artifact"
+        },
+        {
+          "artifact": "artifact-index.v4.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_local_agent_pack/artifact-index.v4.json",
+          "rule": "missing_v4_artifact",
+          "symbol": "missing_v4_artifact"
+        },
+        {
+          "artifact": "pack.v4.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_local_agent_pack/pack.v4.json",
+          "rule": "missing_v4_artifact",
+          "symbol": "missing_v4_artifact"
+        },
+        {
+          "artifact": "contracts.v4.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_local_agent_pack/contracts.v4.json",
+          "rule": "missing_v4_artifact",
+          "symbol": "missing_v4_artifact"
+        },
+        {
+          "artifact": "executables.v4.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_local_agent_pack/executables.v4.json",
+          "rule": "missing_v4_artifact",
+          "symbol": "missing_v4_artifact"
+        },
+        {
+          "error": "InvalidArtifactError: executable implementation digest mismatch",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/executables.v4.json",
+          "rule": "production_compiler_rejected_pack",
+          "symbol": "production_compiler_rejected_pack"
+        },
+        {
+          "artifact": "artifact-index.v4.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_pack_suite_pack/artifact-index.v4.json",
+          "rule": "missing_v4_artifact",
+          "symbol": "missing_v4_artifact"
+        },
+        {
+          "artifact": "pack.v4.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_pack_suite_pack/pack.v4.json",
+          "rule": "missing_v4_artifact",
+          "symbol": "missing_v4_artifact"
+        },
+        {
+          "artifact": "contracts.v4.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_pack_suite_pack/contracts.v4.json",
+          "rule": "missing_v4_artifact",
+          "symbol": "missing_v4_artifact"
+        },
+        {
+          "artifact": "executables.v4.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_pack_suite_pack/executables.v4.json",
+          "rule": "missing_v4_artifact",
+          "symbol": "missing_v4_artifact"
+        },
+        {
+          "artifact": "artifact-index.v4.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_reference_ui_pack/artifact-index.v4.json",
+          "rule": "missing_v4_artifact",
+          "symbol": "missing_v4_artifact"
+        },
+        {
+          "artifact": "pack.v4.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_reference_ui_pack/pack.v4.json",
+          "rule": "missing_v4_artifact",
+          "symbol": "missing_v4_artifact"
+        },
+        {
+          "artifact": "contracts.v4.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_reference_ui_pack/contracts.v4.json",
+          "rule": "missing_v4_artifact",
+          "symbol": "missing_v4_artifact"
+        },
+        {
+          "artifact": "executables.v4.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_reference_ui_pack/executables.v4.json",
+          "rule": "missing_v4_artifact",
+          "symbol": "missing_v4_artifact"
+        }
+      ],
+      "status": "RED"
     },
     "authority_resolved_plan_scope": {
-      "findings": [],
-      "status": "GREEN"
+      "findings": [
+        {
+          "extra": [
+            "rumi_command_protocol_pack",
+            "tobkiri_mcp_connection_pack",
+            "tobkiri_ui_settings_pack"
+          ],
+          "line": 1,
+          "missing": [
+            "defaults"
+          ],
+          "path": "tobkiri_runtime/schemas/pack_v4_catalog.v1.json",
+          "rule": "v4_catalog_disk_scope_mismatch",
+          "symbol": "pack_v4_catalog"
+        }
+      ],
+      "status": "RED"
     },
     "command_protocol_activation": {
-      "findings": [],
-      "status": "GREEN"
+      "findings": [
+        {
+          "error": "bundle artifact digest changed: packs/defaults-basepack.pack.v4.json (sha256:0bba6dad19637b2dd8b2a149093715e8641f10894dd93c48b5b33fea588da0d7 != sha256:e2e10d829f25b8dc7e421091f42d62b8ab02a12fd92abe6d9dbf874e17290f83)",
+          "line": 1,
+          "path": "tobkiri_runtime/core_runtime/pack_api_server.py",
+          "rule": "signed_application_route_map_unavailable",
+          "symbol": "signed_application_route_map_unavailable"
+        }
+      ],
+      "status": "RED"
     },
     "declaration_disk_runtime": {
-      "findings": [],
-      "status": "GREEN"
+      "findings": [
+        {
+          "artifact": "runtime/conversation.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "defaultspack.application-presentation",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "defaultspack.conversation",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "defaultspack.conversation.saved",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/conversation.py"
+          ],
+          "indexed": [
+            "extensions/tools/settings_inspect/manifest.json",
+            "extensions/tools/settings_update/manifest.json",
+            "host_contract_contributions.v1.json",
+            "runtime/application_presentation.py",
+            "runtime/conversation.py",
+            "runtime/saved_conversation.py",
+            "tools/artifact_export/manifest.json",
+            "tools/artifact_file_delete/manifest.json",
+            "tools/artifact_file_list/manifest.json",
+            "tools/artifact_file_patch/manifest.json",
+            "tools/artifact_file_read/manifest.json",
+            "tools/artifact_file_write/manifest.json",
+            "tools/artifact_preview/manifest.json",
+            "tools/artifact_zip/manifest.json",
+            "tools/audio_transcribe/manifest.json",
+            "tools/audio_transcribe_local/manifest.json",
+            "tools/browser_download_collect/manifest.json",
+            "tools/browser_extract_table/manifest.json",
+            "tools/browser_save_page/manifest.json",
+            "tools/browser_upload_file/manifest.json",
+            "tools/calendar_create/manifest.json",
+            "tools/chart_create/manifest.json",
+            "tools/desktop_access_grant/manifest.json",
+            "tools/desktop_access_request/manifest.json",
+            "tools/desktop_control_acquire/manifest.json",
+            "tools/desktop_control_release/manifest.json",
+            "tools/desktop_control_renew/manifest.json",
+            "tools/desktop_create/manifest.json",
+            "tools/desktop_frame/manifest.json",
+            "tools/desktop_input/manifest.json",
+            "tools/desktop_list/manifest.json",
+            "tools/desktop_rules_update/manifest.json",
+            "tools/discord_send/manifest.json",
+            "tools/doc_create/manifest.json",
+            "tools/doc_export/manifest.json",
+            "tools/doc_to_pdf/manifest.json",
+            "tools/doc_update/manifest.json",
+            "tools/drive_create/manifest.json",
+            "tools/drive_export/manifest.json",
+            "tools/external_send/manifest.json",
+            "tools/github_issue_create/manifest.json",
+            "tools/github_issue_list/manifest.json",
+            "tools/github_issue_update/manifest.json",
+            "tools/github_pr_create/manifest.json",
+            "tools/github_search/manifest.json",
+            "tools/gmail_draft/manifest.json",
+            "tools/gmail_search/manifest.json",
+            "tools/html_preview/manifest.json",
+            "tools/human_operator_canvas_open/manifest.json",
+            "tools/image_convert/manifest.json",
+            "tools/image_generate_local_or_provider/manifest.json",
+            "tools/image_render/manifest.json",
+            "tools/image_resize/manifest.json",
+            "tools/jira_issue_sync/manifest.json",
+            "tools/job_artifacts/manifest.json",
+            "tools/job_cancel/manifest.json",
+            "tools/job_create/manifest.json",
+            "tools/job_history/manifest.json",
+            "tools/job_resume/manifest.json",
+            "tools/job_status/manifest.json",
+            "tools/line_push/manifest.json",
+            "tools/linear_issue_sync/manifest.json",
+            "tools/memo_create_note/manifest.json",
+            "tools/memo_folder_upsert/manifest.json",
+            "tools/memo_get/manifest.json",
+            "tools/memo_list/manifest.json",
+            "tools/memo_list_notes/manifest.json",
+            "tools/memo_note_upsert/manifest.json",
+            "tools/memo_search/manifest.json",
+            "tools/memo_search_notes/manifest.json",
+            "tools/node_exec/manifest.json",
+            "tools/ocr_extract/manifest.json",
+            "tools/package_install_plan/manifest.json",
+            "tools/pdf_export/manifest.json",
+            "tools/pdf_extract/manifest.json",
+            "tools/pdf_extract_tables/manifest.json",
+            "tools/pdf_preview/manifest.json",
+            "tools/project_scaffold/manifest.json",
+            "tools/python_exec/manifest.json",
+            "tools/research_report_export/manifest.json",
+            "tools/sandbox_exec/manifest.json",
+            "tools/sandbox_files_apply_patch/manifest.json",
+            "tools/sandbox_files_read/manifest.json",
+            "tools/sandbox_port_expose/manifest.json",
+            "tools/sheet_analyze/manifest.json",
+            "tools/sheet_create/manifest.json",
+            "tools/sheet_export/manifest.json",
+            "tools/sheet_read/manifest.json",
+            "tools/sheet_update/manifest.json",
+            "tools/slack_send/manifest.json",
+            "tools/slides_create/manifest.json",
+            "tools/slides_export/manifest.json",
+            "tools/slides_from_markdown/manifest.json",
+            "tools/slides_update/manifest.json",
+            "tools/source_extract/manifest.json",
+            "tools/source_rank/manifest.json",
+            "tools/static_site_export/manifest.json",
+            "tools/tool_names/manifest.json",
+            "tools/tool_search/manifest.json",
+            "tools/tool_task_board/manifest.json",
+            "tools/tool_task_board_agent_session/manifest.json",
+            "tools/tool_ui_build_recursive/manifest.json",
+            "tools/tool_ui_commit_plan/manifest.json",
+            "tools/tool_ui_compile_plan/manifest.json",
+            "tools/tool_ui_compose_page/manifest.json",
+            "tools/tool_ui_generate_candidates/manifest.json",
+            "tools/tool_ui_generate_foundation/manifest.json",
+            "tools/tool_ui_inspect_compression/manifest.json",
+            "tools/tool_ui_render_matrix/manifest.json",
+            "tools/tool_ui_select_candidates/manifest.json",
+            "tools/tool_ui_verify_recursive_build/manifest.json",
+            "tools/tts_generate/manifest.json",
+            "tools/tts_generate_local/manifest.json",
+            "tools/webapp_build/manifest.json",
+            "tools/webapp_export_static/manifest.json",
+            "tools/webapp_lint/manifest.json",
+            "tools/webapp_preview/manifest.json",
+            "tools/wide_research/manifest.json",
+            "tools/workflow_cancel/manifest.json",
+            "tools/workflow_define/manifest.json",
+            "tools/workflow_retry/manifest.json",
+            "tools/workflow_run/manifest.json",
+            "tools/workflow_status/manifest.json",
+            "update_metadata.v1.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "asset_index.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_agent_continuity_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_agent_services_pack/executables.v4.json",
+          "rule": "runtime_variant_declaration_invalid",
+          "symbol": "runtime_variant_declaration_invalid"
+        },
+        {
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_agent_services_pack/pack.v4.json",
+          "rule": "runtime_function_declaration_invalid",
+          "symbol": "runtime_function_declaration_invalid"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "asset_index.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_agent_workroom_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "catalog/acceptance_rubric.yaml"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_agentic_qa_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/gateway.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/__init__.py",
+            "runtime/gateway.py"
+          ],
+          "indexed": [
+            "runtime/__init__.py",
+            "runtime/gateway.py",
+            "runtime/preflight.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "frontend_extensions/ambient_trigger.ui.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_ambient_trigger_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "catalog/api_toolsmith_workflows.yaml"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_api_toolsmith_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "catalog/element_schema.yaml"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_browser_element_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "catalog/form_action_recipes.yaml"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_browser_form_operator_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "asset_index.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_browser_session_replay_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "catalog/business_ops_workflows.yaml"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_business_ops_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "asset_index.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_code_migration_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack",
+          "rule": "pack_missing_from_v4_catalog",
+          "symbol": "pack_missing_from_v4_catalog"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "catalog/connectors.gateway.yaml"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_connector_gateway_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/store.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_conversation_store_pack.conversation-store.message-manage",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_conversation_store_pack.conversation-store.message-resource",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_conversation_store_pack.conversation-store.migrate",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_conversation_store_pack.conversation-store.resource",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/store.py"
+          ],
+          "indexed": [
+            "runtime/host.py",
+            "runtime/manage_host.py",
+            "runtime/message_host.py",
+            "runtime/saved_receipt.py",
+            "runtime/store.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/process.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "runtime/service.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "runtime/store.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_credential_broker_pack.credential-broker.manage",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_credential_broker_pack.credential-broker.migrate",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_credential_broker_pack.credential-broker.resolve",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_credential_broker_pack.credential-broker.status",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/__init__.py",
+            "runtime/process.py",
+            "runtime/service.py",
+            "runtime/store.py"
+          ],
+          "indexed": [
+            "runtime/__init__.py",
+            "runtime/process.py",
+            "runtime/service.py",
+            "runtime/store.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_credential_broker_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/projection.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_default_tool_projection_pack.default-tools.migration-source",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_default_tool_projection_pack.tool-adapter.defaultspack-compat",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/projection.py"
+          ],
+          "indexed": [
+            "runtime/projection.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "function_id": "rumi_default_tools_pack.calculator",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "domain/tool/calculator.py",
+            "host_contract_contributions.v1.json",
+            "runtime/calculator.py",
+            "tools/browser_companion/manifest.json",
+            "tools/browser_computer/manifest.json",
+            "tools/browser_use/manifest.json",
+            "tools/calculator/manifest.json",
+            "tools/coding_file_create/manifest.json",
+            "tools/coding_file_delete/manifest.json",
+            "tools/coding_file_list/manifest.json",
+            "tools/coding_file_patch/manifest.json",
+            "tools/coding_file_read/manifest.json",
+            "tools/coding_file_restore/manifest.json",
+            "tools/coding_file_search/manifest.json",
+            "tools/coding_file_write/manifest.json",
+            "tools/coding_git_commit/manifest.json",
+            "tools/coding_git_diff/manifest.json",
+            "tools/coding_git_push/manifest.json",
+            "tools/coding_git_status/manifest.json",
+            "tools/coding_terminal_exec/manifest.json",
+            "tools/computer_use/manifest.json",
+            "tools/file_reader/manifest.json",
+            "tools/reddit_search/manifest.json",
+            "tools/rumi_api/manifest.json",
+            "tools/sandbox_artifact_export/manifest.json",
+            "tools/sandbox_diff_preview/manifest.json",
+            "tools/sandbox_file_patch/manifest.json",
+            "tools/sandbox_file_read/manifest.json",
+            "tools/sandbox_file_write/manifest.json",
+            "tools/sandbox_terminal_exec/manifest.json",
+            "tools/subagent/manifest.json",
+            "tools/todo/manifest.json",
+            "tools/web_search/manifest.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "schemas/citation_trace.schema.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_document_intelligence_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "asset_index.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_evidence_dossier_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "asset_index.yaml"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_experiment_design_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "schemas/component_acceptance.schema.yaml"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_frontend_design_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/publish.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_git_publish_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_git_publish_pack.git-publish.service",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_git_publish_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_git_publish_pack.git-push-prepare.service",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_git_publish_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/publish.py"
+          ],
+          "indexed": [
+            "runtime/publish.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_git_publish_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/read.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_git_read_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_git_read_pack.git-read.service",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_git_read_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/read.py"
+          ],
+          "indexed": [
+            "runtime/read.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_git_read_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/write.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_git_write_pack.git-apply-patch-prepare.service",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_git_write_pack.git-apply-patch.service",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_git_write_pack.git-commit-prepare.service",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_git_write_pack.git-commit.service",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_git_write_pack.git-restore-prepare.service",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_git_write_pack.git-restore.service",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/write.py"
+          ],
+          "indexed": [
+            "runtime/write.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/bridge.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.authorize",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/bridge.py"
+          ],
+          "indexed": [
+            "runtime/bridge.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "policies/host_capability_boundary.policy.yaml"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_host_capabilities_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "frontend_extensions/marketplace_preview.ui.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_knowledge_marketplace_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_local_agent_pack/executables.v4.json",
+          "rule": "runtime_variant_declaration_invalid",
+          "symbol": "runtime_variant_declaration_invalid"
+        },
+        {
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_local_agent_pack/pack.v4.json",
+          "rule": "runtime_function_declaration_invalid",
+          "symbol": "runtime_function_declaration_invalid"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "schemas/locale_issue.schema.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_localization_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/gateway.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_mcp_gateway_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_mcp_gateway_pack.mcp-gateway.call",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_mcp_gateway_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/gateway.py"
+          ],
+          "indexed": [
+            "runtime/gateway.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_mcp_gateway_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "asset_index.yaml"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_meeting_intelligence_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "catalog/capabilities.memory.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_memory_knowledge_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/catalog.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_model_catalog_pack.model-catalog.bundled",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_digest_mismatch",
+          "symbol": "runtime_entrypoint_digest_mismatch"
+        },
+        {
+          "artifact": "runtime/process.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "runtime/registry.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_model_registry_pack.model-registry.manage",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_model_registry_pack.model-registry.migrate",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_model_registry_pack.model-registry.profile",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/__init__.py",
+            "runtime/process.py",
+            "runtime/registry.py",
+            "runtime/service.py"
+          ],
+          "indexed": [
+            "runtime/__init__.py",
+            "runtime/process.py",
+            "runtime/registry.py",
+            "runtime/service.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_model_registry_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "catalog/artifact_schema.media.yaml"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_multimodal_media_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "schemas/observability_event.schema.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_observability_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "asset_index.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_omnichannel_agent_inbox_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "frontend_extensions/operations_company.ui.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_operations_company_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_pack_suite_pack/executables.v4.json",
+          "rule": "runtime_variant_declaration_invalid",
+          "symbol": "runtime_variant_declaration_invalid"
+        },
+        {
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_pack_suite_pack/pack.v4.json",
+          "rule": "runtime_function_declaration_invalid",
+          "symbol": "runtime_function_declaration_invalid"
+        },
+        {
+          "artifact": "runtime/service.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "runtime/store.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_prompt_studio_pack.prompt-studio.resource",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "catalog/prompt_studio_prompt_library.yaml",
+            "frontend/contributions/prompt-studio.json",
+            "runtime/__init__.py",
+            "runtime/process.py",
+            "runtime/service.py",
+            "runtime/store.py",
+            "ui/app.js",
+            "ui/index.html",
+            "ui/style.css"
+          ],
+          "indexed": [
+            "catalog/prompt_studio_prompt_library.yaml",
+            "frontend/contributions/prompt-studio.json",
+            "runtime/__init__.py",
+            "runtime/process.py",
+            "runtime/resource_host.py",
+            "runtime/service.py",
+            "runtime/store.py",
+            "ui/app.js",
+            "ui/index.html",
+            "ui/style.css"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/adapter.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_provider_adapters_pack.provider.compatibility.embedding",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_provider_adapters_pack.provider.compatibility.generate",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_provider_adapters_pack.provider.compatibility.image",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_provider_adapters_pack.provider.compatibility.stream",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/__init__.py",
+            "runtime/adapter.py"
+          ],
+          "indexed": [
+            "runtime/__init__.py",
+            "runtime/adapter.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/health_process.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "runtime/process.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_provider_registry_pack.provider-configure.execute",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_provider_registry_pack.provider-configure.prepare",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_provider_registry_pack.provider-registry.health",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_provider_registry_pack.provider-registry.manage",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_provider_registry_pack.provider-registry.resource",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/__init__.py",
+            "runtime/health_process.py",
+            "runtime/process.py",
+            "runtime/registry.py",
+            "runtime/service.py"
+          ],
+          "indexed": [
+            "runtime/__init__.py",
+            "runtime/configuration.py",
+            "runtime/health_process.py",
+            "runtime/process.py",
+            "runtime/registry.py",
+            "runtime/service.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_reference_ui_pack/executables.v4.json",
+          "rule": "runtime_variant_declaration_invalid",
+          "symbol": "runtime_variant_declaration_invalid"
+        },
+        {
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_reference_ui_pack/pack.v4.json",
+          "rule": "runtime_function_declaration_invalid",
+          "symbol": "runtime_function_declaration_invalid"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "schemas/metric_record.schema.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_runtime_benchmark_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "catalog/runtime_matrix.yaml"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_sandbox_runtime_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "function_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/adapter.py"
+          ],
+          "indexed": [
+            "runtime/adapter.py",
+            "runtime/definitions_component.wasm"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "catalog/finding_schema.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_security_review_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/execute.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_shell_execute_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_shell_execute_pack.shell-execute.service",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_shell_execute_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_shell_execute_pack.shell-prepare.service",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_shell_execute_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/execute.py"
+          ],
+          "indexed": [
+            "runtime/execute.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_shell_execute_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/policy.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_shell_policy_pack.shell-policy.inspect",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/policy.py"
+          ],
+          "indexed": [
+            "runtime/policy.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "schemas/sop_mining_record.schema.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_sop_mining_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "asset_index.yaml"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_study_coach_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "catalog/pr_acceptance_rubric.yaml"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_subagent_pr_manager_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "asset_index.yaml"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_telephony_delegate_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/broker.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_broker_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_tool_broker_pack.tool-broker.invoke",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_broker_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/broker.py"
+          ],
+          "indexed": [
+            "runtime/broker.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_broker_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/executor.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_tool_local_executor_pack.tool-executor.local",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/executor.py"
+          ],
+          "indexed": [
+            "runtime/executor.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/executor.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_mcp_executor_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_tool_mcp_executor_pack.tool-executor.mcp",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_mcp_executor_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/executor.py"
+          ],
+          "indexed": [
+            "runtime/executor.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_mcp_executor_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/registry.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_tool_registry_pack.tool-registry.definition",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_tool_registry_pack.tool-registry.manage",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_tool_registry_pack.tool-registry.migrate",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/__init__.py",
+            "runtime/registry.py"
+          ],
+          "indexed": [
+            "runtime/__init__.py",
+            "runtime/host.py",
+            "runtime/pack_data.py",
+            "runtime/registry.py",
+            "runtime/selection.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/normalizer.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_result_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_tool_result_pack.tool-result.normalize",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_result_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/normalizer.py"
+          ],
+          "indexed": [
+            "runtime/normalizer.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_result_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/validator.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_tool_validation_pack.tool-validation.arguments",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/validator.py"
+          ],
+          "indexed": [
+            "runtime/validator.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/turns.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/turns.py"
+          ],
+          "indexed": [
+            "runtime/durable.py",
+            "runtime/host.py",
+            "runtime/saved.py",
+            "runtime/turns.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "catalog/voice_mobile_workflows.yaml"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_voice_mobile_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "catalog/delivery_handoffs.yaml"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_workflow_scheduler_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "artifact": "runtime/mounts.py",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "function_id": "rumi_workspace_mount_pack.workspace-mount.manage",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "function_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/executables.v4.json",
+          "rule": "runtime_entrypoint_not_declared",
+          "symbol": "runtime_entrypoint_not_declared"
+        },
+        {
+          "declared": [
+            "runtime/mounts.py"
+          ],
+          "indexed": [
+            "runtime/mounts.py"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "catalog/artifact_types.workspace.yaml"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_workspace_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "declared": [],
+          "indexed": [
+            "nodes/search_home_surface.node.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/search_home_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        },
+        {
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/tobkiri_mcp_connection_pack",
+          "rule": "pack_missing_from_v4_catalog",
+          "symbol": "pack_missing_from_v4_catalog"
+        },
+        {
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack",
+          "rule": "pack_missing_from_v4_catalog",
+          "symbol": "pack_missing_from_v4_catalog"
+        },
+        {
+          "artifact": "backend-integrity.v4.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "declared": [
+            "backend-integrity.v4.json",
+            "frontend_contract_map.v4.json",
+            "runtime/provider.py",
+            "schemas/frontend-contract-map.v4.schema.json",
+            "schemas/workflow-definition.v4.schema.json",
+            "schemas/workflow-error.v4.schema.json",
+            "schemas/workflow-operation.v4.schema.json",
+            "schemas/workflow-result.v4.schema.json"
+          ],
+          "indexed": [
+            "backend-integrity.v4.json",
+            "frontend_contract_map.v4.json",
+            "runtime/provider.py",
+            "schemas/frontend-contract-map.v4.schema.json",
+            "schemas/workflow-definition.v4.schema.json",
+            "schemas/workflow-error.v4.schema.json",
+            "schemas/workflow-operation.v4.schema.json",
+            "schemas/workflow-result.v4.schema.json"
+          ],
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/artifact-index.v4.json",
+          "rule": "runtime_artifact_index_mismatch",
+          "symbol": "runtime_artifact_index_mismatch"
+        }
+      ],
+      "status": "RED"
     },
     "double_authority": {
       "findings": [],
       "status": "GREEN"
     },
     "executable_source_registry": {
-      "findings": [],
-      "status": "GREEN"
+      "findings": [
+        {
+          "actual_function_count": 202,
+          "actual_operation_count": 265,
+          "duplicate_count": 0,
+          "expected_function_count": 202,
+          "expected_operation_count": 265,
+          "invalid_count": 0,
+          "line": 1,
+          "mismatched_count": 3,
+          "missing_count": 0,
+          "missing_sample": [],
+          "path": "tobkiri_runtime/schemas/executable_sources.v1.json",
+          "rule": "executable_source_registry_incomplete",
+          "symbol": "executable_source_registry_incomplete",
+          "unexpected_count": 0,
+          "unexpected_sample": []
+        }
+      ],
+      "status": "RED"
     },
     "launcher_safety": {
-      "findings": [],
-      "status": "GREEN"
+      "findings": [
+        {
+          "actual": "sha256:66fa549d83a39bf64428e2326d7b19f3664ca5e3f6fedad9a9233a45f0c6dd0e",
+          "declared": "sha256:753ac0abbd287ee98ed03907b1ea9ad0f52ca3f845301d66767a3fe1aa020fac",
+          "line": 1,
+          "loader": "python",
+          "module": "ecosystem.rumi_model_catalog_pack.runtime.catalog",
+          "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/rumi.pack.v3.json",
+          "rule": "unverified_v3_entrypoint",
+          "symbol": "unverified_v3_entrypoint"
+        }
+      ],
+      "status": "RED"
     },
     "legacy_registry_and_installed_lookup": {
       "findings": [],
@@ -124,16 +3804,32 @@
     "migration_evidence": {
       "findings": [
         {
+          "diagnostic": "RED: canonical Pack roots are missing: defaults",
+          "line": 1,
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "migration_proof_generator_drift",
+          "symbol": "migration_proof_generator_drift"
+        },
+        {
+          "extra": [],
+          "line": 1,
+          "missing": [
+            "rumi_agent_services_pack",
+            "rumi_local_agent_pack",
+            "rumi_pack_suite_pack",
+            "rumi_reference_ui_pack"
+          ],
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "independent_migration_proof_scope_mismatch",
+          "symbol": "independent_migration_proof_scope_mismatch"
+        },
+        {
           "line": 1,
           "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
           "rule": "migration_release_proof_missing",
           "sample_pack_ids": [
             "defaultspack",
-            "rumi_agent_continuity_pack",
-            "rumi_agent_runtime_service_pack",
-            "rumi_agent_state_store_pack",
-            "rumi_agent_workroom_pack",
-            "rumi_agentic_qa_pack",
+            "rumi_agent_services_pack",
             "rumi_ai_gateway_pack",
             "rumi_ai_modality_pack",
             "rumi_ai_pipeline_pack",
@@ -141,20 +3837,25 @@
             "rumi_ai_stream_pack",
             "rumi_ai_tool_bridge_pack",
             "rumi_ai_usage_pack",
-            "rumi_ambient_trigger_pack",
-            "rumi_api_toolsmith_pack",
             "rumi_artifact_app_runtime_pack",
-            "rumi_browser_automation_pack",
-            "rumi_browser_element_pack",
-            "rumi_browser_form_operator_pack",
-            "rumi_browser_host_service_pack"
+            "rumi_browser_host_service_pack",
+            "rumi_clipboard_host_service_pack",
+            "rumi_command_protocol_pack",
+            "rumi_company_surface_pack",
+            "rumi_connector_settings_surface_pack",
+            "rumi_conversation_store_pack",
+            "rumi_credential_broker_pack",
+            "rumi_customer_research_pack",
+            "rumi_data_analysis_pack",
+            "rumi_default_tool_projection_pack"
           ],
           "status_counts": {
             "generated-draft": 63,
-            "semantically-reviewed": 78
+            "not-migrated": 4,
+            "release-verified": 78
           },
           "symbol": "migration_release_proof_missing",
-          "unverified_count": 141
+          "unverified_count": 67
         }
       ],
       "status": "RED"
@@ -190,6 +3891,7 @@
       "defaultspack",
       "rumi_agent_continuity_pack",
       "rumi_agent_runtime_service_pack",
+      "rumi_agent_services_pack",
       "rumi_agent_state_store_pack",
       "rumi_agent_workroom_pack",
       "rumi_agentic_qa_pack",
@@ -262,6 +3964,7 @@
       "rumi_knowledge_marketplace_pack",
       "rumi_knowledge_store_pack",
       "rumi_line_connector_pack",
+      "rumi_local_agent_pack",
       "rumi_localization_pack",
       "rumi_mcp_gateway_pack",
       "rumi_mcp_server_pack",
@@ -281,10 +3984,12 @@
       "rumi_omnichannel_agent_inbox_pack",
       "rumi_operations_company_pack",
       "rumi_p2p_connector_pack",
+      "rumi_pack_suite_pack",
       "rumi_prompt_studio_pack",
       "rumi_provider_adapters_pack",
       "rumi_provider_registry_pack",
       "rumi_qr_pairing_connector_pack",
+      "rumi_reference_ui_pack",
       "rumi_repository_context_pack",
       "rumi_research_pack",
       "rumi_runtime_benchmark_pack",
@@ -329,12 +4034,13 @@
       "tobkiri_ui_settings_pack",
       "tobkiri_workflow_pack"
     ],
-    "catalog_pack_directories": 141,
+    "catalog_pack_directories": 143,
     "declared_source_sets": {
       "direct_ids": [
         "defaultspack",
         "rumi_agent_continuity_pack",
         "rumi_agent_runtime_service_pack",
+        "rumi_agent_services_pack",
         "rumi_agent_state_store_pack",
         "rumi_agent_workroom_pack",
         "rumi_agentic_qa_pack",
@@ -407,6 +4113,7 @@
         "rumi_knowledge_marketplace_pack",
         "rumi_knowledge_store_pack",
         "rumi_line_connector_pack",
+        "rumi_local_agent_pack",
         "rumi_localization_pack",
         "rumi_mcp_gateway_pack",
         "rumi_mcp_server_pack",
@@ -426,10 +4133,12 @@
         "rumi_omnichannel_agent_inbox_pack",
         "rumi_operations_company_pack",
         "rumi_p2p_connector_pack",
+        "rumi_pack_suite_pack",
         "rumi_prompt_studio_pack",
         "rumi_provider_adapters_pack",
         "rumi_provider_registry_pack",
         "rumi_qr_pairing_connector_pack",
+        "rumi_reference_ui_pack",
         "rumi_repository_context_pack",
         "rumi_research_pack",
         "rumi_runtime_benchmark_pack",
@@ -757,9 +4466,11 @@
         "tobkiri_workflow_pack"
       ],
       "v4_ids": [
+        "defaults",
         "defaultspack",
         "rumi_agent_continuity_pack",
         "rumi_agent_runtime_service_pack",
+        "rumi_agent_services_pack",
         "rumi_agent_state_store_pack",
         "rumi_agent_workroom_pack",
         "rumi_agentic_qa_pack",
@@ -783,7 +4494,6 @@
         "rumi_code_ide_pack",
         "rumi_code_migration_pack",
         "rumi_coding_sandbox_service_pack",
-        "rumi_command_protocol_pack",
         "rumi_company_agent_adapter_pack",
         "rumi_company_coordinator_pack",
         "rumi_company_state_store_pack",
@@ -832,6 +4542,7 @@
         "rumi_knowledge_marketplace_pack",
         "rumi_knowledge_store_pack",
         "rumi_line_connector_pack",
+        "rumi_local_agent_pack",
         "rumi_localization_pack",
         "rumi_mcp_gateway_pack",
         "rumi_mcp_server_pack",
@@ -851,10 +4562,12 @@
         "rumi_omnichannel_agent_inbox_pack",
         "rumi_operations_company_pack",
         "rumi_p2p_connector_pack",
+        "rumi_pack_suite_pack",
         "rumi_prompt_studio_pack",
         "rumi_provider_adapters_pack",
         "rumi_provider_registry_pack",
         "rumi_qr_pairing_connector_pack",
+        "rumi_reference_ui_pack",
         "rumi_repository_context_pack",
         "rumi_research_pack",
         "rumi_runtime_benchmark_pack",
@@ -895,20 +4608,23 @@
         "rumi_workspace_pack",
         "search_home_pack",
         "tobkiri_host_pack_control",
-        "tobkiri_mcp_connection_pack",
-        "tobkiri_ui_settings_pack",
         "tobkiri_workflow_pack"
       ],
       "v4_only_ids": [
         "defaultspack",
+        "rumi_agent_services_pack",
         "rumi_command_protocol_pack",
+        "rumi_local_agent_pack",
+        "rumi_pack_suite_pack",
+        "rumi_reference_ui_pack",
         "tobkiri_mcp_connection_pack",
         "tobkiri_ui_settings_pack"
       ]
     },
     "migration_status_counts": {
       "generated-draft": 63,
-      "semantically-reviewed": 78
+      "not-migrated": 4,
+      "release-verified": 78
     },
     "migration_status_records": [
       {
@@ -920,7 +4636,7 @@
         "v4_only": true
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_agent_continuity_pack",
@@ -928,7 +4644,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_agent_runtime_service_pack",
@@ -936,7 +4652,15 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "not-migrated",
+        "declared_authority": "v4-authoritative",
+        "legacy_manifest_authority": null,
+        "pack_id": "rumi_agent_services_pack",
+        "v4_artifacts": false,
+        "v4_only": true
+      },
+      {
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_agent_state_store_pack",
@@ -944,7 +4668,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_agent_workroom_pack",
@@ -952,7 +4676,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_agentic_qa_pack",
@@ -1016,7 +4740,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_ambient_trigger_pack",
@@ -1024,7 +4748,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_api_toolsmith_pack",
@@ -1040,7 +4764,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_browser_automation_pack",
@@ -1048,7 +4772,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_browser_element_pack",
@@ -1056,7 +4780,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_browser_form_operator_pack",
@@ -1072,7 +4796,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_browser_session_replay_pack",
@@ -1080,7 +4804,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_business_ops_pack",
@@ -1096,7 +4820,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_code_ide_pack",
@@ -1104,7 +4828,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_code_migration_pack",
@@ -1112,7 +4836,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_coding_sandbox_service_pack",
@@ -1121,14 +4845,14 @@
       },
       {
         "classified_as": "generated-draft",
-        "declared_authority": "v4-authoritative",
+        "declared_authority": null,
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_command_protocol_pack",
         "v4_artifacts": true,
         "v4_only": true
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_company_agent_adapter_pack",
@@ -1136,7 +4860,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_company_coordinator_pack",
@@ -1144,7 +4868,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_company_state_store_pack",
@@ -1160,7 +4884,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_computer_control_pack",
@@ -1168,7 +4892,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_connector_company_adapter_pack",
@@ -1176,7 +4900,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_connector_gateway_pack",
@@ -1184,7 +4908,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_connector_inbound_broker_pack",
@@ -1192,7 +4916,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_connector_oauth_broker_pack",
@@ -1200,7 +4924,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_connector_outbound_broker_pack",
@@ -1208,7 +4932,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_connector_registry_service_pack",
@@ -1224,7 +4948,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_connector_transport_gateway_pack",
@@ -1232,7 +4956,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_connector_turn_adapter_pack",
@@ -1240,7 +4964,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_context_runtime_pack",
@@ -1304,7 +5028,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_devops_release_pack",
@@ -1312,7 +5036,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_discord_connector_pack",
@@ -1320,7 +5044,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_document_intelligence_pack",
@@ -1328,7 +5052,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_email_connector_pack",
@@ -1336,7 +5060,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_evidence_dossier_pack",
@@ -1344,7 +5068,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_experiment_design_pack",
@@ -1360,7 +5084,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_file_mutation_pack",
@@ -1368,7 +5092,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_file_patch_pack",
@@ -1376,7 +5100,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_frontend_design_pack",
@@ -1384,7 +5108,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_generic_webhook_connector_pack",
@@ -1400,7 +5124,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_git_read_pack",
@@ -1424,7 +5148,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_host_capabilities_pack",
@@ -1432,7 +5156,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_http_api_connector_pack",
@@ -1448,7 +5172,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_ide_bridge_service_pack",
@@ -1456,7 +5180,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_job_action_broker_pack",
@@ -1464,7 +5188,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_kanban_conversation_adapter_pack",
@@ -1472,7 +5196,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_kanban_state_store_pack",
@@ -1488,7 +5212,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_knowledge_marketplace_pack",
@@ -1496,7 +5220,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_knowledge_store_pack",
@@ -1504,7 +5228,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_line_connector_pack",
@@ -1512,7 +5236,15 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "not-migrated",
+        "declared_authority": "v4-authoritative",
+        "legacy_manifest_authority": null,
+        "pack_id": "rumi_local_agent_pack",
+        "v4_artifacts": false,
+        "v4_only": true
+      },
+      {
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_localization_pack",
@@ -1560,7 +5292,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_meeting_intelligence_pack",
@@ -1568,7 +5300,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_memory_knowledge_pack",
@@ -1576,7 +5308,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_memory_store_pack",
@@ -1584,7 +5316,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_mobile_pairing_connector_pack",
@@ -1616,7 +5348,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_multimodal_media_pack",
@@ -1624,7 +5356,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_observability_pack",
@@ -1640,7 +5372,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_omnichannel_agent_inbox_pack",
@@ -1648,7 +5380,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_operations_company_pack",
@@ -1656,12 +5388,20 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_p2p_connector_pack",
         "v4_artifacts": true,
         "v4_only": false
+      },
+      {
+        "classified_as": "not-migrated",
+        "declared_authority": "v4-authoritative",
+        "legacy_manifest_authority": null,
+        "pack_id": "rumi_pack_suite_pack",
+        "v4_artifacts": false,
+        "v4_only": true
       },
       {
         "classified_as": "generated-draft",
@@ -1688,7 +5428,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_qr_pairing_connector_pack",
@@ -1696,7 +5436,15 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "not-migrated",
+        "declared_authority": "v4-authoritative",
+        "legacy_manifest_authority": null,
+        "pack_id": "rumi_reference_ui_pack",
+        "v4_artifacts": false,
+        "v4_only": true
+      },
+      {
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_repository_context_pack",
@@ -1712,7 +5460,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_runtime_benchmark_pack",
@@ -1720,7 +5468,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_sandbox_runtime_pack",
@@ -1728,7 +5476,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_schedule_store_pack",
@@ -1736,7 +5484,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_scheduler_runtime_pack",
@@ -1760,7 +5508,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_security_review_pack",
@@ -1776,7 +5524,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_shell_policy_pack",
@@ -1784,7 +5532,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_slack_connector_pack",
@@ -1792,7 +5540,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_sop_mining_pack",
@@ -1800,7 +5548,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_study_coach_pack",
@@ -1808,7 +5556,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_subagent_placement_pack",
@@ -1816,7 +5564,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_subagent_pr_manager_pack",
@@ -1824,7 +5572,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_telephony_delegate_pack",
@@ -1832,7 +5580,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_terminal_session_pack",
@@ -1968,7 +5716,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_voice_mobile_pack",
@@ -1976,7 +5724,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_workflow_scheduler_pack",
@@ -1984,7 +5732,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_workspace_mount_pack",
@@ -1992,7 +5740,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_workspace_pack",
@@ -2000,7 +5748,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "search_home_pack",
@@ -2017,7 +5765,7 @@
       },
       {
         "classified_as": "generated-draft",
-        "declared_authority": "v4-authoritative",
+        "declared_authority": null,
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "tobkiri_mcp_connection_pack",
         "v4_artifacts": true,
@@ -2025,7 +5773,7 @@
       },
       {
         "classified_as": "generated-draft",
-        "declared_authority": "v4-authoritative",
+        "declared_authority": null,
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "tobkiri_ui_settings_pack",
         "v4_artifacts": true,
@@ -2040,13 +5788,14 @@
         "v4_only": false
       }
     ],
-    "production_pack_directories": 141,
-    "v4_artifact_files": 564,
+    "production_pack_directories": 145,
+    "v4_artifact_files": 580,
     "v4_artifacts_per_pack": 4,
     "v4_pack_artifacts": [
       "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_agent_continuity_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_agent_runtime_service_pack/pack.v4.json",
+      "tobkiri_runtime/ecosystem/rumi_agent_services_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_agent_state_store_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_agent_workroom_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_agentic_qa_pack/pack.v4.json",
@@ -2119,6 +5868,7 @@
       "tobkiri_runtime/ecosystem/rumi_knowledge_marketplace_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_knowledge_store_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_line_connector_pack/pack.v4.json",
+      "tobkiri_runtime/ecosystem/rumi_local_agent_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_localization_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_mcp_gateway_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_mcp_server_pack/pack.v4.json",
@@ -2138,10 +5888,12 @@
       "tobkiri_runtime/ecosystem/rumi_omnichannel_agent_inbox_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_operations_company_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_p2p_connector_pack/pack.v4.json",
+      "tobkiri_runtime/ecosystem/rumi_pack_suite_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_provider_adapters_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_qr_pairing_connector_pack/pack.v4.json",
+      "tobkiri_runtime/ecosystem/rumi_reference_ui_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_repository_context_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_research_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/rumi_runtime_benchmark_pack/pack.v4.json",
@@ -2193,8 +5945,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "b1719908b5ab35fe4009aa1485250b7794d78ecc",
-    "semantic_digest": "sha256:8f423f80223267a40310b5b9ef0036cbe4d412df9aa64cb113ad17fde2e64e3b",
+    "observed_head_sha": "d3ab0451a414fe731da148a7909546779538f9e4",
+    "semantic_digest": "sha256:b663ef5845899463779e39a8e8624f35abab28d4394443a382ee70a1c89cddc7",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }
