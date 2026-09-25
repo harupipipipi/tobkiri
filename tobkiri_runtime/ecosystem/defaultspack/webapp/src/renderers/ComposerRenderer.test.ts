@@ -1217,6 +1217,11 @@ test("new conversation composer input is not locked to one visual line", () => {
     }),
   );
 
+  assert.match(html, /aria-label="Tobkiriにメッセージを送信"/);
+  assert.match(html, /role="combobox"/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.match(html, /aria-label="ファイルを添付"/);
+  assert.match(html, /aria-haspopup="menu"/);
   assert.doesNotMatch(html, /rumi-composer-input-new-overlay/);
   assert.match(html, /rumi-composer-input-new[^"]*min-h-\[44px\]/);
   assert.match(html, /rumi-composer-input-new[^"]*max-h-\[240px\]/);
@@ -1564,7 +1569,7 @@ test("new and existing conversation composers keep square attachments inside the
 
   const newPanelIndex = newConversationHtml.indexOf("rumi-composer-main-panel");
   const newAttachmentIndex = newConversationHtml.indexOf("data-composer-attachment-region");
-  const newInputIndex = newConversationHtml.indexOf('aria-label="Rumiにメッセージを送信"');
+  const newInputIndex = newConversationHtml.indexOf('aria-label="Tobkiriにメッセージを送信"');
   assert.ok(newPanelIndex >= 0 && newPanelIndex < newAttachmentIndex);
   assert.ok(newAttachmentIndex < newInputIndex);
   assert.match(newConversationHtml, /data-attachment-state="expanded"/);
@@ -1572,7 +1577,7 @@ test("new and existing conversation composers keep square attachments inside the
 
   const existingFrameIndex = existingConversationHtml.indexOf("rumi-composer-frame");
   const existingAttachmentIndex = existingConversationHtml.indexOf("data-composer-attachment-region");
-  const existingInputIndex = existingConversationHtml.indexOf('aria-label="Rumiにメッセージを送信"');
+  const existingInputIndex = existingConversationHtml.indexOf('aria-label="Tobkiriにメッセージを送信"');
   assert.ok(existingFrameIndex >= 0 && existingFrameIndex < existingAttachmentIndex);
   assert.ok(existingAttachmentIndex < existingInputIndex);
   assert.equal((existingConversationHtml.match(/h-24 w-24/g) ?? []).length, 2);
