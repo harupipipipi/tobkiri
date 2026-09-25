@@ -34,11 +34,9 @@ SEARCH_HOME_ROUTES = {
     for method, path in (
         ("GET", "/api/models"),
         ("GET", "/api/settings"),
-        ("GET", "/api/route-state"),
         ("POST", "/api/route"),
         ("POST", "/api/answer"),
         ("POST", "/api/settings/model"),
-        ("POST", "/api/route-state"),
     )
 }
 
@@ -55,7 +53,7 @@ def test_search_home_operation_resolves_exact_route_and_query() -> None:
     resolved = resolve_contract_route(
         _SearchHomeHost(),
         "GET",
-        _operation("GET", "/api/route-state?source=restart"),
+        _operation("GET", "/api/models?source=picker"),
         namespace="search_home_pack",
     )
 
