@@ -3353,15 +3353,15 @@
     {
       "path": "scripts/quality/evidence/complete_v4_migration_red_64b2240e.json",
       "type": "regular-file",
-      "size": 72746,
-      "sha256": "b15df2a9b61804ed467e7357a32b81b2716b86485717dd47e4fde9be48525e3a",
+      "size": 84073,
+      "sha256": "6ab3c8b06473b6e4044bbcec7b7f81a06266f99648312dd941179416bd2b0e29",
       "executable": false
     },
     {
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 913650,
-      "sha256": "aa58296f1f29152a246f19ff2376e1e968bbbce384191384251aebcfbdd8cc17",
+      "sha256": "56e8dd8064df14cb4b38db9a115411283164fcf71f25d2754e35aefcdd166df1",
       "executable": false
     },
     {
