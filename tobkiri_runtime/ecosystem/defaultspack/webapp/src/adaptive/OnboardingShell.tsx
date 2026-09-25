@@ -13,7 +13,7 @@ import {
   UserRound,
   Workflow,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   AdaptiveOnboardingActionId,
@@ -26,6 +26,7 @@ import type {
 import { ErrorNotice } from "../components/ErrorNotice";
 import {
   adaptiveOnboardingActionIds,
+  applyAdaptiveOnboardingPlan,
   compileAdaptiveOnboardingAnswers,
   fetchAdaptiveOnboarding,
   normalizeAdaptiveOnboardingAnswers,
@@ -44,6 +45,12 @@ import {
   toneForRisk,
 } from "./AdaptivePrimitives";
 import { demoOnboardingState } from "./demoData";
+import {
+  adaptiveDraftKey,
+  clearAdaptiveDraft,
+  loadAdaptiveDraft,
+  saveAdaptiveDraft,
+} from "./adaptiveDraftStore";
 import { useAdaptiveResource } from "./useAdaptiveResource";
 
 const steps = [
@@ -62,7 +69,7 @@ const steps = [
 
 type StepId = (typeof steps)[number]["id"];
 
-type OnboardingOperation = "normalize" | "compile" | "simulate";
+type OnboardingOperation = "normalize" | "compile" | "simulate" | "apply";
 
 const presetOptions: Array<{ value: AdaptiveOnboardingPreset; label: string; summary: string }> = [
   { value: "discussion_only", label: "Discussion only", summary: "Draft and discuss; writes stay blocked." },
@@ -124,6 +131,7 @@ const operationLabels: Record<OnboardingOperation, string> = {
   normalize: "Normalize",
   compile: "Compile",
   simulate: "Simulate",
+  apply: "Apply",
 };
 
 function permissionActionId(id: string): AdaptiveOnboardingActionId | null {
@@ -618,8 +626,14 @@ export function OnboardingShell({ initialState }: { initialState?: AdaptiveOnboa
     load: fetchAdaptiveOnboarding,
   });
   const displayState = data ?? initialState ?? null;
-  const [draft, setDraftValue] = useState(() => onboardingAnswersFromState(initialState ?? demoOnboardingState));
-  const [draftTouched, setDraftTouched] = useState(false);
+  const initialSource = initialState ?? demoOnboardingState;
+  const initialResourceId = initialSource.profileId ?? "default";
+  const restoredDraftRef = useRef(loadAdaptiveDraft<AdaptiveOnboardingAnswers>(
+    adaptiveDraftKey("onboarding", initialResourceId),
+  ));
+  const [draft, setDraftValue] = useState(() => restoredDraftRef.current?.value ?? onboardingAnswersFromState(initialSource));
+  const [draftTouched, setDraftTouched] = useState(Boolean(restoredDraftRef.current));
+  const [draftMessage, setDraftMessage] = useState<string | null>(restoredDraftRef.current ? "Recovered an unsaved onboarding draft." : null);
   const [busyAction, setBusyAction] = useState<OnboardingOperation | null>(null);
   const [result, setResult] = useState<AdaptiveOnboardingApiResult | null>(null);
   const [operationMessage, setOperationMessage] = useState<string | null>(null);
@@ -628,9 +642,22 @@ export function OnboardingShell({ initialState }: { initialState?: AdaptiveOnboa
   const [activeIndex, setActiveIndex] = useState(initialIndex > 0 ? initialIndex : 0);
   const activeStep = steps[activeIndex] ?? steps[0];
   const progress = useMemo(() => `${activeIndex + 1} / ${steps.length}`, [activeIndex]);
-  const applyDisabledReason = "Approval flow is not connected.";
+  const applyDisabledReason = "Compile and review the current onboarding plan before applying it.";
   const setDraft = (next: AdaptiveOnboardingAnswers) => {
+    const resourceId = displayState?.profileId ?? next.profile_id ?? "default";
+    const stored = saveAdaptiveDraft(
+      adaptiveDraftKey("onboarding", resourceId),
+      {
+        baseRevision: 0,
+        resourceId,
+        updatedAt: new Date().toISOString(),
+        value: next,
+      },
+    );
     setDraftTouched(true);
+    setDraftMessage(stored
+      ? "Unsaved onboarding draft stored locally."
+      : "Unsaved onboarding draft is only in this tab because local storage is unavailable.");
     setResult(null);
     setOperationMessage(null);
     setOperationError(null);
@@ -642,7 +669,33 @@ export function OnboardingShell({ initialState }: { initialState?: AdaptiveOnboa
     setDraftValue(onboardingAnswersFromState(data));
   }, [data, draftTouched]);
 
+  useEffect(() => {
+    if (!draftTouched) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [draftTouched]);
+
+  const discardDraft = () => {
+    const resourceId = displayState?.profileId ?? draft.profile_id ?? "default";
+    clearAdaptiveDraft(adaptiveDraftKey("onboarding", resourceId));
+    setDraftValue(onboardingAnswersFromState(displayState ?? demoOnboardingState));
+    setDraftTouched(false);
+    setDraftMessage("Local onboarding draft discarded.");
+    setResult(null);
+    setOperationMessage(null);
+    setOperationError(null);
+  };
+
   const runOperation = async (operation: OnboardingOperation) => {
+    const reviewedPlan = result?.plan;
+    if (operation === "apply" && !reviewedPlan) {
+      setOperationError(applyDisabledReason);
+      return;
+    }
     setBusyAction(operation);
     setOperationError(null);
     setOperationMessage(null);
@@ -652,9 +705,20 @@ export function OnboardingShell({ initialState }: { initialState?: AdaptiveOnboa
           ? await normalizeAdaptiveOnboardingAnswers(draft)
           : operation === "compile"
             ? await compileAdaptiveOnboardingAnswers(draft)
-            : await simulateAdaptiveOnboardingAnswers(draft);
+            : operation === "simulate"
+              ? await simulateAdaptiveOnboardingAnswers(draft)
+              : await applyAdaptiveOnboardingPlan(draft, reviewedPlan!);
       setResult(nextResult);
-      setOperationMessage(`${operationLabels[operation]} completed.`);
+      if (operation === "apply") {
+        const resourceId = displayState?.profileId ?? draft.profile_id ?? "default";
+        clearAdaptiveDraft(adaptiveDraftKey("onboarding", resourceId));
+        setDraftTouched(false);
+        setDraftMessage(null);
+        refresh();
+        setOperationMessage("Plan applied through the authenticated local Tobkiri session. Runtime state is reloading.");
+      } else {
+        setOperationMessage(`${operationLabels[operation]} completed.`);
+      }
     } catch (err) {
       setOperationError(`${operationLabels[operation]} failed. ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -676,6 +740,14 @@ export function OnboardingShell({ initialState }: { initialState?: AdaptiveOnboa
       ) : (
         <>
       <div className={`${adaptiveSectionClass} flex flex-wrap gap-2`}>
+        {draftTouched ? (
+          <div className="basis-full rounded-md border border-amber-500/30 bg-amber-500/10 p-3" role="status">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-amber-100">{draftMessage ?? "Unsaved onboarding draft."}</p>
+              <button type="button" className={adaptiveControlClass} onClick={discardDraft}>Discard draft</button>
+            </div>
+          </div>
+        ) : null}
         <button
           type="button"
           className={adaptiveControlClass}
@@ -706,13 +778,18 @@ export function OnboardingShell({ initialState }: { initialState?: AdaptiveOnboa
         <button
           type="button"
           className={adaptivePrimaryControlClass}
-          disabled
+          onClick={() => void runOperation("apply")}
+          disabled={busyAction !== null || !result?.plan}
           title={applyDisabledReason}
-          aria-label="Apply unavailable: approval flow is not connected"
+          aria-label="Apply reviewed onboarding plan"
         >
-          Apply unavailable
+          Apply reviewed plan
         </button>
       </div>
+      <p className="px-1 text-xs leading-5 text-zinc-500">
+        Applying uses the existing authenticated local approval context. Compile first to review the
+        settings diff and simulation; policy changes are not made from a local draft alone.
+      </p>
       <ResultPanel result={result} message={operationMessage} error={operationError} />
 
       <div className="grid min-h-[520px] lg:grid-cols-[240px_1fr]">

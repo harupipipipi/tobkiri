@@ -37,6 +37,13 @@ approval flags.
   never returned to model-facing or UI-facing normal responses.
 - Freeze mode blocks new mutating activity and outbound delivery while preserving
   read-only inspection and recovery data.
+- Operating Profile draft and automation mutations require both the last
+  confirmed resource revision and a caller-generated request ID. Stale revisions
+  fail closed with `REVISION_CONFLICT`; replaying the same request and payload is
+  idempotent, while reusing a request ID for different content is rejected.
+- The control panel keeps backend-confirmed state distinct from pending, failed,
+  offline, and conflicting edits. Unsaved onboarding and profile drafts are
+  profile-scoped local data and are never treated as active policy.
 
 ## Foundation Boundaries
 
@@ -75,6 +82,7 @@ provider-specific webhook verifier explicitly handles the request first.
 | `POST` | `/api/packs/onboarding-recommendations/preview` | `adaptive_pack_recommendations_preview` |
 | `GET` | `/api/activity-center` | `adaptive_activity_snapshot` |
 | `POST` | `/api/activity-center/freeze` | `adaptive_freeze_set` |
+| `PUT` | `/api/automations/{id}` | `adaptive_automation_update` |
 | `POST` | `/api/context/file-read` | `adaptive_context_file_read` |
 | `POST` | `/api/context/code-search` | `adaptive_context_code_search` |
 | `GET` | `/api/context/repository-map` | `adaptive_context_repository_map` |

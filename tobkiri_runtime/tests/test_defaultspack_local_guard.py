@@ -675,6 +675,7 @@ def test_runtime_and_desktop_mutations_require_local_ui_auth_and_reject_unbound_
             ("POST", "/api/runtime/ensure"),
             ("POST", "/api/runtime/update"),
             ("POST", "/api/runtime/uninstall"),
+            ("POST", "/api/onboarding/apply"),
             ("POST", "/api/runtime/operations/op-1/cancel"),
             ("POST", "/api/desktops"),
             ("POST", "/api/desktops/seat-1/start"),
@@ -694,6 +695,9 @@ def test_runtime_and_desktop_mutations_require_local_ui_auth_and_reject_unbound_
         assert _local_ui_approval_route_authorized("GET", "/api/desktops", headers) is False
         assert _local_ui_approval_route_authorized(
             "POST", "/api/runtime/ensure", {"X-Rumi-CSRF": "1"}
+        ) is False
+        assert _local_ui_approval_route_authorized(
+            "POST", "/api/onboarding/apply", {"X-Rumi-CSRF": "1"}
         ) is False
 
     server = DefaultsHttpServer.__new__(DefaultsHttpServer)

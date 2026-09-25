@@ -1,8 +1,17 @@
 import { FlaskConical, Play, Plus, Power, RotateCw, Workflow } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import type { AdaptiveAutomation, AdaptiveAutomationState } from "../lib/adaptiveApi";
-import { fetchAdaptiveAutomations, updateAdaptiveAutomation } from "../lib/adaptiveApi";
+import type {
+  AdaptiveAutomation,
+  AdaptiveAutomationState,
+  AdaptiveTone,
+} from "../lib/adaptiveApi";
+import {
+  AdaptiveApiError,
+  createAdaptiveRequestId,
+  fetchAdaptiveAutomations,
+  updateAdaptiveAutomation,
+} from "../lib/adaptiveApi";
 import { ErrorNotice } from "../components/ErrorNotice";
 import {
   AdaptiveEmptyState,
@@ -22,13 +31,34 @@ import { useAdaptiveResource } from "./useAdaptiveResource";
 
 function AutomationItem({
   automation,
-  enabled,
+  mutation,
+  onDiscard,
+  onRetry,
   onToggle,
 }: {
   automation: AdaptiveAutomation;
-  enabled: boolean;
+  mutation?: AutomationMutation;
+  onDiscard: () => void;
+  onRetry: () => void;
   onToggle: () => void;
 }) {
+  const enabled = automation.enabled;
+  const mutationTone: AdaptiveTone | null = mutation?.status === "pending"
+    ? "info"
+    : mutation?.status === "conflict"
+      ? "warning"
+      : mutation
+        ? "danger"
+        : null;
+  const mutationLabel = mutation?.status === "pending"
+    ? `Pending ${mutation.intent ? "enable" : "pause"}`
+    : mutation?.status === "conflict"
+      ? "Conflict"
+      : mutation?.status === "offline"
+        ? "Offline draft"
+        : mutation
+          ? "Change failed"
+          : null;
   return (
     <article className="rounded-md border border-zinc-800 bg-zinc-950/45 p-3" aria-label={automation.name}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -36,6 +66,7 @@ function AutomationItem({
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold text-zinc-100">{automation.name}</h3>
             <ToneBadge tone={enabled ? "good" : "neutral"}>{enabled ? "Enabled" : "Paused"}</ToneBadge>
+            {mutationTone && mutationLabel ? <ToneBadge tone={mutationTone}>{mutationLabel}</ToneBadge> : null}
             <ToneBadge tone={toneForRisk(automation.risk)}>{automation.risk}</ToneBadge>
           </div>
           <p className="mt-1 text-xs leading-5 text-zinc-400">{automation.description}</p>
@@ -49,6 +80,7 @@ function AutomationItem({
           type="button"
           className={adaptiveControlClass}
           onClick={onToggle}
+          disabled={mutation?.status === "pending"}
           aria-pressed={enabled}
           aria-label={`${enabled ? "Pause" : "Enable"} ${automation.name}`}
         >
@@ -56,6 +88,15 @@ function AutomationItem({
           {enabled ? "Pause" : "Enable"}
         </button>
       </div>
+      {mutation && mutation.status !== "pending" ? (
+        <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 p-3" role="status">
+          <p className="text-xs text-amber-100">The backend still reports this automation as {enabled ? "enabled" : "paused"}. {mutation.error}</p>
+          <div className="mt-2 flex gap-2">
+            <button type="button" className={adaptiveControlClass} onClick={onRetry}>Retry</button>
+            <button type="button" className={adaptiveControlClass} onClick={onDiscard}>Discard request</button>
+          </div>
+        </div>
+      ) : null}
       <ol className="mt-3 grid gap-2 md:grid-cols-2">
         {automation.steps.map((step, index) => (
           <li key={step.id} className="rounded-md border border-zinc-800 bg-black/20 p-3">
@@ -73,35 +114,80 @@ function AutomationItem({
   );
 }
 
+type AutomationMutation = {
+  error: string;
+  expectedRevision: number;
+  intent: boolean;
+  requestId: string;
+  status: "pending" | "failed" | "offline" | "conflict";
+};
+
 export function AutomationStudio({ initialState }: { initialState?: AdaptiveAutomationState }) {
-  const { data, status, error, refresh } = useAdaptiveResource({
+  const { data, status, error, refresh, updateData } = useAdaptiveResource({
     demoData: demoAutomationState,
     initialData: initialState,
     load: fetchAdaptiveAutomations,
   });
-  const [enabledOverrides, setEnabledOverrides] = useState<Record<string, boolean>>({});
+  const [mutations, setMutations] = useState<Record<string, AutomationMutation>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
-  const automations = useMemo(
-    () => (data?.automations ?? []).map((automation) => ({
-      ...automation,
-      enabled: enabledOverrides[automation.id] ?? automation.enabled,
-    })),
-    [data, enabledOverrides],
-  );
+  const automations = useMemo(() => data?.automations ?? [], [data]);
 
-  const handleToggle = async (automation: AdaptiveAutomation) => {
-    const nextEnabled = !(enabledOverrides[automation.id] ?? automation.enabled);
-    setEnabledOverrides((current) => ({ ...current, [automation.id]: nextEnabled }));
+  const submitToggle = async (automation: AdaptiveAutomation, previous?: AutomationMutation) => {
+    const intent = previous?.intent ?? !automation.enabled;
+    const requestId = previous?.requestId ?? createAdaptiveRequestId(`automation-${automation.id}`);
+    const expectedRevision = previous?.expectedRevision ?? automation.revision;
+    const pending: AutomationMutation = {
+      error: "",
+      expectedRevision,
+      intent,
+      requestId,
+      status: "pending",
+    };
+    setMutations((current) => ({ ...current, [automation.id]: pending }));
     setOperationError(null);
-    setMessage(nextEnabled ? "Automation enabled locally." : "Automation paused locally.");
+    setMessage(`${automation.name}: saving ${intent ? "enable" : "pause"} request...`);
     try {
-      await updateAdaptiveAutomation(automation.id, { enabled: nextEnabled });
-      setMessage(nextEnabled ? "Automation enabled." : "Automation paused.");
+      const updated = await updateAdaptiveAutomation(
+        automation.id,
+        { enabled: intent },
+        { expectedRevision, requestId },
+      );
+      updateData((current) => current ? {
+        ...current,
+        revision: Math.max(current.revision, updated.revision),
+        automations: current.automations.map((item) => item.id === updated.id ? updated : item),
+      } : current);
+      setMutations((current) => {
+        if (current[automation.id]?.requestId !== requestId) return current;
+        const next = { ...current };
+        delete next[automation.id];
+        return next;
+      });
+      setMessage(`${automation.name}: confirmed ${updated.enabled ? "enabled" : "paused"} at revision ${updated.revision}.`);
     } catch (err) {
-      setMessage(null);
-      setOperationError(`Kept local automation state. ${err instanceof Error ? err.message : String(err)}`);
+      const detail = err instanceof Error ? err.message : String(err);
+      const nextStatus: AutomationMutation["status"] = err instanceof AdaptiveApiError && err.code === "REVISION_CONFLICT"
+        ? "conflict"
+        : err instanceof AdaptiveApiError && err.status > 0
+          ? "failed"
+          : "offline";
+      setMutations((current) => {
+        if (current[automation.id]?.requestId !== requestId) return current;
+        return { ...current, [automation.id]: { ...pending, error: detail, status: nextStatus } };
+      });
+      setOperationError(detail);
+      setMessage(`${automation.name}: request was not confirmed. The displayed enabled state was rolled back to the backend value.`);
     }
+  };
+
+  const discardMutation = (automationId: string) => {
+    setMutations((current) => {
+      const next = { ...current };
+      delete next[automationId];
+      return next;
+    });
+    setMessage("Unsaved automation request discarded.");
   };
 
   return (
@@ -133,7 +219,7 @@ export function AutomationStudio({ initialState }: { initialState?: AdaptiveAuto
           message={operationError}
         />
       ) : null}
-      {message ? <div className="border-t border-zinc-800/70 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-300">{message}</div> : null}
+      {message ? <div className="border-t border-zinc-800/70 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-300" role="status" aria-live="polite">{message}</div> : null}
       {!data ? (
         <AdaptiveEmptyState>Adaptive automations are unavailable until the API returns live state.</AdaptiveEmptyState>
       ) : (
@@ -150,8 +236,10 @@ export function AutomationStudio({ initialState }: { initialState?: AdaptiveAuto
               <AutomationItem
                 key={automation.id}
                 automation={automation}
-                enabled={automation.enabled}
-                onToggle={() => void handleToggle(automation)}
+                mutation={mutations[automation.id]}
+                onDiscard={() => discardMutation(automation.id)}
+                onRetry={() => void submitToggle(automation, mutations[automation.id])}
+                onToggle={() => void submitToggle(automation)}
               />
             ))}
           </div>

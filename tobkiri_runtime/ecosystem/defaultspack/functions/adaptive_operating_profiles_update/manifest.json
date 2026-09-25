@@ -1,6 +1,6 @@
 {
   "function_id": "adaptive_operating_profiles_update",
-  "description": "Update an Operating Profile preview.",
+  "description": "Save a revision-bound local Operating Profile draft.",
   "tags": [
     "adaptive",
     "profile"

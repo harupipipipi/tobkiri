@@ -18,8 +18,8 @@ const views: Array<{ id: AdaptiveView; label: string; icon: typeof Sparkles }> =
   { id: "context", label: "Context", icon: FileSearch },
 ];
 
-function AdaptiveContent({ view }: { view: AdaptiveView }) {
-  if (view === "profile") return <OperatingProfilePage />;
+function AdaptiveContent({ view, onOpenOnboarding }: { view: AdaptiveView; onOpenOnboarding: () => void }) {
+  if (view === "profile") return <OperatingProfilePage onOpenOnboarding={onOpenOnboarding} />;
   if (view === "activity") return <ActivityCenter />;
   if (view === "automation") return <AutomationStudio />;
   if (view === "context") {
@@ -72,7 +72,7 @@ export function AdaptiveRuntimePage() {
           </div>
         </div>
       </div>
-      <AdaptiveContent view={view} />
+      <AdaptiveContent view={view} onOpenOnboarding={() => setView("onboarding")} />
     </main>
   );
 }
