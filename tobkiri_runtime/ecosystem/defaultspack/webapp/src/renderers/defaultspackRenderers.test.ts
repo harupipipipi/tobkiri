@@ -9,7 +9,13 @@ import { CompanyP2PPanel } from "../components/company/CompanyP2PPanel";
 import { CompanyTaskBoard } from "../components/company/CompanyTaskBoard";
 import { CompanyTree } from "../components/company/CompanyTree";
 import {
+  COMPANY_WORKSPACE_MORE_TABS_LABEL,
+  COMPANY_WORKSPACE_MORE_MENU_ID,
+  COMPANY_WORKSPACE_TAB_PANEL_ID,
+  COMPANY_WORKSPACE_TAB_RAIL_LABEL,
+  CompanyWorkspaceOverflowMenu,
   CompanyWorkspacePanel,
+  CompanyWorkspaceTabRail,
   MIMO_CODING_COMPANY_ID,
   companyIdFromConversationTitle,
   enrichCompanyRecordWithLoadedResources,
@@ -19,11 +25,15 @@ import {
   resolveCompanyWorkspaceHintFromGroup,
   resolveEffectiveCompanies,
   loadEnabledP2PDetails,
+  nextCompanyOverflowMenuIndex,
   resolveSelectedCompanyId,
   resolveSelectedCompanyRecord,
+  getCompanyWorkspaceTabGroups,
 } from "../components/company/CompanyWorkspacePanel";
 import { buildCompactHistoryRailItems, buildGroupsFromChats } from "../components/HistoryBoard";
 import { defaultspackRendererIds, defaultspackRenderers, resolveDefaultspackRenderers } from "./defaultspackRenderers";
+
+const noop = () => undefined;
 
 test("defaultspack renderer registry covers visible shell regions", () => {
   assert.deepEqual([...defaultspackRendererIds].sort(), [
@@ -74,6 +84,81 @@ test("defaultspack renderer resolver keeps builtin fallback for untrusted module
   });
 
   assert.equal(resolved.composer, defaultspackRenderers.composer);
+});
+
+test("company workspace keeps primary tabs inside a bounded rail", () => {
+  const groups = getCompanyWorkspaceTabGroups();
+  assert.deepEqual(groups.primaryTabs.map((tab) => tab.label), ["Tasks", "Channels", "Agents"]);
+  assert.deepEqual(groups.overflowTabs.map((tab) => tab.label), ["Routes", "Settings", "P2P"]);
+
+  const html = renderToStaticMarkup(
+    createElement(CompanyWorkspaceTabRail, {
+      activeTab: "tasks",
+      isMoreMenuOpen: false,
+      onSelectTab: noop,
+      onToggleMore: noop,
+    }),
+  );
+
+  assert.match(html, /data-testid="company-workspace-tab-rail"/);
+  assert.match(html, new RegExp(`aria-label="${COMPANY_WORKSPACE_TAB_RAIL_LABEL}"`));
+  assert.match(html, /grid-cols-\[minmax\(0,1fr\)_2rem\]/);
+  assert.equal((html.match(/role="tab"/g) ?? []).length, 3);
+  assert.equal((html.match(/role="tablist"/g) ?? []).length, 1);
+  assert.equal(
+    (html.match(new RegExp(`aria-controls="${COMPANY_WORKSPACE_TAB_PANEL_ID}"`, "g")) ?? []).length,
+    3,
+  );
+  assert.match(html, />Tasks</);
+  assert.match(html, />Channels</);
+  assert.match(html, />Agents</);
+  assert.match(html, new RegExp(`aria-label="${COMPANY_WORKSPACE_MORE_TABS_LABEL}"`));
+  assert.doesNotMatch(html, />Settings</);
+  assert.doesNotMatch(html, />P2P</);
+});
+
+test("company workspace overflow menu exposes secondary tabs as usable menu items", () => {
+  const html = renderToStaticMarkup(
+    createElement(CompanyWorkspaceOverflowMenu, {
+      activeTab: "settings",
+      onSelectTab: noop,
+    }),
+  );
+
+  assert.match(html, /role="menu"/);
+  assert.match(html, new RegExp(`id="${COMPANY_WORKSPACE_MORE_MENU_ID}"`));
+  assert.match(html, new RegExp(`aria-label="${COMPANY_WORKSPACE_MORE_TABS_LABEL}"`));
+  assert.match(html, /role="menuitem" aria-current="page" aria-label="Settings"/);
+  assert.match(html, /role="menuitem" aria-label="P2P"/);
+  assert.match(html, />Routes</);
+  assert.match(html, />Settings</);
+  assert.match(html, />P2P</);
+});
+
+test("company workspace overflow trigger identifies the active secondary tab and controlled menu", () => {
+  const html = renderToStaticMarkup(
+    createElement(CompanyWorkspaceTabRail, {
+      activeTab: "settings",
+      isMoreMenuOpen: true,
+      onSelectTab: noop,
+      onToggleMore: noop,
+    }),
+  );
+
+  assert.match(html, /aria-label="More Subagent Team tabs: Settings selected"/);
+  assert.match(html, /aria-haspopup="menu"/);
+  assert.match(html, /aria-expanded="true"/);
+  assert.match(html, new RegExp(`aria-controls="${COMPANY_WORKSPACE_MORE_MENU_ID}"`));
+  assert.match(html, /role="menuitem" aria-label="Routes"/);
+});
+
+test("company workspace overflow menu keyboard navigation stays inside the menu", () => {
+  assert.equal(nextCompanyOverflowMenuIndex("ArrowDown", 2, 3), 0);
+  assert.equal(nextCompanyOverflowMenuIndex("ArrowUp", 0, 3), 2);
+  assert.equal(nextCompanyOverflowMenuIndex("Home", 2, 3), 0);
+  assert.equal(nextCompanyOverflowMenuIndex("End", 0, 3), 2);
+  assert.equal(nextCompanyOverflowMenuIndex("Tab", 1, 3), null);
+  assert.equal(nextCompanyOverflowMenuIndex("ArrowDown", 0, 0), null);
 });
 
 test("company agent list renders operational role details", () => {
@@ -184,7 +269,8 @@ test("company workspace renders a visible empty state before a chat exists", () 
 
   assert.match(html, /Main Agent &amp; Subagents/);
   assert.match(html, /Subagent Team/);
-  assert.match(html, /Subagent Team options/);
+  assert.match(html, /More Subagent Team tabs/);
+  assert.match(html, new RegExp(`id="${COMPANY_WORKSPACE_TAB_PANEL_ID}" role="tabpanel"`));
   assert.doesNotMatch(html, />Routes</);
   assert.doesNotMatch(html, />P2P</);
   assert.match(html, /Start or send a chat message to create its Subagent Team/);

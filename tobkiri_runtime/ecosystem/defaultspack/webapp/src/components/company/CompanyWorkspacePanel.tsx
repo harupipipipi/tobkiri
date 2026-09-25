@@ -1,5 +1,5 @@
-import { Bot, ClipboardList, MessageSquare, Route, Settings, Share2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Bot, ClipboardList, MessageSquare, MoreHorizontal, Route, Settings, Share2 } from "lucide-react";
+import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   CompanyAgent,
@@ -15,7 +15,6 @@ import type {
   P2PStatusResponse,
 } from "../../lib/api";
 import { arrayFromRecord, companyResources } from "../../features/company/resources/companyResources";
-import { ErrorNotice } from "../ErrorNotice";
 import { CompanyAgentList } from "./CompanyAgentList";
 import { CompanyChannelView } from "./CompanyChannelView";
 import { CompanyInboundRoutesPanel } from "./CompanyInboundRoutesPanel";
@@ -24,9 +23,11 @@ import { CompanySettingsPanel } from "./CompanySettingsPanel";
 import { CompanyTaskBoard } from "./CompanyTaskBoard";
 import { CompanyTree } from "./CompanyTree";
 
-type CompanyTab = "tasks" | "channels" | "agents" | "routes" | "settings" | "p2p";
+export type CompanyTab = "tasks" | "channels" | "agents" | "routes" | "settings" | "p2p";
 
-const TABS: Array<{ id: CompanyTab; label: string; icon: typeof ClipboardList }> = [
+type CompanyTabDefinition = { id: CompanyTab; label: string; icon: typeof ClipboardList };
+
+const TABS: CompanyTabDefinition[] = [
   { id: "tasks", label: "Tasks", icon: ClipboardList },
   { id: "channels", label: "Channels", icon: MessageSquare },
   { id: "agents", label: "Agents", icon: Bot },
@@ -35,11 +36,183 @@ const TABS: Array<{ id: CompanyTab; label: string; icon: typeof ClipboardList }>
   { id: "p2p", label: "P2P", icon: Share2 },
 ];
 
-const PRIMARY_TAB_IDS = new Set<CompanyTab>(["tasks", "channels", "agents"]);
-const PRIMARY_TABS = TABS.filter((tab) => PRIMARY_TAB_IDS.has(tab.id));
-const OVERFLOW_TABS = TABS.filter((tab) => !PRIMARY_TAB_IDS.has(tab.id));
+export const COMPANY_WORKSPACE_VISIBLE_TAB_LIMIT = 3;
+export const COMPANY_WORKSPACE_TAB_RAIL_LABEL = "Subagent Team sections";
+export const COMPANY_WORKSPACE_MORE_TABS_LABEL = "More Subagent Team tabs";
+export const COMPANY_WORKSPACE_MORE_MENU_ID = "company-workspace-more-tabs";
+export const COMPANY_WORKSPACE_TAB_PANEL_ID = "company-workspace-tab-panel";
+
+/** Split the fixed-width rail into always-visible and overflow tab groups. */
+export function getCompanyWorkspaceTabGroups(visibleTabLimit = COMPANY_WORKSPACE_VISIBLE_TAB_LIMIT) {
+  return {
+    primaryTabs: TABS.slice(0, visibleTabLimit),
+    overflowTabs: TABS.slice(visibleTabLimit),
+  };
+}
+
+const { primaryTabs: PRIMARY_TABS, overflowTabs: OVERFLOW_TABS } = getCompanyWorkspaceTabGroups();
 export const MIMO_CODING_COMPANY_ID = "mimo-coding-company";
 export const OPERATIONS_COMPANY_ID = "operations-company";
+
+/** Resolve WAI-ARIA menu navigation without allowing focus outside the menu. */
+export function nextCompanyOverflowMenuIndex(key: string, index: number, itemCount: number): number | null {
+  if (itemCount <= 0) return null;
+  if (key === "ArrowDown") return (index + 1) % itemCount;
+  if (key === "ArrowUp") return (index - 1 + itemCount) % itemCount;
+  if (key === "Home") return 0;
+  if (key === "End") return itemCount - 1;
+  return null;
+}
+
+export function CompanyWorkspaceOverflowMenu({
+  activeTab,
+  onRequestClose,
+  onSelectTab,
+}: {
+  activeTab: CompanyTab;
+  onRequestClose?: () => void;
+  onSelectTab: (tabId: CompanyTab) => void;
+}) {
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  const onMenuKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onRequestClose?.();
+      return;
+    }
+    const nextIndex = nextCompanyOverflowMenuIndex(event.key, index, OVERFLOW_TABS.length);
+    if (nextIndex === null) return;
+    event.preventDefault();
+    itemRefs.current[nextIndex]?.focus();
+  };
+
+  return (
+    <div
+      id={COMPANY_WORKSPACE_MORE_MENU_ID}
+      role="menu"
+      aria-label={COMPANY_WORKSPACE_MORE_TABS_LABEL}
+      className="w-44 overflow-hidden rounded-xl border border-zinc-700/70 bg-zinc-950 py-1 shadow-2xl"
+    >
+      {OVERFLOW_TABS.map((tab, index) => {
+        const Icon = tab.icon;
+        const selected = activeTab === tab.id;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            role="menuitem"
+            aria-current={selected ? "page" : undefined}
+            aria-label={tab.label}
+            title={tab.label}
+            autoFocus={index === 0}
+            onClick={() => onSelectTab(tab.id)}
+            ref={(element) => {
+              itemRefs.current[index] = element;
+            }}
+            onKeyDown={(event) => onMenuKeyDown(event, index)}
+            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] transition-colors ${
+              selected ? "bg-zinc-800 text-zinc-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
+            }`}
+          >
+            <Icon size={13} className="shrink-0" />
+            <span className="truncate">{tab.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export function CompanyWorkspaceTabRail({
+  activeTab,
+  isMoreMenuOpen,
+  onSelectTab,
+  onToggleMore,
+}: {
+  activeTab: CompanyTab;
+  isMoreMenuOpen: boolean;
+  onSelectTab: (tabId: CompanyTab) => void;
+  onToggleMore: () => void;
+}) {
+  const moreButtonRef = useRef<HTMLButtonElement | null>(null);
+  const wasMoreMenuOpenRef = useRef(false);
+  const activeOverflowTab = OVERFLOW_TABS.find((tab) => tab.id === activeTab);
+  const isOverflowTabActive = Boolean(activeOverflowTab);
+  const moreLabel = activeOverflowTab
+    ? `${COMPANY_WORKSPACE_MORE_TABS_LABEL}: ${activeOverflowTab.label} selected`
+    : COMPANY_WORKSPACE_MORE_TABS_LABEL;
+
+  useEffect(() => {
+    if (wasMoreMenuOpenRef.current && !isMoreMenuOpen) {
+      moreButtonRef.current?.focus();
+    }
+    wasMoreMenuOpenRef.current = isMoreMenuOpen;
+  }, [isMoreMenuOpen]);
+
+  return (
+    <div className="relative border-b border-zinc-800/60 p-2">
+      <div
+        data-testid="company-workspace-tab-rail"
+        className="grid max-w-full grid-cols-[minmax(0,1fr)_2rem] gap-1 overflow-hidden"
+      >
+        <div
+          role="tablist"
+          aria-label={COMPANY_WORKSPACE_TAB_RAIL_LABEL}
+          className="grid min-w-0 grid-cols-3 gap-1"
+        >
+          {PRIMARY_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const selected = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                aria-controls={COMPANY_WORKSPACE_TAB_PANEL_ID}
+                title={tab.label}
+                onClick={() => onSelectTab(tab.id)}
+                className={`flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs transition-colors ${
+                  selected ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
+                }`}
+              >
+                <Icon size={12} className="shrink-0" />
+                <span className="truncate">{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+        <button
+          ref={moreButtonRef}
+          type="button"
+          aria-label={moreLabel}
+          aria-haspopup="menu"
+          aria-expanded={isMoreMenuOpen}
+          aria-controls={isMoreMenuOpen ? COMPANY_WORKSPACE_MORE_MENU_ID : undefined}
+          title={moreLabel}
+          onClick={onToggleMore}
+          className={`flex h-7 min-w-0 items-center justify-center rounded-md px-1 transition-colors ${
+            isMoreMenuOpen || isOverflowTabActive
+              ? "bg-zinc-800 text-zinc-100"
+              : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
+          }`}
+        >
+          <MoreHorizontal size={15} />
+        </button>
+      </div>
+      {isMoreMenuOpen && (
+        <div className="absolute right-2 top-[calc(100%+4px)] rumi-layer-local-popover">
+          <CompanyWorkspaceOverflowMenu
+            activeTab={activeTab}
+            onRequestClose={onToggleMore}
+            onSelectTab={onSelectTab}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
 type P2PDetailResources = Pick<typeof companyResources, "getP2PIdentity" | "listP2PPeers">;
 
@@ -358,7 +531,6 @@ export function CompanyWorkspacePanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hasActiveConversation = Boolean(activeConversationId);
-  const isOverflowTabActive = OVERFLOW_TABS.some((tab) => tab.id === activeTab);
   const titleCompanyIdHint = companyIdFromConversationTitle(activeCompanyIdHint) ?? companyIdFromConversationTitle(activeConversationTitle);
   const normalizedActiveCompanyIdHint = (
     titleCompanyIdHint
@@ -690,7 +862,7 @@ export function CompanyWorkspacePanel({
   };
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col bg-[#0a0a0c] text-zinc-300">
+    <div className="relative flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden bg-[#0a0a0c] text-zinc-300">
       <div className="border-b border-zinc-800/60 px-3 py-2">
         <p className="truncate text-[13px] font-medium text-zinc-100">Main Agent &amp; Subagents</p>
         <p className="truncate text-[10px] text-zinc-600">
@@ -707,12 +879,10 @@ export function CompanyWorkspacePanel({
       </div>
 
       {error && (
-        <ErrorNotice
-          className="m-2 px-2 py-1.5 text-[11px]"
-          copyLabel="会社ワークスペースエラーをコピー"
-          message={error}
-          severity="warning"
-        />
+        <div className="m-2 flex items-start gap-2 rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-200">
+          <AlertTriangle size={13} className="mt-0.5 flex-shrink-0" />
+          <span>{error}</span>
+        </div>
       )}
 
       <CompanyTree
@@ -733,76 +903,30 @@ export function CompanyWorkspacePanel({
         onRefresh={() => void loadCompany(activeCompanyId)}
       />
 
-      <div className="grid grid-cols-3 gap-1 border-b border-zinc-800/60 p-2">
-        {PRIMARY_TABS.map((tab) => {
-          const Icon = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => selectTab(tab.id)}
-              className={`flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-[11px] transition-colors ${
-                activeTab === tab.id ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
-              }`}
-            >
-              <Icon size={12} className="shrink-0" />
-              <span className="truncate">{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      <CompanyWorkspaceTabRail
+        activeTab={activeTab}
+        isMoreMenuOpen={isMoreMenuOpen}
+        onSelectTab={selectTab}
+        onToggleMore={() => setIsMoreMenuOpen((open) => !open)}
+      />
 
-      <div className="min-h-0 flex-1 overflow-y-auto pb-14">
+      <div
+        id={COMPANY_WORKSPACE_TAB_PANEL_ID}
+        role="tabpanel"
+        className="min-h-0 flex-1 overflow-y-auto pb-3"
+      >
         {renderTab()}
       </div>
 
       {isMoreMenuOpen && (
         <button
           type="button"
+          tabIndex={-1}
           aria-label="Close Subagent Team options"
           className="fixed inset-0 rumi-layer-panel cursor-default bg-transparent"
           onClick={() => setIsMoreMenuOpen(false)}
         />
       )}
-      <div className="absolute bottom-3 right-3 rumi-layer-local-popover flex flex-col items-end gap-2">
-        {isMoreMenuOpen && (
-          <div role="menu" className="w-44 overflow-hidden rounded-xl border border-zinc-700/70 bg-zinc-950 py-1 shadow-2xl">
-            {OVERFLOW_TABS.map((tab) => {
-              const Icon = tab.icon;
-              const selected = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => selectTab(tab.id)}
-                  className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] transition-colors ${
-                    selected ? "bg-zinc-800 text-zinc-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
-                  }`}
-                >
-                  <Icon size={13} className="shrink-0" />
-                  <span className="truncate">{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-        <button
-          type="button"
-          aria-label="Subagent Team options"
-          aria-haspopup="menu"
-          aria-expanded={isMoreMenuOpen}
-          onClick={() => setIsMoreMenuOpen((open) => !open)}
-          className={`flex h-9 w-9 items-center justify-center rounded-full border shadow-xl transition-colors ${
-            isMoreMenuOpen || isOverflowTabActive
-              ? "border-zinc-600 bg-zinc-100 text-zinc-950"
-              : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-700 hover:text-zinc-100"
-          }`}
-          title="Subagent Team options"
-        >
-          <Settings size={16} />
-        </button>
-      </div>
     </div>
   );
 }
