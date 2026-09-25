@@ -1,4 +1,3 @@
-import { Fragment } from 'react';
 
 import { useAppStore } from '@/src/store';
 import { viewerLayers } from '@/src/lib/layers';
