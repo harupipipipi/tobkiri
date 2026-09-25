@@ -55,7 +55,15 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+)
 
 from .docker_run_builder import DockerRunBuilder
 from .paths import (
@@ -183,7 +191,16 @@ _SIGKILL = getattr(signal, "SIGKILL", None)
 # ``self.get_extension`` を経由するため、こちらを基底にする
 # （``_Unpickler`` が無い処理系では ``pickle.Unpickler`` 自体が
 # 純 Python 実装の想定でフォールバックする）。
-_WORKER_UNPICKLER_BASE = getattr(pickle, "_Unpickler", pickle.Unpickler)
+if TYPE_CHECKING:
+    # 動的な getattr 選択は基底クラスの型エイリアスとして解決できない
+    # ため、静的検査時は公開名の ``pickle.Unpickler`` を基底とみなす。
+    # ``find_class``/``get_extension`` は本クラス側でオーバーライドする
+    # ため基底実装の差異は型検査に影響しない。
+    _WORKER_UNPICKLER_BASE = pickle.Unpickler
+else:
+    _WORKER_UNPICKLER_BASE = getattr(
+        pickle, "_Unpickler", pickle.Unpickler
+    )
 
 
 class _WorkerResultUnpickler(_WORKER_UNPICKLER_BASE):
@@ -368,7 +385,7 @@ def _wait_for_worker_exit(proc: Any, timeout_seconds: float) -> None:
         _t.sleep(0.02)
 
 
-def _signal_worker_group(proc: Any, sig: int) -> None:
+def _signal_worker_group(proc: Any, sig: Optional[int]) -> None:
     """未 reap のワーカー（生存/zombie 不問）のプロセスグループへ ``sig``。
 
     setsid 済みワーカーは pgid == pid。reap 前なら zombie でも pid/pgid
