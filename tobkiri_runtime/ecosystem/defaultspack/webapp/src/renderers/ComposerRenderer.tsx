@@ -2489,6 +2489,30 @@ export function shouldFocusComposerForSlashKey(
   return tagName !== "input" && tagName !== "textarea" && tagName !== "select" && !target.closest("[contenteditable='true']");
 }
 
+export function isEscapedSlashInput(input: string): boolean {
+  return input.startsWith("//");
+}
+
+export function hasSlashCommandInput(
+  input: string,
+  slashCommandsAllowed: boolean,
+  isSteerMode: boolean,
+): boolean {
+  return slashCommandsAllowed
+    && !isSteerMode
+    && input.startsWith("/")
+    && !isEscapedSlashInput(input);
+}
+
+export function hasModelCommandInput(
+  input: string,
+  slashCommandsAllowed: boolean,
+  isSteerMode: boolean,
+): boolean {
+  if (!hasSlashCommandInput(input, slashCommandsAllowed, isSteerMode)) return false;
+  return /^\/models?(?:\s|$)/i.test(input.trimStart());
+}
+
 function modelCandidateTitle(candidate: ModelCommandCandidate): string {
   return String(candidate.display_name ?? candidate.profile_id ?? "model");
 }
@@ -2701,6 +2725,7 @@ export function ComposerRenderer({
   const [atMentionStart, setAtMentionStart] = useState<number | null>(null);
   const [selectedAtMentionIndex, setSelectedAtMentionIndex] = useState(0);
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
+  const [dismissedSlashSuggestionsForInput, setDismissedSlashSuggestionsForInput] = useState<string | null>(null);
   const [selectedModelCandidateIndex, setSelectedModelCandidateIndex] = useState(0);
   const [composerPopoverStyle, setComposerPopoverStyle] = useState<CSSProperties | undefined>(undefined);
   const [voiceStatus, setVoiceStatus] = useState<"idle" | "starting" | "listening" | "transcribing" | "error">("idle");
@@ -2837,7 +2862,6 @@ export function ComposerRenderer({
   const imageBridgePlanned = hasAttachedImages && !selectedProfile?.supports_vision && !selectedProfile?.supports_image_input;
   const activeToolGroup = toolGroups.find((group) => group.id === openToolGroup) ?? toolGroups[0] ?? null;
   const showToolGroups = toolItems.length > 4;
-  const isEscapedSlash = input.startsWith("//");
   const isSteerMode = isGenerating && !isNewConversation;
   const effectiveComposerPlaceholder = composerPlaceholderCopy({
     isSteerMode,
@@ -2853,7 +2877,8 @@ export function ComposerRenderer({
     fileAttachments: templateAllowsFileAttachments,
     templateHelp: templateComposerHelp,
   });
-  const hasSlashCommandPrefix = templateAllowsSlashCommands && input.startsWith("/") && !isEscapedSlash;
+  const hasSlashCommandPrefix = hasSlashCommandInput(input, templateAllowsSlashCommands, isSteerMode);
+  const hasModelCommandPrefix = hasModelCommandInput(input, templateAllowsSlashCommands, isSteerMode);
   const slashText = hasSlashCommandPrefix ? input.slice(1) : "";
   const slashCommandName = slashText.trimStart().split(/\s+/, 1)[0] ?? "";
   const slashQuery = slashCommandName.toLowerCase();
@@ -2877,13 +2902,13 @@ export function ComposerRenderer({
         })
     : [];
   const activeCommandArgumentGuide = commandArgumentGuideForInput(input, commands);
-  const hasModelCommandCandidates = textareaFocused && modelCommandCandidates.length > 0;
+  const hasModelCommandCandidates = textareaFocused && hasModelCommandPrefix && modelCommandCandidates.length > 0;
   const showCommandSuggestions = shouldShowComposerCommandSuggestions({
     focused: textareaFocused,
     slashCommandsEnabled: templateAllowsSlashCommands,
     hasModelCandidates: hasModelCommandCandidates,
     matchCount: activeCommandArgumentGuide ? 0 : matchedCommands.length,
-  });
+  }) && dismissedSlashSuggestionsForInput !== input;
   const persistentToggleCommands = persistentComposerToggleCommands(commands).slice(0, 3);
   const visibleSteerPreviewItems = steerPreviewItems.filter((item) => (
     item.visible !== false && String(item.prompt ?? "").trim()
@@ -3096,6 +3121,12 @@ export function ComposerRenderer({
   }, [matchedCommands.length]);
 
   useEffect(() => {
+    if (hasSlashCommandPrefix && matchedCommands.length > 0) return;
+    setSelectedCommandIndex(0);
+    setDismissedSlashSuggestionsForInput(null);
+  }, [hasSlashCommandPrefix, matchedCommands.length]);
+
+  useEffect(() => {
     setSelectedAtMentionIndex((current) => {
       if (atMentionCandidates.length === 0) return 0;
       return Math.min(current, atMentionCandidates.length - 1);
@@ -3124,6 +3155,11 @@ export function ComposerRenderer({
       setMenuOpen(false);
     }
   }, [modelCommandCandidates.length]);
+
+  useEffect(() => {
+    if (hasModelCommandPrefix || modelCommandCandidates.length === 0) return;
+    onModelCommandCandidatesClose?.();
+  }, [hasModelCommandPrefix, modelCommandCandidates.length, onModelCommandCandidatesClose]);
 
   useEffect(() => {
     if (modelPickerRequestId === lastModelPickerRequestIdRef.current) return;
@@ -3289,12 +3325,14 @@ export function ComposerRenderer({
       onInputChange(value);
       onEntityReferencesChange?.(mergeComposerReferences(entityReferences, [], value));
       updateAtMentionStateFromInput(value);
+      setDismissedSlashSuggestionsForInput(null);
 
-      if (!templateAllowsSlashCommands || !value.startsWith("/") || value.startsWith("//")) {
+      if (!hasSlashCommandInput(value, templateAllowsSlashCommands, isSteerMode)) {
         setSelectedCommandIndex(0);
+        if (modelCommandCandidates.length > 0) onModelCommandCandidatesClose?.();
       }
     },
-    [entityReferences, onEntityReferencesChange, onInputChange, templateAllowsSlashCommands, updateAtMentionStateFromInput],
+    [entityReferences, isSteerMode, modelCommandCandidates.length, onEntityReferencesChange, onInputChange, onModelCommandCandidatesClose, templateAllowsSlashCommands, updateAtMentionStateFromInput],
   );
 
   const handleAtMentionSelect = useCallback(
@@ -3631,6 +3669,18 @@ export function ComposerRenderer({
         return;
       }
 
+      if (event.key === "Escape" && showCommandSuggestions) {
+        event.preventDefault();
+        event.stopPropagation();
+        setSelectedCommandIndex(0);
+        if (input.trim() === "/") {
+          handleInputChange("");
+        } else {
+          setDismissedSlashSuggestionsForInput(input);
+        }
+        return;
+      }
+
       if (event.key === "Escape") {
         const composerOwnsEscape = atMentionOpen
           || hasSlashCommandPrefix
@@ -3704,7 +3754,7 @@ export function ComposerRenderer({
         return;
       }
 
-      if (matchedCommands.length > 0) {
+      if (showCommandSuggestions && matchedCommands.length > 0) {
         if (event.key === "ArrowDown") {
           event.preventDefault();
           setSelectedCommandIndex((current) => (current + 1) % matchedCommands.length);
@@ -3763,6 +3813,7 @@ export function ComposerRenderer({
       selectedAtMentionIndex,
       selectedCommandIndex,
       selectedModelCandidateIndex,
+      showCommandSuggestions,
     ],
   );
 
