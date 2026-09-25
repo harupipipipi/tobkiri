@@ -311,11 +311,10 @@ export function AmbientTriggerPanel({
     if (cameraUnavailable || pinchDetectorStatus === "unavailable") return "blocked";
     if (pinchDetectorStatus === "transcribing") return "transcribing";
     if (pinchDetectorStatus === "sending") return "sending";
-    if (pinchDetectorStatus === "reviewing" || pendingAudioReview) return "reviewing";
     if (pinchRecording || pinchDetectorStatus === "recording") return "recording";
     if (monitorEnabled) return "monitoring";
     return "off";
-  }, [cameraUnavailable, monitorEnabled, pendingAudioReview, pinchDetectorStatus, pinchRecording]);
+  }, [cameraUnavailable, monitorEnabled, pinchDetectorStatus, pinchRecording]);
   const uiState = useMemo(() => deriveAmbientUiState(status, runtimeStatus), [runtimeStatus, status]);
   const stateCopy = ambientCopyJa.states[uiState];
   const manualFallbackIsOsPermission = uiState === "denied" || uiState === "blocked" || uiState === "osPermissionNeeded";
@@ -787,8 +786,8 @@ export function AmbientTriggerPanel({
     setRecordingStartedAt(null);
     const transcript = await settlePinchSpeechRecognition();
     setPinchTranscriptPreview("");
-    setPinchDetectorStatus("reviewing");
-    setMessage(`${ambientOperationLabels.reviewing}: 送信前の確認画面を準備しています。`);
+    setPinchDetectorStatus("transcribing");
+    setMessage(`${ambientOperationLabels.transcribing}: 送信前の確認画面を準備しています。`);
     try {
       const recording = await recorder.stop();
       if (recording.size <= 0) {
@@ -901,9 +900,12 @@ export function AmbientTriggerPanel({
         submittedAt,
       });
     } catch (error) {
-      const errorText = error instanceof Error ? error.message : "送信できませんでした。録音は保存されていません。";
-      setErrorMessage(`${ambientOperationLabels.failed}: ${errorText}`);
-      setMiniChatError(errorText);
+      const errorText = error instanceof Error ? error.message : "送信結果を確認できませんでした。";
+      setPinchDetectorStatus("reviewing");
+      setMessage(`送信結果を確定できませんでした。録音は同じリクエストIDで安全に状態確認・再開できます: ${errorText}`);
+      setMiniChatError("送信結果を確定できませんでした。録音はレビュー画面に残しています。");
+    } finally {
+      setAudioReviewSending(false);
     }
   }, [
     activateMiniConversationFromSubmitResult,
@@ -1766,7 +1768,6 @@ export function AmbientTriggerPanel({
         await startMonitoring();
         return;
       case "monitoring":
-      case "reviewing":
         await stopMonitoring();
         return;
       case "recording":
