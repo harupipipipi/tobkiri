@@ -10,6 +10,10 @@ import {
   sidebarActionDisabledReason,
   toolManagerBaseItemsForNameSearch,
 } from "./RightSidebar";
+import {
+  COMPANY_WORKSPACE_SETTINGS_TAB_TEST_ID,
+  CompanyWorkspaceOverflowMenu,
+} from "./company/CompanyWorkspacePanel";
 import { PromptSidebarWidget } from "./prompts/PromptSidebarWidget";
 
 const noop = () => undefined;
@@ -188,6 +192,42 @@ test("right sidebar does not auto-open employees on initial render", () => {
 
   assert.match(html, /title="Employees"/);
   assert.doesNotMatch(html, /Employee workspace content/);
+});
+
+test("global Settings and Company Workspace settings expose distinguishable controls", () => {
+  const globalHtml = renderToStaticMarkup(
+    createElement(RightSidebar, {
+      items: [],
+      settingsValues: {
+        sidebar: { pinned_item_ids: [], starred_item_ids: [], custom_tool_tags: {}, ui_placements: [] },
+        tools: { disabled_tool_ids: [], hidden_tool_ids: [] },
+      },
+      settingsSections: [],
+      selectedToolIds: [],
+      onSettingChange: noop,
+      onOpenSettings: noop,
+    }),
+  );
+  const companyMenuHtml = renderToStaticMarkup(
+    createElement(CompanyWorkspaceOverflowMenu, {
+      activeTab: "settings",
+      onSelectTab: noop,
+    }),
+  );
+
+  assert.match(globalHtml, /data-testid="right-sidebar-global-settings"/);
+  assert.match(globalHtml, /aria-label="Settings"/);
+  assert.match(globalHtml, /title="Settings"/);
+  assert.doesNotMatch(globalHtml, new RegExp(`data-testid="${COMPANY_WORKSPACE_SETTINGS_TAB_TEST_ID}"`));
+
+  assert.match(companyMenuHtml, /role="menu"/);
+  assert.match(companyMenuHtml, /role="menuitem"/);
+  assert.match(companyMenuHtml, new RegExp(`data-testid="${COMPANY_WORKSPACE_SETTINGS_TAB_TEST_ID}"`));
+  assert.match(companyMenuHtml, /aria-label="Company Settings"/);
+  assert.match(companyMenuHtml, /title="Company Settings"/);
+  assert.match(companyMenuHtml, />Company Settings</);
+  assert.doesNotMatch(companyMenuHtml, /aria-label="Settings"/);
+  assert.doesNotMatch(companyMenuHtml, /data-testid="right-sidebar-global-settings"/);
 });
 
 test("advanced usage commands can open context token details", () => {
