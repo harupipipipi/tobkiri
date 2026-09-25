@@ -15,10 +15,27 @@ test("browser title bar uses Tobkiri without custom window controls", () => {
   const html = renderToStaticMarkup(<TitleBar appName="rumi DP" />);
 
   assert.match(html, /Tobkiri/);
-  assert.doesNotMatch(html, /Minimize window|Maximize window|Close window/);
+  assert.doesNotMatch(
+    html,
+    /\x3cbutton|role="button"|tabindex=|aria-pressed=/,
+  );
+  assert.doesNotMatch(
+    html,
+    /Minimize window|Maximize window|Restore window|Close window/,
+  );
 });
 
 test("Tauri native chrome suppresses the duplicate web title bar", () => {
   assert.equal(hasTauriNativeChrome({ __TAURI_INTERNALS__: {} }), true);
   assert.equal(hasTauriNativeChrome({}), false);
+
+  const tauriGlobal = globalThis as typeof globalThis & {
+    __TAURI_INTERNALS__?: object;
+  };
+  tauriGlobal.__TAURI_INTERNALS__ = {};
+  try {
+    assert.equal(renderToStaticMarkup(<TitleBar appName="Tobkiri" />), "");
+  } finally {
+    delete tauriGlobal.__TAURI_INTERNALS__;
+  }
 });
