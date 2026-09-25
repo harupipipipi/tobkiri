@@ -878,6 +878,20 @@ export type CompanyMessage = {
   updated_at?: string;
 };
 
+export type SubagentTeamMessageStatus = {
+  client_message_id: string;
+  state: "committed" | "missing";
+  message: CompanyMessage | null;
+};
+
+export type SubagentTeamMessageSendResponse = {
+  message: CompanyMessage;
+  idempotent_replay?: boolean;
+  task?: CompanyTask | null;
+  tasks?: CompanyTask[];
+  routes?: Array<Record<string, unknown>>;
+};
+
 export type CompanyTask = {
   id: string;
   company_id: string;
@@ -5276,9 +5290,10 @@ export const api = {
     client_message_id?: string;
     metadata?: Record<string, unknown>;
   }) {
-    return request<CompanyMessage>(defaultspackContractRoute("api/subagent-team/messages"), {
+    return request<SubagentTeamMessageSendResponse>(defaultspackContractRoute("api/subagent-team/messages"), {
       method: "POST",
       body: JSON.stringify({
+        action: "send",
         company_id: payload.companyId,
         conversation_id: payload.conversationId,
         content: payload.content,
@@ -5288,6 +5303,22 @@ export const api = {
         task_ids: payload.task_ids,
         client_message_id: payload.client_message_id,
         metadata: payload.metadata,
+      }),
+    });
+  },
+
+  getSubagentTeamMessageStatus(payload: {
+    companyId: string;
+    conversationId?: string | null;
+    clientMessageId: string;
+  }) {
+    return request<SubagentTeamMessageStatus>(defaultspackContractRoute("api/subagent-team/messages"), {
+      method: "POST",
+      body: JSON.stringify({
+        action: "status",
+        company_id: payload.companyId,
+        conversation_id: payload.conversationId,
+        client_message_id: payload.clientMessageId,
       }),
     });
   },

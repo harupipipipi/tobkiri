@@ -784,6 +784,163 @@ def test_channel_check_enforced_before_message_goal_and_dm_routing(tmp_path, mon
     assert dm["code"] == "TARGET_NOT_FOUND"
 
 
+def test_message_send_is_idempotent_and_exposes_delivery_status(tmp_path, monkeypatch):
+    _configure_temp_runtime(tmp_path, monkeypatch)
+    store, runtime_store, company = _create_workspace()
+
+    from domain.subagent_team.service import SubagentTeamService
+
+    service = SubagentTeamService(company_store=store, runtime_store=runtime_store)
+    payload = {
+        "channel_id": "ops-company",
+        "sender_id": "user",
+        "content": "durable hello",
+        "client_message_id": "subagent-client-1030",
+        "metadata": {"source": "subagent_team_ui"},
+    }
+
+    first = service.send_message(company["id"], payload)
+    replay = service.send_message(company["id"], payload)
+    status = service.message_status(
+        company["id"],
+        {"client_message_id": payload["client_message_id"]},
+        context={"actor_id": "user"},
+    )
+    messages, total = runtime_store.list_messages(company["id"], limit=20)
+
+    assert first is not None
+    assert replay is not None
+    assert first["message"]["id"] == replay["message"]["id"]
+    assert replay["idempotent_replay"] is True
+    assert total == 1
+    assert messages[0]["metadata"]["client_message_id"] == payload["client_message_id"]
+    assert status is not None
+    assert status["state"] == "committed"
+    assert status["message"]["id"] == first["message"]["id"]
+
+    unauthorized = service.message_status(
+        company["id"],
+        {"client_message_id": payload["client_message_id"]},
+        context={"actor_id": "outside-agent"},
+    )
+    assert unauthorized["denied"] is True
+    assert unauthorized["code"] == "CHANNEL_MEMBERSHIP_REQUIRED"
+
+    replay_as_another_actor = service.send_message(
+        company["id"],
+        payload,
+        context={"actor_id": "outside-agent"},
+    )
+    assert replay_as_another_actor["denied"] is True
+    assert replay_as_another_actor["code"] == "IDEMPOTENCY_CONFLICT"
+    assert not isinstance(replay_as_another_actor.get("message"), dict)
+
+    conflict = service.send_message(
+        company["id"],
+        {**payload, "content": "changed after the first acceptance"},
+    )
+    assert conflict["denied"] is True
+    assert conflict["code"] == "IDEMPOTENCY_CONFLICT"
+    _messages_after_conflict, total_after_conflict = runtime_store.list_messages(
+        company["id"], limit=20
+    )
+    assert total_after_conflict == 1
+
+
+def test_message_send_ignores_client_supplied_sync_key(tmp_path, monkeypatch):
+    _configure_temp_runtime(tmp_path, monkeypatch)
+    store, runtime_store, company = _create_workspace()
+
+    from domain.subagent_team.service import SubagentTeamService
+
+    service = SubagentTeamService(company_store=store, runtime_store=runtime_store)
+    first = service.send_message(
+        company["id"],
+        {
+            "content": "first",
+            "metadata": {"sync_key": "attacker-chosen-key"},
+        },
+    )
+    second = service.send_message(
+        company["id"],
+        {
+            "content": "second",
+            "metadata": {"sync_key": "attacker-chosen-key"},
+        },
+    )
+    _messages, total = runtime_store.list_messages(company["id"], limit=20)
+
+    assert first is not None and second is not None
+    assert first["message"]["id"] != second["message"]["id"]
+    assert total == 2
+
+
+def test_router_stable_insert_closes_check_then_insert_race(tmp_path, monkeypatch):
+    _configure_temp_runtime(tmp_path, monkeypatch)
+    store, runtime_store, company = _create_workspace()
+
+    from domain.company.message_router import CompanyMessageRouter
+
+    router = CompanyMessageRouter(
+        company_store=store,
+        runtime_store=runtime_store,
+    )
+    monkeypatch.setattr(runtime_store, "get_message_by_sync_key", lambda *_: None)
+    metadata = {"sync_key": "subagent-team:company:concurrent-client-id"}
+
+    first = router.post_message(
+        company["id"],
+        content="same request",
+        sender_id="user",
+        channel_id="ops-company",
+        metadata=metadata,
+    )
+    replay = router.post_message(
+        company["id"],
+        content="same request",
+        sender_id="user",
+        channel_id="ops-company",
+        metadata=metadata,
+    )
+    conflict = router.post_message(
+        company["id"],
+        content="different request",
+        sender_id="user",
+        channel_id="ops-company",
+        metadata=metadata,
+    )
+    _messages, total = runtime_store.list_messages(company["id"], limit=20)
+
+    assert first is not None and replay is not None and conflict is not None
+    assert replay["idempotent_replay"] is True
+    assert replay["message"]["id"] == first["message"]["id"]
+    assert conflict["denied"] is True
+    assert conflict["code"] == "IDEMPOTENCY_CONFLICT"
+    assert total == 1
+
+
+def test_message_status_reports_missing_without_creating_side_effects(tmp_path, monkeypatch):
+    _configure_temp_runtime(tmp_path, monkeypatch)
+    store, runtime_store, company = _create_workspace()
+
+    from domain.subagent_team.service import SubagentTeamService
+
+    service = SubagentTeamService(company_store=store, runtime_store=runtime_store)
+    status = service.message_status(
+        company["id"],
+        {"client_message_id": "subagent-client-missing"},
+        context={"actor_id": "user"},
+    )
+    _messages, total = runtime_store.list_messages(company["id"], limit=20)
+
+    assert status == {
+        "client_message_id": "subagent-client-missing",
+        "state": "missing",
+        "message": None,
+    }
+    assert total == 0
+
+
 def test_sender_id_project_manager_spoof_cannot_bypass_pm_gate_for_message_dm_or_goal(tmp_path, monkeypatch):
     _configure_temp_runtime(tmp_path, monkeypatch)
     store, runtime_store, company = _create_workspace()

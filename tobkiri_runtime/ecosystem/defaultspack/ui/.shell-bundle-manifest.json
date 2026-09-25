@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "752667cd3787159e9687982bd3cc94958ac59345f016101b19737f5a332c2ea6",
+    "digest": "fc9bf2b471221ec208b7962e0e40e24e86e7149ae64a8c5c68db84056be16d9f",
     "entries": [
       {
         "path": "index.html",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 5711,
-        "sha256": "1b695975cc8bd5eadd0024fefc711cbe2066ba0af1466f531f4bc6a00de878bc"
+        "size": 5811,
+        "sha256": "c32d3a4cd879690c07f13e3d9ad64c808afd34dc9ec4f97d4b37a6d3998a9685"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -1130,8 +1130,8 @@
       },
       {
         "path": "src/lib/api.ts",
-        "size": 202451,
-        "sha256": "4461aa41f8ebc77990603704dcea22dbd5920797786488f777c254737d7a97ac"
+        "size": 203325,
+        "sha256": "6cd085797a7ac02c4ab2ff8b16e9216d2ec8d169407fb4dcfbaa53df9f1a5f0e"
       },
       {
         "path": "src/lib/appLoadFailures.test.ts",
@@ -1865,13 +1865,18 @@
       },
       {
         "path": "src/subagentTeam/SubagentTeamWorkspace.tsx",
-        "size": 63768,
-        "sha256": "d12728f961e008203c3b3d16e3348fc4e677019d4a548bb2dbb1c3aa5844ddc4"
+        "size": 73081,
+        "sha256": "f1ed1892013662d722996383a3fb5dd6bc8bd56588b5d4e0cae11a36b3c75650"
       },
       {
         "path": "src/subagentTeam/SubagentTeamWorkspaceApproval.test.ts",
         "size": 1446,
         "sha256": "748ade2d1517da129cc8d232cdc231ef83a7ee406f7869b3720e0b565e2cd2b0"
+      },
+      {
+        "path": "src/subagentTeam/SubagentTeamWorkspaceMessaging.test.ts",
+        "size": 2091,
+        "sha256": "c23fe6fa1af2ac32c74442cedb0d2486cc8b161deedd88abd9c27d5eaa6181dd"
       },
       {
         "path": "src/subagentTeam/index.ts",
@@ -1887,6 +1892,16 @@
         "path": "src/subagentTeam/subagentTeamData.ts",
         "size": 23138,
         "sha256": "f0485ea564f727cdc371b333910e46e92ad504a0906c52327fd77dc6d7473fe8"
+      },
+      {
+        "path": "src/subagentTeam/subagentTeamOutbox.test.ts",
+        "size": 5301,
+        "sha256": "88d5fa29f437e2bee401dcd421e882efae9216459e8aa54f9a4f544a1eedb695"
+      },
+      {
+        "path": "src/subagentTeam/subagentTeamOutbox.ts",
+        "size": 7525,
+        "sha256": "5d89635d44b73585052512c055c7d66967c797e1e0a750446c473a1f56dc5d1c"
       },
       {
         "path": "src/templates/composerPalette.template.json",
@@ -1931,12 +1946,12 @@
     ]
   },
   "bundle": {
-    "digest": "8ac203be7df476d2a9fd3108ee2a361d32259e40f9c1da2a8dc371ae16122f3f",
+    "digest": "8a57582578d40d66811317c0943bcccf760266c2aae824cae31b473524ff641f",
     "entries": [
       {
         "path": "shell-app.css",
-        "size": 232456,
-        "sha256": "9ed65a93ac44df6cba7dea05fd98d4549f594deaa0e5e7b2080fd2832b234a16"
+        "size": 232631,
+        "sha256": "8e2088581225f83511bf86df5ee33a71aa16d8ecf18b50b9ba4bf6f98ae466ad"
       },
       {
         "path": "shell-app.js",
@@ -1945,8 +1960,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2239224,
-        "sha256": "c475c0b32af8b76b9cc825bf7061a09e6e1f493a6f910f18d2319bbd85eb9758"
+        "size": 2247136,
+        "sha256": "0ff9c78d9c485ed94f4055fb9204c715fea3b8787055403787c20c2733738e37"
       },
       {
         "path": "shell-rolldown-runtime.js",
