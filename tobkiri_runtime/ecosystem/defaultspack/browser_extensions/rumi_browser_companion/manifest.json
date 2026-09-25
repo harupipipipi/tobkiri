@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Rumi Browser Companion",
-  "description": "MV3 browser companion for the local Rumi bridge.",
-  "version": "0.1.0",
+  "name": "Tobkiri Browser Companion",
+  "description": "MV3 browser companion for the local Tobkiri bridge.",
+  "version": "0.2.0",
   "minimum_chrome_version": "114",
   "x_rumi_search_home_origins": [
     "http://127.0.0.1:8777"
@@ -22,7 +22,8 @@
   },
   "options_page": "options.html",
   "action": {
-    "default_title": "Rumi Browser Companion"
+    "default_title": "Tobkiri Browser Companion",
+    "default_popup": "popup.html"
   },
   "content_scripts": [
     {

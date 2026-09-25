@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Rumi Browser Companion Options</title>
+    <title>Tobkiri Browser Companion Settings</title>
     <link rel="stylesheet" href="options.css">
   </head>
   <body>
     <main class="page">
       <section class="card">
-        <h1>Rumi Browser Companion</h1>
-        <p class="lede">Configure the local Rumi bridge endpoint and pairing token used by this browser.</p>
+        <h1>Tobkiri Browser Companion</h1>
+        <p class="lede">Configure the local Tobkiri bridge endpoint and pairing token used by this browser.</p>
         <form id="settings-form">
           <label class="field">
             <span>Server URL</span>
@@ -22,7 +22,7 @@
           </label>
           <label class="field">
             <span>Client Label</span>
-            <input id="client-label" name="clientLabel" type="text" placeholder="Optional name shown to Rumi">
+            <input id="client-label" name="clientLabel" type="text" placeholder="Optional name shown to Tobkiri">
           </label>
           <label class="field">
             <span>Profile Label</span>
@@ -38,6 +38,14 @@
           </div>
         </form>
         <div id="status" class="status" role="status" aria-live="polite"></div>
+      </section>
+      <section class="card">
+        <h2>Current-page access</h2>
+        <p class="lede">
+          After pairing, the companion can inspect page content and act on supported web pages in
+          this profile only when Tobkiri sends an approved browser command. Browser-internal pages
+          and other restricted URLs remain unavailable.
+        </p>
       </section>
       <section class="card">
         <h2>Capabilities</h2>

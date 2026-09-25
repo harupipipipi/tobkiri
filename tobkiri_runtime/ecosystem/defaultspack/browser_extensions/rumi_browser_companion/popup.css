@@ -1,0 +1,203 @@
+:root {
+  color-scheme: light;
+  --bg: #f5efe5;
+  --panel: #fffdf9;
+  --text: #201d19;
+  --muted: #665f57;
+  --border: rgba(52, 42, 31, 0.14);
+  --accent: #176974;
+  --accent-strong: #104a52;
+  --ok: #176b3a;
+  --warning: #765e0c;
+  --error: #9b2c2c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 370px;
+  margin: 0;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top right, rgba(23, 105, 116, 0.16), transparent 38%),
+    var(--bg);
+  font-family: "Segoe UI", "Hiragino Sans", sans-serif;
+}
+
+.popup-shell {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.popup-header h1,
+.status-heading h2,
+.scope-card h2,
+p {
+  margin: 0;
+}
+
+.popup-header h1 {
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+}
+
+.eyebrow,
+.section-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.status-card,
+.scope-card {
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgba(42, 34, 25, 0.07);
+  padding: 14px;
+}
+
+.status-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.status-heading h2,
+.scope-card h2 {
+  margin-top: 2px;
+  font-size: 1rem;
+}
+
+.status-symbol {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: var(--warning);
+  font-weight: 800;
+}
+
+.status-card[data-state="connected"] .status-symbol {
+  color: var(--ok);
+}
+
+.status-card[data-state="bridge_error"] .status-symbol,
+.status-card[data-state="error"] .status-symbol {
+  color: var(--error);
+}
+
+.status-message,
+.scope-detail,
+.scope-origin,
+.popup-error {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.scope-origin {
+  overflow: hidden;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.details {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+}
+
+.details div {
+  display: grid;
+  grid-template-columns: 124px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.details dt,
+.details dd {
+  min-width: 0;
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.details dt {
+  color: var(--muted);
+}
+
+.details dd {
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.primary-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 999px;
+  padding: 9px 12px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+button.secondary {
+  border: 1px solid var(--border);
+  color: var(--text);
+  background: #eee5d8;
+}
+
+button.text-button {
+  min-height: 32px;
+  padding: 4px;
+  color: var(--accent-strong);
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+button:focus-visible {
+  outline: 3px solid rgba(23, 105, 116, 0.34);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.popup-error {
+  border-left: 3px solid var(--error);
+  padding-left: 10px;
+  color: var(--error);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}

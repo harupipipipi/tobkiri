@@ -1,11 +1,11 @@
-# Rumi Browser Companion
+# Tobkiri Browser Companion
 
-`Rumi Browser Companion` is a Manifest V3 Chromium extension that lets Rumi drive the user's real browser session through a local bridge. It is designed to complement the existing `browser_use` and `computer_use` tools:
+`Tobkiri Browser Companion` is a Manifest V3 Chromium extension that lets Tobkiri drive the user's real browser session through a local bridge. It is designed to complement the existing `browser_use` and `computer_use` tools:
 
 - `computer_use` / `browser_computer`: visible-window, computer-use style control
 - `browser_companion`: DOM-aware browser control inside the user's signed-in browser profile
 
-This gives Rumi a "computer use + browser use" path where the model can inspect DOM state, select between connected browsers, and operate with the user's live cookies and sessions.
+This gives Tobkiri a "computer use + browser use" path where the model can inspect DOM state, select between connected browsers, and operate with the user's live cookies and sessions.
 
 ## Files
 
@@ -13,6 +13,8 @@ This gives Rumi a "computer use + browser use" path where the model can inspect 
 - `background.js`: bridge polling, browser metadata, tab operations, capture orchestration
 - `content_script.js`: DOM snapshots and element-level actions
 - `options.html`, `options.css`, `options.js`: local bridge configuration UI
+- `popup.html`, `popup.css`, `popup.js`: toolbar connection status, current-tab scope, and actions
+- `help.html`, `help.js`: local status and safety help
 
 ## Install
 
@@ -22,7 +24,7 @@ This gives Rumi a "computer use + browser use" path where the model can inspect 
 
    `<repo>/tobkiri_runtime/ecosystem/defaultspack/browser_extensions/rumi_browser_companion`
 
-4. In Rumi, call `browser_companion` with `action: "bridge.pairing"` to get the pairing token and candidate server URLs.
+4. In Tobkiri, call `browser_companion` with `action: "bridge.pairing"` to get the pairing token and candidate server URLs.
 5. Open the extension options page and paste:
 
    - `Server URL` such as `http://127.0.0.1:8766`
@@ -30,6 +32,21 @@ This gives Rumi a "computer use + browser use" path where the model can inspect 
    - Optional `Profile Label`, for example `Work` or `Personal`
 
 6. Click `Poll Bridge Now` to confirm the extension can connect.
+
+## Toolbar status
+
+Click the Browser Companion toolbar icon at any time to see:
+
+- connected, connecting, setup-required, or connection-error status;
+- the sanitized local endpoint and browser profile label;
+- the last successful poll time;
+- whether the current tab is a supported web page and what access is possible;
+- actions to poll the bridge, open settings, or read local safety help.
+
+The toolbar badge uses text as well as color: `OK` for connected, `…` while
+connecting, `SET` when setup is required, and `ERR` after a connection error.
+Polling may also process a command already queued by the local bridge; it is
+not a side-effect-free network diagnostic.
 
 ## Bridge API
 
@@ -220,7 +237,7 @@ For `page.extract` and `page.highlight`, text and accessibility matching prefers
 ## Safety Notes
 
 - This extension can inspect and act on pages in the user's real browser profile.
-- Only pair it with a local Rumi server you control.
+- Only pair it with a local Tobkiri server you control.
 - Do not share the pairing token.
 - The pairing token is stored in browser-local extension storage and is not synced between browser profiles.
 - Capture and tab selection may foreground the browser tab.
