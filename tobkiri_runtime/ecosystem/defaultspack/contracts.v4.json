@@ -11,7 +11,7 @@
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:30ac6689817b53b043c61e9b8f2ee1e1fd303de6174503929b62ac10ada58c9c",
+          "input_schema_digest": "sha256:3503a81a484e69aa50df3161d55b134ff8cfc0a66ba5bb65d6a6198078475a0a",
           "operation_id": "saved_complete",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "declarative"
@@ -21,7 +21,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:b91fbca49f3b97fe5d2aeea40666d688b750b831862606d97b58ddc7311fb328",
+            "digest": "sha256:66e83882a23fab2ccdafa5928e7e482f830767eb424eb4a8ba4377df8c28e5e2",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -32,7 +32,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:b91fbca49f3b97fe5d2aeea40666d688b750b831862606d97b58ddc7311fb328",
+        "source_digest": "sha256:66e83882a23fab2ccdafa5928e7e482f830767eb424eb4a8ba4377df8c28e5e2",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
       },
@@ -48,9 +48,9 @@
         "required_capabilities": [],
         "security": "restricted"
       },
-      "revision_digest": "sha256:63915151fb1d4ae599d26940f2ed6638a16a6ec7e5bac52c04a7ead0d15038bd",
+      "revision_digest": "sha256:40607acd7e523936184b8f149d939e7788ecd5f24d35c8379b7191c7be0a5ad0",
       "schema_catalog": {
-        "sha256:30ac6689817b53b043c61e9b8f2ee1e1fd303de6174503929b62ac10ada58c9c": {
+        "sha256:3503a81a484e69aa50df3161d55b134ff8cfc0a66ba5bb65d6a6198078475a0a": {
           "$defs": {
             "identifier": {
               "maxLength": 256,
@@ -82,6 +82,10 @@
                   "maximum": 9007199254740991,
                   "minimum": 1,
                   "type": "integer"
+                },
+                "deepthink_enabled": {
+                  "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check.",
+                  "type": "boolean"
                 },
                 "tool_selection": {
                   "additionalProperties": false,
@@ -275,7 +279,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:b91fbca49f3b97fe5d2aeea40666d688b750b831862606d97b58ddc7311fb328",
+            "digest": "sha256:66e83882a23fab2ccdafa5928e7e482f830767eb424eb4a8ba4377df8c28e5e2",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -286,7 +290,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:b91fbca49f3b97fe5d2aeea40666d688b750b831862606d97b58ddc7311fb328",
+        "source_digest": "sha256:66e83882a23fab2ccdafa5928e7e482f830767eb424eb4a8ba4377df8c28e5e2",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
       },
@@ -392,7 +396,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:b91fbca49f3b97fe5d2aeea40666d688b750b831862606d97b58ddc7311fb328",
+            "digest": "sha256:66e83882a23fab2ccdafa5928e7e482f830767eb424eb4a8ba4377df8c28e5e2",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -403,7 +407,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:b91fbca49f3b97fe5d2aeea40666d688b750b831862606d97b58ddc7311fb328",
+        "source_digest": "sha256:66e83882a23fab2ccdafa5928e7e482f830767eb424eb4a8ba4377df8c28e5e2",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
       },
@@ -483,5 +487,5 @@
     }
   ],
   "pack_id": "defaultspack",
-  "source_identity": "sha256:b91fbca49f3b97fe5d2aeea40666d688b750b831862606d97b58ddc7311fb328"
+  "source_identity": "sha256:66e83882a23fab2ccdafa5928e7e482f830767eb424eb4a8ba4377df8c28e5e2"
 }

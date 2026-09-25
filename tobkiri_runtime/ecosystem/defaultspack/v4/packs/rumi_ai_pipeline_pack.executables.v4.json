@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_ai_pipeline_pack",
-  "source_identity": "sha256:c5379209b066ecc38bb69913449cc7e7467c6b1f4e88b286bee9c8fe78e139e5",
+  "source_identity": "sha256:6075e87b27bba0f52ec5adf4efb43723aa625465cc58909de76ed71168b3b3a3",
   "variants": [
     {
       "variant_id": "rumi_ai_pipeline_pack.ai-pipeline.failover.python",
       "function_id": "rumi_ai_pipeline_pack.ai-pipeline.failover",
       "implementation_path": "runtime/pipeline.py",
-      "implementation_digest": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4",
+      "implementation_digest": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -79,7 +79,7 @@
       "variant_id": "rumi_ai_pipeline_pack.ai-pipeline.prepare.python",
       "function_id": "rumi_ai_pipeline_pack.ai-pipeline.prepare",
       "implementation_path": "runtime/pipeline.py",
-      "implementation_digest": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4",
+      "implementation_digest": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -148,6 +148,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:d58348fd07fcd8861ab3806daa8dde64421a893fc825f7a30263b970264164ed",
-  "catalog_digest": "sha256:88ed7810fb8a1f94d8893789c375457286c7d7510c1bfb47374487926cb90e37"
+  "materialization_catalog_digest": "sha256:b751e3f80bc808e8fab72a97eb7148ed3b53792798292f86ef126a13c7ab9136",
+  "catalog_digest": "sha256:d0186c54d24d2e89c70a1055844181fd714ed2789502d72ed9c513a7921f1b42"
 }

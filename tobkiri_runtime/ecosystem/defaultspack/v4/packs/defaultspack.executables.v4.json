@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:0e94c08fbf081034f4ca9ca21984c1bcc1ca62a1d202e37d3c6954d5ab54a27a",
+  "source_identity": "sha256:160a2db3f5852bada2ba5cef92893a6045ac60c283b85be734dba938d19aa6c8",
   "variants": [
     {
       "variant_id": "defaultspack.application-presentation.python",
@@ -177,7 +177,7 @@
       "variant_id": "defaultspack.conversation.saved.python",
       "function_id": "defaultspack.conversation.saved",
       "implementation_path": "runtime/saved_conversation.py",
-      "implementation_digest": "sha256:5f83b9e96918fde5d36baa253d00862a416657c57bc83913a4e26e31d9ad5077",
+      "implementation_digest": "sha256:5b3792f20c9113c6ec5090d6c77cd0cad806115122f50789a1e6fda89d9eee45",
       "execution_kind": "pack_vm",
       "platform": "any",
       "architecture": "any",
@@ -189,7 +189,7 @@
         {
           "contract_id": "conversation.saved-turn.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:63915151fb1d4ae599d26940f2ed6638a16a6ec7e5bac52c04a7ead0d15038bd",
+          "revision_digest": "sha256:40607acd7e523936184b8f149d939e7788ecd5f24d35c8379b7191c7be0a5ad0",
           "operation_id": "saved_complete",
           "input_schema": {
             "$defs": {
@@ -223,6 +223,10 @@
                     "maximum": 9007199254740991,
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "deepthink_enabled": {
+                    "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check.",
+                    "type": "boolean"
                   },
                   "tool_selection": {
                     "additionalProperties": false,
@@ -400,6 +404,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:8020c06f5ce68d2496cbb30d4fa2404754e2d3d51d0f28c2d9cf3c40267c35f6",
-  "catalog_digest": "sha256:b26de8936fbe1b3e45e71fb900eed95ae206f305434124ebad3379375437b743"
+  "materialization_catalog_digest": "sha256:a81dbe02235dd8f1bab24b7fe4d2cce38e677ee8dc6e6da7bdb5690d225bc265",
+  "catalog_digest": "sha256:8a3a15ffc5516b1ead596060c405b248ee5d8a590f6aeedcd222f437770fe88d"
 }

@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:8020c06f5ce68d2496cbb30d4fa2404754e2d3d51d0f28c2d9cf3c40267c35f6",
+  "catalog_digest": "sha256:a81dbe02235dd8f1bab24b7fe4d2cce38e677ee8dc6e6da7bdb5690d225bc265",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:b91fbca49f3b97fe5d2aeea40666d688b750b831862606d97b58ddc7311fb328",
+  "source_identity": "sha256:66e83882a23fab2ccdafa5928e7e482f830767eb424eb4a8ba4377df8c28e5e2",
   "variants": [
     {
       "architecture": "any",
@@ -180,7 +180,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "defaultspack.conversation.saved",
-      "implementation_digest": "sha256:5f83b9e96918fde5d36baa253d00862a416657c57bc83913a4e26e31d9ad5077",
+      "implementation_digest": "sha256:5b3792f20c9113c6ec5090d6c77cd0cad806115122f50789a1e6fda89d9eee45",
       "implementation_path": "runtime/saved_conversation.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -237,6 +237,10 @@
                     "maximum": 9007199254740991,
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "deepthink_enabled": {
+                    "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check.",
+                    "type": "boolean"
                   },
                   "tool_selection": {
                     "additionalProperties": false,
@@ -391,7 +395,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:63915151fb1d4ae599d26940f2ed6638a16a6ec7e5bac52c04a7ead0d15038bd",
+          "revision_digest": "sha256:40607acd7e523936184b8f149d939e7788ecd5f24d35c8379b7191c7be0a5ad0",
           "timeout_default_ms": 120000,
           "timeout_hard_max_ms": 300000
         }

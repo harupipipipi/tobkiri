@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:54f0b4cf35e9b3b76d138a5a30044f6257c0d576a7b4c33329df247c4b8fceb7",
+  "source_identity": "sha256:eea942c2d33ce7e16431777ae06fa20f6a66d91aaf65e3c7ef3343a95f52f7dc",
   "variants": [
     {
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.events.python",
@@ -183,7 +183,7 @@
         {
           "contract_id": "tobkiri.action.turn.saved.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:8a5ba2543950c85126e9f6c79d5740076597473805ec53d6a453c9f5752d589f",
+          "revision_digest": "sha256:972040d4c22bc6a3f91f3a04466b6aef94b7a124dbcd0a4c5ac573b00d2dc64e",
           "operation_id": "rumi_turn_runtime_pack.turn-saved",
           "input_schema": {
             "$defs": {
@@ -217,6 +217,10 @@
                     "maximum": 9007199254740991,
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "deepthink_enabled": {
+                    "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check.",
+                    "type": "boolean"
                   },
                   "tool_selection": {
                     "additionalProperties": false,
@@ -498,6 +502,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:be612dd01edf8dbcae620ce21cc8320374fba87a11034f26d75fed68148e551f",
-  "catalog_digest": "sha256:e071c2ed6f1e5044bc2ac60f4f14f6a83c632fd71368b5e6436f04002a1b2156"
+  "materialization_catalog_digest": "sha256:fb96073b76192cd840aa32733312e54d3836ad37b42d5239c98a2f5951cad7a8",
+  "catalog_digest": "sha256:45256e6f53dc55d5f3e44b4abb97abdee3af34a81077ab84ff8de95e51ddad07"
 }

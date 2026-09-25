@@ -6,7 +6,7 @@
     },
     {
       "path": "runtime/pipeline.py",
-      "sha256": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4"
+      "sha256": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91"
     }
   ],
   "version": "rumi.pack-artifacts.v1"

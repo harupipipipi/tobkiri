@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:42a8ec589edbe0eb366385256068f5498e3c917120d911daeb28862c62059415",
+      "digest": "sha256:0364f2e61e738518c0720165ffea9458c510e5a553015eb093fa632f7c2ad3de",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -11,7 +11,7 @@
       "path": "runtime/__init__.py"
     },
     {
-      "digest": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4",
+      "digest": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91",
       "kind": "executable",
       "path": "runtime/pipeline.py"
     }
@@ -40,7 +40,7 @@
     {
       "contract_revision_digest": "sha256:39508895d8bb9105029c246dcefaf063aba8c62f6e498f626d55f03b1d1d063d",
       "id": "rumi_ai_pipeline_pack.ai-pipeline.failover",
-      "implementation_digest": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4",
+      "implementation_digest": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_ai_pipeline_pack.ai-failover-decide",
@@ -52,7 +52,7 @@
     {
       "contract_revision_digest": "sha256:96fc8b32cf8543c448b07b66c3b47e03e3db113de522debd0f619d0f247b78bc",
       "id": "rumi_ai_pipeline_pack.ai-pipeline.prepare",
-      "implementation_digest": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4",
+      "implementation_digest": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_ai_pipeline_pack.ai-request-prepare",
@@ -63,9 +63,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:8e7776d17dc46d40ce2c87050b44197db5d2003715f764607194462ae29f4df5",
-    "contract_catalog_digest": "sha256:b6f291b595c6eda0207f41084702f800da353b1f9ed20ab91c1efcecc683f436",
-    "source_identity": "sha256:1c4d9ebb82cbe1116f47d205e7ff2283c3760d6cf5f80d2461fee941854e9be5"
+    "artifact_set_digest": "sha256:016a0940e84dffb01392197db9c8a25ffcef8903d5c7c747080ce0fc27246250",
+    "contract_catalog_digest": "sha256:6ec39217174106244bf9b14672b055048cd0d8469cdf09b693d0e627d2a87d4a",
+    "source_identity": "sha256:2ee3d91d89a3b2c4b67d8dd22d668d1370d2fdac3cddbe62c5a0070742daa384"
   },
   "migration": {
     "compatibility": "read_only",
@@ -147,7 +147,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:8e7776d17dc46d40ce2c87050b44197db5d2003715f764607194462ae29f4df5",
+    "artifact_digest": "sha256:016a0940e84dffb01392197db9c8a25ffcef8903d5c7c747080ce0fc27246250",
     "display_name": "Rumi AI Pipeline",
     "id": "rumi_ai_pipeline_pack",
     "kind": "host_extension",
@@ -157,7 +157,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:1c4d9ebb82cbe1116f47d205e7ff2283c3760d6cf5f80d2461fee941854e9be5",
+        "digest": "sha256:2ee3d91d89a3b2c4b67d8dd22d668d1370d2fdac3cddbe62c5a0070742daa384",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -168,7 +168,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:1c4d9ebb82cbe1116f47d205e7ff2283c3760d6cf5f80d2461fee941854e9be5",
+    "source_digest": "sha256:2ee3d91d89a3b2c4b67d8dd22d668d1370d2fdac3cddbe62c5a0070742daa384",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_pipeline_pack"
   },

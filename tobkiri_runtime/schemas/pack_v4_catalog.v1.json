@@ -186,7 +186,7 @@
             {
               "entrypoint_id": "saved_complete",
               "id": "saved_complete",
-              "implementation_digest": "sha256:5f83b9e96918fde5d36baa253d00862a416657c57bc83913a4e26e31d9ad5077"
+              "implementation_digest": "sha256:5b3792f20c9113c6ec5090d6c77cd0cad806115122f50789a1e6fda89d9eee45"
             }
           ],
           "owner": "defaultspack",
@@ -241,6 +241,10 @@
                       "maximum": 9007199254740991,
                       "minimum": 1,
                       "type": "integer"
+                    },
+                    "deepthink_enabled": {
+                      "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check.",
+                      "type": "boolean"
                     },
                     "tool_selection": {
                       "additionalProperties": false,
@@ -599,7 +603,7 @@
           "path": "runtime/application_presentation.py"
         },
         {
-          "digest": "sha256:5f83b9e96918fde5d36baa253d00862a416657c57bc83913a4e26e31d9ad5077",
+          "digest": "sha256:5b3792f20c9113c6ec5090d6c77cd0cad806115122f50789a1e6fda89d9eee45",
           "kind": "executable",
           "path": "runtime/saved_conversation.py"
         },
@@ -1925,7 +1929,7 @@
             {
               "entrypoint_id": "ai-gateway-preflight",
               "id": "rumi_ai_gateway_pack.ai-gateway.preflight",
-              "implementation_digest": "sha256:5f3326f55e4badaf86d0624000c29455830431586ee56e4432ed11dc5c2e1169"
+              "implementation_digest": "sha256:61342c1131bd576d7f53dc3d618089956666d04e71e46b2b90869274e4ce6873"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2023,7 +2027,7 @@
             {
               "entrypoint_id": "ai-gateway-routing-diagnostics",
               "id": "rumi_ai_gateway_pack.ai-gateway-routing-diagnostics",
-              "implementation_digest": "sha256:11c35f910d849a44280624726fb44f2d232ff287f9e4b43f4b24c20e4ea86d4f"
+              "implementation_digest": "sha256:5ac67f2630e8c0dc6c989f7df4f28f33879df4cd291724210c78990a075192ab"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2056,7 +2060,7 @@
             {
               "entrypoint_id": "ai-gateway-generate",
               "id": "rumi_ai_gateway_pack.ai-gateway.generate",
-              "implementation_digest": "sha256:11c35f910d849a44280624726fb44f2d232ff287f9e4b43f4b24c20e4ea86d4f"
+              "implementation_digest": "sha256:5ac67f2630e8c0dc6c989f7df4f28f33879df4cd291724210c78990a075192ab"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2089,7 +2093,7 @@
             {
               "entrypoint_id": "ai-gateway-stream",
               "id": "rumi_ai_gateway_pack.ai-gateway.stream",
-              "implementation_digest": "sha256:11c35f910d849a44280624726fb44f2d232ff287f9e4b43f4b24c20e4ea86d4f"
+              "implementation_digest": "sha256:5ac67f2630e8c0dc6c989f7df4f28f33879df4cd291724210c78990a075192ab"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2184,12 +2188,12 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:11c35f910d849a44280624726fb44f2d232ff287f9e4b43f4b24c20e4ea86d4f",
+          "digest": "sha256:5ac67f2630e8c0dc6c989f7df4f28f33879df4cd291724210c78990a075192ab",
           "kind": "executable",
           "path": "runtime/gateway.py"
         },
         {
-          "digest": "sha256:5f3326f55e4badaf86d0624000c29455830431586ee56e4432ed11dc5c2e1169",
+          "digest": "sha256:61342c1131bd576d7f53dc3d618089956666d04e71e46b2b90869274e4ce6873",
           "kind": "executable",
           "path": "runtime/preflight.py"
         }
@@ -2485,17 +2489,17 @@
             {
               "entrypoint_id": "ai-failover-decide",
               "id": "rumi_ai_pipeline_pack.ai-failover-decide",
-              "implementation_digest": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4"
+              "implementation_digest": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91"
             },
             {
               "entrypoint_id": "ai-failover-decide.generate",
               "id": "rumi_ai_pipeline_pack.ai-failover-decide.generate",
-              "implementation_digest": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4"
+              "implementation_digest": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91"
             },
             {
               "entrypoint_id": "ai-failover-decide.stream",
               "id": "rumi_ai_pipeline_pack.ai-failover-decide.stream",
-              "implementation_digest": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4"
+              "implementation_digest": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91"
             }
           ],
           "owner": "rumi_ai_pipeline_pack",
@@ -2528,17 +2532,17 @@
             {
               "entrypoint_id": "ai-request-prepare",
               "id": "rumi_ai_pipeline_pack.ai-request-prepare",
-              "implementation_digest": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4"
+              "implementation_digest": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91"
             },
             {
               "entrypoint_id": "ai-request-prepare.generate",
               "id": "rumi_ai_pipeline_pack.ai-request-prepare.generate",
-              "implementation_digest": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4"
+              "implementation_digest": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91"
             },
             {
               "entrypoint_id": "ai-request-prepare.stream",
               "id": "rumi_ai_pipeline_pack.ai-request-prepare.stream",
-              "implementation_digest": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4"
+              "implementation_digest": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91"
             }
           ],
           "owner": "rumi_ai_pipeline_pack",
@@ -2566,7 +2570,7 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4",
+          "digest": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91",
           "kind": "executable",
           "path": "runtime/pipeline.py"
         }
@@ -17567,6 +17571,10 @@
                       "minimum": 1,
                       "type": "integer"
                     },
+                    "deepthink_enabled": {
+                      "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check.",
+                      "type": "boolean"
+                    },
                     "tool_selection": {
                       "additionalProperties": false,
                       "allOf": [
@@ -17767,7 +17775,7 @@
           "path": "runtime/durable.py"
         },
         {
-          "digest": "sha256:142e4025f7d758c4b5dbbe75b92cde0fd14a7ded0a5880315cb253a3474d240c",
+          "digest": "sha256:72f5f38b6c6c714dadc602887f4e854a10330cde46b90d489219d8709d18f980",
           "kind": "executable",
           "path": "runtime/saved.py"
         }
