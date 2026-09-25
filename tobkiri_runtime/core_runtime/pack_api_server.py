@@ -2478,7 +2478,7 @@ location.replace({target_literal})}})
             )
 
     # ------------------------------------------------------------------
-    # Runtime update management (Tobkiri runtime / defaultspack targets)
+    # Runtime update management (host-registered update targets)
     # ------------------------------------------------------------------
 
     _UPDATE_SETTINGS_BODY_FIELDS = frozenset({"auto_update"})
@@ -2494,10 +2494,7 @@ location.replace({target_literal})}})
         )
 
         manager = get_github_update_manager()
-        targets: list[UpdateTarget] = list(manager.update_target_ids) or [
-            "tobkiri",
-            "defaultspack",
-        ]
+        targets: list[UpdateTarget] = list(manager.update_target_ids) or ["tobkiri"]
         try:
             checks = manager.check_many(targets)
         except GitHubUpdateError as error:
@@ -2555,7 +2552,6 @@ location.replace({target_literal})}})
         unknown = set(auto_update) - set(manager.update_target_ids) - {
             "tobkiri",
             "rumiai",
-            "defaultspack",
         }
         if unknown:
             self._send_mapping_result(
@@ -2589,11 +2585,7 @@ location.replace({target_literal})}})
             )
             return
         target = body.get("target")
-        if not isinstance(target, str) or target not in {
-            "tobkiri",
-            "rumiai",
-            "defaultspack",
-        }:
+        if not isinstance(target, str):
             self._send_mapping_result(
                 {"error": "Unknown update target", "status_code": 400}
             )
