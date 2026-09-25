@@ -92,22 +92,42 @@ export function resolveComposerWidgetDrop(widget: DroppedWidget, toolItems: Comp
   return { type: "ignore" };
 }
 
-function composerToolSearchText(item: ComposerExtensionItem): string {
-  return [
+function normalizedToolMentionSearchValue(value: unknown): string {
+  return String(value ?? "").normalize("NFKC").trim().toLowerCase();
+}
+
+function composerToolMentionRank(item: ComposerExtensionItem, query: string): number | null {
+  const names = [
     item.id,
+    item.id.split("/").pop(),
     item.label,
-    item.description,
     item.ui?.composer_label,
+  ].map(normalizedToolMentionSearchValue).filter(Boolean);
+  if (names.some((name) => name === query)) return 0;
+  if (names.some((name) => name.startsWith(query))) return 1;
+  if (names.some((name) => name.includes(query))) return 2;
+
+  const tags = (item.tags ?? []).map(normalizedToolMentionSearchValue).filter(Boolean);
+  if (tags.some((tag) => tag === query || tag.startsWith(query))) return 3;
+  if (tags.some((tag) => tag.includes(query))) return 4;
+
+  const descriptions = [
+    item.description,
     item.ui?.composer_description,
-    ...(item.tags ?? []),
-  ].filter(Boolean).join(" ").toLowerCase();
+  ].map(normalizedToolMentionSearchValue).filter(Boolean);
+  return descriptions.some((description) => description.includes(query)) ? 5 : null;
 }
 
 export function filterComposerToolMentions(items: ComposerExtensionItem[], query: string, limit = 20): ComposerExtensionItem[] {
-  const q = query.trim().toLowerCase();
+  const q = normalizedToolMentionSearchValue(query);
   const candidates = items.filter((item) => !item.disabled);
   if (!q) return candidates.slice(0, limit);
-  return candidates.filter((item) => composerToolSearchText(item).includes(q)).slice(0, limit);
+  return candidates
+    .map((item, index) => ({ item, index, rank: composerToolMentionRank(item, q) }))
+    .filter((candidate): candidate is typeof candidate & { rank: number } => candidate.rank !== null)
+    .sort((left, right) => left.rank - right.rank || left.index - right.index)
+    .map(({ item }) => item)
+    .slice(0, limit);
 }
 
 export function composerToolMentionDisplay(item: ComposerExtensionItem): { label: string; description?: string } {
