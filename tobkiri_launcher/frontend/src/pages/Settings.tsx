@@ -26,7 +26,6 @@ import {useT} from '@/src/lib/i18n';
 import {PRODUCT_DISPLAY_NAME} from '@/src/lib/launcherBrand';
 import {extractRuntimeProfileSettings} from '@/src/lib/runtimeSurface';
 import {UI_LOCALE_OPTIONS, uiLocaleOption} from '@/src/lib/localeAvailability';
-import {useT} from '@/src/lib/i18n';
 import {useAppStore} from '@/src/store';
 
 export function Settings() {
