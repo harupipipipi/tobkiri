@@ -9,6 +9,12 @@ export type ProjectInfo = {
   rumiDataPath?: string | null;
 };
 
+export type ProjectLoadResult =
+  | { status: "empty"; projects: ProjectInfo[] }
+  | { status: "ready"; projects: ProjectInfo[] }
+  | { status: "unavailable"; projects: ProjectInfo[]; message: string }
+  | { status: "corrupt"; projects: ProjectInfo[]; message: string; raw: string };
+
 // Legacy browser state is accepted only as one migration input. It is never
 // returned to the UI before the canonical owner acknowledges the exact digest.
 export const PROJECTS_STORAGE_KEY = "rumi-history-custom-groups";
@@ -95,6 +101,50 @@ function mutationId(): string {
 
 export function loadProjects(): ProjectInfo[] {
   return snapshot.projects.map(fromOwner);
+}
+
+// Sync status view for the history UI. The canonical snapshot is authoritative
+// once populated; an empty snapshot still surfaces legacy localStorage data (or
+// its corruption) so recovery controls stay reachable before migration lands.
+export function loadProjectsResult(): ProjectLoadResult {
+  const projects = loadProjects();
+  if (projects.length) return { status: "ready", projects };
+  try {
+    const raw = localStorage.getItem(PROJECTS_STORAGE_KEY);
+    if (!raw) return { status: "empty", projects };
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new Error("Stored projects must be a list.");
+      const legacy = parsed
+        .map(projectFromStorageItem)
+        .filter((item): item is ProjectInfo => Boolean(item));
+      return legacy.length
+        ? { status: "ready", projects: legacy }
+        : { status: "empty", projects };
+    } catch (error) {
+      return {
+        status: "corrupt",
+        projects: [],
+        message: error instanceof Error ? error.message : "Project storage is corrupt.",
+        raw,
+      };
+    }
+  } catch {
+    return {
+      status: "unavailable",
+      projects,
+      message: "Project storage is unavailable.",
+    };
+  }
+}
+
+export function resetProjects(): boolean {
+  try {
+    localStorage.removeItem(PROJECTS_STORAGE_KEY);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function bootstrapProjects(): Promise<ProjectInfo[]> {

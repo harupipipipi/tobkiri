@@ -10,11 +10,21 @@ import {
   buildHistoryCalendarSummary,
   HistoryBoard,
   loadCustomGroups,
+  toggleHistoryGroupCollapsed,
   type ChatItem,
   type CustomGroupInfo,
 } from "./HistoryBoard";
 import { droppedWidgetFromHistoryChat, historyChatDragPayload, parseHistoryChatDrop } from "../lib/historyComposer";
-import { filterProjects, newProjectId, projectFromStorageItem, projectTaskContext } from "../features/projects/projectStorage";
+import {
+  filterProjects,
+  loadProjectsResult,
+  newProjectId,
+  projectFromStorageItem,
+  projectTaskContext,
+  saveProjects,
+} from "../features/projects/projectStorage";
+import { HISTORY_ORGANIZATION_STORAGE_KEY } from "../features/history/historyOrganization";
+import "../features/history/historyOrganization.test";
 
 test("buildGroupsFromChats places LINE conversations into a dedicated group", () => {
   const chats: ChatItem[] = [
@@ -40,6 +50,26 @@ test("buildGroupsFromChats places LINE conversations into a dedicated group", ()
   assert.deepEqual(groups[0]?.chats.map((chat) => chat.id), ["line-1"]);
   assert.equal(groups[1]?.title, "Today");
   assert.deepEqual(groups[1]?.chats.map((chat) => chat.id), ["chat-1"]);
+});
+
+test("toggleHistoryGroupCollapsed preserves nested groups while updating the selected group", () => {
+  const groups = [{
+    id: "parent",
+    title: "Parent",
+    chats: [],
+    isCollapsed: false,
+    subGroups: [{
+      id: "child",
+      title: "Child",
+      chats: [],
+      isCollapsed: false,
+      subGroups: [],
+    }],
+  }];
+
+  const toggled = toggleHistoryGroupCollapsed(groups, "child");
+  assert.equal(toggled[0]?.isCollapsed, false);
+  assert.equal(toggled[0]?.subGroups[0]?.isCollapsed, true);
 });
 
 test("buildGroupsFromChats groups metadata chats in compact workspace buckets", () => {
@@ -204,6 +234,57 @@ test("Project state never exposes legacy localStorage before owner acknowledgeme
     } else {
       Reflect.deleteProperty(globalThis, "localStorage");
     }
+  }
+});
+
+test("HistoryBoard exposes recovery controls when organization storage is corrupt", () => {
+  const previousDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => key === HISTORY_ORGANIZATION_STORAGE_KEY ? "{broken" : null,
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    },
+  });
+
+  try {
+    const html = renderToStaticMarkup(createElement(HistoryBoard, {
+      activeChatId: null,
+      chatItems: [],
+      onChatSelect: () => undefined,
+      onNewTask: () => undefined,
+      onSettingsClick: () => undefined,
+    }));
+    assert.match(html, /data-history-save-state="corrupt"/);
+    assert.match(html, /History changes are not saved/);
+    assert.match(html, /Export<\/button>/);
+    assert.match(html, />Reset</);
+  } finally {
+    if (previousDescriptor) Object.defineProperty(globalThis, "localStorage", previousDescriptor);
+    else Reflect.deleteProperty(globalThis, "localStorage");
+  }
+});
+
+test("project storage reports corrupt data and write failures", async () => {
+  const previousDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: () => "{broken",
+      setItem: () => { throw new Error("quota"); },
+      removeItem: () => undefined,
+    },
+  });
+
+  try {
+    const loaded = loadProjectsResult();
+    assert.equal(loaded.status, "corrupt");
+    assert.deepEqual(loaded.projects, []);
+    await assert.rejects(saveProjects([{ id: "alpha", title: "Alpha" }]));
+  } finally {
+    if (previousDescriptor) Object.defineProperty(globalThis, "localStorage", previousDescriptor);
+    else Reflect.deleteProperty(globalThis, "localStorage");
   }
 });
 

@@ -34,6 +34,7 @@ For the repo-wide glossary and migration guidance, see
 | Frontend extension points | [frontend_extensions.md](frontend_extensions.md) |
 | RumiTemplate composition platform | [templates.md](templates.md) |
 | UI and layout | [ui_and_layout.md](ui_and_layout.md) |
+| History organization persistence and recovery | [history_organization_persistence.md](history_organization_persistence.md) |
 | Chat module | [chat.md](chat.md) |
 | Agent runtime | [agent_runtime.md](agent_runtime.md) |
 | Team workspace runtime | [multi-agent.md](multi-agent.md) |
