@@ -64,6 +64,14 @@ import {
   DEVTOOLS_PREFERENCE_STORAGE_KEY,
   normalizeDevtoolsEnabled,
 } from './lib/devtoolsPreference';
+import {
+  enqueueToast,
+  updateQueuedToast,
+  type Toast,
+  type ToastOptions,
+  type ToastType,
+  type ToastUpdate,
+} from './lib/toastQueue';
 
 export type {ColorMode, Theme} from './lib/appearance';
 export type {Toast, ToastAction, ToastOptions, ToastType} from './lib/toastQueue';
