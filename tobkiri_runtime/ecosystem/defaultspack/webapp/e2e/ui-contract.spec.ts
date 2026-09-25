@@ -2812,6 +2812,107 @@ test("calendar mode opens quick add and renders new tasks in blue", async ({ pag
   await expect(page.getByRole("navigation", { name: "Settings categories" })).toBeVisible();
 });
 
+test("calendar popovers own global-layer focus, pointer, keyboard, and viewport behavior", async ({ page }) => {
+  await openDefaultspack(page, "/coding", {
+    initialSettingsValues: {
+      calendar: { show_outside_days: false },
+    },
+  });
+  await page.setViewportSize({ width: 360, height: 520 });
+  await page.locator('button[title="Calendar"]').first().click();
+
+  const now = new Date();
+  const dayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-09`;
+  const dayCell = page.getByTestId(`calendar-day-${dayKey}`);
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const outsideDayKey = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-01`;
+  const outsideDayCell = page.getByTestId(`calendar-day-${outsideDayKey}`);
+  await expect(outsideDayCell).toHaveAttribute("aria-disabled", "true");
+  await expect(outsideDayCell).toHaveAttribute("tabindex", "-1");
+  await outsideDayCell.click();
+  await expect(page.getByTestId("calendar-editor-popover")).toBeHidden();
+  await dayCell.focus();
+  await page.keyboard.press("Enter");
+
+  const editor = page.getByTestId("calendar-editor-popover");
+  await expect(editor).toBeVisible();
+  await expect(page.getByPlaceholder("何を追加しますか？")).toBeFocused();
+  expect(await editor.evaluate((node) => node.parentElement?.id)).toBe("rumi-layer-globalOverlay");
+  expect(await editor.evaluate((node) => getComputedStyle(node).position)).toBe("fixed");
+  expect(await editor.evaluate((node) => getComputedStyle(node).pointerEvents)).toBe("auto");
+  const editorBox = await editor.boundingBox();
+  expect(editorBox).not.toBeNull();
+  expect(editorBox!.x).toBeGreaterThanOrEqual(0);
+  expect(editorBox!.y).toBeGreaterThanOrEqual(0);
+  expect(editorBox!.x + editorBox!.width).toBeLessThanOrEqual(360);
+  expect(editorBox!.y + editorBox!.height).toBeLessThanOrEqual(520);
+
+  await editor.click({ position: { x: 4, y: 4 } });
+  await expect(editor).toBeVisible();
+
+  const timeInput = page.getByRole("combobox", { name: "カレンダー項目の時刻" });
+  await timeInput.focus();
+  const timeMenu = page.getByTestId("calendar-time-menu");
+  await expect(timeMenu).toBeVisible();
+  expect(await timeMenu.evaluate((node) => node.parentElement?.id)).toBe("rumi-layer-globalOverlay");
+  await expect(timeInput).toHaveAttribute("aria-expanded", "true");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(timeInput).toHaveValue("午前9:15");
+  await expect(timeInput).toBeFocused();
+  await expect(timeMenu).toBeHidden();
+
+  await timeInput.press("ArrowDown");
+  await expect(timeMenu).toBeVisible();
+  await page.getByPlaceholder("何を追加しますか？").click();
+  await expect(timeMenu).toBeHidden();
+  await timeInput.press("ArrowDown");
+  await expect(timeMenu).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(timeMenu).toBeHidden();
+  await expect(editor).toBeVisible();
+  await expect(timeInput).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(editor).toBeHidden();
+  await expect(dayCell).toBeFocused();
+
+  await dayCell.press("Enter");
+  await expect(editor).toBeVisible();
+  await page.locator("body").click({ position: { x: 2, y: 2 } });
+  await expect(editor).toBeHidden();
+});
+
+test("calendar yields Escape and z-order to a higher modal", async ({ page }) => {
+  await openDefaultspack(page, "/coding");
+  await page.locator('button[title="Calendar"]').first().click();
+
+  const now = new Date();
+  const currentPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-`;
+  const enabledCell = page.locator(`[data-testid^="calendar-day-${currentPrefix}"]`).first();
+  await enabledCell.click();
+  const editor = page.getByTestId("calendar-editor-popover");
+  await expect(editor).toBeVisible();
+
+  await page.getByTitle("Settings").last().evaluate((button: HTMLElement) => button.click());
+  const settingsDialog = page.getByRole("dialog", { name: "Settings" });
+  await expect(settingsDialog).toBeVisible();
+  await expect(editor).toBeVisible();
+  await expect(editor).toHaveAttribute("aria-hidden", "true");
+  await expect(editor).toHaveAttribute("inert", "");
+  const layerOrder = await page.evaluate(() => ({
+    calendar: Number(getComputedStyle(document.getElementById("rumi-layer-globalOverlay")!).zIndex),
+    settings: Number(getComputedStyle(document.querySelector(".rumi-layer-modal")!).zIndex),
+  }));
+  expect(layerOrder.settings).toBeGreaterThan(layerOrder.calendar);
+  await page.keyboard.press("Escape");
+  await expect(settingsDialog).toBeHidden();
+  await expect(editor).toBeVisible();
+  await expect(editor).not.toHaveAttribute("aria-hidden", "true");
+  await expect(editor).not.toHaveAttribute("inert", "");
+  await page.keyboard.press("Escape");
+  await expect(editor).toBeHidden();
+});
+
 test("history card drag uses rumi history MIME and sends dropped_widgets metadata", async ({ page }) => {
   const streamRequests: Record<string, unknown>[] = [];
   await openDefaultspack(page, "/chat", {
