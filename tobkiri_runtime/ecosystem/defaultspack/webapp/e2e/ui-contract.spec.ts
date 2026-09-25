@@ -209,6 +209,24 @@ function smokeConversation() {
             next_step: "Ready for implementation",
             timestamp: now - 11_000,
           },
+          {
+            type: "tool_call_started",
+            phase: "tool_call_started",
+            tool_call_id: "call-calc",
+            tool_name: "calculator",
+            arguments: { expression: "2 + 2" },
+            timestamp: now - 9_000,
+          },
+          {
+            type: "tool_call_completed",
+            phase: "tool_call_completed",
+            tool_call_id: "call-calc",
+            tool_name: "calculator",
+            arguments: { expression: "2 + 2" },
+            display_text: "2 + 2 = 4",
+            result: { status: "ok", data: { result: 4 } },
+            timestamp: now - 8_500,
+          },
         ],
         tool_logs: [
           {
@@ -2913,9 +2931,12 @@ test("tool timeline shows streamed activity details", async ({ page }) => {
   await expect(page.locator(".rumi-tool-activity")).toHaveCount(1);
   const toggle = page.getByRole("button", { name: /作業状況を開く:/ });
   await expect(toggle).toBeVisible();
-  await expect(toggle).toContainText("詳細");
+  await expect(toggle).toContainText("開く");
 
   await toggle.click();
+  const preview = page.getByLabel("Activity preview");
+  await expect(preview).toBeVisible();
+  await expect(preview).toContainText("calendar-smoke.json");
   const expandedToggle = page.getByRole("button", { name: /作業状況を閉じる:/ });
   await expect(expandedToggle).toBeVisible();
   await expect(expandedToggle).toContainText("閉じる");
@@ -2924,6 +2945,20 @@ test("tool timeline shows streamed activity details", async ({ page }) => {
   await expect(timeline).toContainText("ファイル");
   await expect(timeline).toContainText("src");
   await expect(timeline).toContainText("Listed 2 files");
+});
+
+test("activity row open reveals a detail preview when no artifact preview exists", async ({ page }) => {
+  await openDefaultspack(page);
+
+  await page.getByRole("button", { name: /作業状況を開く:/ }).click();
+  await page.getByRole("button", { name: /計算: 2 \+ 2.*開く/ }).click();
+
+  const preview = page.getByLabel("Activity preview");
+  await expect(preview).toBeVisible();
+  await expect(preview).toContainText("calculator.activity.md");
+  await expect(preview).toContainText("Tool activity detail");
+  await expect(preview).toContainText("2 + 2 = 4");
+  await expect(preview).toContainText('"result": 4');
 });
 
 test("mocked coding cockpit renders MCP server state", async ({ page }) => {

@@ -224,12 +224,7 @@ export function toolActivityPreviewKey(
 export function previewableToolActivityKeys(events: ChatActivityEvent[]): Set<string> {
   const keys = new Set<string>();
   for (const event of events) {
-    if (
-      event.type !== "browser_screenshot"
-      && event.type !== "browser_state_snapshot"
-      && event.type !== "browser_dom_snapshot"
-      && event.type !== "tool_call_completed"
-    ) continue;
+    if (!hasPreviewableToolActivityEvent(event)) continue;
     if (activityEventValue(event, "provider_attempt_discarded") === true) continue;
     const callId = String(activityEventValue(event, "tool_call_id") ?? "").trim();
     if (!callId) continue;
@@ -251,6 +246,38 @@ export function toolActivityPreviewId(
     item.providerAttemptGeneration,
   );
   return previewableKeys.has(key) ? item.toolCallId : undefined;
+}
+
+export function hasPreviewableToolActivityEvent(event: ChatActivityEvent): boolean {
+  if (
+    event.type === "browser_screenshot"
+    || event.type === "browser_state_snapshot"
+    || event.type === "browser_dom_snapshot"
+  ) {
+    return true;
+  }
+  if (
+    event.type !== "tool_call_completed"
+    && event.type !== "tool_result"
+    && event.phase !== "tool_call_completed"
+    && event.phase !== "tool_result"
+  ) {
+    return false;
+  }
+  return Boolean(
+    event.result !== undefined
+    || event.artifact !== undefined
+    || event.artifacts !== undefined
+    || event.output !== undefined
+    || event.screenshot !== undefined
+    || String(
+      event.display_text
+      ?? event.display_summary
+      ?? event.summary
+      ?? event.message
+      ?? "",
+    ).trim(),
+  );
 }
 
 function shortDetail(value: unknown, limit = 420): string {
@@ -1505,6 +1532,27 @@ function isToolActivityItem(item: RunActivityItem): item is ToolActivityItem {
   return item.kind === "tool";
 }
 
+function previewIdForActivityItem(
+  item: RunActivityItem,
+  previewableCallIds: Set<string>,
+): string | undefined {
+  const artifactPreviewId = isToolActivityItem(item)
+    ? item.artifacts?.find((artifact) => artifact.url)?.path
+    : undefined;
+  return toolActivityPreviewId(item, previewableCallIds) ?? artifactPreviewId;
+}
+
+function firstActivityPreviewId(
+  items: RunActivityItem[],
+  previewableCallIds: Set<string>,
+): string | undefined {
+  for (const item of items) {
+    const previewId = previewIdForActivityItem(item, previewableCallIds);
+    if (previewId) return previewId;
+  }
+  return undefined;
+}
+
 function ToolActivityTimelineRow({
   item,
   onOpenToolPreview,
@@ -1514,8 +1562,7 @@ function ToolActivityTimelineRow({
   onOpenToolPreview?: (previewId: string) => void;
   previewableCallIds: Set<string>;
 }) {
-  const artifactPreviewId = isToolActivityItem(item) ? item.artifacts?.find((artifact) => artifact.url)?.path : undefined;
-  const previewId = toolActivityPreviewId(item, previewableCallIds) ?? artifactPreviewId;
+  const previewId = previewIdForActivityItem(item, previewableCallIds);
   const hasPreview = Boolean(previewId);
   const hasError = item.status === "failed" || item.status === "blocked";
   const itemLabel = item.title || item.detail || (isToolActivityItem(item) ? item.toolName : item.folderLabel);
@@ -1563,12 +1610,14 @@ function ToolActivityTimelineRow({
           <span className="block max-w-full truncate text-[10px] leading-4 text-zinc-600">{item.nextStep}</span>
         )}
       </span>
+      {hasPreview && <span className="mt-[5px] shrink-0 text-[10px] leading-4 text-zinc-500">開く</span>}
       {hasPreview && <ChevronRight size={12} className="mt-[5px] shrink-0 text-zinc-600" />}
     </>
   );
   const row = hasPreview ? (
     <button
       type="button"
+      aria-label={`${item.title || item.detail || "tool activity"} のプレビューを開く`}
       className={cn("group/tool flex min-h-7 w-full min-w-0 max-w-full items-start gap-2 overflow-hidden rounded px-1.5 py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-600 sm:min-h-8", activityRowTone(item.status))}
       onClick={() => {
         if (previewId) onOpenToolPreview?.(previewId);
@@ -1616,6 +1665,7 @@ function ToolActivityPanel({
 }) {
   if (items.length === 0) return null;
   const previewableCallIds = previewableToolActivityKeys(message.events ?? []);
+  const activityPreviewId = firstActivityPreviewId(items, previewableCallIds);
   return (
     <section className="rumi-tool-activity mb-3 grid w-full max-w-[640px] gap-1 rounded-md border border-zinc-800/70 bg-zinc-950/45 px-2 py-1.5 text-zinc-300" aria-label="ツール履歴">
       <button
@@ -1623,7 +1673,10 @@ function ToolActivityPanel({
         aria-expanded={isOpen}
         aria-label={`作業状況を${isOpen ? "閉じる" : "開く"}: ${summary.label}`}
         className="flex min-w-0 items-center gap-2 rounded px-0.5 py-0.5 text-left transition-colors hover:bg-zinc-900/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-600"
-        onClick={onToggle}
+        onClick={() => {
+          if (activityPreviewId) onOpenToolPreview?.(activityPreviewId);
+          onToggle();
+        }}
       >
         <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", summary.failedCount > 0 ? "bg-red-400" : summary.runningCount > 0 ? "animate-pulse bg-blue-300" : "bg-zinc-600")} />
         <span className="min-w-0 flex-1">
@@ -1636,7 +1689,7 @@ function ToolActivityPanel({
             <span className="block truncate text-[10px] leading-4 text-zinc-500">次: {summary.nextAction}</span>
           )}
         </span>
-        <span className="shrink-0 text-[10px] text-zinc-500">{isOpen ? "閉じる" : "詳細"}</span>
+        <span className="shrink-0 text-[10px] text-zinc-500">{isOpen ? "閉じる" : activityPreviewId ? "開く" : "詳細"}</span>
         <ChevronRight size={12} className={cn("shrink-0 text-zinc-600 transition-transform", isOpen && "rotate-90")} />
       </button>
       {isOpen && (

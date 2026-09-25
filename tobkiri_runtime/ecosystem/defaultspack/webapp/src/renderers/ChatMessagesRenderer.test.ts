@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { AUTHORITY_FOLLOWUP_TEXT, ChatMessagesRenderer, compactLogPreviewText, formatMessageTimestamp, hasRunningToolActivityGroups, isAuthorityWaitingMessage, isCompactLogLikeMessageText, isHiddenAuthorityFollowupMessage, messageCopyText, previewableToolActivityKeys, sanitizeAssistantAuthorityBoilerplate, shouldRenderImageBlockInChat, shouldShowEmptyResponseWarning, streamedBrowserScreenshots, summarizePendingToolNames, summarizeToolActivityGroups, taskDurationForMessage, toolActivityPreviewId, visibleChatMessages } from "./ChatMessagesRenderer";
+import { AUTHORITY_FOLLOWUP_TEXT, ChatMessagesRenderer, compactLogPreviewText, formatMessageTimestamp, hasPreviewableToolActivityEvent, hasRunningToolActivityGroups, isAuthorityWaitingMessage, isCompactLogLikeMessageText, isHiddenAuthorityFollowupMessage, messageCopyText, previewableToolActivityKeys, sanitizeAssistantAuthorityBoilerplate, shouldRenderImageBlockInChat, shouldShowEmptyResponseWarning, streamedBrowserScreenshots, summarizePendingToolNames, summarizeToolActivityGroups, taskDurationForMessage, toolActivityPreviewId, visibleChatMessages } from "./ChatMessagesRenderer";
 import type { ChatUiMessage } from "./types";
 
 const RISKY_AUTHORITY_FOLLOWUP_PHRASES = [
@@ -327,6 +327,36 @@ test("running tool activity summary exposes active work and next action", () => 
   assert.equal(summary.nextAction, "画面の変化を確認します");
 });
 
+test("previewable activity events require detail behind the open action", () => {
+  assert.equal(hasPreviewableToolActivityEvent({
+    type: "tool_call_completed",
+    tool_name: "calculator",
+    tool_call_id: "call_calc",
+    result: { status: "ok", data: { result: 4 } },
+  }), true);
+  assert.equal(hasPreviewableToolActivityEvent({
+    type: "tool_call_completed",
+    tool_name: "calculator",
+    tool_call_id: "call_calc",
+    display_text: "2 + 2 = 4",
+  }), true);
+  assert.equal(hasPreviewableToolActivityEvent({
+    type: "tool_call_completed",
+    tool_name: "calculator",
+    tool_call_id: "call_empty",
+  }), false);
+  assert.equal(hasPreviewableToolActivityEvent({
+    type: "tool_call_started",
+    tool_name: "calculator",
+    tool_call_id: "call_started",
+  }), false);
+  assert.equal(hasPreviewableToolActivityEvent({
+    type: "browser_screenshot",
+    tool_name: "browser_use",
+    tool_call_id: "call_screen",
+  }), true);
+});
+
 test("task duration is human-friendly while running and after completion", () => {
   const startedAt = Date.UTC(2026, 6, 20, 3, 0, 0);
   const completedAt = startedAt + 125_000;
@@ -580,10 +610,12 @@ test("tool previews match retry generations while legacy events still use call i
       type: "tool_call_completed",
       tool_call_id: "call_1",
       provider_attempt_generation: 2,
+      result: { status: "ok" },
     },
     {
       type: "tool_call_completed",
       tool_call_id: "legacy_call",
+      display_text: "completed",
     },
   ]);
 
