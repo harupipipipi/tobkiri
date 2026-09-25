@@ -51,6 +51,25 @@ BUILTIN_SHELL_REGIONS = {
     "settings_modal",
     "title_bar",
 }
+STATUS_SURFACE_API_VERSION = "rumi.status_surface.v1"
+STATUS_SURFACE_SLOTS = {
+    "above_composer",
+    "below_composer",
+    "chat_header",
+    "sidebar",
+    "workspace_panel",
+}
+STATUS_SURFACE_CONTROL_KINDS = {
+    "button",
+    "toggle_button",
+    "expand",
+    "model_select",
+    "provider_select",
+    "thinking_select",
+    "select",
+    "menu",
+}
+STATUS_SURFACE_ACTION_CONTROL_KINDS = STATUS_SURFACE_CONTROL_KINDS - {"expand"}
 TRUSTED_SHELL_RENDERER_MODULE_PREFIXES = (
     "/static/renderers/",
     "/static/assets/renderers/",
@@ -388,6 +407,7 @@ def _validate_references(template: RumiTemplate) -> list[TemplateDiagnostic]:
     context_policy_ids: set[str] = set()
     tool_policy_ids: set[str] = set()
     permission_ids: set[str] = set()
+    command_ids: set[str] = set()
     action_ids: dict[str, str] = {}
     data_source_ids: dict[str, str] = {}
 
@@ -404,6 +424,9 @@ def _validate_references(template: RumiTemplate) -> list[TemplateDiagnostic]:
         elif kind == TemplatePieceKind.COMPOSER_INPUT.value:
             for input_id in _payload_ids(_piece_payload(piece, "input"), piece, "input_id"):
                 composer_input_ids.add(input_id)
+        elif kind == TemplatePieceKind.COMPOSER_COMMAND.value:
+            command = _piece_payload(piece, "command")
+            command_ids.update(_payload_ids(command, piece, "command_id", "name"))
         elif kind == TemplatePieceKind.CONTEXT_POLICY.value:
             for policy_id in _payload_ids(
                 _piece_payload(piece, "policy"), piece, "policy_id", "mode"
@@ -549,6 +572,22 @@ def _validate_references(template: RumiTemplate) -> list[TemplateDiagnostic]:
                         source_path=str(template.source_path) if template.source_path else None,
                     )
                 )
+
+    # Status controls execute only through the resolved Command Protocol.
+    # Generic action metadata has no independent execution endpoint here.
+    declared_status_actions = command_ids
+    for index, piece in enumerate(template.pieces):
+        if _value(piece.kind) != TemplatePieceKind.STATUS_SURFACE.value:
+            continue
+        diagnostics.extend(
+            _validate_status_surface(
+                template,
+                piece,
+                index,
+                action_ids=declared_status_actions,
+                data_source_ids=set(data_source_ids),
+            )
+        )
 
     for index, piece in enumerate(template.pieces):
         if _value(piece.kind) != TemplatePieceKind.SETTINGS_FIELD.value:
@@ -738,6 +777,334 @@ def _validate_composer_command(
             )
         )
     return diagnostics
+
+
+def _validate_status_surface(
+    template: RumiTemplate,
+    piece: Any,
+    index: int,
+    *,
+    action_ids: set[str],
+    data_source_ids: set[str],
+) -> list[TemplateDiagnostic]:
+    """Validate one feature-neutral status surface and its local bindings."""
+
+    diagnostics = _validate_nested_object(template, piece, index, "surface")
+    surface = _piece_payload(piece, "surface")
+    surface_id = str(surface.get("surface_id") or surface.get("id") or piece.id).strip()
+    if not _valid_status_surface_id(surface_id):
+        diagnostics.append(
+            _piece_diagnostic(
+                template,
+                piece,
+                index,
+                code="template.reference.status_surface_invalid_id",
+                message="status_surface id must be a bounded opaque registry id",
+                field="id",
+                nested_key="surface",
+            )
+        )
+
+    api_version = str(surface.get("api_version") or STATUS_SURFACE_API_VERSION).strip()
+    if api_version != STATUS_SURFACE_API_VERSION:
+        diagnostics.append(
+            _piece_diagnostic(
+                template,
+                piece,
+                index,
+                code="template.reference.status_surface_unsupported_version",
+                message=f"unsupported status_surface api_version: {api_version}",
+                field="api_version",
+                nested_key="surface",
+            )
+        )
+
+    slot = str(surface.get("slot") or piece.slot or "above_composer").strip()
+    if slot not in STATUS_SURFACE_SLOTS:
+        diagnostics.append(
+            _piece_diagnostic(
+                template,
+                piece,
+                index,
+                code="template.reference.status_surface_invalid_slot",
+                message=f"status_surface slot is not approved: {slot}",
+                field="slot",
+                nested_key="surface",
+            )
+        )
+
+    data_source_id = str(surface.get("data_source") or surface.get("dataSource") or "").strip()
+    if not _valid_status_surface_id(data_source_id):
+        diagnostics.append(
+            _piece_diagnostic(
+                template,
+                piece,
+                index,
+                code="template.reference.status_surface_missing_data_source",
+                message="status_surface must bind a registered pack-owned data source",
+                field="data_source",
+                nested_key="surface",
+            )
+        )
+    elif data_source_id not in data_source_ids:
+        diagnostics.append(
+            _piece_diagnostic(
+                template,
+                piece,
+                index,
+                code="template.reference.status_surface_unknown_data_source",
+                message=(
+                    f"status_surface references an unknown pack-owned data source: {data_source_id}"
+                ),
+                field="data_source",
+                nested_key="surface",
+            )
+        )
+
+    for field_name in (
+        "title_path",
+        "summary_path",
+        "status_path",
+        "severity_path",
+        "timer_from_path",
+        "count_path",
+    ):
+        if field_name in surface and not _valid_status_surface_path(surface[field_name]):
+            diagnostics.append(
+                _piece_diagnostic(
+                    template,
+                    piece,
+                    index,
+                    code="template.reference.status_surface_invalid_path",
+                    message=f"status_surface has an invalid safe path: {field_name}",
+                    field=field_name,
+                    nested_key="surface",
+                )
+            )
+
+    progress = surface.get("progress")
+    if progress is not None:
+        if not isinstance(progress, dict):
+            diagnostics.append(
+                _piece_diagnostic(
+                    template,
+                    piece,
+                    index,
+                    code="template.reference.status_surface_invalid_progress",
+                    message="status_surface progress must be an object",
+                    field="progress",
+                    nested_key="surface",
+                )
+            )
+        else:
+            for field_name in ("current_path", "total_path", "label_path"):
+                required_path_missing = (
+                    field_name in {"current_path", "total_path"} and field_name not in progress
+                )
+                if required_path_missing or (
+                    field_name in progress and not _valid_status_surface_path(progress[field_name])
+                ):
+                    diagnostics.append(
+                        _piece_diagnostic(
+                            template,
+                            piece,
+                            index,
+                            code="template.reference.status_surface_invalid_path",
+                            message=(
+                                f"status_surface progress has an invalid safe path: {field_name}"
+                            ),
+                            field=f"progress/{field_name}",
+                            nested_key="surface",
+                        )
+                    )
+
+    visible_when = surface.get("visible_when")
+    if visible_when is not None:
+        if not isinstance(visible_when, dict):
+            diagnostics.append(
+                _piece_diagnostic(
+                    template,
+                    piece,
+                    index,
+                    code="template.reference.status_surface_invalid_visibility",
+                    message="status_surface visible_when must be an object",
+                    field="visible_when",
+                    nested_key="surface",
+                )
+            )
+        else:
+            for path in visible_when:
+                if not _valid_status_surface_path(path):
+                    diagnostics.append(
+                        _piece_diagnostic(
+                            template,
+                            piece,
+                            index,
+                            code="template.reference.status_surface_invalid_path",
+                            message=("status_surface visible_when has an invalid safe path"),
+                            field=f"visible_when/{path}",
+                            nested_key="surface",
+                        )
+                    )
+
+    details = surface.get("details")
+    if details is not None:
+        if not isinstance(details, list) or len(details) > 12:
+            diagnostics.append(
+                _piece_diagnostic(
+                    template,
+                    piece,
+                    index,
+                    code="template.reference.status_surface_invalid_details",
+                    message="status_surface details must contain at most 12 entries",
+                    field="details",
+                    nested_key="surface",
+                )
+            )
+        elif any(
+            isinstance(detail, dict)
+            and "path" in detail
+            and not _valid_status_surface_path(detail["path"])
+            for detail in details
+        ):
+            diagnostics.append(
+                _piece_diagnostic(
+                    template,
+                    piece,
+                    index,
+                    code="template.reference.status_surface_invalid_path",
+                    message="status_surface detail has an invalid safe path",
+                    field="details",
+                    nested_key="surface",
+                )
+            )
+
+    controls = surface.get("controls", [])
+    if not isinstance(controls, list) or len(controls) > 20:
+        diagnostics.append(
+            _piece_diagnostic(
+                template,
+                piece,
+                index,
+                code="template.reference.status_surface_invalid_controls",
+                message="status_surface controls must contain at most 20 entries",
+                field="controls",
+                nested_key="surface",
+            )
+        )
+        return diagnostics
+
+    seen_control_ids: set[str] = set()
+    for control_index, control in enumerate(controls[:20]):
+        if not isinstance(control, dict):
+            diagnostics.append(
+                _piece_diagnostic(
+                    template,
+                    piece,
+                    index,
+                    code="template.reference.status_surface_invalid_control",
+                    message=f"status_surface control {control_index} must be an object",
+                    field=f"controls/{control_index}",
+                    nested_key="surface",
+                )
+            )
+            continue
+        kind = str(control.get("type") or "").strip()
+        if kind not in STATUS_SURFACE_CONTROL_KINDS:
+            diagnostics.append(
+                _piece_diagnostic(
+                    template,
+                    piece,
+                    index,
+                    code="template.reference.status_surface_unknown_control",
+                    message=f"unsupported status_surface control: {kind or 'missing'}",
+                    field=f"controls/{control_index}/type",
+                    nested_key="surface",
+                )
+            )
+            continue
+        configured_control_id = control.get("id")
+        control_id = str(configured_control_id or f"{kind}_{control_index}").strip()
+        if configured_control_id is not None and not _valid_status_surface_id(control_id):
+            diagnostics.append(
+                _piece_diagnostic(
+                    template,
+                    piece,
+                    index,
+                    code="template.reference.status_surface_invalid_control_id",
+                    message="status_surface control id must be a bounded opaque registry id",
+                    field=f"controls/{control_index}/id",
+                    nested_key="surface",
+                )
+            )
+        if control_id in seen_control_ids:
+            diagnostics.append(
+                _piece_diagnostic(
+                    template,
+                    piece,
+                    index,
+                    code="template.reference.status_surface_duplicate_control",
+                    message=f"duplicate status_surface control id: {control_id}",
+                    field=f"controls/{control_index}/id",
+                    nested_key="surface",
+                )
+            )
+        seen_control_ids.add(control_id)
+        for path_field in ("value_path", "disabled_path", "options_path"):
+            if path_field in control and not _valid_status_surface_path(control[path_field]):
+                diagnostics.append(
+                    _piece_diagnostic(
+                        template,
+                        piece,
+                        index,
+                        code="template.reference.status_surface_invalid_path",
+                        message=(f"status_surface control has an invalid safe path: {path_field}"),
+                        field=f"controls/{control_index}/{path_field}",
+                        nested_key="surface",
+                    )
+                )
+        if kind not in STATUS_SURFACE_ACTION_CONTROL_KINDS:
+            continue
+        action_id = str(control.get("action_id") or control.get("actionId") or "").strip()
+        if action_id not in action_ids:
+            diagnostics.append(
+                _piece_diagnostic(
+                    template,
+                    piece,
+                    index,
+                    code="template.reference.status_surface_unknown_action",
+                    message=(
+                        "status_surface control references an unknown pack-owned action: "
+                        f"{action_id or 'missing'}"
+                    ),
+                    field=f"controls/{control_index}/action_id",
+                    nested_key="surface",
+                )
+            )
+    return diagnostics
+
+
+def _valid_status_surface_id(value: str) -> bool:
+    if not value or len(value) > 128 or not value[0].isalnum():
+        return False
+    return all(character.isalnum() or character in "._:-" for character in value)
+
+
+def _valid_status_surface_path(value: Any) -> bool:
+    if not isinstance(value, str) or not value or len(value) > 256:
+        return False
+    segments = value.split(".")
+    if len(segments) > 12:
+        return False
+    blocked = {"__proto__", "constructor", "prototype"}
+    return all(
+        bool(segment)
+        and segment not in blocked
+        and len(segment) <= 64
+        and (segment[0].isalpha() or segment[0] == "_")
+        and all(character.isalnum() or character in "_-" for character in segment)
+        for segment in segments
+    )
 
 
 def _validate_composer_input(

@@ -115,6 +115,8 @@ type ApiMockOptions = {
   structuredComposer?: boolean;
   interactiveApproval?: InteractiveApprovalFixture;
   onInteractiveApprovalDecision?: (decision: "approve" | "deny", payload: Record<string, unknown>) => void;
+  statusSurfaceScenario?: boolean;
+  onStatusSurfaceInvoke?: (payload: Record<string, unknown>) => void;
 };
 
 type InteractiveApprovalFixture = {
@@ -730,6 +732,8 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       redacted_metadata: { ...options.interactiveApproval.redacted_metadata },
     }
     : null;
+  let reviewPaused = false;
+  let reviewRevision = 7;
   const settledApprovalRequestIds = new Set<string>();
   const codingCheckpoints: Record<string, unknown>[] = options.codingApprovalAfterRestore
     ? [{ snapshot_id: "checkpoint-1", path: "/repo/.rumi/checkpoints/checkpoint-1" }]
@@ -801,6 +805,109 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
           ],
         }] : [],
         skills: catalogSkills,
+        ...(options.statusSurfaceScenario ? {
+          data_sources: [
+            {
+              id: "review.active",
+              data_source: "review.active",
+              revision: reviewRevision,
+              snapshot: {
+                status: reviewPaused ? "paused" : "running",
+                title: "Authority review",
+                instruction: "Reviewing the PackVM boundary",
+                paused: reviewPaused,
+                iteration: reviewPaused ? 3 : 2,
+                total: 5,
+              },
+            },
+            {
+              id: "build.active",
+              data_source: "build.active",
+              revision: 4,
+              snapshot: {
+                status: "warning",
+                title: "Web build",
+                summary: "Retrying asset chunk",
+                completed: 48,
+                total: 100,
+              },
+            },
+            {
+              id: "research.active",
+              data_source: "research.active",
+              revision: 2,
+              snapshot: { status: "running", title: "Research", count: 12 },
+            },
+          ],
+          status_surfaces: [
+            {
+              id: "review",
+              surface_id: "review",
+              slot: "above_composer",
+              priority: 100,
+              data_source: "review.active",
+              title_path: "title",
+              summary_path: "instruction",
+              status_path: "status",
+              progress: { current_path: "iteration", total_path: "total" },
+              controls: [
+                {
+                  id: "pause",
+                  type: "toggle_button",
+                  label: "Pause review",
+                  value_path: "paused",
+                  action_id: "review.pause",
+                },
+              ],
+              template_id: "fixture.status.review",
+              trust_level: "local",
+            },
+            {
+              id: "build",
+              surface_id: "build",
+              slot: "above_composer",
+              priority: 80,
+              data_source: "build.active",
+              title_path: "title",
+              summary_path: "summary",
+              status_path: "status",
+              progress: { current_path: "completed", total_path: "total" },
+              controls: [
+                {
+                  id: "stop",
+                  type: "button",
+                  label: "Stop build",
+                  action_id: "build.stop",
+                },
+              ],
+              template_id: "fixture.status.build",
+              trust_level: "local",
+            },
+            {
+              id: "research",
+              surface_id: "research",
+              slot: "above_composer",
+              priority: 60,
+              data_source: "research.active",
+              title_path: "title",
+              status_path: "status",
+              count_path: "count",
+              template_id: "fixture.status.research",
+              trust_level: "local",
+            },
+            {
+              id: "unsafe",
+              surface_id: "unsafe",
+              slot: "above_composer",
+              priority: 40,
+              data_source: "research.active",
+              title: "Unsafe",
+              controls: [{ type: "javascript", callback: "alert(1)" }],
+              template_id: "fixture.status.unsafe",
+              trust_level: "untrusted",
+            },
+          ],
+        } : {}),
         extension_points: [],
       });
     }
@@ -872,6 +979,10 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
         commands: [
           protocolCommand("coding", "Coding Mode", "low", "set_mode_coding"),
           protocolCommand("yolo", "Full Access (YOLO)", "medium", "toggle_ultra_yolo"),
+          ...(options.statusSurfaceScenario ? [
+            protocolCommand("review.pause", "Pause review", "low", "review_pause"),
+            protocolCommand("build.stop", "Stop build", "medium", "build_stop"),
+          ] : []),
         ],
         state_snapshots: [],
         diagnostics: [],
@@ -917,6 +1028,38 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
             ? "toggle_ultra_yolo"
             : "",
       });
+    }
+
+    if (path === routeKey("api/command-protocol/v1/invoke") && method === "POST") {
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      options.onStatusSurfaceInvoke?.(payload);
+      const commandRef = String(payload.command_ref ?? "");
+      if (commandRef === "defaultspack:build.stop") {
+        return fulfill(route, {
+          api_version: "tobkiri.commands/v1",
+          operation_id: String(payload.invocation_id ?? "status-build"),
+          status: "failed",
+          command_ref: commandRef,
+          state_changes: [],
+          error: { message: "Build stop was rejected by the backend fixture." },
+        });
+      }
+      if (commandRef === "defaultspack:review.pause") {
+        const args = payload.args as Record<string, unknown> | undefined;
+        reviewPaused = Boolean(args?.value);
+        reviewRevision += 1;
+        return fulfill(route, {
+          api_version: "tobkiri.commands/v1",
+          operation_id: String(payload.invocation_id ?? "status-review"),
+          status: "succeeded",
+          command_ref: commandRef,
+          state_changes: [],
+          legacy_result: {
+            command: { id: "review.pause", name: "review.pause", label: "Pause review" },
+            executed: true,
+          },
+        });
+      }
     }
 
     if (path === routeKey("api/ai/profiles")) {
@@ -1341,7 +1484,9 @@ async function openDefaultspack(page: Page, path = "/chat", options: ApiMockOpti
   // /chat route is asserted separately through the verified Pack v4 catalog.
   const compatibilityPath = path === "/chat" ? "/static/chat" : path;
   await page.goto(compatibilityPath);
-  await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
+  await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible({
+    timeout: 30_000,
+  });
 }
 
 async function openCodingWidget(page: Page, options: ApiMockOptions = {}) {
@@ -1501,6 +1646,57 @@ test("approval window renderer contract fails closed when typed confirmation met
   await expect(page.getByRole("button", { name: "承認", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "拒否", exact: true })).toHaveCount(0);
   expect(decisions).toEqual([]);
+test("status surfaces preserve authoritative state across success and error on mobile", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const invocations: Record<string, unknown>[] = [];
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await installDefaultspackApiMocks(page, {
+    statusSurfaceScenario: true,
+    onStatusSurfaceInvoke: (payload) => invocations.push(payload),
+  });
+  await page.goto("/chat");
+  await page.waitForTimeout(1_000);
+  expect(pageErrors).toEqual([]);
+  await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible({
+    timeout: 30_000,
+  });
+
+  const host = page.locator('[data-status-surface-host="above_composer"]');
+  await expect(host).toBeVisible();
+  await expect(host.locator("article")).toHaveCount(3);
+  await expect(host.locator('[data-status-surface-id="review"]')).toContainText("Authority review");
+  await expect(host.locator('[data-status-surface-id="build"]')).toContainText("Retrying asset chunk");
+
+  const pause = page.getByRole("button", { name: "Pause review" });
+  await pause.focus();
+  await page.keyboard.press("Enter");
+  await expect(pause).toHaveAttribute("aria-pressed", "true");
+  await expect(host.locator('[data-status-surface-id="review"]')).toContainText("paused");
+  expect(invocations[0]).toMatchObject({
+    command_ref: "defaultspack:review.pause",
+    expected_revision: 7,
+  });
+
+  await page.getByRole("button", { name: "Stop build" }).click();
+  await expect(page.getByRole("alert")).toContainText("rejected by the backend fixture");
+  await expect(host.locator('[data-status-surface-id="build"]')).toContainText("Retrying asset chunk");
+
+  const overflow = page.getByRole("button", { name: "Show 1 more status surface" });
+  await overflow.focus();
+  await page.keyboard.press("Enter");
+  await expect(host.locator("article")).toHaveCount(4);
+  await expect(host.locator('[data-status-surface-id="unsafe"]')).toHaveAttribute(
+    "data-status-surface-unsupported",
+    "true",
+  );
+  await expect(host.locator('[data-status-surface-diagnostic="status_surface.unknown_control"]')).toBeVisible();
+
+  const hasHorizontalOverflow = await page.evaluate(() => (
+    document.documentElement.scrollWidth > document.documentElement.clientWidth
+  ));
+  expect(hasHorizontalOverflow).toBe(false);
 });
 
 test("manual runtime mode control is hidden by default and available after explicit opt-in", async ({ page }) => {

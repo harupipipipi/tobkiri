@@ -2326,6 +2326,7 @@ export type UICatalog = {
   tool_policies?: TemplateToolPolicy[];
   context_policies?: TemplateContextPolicy[];
   composer_widgets?: TemplateCatalogMetadataItem[];
+  status_surfaces?: TemplateCatalogMetadataItem[];
   external_io_templates?: TemplateCatalogMetadataItem[];
   templates?: TemplateCatalogMetadataItem[];
   actions?: TemplateCatalogMetadataItem[];

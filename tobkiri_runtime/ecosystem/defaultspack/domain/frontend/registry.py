@@ -160,6 +160,7 @@ class FrontendRegistry:
             "ai_inputs": template_catalog.get("ai_inputs", []),
             "tool_policies": template_catalog.get("tool_policies", []),
             "composer_widgets": template_catalog.get("composer_widgets", []),
+            "status_surfaces": template_catalog.get("status_surfaces", []),
             "context_policies": template_catalog.get("context_policies", []),
             "external_io_templates": template_catalog.get("external_io_templates", []),
             "shell_regions": template_catalog.get("shell_regions", []),
