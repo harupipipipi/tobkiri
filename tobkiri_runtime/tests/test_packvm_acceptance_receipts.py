@@ -113,6 +113,24 @@ def test_cancel_requires_authenticated_ack_reap_and_release(
     assert receipt.authenticated_cancel_ack is True
 
 
+def test_receipt_binds_provisioned_instance_not_domain_launch_attestation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path,
+) -> None:
+    """Observations must carry the stable provisioned-instance attestation."""
+    port = _port(monkeypatch, tmp_path)
+    _begin(port, "cancel_hold")
+    port.record_authenticated_cancel("request-1", deadline=False)
+    port.record_invocation_reaped("request-1")
+    port.record_resources_released(
+        "request-1", reservation=True, materialization=True
+    )
+    receipt = port.take("request-1", _NONCE)
+    # Stable across scenario domains of one provisioned instance; the
+    # per-domain launch attestation must not reach the observation.
+    assert receipt.attestation_digest == "sha256:" + "1" * 64
+    assert receipt.attestation_digest != _ATTESTATION
+
+
 def test_deadline_and_abnormal_exit_are_finite_typed_facts(
     monkeypatch: pytest.MonkeyPatch, tmp_path,
 ) -> None:

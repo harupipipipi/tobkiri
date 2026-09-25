@@ -152,7 +152,12 @@ class AcceptanceReceiptPort:
                 scenario=scenario,
                 nonce=nonce,
                 guest_artifact_identity=evidence.guest_artifact_identity,
-                attestation_digest=evidence.attestation_digest,
+                # The runner requires one stable attestation across every
+                # scenario observation.  Per-domain launch attestations embed
+                # fresh nonce/lease/reservation material, so bind the
+                # provisioned PackVM instance attestation the Broker already
+                # verified against the selected backend.
+                attestation_digest=evidence.backend_digest,
                 request_digest=request_digest,
                 original_deadline_ns=original_deadline_ns,
             )
