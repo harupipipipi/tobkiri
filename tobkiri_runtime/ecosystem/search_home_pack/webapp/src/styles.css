@@ -202,6 +202,10 @@ a {
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
+.model-popover-with-details {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
 .model-popover-head {
   display: flex;
   align-items: center;
@@ -240,6 +244,36 @@ a {
 
 .model-filter::placeholder {
   color: #52525b;
+}
+
+.model-technical-details {
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  color: #a1a1aa;
+  font-size: 0.74rem;
+  padding: 8px 10px;
+}
+
+.model-technical-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.model-technical-details dl {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.model-technical-details dt {
+  color: #71717a;
+}
+
+.model-technical-details dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+  color: #d4d4d8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .model-list {

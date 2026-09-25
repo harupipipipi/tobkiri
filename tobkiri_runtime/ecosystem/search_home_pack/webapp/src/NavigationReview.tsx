@@ -8,6 +8,7 @@ import {
   type RouteCandidate,
   type RouteDecision,
 } from "./routerTypes";
+import { searchHomeCopy } from "./searchHomeLocale";
 
 const styles: Record<string, CSSProperties> = {
   card: {
@@ -193,11 +194,11 @@ const styles: Record<string, CSSProperties> = {
 function candidateRiskLabels(candidate: RouteCandidate | null): string[] {
   if (!candidate) return [];
   const labels: string[] = [];
-  if (candidate.redirected) labels.push("リダイレクト後のURLです");
-  if (candidate.looks_like_login) labels.push("ログイン画面の可能性があります");
-  if (candidate.looks_like_paywall) labels.push("有料記事の可能性があります");
-  if (candidate.looks_like_404) labels.push("見つからないページの可能性があります");
-  if (candidate.looks_like_ad_heavy) labels.push("広告が多い可能性があります");
+  if (candidate.redirected) labels.push(searchHomeCopy.review.redirected);
+  if (candidate.looks_like_login) labels.push(searchHomeCopy.review.possibleLogin);
+  if (candidate.looks_like_paywall) labels.push(searchHomeCopy.review.possiblePaywall);
+  if (candidate.looks_like_404) labels.push(searchHomeCopy.review.possibleMissing);
+  if (candidate.looks_like_ad_heavy) labels.push(searchHomeCopy.review.possibleAds);
   return labels;
 }
 
@@ -228,30 +229,32 @@ export function NavigationReview({
   const destination = reviewRouteDestination(rawDestination);
   const fallback = reviewRouteDestination(decision.fallback_url);
   const riskLabels = candidateRiskLabels(candidate);
-  const selectedTitle = candidate?.title || (destination.ok ? "選択した移動先" : "ブロックされた移動先");
+  const selectedTitle = candidate?.title || (
+    destination.ok ? searchHomeCopy.review.selected : searchHomeCopy.review.blocked
+  );
 
   return (
     <section aria-labelledby="route-review-title" style={styles.card}>
       <div style={styles.headingRow}>
         <div>
-          <p style={styles.eyebrow}>移動前の確認</p>
+          <p style={styles.eyebrow}>{searchHomeCopy.review.eyebrow}</p>
           <h2 id="route-review-title" style={styles.heading}>
             {selectedTitle}
           </h2>
           <p style={styles.muted}>
-            Search Homeは自動では移動しません。ホストと警告を確認してから開いてください。
+            {searchHomeCopy.review.guidance}
           </p>
         </div>
-        <span style={styles.host}>{destination.ok ? destination.host : "ブロック"}</span>
+        <span style={styles.host}>{destination.ok ? destination.host : searchHomeCopy.review.blockedHost}</span>
       </div>
 
       <div style={styles.destination}>
         {destination.ok ? (
           <>
-            <strong>{destination.protocol === "https:" ? "HTTPS" : "HTTP"} の移動先</strong>
+            <strong>{searchHomeCopy.review.destination(destination.protocol === "https:" ? "HTTPS" : "HTTP")}</strong>
             <p style={styles.url}>{destination.url}</p>
             {destination.warnings.length || riskLabels.length ? (
-              <ul aria-label="移動先の注意" style={styles.warningList}>
+              <ul aria-label={searchHomeCopy.review.warningLabel} style={styles.warningList}>
                 {[...destination.warnings, ...riskLabels].map((warning) => (
                   <li key={warning} style={styles.warning}>
                     {warning}
@@ -262,14 +265,14 @@ export function NavigationReview({
           </>
         ) : (
           <div role="alert" style={styles.blocked}>
-            <strong>この移動先は開けません。</strong>
+            <strong>{searchHomeCopy.review.blockedMessage}</strong>
             <div>{destination.message}</div>
           </div>
         )}
       </div>
 
       {decision.target_candidates.length > 1 ? (
-        <div aria-label="移動先候補" style={styles.candidateList}>
+        <div aria-label={searchHomeCopy.review.candidatesLabel} style={styles.candidateList}>
           {decision.target_candidates.map((item, index) => {
             const itemReview = reviewRouteDestination(item.final_url || item.url);
             const active = index === normalizedIndex;
@@ -285,10 +288,10 @@ export function NavigationReview({
                 type="button"
               >
                 <span style={styles.candidateMain}>
-                  <strong style={styles.candidateTitle}>{item.title || `候補 ${index + 1}`}</strong>
+                  <strong style={styles.candidateTitle}>{item.title || searchHomeCopy.review.candidate(index + 1)}</strong>
                   <span style={styles.candidateHost}>{itemReview.ok ? itemReview.host : itemReview.message}</span>
                 </span>
-                <span style={styles.candidateState}>{itemReview.ok ? `${index + 1}/${decision.target_candidates.length}` : "ブロック"}</span>
+                <span style={styles.candidateState}>{itemReview.ok ? `${index + 1}/${decision.target_candidates.length}` : searchHomeCopy.review.blockedHost}</span>
               </button>
             );
           })}
@@ -305,22 +308,22 @@ export function NavigationReview({
           }}
           type="button"
         >
-          この移動先を開く
+          {searchHomeCopy.review.open}
         </button>
         <button
           onClick={onCopy}
           style={styles.secondaryButton}
           type="button"
         >
-          {destination.ok ? "URLをコピー" : "ブロック詳細をコピー"}
+          {destination.ok ? searchHomeCopy.review.copyUrl : searchHomeCopy.review.copyBlocked}
         </button>
         {fallback.ok && fallback.url !== (destination.ok ? destination.url : "") ? (
           <button onClick={onOpenFallback} style={styles.secondaryButton} type="button">
-            Google検索を開く
+            {searchHomeCopy.review.openGoogle}
           </button>
         ) : null}
         <button onClick={onCancel} style={styles.secondaryButton} type="button">
-          キャンセル
+          {searchHomeCopy.review.cancel}
         </button>
       </div>
 

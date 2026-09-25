@@ -12,7 +12,9 @@ test("normalizes successful answer and privacy-safe conversation link", () => {
 });
 
 test("distinguishes structured error, empty, malformed and partial payloads", () => {
-  assert.equal(normalizeAnswerResponse({ status: "error", error: { message: "Unavailable" } }).kind, "structured-error");
+  const rejected = normalizeAnswerResponse({ status: "error", error: { message: "Internal provider unavailable" } });
+  assert.equal(rejected.kind, "structured-error");
+  assert.equal(rejected.message.includes("Internal provider unavailable"), false);
   assert.equal(normalizeAnswerResponse({ status: "ok", answer: " " }).kind, "empty");
   assert.equal(normalizeAnswerResponse({ status: "future", answer: "x" }).kind, "malformed");
   assert.equal(normalizeAnswerResponse({ status: "ok", answer: "kept", interrupted: true }).kind, "partial");
