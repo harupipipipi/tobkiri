@@ -3762,6 +3762,43 @@ test("company and p2p helpers target frontend workspace routes", async () => {
   });
 });
 
+test("company mutations carry stable operation and expected revision", async () => {
+  const seen: Array<{ path: string; body: Record<string, unknown> }> = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = requestTarget(input);
+    const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+    seen.push({ path, body });
+    let data: unknown = { id: "message-1", content: "hello" };
+    if (path.endsWith("/settings")) data = { settings: { task_policy: "manual" } };
+    if (path.endsWith("/tasks")) data = { id: "task-1", company_id: "acme", title: "Ship" };
+    return new Response(JSON.stringify({ status: "ok", data }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  const mutation = {
+    operation_id: "company-operation-1",
+    idempotency_key: "company-operation-1",
+    expected_revision: 7,
+  };
+  try {
+    await api.sendCompanyMessage("acme", { content: "hello" }, mutation);
+    await api.createCompanyTask("acme", { title: "Ship" }, mutation);
+    await api.updateCompanySettings("acme", { task_policy: "manual" }, false, mutation);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(seen.length, 3);
+  for (const request of seen) {
+    assert.equal(request.body.operation_id, mutation.operation_id);
+    assert.equal(request.body.idempotency_key, mutation.idempotency_key);
+    assert.equal(request.body.expected_revision, mutation.expected_revision);
+  }
+});
+
 test("mobile pairing review and approve helpers use admin review contract", async () => {
   const seen: Array<{ input: string; method: string; body?: unknown }> = [];
   const originalFetch = globalThis.fetch;

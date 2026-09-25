@@ -4786,7 +4786,7 @@
             {
               "entrypoint_id": "company-state-action",
               "id": "rumi_company_state_store_pack.company-state-action",
-              "implementation_digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f"
+              "implementation_digest": "sha256:09dcc14dcb8969c616a44a51424118056fa9627fde3f07336a0d7e6499fb01f9"
             }
           ],
           "owner": "rumi_company_state_store_pack",
@@ -4819,7 +4819,7 @@
             {
               "entrypoint_id": "company-state-resource",
               "id": "rumi_company_state_store_pack.company-state-resource",
-              "implementation_digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f"
+              "implementation_digest": "sha256:09dcc14dcb8969c616a44a51424118056fa9627fde3f07336a0d7e6499fb01f9"
             }
           ],
           "owner": "rumi_company_state_store_pack",
@@ -4849,7 +4849,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f",
+          "digest": "sha256:09dcc14dcb8969c616a44a51424118056fa9627fde3f07336a0d7e6499fb01f9",
           "kind": "executable",
           "path": "runtime/store.py"
         }

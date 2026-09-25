@@ -1,7 +1,9 @@
 import { Link2, Radio, Send, ShieldCheck, ShieldX } from "lucide-react";
 import { useState } from "react";
 
-import type { P2PIdentity, P2PPeer, P2PStatusResponse } from "../../lib/api";
+import type { CompanyMutationReceipt } from "../../features/company/companyWorkspaceState";
+import { useCompanyMutation } from "../../features/company/useCompanyMutation";
+import type { P2PIdentity, P2PPairing, P2PPeer, P2PStatusResponse } from "../../lib/api";
 
 export function CompanyP2PPanel({
   status,
@@ -15,12 +17,20 @@ export function CompanyP2PPanel({
   identity?: P2PIdentity | null;
   peers: P2PPeer[];
   busy?: boolean;
-  onStartPairing?: (peerLabel?: string) => void;
-  onSendMessage?: (peerId: string, text: string) => void;
+  onStartPairing?: (peerLabel: string | undefined, operationId: string) => Promise<CompanyMutationReceipt<{ pairing: P2PPairing }>>;
+  onSendMessage?: (peerId: string, text: string, operationId: string) => Promise<CompanyMutationReceipt<{ envelope: Record<string, unknown>; peer: P2PPeer }>>;
 }) {
   const [pairLabel, setPairLabel] = useState("");
   const [messagePeerId, setMessagePeerId] = useState("");
   const [message, setMessage] = useState("");
+  const pairingMutation = useCompanyMutation("p2p-pairing", (
+    peerLabel: string | undefined,
+    operationId,
+  ) => onStartPairing!(peerLabel, operationId));
+  const messageMutation = useCompanyMutation("p2p-message", (
+    payload: { peerId: string; text: string },
+    operationId,
+  ) => onSendMessage!(payload.peerId, payload.text, operationId));
   const enabled = Boolean(status?.p2p?.enabled);
   const controlsDisabled = busy || !enabled;
 
@@ -62,26 +72,37 @@ export function CompanyP2PPanel({
           onSubmit={(event) => {
             event.preventDefault();
             if (!enabled) return;
-            onStartPairing(pairLabel.trim() || undefined);
-            setPairLabel("");
+            const cleanLabel = pairLabel.trim();
+            void pairingMutation.submit(cleanLabel || undefined).then((receipt) => {
+              if (receipt.phase === "committed") {
+                setPairLabel((current) => current.trim() === cleanLabel ? "" : current);
+              }
+            });
           }}
         >
           <input
             value={pairLabel}
             onChange={(event) => setPairLabel(event.target.value)}
-            disabled={controlsDisabled}
+            disabled={controlsDisabled || pairingMutation.pending}
             placeholder="peer label"
             className="h-8 min-w-0 rounded-md border border-zinc-800 bg-zinc-950 px-2 text-[12px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-600"
           />
           <button
             type="submit"
-            disabled={controlsDisabled}
+            disabled={controlsDisabled || pairingMutation.pending}
+            aria-busy={pairingMutation.pending}
             className="flex h-8 w-8 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
             title="Start pairing"
           >
             <Link2 size={13} />
           </button>
         </form>
+      )}
+      {pairingMutation.state.phase !== "idle" && (
+        <p role={pairingMutation.state.phase === "rejected" ? "alert" : "status"} className={pairingMutation.state.phase === "rejected" ? "text-[11px] text-amber-200" : "text-[11px] text-emerald-300"}>
+          {pairingMutation.state.message}
+          {pairingMutation.canRetry && <button type="button" className="ml-2 underline" onClick={() => void pairingMutation.retry()}>Retry</button>}
+        </p>
       )}
 
       <div className="space-y-1">
@@ -110,14 +131,17 @@ export function CompanyP2PPanel({
             const text = message.trim();
             const peerId = messagePeerId || peers[0]?.peer_id;
             if (!text || !peerId) return;
-            onSendMessage(peerId, text);
-            setMessage("");
+            void messageMutation.submit({ peerId, text }).then((receipt) => {
+              if (receipt.phase === "committed") {
+                setMessage((current) => current.trim() === text ? "" : current);
+              }
+            });
           }}
         >
           <select
             value={messagePeerId || peers[0]?.peer_id || ""}
             onChange={(event) => setMessagePeerId(event.target.value)}
-            disabled={controlsDisabled}
+            disabled={controlsDisabled || messageMutation.pending}
             className="h-8 rounded-md border border-zinc-800 bg-zinc-950 px-1.5 text-[11px] text-zinc-300 outline-none"
           >
             {peers.map((peer) => (
@@ -127,19 +151,26 @@ export function CompanyP2PPanel({
           <input
             value={message}
             onChange={(event) => setMessage(event.target.value)}
-            disabled={controlsDisabled}
+            disabled={controlsDisabled || messageMutation.pending}
             placeholder="message"
             className="h-8 min-w-0 rounded-md border border-zinc-800 bg-zinc-950 px-2 text-[12px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-600"
           />
           <button
             type="submit"
-            disabled={controlsDisabled || !message.trim()}
+            disabled={controlsDisabled || messageMutation.pending || !message.trim()}
+            aria-busy={messageMutation.pending}
             className="flex h-8 w-8 items-center justify-center rounded-md bg-zinc-100 text-zinc-950 hover:bg-white disabled:opacity-30"
             title="Send P2P message"
           >
             <Send size={13} />
           </button>
         </form>
+      )}
+      {messageMutation.state.phase !== "idle" && (
+        <p role={messageMutation.state.phase === "rejected" ? "alert" : "status"} className={messageMutation.state.phase === "rejected" ? "text-[11px] text-amber-200" : "text-[11px] text-emerald-300"}>
+          {messageMutation.state.message}
+          {messageMutation.canRetry && <button type="button" className="ml-2 underline" onClick={() => void messageMutation.retry()}>Retry</button>}
+        </p>
       )}
     </section>
   );

@@ -40,11 +40,7 @@ class CompanyStateStore:
     def __init__(self, profile_id: str, *, root: Path | None = None) -> None:
         self.profile_id = validate_profile_id(profile_id)
         self.root = (
-            Path(root or USER_DATA_DIR)
-            / "packs"
-            / SERVICE_PACK_ID
-            / "profiles"
-            / self.profile_id
+            Path(root or USER_DATA_DIR) / "packs" / SERVICE_PACK_ID / "profiles" / self.profile_id
         )
         self.path = self.root / "companies.json"
         self.lock_root = self.root / "locks"
@@ -57,9 +53,7 @@ class CompanyStateStore:
             "version": VERSION,
             "profile_id": self.profile_id,
             "revision": state["revision"],
-            "companies": [
-                state["companies"][key] for key in sorted(state["companies"])
-            ],
+            "companies": [state["companies"][key] for key in sorted(state["companies"])],
         }
 
     def get(self, company_id: str) -> dict[str, Any] | None:
@@ -75,7 +69,7 @@ class CompanyStateStore:
             state = self._read()
             _assert_revision(state, int(arguments["expected_revision"]))
             result = self._transition(state, name, arguments)
-            if name == "migration.operations.import" and result.get("deduplicated"):
+            if result.get("deduplicated"):
                 return {**result, "revision": state["revision"]}
             state["revision"] += 1
             self._write(state)
@@ -99,9 +93,7 @@ class CompanyStateStore:
                 "status": "active",
                 "settings": _copy(arguments["settings"]),
                 "metadata": _copy(arguments["metadata"]),
-                "conversation_group_id": str(
-                    arguments["conversation_group_id"]
-                )[:255],
+                "conversation_group_id": str(arguments["conversation_group_id"])[:255],
                 "roles": {},
                 "members": {},
                 "channels": {},
@@ -128,6 +120,7 @@ class CompanyStateStore:
             del state["companies"][company_id]
             return {"deleted_company_id": company_id}
         if name == "company.update":
+            original = _copy(company)
             updates = arguments["updates"]
             if "name" in updates:
                 company["name"] = str(updates["name"])[:200]
@@ -150,12 +143,32 @@ class CompanyStateStore:
                     **_copy(updates["metadata"]),
                 }
             if "conversation_group_id" in updates:
-                company["conversation_group_id"] = str(
-                    updates["conversation_group_id"]
-                )[:255]
+                company["conversation_group_id"] = str(updates["conversation_group_id"])[:255]
+            if company == original:
+                return {"company": _copy(company), "deduplicated": True}
             company["updated_at_ms"] = now_ms
             return {"company": _copy(company)}
         if name == "agent.upsert":
+            supplied_member = dict(arguments["member"])
+            member_id = _identifier(supplied_member.get("id"))
+            operation_id = _record_operation_id(supplied_member)
+            current_member = company["members"].get(member_id)
+            current_role = (
+                company["roles"].get(str(current_member.get("role_id") or ""))
+                if isinstance(current_member, Mapping)
+                else None
+            )
+            if (
+                operation_id
+                and isinstance(current_member, Mapping)
+                and _record_operation_id(current_member) == operation_id
+                and isinstance(current_role, Mapping)
+            ):
+                return {
+                    "agent": _copy(current_member),
+                    "role": _copy(current_role),
+                    "deduplicated": True,
+                }
             role = dict(arguments["role"])
             role_id = _identifier(role.get("id"))
             self._named_record(
@@ -197,6 +210,13 @@ class CompanyStateStore:
         if name == "task.upsert":
             task = _task(arguments["record"], company)
             current = company["tasks"].get(task["id"])
+            if (
+                current
+                and _record_operation_id(task)
+                and _record_operation_id(current) == _record_operation_id(task)
+                and current.get("idempotency_key") == task["idempotency_key"]
+            ):
+                return {"task": _copy(current), "deduplicated": True}
             task["created_at_ms"] = current["created_at_ms"] if current else now_ms
             task["updated_at_ms"] = now_ms
             company["tasks"][task["id"]] = task
@@ -234,8 +254,12 @@ class CompanyStateStore:
             key = "inbound" if name.startswith("inbound") else "messages"
             record = _timeline_record(arguments["record"])
             result_key = key[:-1] if key.endswith("s") else key
-            if any(item["id"] == record["id"] for item in company[key]):
-                return {result_key: _copy(record), "deduplicated": True}
+            existing = next(
+                (item for item in company[key] if item["id"] == record["id"]),
+                None,
+            )
+            if existing is not None:
+                return {result_key: _copy(existing), "deduplicated": True}
             record["created_at_ms"] = now_ms
             company[key].append(record)
             if len(company[key]) > 10_000:
@@ -365,6 +389,13 @@ class CompanyStateStore:
         record["name"] = str(record.get("name") or record_id)[:200]
         record["updated_at_ms"] = now_ms
         current = company[key].get(record_id)
+        operation_id = _record_operation_id(record)
+        if (
+            operation_id
+            and isinstance(current, Mapping)
+            and _record_operation_id(current) == operation_id
+        ):
+            return {key[:-1]: _copy(current), "deduplicated": True}
         record["created_at_ms"] = current["created_at_ms"] if current else now_ms
         company[key][record_id] = _copy(record)
         company["updated_at_ms"] = now_ms
@@ -397,9 +428,7 @@ class CompanyStateStore:
             "id": member_id,
             "display_name": str(record.get("display_name") or member_id)[:200],
             "role_id": role_id,
-            "agent_profile_id": _identifier(
-                record.get("agent_profile_id") or "default"
-            ),
+            "agent_profile_id": _identifier(record.get("agent_profile_id") or "default"),
             "mentions": sorted(
                 {str(item).casefold()[:100] for item in record.get("mentions") or []}
             )[:100],
@@ -503,13 +532,9 @@ def _arguments(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         arguments["settings"] = dict(_mapping(payload.get("settings")))
         arguments["description"] = str(payload.get("description") or "")
         arguments["metadata"] = dict(_mapping(payload.get("metadata")))
-        arguments["conversation_group_id"] = str(
-            payload.get("conversation_group_id") or ""
-        )
+        arguments["conversation_group_id"] = str(payload.get("conversation_group_id") or "")
     elif name == "migration.operations.import":
-        arguments["legacy_state"] = _legacy_operations_state(
-            payload.get("legacy_state")
-        )
+        arguments["legacy_state"] = _legacy_operations_state(payload.get("legacy_state"))
     elif name == "company.update":
         updates = dict(_mapping(payload.get("updates")))
         if set(updates) - {
@@ -606,6 +631,13 @@ def _timeline_record(value: Mapping[str, Any]) -> dict[str, Any]:
         "text": str(value.get("text") or "")[:100_000],
         "metadata": _copy(_mapping(value.get("metadata"))),
     }
+
+
+def _record_operation_id(value: Mapping[str, Any]) -> str:
+    metadata = value.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return ""
+    return str(metadata.get("operation_id") or "").strip()
 
 
 def _legacy_operations_state(value: Any) -> dict[str, Any]:
@@ -719,4 +751,3 @@ def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
-
