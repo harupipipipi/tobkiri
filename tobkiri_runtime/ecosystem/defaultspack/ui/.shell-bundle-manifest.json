@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "52bb27b975112994957c321399d21c7bd8526a31affe43e5ed93090f78345a96",
+    "digest": "93062a4a97df0a8781f16d6afa0868ef4f90cbde087b73053332e9d84d0035d3",
     "entries": [
       {
         "path": "index.html",
@@ -200,8 +200,8 @@
       },
       {
         "path": "src/ambient/AmbientTriggerPanel.tsx",
-        "size": 116410,
-        "sha256": "9bf9c1413c144973fc2123f3edb34fbca11bd6591db7bee4f4dcd516d73b82da"
+        "size": 116536,
+        "sha256": "f8e51a6b551ee4184fab2164b39bc8b9460bb359f83cd5f37eedd64c226a4a39"
       },
       {
         "path": "src/ambient/AmbientTriggerStatusIcon.tsx",
@@ -1946,7 +1946,7 @@
     ]
   },
   "bundle": {
-    "digest": "5ea01f3a6150e4a52d5a2e6dae4399b762785bc8c697f08d3933105392c9450e",
+    "digest": "ff5031c11175950401b247d591078d3e52dad2aca0078f8d89b071f1579cfdce",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1960,8 +1960,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2250197,
-        "sha256": "bba3e4d6db95bd4e9378f944455a6f93ba886f9c705e8b69a41821daa6f8215c"
+        "size": 2250371,
+        "sha256": "84f3cfa526904e213afc80c38d305aa3dfbef275e6ea8090a41ce6015d888b8d"
       },
       {
         "path": "shell-rolldown-runtime.js",
