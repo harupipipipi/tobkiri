@@ -35,6 +35,10 @@
           "minLength": 1,
           "pattern": "\\S"
         },
+        "deepthink_enabled": {
+          "type": "boolean",
+          "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check."
+        },
         "tool_selection": {
           "type": "object",
           "additionalProperties": false,

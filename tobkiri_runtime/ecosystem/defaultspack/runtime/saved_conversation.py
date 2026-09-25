@@ -43,6 +43,7 @@ _STATE_FIELDS = {
     "tool_count",
     "seen_tools",
     "system_prompt_digest",
+    "deepthink",
 }
 
 
@@ -86,8 +87,13 @@ def _revision(value: Any) -> int:
 
 
 def _request(value: Any) -> dict[str, Any]:
-    if type(value) is not dict or set(value) - {"tool_selection"} != _REQUEST_FIELDS:
+    if type(value) is not dict or set(value) - {
+        "tool_selection",
+        "deepthink_enabled",
+    } != _REQUEST_FIELDS:
         raise ValueError("saved conversation request fields are invalid")
+    if type(value.get("deepthink_enabled", False)) is not bool:
+        raise ValueError("saved conversation deepthink flag is invalid")
     _identifier(value["turn_id"])
     _identifier(value["conversation_id"])
     _revision(value["conversation_revision"])
@@ -185,6 +191,9 @@ def _intent(state: dict[str, Any]) -> dict[str, Any]:
     elif stage == "tool":
         payload = state["pending_tools"][0]
     else:
+        requirements = {"request_surface": "conversation.saved"}
+        if request.get("deepthink_enabled") is True:
+            requirements["deepthink"] = True
         payload = {
             "messages": [
                 *state["history"],
@@ -192,7 +201,7 @@ def _intent(state: dict[str, Any]) -> dict[str, Any]:
                 *state["tool_messages"],
             ],
             "model_reference": state["model_reference"],
-            "requirements": {"request_surface": "conversation.saved"},
+            "requirements": requirements,
         }
     if stage in {"user", "ai"} and prompt_digest is not None:
         payload["system_prompt_digest"] = prompt_digest
@@ -293,6 +302,7 @@ def start(payload: dict[str, Any]) -> dict[str, Any]:
             "tool_count": 0,
             "seen_tools": [],
             "system_prompt_digest": None,
+            "deepthink": None,
         }
     )
 
@@ -377,7 +387,7 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
             state["revision"] = revision
             acknowledged = True
             if stage == "assistant":
-                return {
+                result = {
                     "status": "ok",
                     "turn_id": request["turn_id"],
                     "conversation_id": request["conversation_id"],
@@ -385,6 +395,9 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
                     "user_message_id": _message_id(request, "user"),
                     "message": message,
                 }
+                if state["deepthink"] is not None:
+                    result["deepthink"] = state["deepthink"]
+                return result
             state["stage"] = "ai"
         elif stage == "tool":
             tool = state["pending_tools"][0]
@@ -407,6 +420,17 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
         else:
             if value.get("status") != "ok":
                 return _failure(state, "AI_COMPLETION_UNAVAILABLE")
+            deepthink = value.get("deepthink")
+            if deepthink is None:
+                if request.get("deepthink_enabled") is True:
+                    raise ValueError("AI DeepThink readiness report is required")
+            elif (
+                not isinstance(deepthink, dict)
+                or not deepthink
+                or request.get("deepthink_enabled") is not True
+            ):
+                raise ValueError("AI DeepThink readiness report is invalid")
+            state["deepthink"] = deepthink
             intents = value.get("tool_intents", [])
             if not isinstance(intents, list):
                 raise ValueError("tool intents are invalid")
