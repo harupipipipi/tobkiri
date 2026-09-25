@@ -18,6 +18,14 @@ import type {
 } from "../../lib/api";
 import { arrayFromRecord, companyResources } from "../../features/company/resources/companyResources";
 import { ErrorNotice } from "../ErrorNotice";
+import {
+  CompanyLoadGate,
+  createCompanyOperationId,
+  safeCompanyMutationError,
+  shouldRunCompanyPoll,
+  type CompanyActionState,
+  type CompanyMutationReceipt,
+} from "../../features/company/companyWorkspaceState";
 import { CompanyAgentList } from "./CompanyAgentList";
 import { CompanyChannelView } from "./CompanyChannelView";
 import { CompanyInboundRoutesPanel } from "./CompanyInboundRoutesPanel";
@@ -699,12 +707,7 @@ export function CompanyWorkspacePanel({
         [actionKey]: { phase: "committed", operationId, message: "Saved", updatedAt: Date.now() },
       }));
       await loadCompany(activeCompanyId);
-      return {
-        operationId,
-        phase: "committed",
-        value,
-        revision: resourceRevisionRef.current,
-      };
+      return { operationId, phase: "committed", value, revision: resourceRevision };
     } catch (error) {
       const normalized = safeCompanyMutationError(error);
       setActionStates((current) => ({
@@ -945,11 +948,11 @@ export function CompanyWorkspacePanel({
         )}
       </div>
 
-      {error && (
+      {loadError && (
         <ErrorNotice
           className="m-2 px-2 py-1.5 text-[11px]"
           copyLabel="会社ワークスペースエラーをコピー"
-          message={error}
+          message={loadError}
           severity="warning"
         />
       )}
