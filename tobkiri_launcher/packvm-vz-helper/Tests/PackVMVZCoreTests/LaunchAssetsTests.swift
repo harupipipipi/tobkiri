@@ -160,6 +160,49 @@ struct LaunchAssetsTests {
 
         #expect(binding.leaseID == leaseID)
     }
+
+    /// The signed helper is the last enforcement point before VZ.  Even a
+    /// well-formed Host binding must fail closed when its declared runtime
+    /// exceeds the sidecar's fixed CPU/memory ceiling or moves the only
+    /// guest channel off the pinned vsock port.
+    @Test
+    func directBindingRejectsOutOfBoundsRuntimeAndForeignVsockPort() throws {
+        let fixture = try LaunchFixture()
+        defer { fixture.cleanup() }
+        for runtime in [
+            ["cpu_count": 0, "memory_bytes": 512 * 1024 * 1024, "guest_vsock_port": 19001],
+            ["cpu_count": 64, "memory_bytes": 512 * 1024 * 1024, "guest_vsock_port": 19001],
+            ["cpu_count": 1, "memory_bytes": 256 * 1024 * 1024, "guest_vsock_port": 19001],
+            ["cpu_count": 1, "memory_bytes": 5 * 1024 * 1024 * 1024, "guest_vsock_port": 19001],
+            ["cpu_count": 1, "memory_bytes": 512 * 1024 * 1024 + 1, "guest_vsock_port": 19001],
+            ["cpu_count": 1, "memory_bytes": 512 * 1024 * 1024, "guest_vsock_port": 19002],
+        ] {
+            var raw = fixture.directRawLaunch()
+            raw["runtime"] = runtime
+            #expect(throws: (any Error).self) {
+                _ = try DirectLaunchBinding.parse(raw)
+            }
+        }
+    }
+
+    /// The legacy JSONL binding defers resource bounds to asset validation;
+    /// prove the validator still rejects an over-cap guest before any VZ
+    /// configuration is built.
+    @Test
+    func legacyBindingValidationRejectsOutOfBoundsRuntime() throws {
+        let fixture = try LaunchFixture()
+        defer { fixture.cleanup() }
+        for (cpu, memory) in [(0, 512 * 1024 * 1024), (64, 512 * 1024 * 1024),
+                              (1, 256 * 1024 * 1024), (1, 5 * 1024 * 1024 * 1024)] {
+            var raw = fixture.rawLaunch(bootMode: "linux")
+            raw["cpu_count"] = cpu
+            raw["memory_bytes"] = memory
+            let binding = try LaunchBinding.parse(raw)
+            #expect(throws: (any Error).self) {
+                _ = try SecureLaunchAssetValidator.validate(binding)
+            }
+        }
+    }
 }
 
 private final class LaunchFixture {
