@@ -22,13 +22,14 @@ own scratch state:
 Nothing in this file invents Host state: if any step cannot be established by
 real execution the collector fails closed for that Pack and reports why.
 
-The collector itself is placed under ``tools/`` rather than ``scripts/`` so it
-stays outside the sealed packaged-source closure declared by
-``scripts/generator_source_manifest.py``.
+The collector itself lives under ``tests/conformance_support/`` with the
+other pack-composition support harnesses: outside the sealed packaged-source
+closure declared by ``scripts/generator_source_manifest.py``, and inside the
+test-support tree where wiring the product pack's composition is permitted.
 
 Usage::
 
-    python -B tools/collect_pack_runtime_receipts.py \
+    python -B tests/conformance_support/collect_pack_runtime_receipts.py \
         --packs rumi_agent_continuity_pack,rumi_api_toolsmith_pack \
         --work-dir /tmp/b5h-work
 """
@@ -48,7 +49,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-_RUNTIME_DIR = Path(__file__).resolve().parents[1]
+_RUNTIME_DIR = Path(__file__).resolve().parents[2]
 if str(_RUNTIME_DIR) not in sys.path:
     sys.path.insert(0, str(_RUNTIME_DIR))
 

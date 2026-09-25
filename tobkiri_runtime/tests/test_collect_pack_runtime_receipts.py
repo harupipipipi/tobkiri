@@ -14,7 +14,7 @@ from typing import Any, Mapping
 
 import pytest
 
-from tools import collect_pack_runtime_receipts as collector
+from tests.conformance_support import collect_pack_runtime_receipts as collector
 
 
 def _step(step_name: str, **fields: Any) -> dict[str, Any]:
