@@ -23,6 +23,7 @@
         "shell_region",
         "action",
         "data_source",
+        "component",
         "settings",
         "command"
       ]
@@ -34,6 +35,29 @@
     "route": {"type": "string", "pattern": "^/[a-zA-Z0-9/_-]*$"},
     "region": {"type": "string"},
     "renderer": {"type": "string"},
+    "component_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$"
+    },
+    "api_version": {"const": "rumi.frontend.component.v1"},
+    "supported_slots": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+      }
+    },
+    "props_schema": {"type": "object"},
+    "data_contract": {
+      "type": "string",
+      "pattern": "^rumi\\.resource\\.[a-z0-9]+(?:[._-][a-z0-9]+)*\\.v[1-9][0-9]*$"
+    },
+    "fallback_component_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$"
+    },
     "schema": {"type": "object"},
     "view": {"type": "object"},
     "action_contract": {
@@ -104,6 +128,20 @@
       "then": {"required": ["renderer"]}
     },
     {
+      "if": {"properties": {"kind": {"const": "component"}}},
+      "then": {
+        "required": [
+          "component_id",
+          "api_version",
+          "supported_slots",
+          "props_schema",
+          "fallback_component_id",
+          "module"
+        ],
+        "properties": {"mode": {"const": "same_origin_builtin"}}
+      }
+    },
+    {
       "if": {"properties": {"kind": {"const": "shell_region"}}},
       "then": {"required": ["region"]}
     },
@@ -118,7 +156,47 @@
     {
       "if": {"properties": {"kind": {"const": "settings"}}},
       "then": {"required": ["schema"]}
+    },
+    {
+      "if": {
+        "required": ["view"],
+        "properties": {
+          "view": {
+            "required": ["type"],
+            "properties": {"type": {"const": "component"}}
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "view": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "component_id", "api_version", "slot", "props"],
+            "properties": {
+              "type": {"const": "component"},
+              "component_id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$"
+              },
+              "api_version": {"const": "rumi.frontend.component.v1"},
+              "slot": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+              },
+              "props": {"type": "object"},
+              "data_contract": {
+                "type": "string",
+                "pattern": "^rumi\\.resource\\.[a-z0-9]+(?:[._-][a-z0-9]+)*\\.v[1-9][0-9]*$"
+              },
+              "action_contract": {
+                "type": "string",
+                "pattern": "^rumi\\.action\\.[a-z0-9]+(?:[._-][a-z0-9]+)*\\.v[1-9][0-9]*$"
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }
-

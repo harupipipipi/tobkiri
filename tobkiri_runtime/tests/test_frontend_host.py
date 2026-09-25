@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -99,6 +100,89 @@ def _route(
         "view": {"type": "status_card", "title": contribution_id},
         "accessibility": {"name": contribution_id, "keyboard": True},
     }
+
+
+def _component(contribution_id: str = "pack-a.component.card") -> dict[str, object]:
+    return {
+        "version": "rumi.ui.contribution.v1",
+        "id": contribution_id,
+        "kind": "component",
+        "mode": "same_origin_builtin",
+        "label": "Card",
+        "priority": 0,
+        "component_id": "pack.ui.card",
+        "api_version": "rumi.frontend.component.v1",
+        "supported_slots": ["workspace"],
+        "props_schema": {
+            "type": "object",
+            "required": ["title"],
+            "properties": {"title": {"type": "string"}},
+            "additionalProperties": False,
+        },
+        "fallback_component_id": "rumi.ui.unsupported",
+        "module": {
+            "path": "/static/packs/pack-a/frontend/card.js",
+            "export": "Card",
+            "content_hash": "sha256:" + "1" * 64,
+        },
+        "accessibility": {"name": "Card", "keyboard": True},
+    }
+
+
+def test_frontend_component_schema_validates_registry_and_binding_contracts() -> None:
+    validator = frontend_host_module.Draft202012Validator(
+        json.loads(frontend_host_module.SCHEMA_PATH.read_text(encoding="utf-8"))
+    )
+    assert list(validator.iter_errors(_component())) == []
+
+    invalid_version = {**_component(), "api_version": "rumi.frontend.component.v2"}
+    assert list(validator.iter_errors(invalid_version))
+
+    invalid_slot = {**_component(), "supported_slots": ["../overlay"]}
+    assert list(validator.iter_errors(invalid_slot))
+
+    binding = _route("pack-a.route", "/component")
+    binding["view"] = {
+        "type": "component",
+        "component_id": "rumi.ui.status_surface",
+        "api_version": "rumi.frontend.component.v1",
+        "slot": "route",
+        "props": {"title": "Ready"},
+    }
+    assert list(validator.iter_errors(binding)) == []
+
+    invalid_binding = dict(binding)
+    invalid_binding["view"] = {**binding["view"], "slot": "../overlay"}
+    assert list(validator.iter_errors(invalid_binding))
+
+
+def test_component_id_collision_rejects_higher_priority_shadow() -> None:
+    first = SimpleNamespace(
+        kind="component",
+        contribution_id="pack-a.component.card",
+        component_id="pack.ui.card",
+        owner_pack_id="pack-a",
+        priority=0,
+        route=None,
+    )
+    higher_priority = SimpleNamespace(
+        kind="component",
+        contribution_id="pack-b.component.card",
+        component_id="pack.ui.card",
+        owner_pack_id="pack-b",
+        priority=100,
+        route=None,
+    )
+
+    accepted, diagnostics = frontend_host_module._reject_collisions(
+        [first, higher_priority]
+    )
+
+    assert accepted == []
+    assert [item.code for item in diagnostics] == [
+        "frontend_component_collision",
+        "frontend_component_collision",
+    ]
 
 
 def _plan(

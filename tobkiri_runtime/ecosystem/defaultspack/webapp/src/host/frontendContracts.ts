@@ -4,6 +4,7 @@ export type FrontendContributionKind =
   | "shell_region"
   | "action"
   | "data_source"
+  | "component"
   | "settings"
   | "command";
 
@@ -33,6 +34,12 @@ export type VerifiedFrontendContribution = {
   implementation?: string;
   region?: string | null;
   renderer?: string | null;
+  component_id?: string | null;
+  api_version?: string | null;
+  supported_slots?: string[];
+  props_schema?: Record<string, unknown> | null;
+  data_contract?: string | null;
+  fallback_component_id?: string | null;
   action_contract?: string | null;
   data_source_contract?: string | null;
   schema?: Record<string, unknown> | null;
