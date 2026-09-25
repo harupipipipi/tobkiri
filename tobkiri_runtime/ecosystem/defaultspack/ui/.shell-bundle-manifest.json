@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "752667cd3787159e9687982bd3cc94958ac59345f016101b19737f5a332c2ea6",
+    "digest": "6fb7d5bb61b3e307bca8d16a53d859dc36bbf964e669791acc793dede901cdab",
     "entries": [
       {
         "path": "index.html",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 5711,
-        "sha256": "1b695975cc8bd5eadd0024fefc711cbe2066ba0af1466f531f4bc6a00de878bc"
+        "size": 5790,
+        "sha256": "8bca81334cc1e842acd61fffbe5070bf6c93608dca292bbac8e7df654a15be39"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -115,8 +115,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 343414,
-        "sha256": "3629e4aca98dee8003d182d260736d82310237a7ec94e2cc80a8d4df08f0fa1d"
+        "size": 348915,
+        "sha256": "c92696021d99680af47f1ddb4ec928ab281d64e2fffabc98fc34cc0c7451199d"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -1130,8 +1130,8 @@
       },
       {
         "path": "src/lib/api.ts",
-        "size": 202451,
-        "sha256": "4461aa41f8ebc77990603704dcea22dbd5920797786488f777c254737d7a97ac"
+        "size": 202502,
+        "sha256": "1ac1acccd344cf0170e5c2c6cf35440fbdb4f3bb099089e6b46bf8598a54f4aa"
       },
       {
         "path": "src/lib/appLoadFailures.test.ts",
@@ -1564,6 +1564,16 @@
         "sha256": "3364365fb107a9cb1a3c2afa5e88abea996157620ffccd81143a8ac1f559f7a5"
       },
       {
+        "path": "src/lib/statusSurfaces.test.ts",
+        "size": 10079,
+        "sha256": "2cdf3cd87e6c730c21f2f95e409c2e7787395d8ceebdefa8b11504b6c86240dd"
+      },
+      {
+        "path": "src/lib/statusSurfaces.ts",
+        "size": 24116,
+        "sha256": "43c9878f04f0747ca7a9798ca828895c82c45ffefcae3e6d86a0700767a51404"
+      },
+      {
         "path": "src/lib/structuredComposer.ts",
         "size": 2492,
         "sha256": "4020a7e29b3c6040e8667fd149ab09159e4743142023f86990ad41e364aade50"
@@ -1725,8 +1735,8 @@
       },
       {
         "path": "src/renderers/ComposerRenderer.tsx",
-        "size": 203543,
-        "sha256": "0debc7542054014f5ab24d0afc9ee83d539c4b9ae7685c4ab7c76dc7c3618978"
+        "size": 205648,
+        "sha256": "3d51505a10d2241a4d6116c2a5c4c7c9180c6061d138f173cd28a40ea05bdf15"
       },
       {
         "path": "src/renderers/HistoryBoardRenderer.tsx",
@@ -1829,6 +1839,16 @@
         "sha256": "fb0c7285383d4d4bf8c77e88529ad8adb3011d00aaf54254fbf190ad1979fa05"
       },
       {
+        "path": "src/renderers/status/StatusSurfaceHost.test.tsx",
+        "size": 5900,
+        "sha256": "d1195fb066385be627da6f539fc3219019d745b73ef7e0607ea41c3f0b02dcc4"
+      },
+      {
+        "path": "src/renderers/status/StatusSurfaceHost.tsx",
+        "size": 15117,
+        "sha256": "dab06adab6feda7a7aaad5815513b89f8036278a00f685c5b8f2c8bfbed3a50e"
+      },
+      {
         "path": "src/renderers/template/settingsFieldMetadata.ts",
         "size": 1868,
         "sha256": "d4f07360bbd9e4982fbaf92d37aef3b810c95caccdf35a7027226723ede5b6c9"
@@ -1845,8 +1865,8 @@
       },
       {
         "path": "src/renderers/types.ts",
-        "size": 14013,
-        "sha256": "1b9d105db32cd13b26e9a304e60f7b55406f18b8b2d4470fd0f9b3c7764da0d5"
+        "size": 14248,
+        "sha256": "761d63ab90c2b4c9b15bd30b81da8d1b8bb3a250dcb0dd1d52a46a5ae6d28b9e"
       },
       {
         "path": "src/settings/controlCenter.test.ts",
@@ -1931,12 +1951,12 @@
     ]
   },
   "bundle": {
-    "digest": "8ac203be7df476d2a9fd3108ee2a361d32259e40f9c1da2a8dc371ae16122f3f",
+    "digest": "998cfc9d43f5a57e718a35a08feec26b66534c7751289f245fa09096e1c68e05",
     "entries": [
       {
         "path": "shell-app.css",
-        "size": 232456,
-        "sha256": "9ed65a93ac44df6cba7dea05fd98d4549f594deaa0e5e7b2080fd2832b234a16"
+        "size": 233352,
+        "sha256": "617bf39fb0aa83acb3242f815bcae1d4d5defa480d56a730ef1da4f09362b9f3"
       },
       {
         "path": "shell-app.js",
@@ -1945,8 +1965,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2239224,
-        "sha256": "c475c0b32af8b76b9cc825bf7061a09e6e1f493a6f910f18d2319bbd85eb9758"
+        "size": 2262286,
+        "sha256": "ed4abf510a1d900e10e66919f80b114de23c167eb58ee08ddc12ac0f91906b4d"
       },
       {
         "path": "shell-rolldown-runtime.js",
