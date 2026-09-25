@@ -33,6 +33,10 @@ const EXACT_HOST_API_ROUTES = [
   {method: 'POST', path: '/api/v4/profiles/update'},
   {method: 'POST', path: '/api/v4/profiles/duplicate'},
   {method: 'POST', path: '/api/v4/profiles/delete'},
+  {method: 'GET', path: '/api/v4/updates'},
+  {method: 'GET', path: '/api/v4/updates/settings'},
+  {method: 'POST', path: '/api/v4/updates/settings'},
+  {method: 'POST', path: '/api/v4/updates/apply'},
   {method: 'POST', path: '/api/v4/packvm/prepare'},
   {method: 'POST', path: '/api/v4/packvm/consent'},
   {method: 'POST', path: '/api/v4/packvm/provision'},
@@ -157,9 +161,10 @@ function isSetupApiPath(path: string): boolean {
     || path === '/api/setup/packs/install?include_source_additions=true';
 }
 
-function exactNonMapMethodForPath(path: string): 'GET' | 'POST' | 'PUT' | 'DELETE' | null {
-  const route = EXACT_HOST_API_ROUTES.find((candidate) => candidate.path === path);
-  return route?.method ?? null;
+function exactNonMapRouteAllowsMethod(path: string, method: string): boolean {
+  return EXACT_HOST_API_ROUTES.some(
+    (route) => route.path === path && route.method === method,
+  );
 }
 
 function isPackVMProgressPath(path: string): boolean {
@@ -185,12 +190,14 @@ function isPackVMLifecyclePath(path: string): boolean {
 
 /** Host operations remain usable without loading any Application contract map. */
 export const hostApiFetch = createApiClient((path, method) => {
-  const expectedMethod = exactNonMapMethodForPath(path) ?? (isPackVMProgressPath(path) ? 'GET' : null);
-  if (method !== expectedMethod) return null;
+  const allowed = exactNonMapRouteAllowsMethod(path, method)
+    || (isPackVMProgressPath(path) && method === 'GET');
+  if (!allowed) return null;
   const lifecycle = isPackVMLifecyclePath(path);
   return {
     panelSession: isSetupApiPath(path) || path === '/api/v4/profiles'
-      || path.startsWith('/api/v4/profiles/') || lifecycle,
+      || path.startsWith('/api/v4/profiles/') || path.startsWith('/api/v4/updates')
+      || lifecycle,
     runtimeDispatch: lifecycle,
     requestIdentity: lifecycle && method !== 'GET',
   };

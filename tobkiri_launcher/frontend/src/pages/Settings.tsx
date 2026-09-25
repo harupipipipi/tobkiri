@@ -1,7 +1,7 @@
-import {useState} from 'react';
+import {useEffect, useState} from 'react';
 import {
-  AlertCircle, Check, CheckCircle2, Download, ExternalLink, Moon, Palette, Sun,
-  Wrench,
+  AlertCircle, Check, CheckCircle2, Download, ExternalLink, Moon, Palette,
+  RefreshCw, Sun, Wrench,
 } from 'lucide-react';
 
 import {AdvancedSurfaceFrame} from '@/src/components/advanced/AdvancedSurfaceFrame';
@@ -12,13 +12,18 @@ import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/src/c
 import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
 import {Switch} from '@/src/components/ui/Switch';
 import {useRuntimeSurface} from '@/src/hooks/useRuntimeSurface';
+import {
+  applyRuntimeUpdate, fetchRuntimeUpdates, fetchRuntimeUpdateSettings,
+  setRuntimeAutoUpdate,
+} from '@/src/lib/updates';
 import {VALID_COLOR_MODES, VALID_THEMES} from '@/src/lib/appearance';
 import {LAUNCHER_ADVANCED_VIEWS} from '@/src/lib/advancedSurfaces';
 import {
   checkLauncherUpdate, isDesktopShellAvailable, openLauncherUpdateRelease,
 } from '@/src/lib/api';
-import type {LauncherUpdateStatus} from '@/src/lib/apiTypes';
+import type {ApiUpdateInfo, ApiUpdateTarget, LauncherUpdateStatus} from '@/src/lib/apiTypes';
 import {useT} from '@/src/lib/i18n';
+import {PRODUCT_DISPLAY_NAME} from '@/src/lib/launcherBrand';
 import {extractRuntimeProfileSettings} from '@/src/lib/runtimeSurface';
 import {useAppStore} from '@/src/store';
 
@@ -36,6 +41,14 @@ export function Settings() {
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [openingRelease, setOpeningRelease] = useState(false);
+  const addToast = useAppStore((state) => state.addToast);
+  const [runtimeUpdates, setRuntimeUpdates] = useState<ApiUpdateInfo[] | null>(null);
+  const [runtimeUpdatesCheckError, setRuntimeUpdatesCheckError] = useState<string | null>(null);
+  const [autoUpdate, setAutoUpdate] = useState<Partial<Record<ApiUpdateTarget, boolean>>>({});
+  const [runtimeUpdatesBusy, setRuntimeUpdatesBusy] = useState(false);
+  const [runtimeSettingsBusy, setRuntimeSettingsBusy] = useState(false);
+  const [applyingTarget, setApplyingTarget] = useState<ApiUpdateTarget | null>(null);
+  const [runtimeUpdateError, setRuntimeUpdateError] = useState<string | null>(null);
   const surface = useRuntimeSurface<unknown>('settings');
   const descriptor = {
     ...LAUNCHER_ADVANCED_VIEWS.settings,
@@ -71,6 +84,71 @@ export function Settings() {
       setOpeningRelease(false);
     }
   };
+
+  const loadRuntimeUpdateSettings = async () => {
+    try {
+      const settings = await fetchRuntimeUpdateSettings();
+      setAutoUpdate(settings.auto_update);
+    } catch (error) {
+      setRuntimeUpdateError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const checkRuntimeUpdates = async () => {
+    setRuntimeUpdatesBusy(true);
+    setRuntimeUpdateError(null);
+    try {
+      const result = await fetchRuntimeUpdates();
+      setRuntimeUpdates(result.updates);
+      setRuntimeUpdatesCheckError(result.check_error ?? null);
+    } catch (error) {
+      setRuntimeUpdates(null);
+      setRuntimeUpdatesCheckError(null);
+      setRuntimeUpdateError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRuntimeUpdatesBusy(false);
+    }
+  };
+
+  const toggleAutoUpdate = async (target: ApiUpdateTarget, enabled: boolean) => {
+    setRuntimeSettingsBusy(true);
+    setRuntimeUpdateError(null);
+    try {
+      const settings = await setRuntimeAutoUpdate(target, enabled);
+      setAutoUpdate(settings.auto_update);
+    } catch (error) {
+      setRuntimeUpdateError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRuntimeSettingsBusy(false);
+    }
+  };
+
+  const applyUpdate = async (target: ApiUpdateTarget) => {
+    setApplyingTarget(target);
+    setRuntimeUpdateError(null);
+    try {
+      const result = await applyRuntimeUpdate(target);
+      addToast(
+        result.restart_required
+          ? `${t('settings.update_applied')} ${t('settings.update_restart_required')}`
+          : t('settings.update_applied'),
+        'success',
+      );
+      await checkRuntimeUpdates();
+    } catch (error) {
+      setRuntimeUpdateError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setApplyingTarget(null);
+    }
+  };
+
+  const runtimeUpdateTargetName = (target: ApiUpdateTarget) =>
+    target === 'tobkiri' ? PRODUCT_DISPLAY_NAME : 'defaultspack';
+
+  useEffect(() => {
+    void loadRuntimeUpdateSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <AdvancedSurfaceFrame
@@ -236,6 +314,120 @@ export function Settings() {
                   {t('settings.open_release_page')}
                 </Button>
               ) : null}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2">
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                {t('settings.runtime_updates')}
+              </CardTitle>
+              {runtimeUpdates && runtimeUpdates.some((update) => update.update_available) ? (
+                <Badge variant="warning">{t('settings.update_available')}</Badge>
+              ) : null}
+            </div>
+            <CardDescription>{t('settings.runtime_updates_desc')}</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {runtimeUpdatesCheckError ? (
+              <p className="rounded-lg border border-border bg-bg-main px-4 py-3 text-xs leading-5 text-text-muted">
+                {t('settings.update_check_unavailable')}
+              </p>
+            ) : null}
+
+            {runtimeUpdates === null ? (
+              <p className="rounded-lg border border-border bg-bg-main px-4 py-3 text-xs leading-5 text-text-muted">
+                {t('settings.runtime_updates_prompt')}
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-3" data-testid="runtime-update-targets">
+                {runtimeUpdates.map((update) => (
+                  <li
+                    key={update.target}
+                    className="flex flex-col gap-3 rounded-lg border border-border bg-bg-main px-4 py-3"
+                    data-update-target={update.target}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm font-medium text-text-main">
+                        {runtimeUpdateTargetName(update.target)}
+                      </span>
+                      <Badge variant={update.update_available ? 'warning' : 'success'}>
+                        {update.update_available
+                          ? t('settings.update_available')
+                          : t('settings.up_to_date')}
+                      </Badge>
+                    </div>
+                    <dl className="grid gap-x-5 gap-y-1 text-sm sm:grid-cols-2">
+                      <div>
+                        <dt className="text-xs text-text-muted">{t('settings.current_version')}</dt>
+                        <dd className="font-mono text-text-main">{update.current_version}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-text-muted">{t('settings.latest_version')}</dt>
+                        <dd className="font-mono text-text-main">{update.latest_version}</dd>
+                      </div>
+                    </dl>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <label className="flex items-center gap-2 text-xs text-text-muted">
+                        <Switch
+                          checked={autoUpdate[update.target] === true}
+                          disabled={runtimeSettingsBusy}
+                          onCheckedChange={(checked) => void toggleAutoUpdate(update.target, checked)}
+                          aria-label={`${runtimeUpdateTargetName(update.target)} ${t('settings.auto_update')}`}
+                        />
+                        {t('settings.auto_update')}
+                      </label>
+                      <Button
+                        type="button"
+                        variant={update.update_available ? 'default' : 'outline'}
+                        size="sm"
+                        disabled={
+                          !update.update_available
+                          || applyingTarget !== null
+                          || runtimeUpdatesBusy
+                        }
+                        loading={applyingTarget === update.target}
+                        onClick={() => void applyUpdate(update.target)}
+                      >
+                        <Download className="h-4 w-4" aria-hidden="true" />
+                        {applyingTarget === update.target
+                          ? t('settings.applying_update')
+                          : t('settings.apply_update')}
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {runtimeUpdateError ? (
+              <div
+                className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+                role="alert"
+              >
+                <AlertCircle
+                  aria-hidden="true"
+                  className="mt-0.5 h-4 w-4 shrink-0"
+                  data-error-icon="runtime-update"
+                />
+                <p className="min-w-0 flex-1 break-words">{runtimeUpdateError}</p>
+                <CopyErrorButton label="Copy runtime update error" text={runtimeUpdateError} />
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={runtimeUpdatesBusy || applyingTarget !== null}
+                loading={runtimeUpdatesBusy}
+                onClick={() => void checkRuntimeUpdates()}
+              >
+                {runtimeUpdatesBusy ? t('settings.checking_updates') : t('settings.check_runtime_updates')}
+              </Button>
             </div>
           </CardContent>
         </Card>

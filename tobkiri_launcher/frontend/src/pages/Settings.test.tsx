@@ -142,6 +142,12 @@ test('Settings checks for Launcher updates and opens the native official release
   }
 });
 
+function jsonResponse(data: unknown): Response {
+  return new Response(JSON.stringify({success: true, data}), {
+    headers: {'Content-Type': 'application/json'},
+  });
+}
+
 test('Settings update failures keep a severity icon and stable copy action', async () => {
   const previousState = useAppStore.getState();
   const previousWindow = globalThis.window;
@@ -182,6 +188,166 @@ test('Settings update failures keep a severity icon and stable copy action', asy
   } finally {
     act(() => root.unmount());
     dom.window.close();
+    useAppStore.setState(previousState, true);
+    Object.defineProperties(globalThis, {
+      window: {value: previousWindow, configurable: true},
+      document: {value: previousDocument, configurable: true},
+      navigator: {value: previousNavigator, configurable: true},
+    });
+  }
+});
+
+test('Settings manages runtime target updates through the v4 host API', async () => {
+  const previousState = useAppStore.getState();
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const previousFetch = globalThis.fetch;
+  const {dom, container, root} = createDom();
+  const requests: Array<{method: string; path: string; body: unknown}> = [];
+  const updateSettings = {
+    auto_update: {tobkiri: false, defaultspack: true},
+    check_interval_hours: 24,
+    last_checked_at: null,
+    last_results: [] as Array<Record<string, unknown>>,
+    updated_at: null,
+  };
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input), 'http://localhost');
+    const method = (init?.method ?? 'GET').toUpperCase();
+    const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined;
+    requests.push({method, path: url.pathname, body});
+    if (method === 'GET' && url.pathname === '/api/v4/updates/settings') {
+      return jsonResponse(updateSettings);
+    }
+    if (method === 'GET' && url.pathname === '/api/v4/updates') {
+      return jsonResponse({
+        updates: [
+          {
+            target: 'tobkiri',
+            current_version: '1.0.0',
+            latest_version: '1.1.0',
+            update_available: true,
+            release_url: 'https://example.test/release',
+            repo: 'tobkiri/tobkiri',
+          },
+          {
+            target: 'defaultspack',
+            current_version: '2.0.0',
+            latest_version: '2.0.0',
+            update_available: false,
+            release_url: '',
+            repo: 'tobkiri/tobkiri',
+          },
+        ],
+      });
+    }
+    if (method === 'POST' && url.pathname === '/api/v4/updates/settings') {
+      const autoUpdate = body?.auto_update as Record<string, boolean> | undefined;
+      return jsonResponse({
+        ...updateSettings,
+        auto_update: {...updateSettings.auto_update, ...(autoUpdate ?? {})},
+      });
+    }
+    if (method === 'POST' && url.pathname === '/api/v4/updates/apply') {
+      return jsonResponse({
+        target: 'tobkiri',
+        current_version: '1.0.0',
+        latest_version: '1.1.0',
+        release_url: 'https://example.test/release',
+        backup_dir: '/tmp/backup',
+        applied_files: ['core_runtime/runtime.py'],
+        skipped_files: [],
+        applied_count: 1,
+        skipped_count: 0,
+        restart_required: true,
+      });
+    }
+    return new Response(JSON.stringify({success: false, error: 'not found'}), {
+      status: 404,
+      headers: {'Content-Type': 'application/json'},
+    });
+  }) as typeof fetch;
+  const flush = async () => {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  };
+  try {
+    useAppStore.setState({profile: {...previousState.profile, language: 'en'}});
+    await act(async () => {
+      root.render(<Settings />);
+    });
+    await flush();
+
+    // Auto-update preferences load on mount; the heavier release check stays manual.
+    assert.ok(requests.some((r) => r.method === 'GET' && r.path === '/api/v4/updates/settings'));
+    assert.equal(requests.some((r) => r.path === '/api/v4/updates'), false);
+
+    const checkButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Check runtime updates'),
+    );
+    assert.ok(checkButton);
+    await act(async () => {
+      checkButton.click();
+    });
+    await flush();
+
+    const tobkiriRow = container.querySelector<HTMLElement>('[data-update-target="tobkiri"]');
+    const packRow = container.querySelector<HTMLElement>('[data-update-target="defaultspack"]');
+    assert.ok(tobkiriRow);
+    assert.ok(packRow);
+    assert.match(tobkiriRow.textContent ?? '', /Tobkiri/);
+    assert.match(tobkiriRow.textContent ?? '', /1\.0\.0/);
+    assert.match(tobkiriRow.textContent ?? '', /1\.1\.0/);
+    assert.match(tobkiriRow.textContent ?? '', /Available/);
+    assert.match(packRow.textContent ?? '', /defaultspack/);
+    assert.match(packRow.textContent ?? '', /Current/);
+
+    // Per-target auto-update switch persists through the v4 settings route.
+    const autoUpdateSwitch = tobkiriRow.querySelector<HTMLButtonElement>('[role="switch"]');
+    assert.ok(autoUpdateSwitch);
+    assert.equal(autoUpdateSwitch.getAttribute('aria-checked'), 'false');
+    const packSwitch = packRow.querySelector<HTMLButtonElement>('[role="switch"]');
+    assert.ok(packSwitch);
+    assert.equal(packSwitch.getAttribute('aria-checked'), 'true');
+    await act(async () => {
+      autoUpdateSwitch.click();
+    });
+    await flush();
+    const settingsPost = requests.find(
+      (r) => r.method === 'POST' && r.path === '/api/v4/updates/settings',
+    );
+    assert.deepEqual(settingsPost?.body, {auto_update: {tobkiri: true}});
+
+    // Apply is offered only for targets with an available update.
+    const packApply = Array.from(packRow.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Update'),
+    ) as HTMLButtonElement | undefined;
+    assert.ok(packApply);
+    assert.equal(packApply.disabled, true);
+    const applyButton = Array.from(tobkiriRow.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Update'),
+    );
+    assert.ok(applyButton);
+    await act(async () => {
+      applyButton.click();
+    });
+    await flush();
+    const applyPost = requests.find(
+      (r) => r.method === 'POST' && r.path === '/api/v4/updates/apply',
+    );
+    assert.deepEqual(applyPost?.body, {target: 'tobkiri'});
+    const lastToast = useAppStore.getState().toasts.at(-1);
+    assert.match(lastToast?.message ?? '', /Update applied/);
+    assert.match(lastToast?.message ?? '', /Restart required/);
+    assert.ok(
+      requests.filter((r) => r.method === 'GET' && r.path === '/api/v4/updates').length >= 2,
+    );
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    globalThis.fetch = previousFetch;
     useAppStore.setState(previousState, true);
     Object.defineProperties(globalThis, {
       window: {value: previousWindow, configurable: true},

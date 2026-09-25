@@ -2520,6 +2520,37 @@ location.replace({target_literal})}})
             return {"updates": fallback_updates, "check_error": str(error)}
         return {"updates": [check.to_dict() for check in checks]}
 
+    def _v4_update_settings(self) -> dict[str, object]:
+        """Return the persisted per-target auto-update settings."""
+
+        from .github_update_manager import get_github_update_manager
+
+        return dict(get_github_update_manager().read_auto_update_settings())
+
+    def _handle_v4_updates_read(self, path: str) -> None:
+        if not self._check_auth("GET", path):
+            self._send_response(APIResponse(False, error="Unauthorized"), 401)
+            return
+        try:
+            self._send_mapping_result(self._v4_check_updates())
+        except Exception:
+            logger.exception("Runtime update check failed")
+            self._send_mapping_result(
+                {"error": "Runtime update check is unavailable", "status_code": 503}
+            )
+
+    def _handle_v4_update_settings_read(self, path: str) -> None:
+        if not self._check_auth("GET", path):
+            self._send_response(APIResponse(False, error="Unauthorized"), 401)
+            return
+        try:
+            self._send_mapping_result(self._v4_update_settings())
+        except Exception:
+            logger.exception("Runtime update settings read failed")
+            self._send_mapping_result(
+                {"error": "Runtime update settings are unavailable", "status_code": 503}
+            )
+
     def _handle_v4_update_settings_mutation(
         self,
         path: str,
@@ -2596,6 +2627,31 @@ location.replace({target_literal})}})
             normalize_update_target,
         )
 
+        try:
+            manager = get_github_update_manager()
+            allowed_targets = {"tobkiri", "rumiai"} | set(manager.update_target_ids)
+            if target not in allowed_targets:
+                self._send_mapping_result(
+                    {"error": "Unknown update target", "status_code": 400}
+                )
+                return
+            force = body.get("force") is True
+            canonical_target = normalize_update_target(target)
+            result = manager.apply(canonical_target, force=force)
+            payload = result.to_dict()
+            if canonical_target == "tobkiri":
+                payload["restart_required"] = True
+            else:
+                payload["routes_reload_recommended"] = True
+            self._send_mapping_result(payload)
+        except GitHubUpdateError as error:
+            self._send_mapping_result({"error": str(error), "status_code": 400})
+        except Exception:
+            logger.exception("Runtime update apply failed")
+            self._send_mapping_result(
+                {"error": "Runtime update apply failed", "status_code": 500}
+            )
+
     def do_OPTIONS(self) -> None:
         """Answer local panel preflight without widening the origin set."""
 
@@ -2667,6 +2723,12 @@ location.replace({target_literal})}})
             # cold panel read does not repeat sealed catalog preparation.
             with profile_capture_scope():
                 self._handle_profile_registry_read(path)
+            return
+        if path == "/api/v4/updates":
+            self._handle_v4_updates_read(path)
+            return
+        if path == "/api/v4/updates/settings":
+            self._handle_v4_update_settings_read(path)
             return
         mount = self._match_web_mount(path)
         if mount is not None:
@@ -2793,6 +2855,16 @@ location.replace({target_literal})}})
 
                 with profile_capture_scope():
                     self._handle_profile_registry_mutation(path, profile_action, body)
+            return
+        if path == "/api/v4/updates/settings":
+            body = self._parse_object_body()
+            if body is not None:
+                self._handle_v4_update_settings_mutation(path, body)
+            return
+        if path == "/api/v4/updates/apply":
+            body = self._parse_object_body()
+            if body is not None:
+                self._handle_v4_apply_update(path, body)
             return
         if path == "/api/v4/dispatch":
             self._discard_request_body()

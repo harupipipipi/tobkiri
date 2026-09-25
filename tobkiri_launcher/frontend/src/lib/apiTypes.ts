@@ -363,6 +363,44 @@ export interface LauncherUpdateStatus {
   latest_version: string | null;
 }
 
+export type ApiUpdateTarget = 'tobkiri' | 'defaultspack';
+
+export interface ApiUpdateInfo {
+  target: ApiUpdateTarget;
+  current_version: string;
+  latest_version: string;
+  update_available: boolean;
+  release_url: string;
+  repo: string;
+}
+
+export interface ApiUpdateSettings {
+  auto_update: Record<ApiUpdateTarget, boolean>;
+  check_interval_hours: number;
+  last_checked_at: string | null;
+  last_results: Array<Record<string, unknown>>;
+  updated_at: string | null;
+}
+
+export interface RuntimeUpdatesResponseData {
+  updates: ApiUpdateInfo[];
+  check_error?: string;
+}
+
+export interface UpdateApplyResponseData {
+  target: ApiUpdateTarget;
+  current_version: string;
+  latest_version: string;
+  release_url: string;
+  backup_dir: string;
+  applied_files: string[];
+  skipped_files: string[];
+  applied_count: number;
+  skipped_count: number;
+  restart_required?: boolean;
+  routes_reload_recommended?: boolean;
+}
+
 export type DebugApprovalState =
   | 'disabled'
   | 'pending'
