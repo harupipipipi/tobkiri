@@ -55,11 +55,21 @@
     "legacy_registry_and_installed_lookup": [],
     "migration_evidence": [
       {
-        "diagnostic": "RED: migration proof drift: /private/tmp/rebase-clone/tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "errors": [
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing",
+          "pack_specific_migration_receipt_missing",
+          "curated_review_source_digest_mismatch",
+          "curated_review_target_digest_mismatch",
+          "runtime_receipt_target_digest_mismatch",
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing"
+        ],
         "line": 1,
+        "pack_id": "rumi_kanban_state_store_pack",
         "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
-        "rule": "migration_proof_generator_drift",
-        "symbol": "migration_proof_generator_drift"
+        "rule": "pack_release_proof_invalid",
+        "symbol": "pack_release_proof_invalid"
       },
       {
         "line": 1,
@@ -167,11 +177,21 @@
     "migration_evidence": {
       "findings": [
         {
-          "diagnostic": "RED: migration proof drift: /private/tmp/rebase-clone/tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "errors": [
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing",
+            "pack_specific_migration_receipt_missing",
+            "curated_review_source_digest_mismatch",
+            "curated_review_target_digest_mismatch",
+            "runtime_receipt_target_digest_mismatch",
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing"
+          ],
           "line": 1,
+          "pack_id": "rumi_kanban_state_store_pack",
           "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
-          "rule": "migration_proof_generator_drift",
-          "symbol": "migration_proof_generator_drift"
+          "rule": "pack_release_proof_invalid",
+          "symbol": "pack_release_proof_invalid"
         },
         {
           "line": 1,
@@ -2243,8 +2263,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "cf5e8d0b14ae1762908f7135baa3be3a27b95de6",
-    "semantic_digest": "sha256:ee1d10aaf3715525f111d71daf9c351af716780c3fd7e7f86a063777b13d7d54",
+    "observed_head_sha": "e5560f6ad766687ce52915f67b722d91db15ae92",
+    "semantic_digest": "sha256:6f631a556ad2b71e21285bb21a05a7f1d4c3da0ccde7ca669ac22e3c159992ab",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }
