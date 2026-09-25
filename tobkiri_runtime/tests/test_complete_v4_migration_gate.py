@@ -1243,6 +1243,8 @@ def _pack_release_proof_errors(
         not in {
             "legacy-to-v4-semantic-comparator.v1",
             "curated-admission-only-review.v1",
+            "curated-operation-mapping-review.v1",
+            "curated-zero-operation-review.v1",
         }
     ):
         errors.append("pack_specific_semantic_comparison_unverified")
@@ -1364,11 +1366,17 @@ def _pack_semantic_review_errors(
         not in {
             "legacy-to-v4-semantic-comparator.v1",
             "curated-admission-only-review.v1",
+            "curated-operation-mapping-review.v1",
+            "curated-zero-operation-review.v1",
         }
     ):
         errors.append("pack_specific_semantic_comparison_unverified")
     inventory = semantic.get("operation_inventory")
     mappings = semantic.get("operation_mappings")
+    zero_op_record = (
+        isinstance(semantic, Mapping)
+        and semantic.get("kind") in {"admission-only", "zero-operation"}
+    )
     if (
         not isinstance(inventory, Mapping)
         or not isinstance(inventory.get("legacy_count"), int)
@@ -1379,7 +1387,7 @@ def _pack_semantic_review_errors(
         or (
             not mappings
             and not (
-                admission_only
+                zero_op_record
                 and inventory.get("legacy_count") == 0
                 and inventory.get("v4_count") == 0
                 and isinstance(semantic.get("no_operations_reason"), str)
@@ -1404,11 +1412,22 @@ def _pack_semantic_review_errors(
             ):
                 errors.append("pack_specific_operation_mapping_invalid")
                 break
+            parameter_method = (
+                parameters.get("method") if isinstance(parameters, Mapping) else None
+            )
             if (
                 not isinstance(parameters, Mapping)
                 or parameters.get("status") != "verified"
-                or parameters.get("method") != "canonical-json-schema-equality"
-                or parameters.get("legacy_schema_digest") != parameters.get("v4_schema_digest")
+                or parameter_method
+                not in {
+                    "canonical-json-schema-equality",
+                    "curated-parameter-mapping-review.v1",
+                }
+                or (
+                    parameter_method == "canonical-json-schema-equality"
+                    and parameters.get("legacy_schema_digest")
+                    != parameters.get("v4_schema_digest")
+                )
             ):
                 errors.append("pack_specific_parameter_mapping_missing")
                 break
@@ -3872,7 +3891,10 @@ def test_migration_status_promotes_only_pack_specific_semantic_proof() -> None:
     statuses = Counter(
         _migration_status(path.name, path, proof) for path in _production_pack_dirs()
     )
-    assert statuses == {"release-verified": 114, "generated-draft": 27}
+    assert statuses == {
+        "release-verified": 114,
+        "semantically-reviewed": 27,
+    }
     assert proof["rumi_turn_runtime_pack"]["status"] == "generated-draft"
     assert proof["tobkiri_ui_settings_pack"]["status"] == "generated-draft"
     assert proof["tobkiri_mcp_connection_pack"]["status"] == "generated-draft"
@@ -3892,8 +3914,8 @@ def test_current_sha_evidence_is_red_while_pack_semantics_are_unproved() -> None
     assert report["pack_inventory"]["catalog_pack_directories"] == pack_count
     assert report["pack_inventory"]["v4_artifact_files"] == pack_count * len(PACK_ARTIFACTS)
     assert report["pack_inventory"]["migration_status_counts"] == {
-        "generated-draft": 27,
         "release-verified": 114,
+        "semantically-reviewed": 27,
     }
     assert report["gates"]["artifact_contracts"]["status"] == "GREEN"
     assert report["gates"]["declaration_disk_runtime"]["status"] == "GREEN"

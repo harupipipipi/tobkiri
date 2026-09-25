@@ -60,6 +60,50 @@ def _admission_only_review(pack_id: str, target_digest: str) -> dict[str, Any]:
     )
 
 
+def _zero_operation_review(
+    pack_id: str,
+    source_digest: str,
+    target_digest: str,
+) -> dict[str, Any]:
+    semantic = _with_digest(
+        {
+            "kind": "zero-operation",
+            "status": "verified",
+            "equivalent": True,
+            "method": "curated-zero-operation-review.v1",
+            "operation_inventory": {"legacy_count": 0, "v4_count": 0},
+            "operation_mappings": [],
+            "no_operations_reason": (
+                "The committed legacy manifest declares zero entrypoints and "
+                "the v4 catalog declares zero executable operations; the Pack "
+                "is surface/content-only."
+            ),
+            "behavior_review": {"status": "verified", "scope": "declared-content-surface"},
+            "authority_review": {"status": "verified", "scope": "zero-operation-authority"},
+        },
+        "semantic_record_digest",
+    )
+    return _with_digest(
+        {
+            "pack_id": pack_id,
+            "source_kind": "independent-curated",
+            "reviewer_id": "reviewer:test",
+            "reviewed_at": "2026-09-16T00:00:00Z",
+            "source_digest": source_digest,
+            "target_digest": target_digest,
+            "semantic_record": semantic,
+            "semantic_record_digest": semantic["semantic_record_digest"],
+            "review_basis": {
+                "method": "independent-file-by-file-review.v1",
+                "evidence_paths": ["a", "b", "c", "d", "e"],
+                "verified_claims": ["zero-operation semantics"],
+                "excluded_claims": ["release readiness"],
+            },
+        },
+        "review_attestation_digest",
+    )
+
+
 def _runtime_receipt(
     pack_id: str,
     target_digest: str,
@@ -215,6 +259,66 @@ def test_admission_only_review_and_exact_receipts_are_valid(tmp_path: Path) -> N
     )
 
 
+def test_zero_operation_review_requires_real_source_and_zero_inventory(
+    tmp_path: Path,
+) -> None:
+    """A sourced zero-operation Pack still binds its exact legacy digest."""
+
+    source_digest = "sha256:" + "a" * 64
+    target_digest = "sha256:" + "b" * 64
+    review = _zero_operation_review("pack-a", source_digest, target_digest)
+    review_path = tmp_path / "reviews.json"
+    _write(
+        review_path,
+        {
+            "schema": "io.tobkiri.quality.pack-migration-reviews.v1",
+            "authority": "curated-review",
+            "generator_id": None,
+            "reviews": {"pack-a": review},
+        },
+    )
+    assert load_curated_reviews(review_path) == {"pack-a": review}
+
+    dropped_source = copy.deepcopy(review)
+    dropped_source.pop("source_digest")
+    dropped_source["review_attestation_digest"] = canonical_digest(
+        {k: v for k, v in dropped_source.items() if k != "review_attestation_digest"}
+    )
+    _write(
+        review_path,
+        {
+            "schema": "io.tobkiri.quality.pack-migration-reviews.v1",
+            "authority": "curated-review",
+            "generator_id": None,
+            "reviews": {"pack-a": dropped_source},
+        },
+    )
+    with pytest.raises(MigrationReleaseEvidenceError, match="source digest is invalid"):
+        load_curated_reviews(review_path)
+
+    nonzero = copy.deepcopy(review)
+    nonzero["semantic_record"]["operation_inventory"]["legacy_count"] = 1
+    nonzero["semantic_record"]["operation_inventory"]["v4_count"] = 1
+    nonzero["semantic_record"]["semantic_record_digest"] = canonical_digest(
+        {k: v for k, v in nonzero["semantic_record"].items() if k != "semantic_record_digest"}
+    )
+    nonzero["semantic_record_digest"] = nonzero["semantic_record"]["semantic_record_digest"]
+    nonzero["review_attestation_digest"] = canonical_digest(
+        {k: v for k, v in nonzero.items() if k != "review_attestation_digest"}
+    )
+    _write(
+        review_path,
+        {
+            "schema": "io.tobkiri.quality.pack-migration-reviews.v1",
+            "authority": "curated-review",
+            "generator_id": None,
+            "reviews": {"pack-a": nonzero},
+        },
+    )
+    with pytest.raises(MigrationReleaseEvidenceError, match="must have zero operations"):
+        load_curated_reviews(review_path)
+
+
 def test_runtime_receipt_rejects_target_digest_substitution(tmp_path: Path) -> None:
     """A receipt copied to another artifact fails even if its outer JSON is rehashed."""
 
@@ -246,7 +350,7 @@ def test_checked_in_curated_reviews_bind_exact_generated_semantics() -> None:
     proof, findings = complete_gate._load_independent_migration_proof()
 
     assert not findings
-    assert len(reviews) == 114
+    assert len(reviews) == 141
     for pack_id, review in reviews.items():
         entry = {**proof[pack_id], "status": "generated-draft"}
         effective = complete_gate._entry_with_curated_semantics(entry, review)

@@ -89,14 +89,20 @@ def _validate_semantic_record(record: Any) -> None:
         if not mappings or len(mappings) != inventory["v4_count"]:
             raise MigrationReleaseEvidenceError("operation semantic mapping is incomplete")
         return
-    if record.get("kind") != "admission-only":
+    if record.get("kind") not in {"admission-only", "zero-operation"}:
         raise MigrationReleaseEvidenceError("semantic record kind is invalid")
+    expected_method = {
+        "admission-only": "curated-admission-only-review.v1",
+        "zero-operation": "curated-zero-operation-review.v1",
+    }[record["kind"]]
     if (
-        record.get("method") != "curated-admission-only-review.v1"
+        record.get("method") != expected_method
         or inventory != {"legacy_count": 0, "v4_count": 0}
         or mappings
     ):
-        raise MigrationReleaseEvidenceError("admission-only review must have zero operations")
+        raise MigrationReleaseEvidenceError(
+            f"{record['kind']} review must have zero operations"
+        )
     if (
         not isinstance(record.get("no_operations_reason"), str)
         or not record["no_operations_reason"].strip()
@@ -105,7 +111,9 @@ def _validate_semantic_record(record: Any) -> None:
         or not isinstance(record.get("authority_review"), Mapping)
         or record["authority_review"].get("status") != "verified"
     ):
-        raise MigrationReleaseEvidenceError("admission-only semantic review is incomplete")
+        raise MigrationReleaseEvidenceError(
+            f"{record['kind']} semantic review is incomplete"
+        )
 
 
 def load_curated_reviews(path: Path) -> dict[str, Mapping[str, Any]]:
