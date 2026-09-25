@@ -1,6 +1,4 @@
 import { Bot, ClipboardList, MessageSquare, Route, Settings, Share2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Bot, ClipboardList, MessageSquare, Route, Settings, Share2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
