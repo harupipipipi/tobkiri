@@ -55,12 +55,21 @@ class RouteLoadErrorBoundary extends Component<
     if (!this.state.failed) return this.props.children;
     return (
       <div className="flex flex-1 items-center justify-center p-6">
-        <div className="w-full max-w-xl rounded-xl border border-red-200 bg-red-50 p-5 dark:border-red-900/40 dark:bg-red-950/20">
-          <h2 className="font-semibold text-text-main">This page could not be loaded</h2>
-          <p className="mt-2 text-sm text-text-muted">
-            The current page stopped rendering. Raw error details are not displayed.
-            {this.state.diagnosticReference ? ` Diagnostic: ${this.state.diagnosticReference}` : ''}
-          </p>
+        <div className="w-full max-w-xl rounded-xl border border-red-200 bg-red-50 p-5 dark:border-red-900/40 dark:bg-red-950/20" role="alert">
+          <h2 className="flex items-center gap-2 font-semibold text-text-main">
+            <AlertCircle aria-hidden="true" className="h-4 w-4 shrink-0 text-destructive" data-error-icon="route-load" />
+            This page could not be loaded
+          </h2>
+          <div className="mt-2 flex items-start gap-2">
+            <p className="min-w-0 flex-1 text-sm text-text-muted">
+              The current page stopped rendering. Raw error details are not displayed.
+              {this.state.diagnosticReference ? ` Diagnostic: ${this.state.diagnosticReference}` : ''}
+            </p>
+            <CopyErrorButton
+              label="Copy page load error"
+              text={this.state.diagnosticReference ? `Page load diagnostic: ${this.state.diagnosticReference}` : 'Page load error'}
+            />
+          </div>
           <div className="mt-4 flex flex-wrap justify-end gap-2">
             <Button size="sm" variant="outline" onClick={() => this.setState({failed: false})}>
               Retry page

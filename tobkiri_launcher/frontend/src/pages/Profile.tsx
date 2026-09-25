@@ -54,7 +54,11 @@ export function Profile() {
   const profileCeremonyVerified = verificationState === 'verified';
   const surface = useRuntimeSurface<unknown>('profile');
   const catalogSurface = useRuntimeSurface<RuntimeProfileCatalogProjection>('profiles');
-  const descriptor = LAUNCHER_ADVANCED_VIEWS.profile;
+  const descriptor = {
+    ...LAUNCHER_ADVANCED_VIEWS.profile,
+    label: t('profile.descriptor_label'),
+    summary: t('profile.descriptor_summary'),
+  };
   const recoveredDraft = readRecoverableDraft(PROFILE_DRAFT_ID)?.fields;
   const [username, setUsername] = useState(
     typeof recoveredDraft?.username === 'string'
