@@ -60,6 +60,7 @@ export function Settings() {
   const runtimeSettings = surface.data
     ? extractRuntimeProfileSettings(surface.data.data)
     : null;
+  const selectedLocale = uiLocaleOption(language);
   const desktopShell = typeof window !== 'undefined' && isDesktopShellAvailable();
 
   const checkUpdate = async () => {
@@ -210,11 +211,7 @@ export function Settings() {
               <select
                 className="min-h-11 rounded-lg border border-border bg-bg-main px-3 py-2 text-sm text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
                 value={language}
-                onChange={(event) => {
-                  if (!updateLocalProfile({language: event.target.value})) {
-                    addToast(t('settings.language_save_failed'), 'error');
-                  }
-                }}
+                onChange={(event) => updateLocalProfile({language: event.target.value})}
                 aria-label={t('settings.language')}
               >
                 {UI_LOCALE_OPTIONS.map((option) => (
@@ -223,7 +220,10 @@ export function Settings() {
                   </option>
                 ))}
               </select>
-              <span className="text-xs font-normal text-text-muted">{t('settings.language_storage_note')}</span>
+              <span className="text-xs font-normal text-text-muted" role="status">
+                {t(`settings.language_${selectedLocale.availability}_help`)}{' '}
+                Stored locally; this does not change runtime Profile policy.
+              </span>
             </label>
           </CardContent>
         </Card>
