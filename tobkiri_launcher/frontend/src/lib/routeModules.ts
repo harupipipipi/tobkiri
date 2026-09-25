@@ -1,5 +1,6 @@
 import {lazy, type ComponentType, type LazyExoticComponent} from 'react';
 
+import {recoverExpiredPanelSession} from './apiTransport';
 import type {PanelRouteKey} from './routes';
 
 export type RouteModuleKey =
@@ -47,11 +48,35 @@ export const routeModuleSources: Record<RouteModuleKey, string> = {
 
 const routeModulePromises = new Map<RouteModuleKey, Promise<unknown>>();
 
+/**
+ * Load a lazily imported route chunk, retrying once after panel-session
+ * recovery when the first attempt fails.
+ *
+ * Route chunks are served from the session-gated panel asset endpoint, so an
+ * expired panel session surfaces here as a dynamic-import failure (for
+ * example WebKit's "Importing a module script failed."). React.lazy never
+ * retries a rejected loader, so the retry must happen inside this loader:
+ * on failure we mint a fresh session via `recoverExpiredPanelSession` and
+ * re-invoke the loader exactly once. When recovery is unavailable (non-Tauri
+ * context, bootstrap denied) the original error propagates unchanged.
+ */
+export async function loadRouteModuleWithSessionRecovery(
+  loader: RouteModuleLoader,
+  recoverPanelSession: () => Promise<boolean> = recoverExpiredPanelSession,
+): Promise<unknown> {
+  try {
+    return await loader();
+  } catch (error) {
+    if (!(await recoverPanelSession())) throw error;
+    return loader();
+  }
+}
+
 export function preloadRouteModule(key: RouteModuleKey): Promise<unknown> {
   const existing = routeModulePromises.get(key);
   if (existing) return existing;
 
-  const promise = rawRouteModuleLoaders[key]().catch((error) => {
+  const promise = loadRouteModuleWithSessionRecovery(rawRouteModuleLoaders[key]).catch((error) => {
     routeModulePromises.delete(key);
     throw error;
   });

@@ -117,7 +117,7 @@ function isRecoverablePanelAuthError(status: number, errorMessage: string): bool
   return status === 401 || /Unauthorized|Invalid or expired code/i.test(errorMessage);
 }
 
-async function recoverExpiredPanelSession(currentRequestSignal?: AbortSignal): Promise<boolean> {
+export async function recoverExpiredPanelSession(currentRequestSignal?: AbortSignal): Promise<boolean> {
   if (panelSessionRecoveryPromise) return panelSessionRecoveryPromise;
 
   panelSessionRecoveryPromise = (async () => {
