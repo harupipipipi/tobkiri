@@ -2188,7 +2188,7 @@ def test_prepare_chat_run_deepthink_members_match_production_selection(
         ]
         return selection
 
-    monkeypatch.setattr("domain.chat.run_request.select_model_pack", spy)
+    monkeypatch.setattr("domain.chat.deepthink_preflight.select_model_pack", spy)
     prepared = _prepare_for_model(
         monkeypatch,
         tmp_path,
