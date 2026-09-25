@@ -165,6 +165,14 @@ def test_headroom_stops_guest_memory_growth_after_compile(
     The 64 MiB fill is the transient-peak workload class: under a 32 MiB
     headroom its linear-memory commit fails at the commit call site, so the
     worker can never produce the success frame it previously returned.
+
+    The lifetime cap is deliberately generous (4 GiB) since the honest
+    committed baseline — counted exactly as the hooks charge it — varies
+    ~0.5–1.5 GiB across identical launches (interpreter/mimalloc arena
+    reservations differ per launch). It must sit above every possible
+    startup so that ONLY the armed ``used + headroom`` cap is the
+    constraint exercised here: the compile must reliably complete, then
+    the guest's 64 MiB growth must be refused by the 32 MiB headroom.
     """
     pytest.importorskip("wasmtime")
     from tests.test_wasm_component import component, worker_command, worker_request
@@ -177,7 +185,7 @@ def test_headroom_stops_guest_memory_growth_after_compile(
         worker_command(),
         memory_guard=MemoryGuardConfig(
             guard_library,
-            1536 * 1024 * 1024,
+            4 * _GIB,
             headroom_bytes=32 * 1024 * 1024,
         ),
     )
@@ -189,7 +197,16 @@ def test_headroom_stops_guest_memory_growth_after_compile(
 def test_within_cap_and_headroom_completes(
     guard_library: str, children: list
 ) -> None:
-    """The same guest inside a headroom it fits returns normally."""
+    """The same guest inside a headroom it fits returns normally.
+
+    The cap still binds: after ``arm_headroom`` the effective cap is
+    ``used + 128 MiB``, so any guest growth beyond the fill + invoke
+    slack — a >128 MiB workload — is refused at the commit call site (the
+    companion test proves refusal at 32 MiB headroom). The lifetime cap
+    is 4 GiB, safely above the variable honest baseline; the previous
+    1536 MiB/512 MiB constants predated exact committed accounting and
+    left only ~43 MiB of effective headroom, which failed this test.
+    """
     pytest.importorskip("wasmtime")
     from tests.test_wasm_component import component, worker_command, worker_request
 
@@ -201,8 +218,8 @@ def test_within_cap_and_headroom_completes(
         worker_command(),
         memory_guard=MemoryGuardConfig(
             guard_library,
-            1536 * 1024 * 1024,
-            headroom_bytes=512 * 1024 * 1024,
+            4 * _GIB,
+            headroom_bytes=128 * 1024 * 1024,
         ),
     )
     assert owned.invoke(worker_request(binary), cancelled=threading.Event()) == {
