@@ -11,6 +11,9 @@ import {
 import {
   ArrowLeft,
   ArrowRight,
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   GripVertical,
   Loader2,
   Move,
@@ -540,12 +543,24 @@ export function KanbanWorkspacePanel({
           copyLabel="Kanban 操作エラーをコピー"
           message={error}
           messageClassName="whitespace-pre-wrap"
-          trailing={<button type="button" onClick={() => { setError(null); setStatusMessage(null); }} className="shrink-0 rounded px-2 py-1 text-current/70 hover:bg-white/5 hover:text-current">Dismiss</button>}
+          trailing={<button type="button" onClick={() => { setError(null); setStatusMessage(null); setUndoMove(null); }} className="shrink-0 rounded px-2 py-1 text-current/70 hover:bg-white/5 hover:text-current">Dismiss</button>}
         />
       ) : statusMessage ? (
         <div className="mx-4 mt-3 flex items-start justify-between gap-3 rounded-xl border border-emerald-400/20 bg-emerald-500/[0.08] px-3 py-2.5 text-xs text-emerald-100" role="status" aria-live="polite">
           <span className="min-w-0 whitespace-pre-wrap break-words">{statusMessage}</span>
-          <button type="button" onClick={() => setStatusMessage(null)} className="shrink-0 rounded px-2 py-1 text-current/70 hover:bg-white/5 hover:text-current">Dismiss</button>
+          <span className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+            {undoMove && (
+              <button
+                type="button"
+                onClick={() => void undoLastMove()}
+                disabled={Boolean(busyAction)}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 font-semibold text-current hover:bg-white/5 disabled:opacity-50"
+              >
+                <RotateCcw size={14} aria-hidden="true" /> Undo move
+              </button>
+            )}
+            <button type="button" onClick={() => { setStatusMessage(null); setUndoMove(null); }} className="min-h-11 rounded-lg px-3 text-current/70 hover:bg-white/5 hover:text-current">Dismiss</button>
+          </span>
         </div>
       ) : null}
 
@@ -623,22 +638,22 @@ export function KanbanWorkspacePanel({
                         aria-current={isKeyboardMoving ? "true" : undefined}
                       >
                         <div className="flex items-start gap-2">
-                          <span className="flex h-11 w-11 shrink-0 items-center justify-center text-zinc-600" title="Pointer drag handle" aria-hidden="true">
+                          <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center text-zinc-600" title="Pointer drag handle" aria-hidden="true">
                             <GripVertical size={16} className="cursor-grab group-hover/card:text-zinc-400" />
                           </span>
                           <div className="min-w-0 flex-1">
                             <h4 className="text-sm font-medium leading-5 text-zinc-200">
                               <button
-                                id={cardTitleId}
-                                type="button"
-                                onClick={() => setExpandedCardId((current) => current === card.card_id ? null : card.card_id)}
                                 ref={(node) => {
                                   if (node) cardFocusTargetsRef.current.set(card.card_id, node);
                                   else cardFocusTargetsRef.current.delete(card.card_id);
                                 }}
+                                id={cardTitleId}
+                                type="button"
                                 aria-expanded={expanded}
                                 aria-controls={`kanban-card-details-${card.card_id}`}
                                 onKeyDown={(event) => handleKeyboardMoveKeyDown(event, card)}
+                                onClick={() => setExpandedCardId((current) => current === card.card_id ? null : card.card_id)}
                                 className="min-h-11 w-full rounded-md px-1 text-left font-semibold outline-none hover:bg-zinc-900 focus-visible:ring-2 focus-visible:ring-sky-400"
                               >
                                 {card.title}
