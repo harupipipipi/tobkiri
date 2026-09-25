@@ -9,7 +9,6 @@ import {
   ShieldQuestion,
 } from "lucide-react";
 
-import { ErrorNotice } from "../components/ErrorNotice";
 import { cn } from "../lib/cn";
 import { openHostPermissionSettings } from "../lib/desktopApproval";
 import { isDesktopSystemInfoAvailable } from "../lib/desktopSystemInfo";
@@ -27,15 +26,11 @@ import {
 type LoadState = "loading" | "ready" | "error";
 type Notice = { tone: "status" | "error"; text: string };
 
-type PageNotice = {
-  message: string;
-  severity: "error" | "warning" | "success";
-};
-
 export function HostPermissionsPage() {
   const [snapshot, setSnapshot] = useState<HostPermissionsSnapshot | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [notice, setNotice] = useState<PageNotice | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [diagnostic, setDiagnostic] = useState("");
   const [openingPermissionId, setOpeningPermissionId] = useState<string | null>(null);
   const tauriAvailable = useMemo(() => isDesktopSystemInfoAvailable(), []);
 
@@ -49,18 +44,35 @@ export function HostPermissionsPage() {
       const nextSignature = hostPermissionStatusSignature(nextSnapshot.rows);
       setSnapshot(nextSnapshot);
       setLoadState("ready");
-      if (nextSnapshot.authorityError) {
+
+      if (nextSnapshot.authorityUnavailable) {
         setNotice({
-          message: `Tobkiri approval history is unavailable: ${nextSnapshot.authorityError}`,
-          severity: "warning",
+          tone: "error",
+          text: "Tobkiri approval history is temporarily unavailable. OS permission values remain visible.",
+        });
+        setDiagnostic(nextSnapshot.authorityDiagnostic || "Authority request lookup failed.");
+      } else if (!previousSignature) {
+        setNotice({
+          tone: "status",
+          text: `Host permissions loaded. ${nextSnapshot.summary.approved} of ${nextSnapshot.summary.total} Tobkiri approvals are ready.`,
+        });
+      } else {
+        setNotice({
+          tone: "status",
+          text: previousSignature === nextSignature
+            ? "Host permissions refreshed. No status changes were found."
+            : "Host permissions refreshed. One or more permission statuses changed.",
         });
       }
     } catch (error) {
       setLoadState("error");
       setNotice({
-        message: error instanceof Error ? error.message : "Host permissions could not be loaded.",
-        severity: "error",
+        tone: "error",
+        text: snapshot
+          ? "Host permissions could not be refreshed. Showing the last known values."
+          : "Host permission status could not be loaded. Try refreshing this page.",
       });
+      setDiagnostic(safeHostPermissionDiagnostic(error));
     }
   };
 
@@ -117,93 +129,39 @@ export function HostPermissionsPage() {
           <StatusStrip snapshot={snapshot} loading={loadState === "loading"} />
 
           {!tauriAvailable && (
-            <ErrorNotice
-              className="rounded-lg px-3 py-2 text-xs leading-5"
-              copyLabel="Copy desktop bridge warning"
-              copyText="OS settings buttons are disabled because this page is not running inside the Tobkiri Launcher desktop bridge."
-              errorIcon="desktop-bridge"
-              message="OS settings buttons are disabled because this page is not running inside the Tobkiri Launcher desktop bridge."
-              severity="warning"
-            />
+            <div
+              role="note"
+              className="flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100"
+            >
+              <AlertTriangle aria-hidden="true" size={15} className="mt-0.5 shrink-0" />
+              OS settings buttons are disabled because this page is not running inside the Tobkiri Launcher desktop bridge.
+            </div>
           )}
 
-          {notice?.severity === "success" ? (
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs leading-5 text-zinc-400">
-              {notice.message}
+          {notice && (
+            <div
+              role={notice.tone === "error" ? "alert" : "status"}
+              aria-atomic="true"
+              className={cn(
+                "rounded-lg border px-3 py-2 text-xs leading-5",
+                notice.tone === "error"
+                  ? "border-rose-500/25 bg-rose-500/10 text-rose-100"
+                  : "border-zinc-800 bg-zinc-950 text-zinc-300",
+              )}
+            >
+              {notice.text}
             </div>
-          ) : null}
-          {notice?.severity === "error" || notice?.severity === "warning" ? (
-            <ErrorNotice
-              className="rounded-lg px-3 py-2 text-xs leading-5"
-              copyLabel={notice.severity === "error" ? "Copy host permissions error" : "Copy host permissions warning"}
-              copyText={notice.message}
-              errorIcon={`host-permissions-${notice.severity}`}
-              message={notice.message}
-              severity={notice.severity}
-            />
-          ) : null}
+          )}
 
-          {loadState === "error" ? (
-            <ErrorNotice
-              className="rounded-lg px-3 py-4 text-sm"
-              copyLabel="Copy host permissions load error"
-              copyText="Host permission status could not be loaded."
-              errorIcon="host-permissions-load"
-              message="Host permission status could not be loaded."
-            />
-          ) : (
-            <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/70">
-              <div className="grid grid-cols-[minmax(190px,1.2fr)_minmax(120px,0.7fr)_minmax(120px,0.7fr)_minmax(78px,0.45fr)_minmax(90px,0.5fr)_minmax(180px,1fr)_minmax(116px,0.55fr)] gap-3 border-b border-zinc-800 bg-zinc-900/50 px-3 py-2 text-[11px] font-semibold text-zinc-500 max-lg:hidden">
-                <span>Permission</span>
-                <span>Tobkiri approval</span>
-                <span>OS permission</span>
-                <span>Risk</span>
-                <span>Stream</span>
-                <span>Required by functions</span>
-                <span className="text-right">Settings</span>
-              </div>
-              <div className="divide-y divide-zinc-800/80">
-                {rows.length > 0 ? rows.map((row) => (
-                  <HostPermissionListRow
-                    key={row.id}
-                    row={row}
-                    tauriAvailable={tauriAvailable}
-                    opening={openingPermissionId === row.id}
-                    onOpenSettings={async () => {
-                      if (!tauriAvailable) {
-                        setNotice({
-                          message: "Open OS Settings is available only in Tobkiri Launcher.",
-                          severity: "warning",
-                        });
-                        return;
-                      }
-                      setOpeningPermissionId(row.id);
-                      setNotice(null);
-                      try {
-                        const opened = await openHostPermissionSettings(row.id);
-                        setNotice(opened
-                          ? { message: `${row.label} settings opened.`, severity: "success" }
-                          : {
-                            message: "Open OS Settings is available only in Tobkiri Launcher.",
-                            severity: "warning",
-                          });
-                      } catch (error) {
-                        setNotice({
-                          message: error instanceof Error ? error.message : "OS settings could not be opened.",
-                          severity: "error",
-                        });
-                      } finally {
-                        setOpeningPermissionId(null);
-                      }
-                    }}
-                  />
-                )) : (
-                  <div className="px-3 py-10 text-center text-sm text-zinc-500">
-                    {loadState === "loading" ? "Loading host permissions..." : "No host permissions were found."}
-                  </div>
-                )}
-              </div>
-            </section>
+          {diagnostic && (
+            <details className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-400">
+              <summary className="min-h-11 cursor-pointer content-center font-semibold text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300">
+                Sanitized technical details
+              </summary>
+              <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md bg-black/30 p-3 font-mono text-[11px]">
+                {diagnostic}
+              </pre>
+            </details>
           )}
 
           <HostPermissionsTable
@@ -258,10 +216,16 @@ export function StatusStrip({
 }) {
   const summary = snapshot?.summary;
   const items = [
-    { label: "Tobkiri approvals", value: summary ? `${summary.approved}/${summary.total}` : "..." },
-    { label: "OS ready", value: summary ? `${summary.osReady}/${summary.total}` : "..." },
-    { label: "Permission host", value: snapshot?.info?.permission_subject || snapshot?.info?.app_name || "Unknown" },
-    { label: "Reliability", value: snapshot?.info ? (snapshot.info.reliable ? "Verified" : "Unverified") : "Unavailable" },
+    { label: "Tobkiri approvals", value: summary ? `${summary.approved}/${summary.total}` : "Unavailable" },
+    { label: "OS ready", value: summary ? `${summary.osReady}/${summary.total}` : "Unavailable" },
+    {
+      label: "Permission host",
+      value: snapshot?.info?.permission_subject || snapshot?.info?.app_name || "Unknown",
+    },
+    {
+      label: "Reliability",
+      value: snapshot?.info ? (snapshot.info.reliable ? "Verified" : "Unverified") : "Unavailable",
+    },
   ];
   return (
     <section aria-labelledby="host-permission-summary-title" aria-busy={loading}>
@@ -389,16 +353,22 @@ function HostPermissionTableRow({
             <p className="break-all font-mono text-[11px] text-zinc-500">{row.id}</p>
           </div>
         </div>
-        <p className="mt-1 text-xs leading-5 text-zinc-500 lg:hidden">{row.description}</p>
-      </div>
-      <LabeledCell label="Tobkiri approval">
-        <StatusBadge status={row.rumiStatus} />
-      </LabeledCell>
-      <LabeledCell label="OS permission">
-        <StatusBadge status={row.osStatus} />
-      </LabeledCell>
-      <LabeledCell label="Risk">
-        <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize", riskClassName(row.riskLevel))}>
+        <p id={descriptionId} className="mt-1 break-words text-xs leading-5 text-zinc-400">
+          {row.description}
+        </p>
+        <p className="mt-1 text-[11px] text-zinc-500">
+          Source: {row.source === "desktop" ? "Tobkiri Launcher" : "fallback registry"}
+        </p>
+      </th>
+      <TableCell label="Tobkiri approval"><StatusBadge status={row.rumiStatus} /></TableCell>
+      <TableCell label="OS permission"><StatusBadge status={row.osStatus} /></TableCell>
+      <TableCell label="Risk">
+        <span
+          className={cn(
+            "inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize",
+            riskClassName(row.riskLevel),
+          )}
+        >
           {row.riskLevel || "unknown"}
         </span>
       </TableCell>
