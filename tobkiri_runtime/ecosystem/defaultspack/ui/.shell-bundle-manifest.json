@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "752667cd3787159e9687982bd3cc94958ac59345f016101b19737f5a332c2ea6",
+    "digest": "eb3cda7f9b6e557024730051cd1fa3fca8f2094c5e5ddff7913e42220637e379",
     "entries": [
       {
         "path": "index.html",
@@ -355,8 +355,8 @@
       },
       {
         "path": "src/components/ArtifactPreviewDialog.tsx",
-        "size": 6290,
-        "sha256": "93a6469774cb8d5d5fe23bf7a6f62e838e0bb83a3324e2ff65386291d785f5de"
+        "size": 8902,
+        "sha256": "db8d4d0273c9c379acc35b501cf388ad9c8a486f66b682a947f32d22cb2c3119"
       },
       {
         "path": "src/components/AuthorityApprovalNotice.tsx",
@@ -465,13 +465,13 @@
       },
       {
         "path": "src/components/ToolPreview.test.ts",
-        "size": 6983,
-        "sha256": "23030060b2e22ad363f913b3c9c646bc5fcaa4929306e7bbe2cde2f95ba286f6"
+        "size": 10834,
+        "sha256": "5060d503014359c6a5bd88d7dc6d79a51ff24a871dc8530d327e2630892e64d7"
       },
       {
         "path": "src/components/ToolPreview.tsx",
-        "size": 44574,
-        "sha256": "01a31847ee737678e9ca4b6538da7398aa73384348a2a78a0a2ff416b6ceecb0"
+        "size": 43017,
+        "sha256": "8f1f4f7cc93e9c684a988b258d41a3fa2aa05b873d77b8a6d2fddd53f9260d0f"
       },
       {
         "path": "src/components/ToolSettingsPanel.tsx",
@@ -772,6 +772,11 @@
         "path": "src/components/prompts/promptSegmentView.ts",
         "size": 5341,
         "sha256": "08fd4ccdde53ef32d62d57494210cad82a08067135a278a4dd688ce28d0e7a9d"
+      },
+      {
+        "path": "src/components/toolPreviewImagePolicy.ts",
+        "size": 4001,
+        "sha256": "7fb1a1398b39684ed862fd351e4200432cdb91caeff44ae1408f015fa7a0e86e"
       },
       {
         "path": "src/features/apiKeys/apiKeySetup.test.ts",
@@ -1931,12 +1936,12 @@
     ]
   },
   "bundle": {
-    "digest": "8ac203be7df476d2a9fd3108ee2a361d32259e40f9c1da2a8dc371ae16122f3f",
+    "digest": "11ef6c7390759f20d7e46131edf5f95fdd278d928c7eb5e01f99abf80eae0a41",
     "entries": [
       {
         "path": "shell-app.css",
-        "size": 232456,
-        "sha256": "9ed65a93ac44df6cba7dea05fd98d4549f594deaa0e5e7b2080fd2832b234a16"
+        "size": 232238,
+        "sha256": "0ea48465b3b52af4dc898d4de125ac7ba52ecfb6184f2e7f51243f8fbcad76fd"
       },
       {
         "path": "shell-app.js",
@@ -1945,8 +1950,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2239224,
-        "sha256": "c475c0b32af8b76b9cc825bf7061a09e6e1f493a6f910f18d2319bbd85eb9758"
+        "size": 2240467,
+        "sha256": "881b20573d27832a09f2dbee187758e2d8273c008cede7cc407f69b91ffb04ce"
       },
       {
         "path": "shell-rolldown-runtime.js",

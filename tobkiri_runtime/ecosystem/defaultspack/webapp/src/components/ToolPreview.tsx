@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  X, Globe, FileText, Image, ExternalLink,
+  X, Globe, FileText, Image,
   Eye, EyeOff, Code, NotebookPen, Maximize2,
   Plus, Clock, Layers
 } from 'lucide-react';
@@ -71,9 +71,11 @@ export type ToolPreviewMode = 'auto' | 'manual';
 
 export const MEMO_PREVIEW_ID = '__memo__';
 const TIMELINE_TAB_ID = '__timeline__';
-// Keep web preview documents in an opaque origin even when they are served from
-// the same loopback host as the panel. Combining allow-scripts with
-// allow-same-origin would let preview HTML escape the sandbox boundary.
+export const REMOTE_PREVIEW_BLOCKED_MESSAGE = 'Remote preview blocked: unverified tool URLs are not fetched.';
+export const MAX_INLINE_PREVIEW_IMAGE_URL_LENGTH = 5 * 1024 * 1024;
+// Keep inline HTML preview documents in an opaque origin. Combining
+// allow-scripts with allow-same-origin would let preview HTML escape the
+// sandbox boundary.
 export const WEB_PREVIEW_IFRAME_SANDBOX = '';
 
 function matchesPreviewId(item: ToolPreviewItem, previewId?: string | null) {
@@ -196,39 +198,13 @@ function previewIcon(data: ToolPreviewData, size = 12) {
   return <Image size={size} className="text-blue-400" />;
 }
 
-function previewBaseUrl(): string {
-  try {
-    return typeof window === 'undefined' ? '' : window.location.href;
-  } catch {
-    return '';
-  }
-}
-
-export function safePreviewHref(url: string | undefined, baseUrl = previewBaseUrl()): string | undefined {
-  if (!url || !baseUrl) return undefined;
-  try {
-    const base = new URL(baseUrl);
-    const parsed = new URL(url, base);
-    if (parsed.origin !== base.origin) return undefined;
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined;
-    return parsed.toString();
-  } catch {
-    return undefined;
-  }
-}
-
-export function safePreviewImageUrl(url: string | undefined, baseUrl = previewBaseUrl()): string | undefined {
+export function safePreviewImageUrl(url: string | undefined, _baseUrl?: string): string | undefined {
   if (!url) return undefined;
-  if (/^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(url)) return url;
-  return safePreviewHref(url, baseUrl);
-}
-
-function safeHref(url: string | undefined): string | undefined {
-  return safePreviewHref(url);
-}
-
-function localPreviewUrl(url: string | undefined): boolean {
-  return Boolean(safePreviewHref(url));
+  if (
+    url.length <= MAX_INLINE_PREVIEW_IMAGE_URL_LENGTH
+    && /^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(url)
+  ) return url;
+  return undefined;
 }
 
 function looksLikeHtml(data: FilePreview, content?: string): boolean {
@@ -257,13 +233,25 @@ function escapeHtmlAttribute(value: string): string {
     .replace(/>/g, '&gt;');
 }
 
-const HTML_PREVIEW_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; connect-src 'none'; media-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'";
+const HTML_PREVIEW_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; connect-src 'none'; media-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'; navigate-to 'none'";
+
+function stripHtmlNavigationPrimitives(content: string): string {
+  return content
+    .replace(/<base\b[^>]*>/gi, '')
+    .replace(/<meta\b[^>]*>/gi, (tag) => (
+      /\bhttp-equiv\s*=\s*(?:["']\s*)?refresh\b/i.test(tag) ? '' : tag
+    ))
+    .replace(/<a\b[^>]*>/gi, '<span>')
+    .replace(/<\/a\s*>/gi, '</span>')
+    .replace(/<area\b[^>]*>/gi, '');
+}
 
 export function hardenedHtmlPreviewDocument(content: string): string {
+  const inertContent = stripHtmlNavigationPrimitives(content);
   const csp = `<meta http-equiv="Content-Security-Policy" content="${escapeHtmlAttribute(HTML_PREVIEW_CSP)}">`;
   const metadata = `${csp}<meta name="referrer" content="no-referrer">`;
-  if (/<head[^>]*>/i.test(content)) return content.replace(/<head([^>]*)>/i, `<head$1>${metadata}`);
-  return `<!doctype html><html><head>${metadata}</head><body>${content}</body></html>`;
+  if (/<head[^>]*>/i.test(inertContent)) return inertContent.replace(/<head([^>]*)>/i, `<head$1>${metadata}`);
+  return `<!doctype html><html><head>${metadata}</head><body>${inertContent}</body></html>`;
 }
 
 function htmlWithBase(content: string, _url?: string): string {
@@ -293,7 +281,7 @@ export function artifactDialogItemFromToolPreview(item: ToolPreviewItem): Artifa
       kind: 'image',
       title: previewTitle(data),
       subtitle: data.path || data.prompt || 'image artifact',
-      href: safeHref(data.url),
+      untrustedSourceUrl: safePreviewImageUrl(data.url) ? undefined : data.url,
       imageUrl: safePreviewImageUrl(data.url),
       imageAlt: data.alt,
       details: [
@@ -309,7 +297,7 @@ export function artifactDialogItemFromToolPreview(item: ToolPreviewItem): Artifa
       kind: 'file',
       title: previewTitle(data),
       subtitle: data.path || data.size,
-      href: safeHref(data.url),
+      untrustedSourceUrl: data.url,
       content: data.content,
       language: data.filename.split('.').pop()?.toLowerCase() || 'text',
       details: [
@@ -339,7 +327,7 @@ export function artifactDialogItemFromToolPreview(item: ToolPreviewItem): Artifa
     kind: 'tool',
     title: previewTitle(data),
     subtitle: data.url,
-    href: safeHref(data.url),
+    untrustedSourceUrl: data.url,
     imageUrl: safePreviewImageUrl(data.screenshot),
     imageAlt: data.title,
     content: [data.title, data.url, data.snippet].filter(Boolean).join('\n\n'),
@@ -628,7 +616,6 @@ added 12 packages in 2.4s
 // ============================================================
 
 function WebPreviewContent({ data }: { data: WebPreview }) {
-  const canEmbed = localPreviewUrl(data.url);
   return (
     <div className="flex flex-col h-full">
       {/* Browser chrome */}
@@ -642,51 +629,18 @@ function WebPreviewContent({ data }: { data: WebPreview }) {
           <Globe size={10} className="flex-shrink-0 text-zinc-600" />
           <span className="truncate">{data.url}</span>
         </div>
-        <a
-          href={safeHref(data.url)}
-          target="_blank"
-          rel="noreferrer"
-          className="text-zinc-600 hover:text-zinc-400 transition-colors"
-        >
-          <ExternalLink size={12} />
-        </a>
       </div>
 
       {/* Page content */}
       <div className="flex-1 overflow-hidden">
-        {canEmbed ? (
-          <iframe
-            src={safeHref(data.url)}
-            title={data.title || data.url}
-            className="h-full w-full border-0 bg-white"
-            sandbox={WEB_PREVIEW_IFRAME_SANDBOX}
-          />
-        ) : safePreviewImageUrl(data.screenshot) ? (
+        {safePreviewImageUrl(data.screenshot) ? (
           <img
             src={safePreviewImageUrl(data.screenshot)}
             alt={data.title}
             className="m-4 w-[calc(100%-2rem)] rounded border border-zinc-800"
           />
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
-            <Globe size={28} className="text-zinc-700" />
-            <div className="max-w-full">
-              <h3 className="truncate text-sm font-medium text-zinc-200">{data.title}</h3>
-              <p className="mt-1 truncate font-mono text-[10px] text-emerald-600">{data.url}</p>
-              {data.snippet && (
-                <p className="mt-2 text-xs leading-relaxed text-zinc-500">{data.snippet}</p>
-              )}
-            </div>
-            <a
-              href={safeHref(data.url)}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-[11px] text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
-            >
-              <ExternalLink size={12} />
-              開く
-            </a>
-          </div>
+          <RemotePreviewBoundary url={data.url} title={data.title} detail={data.snippet} />
         )}
       </div>
     </div>
@@ -742,55 +696,62 @@ function CodePreviewContent({ data }: { data: CodePreview }) {
   );
 }
 
-function useRemotePreviewText(data: FilePreview) {
+export function remotePreviewText(data: FilePreview) {
   const inlineContent = displayPreviewContent(data);
-  const [remoteText, setRemoteText] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setRemoteText(null);
-    setError(null);
-    if (inlineContent !== undefined || !data.url) {
-      setIsLoading(false);
-      return () => {
-        cancelled = true;
-      };
-    }
-    const fetchUrl = safeHref(data.url);
-  if (!fetchUrl) {
-    setIsLoading(false);
-    setError('Remote preview blocked by URL policy.');
-    return () => {
-      cancelled = true;
-    };
-  }
-  setIsLoading(true);
-  void fetch(fetchUrl, { cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer' })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.text();
-      })
-      .then((text) => {
-        if (!cancelled) setRemoteText(text);
-      })
-      .catch((fetchError) => {
-        if (!cancelled) setError(fetchError instanceof Error ? fetchError.message : String(fetchError));
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [data.url, inlineContent]);
-
   return {
-    error,
-    isLoading,
-    text: inlineContent ?? remoteText ?? '',
+    error: inlineContent === undefined && data.url ? REMOTE_PREVIEW_BLOCKED_MESSAGE : null,
+    isLoading: false,
+    text: inlineContent ?? '',
   };
+}
+
+export function RemotePreviewBoundary({
+  url,
+  title,
+  detail,
+}: {
+  url: string;
+  title?: string;
+  detail?: string;
+}) {
+  const [copyStatus, setCopyStatus] = useState('');
+
+  const copySourceUrl = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard is unavailable');
+      await navigator.clipboard.writeText(url);
+      setCopyStatus('URL をコピーしました。');
+    } catch {
+      setCopyStatus('URL をコピーできませんでした。');
+    }
+  };
+
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
+      <Globe size={28} className="text-zinc-700" />
+      <div className="max-w-full">
+        {title && <h3 className="truncate text-sm font-medium text-zinc-200">{title}</h3>}
+        <p role="status" className="mt-1 text-xs text-amber-300">
+          Remote preview blocked
+        </p>
+        <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+          Tool が返した URL は、検証済み artifact identity がないため自動取得しません。
+        </p>
+        {detail && <p className="mt-2 text-xs leading-relaxed text-zinc-500">{detail}</p>}
+        <code className="mt-2 block max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-zinc-600">
+          {url}
+        </code>
+      </div>
+      <button
+        type="button"
+        onClick={() => { void copySourceUrl(); }}
+        className="inline-flex min-h-8 items-center gap-1 rounded-md border border-zinc-800 bg-zinc-950 px-3 text-[11px] text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+      >
+        URL をコピー
+      </button>
+      <span aria-live="polite" className="min-h-4 text-[10px] text-zinc-500">{copyStatus}</span>
+    </div>
+  );
 }
 
 function HtmlPreviewContent({
@@ -812,17 +773,6 @@ function HtmlPreviewContent({
           <Globe size={12} className="shrink-0 text-emerald-400" />
           <span className="truncate font-mono text-[11px] text-zinc-300">{data.filename}</span>
         </div>
-        {data.url && (
-          <a
-            href={safeHref(data.url)}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-zinc-800 bg-zinc-950 px-2 text-[10px] text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
-          >
-            <ExternalLink size={11} />
-            開く
-          </a>
-        )}
       </div>
       <div className="relative min-h-0 flex-1 bg-white">
         {isLoading && (
@@ -839,6 +789,9 @@ function HtmlPreviewContent({
             referrerPolicy="no-referrer"
           />
         ) : !isLoading ? (
+          error && data.url ? (
+            <RemotePreviewBoundary url={data.url} title={data.filename} />
+          ) : (
           <div className="flex h-full items-center justify-center bg-zinc-950 px-4 text-center text-[11px] text-zinc-500">
             {error ? (
               <ErrorNotice
@@ -848,6 +801,7 @@ function HtmlPreviewContent({
               />
             ) : 'HTML preview の内容がありません。'}
           </div>
+          )
         ) : null}
       </div>
     </div>
@@ -855,7 +809,7 @@ function HtmlPreviewContent({
 }
 
 function FilePreviewContent({ data }: { data: FilePreview }) {
-  const loaded = useRemotePreviewText(data);
+  const loaded = remotePreviewText(data);
   const content = loaded.text;
   const looksLikeJson = data.filename.toLowerCase().endsWith('.json') || String(content ?? '').trimStart().startsWith('{');
   if (looksLikeHtml(data, content) && (content || data.url)) {
@@ -866,7 +820,9 @@ function FilePreviewContent({ data }: { data: FilePreview }) {
       return <div className="flex h-full items-center justify-center text-[11px] text-zinc-600">diff を読み込んでいます</div>;
     }
     if (loaded.error && !content) {
-      return (
+      return data.url ? (
+        <RemotePreviewBoundary url={data.url} title={data.filename} />
+      ) : (
         <ErrorNotice
           className="m-3 text-[11px]"
           copyLabel="diff プレビューエラーをコピー"
@@ -884,16 +840,6 @@ function FilePreviewContent({ data }: { data: FilePreview }) {
           <span className="text-[11px] font-mono text-zinc-300">{data.filename}</span>
         </div>
         <div className="flex items-center gap-2">
-          {data.url && (
-            <a
-              href={safeHref(data.url)}
-              download={data.downloadName ?? data.filename}
-              className="inline-flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-[10px] text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
-            >
-              <ExternalLink size={11} />
-              開く
-            </a>
-          )}
           <span className="text-[10px] text-zinc-600">{data.size}</span>
         </div>
       </div>
@@ -910,6 +856,8 @@ function FilePreviewContent({ data }: { data: FilePreview }) {
       <div className="flex-1 overflow-y-auto">
         {loaded.isLoading ? (
           <div className="flex h-full items-center justify-center text-[11px] text-zinc-600">内容を読み込んでいます</div>
+        ) : loaded.error && !content && data.url ? (
+          <RemotePreviewBoundary url={data.url} title={data.filename} />
         ) : loaded.error && !content ? (
           <ErrorNotice
             className="m-3 text-[11px]"
@@ -973,11 +921,7 @@ function ImagePreviewContent({ data }: { data: ImagePreview }) {
             alt={data.alt}
             className="max-w-full max-h-full rounded-lg border border-zinc-800"
           />
-        ) : (
-          <div className="w-full aspect-square max-w-[200px] bg-zinc-800/30 rounded-lg border border-zinc-800 flex items-center justify-center">
-            <Image size={32} className="text-zinc-700" />
-          </div>
-        )}
+        ) : <RemotePreviewBoundary url={data.url} title={data.alt} detail={data.prompt} />}
       </div>
       {data.prompt && (
         <div className="px-3 py-2 border-t border-zinc-800/60 flex-shrink-0">
