@@ -11,6 +11,11 @@ import {
   type LauncherAdvancedViewDescriptor,
 } from '@/src/lib/advancedSurfaces';
 import {RUNTIME_CONTRACT_INVOKE_ACTION, type RuntimeJsonSchema, type RuntimeOperationDescriptor} from '@/src/lib/runtimeSurface';
+import {
+  clearRecoverableDraft,
+  readRecoverableDraft,
+  saveRecoverableDraft,
+} from '@/src/lib/crashRecovery';
 
 type InputValue = unknown;
 
@@ -87,11 +92,33 @@ export function OperationInputForm({
   const submittingRef = useRef(false);
   const formBusy = busy || submitting;
   const schemaSignature = JSON.stringify(operation.input_schema ?? {});
+  const draftId = `operation:${descriptor.id}:${operation.contract_id}:${operation.operation_id}`;
+  const draftRoute = descriptor.id === 'flow' ? '/panel/flows' : '/panel/ai-input';
 
   useEffect(() => {
-    setValues(Object.fromEntries(properties.map(([name, schema]) => [name, initialValue(schema, required.has(name))])));
+    const defaults = Object.fromEntries(
+      properties.map(([name, schema]) => [name, initialValue(schema, required.has(name))]),
+    );
+    const recovered = readRecoverableDraft(draftId)?.fields;
+    const recoveredFields = Object.fromEntries(
+      properties.flatMap(([name]) => (
+        recovered && Object.prototype.hasOwnProperty.call(recovered, name)
+          ? [[name, recovered[name]]]
+          : []
+      )),
+    );
+    setValues({...defaults, ...recoveredFields});
     setValidationError(null);
-  }, [operation.action, operation.contract_id, operation.operation_id, schemaSignature]);
+  }, [operation.action, operation.contract_id, operation.operation_id, schemaSignature, draftId]);
+
+  useEffect(() => {
+    saveRecoverableDraft({
+      id: draftId,
+      label: `${descriptor.label}: ${operation.label || operation.operation_id}`,
+      route: draftRoute,
+      fields: values,
+    });
+  }, [descriptor.label, draftId, draftRoute, operation.label, operation.operation_id, values]);
 
   const updateValue = (name: string, value: InputValue) => {
     setValues((current) => ({...current, [name]: value}));
@@ -167,6 +194,7 @@ export function OperationInputForm({
     setSubmitting(true);
     try {
       await onInvoke(payload);
+      clearRecoverableDraft(draftId);
     } finally {
       submittingRef.current = false;
       setSubmitting(false);

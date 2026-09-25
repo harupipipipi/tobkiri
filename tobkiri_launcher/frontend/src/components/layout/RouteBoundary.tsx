@@ -4,6 +4,10 @@ import {AlertCircle} from 'lucide-react';
 
 import {Button} from '@/src/components/ui/Button';
 import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
+import {
+  createSafeCrashDiagnostic,
+  reportSafeCrashDiagnostic,
+} from '@/src/lib/crashRecovery';
 
 function RouteSkeleton() {
   return (
@@ -21,36 +25,58 @@ function RouteSkeleton() {
 
 class RouteLoadErrorBoundary extends Component<
   {children: ReactNode; routeKey: string},
-  {error: Error | null}
+  {failed: boolean; diagnosticReference: string}
 > {
-  state = {error: null as Error | null};
+  state = {failed: false, diagnosticReference: ''};
 
-  static getDerivedStateFromError(error: Error) {
-    return {error};
+  static getDerivedStateFromError() {
+    return {failed: true};
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('Route render failed', {error, componentStack: info.componentStack});
+    const diagnostic = createSafeCrashDiagnostic(error, info.componentStack);
+    reportSafeCrashDiagnostic(diagnostic);
+    this.setState({diagnosticReference: diagnostic.reference});
   }
 
   componentDidUpdate(previous: {children: ReactNode; routeKey: string}) {
-    if (previous.routeKey !== this.props.routeKey && this.state.error) {
-      this.setState({error: null});
+    if (previous.routeKey !== this.props.routeKey && this.state.failed) {
+      this.setState({failed: false, diagnosticReference: ''});
     }
   }
 
+  private returnHome = () => {
+    window.history.replaceState({}, document.title, '/panel/');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    this.setState({failed: false, diagnosticReference: ''});
+  };
+
   render() {
-    if (!this.state.error) return this.props.children;
+    if (!this.state.failed) return this.props.children;
     return (
       <div className="flex flex-1 items-center justify-center p-6">
         <div className="w-full max-w-xl rounded-xl border border-red-200 bg-red-50 p-5 dark:border-red-900/40 dark:bg-red-950/20" role="alert">
-          <h2 className="flex items-center gap-2 font-semibold text-text-main"><AlertCircle aria-hidden="true" className="h-4 w-4 shrink-0 text-destructive" data-error-icon="route-load" />This page could not be loaded</h2>
+          <h2 className="flex items-center gap-2 font-semibold text-text-main">
+            <AlertCircle aria-hidden="true" className="h-4 w-4 shrink-0 text-destructive" data-error-icon="route-load" />
+            This page could not be loaded
+          </h2>
           <div className="mt-2 flex items-start gap-2">
-            <p className="min-w-0 flex-1 break-words text-sm text-text-muted">{this.state.error.message}</p>
-            <CopyErrorButton label="Copy page load error" text={this.state.error.message} />
+            <p className="min-w-0 flex-1 text-sm text-text-muted">
+              The current page stopped rendering. Raw error details are not displayed.
+              {this.state.diagnosticReference ? ` Diagnostic: ${this.state.diagnosticReference}` : ''}
+            </p>
+            <CopyErrorButton
+              label="Copy page load error"
+              text={this.state.diagnosticReference ? `Page load diagnostic: ${this.state.diagnosticReference}` : 'Page load error'}
+            />
           </div>
-          <div className="mt-4 flex justify-end">
-            <Button size="sm" onClick={() => window.location.reload()}>Reload page</Button>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <Button size="sm" variant="outline" onClick={() => this.setState({failed: false})}>
+              Retry page
+            </Button>
+            <Button size="sm" onClick={this.returnHome}>
+              Return Home
+            </Button>
           </div>
         </div>
       </div>
