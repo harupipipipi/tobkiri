@@ -3353,15 +3353,15 @@
     {
       "path": "scripts/quality/evidence/complete_v4_migration_red_64b2240e.json",
       "type": "regular-file",
-      "size": 84108,
-      "sha256": "75a52ce2f5e559e017f103505d18e09f7f0d757f6fb9ddb5b95cd0f862d570b4",
+      "size": 81651,
+      "sha256": "8e5148f6ca7ca104e23c91635dc28a084f924764ae1a866e7591ae1ee0728cca",
       "executable": false
     },
     {
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 1096961,
-      "sha256": "850ae6fb3d8f4c18d61ed0213da711e98d2880efb109cdd767d6ec24baaa649f",
+      "sha256": "6bf5692ea93f5356b07130b9e30dc18ab1e9459e65837054f233056476d7408c",
       "executable": false
     },
     {
@@ -3374,8 +3374,8 @@
     {
       "path": "scripts/quality/evidence/pack_migration_runtime_receipts.v1.json",
       "type": "regular-file",
-      "size": 404762,
-      "sha256": "f34ba3f2c310ff47debdeeabc46fc54848b92672d16cce3871c63c27c922a1db",
+      "size": 500741,
+      "sha256": "6ee3787af6f12b9faa7b2325ede2b86c6f371ade835212b66f337b984d3e4aa5",
       "executable": false
     },
     {

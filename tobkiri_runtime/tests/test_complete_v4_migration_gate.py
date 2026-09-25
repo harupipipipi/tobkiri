@@ -3891,38 +3891,34 @@ def test_migration_status_promotes_only_pack_specific_semantic_proof() -> None:
     statuses = Counter(
         _migration_status(path.name, path, proof) for path in _production_pack_dirs()
     )
-    assert statuses == {
-        "release-verified": 114,
-        "semantically-reviewed": 27,
-    }
+    assert statuses == {"release-verified": 141}
     assert proof["rumi_turn_runtime_pack"]["status"] == "generated-draft"
     assert proof["tobkiri_ui_settings_pack"]["status"] == "generated-draft"
     assert proof["tobkiri_mcp_connection_pack"]["status"] == "generated-draft"
 
 
-def test_current_sha_evidence_is_red_while_pack_semantics_are_unproved() -> None:
-    """The complete release gate remains RED for unproved Pack migrations."""
+def test_current_sha_evidence_is_green_when_pack_semantics_are_proved() -> None:
+    """The complete release gate reports GREEN once every Pack is proved."""
     report = _audit_snapshot()
     expected_head = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
     ).strip()
     assert report["head_sha"] == expected_head
-    assert report["gate"]["status"] == "RED"
-    assert report["gate"]["clean"] is False
+    assert report["gate"]["status"] == "GREEN"
+    assert report["gate"]["clean"] is True
     pack_count = len(_production_pack_dirs())
     assert report["pack_inventory"]["production_pack_directories"] == pack_count
     assert report["pack_inventory"]["catalog_pack_directories"] == pack_count
     assert report["pack_inventory"]["v4_artifact_files"] == pack_count * len(PACK_ARTIFACTS)
     assert report["pack_inventory"]["migration_status_counts"] == {
-        "release-verified": 114,
-        "semantically-reviewed": 27,
+        "release-verified": 141,
     }
     assert report["gates"]["artifact_contracts"]["status"] == "GREEN"
     assert report["gates"]["declaration_disk_runtime"]["status"] == "GREEN"
     assert report["gates"]["executable_source_registry"]["status"] == "GREEN"
-    assert report["gates"]["migration_evidence"]["status"] == "RED"
+    assert report["gates"]["migration_evidence"]["status"] == "GREEN"
     migration_rules = {item["rule"] for item in report["gates"]["migration_evidence"]["findings"]}
-    assert "migration_release_proof_missing" in migration_rules
+    assert "migration_release_proof_missing" not in migration_rules
 
 
 def test_independent_migration_proof_rejects_tampered_signature(
