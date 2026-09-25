@@ -783,6 +783,8 @@ def _approval_replay_operation_allowed(operation: str, tool_name: str) -> bool:
     """Allow only a signed operation's exact executable tool identity."""
     if operation.startswith("tool."):
         return True
+    if operation.startswith("page."):
+        return tool_name == "browser_companion"
     if operation.startswith(("browser.", "computer.")):
         return tool_name in {"browser_computer", "browser_use", "computer_use"}
     if operation.startswith(("file.", "git.", "shell.", "terminal.", "workspace.")):
@@ -965,7 +967,17 @@ def _approval_followup_tool_use(metadata: dict[str, Any] | None) -> dict[str, An
         action=action,
         operation=operation,
     )
-    if tool_name in {"browser_computer", "browser_use", "computer_use"} and action and not arguments.get("action"):
+    if (
+        tool_name
+        in {
+            "browser_companion",
+            "browser_computer",
+            "browser_use",
+            "computer_use",
+        }
+        and action
+        and not arguments.get("action")
+    ):
         arguments["action"] = action
     token_map = {tool_name: token}
     request_id = str(followup.get("request_id") or followup.get("approval_request_id") or "").strip()

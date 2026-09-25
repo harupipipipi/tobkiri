@@ -2651,6 +2651,7 @@ export function ChatApp() {
   const highRiskResumeStartedRef = useRef(new Set<string>());
   const highRiskCancelStartedRef = useRef(new Set<string>());
   const highRiskApprovalWindowOpenedRequestRef = useRef<string | null>(null);
+  const browserApprovalTokenRef = useRef<Map<string, string>>(new Map());
   const lastHealthyAtRef = useRef<number | null>(null);
   const consecutiveHealthFailuresRef = useRef(0);
   const authorityApprovalWindowRequestRef = useRef<string | null>(null);
@@ -5930,11 +5931,12 @@ export function ChatApp() {
     const pendingTurnId = pendingRequests[activeConversationId]?.savedTurn
       ? pendingRequests[activeConversationId].operationId ?? ""
       : "";
+    const actionKey = browserApprovalSettlementKey(currentApproval);
+    if (activeBrowserApprovalActionRef.current === actionKey) return;
+    activeBrowserApprovalActionRef.current = actionKey;
     setError(null);
     setIsGenerating(true);
-    const approvalToolIds = selectedToolIds.length
-      ? selectedToolIds
-      : [currentApproval.toolName].filter(Boolean);
+    const approvalToolIds = [currentApproval.toolName].filter(Boolean);
     rememberPendingRequest({
       ...pendingRequests[activeConversationId],
       conversationId: activeConversationId,
@@ -5982,6 +5984,7 @@ export function ChatApp() {
       settlePendingContinuation("承認後の照合を確認できませんでした。送信結果の照合を続けます。");
       const staleMessage = currentApproval.requestId ? approvalStaleUiMessage(approvalError) : null;
       if (staleMessage) {
+        browserApprovalTokenRef.current.delete(actionKey);
         settleBrowserApproval(currentApproval);
         setError(staleMessage);
       } else {
@@ -5989,6 +5992,7 @@ export function ChatApp() {
         setError("許可を保存できませんでした。リクエストの状態を更新して再試行してください。");
       }
     } finally {
+      activeBrowserApprovalActionRef.current = null;
       setIsGenerating(false);
     }
   };

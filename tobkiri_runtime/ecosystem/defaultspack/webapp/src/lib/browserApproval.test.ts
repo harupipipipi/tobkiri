@@ -40,6 +40,29 @@ test("chat browser approval card exposes deny and settles stale request-backed c
   assert.match(browserCardSource, /keyboardShortcuts=\{\{ deny: "2", approve: "3" \}\}/);
 });
 
+test("browser approval follow-up resumes only the approved pending tool once", () => {
+  const source = appSource();
+  const approveStart = source.indexOf("const approveBrowserAction = async () => {");
+  const approveEnd = source.indexOf("const denyBrowserAction = async () => {", approveStart);
+  const approveSource = source.slice(approveStart, approveEnd);
+
+  assert.match(approveSource, /const actionKey = browserApprovalSettlementKey\(currentApproval\)/);
+  assert.match(approveSource, /if \(activeBrowserApprovalActionRef\.current === actionKey\) return/);
+  assert.match(approveSource, /activeBrowserApprovalActionRef\.current = actionKey/);
+  assert.match(approveSource, /browserApprovalTokenRef\.current\.get\(actionKey\)/);
+  assert.match(approveSource, /browserApprovalTokenRef\.current\.set\(actionKey, approvalToken\)/);
+  assert.match(approveSource, /const approvalToolIds = \[currentApproval\.toolName\]\.filter\(Boolean\)/);
+  assert.doesNotMatch(approveSource, /selectedToolIds\.length\s*\?\s*selectedToolIds/);
+  assert.match(approveSource, /tools: approvalToolIds\.length \? approvalToolIds : undefined/);
+  assert.match(approveSource, /selected_tools: approvalToolIds/);
+  assert.ok(
+    approveSource.indexOf("await api.streamMessage")
+      < approveSource.indexOf("settleBrowserApproval(currentApproval)"),
+    "the approval card must remain recoverable until the replay request completes",
+  );
+  assert.match(approveSource, /activeBrowserApprovalActionRef\.current = null/);
+});
+
 test("returns a fresh browser computer approval request", () => {
   const approval = pendingBrowserApproval([
     agentMessage({
