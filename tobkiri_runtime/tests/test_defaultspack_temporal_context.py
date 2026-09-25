@@ -35,6 +35,115 @@ def test_temporal_context_prompt_uses_configured_timezone():
 
 
 def test_ai_complete_injects_temporal_context(monkeypatch, tmp_path: Path):
+def test_task_gap_context_uses_latest_completed_assistant_message():
+    from domain.temporal_context import task_gap_context
+
+    messages = [
+        {
+            "role": "assistant",
+            "finish_reason": "stop",
+            "created_at": 1_787_792_400_000,
+            "updated_at": 1_787_792_400_000,
+        },
+        {
+            "role": "assistant",
+            "finish_reason": "stop",
+            "created_at": 1_787_806_800_000,
+            "updated_at": 1_787_806_800_000,
+        },
+        {
+            "role": "assistant",
+            "finish_reason": "streaming",
+            "created_at": 1_787_814_000_000,
+            "updated_at": 1_787_814_000_000,
+            "metadata": {"draft": True},
+        },
+    ]
+
+    gap = task_gap_context(
+        messages,
+        {"timezone": "Asia/Tokyo"},
+        now=datetime(2026, 8, 27, 7, 1, tzinfo=timezone.utc),
+    )
+
+    assert gap == {
+        "previous_task_completed_at": "2026-08-27T14:00:00+09:00",
+        "current_user_message_at": "2026-08-27T16:01:00+09:00",
+        "elapsed_seconds": 7_260,
+        "elapsed": "2h 1m",
+        "threshold_seconds": 3_600,
+    }
+
+
+def test_task_gap_context_threshold_is_exactly_one_hour():
+    from domain.temporal_context import task_gap_context
+
+    completed_at = datetime(2026, 8, 27, 0, 0, tzinfo=timezone.utc)
+    messages = [
+        {
+            "role": "assistant",
+            "finish_reason": "stop",
+            "updated_at": int(completed_at.timestamp() * 1000),
+        }
+    ]
+
+    assert task_gap_context(
+        messages,
+        {"timezone": "UTC"},
+        now=completed_at.replace(minute=59, second=59),
+    ) is None
+    assert task_gap_context(
+        messages,
+        {"timezone": "UTC"},
+        now=completed_at.replace(hour=1),
+    )["elapsed_seconds"] == 3_600
+
+
+def test_task_gap_context_elapsed_is_dst_independent():
+    from domain.temporal_context import task_gap_context
+
+    completed_at = datetime(2026, 11, 1, 5, 30, tzinfo=timezone.utc)
+    messages = [
+        {
+            "role": "assistant",
+            "finish_reason": "stop",
+            "updated_at": int(completed_at.timestamp() * 1000),
+        }
+    ]
+
+    gap = task_gap_context(
+        messages,
+        {"timezone": "America/New_York"},
+        now=datetime(2026, 11, 1, 7, 30, tzinfo=timezone.utc),
+    )
+
+    assert gap["elapsed_seconds"] == 7_200
+    assert gap["previous_task_completed_at"] == "2026-11-01T01:30:00-04:00"
+    assert gap["current_user_message_at"] == "2026-11-01T02:30:00-05:00"
+
+
+def test_add_task_gap_context_message_is_internal_system_context():
+    from domain.temporal_context import add_task_gap_context_message
+
+    messages = [{"role": "user", "content": "How about now?"}]
+    gap = {
+        "previous_task_completed_at": "2026-08-27T10:01:00+09:00",
+        "current_user_message_at": "2026-08-27T16:01:00+09:00",
+        "elapsed_seconds": 21_600,
+        "elapsed": "6h 0m",
+        "threshold_seconds": 3_600,
+    }
+
+    prompt = add_task_gap_context_message(messages, gap)
+
+    assert messages[0]["role"] == "system"
+    assert messages[1] == {"role": "user", "content": "How about now?"}
+    assert prompt.startswith("[Temporal context]\n")
+    assert "The previous task completed 6h 0m ago." in prompt
+    assert "previous_task_completed_at: 2026-08-27T10:01:00+09:00" in prompt
+
+
+def test_ai_complete_injects_temporal_context(monkeypatch):
     from blocks.ai.complete import run
 
     captured: dict[str, object] = {}
