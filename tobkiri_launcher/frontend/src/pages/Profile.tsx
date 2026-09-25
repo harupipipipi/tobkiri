@@ -54,22 +54,39 @@ export function Profile() {
   const profileCeremonyVerified = verificationState === 'verified';
   const surface = useRuntimeSurface<unknown>('profile');
   const catalogSurface = useRuntimeSurface<RuntimeProfileCatalogProjection>('profiles');
-  const descriptor = {
-    ...LAUNCHER_ADVANCED_VIEWS.profile,
-    label: t('profile.descriptor_label'),
-    summary: t('profile.descriptor_summary'),
-  };
-  const [username, setUsername] = useState(profile.username);
-  const [job, setJob] = useState(profile.job);
-  const [avatar, setAvatar] = useState(profile.avatar);
+  const descriptor = LAUNCHER_ADVANCED_VIEWS.profile;
+  const recoveredDraft = readRecoverableDraft(PROFILE_DRAFT_ID)?.fields;
+  const [username, setUsername] = useState(
+    typeof recoveredDraft?.username === 'string'
+      ? recoveredDraft.username.slice(0, 80)
+      : profile.username,
+  );
+  const [job, setJob] = useState(
+    typeof recoveredDraft?.job === 'string' ? recoveredDraft.job.slice(0, 120) : profile.job,
+  );
+  const [avatar, setAvatar] = useState(
+    typeof recoveredDraft?.avatar === 'string' && AVATAR_OPTIONS.includes(recoveredDraft.avatar)
+      ? recoveredDraft.avatar
+      : profile.avatar,
+  );
 
   useEffect(() => {
     void loadPacks();
   }, [loadPacks]);
 
   useEffect(() => {
-    if (packVmDoctorReady) void loadFrontendCatalog();
-  }, [loadFrontendCatalog, packVmDoctorReady]);
+    const unchanged = username === profile.username && job === profile.job && avatar === profile.avatar;
+    if (unchanged) {
+      clearRecoverableDraft(PROFILE_DRAFT_ID);
+      return;
+    }
+    saveRecoverableDraft({
+      id: PROFILE_DRAFT_ID,
+      label: 'Launcher profile',
+      route: '/panel/profile',
+      fields: {username, job, avatar},
+    });
+  }, [avatar, job, profile.avatar, profile.job, profile.username, username]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
