@@ -4,8 +4,10 @@
 //! Defaultspack adapter remains at the composition boundary, while the
 //! lifecycle state is fenced by the complete Profile execution identity.
 
-use std::fs::{self, OpenOptions};
-use std::io::{Read, Write};
+// std::fs is only referenced by the Linux /proc inspection helpers and
+// tests; gate the import so other targets do not see an unused import.
+#[cfg(any(test, target_os = "linux"))]
+use std::fs;
 use std::process::ExitStatus;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -693,7 +695,23 @@ impl ApplicationProcessManager {
             }
         };
         let pid = child.id();
-        self.drain_child_output(&mut child, pid);
+        if let Err(error) = self.drain_child_output(&mut child, pid) {
+            // A child whose output cannot reach its bounded log must not run
+            // without durable diagnostics: stop it like any other failed
+            // launch and let the retry take the spawn backoff.
+            if let Err(stop_error) = stop_child(&mut child) {
+                warn!(
+                    "Failed to stop Defaultspack child {pid} after its output log could not be opened: {stop_error:#}"
+                );
+            }
+            let delay = self.record_spawn_failure()?;
+            return Err(error).with_context(|| {
+                format!(
+                    "Defaultspack {reason} could not open defaultspack.log; retry is scheduled after {} ms",
+                    delay.as_millis()
+                )
+            });
+        }
 
         // The authority may also have rotated while the child was being
         // created; confirm the spawned identity once more before it is
@@ -950,14 +968,45 @@ impl ApplicationProcessManager {
         }
     }
 
-    fn drain_child_output(&self, child: &mut crate::python_env::PythonChild, pid: u32) {
-        let log_path = self.config.log_dir.join("defaultspack.log");
+    /// Attach bounded, redacting drain threads to the child's piped output.
+    ///
+    /// `defaultspack.log` stays strictly bounded per launch — the previous
+    /// generation rotates to `defaultspack.log.prev` — instead of growing
+    /// without limit, and secret-shaped values are redacted before they
+    /// reach durable storage. Failing to open the log aborts the launch
+    /// (fail-closed) instead of silently dropping diagnostics; the pipes are
+    /// always drained to EOF so the child can never wedge on output.
+    fn drain_child_output(
+        &self,
+        child: &mut crate::python_env::PythonChild,
+        pid: u32,
+    ) -> Result<()> {
+        let log = crate::process_utils::open_child_log(
+            &self.config.log_dir.join("defaultspack.log"),
+            crate::process_utils::CHILD_LOG_MAX_BYTES,
+        )
+        .context("failed to create defaultspack.log")?;
         if let Some(stdout) = child.stdout.take() {
-            spawn_output_drain(stdout, log_path.clone(), pid, "stdout");
+            crate::process_utils::spawn_bounded_log_drain(
+                stdout,
+                Some(Arc::clone(&log)),
+                pid,
+                "stdout",
+                "Defaultspack",
+                true,
+            );
         }
         if let Some(stderr) = child.stderr.take() {
-            spawn_output_drain(stderr, log_path, pid, "stderr");
+            crate::process_utils::spawn_bounded_log_drain(
+                stderr,
+                Some(log),
+                pid,
+                "stderr",
+                "Defaultspack",
+                true,
+            );
         }
+        Ok(())
     }
 
     fn lock_state(&self) -> Result<std::sync::MutexGuard<'_, ApplicationProcessState>> {
@@ -1081,56 +1130,6 @@ fn defaultspack_restart_backoff(consecutive_failures: u32) -> Duration {
         .checked_mul(multiplier)
         .unwrap_or(DEFAULTSPACK_RESTART_MAX_BACKOFF)
         .min(DEFAULTSPACK_RESTART_MAX_BACKOFF)
-}
-
-fn spawn_output_drain<R>(
-    mut reader: R,
-    log_path: std::path::PathBuf,
-    pid: u32,
-    stream: &'static str,
-) where
-    R: Read + Send + 'static,
-{
-    thread::spawn(move || {
-        let mut log_file = fs::create_dir_all(
-            log_path
-                .parent()
-                .unwrap_or_else(|| std::path::Path::new(".")),
-        )
-        .and_then(|_| OpenOptions::new().create(true).append(true).open(&log_path))
-        .map_err(|error| {
-            error!(
-                "Failed to open Defaultspack {stream} log {}: {error}",
-                log_path.display()
-            );
-            error
-        })
-        .ok();
-        let mut buffer = [0_u8; 8192];
-
-        loop {
-            match reader.read(&mut buffer) {
-                Ok(0) => break,
-                Ok(read) => {
-                    let output = String::from_utf8_lossy(&buffer[..read]);
-                    if stream == "stderr" {
-                        warn!("Defaultspack [{stream} pid={pid}]: {}", output.trim_end());
-                    } else {
-                        info!("Defaultspack [{stream} pid={pid}]: {}", output.trim_end());
-                    }
-                    if let Some(file) = log_file.as_mut() {
-                        if writeln!(file, "[{stream} pid={pid}] {}", output.trim_end()).is_err() {
-                            log_file = None;
-                        }
-                    }
-                }
-                Err(error) => {
-                    warn!("Failed to drain Defaultspack {stream} for pid {pid}: {error}");
-                    break;
-                }
-            }
-        }
-    });
 }
 
 fn stop_child(child: &mut crate::python_env::PythonChild) -> Result<()> {
@@ -2128,5 +2127,148 @@ mod tests {
         assert!(!state.restart_in_progress);
         assert!(state.next_restart_at.is_none());
         assert_eq!(state.consecutive_failures, 0);
+    }
+
+    fn test_manager_with_log_dir(log_dir: PathBuf) -> DefaultspackManager {
+        let mut config = test_config();
+        config.log_dir = log_dir;
+        let debug_approval = Arc::new(DebugApprovalManager::new(
+            config.log_dir.join("debug-approval-test.jsonl"),
+        ));
+        DefaultspackManager::new(
+            config,
+            Arc::new(AtomicBool::new(false)),
+            BrokerAttestationIdentity::generate(),
+            debug_approval,
+        )
+    }
+
+    fn unique_test_dir(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "defaultspack-manager-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    #[cfg(unix)]
+    fn spawn_shell_child(script: &str) -> crate::python_env::PythonChild {
+        let mut command = process_utils::command(SYSTEM_SHELL);
+        command
+            .args(["-c", script])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        crate::python_env::PythonChild::development(command.spawn().unwrap())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn drain_child_output_persists_bounded_redacted_output_with_rotation() {
+        let dir = unique_test_dir("drain");
+        let manager = test_manager_with_log_dir(dir.clone());
+        let log_path = dir.join("defaultspack.log");
+        let prev_path = dir.join("defaultspack.log.prev");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(&log_path, "prior generation").unwrap();
+        fs::write(&prev_path, "stale generation").unwrap();
+
+        let mut child = spawn_shell_child(
+            "printf 'token=tok123 plain-stdout\n'; printf 'password=hunter2 plain-stderr\n' >&2",
+        );
+        let pid = child.id();
+
+        manager.drain_child_output(&mut child, pid).unwrap();
+
+        let contents = (0..80)
+            .find_map(|_| {
+                let contents = fs::read_to_string(&log_path).unwrap_or_default();
+                if contents.contains("plain-stdout") && contents.contains("plain-stderr") {
+                    Some(contents)
+                } else {
+                    thread::sleep(Duration::from_millis(25));
+                    None
+                }
+            })
+            .expect("drain did not persist child output");
+
+        assert!(contents.contains("[stdout pid="));
+        assert!(contents.contains("[stderr pid="));
+        // Secret-shaped values are redacted before reaching durable storage.
+        assert!(!contents.contains("tok123"), "leaked stdout token: {contents}");
+        assert!(
+            !contents.contains("hunter2"),
+            "leaked stderr password: {contents}"
+        );
+        assert!(contents.contains("[REDACTED]"));
+        // The previous generation rotated to .prev, and the stale .prev was
+        // dropped so at most two bounded generations persist.
+        assert_eq!(
+            fs::read_to_string(&prev_path).unwrap(),
+            "prior generation"
+        );
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn drain_child_output_stays_bounded_when_child_exceeds_the_cap() {
+        let dir = unique_test_dir("drain-cap");
+        let manager = test_manager_with_log_dir(dir.clone());
+        let log_path = dir.join("defaultspack.log");
+
+        // Emit well over the 8MiB persistence cap plus a marker at the end.
+        let mut child = spawn_shell_child(
+            "head -c 9000000 /dev/zero | tr '\\0' 'x'; printf 'tail-marker'",
+        );
+        let pid = child.id();
+
+        manager.drain_child_output(&mut child, pid).unwrap();
+
+        let contents = (0..200)
+            .find_map(|_| {
+                let contents = fs::read_to_string(&log_path).unwrap_or_default();
+                if contents.contains("output truncated") {
+                    Some(contents)
+                } else {
+                    thread::sleep(Duration::from_millis(25));
+                    None
+                }
+            })
+            .expect("drain did not mark a truncated log");
+
+        // The pipe is still fully drained so the child can exit, but the
+        // persisted bytes stop at the shared cap plus one truncation marker.
+        let file_size = fs::metadata(&log_path).unwrap().len();
+        assert!(
+            file_size <= crate::process_utils::CHILD_LOG_MAX_BYTES + 128,
+            "defaultspack.log persisted {file_size} bytes past its cap"
+        );
+        assert_eq!(contents.matches("output truncated").count(), 1);
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn drain_child_output_fails_closed_when_the_log_cannot_be_opened() {
+        let root = unique_test_dir("drain-fail");
+        fs::create_dir_all(&root).unwrap();
+        // A regular file where the log directory must be created makes the
+        // open fail, exercising the fail-closed boundary.
+        let blocker = root.join("blocker");
+        fs::write(&blocker, "not a directory").unwrap();
+        let manager = test_manager_with_log_dir(blocker.join("logs"));
+
+        let mut child = spawn_shell_child("exit 0");
+
+        let error = manager.drain_child_output(&mut child, 0).unwrap_err();
+
+        assert!(
+            format!("{error:#}").contains("defaultspack.log"),
+            "unexpected error: {error:#}"
+        );
+        fs::remove_dir_all(&root).ok();
     }
 }
