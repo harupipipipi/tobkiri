@@ -63,6 +63,14 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
       return;
     }
     setSaveError(null);
+    if (reviewPolicyDraft.mode !== "off" && !reviewPolicyDraft.reviewerProfile.trim()) {
+      setSaveStatus("Choose a reviewer profile before enabling a review gate.");
+      return;
+    }
+    if (reviewPolicyDraft.mode !== "off" && reviewPolicyDraft.appliesTo.length === 0) {
+      setSaveStatus("Choose at least one finalization action for the review gate.");
+      return;
+    }
     setSaveStatus("Saving profile draft...");
     try {
       await saveAdaptiveOperatingProfile({

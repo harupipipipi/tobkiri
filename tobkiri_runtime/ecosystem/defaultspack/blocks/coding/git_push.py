@@ -5,6 +5,7 @@ from blocks.coding._approval import approval_required
 from blocks.coding._workspace import canonical_mutation_guard
 from domain.coding.contract_adapter import (
     GIT_PUBLISH,
+    GIT_READ,
     authorize_legacy_coding_operation,
     git_publish_snapshot,
     invoke_coding_contract,
@@ -46,6 +47,19 @@ def run(input_data, context=None):
             remote=str(remote),
             branch=str(branch),
         )
+        for key in (
+            "expected_source_oid",
+            "expected_remote_oid",
+            "expected_remote_url",
+            "expected_remote_url_hash",
+            "expected_mount_revision",
+        ):
+            reviewed = input_data.get(key)
+            if reviewed is not None and str(reviewed) != str(snapshot[key]):
+                return error(
+                    "Git publish snapshot changed after profile review",
+                    code="GIT_SNAPSHOT_STALE",
+                )
         arguments = {
             "remote": str(remote),
             "branch": str(branch),

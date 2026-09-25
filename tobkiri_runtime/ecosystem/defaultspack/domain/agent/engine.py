@@ -537,6 +537,23 @@ class AgentEngine:
         )
 
         trusted_context = mark_trusted_profile_policy_context(dict(context or {}))
+        execution_mode = (
+            "team_agent"
+            if trusted_context.get("company_id")
+            else "mode_agent"
+        )
+        mode_context_id = str(
+            trusted_context.get("company_id")
+            or trusted_context.get("conversation_id")
+            or trusted_context.get("agent_run_id")
+            or trusted_context.get("run_id")
+            or ""
+        )
+        mark_trusted_review_gate_context(
+            trusted_context,
+            execution_mode=execution_mode,
+            mode_context_id=mode_context_id,
+        )
         return ToolOrchestrator(settings_owner=self._settings_owner).run(
             tool_name,
             tool_args,
