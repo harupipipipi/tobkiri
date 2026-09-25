@@ -181,6 +181,15 @@ Authorization: Bearer rumi_xxxxxxxxxxxx
 
 APIキーは `user_data/secrets/api_keys.json` で管理する。
 
+Settings の provider credential status は、credential の存在と直近の
+provider usability を別々に表示する。v4 Credential Broker が所有する
+provider-default credential は opaque handle の存在だけを readonly / masked
+metadata として投影し、環境変数名、値、長さ、prefix、handle 自体は返さない。
+`present_unverified` は利用可能を意味せず、実行時には Authority Kernel に
+binding された provider adapter が scope、account、quota、region と現在の
+provider health を検証する。health contract が未起動または stale の場合も
+起動を block せず、Settings は `unknown` / `unknown_stale` として保守的に表示する。
+
 ```json
 {
   "keys": [

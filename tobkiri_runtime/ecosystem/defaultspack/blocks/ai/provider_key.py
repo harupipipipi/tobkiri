@@ -13,14 +13,17 @@ from blocks.coding._approval import (
     is_server_approved,
 )
 from core_runtime.di_container import get_container
-from core_runtime.global_contract_dispatch import invoke_global_contract
+from core_runtime.global_contract_dispatch import (
+    captured_profile_id,
+    invoke_global_contract,
+)
 from domain.ai_client.api_key_store import set_provider_api_key
 from domain.ai_client.model_availability import ModelAvailabilityService
 
-_CREDENTIAL_MANAGE = "rumi.action.credential.manage.v1"
-_CREDENTIAL_STATUS = "rumi.resource.credential.status.v1"
-_PROVIDER_MANAGE = "rumi.action.ai.provider.registry.manage.v1"
-_PROVIDER_RESOURCE = "rumi.resource.ai.provider.registry.v1"
+_CREDENTIAL_MANAGE = "tobkiri.action.credential.manage.v1"
+_CREDENTIAL_STATUS = "tobkiri.resource.credential.status.v1"
+_PROVIDER_MANAGE = "tobkiri.action.ai.provider.registry.manage.v1"
+_PROVIDER_RESOURCE = "tobkiri.resource.ai.provider.registry.v1"
 
 # Some mixed-protocol providers expose discovery from a gateway root while
 # their generic OpenAI-compatible adapter expects a versioned API base.
@@ -84,15 +87,19 @@ def _status() -> dict[str, Any]:
         providers.get("providers") if isinstance(providers, Mapping) else []
     )
     provider_items = provider_items if isinstance(provider_items, list) else []
+    credential_ids = {
+        str(item.get("provider_instance_id") or "")
+        for item in credential_items
+        if isinstance(item, Mapping)
+    } if isinstance(credential_items, list) else set()
     return {
         "providers": [
             {
                 "provider_id": str(
                     item.get("provider_instance_id") or ""
                 ).removeprefix("provider."),
-                "configured": bool(item.get("enabled", True)),
-                "credential_handle": item.get("credential_handle"),
-                "base_url": item.get("endpoint"),
+                "configured": str(item.get("provider_instance_id") or "")
+                in credential_ids,
                 "kind": item.get("adapter_id"),
             }
             for item in provider_items
@@ -100,7 +107,8 @@ def _status() -> dict[str, Any]:
         ],
         "credentials": (
             [dict(item) for item in credential_items if isinstance(item, Mapping)]
-            if isinstance(credential_items, list) else []
+            if isinstance(credential_items, list)
+            else []
         ),
         "custom_providers": [],
     }
@@ -345,4 +353,9 @@ def _invoke(contract_id: str, operation: str, payload: Mapping[str, Any]) -> Any
     registry = get_container().get_or_none("v4_dispatch_session")
     if registry is None:
         raise RuntimeError("interface registry is unavailable")
-    return invoke_global_contract(registry, contract_id, operation, dict(payload))
+    return invoke_global_contract(
+        registry,
+        contract_id,
+        operation,
+        {"profile_id": captured_profile_id(registry), **dict(payload)},
+    )

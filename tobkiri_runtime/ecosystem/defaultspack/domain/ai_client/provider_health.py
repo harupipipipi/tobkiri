@@ -7,15 +7,14 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from core_runtime.di_container import get_container
-from core_runtime.global_contract_dispatch import invoke_global_contract
-
-from ecosystem.defaultspack.backend.ai_client.provider_catalog import (
-    list_provider_catalog,
+from core_runtime.global_contract_dispatch import (
+    captured_profile_id,
+    invoke_global_contract,
 )
 
 CONTRACT_VERSION = "provider-health.v2-compat"
-_HEALTH_CONTRACT = "rumi.resource.ai.provider.health.v1"
-_CREDENTIAL_STATUS = "rumi.resource.credential.status.v1"
+_HEALTH_CONTRACT = "tobkiri.resource.ai.provider.health.v1"
+_CREDENTIAL_STATUS = "tobkiri.resource.credential.status.v1"
 
 
 def provider_health_report(
@@ -39,7 +38,7 @@ def provider_health_report(
     credential_items = (
         credential_items if isinstance(credential_items, list) else []
     )
-    health_by_id = {
+    health_by_id: dict[str, dict[str, Any]] = {
         str(item.get("provider_instance_id") or ""): dict(item)
         for item in health_items
         if isinstance(item, Mapping)
@@ -49,35 +48,52 @@ def provider_health_report(
         for item in credential_items
         if isinstance(item, Mapping)
     }
+    instance_ids = set(health_by_id) | set(credential_by_id)
+    if allowed:
+        instance_ids |= {f"provider.{provider_id}" for provider_id in allowed}
     providers = []
-    for catalog in list_provider_catalog():
-        provider_id = str(catalog.get("provider_id") or "")
+    for instance_id in sorted(instance_ids):
+        provider_id = instance_id.removeprefix("provider.")
         if not provider_id or (allowed and provider_id not in allowed):
             continue
-        instance_id = f"provider.{provider_id}"
         evidence = health_by_id.get(instance_id, {})
         credential = credential_by_id.get(instance_id)
         status = str(evidence.get("status") or "unknown")
+        observed_at = evidence.get("observed_at")
+        credential_updated_at = credential.get("updated_at") if credential else None
+        verified = bool(evidence.get("verified", False))
+        credential_usability = str(
+            credential.get("usability") or "unknown"
+        ) if credential else "unknown"
+        if credential_usability == "invalid":
+            status = "invalid"
+            verified = True
+        elif verified and _is_older_evidence(observed_at, credential_updated_at):
+            verified = False
+            status = "unknown"
         providers.append(
             {
                 "provider_id": provider_id,
-                "display_name": str(catalog.get("display_name") or provider_id),
-                "kind": str(catalog.get("kind") or "unknown"),
                 "status": status,
                 "health_code": status,
                 "runtime": {
-                    "configured": bool(catalog.get("configured")),
+                    "configured": credential is not None,
                     "status": status,
                     "supports_invoke": True,
-                    "active": bool(catalog.get("configured")),
-                    "observed_at": evidence.get("observed_at"),
-                    "verified": bool(evidence.get("verified", False)),
+                    "active": credential is not None,
+                    "observed_at": observed_at,
+                    "verified": verified,
                 },
                 "credential": {
                     "configured": credential is not None,
-                    "source": "opaque_handle" if credential else "none",
+                    "source": str(credential.get("source") or "provider_default")
+                    if credential else "none",
                     "masked": credential is not None,
                     "scopes": list(credential.get("scopes") or []) if credential else [],
+                    "opaque_id": credential.get("opaque_id") if credential else None,
+                    "updated_at": credential_updated_at,
+                    "reason_code": credential.get("reason_code")
+                    if credential else "not_configured",
                 },
                 "models": {"default_model": "", "default_model_for": {}},
                 "diagnostics": [
@@ -111,4 +127,27 @@ def _invoke(contract_id: str, operation: str, payload: Mapping[str, Any]) -> Any
     registry = get_container().get_or_none("v4_dispatch_session")
     if registry is None:
         raise RuntimeError("interface registry is unavailable")
-    return invoke_global_contract(registry, contract_id, operation, dict(payload))
+    return invoke_global_contract(
+        registry,
+        contract_id,
+        operation,
+        {"profile_id": captured_profile_id(registry), **dict(payload)},
+    )
+
+
+def _is_older_evidence(observed_at: Any, credential_updated_at: Any) -> bool:
+    """Return true when health evidence predates the active credential source."""
+
+    try:
+        observed = float(observed_at)
+    except (TypeError, ValueError):
+        return credential_updated_at is not None
+    if credential_updated_at is None:
+        return False
+    try:
+        updated = datetime.fromisoformat(
+            str(credential_updated_at).replace("Z", "+00:00")
+        ).timestamp()
+    except (TypeError, ValueError):
+        return True
+    return observed < updated

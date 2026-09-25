@@ -30,9 +30,38 @@ def test_provider_connection_is_redacted_and_health_starts_unknown(tmp_path) -> 
             "status": "unknown",
             "observed_at": None,
             "verified": False,
+            "freshness": "unknown",
+            "reason_code": "unknown",
         }
     ]
     assert "secret" not in str(registry.snapshot()).lower()
+
+
+def test_provider_health_preserves_verified_limited_state(tmp_path) -> None:
+    registry = ProviderRegistry("default", user_data_root=tmp_path)
+    registry.save(
+        {
+            "provider_instance_id": "provider.example",
+            "adapter_id": "adapter.standard",
+            "health_evidence": {
+                "status": "limited",
+                "observed_at": 123.0,
+                "verified": True,
+            },
+        },
+        expected_revision=0,
+    )
+
+    assert registry.health()["providers"] == [
+        {
+            "provider_instance_id": "provider.example",
+            "status": "limited",
+            "observed_at": 123.0,
+            "verified": True,
+            "freshness": "fresh",
+            "reason_code": "limited",
+        }
+    ]
 
 
 def test_provider_registry_rejects_secret_and_stale_revision(tmp_path) -> None:

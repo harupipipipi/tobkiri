@@ -1015,6 +1015,136 @@ test("SettingsModalRenderer renders template model_api_routes through registered
   assert.doesNotMatch(html, /data-settings-routing-overview/);
 });
 
+test("Settings surfaces a readonly provider-default credential with separate health", () => {
+  const providerRow = {
+    provider_id: "opencode-zen",
+    label: "OpenCode Zen",
+    kind: "llm",
+    builtin: true,
+    configured: true,
+    default_api_key_configured: true,
+    credential_presence: "present",
+    credential_source: "opaque_handle",
+    credential_readonly: true,
+    credential_usability: "present_unverified",
+    credential_health: {
+      status: "present_unverified",
+      freshness: "unknown",
+      safe_reason_code: "unknown",
+    },
+    apis: [],
+  };
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "apis",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [
+        {
+          id: "apis",
+          label: "APIs",
+          fields: [
+            {
+              id: "api_keys",
+              label: "API Keys / Tokens",
+              type: "api_key_setup",
+              renderer: "api_key_setup",
+              provider_scope: "llm",
+              api_keys: [providerRow],
+            } as unknown as TemplateSettingsField,
+          ] as unknown as SettingsSection["fields"],
+        },
+      ],
+      settingsValues: { apis: { api_keys: [providerRow] } },
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /Provider default credential/);
+  assert.match(html, /opencode-zen:provider-default:\*\*\*/);
+  assert.match(html, /Host broker/);
+  assert.match(html, /present, unverified/);
+  assert.match(html, /read only/);
+  assert.match(html, /data-credential-presence="present"/);
+  assert.match(html, /data-credential-usability="present_unverified"/);
+  assert.match(html, /data-credential-freshness="unknown"/);
+  assert.match(html, /data-credential-reason="unknown"/);
+  assert.doesNotMatch(html, /OPENCODE_ZEN_API_KEY/);
+});
+
+test("Model routes distinguish provider-default presence from verified usability", () => {
+  const providerRow = {
+    provider_id: "opencode-zen",
+    label: "OpenCode Zen",
+    kind: "llm",
+    configured: true,
+    default_api_key_configured: true,
+    credential_presence: "present",
+    credential_source: "opaque_handle",
+    credential_usability: "unavailable",
+    apis: [],
+  };
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "models",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [
+        {
+          id: "models",
+          label: "Models",
+          fields: [
+            {
+              id: "model_api_routes",
+              label: "Model API Variants",
+              type: "model_api_routes",
+              renderer: "model_routing",
+              options: [
+                {
+                  value: "opencode-zen/mimo-v2.5-free",
+                  label: "MiMo V2.5 Free via OpenCode Zen",
+                  provider_id: "opencode-zen",
+                  model_id: "mimo-v2.5-free",
+                  configured: true,
+                },
+              ],
+              api_keys: [providerRow],
+            } as TemplateSettingsField,
+          ] as unknown as SettingsSection["fields"],
+        },
+      ],
+      settingsValues: {
+        models: {
+          preferred_model: "opencode-zen/mimo-v2.5-free",
+          model_api_routes: "",
+        },
+      },
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /Provider default credential/);
+  assert.match(html, /provider unavailable/);
+  assert.match(html, /Presence does not prove usability/);
+  assert.doesNotMatch(html, /opencode-zen の API key がありません/);
+});
+
 test("SettingsModalRenderer renders continuity handoff controls", () => {
   const html = renderToStaticMarkup(
     createElement(SettingsModalRenderer, {

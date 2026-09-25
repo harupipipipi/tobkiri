@@ -496,7 +496,13 @@ def test_credential_material_is_encrypted_and_listing_is_redacted(
     assert created["handle"].startswith("credential:")
     restarted = CredentialBrokerService(user_data_root=tmp_path)
     restarted_list = restarted.invoke("list", {"profile_id": "profile-a"})
-    assert restarted_list["credentials"][0]["handle"] == created["handle"]
+    status = restarted_list["credentials"][0]
+    assert status["opaque_id"].startswith("credential-status:")
+    assert status["source"] == "provider_default"
+    assert status["read_only"] is True
+    assert "handle" not in status
+    assert "profile_id" not in status
+    assert "consumer_pack_id" not in status
     assert "fixture-secret" not in restarted.store.path.read_text(encoding="utf-8")
 
 

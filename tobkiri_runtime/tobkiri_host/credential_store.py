@@ -239,11 +239,11 @@ class HostCredentialMaterialStore:
         profile_id = _identifier(profile_id, "profile_id")
         state = self._read()
         values = [
-            self._public(item)
+            self._status(item)
             for item in state["credentials"].values()
             if isinstance(item, dict) and item.get("profile_id") == profile_id
         ]
-        values.sort(key=lambda item: item["handle"])
+        values.sort(key=lambda item: str(item["provider_instance_id"]))
         return {"credentials": values, "count": len(values)}
 
     def revoke(self, handle: str, *, profile_id: str) -> dict[str, Any]:
@@ -457,6 +457,32 @@ class HostCredentialMaterialStore:
             "created_at": record.get("created_at"),
             "updated_at": record.get("updated_at"),
             "configured": True,
+        }
+
+    @staticmethod
+    def _status(record: Mapping[str, Any]) -> dict[str, Any]:
+        """Project safe status without exposing authority-binding identifiers."""
+
+        opaque_id = "credential-status:" + hashlib.sha256(
+            str(record.get("handle") or "").encode("utf-8")
+        ).hexdigest()[:24]
+        expires_at = record.get("expires_at")
+        expired = (
+            isinstance(expires_at, (int, float))
+            and float(expires_at) <= time.time()
+        )
+        return {
+            "provider_instance_id": record.get("provider_instance_id"),
+            "opaque_id": opaque_id,
+            "configured": True,
+            "source": "provider_default",
+            "read_only": True,
+            "scopes": list(record.get("scopes") or []),
+            "usability": "invalid" if expired else "unknown",
+            "freshness": "fresh",
+            "reason_code": "expired" if expired else "not_verified",
+            "expires_at": expires_at,
+            "updated_at": record.get("updated_at"),
         }
 
     def _prepare_storage(self) -> None:
