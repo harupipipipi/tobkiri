@@ -56,6 +56,16 @@ test("blocked destinations retain a safe copy-details action", () => {
   assert.doesNotMatch(appSource, /blocked destination:.*destination\.input/);
 });
 
+test("Search Home makes transitions and scrolling instant in reduced-motion mode", () => {
+  const styles = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(styles, /animation-duration: 0\.01ms !important/);
+  assert.match(styles, /animation-iteration-count: 1 !important/);
+  assert.match(styles, /scroll-behavior: auto !important/);
+  assert.match(styles, /transition-duration: 0\.01ms !important/);
+});
+
 test("AI answers are committed to explicit accessible memory-only result states", () => {
   assert.match(appSource, /normalizeAnswerResponse\(payload\)/);
   assert.match(appSource, /aria-labelledby="search-answer-title"/);

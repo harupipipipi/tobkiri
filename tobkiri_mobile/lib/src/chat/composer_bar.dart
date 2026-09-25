@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../accessibility/motion_policy.dart';
+
 class ComposerBar extends StatefulWidget {
   const ComposerBar({
     super.key,
@@ -102,7 +104,10 @@ class _ComposerBarState extends State<ComposerBar> {
               ),
               const SizedBox(width: 6),
               AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
+                duration: motionDurationOf(
+                  context,
+                  const Duration(milliseconds: 150),
+                ),
                 child: widget.busy
                     ? _StopButton(onStop: widget.onStop)
                     : _SendButton(enabled: _hasText, onSend: _send),

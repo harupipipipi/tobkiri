@@ -37,6 +37,23 @@ def test_browser_companion_background_supports_search_home_candidate_navigation(
     assert "embedded_credentials" in policy
 
 
+def test_browser_companion_options_honor_reduced_motion():
+    extension_root = (
+        DEFAULTSPACK_ROOT
+        / "browser_extensions"
+        / "rumi_browser_companion"
+    )
+    styles = (extension_root / "options.css").read_text(encoding="utf-8")
+    readme = (extension_root / "README.md").read_text(encoding="utf-8")
+
+    assert "@media (prefers-reduced-motion: reduce)" in styles
+    assert "animation-duration: 0.01ms !important" in styles
+    assert "animation-iteration-count: 1 !important" in styles
+    assert "scroll-behavior: auto !important" in styles
+    assert "transition-duration: 0.01ms !important" in styles
+    assert "## Motion accessibility" in readme
+
+
 def test_browser_companion_content_script_captures_search_home_hotkeys():
     content = (
         DEFAULTSPACK_ROOT
