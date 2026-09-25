@@ -12,7 +12,17 @@ import os
 from pathlib import Path
 import secrets
 import sys
+import time
 from typing import Protocol
+
+_WORKER_CGROUP_PREFIX = "tobkiri-wasm-"
+_PIDS_LIMIT = "64"
+# ``cgroup.kill`` terminates member processes asynchronously, so an emptied
+# group can refuse ``rmdir`` for a short window; bound the wait well under the
+# supervisor's termination budget and keep the close contract retryable.
+_REMOVE_DEADLINE_SECONDS = 0.5
+_REMOVE_INTERVAL_SECONDS = 0.01
+_STALE_SWEEP_LIMIT = 64
 
 
 @dataclass(frozen=True)
@@ -54,16 +64,48 @@ class _LinuxCgroupLease:
 
         descriptor = os.open(self._path / "cgroup.procs", os.O_WRONLY)
         try:
-            os.write(descriptor, str(os.getpid()).encode("ascii"))
+            payload = str(os.getpid()).encode("ascii")
+            if os.write(descriptor, payload) != len(payload):
+                raise OSError("short write to worker cgroup.procs")
         finally:
             os.close(descriptor)
 
     def close(self) -> None:
-        """Remove an empty cgroup; a populated group fails closed."""
+        """Kill trapped members, then remove the empty cgroup.
+
+        ``killpg`` only reaches the worker's session group: a descendant that
+        called ``setsid`` escapes it yet stays inside this cgroup (``pids.max``
+        deliberately permits bounded descendants on Linux, where the worker
+        installs no ``RLIMIT_NPROC`` ceiling).  Writing ``1`` to ``cgroup.kill``
+        SIGKILLs every member the supervisor's group kill could not reach, so
+        teardown does not depend on the worker staying in its process group.
+        Removal then retries briefly — the kernel kill is asynchronous — and
+        still fails closed on a populated group so the caller must retry, not
+        release the reservation.
+        """
 
         if self._closed:
             return
-        self._path.rmdir()
+        kill = self._path / "cgroup.kill"
+        if kill.exists():
+            try:
+                kill.write_text("1", encoding="ascii")
+            except OSError:
+                # Best effort only: ``rmdir`` below remains the authoritative
+                # fail-closed check on whether members still hold the group.
+                pass
+        deadline = time.monotonic() + _REMOVE_DEADLINE_SECONDS
+        while True:
+            try:
+                self._path.rmdir()
+                break
+            except FileNotFoundError:
+                # The group is already gone; the release goal is met.
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(_REMOVE_INTERVAL_SECONDS)
         self._closed = True
 
 
@@ -71,7 +113,7 @@ class LinuxCgroupV2Controller:
     """Use a delegated cgroup v2 subtree for hard memory and process limits."""
 
     def __init__(self, delegated_root: Path) -> None:
-        root = delegated_root.resolve(strict=True)
+        root = delegated_root.resolve()
         if not root.is_dir():
             raise OSError("delegated cgroup v2 root is not a directory")
         self._root = root
@@ -87,24 +129,70 @@ class LinuxCgroupV2Controller:
 
         if type(memory_limit_bytes) is not int or memory_limit_bytes <= 0:
             raise ValueError("worker cgroup memory limit is invalid")
-        path = self._root / f"tobkiri-wasm-{os.getpid()}-{secrets.token_hex(8)}"
+        self._prune_stale_worker_cgroups()
+        path = self._root / (
+            f"{_WORKER_CGROUP_PREFIX}{os.getpid()}-{secrets.token_hex(8)}"
+        )
         path.mkdir(mode=0o700)
         try:
             (path / "memory.max").write_text(str(memory_limit_bytes), encoding="ascii")
-            (path / "pids.max").write_text("64", encoding="ascii")
+            (path / "pids.max").write_text(_PIDS_LIMIT, encoding="ascii")
             swap_limit = path / "memory.swap.max"
             if swap_limit.exists():
                 swap_limit.write_text("0", encoding="ascii")
+            # Without this, a memory.max OOM kills a single task and leaves
+            # siblings holding the cgroup, so lease teardown then fails closed
+            # while worker processes are still alive. oom.group makes the OOM
+            # kill cover the whole request-scoped worker group atomically.
+            oom_group = path / "memory.oom.group"
+            if oom_group.exists():
+                oom_group.write_text("1", encoding="ascii")
             if (path / "memory.max").read_text(encoding="ascii").strip() != str(
                 memory_limit_bytes
             ):
                 raise OSError("cgroup memory.max did not retain the hard limit")
-            if (path / "pids.max").read_text(encoding="ascii").strip() != "64":
+            if (path / "pids.max").read_text(encoding="ascii").strip() != _PIDS_LIMIT:
                 raise OSError("cgroup pids.max did not retain the hard limit")
+            if oom_group.exists() and (
+                oom_group.read_text(encoding="ascii").strip() != "1"
+            ):
+                raise OSError("cgroup memory.oom.group did not retain the kill scope")
+            if swap_limit.exists() and (
+                swap_limit.read_text(encoding="ascii").strip() != "0"
+            ):
+                raise OSError("cgroup memory.swap.max did not retain the hard limit")
         except Exception:
-            path.rmdir()
+            try:
+                path.rmdir()
+            except OSError:
+                # Keep the original failure: a group a concurrent foreign
+                # sweep already removed, or one a foreign member joined,
+                # must not mask why the limits could not be installed.  A
+                # leftover empty group is collected by the next sweep.
+                pass
             raise
         return _LinuxCgroupLease(path)
+
+    def _prune_stale_worker_cgroups(self) -> None:
+        """Remove empty worker cgroups a crashed supervisor left behind.
+
+        ``rmdir`` only ever succeeds on an empty group, so a populated cgroup
+        — including one a live worker still occupies — is never harmed, and a
+        concurrent ``prepare`` losing this race fails closed rather than
+        running unbounded.  Groups named for this process are skipped so the
+        sweep cannot race an in-flight ``prepare`` from this supervisor.
+        """
+
+        own_prefix = f"{_WORKER_CGROUP_PREFIX}{os.getpid()}-"
+        for index, entry in enumerate(self._root.glob(f"{_WORKER_CGROUP_PREFIX}*")):
+            if index >= _STALE_SWEEP_LIMIT:
+                break
+            if entry.name.startswith(own_prefix):
+                continue
+            try:
+                entry.rmdir()
+            except OSError:
+                continue
 
 
 def detect_production_resource_controller() -> tuple[
@@ -166,7 +254,10 @@ def _current_unified_cgroup() -> Path:
     """Read this process's cgroup v2 path without accepting hybrid entries."""
 
     for line in Path("/proc/self/cgroup").read_text(encoding="ascii").splitlines():
-        hierarchy, controllers, path = line.split(":", 2)
+        fields = line.split(":", 2)
+        if len(fields) != 3:
+            continue
+        hierarchy, controllers, path = fields
         if hierarchy == "0" and not controllers and path.startswith("/"):
             return Path(path.removeprefix("/"))
     raise OSError("the process is not in a unified cgroup v2 hierarchy")
