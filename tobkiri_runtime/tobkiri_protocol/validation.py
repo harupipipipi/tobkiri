@@ -53,6 +53,8 @@ SCHEMA_ALIASES = {
     "external_pack_catalog": "external_normal_pack_catalog_v4.schema.json",
     "defaults_setup": "defaults_setup_v4.schema.json",
     "saved_conversation_input": "saved_conversation_input_v1.schema.json",
+    "surface_template": "surface_template_v1.schema.json",
+    "surface_template_v1": "surface_template_v1.schema.json",
 }
 
 _ID_FIELDS = {
