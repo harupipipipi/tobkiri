@@ -443,7 +443,9 @@ class SavedBridgeCallbacks:
             if prompt is not None:
                 expected_fields.add("system_prompt_digest")
             deepthink = request.get("deepthink_enabled") is True
-            expected_requirements = {"request_surface": "conversation.saved"}
+            expected_requirements: dict[str, Any] = {
+                "request_surface": "conversation.saved"
+            }
             if deepthink:
                 expected_requirements["deepthink"] = True
             if (
@@ -497,7 +499,7 @@ class SavedBridgeCallbacks:
                     )
                 except Exception as error:
                     try:
-                        error.saved_user_persistence = "saved"
+                        setattr(error, "saved_user_persistence", "saved")
                     except Exception:
                         pass
                     raise

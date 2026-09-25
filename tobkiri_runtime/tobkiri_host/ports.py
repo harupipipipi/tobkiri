@@ -63,11 +63,20 @@ class PendingEffectUpdateSpec(Protocol):
     durable marker and the pending-effect revision can never diverge across
     a crash.  The Host controller alone produces these values; a Broker or
     adapter only forwards them.
+
+    Members are read-only properties so frozen producers (for example the
+    immutable ``PendingEffectUpdate`` dataclass) satisfy this view as well
+    as settable-attribute ones.
     """
 
-    effect_id: str
-    expected_revision: int
-    payload: Mapping[str, Any]
+    @property
+    def effect_id(self) -> str: ...
+
+    @property
+    def expected_revision(self) -> int: ...
+
+    @property
+    def payload(self) -> Mapping[str, Any]: ...
 
 
 @runtime_checkable

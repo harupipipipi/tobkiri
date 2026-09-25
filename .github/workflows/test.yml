@@ -666,12 +666,17 @@ jobs:
 
       - name: Run Ruff/mypy non-regression guard
         env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PUSH_BASE_REF: ${{ github.event.before }}
         run: |
           ZERO_SHA="0000000000000000000000000000000000000000"
-          if [ -n "${GITHUB_BASE_REF:-}" ]; then
-            git fetch origin "$GITHUB_BASE_REF" --depth=1
-            BASE_REF="origin/${GITHUB_BASE_REF}"
+          if [ -n "${PR_BASE_SHA:-}" ]; then
+            # Compare against the base commit pinned by the pull_request
+            # event, not the live branch tip, so base-branch movement cannot
+            # change the measured debt while this run is in flight.
+            BASE_REF="$PR_BASE_SHA"
+            git cat-file -e "${BASE_REF}^{commit}" 2>/dev/null || \
+              git fetch origin "$BASE_REF" --depth=1
           elif [ -n "${PUSH_BASE_REF:-}" ] && [ "$PUSH_BASE_REF" != "$ZERO_SHA" ]; then
             BASE_REF="$PUSH_BASE_REF"
             git cat-file -e "${BASE_REF}^{commit}" 2>/dev/null || \
