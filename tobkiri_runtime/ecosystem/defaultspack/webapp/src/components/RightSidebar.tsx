@@ -76,6 +76,7 @@ import { compareToolUiItems, sortedToolGroups, sortedToolUiItems, supportedCompo
 import { PlacementHtmlRenderer } from "./PlacementHtmlRenderer";
 import { ToolFilterLogWidget, ToolManagerWidget } from "./ToolStatusWidgets";
 import { WorkspaceTabRailPanel, type WorkspaceTab, type WorkspaceTabKind } from "./WorkspaceTabs";
+import type { ConversationPresentation } from "../features/conversations/conversationPresentation";
 import { LayerPortal } from "../ui/layers/LayerPortal";
 import { PromptSidebarWidget } from "./prompts/PromptSidebarWidget";
 import type { ContextUsageInfo } from "../renderers/types";
@@ -984,6 +985,7 @@ export function RightSidebar({
   showChatPromptUsage = true,
   yoloMode = false,
   workspaceTabs = [],
+  conversationPresentations = {},
   activeWorkspaceTabId = null,
   activeConversationId = null,
   onSettingChange,
@@ -1018,6 +1020,7 @@ export function RightSidebar({
   showChatPromptUsage?: boolean;
   yoloMode?: boolean;
   workspaceTabs?: WorkspaceTab[];
+  conversationPresentations?: Readonly<Record<string, ConversationPresentation | undefined>>;
   activeWorkspaceTabId?: string | null;
   activeConversationId?: string | null;
   onSettingChange: (sectionId: string, fieldId: string, value: unknown) => void;
@@ -1946,6 +1949,7 @@ export function RightSidebar({
               <WorkspaceTabRailPanel
                 tabs={workspaceTabs}
                 activeTabId={activeWorkspaceTabId ?? ""}
+                conversationPresentations={conversationPresentations}
                 onSelect={(tabId) => onWorkspaceTabSelect?.(tabId)}
                 onClose={(tabId) => onWorkspaceTabClose?.(tabId)}
                 onCreate={(kind) => onWorkspaceTabCreate?.(kind)}

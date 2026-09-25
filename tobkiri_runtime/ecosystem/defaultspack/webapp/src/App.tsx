@@ -39,6 +39,7 @@ import {
   WorkspaceTabBar,
   createWorkspaceTab,
   workspaceTabDisplayTitle,
+  workspaceTabsForConversation,
   type WorkspaceTab,
   type WorkspaceTabKind,
 } from "./components/WorkspaceTabs";
@@ -70,6 +71,11 @@ import {
 } from "./features/models";
 import type { ConversationToolPreferences } from "./features/tools/types";
 import { useToolSelectionController } from "./features/tools/useToolSelectionController";
+import {
+  buildConversationPresentations,
+  conversationTimestamp,
+  type ConversationPresentation,
+} from "./features/conversations/conversationPresentation";
 import {
   AUTHORITY_WAITING_TEXT,
   authorityApprovalTitle,
@@ -1411,7 +1417,10 @@ function externalConversationSection(conversation: Conversation): { id: string; 
   };
 }
 
-function toChatItem(conversation: Conversation): ChatItem {
+function toChatItem(
+  conversation: Conversation,
+  presentation?: ConversationPresentation,
+): ChatItem {
   const section = externalConversationSection(conversation);
   const metadata = conversation.metadata ?? {};
   const groupId = cleanOptionalString(conversation.group_id) ?? cleanOptionalString(metadata.group_id ?? metadata.groupId);
@@ -1421,7 +1430,7 @@ function toChatItem(conversation: Conversation): ChatItem {
   };
   return {
     id: conversation.id,
-    title: conversation.title,
+    title: presentation?.title ?? conversation.title,
     date: formatBoardDate(conversation.updated_at),
     type: "chat",
     parentId: conversation.parent_conversation_id ?? null,
@@ -1434,10 +1443,14 @@ function toChatItem(conversation: Conversation): ChatItem {
     companyId: typeof normalizedMetadata.company_id === "string" ? normalizedMetadata.company_id : null,
     workspaceId: typeof normalizedMetadata.workspace_id === "string" ? normalizedMetadata.workspace_id : null,
     metadata: normalizedMetadata,
+    presentation,
   };
 }
 
-function buildChatItems(conversations: Conversation[]): ChatItem[] {
+function buildChatItems(
+  conversations: Conversation[],
+  presentations: Readonly<Record<string, ConversationPresentation | undefined>> = {},
+): ChatItem[] {
   const byId = new Map(conversations.map((conversation) => [conversation.id, conversation]));
   const childIds = new Set<string>();
 
@@ -1463,7 +1476,10 @@ function buildChatItems(conversations: Conversation[]): ChatItem[] {
       .filter((child): child is Conversation => Boolean(child))
       .sort((a, b) => b.updated_at - a.updated_at)
       .map(build);
-    return { ...toChatItem(conversation), children: linkedChildren };
+    return {
+      ...toChatItem(conversation, presentations[conversation.id]),
+      children: linkedChildren,
+    };
   };
 
   return conversations
@@ -2638,6 +2654,10 @@ export function ChatApp() {
   const [storedSelectedToolIds, setStoredSelectedToolIds] = useLocalStorage<string[]>("rumi-selected-tool-ids", []);
   const pendingStorageKey = "rumi-pending-chat-requests";
   const [pendingRequests, setPendingRequests] = useLocalStorage<Record<string, PendingChatRequest>>(pendingStorageKey, {});
+  const [conversationReadAt, setConversationReadAt] = useLocalStorage<Record<string, number>>(
+    "rumi-conversation-read-at-v1",
+    {},
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const shouldFollowMessagesRef = useRef(true);
@@ -2719,7 +2739,44 @@ export function ChatApp() {
   }, [shareDialogOpen]);
 
   const rawSidebarItems: SidebarItem[] = catalog?.sidebar.items ?? [];
-  const chatItems = buildChatItems(conversations);
+  const markConversationRead = useCallback((conversationId: string) => {
+    const listedUpdatedAt = conversationTimestamp(
+      conversations.find((conversation) => conversation.id === conversationId)?.updated_at,
+    );
+    const readAt = Math.max(Date.now(), listedUpdatedAt);
+    setConversationReadAt((current) => (
+      (current[conversationId] ?? 0) >= readAt
+        ? current
+        : { ...current, [conversationId]: readAt }
+    ));
+  }, [conversations, setConversationReadAt]);
+  const conversationPresentations = useMemo(
+    () => buildConversationPresentations(conversations, {
+      activeConversationId,
+      runningConversationId: isGenerating ? activeConversationId : null,
+      pendingRequests,
+      readAtByConversation: conversationReadAt,
+    }),
+    [activeConversationId, conversationReadAt, conversations, isGenerating, pendingRequests],
+  );
+  const chatItems = buildChatItems(conversations, conversationPresentations);
+  useEffect(() => {
+    setConversationReadAt((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const conversation of conversations) {
+        if (conversation.id in next) continue;
+        const metadata = conversation.metadata ?? {};
+        if (metadata.unread === true || metadata.is_unread === true) continue;
+        next[conversation.id] = conversationTimestamp(conversation.updated_at) || Date.now();
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [conversations, setConversationReadAt]);
+  useEffect(() => {
+    if (activeConversationId) markConversationRead(activeConversationId);
+  }, [activeConversation?.updated_at, activeConversationId, markConversationRead]);
   const recentSpotlightResults = useMemo(
     () => conversations
       .filter((conversation) => conversationMatchesSpotlightFilter(conversation, spotlightFilter))
@@ -2786,15 +2843,13 @@ export function ChatApp() {
   useEffect(() => {
     setWorkspaceTabs((current) => current.map((tab) => {
       if (tab.id !== activeWorkspaceTabId || tab.kind !== "chat") return tab;
-      const nextTitle = activeConversationId ? activeChatTitle : "New Conversation";
-      if (tab.conversationId === activeConversationId && tab.title === nextTitle) return tab;
+      if (tab.conversationId || !activeConversationId) return tab;
       return {
         ...tab,
         conversationId: activeConversationId,
-        title: nextTitle,
       };
     }));
-  }, [activeChatTitle, activeConversationId, activeWorkspaceTabId]);
+  }, [activeConversationId, activeWorkspaceTabId]);
   const activePromptUsage = latestActiveMetadata.prompt_usage && typeof latestActiveMetadata.prompt_usage === "object" && !Array.isArray(latestActiveMetadata.prompt_usage)
     ? latestActiveMetadata.prompt_usage as PromptUsageSummary
     : null;
@@ -3407,9 +3462,13 @@ export function ChatApp() {
   };
 
   const rememberPendingRequest = (request: PendingChatRequest) => {
+    const storedRequest = {
+      ...request,
+      updatedAt: request.updatedAt ?? request.startedAt ?? Date.now(),
+    };
     updatePendingRequests((current) => ({
       ...current,
-      [request.conversationId]: request,
+      [request.conversationId]: storedRequest,
     }));
   };
 
@@ -4314,15 +4373,17 @@ export function ChatApp() {
     setError(null);
     setPendingNewTaskContext(null);
     setActiveHistoryCompanyId(null);
-    const activeTab = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId);
-    if (activeTab?.kind === "chat") {
-      setWorkspaceTabs((current) => current.map((tab) => tab.id === activeWorkspaceTabId ? { ...tab, conversationId } : tab));
-    } else {
-      const nextTab = createWorkspaceTab("chat", { conversationId, title: "AI Chat" });
-      setWorkspaceTabs((current) => [...current, nextTab]);
-      setActiveWorkspaceTabId(nextTab.id);
-    }
-    void loadConversation(conversationId);
+    markConversationRead(conversationId);
+    const activation = workspaceTabsForConversation(
+      workspaceTabs,
+      activeWorkspaceTabId,
+      conversationId,
+    );
+    setWorkspaceTabs(activation.tabs);
+    setActiveWorkspaceTabId(activation.activeTab.id);
+    setMode("agent");
+    pushWorkspaceRoute("chat", conversationId);
+    void loadConversation(conversationId, false);
   };
 
   const handleHistoryMetadataChange = (conversationId: string, updates: { is_pinned?: boolean; is_starred?: boolean; tags?: string[] }) => {
@@ -5535,6 +5596,7 @@ export function ChatApp() {
     setError(null);
     if (tab.kind === "chat") {
       handleModeChange("agent", false);
+      if (tab.conversationId) markConversationRead(tab.conversationId);
       pushWorkspaceRoute("chat", tab.conversationId ?? null);
       void loadConversation(tab.conversationId ?? null, false);
       return;
@@ -6788,6 +6850,59 @@ export function ChatApp() {
         setError(null);
         return;
       }
+      if (submitError instanceof ChatStreamInterruptedError) {
+        const interruptedConversationId = submittedConversationId ?? submittedConversationRuntimeId;
+        markInterruptedAssistant?.(submitError);
+        if (interruptedConversationId) {
+          // A stream close is transport-ambiguous: the backend may already
+          // have committed the turn. Keep the persisted operation id and
+          // pending URL so a retry replays this logical send.
+          updatePendingRequests((current) => {
+            const existing = current[interruptedConversationId];
+            return existing
+              ? {
+                  ...current,
+                  [interruptedConversationId]: {
+                    ...existing,
+                    status: "応答ストリームが切れました。再試行すると結果を確認します",
+                    updatedAt: Date.now(),
+                  },
+                }
+              : current;
+          });
+        }
+        setBackendConnectionState("degraded");
+        setBackendConnectionNote("応答 stream が途中で閉じました。ここまで届いた内容を保持しつつ、backend の回復を待っています。");
+        void reportClientDiagnostic({
+          source: "webapp",
+          category: "stream_interrupted",
+          level: "warning",
+          message: "The frontend preserved a partial assistant response after the stream was interrupted.",
+          fingerprint: `stream-interrupted:${interruptedConversationId ?? "new"}:${submitError.message}`,
+          conversationId: interruptedConversationId,
+          detail: {
+            error: submitError.message,
+            partialTextLength: submitError.partialText.length,
+            thinkingTextLength: submitError.thinkingText.length,
+            sawActivity: submitError.sawActivity,
+          },
+        });
+        const interruptionMessage = submitError.partialText.trim()
+          ? "応答ストリームが途中で切れたため、ここまで届いた内容を保護して着地しました。"
+          : "応答ストリームが途中で切れました。画面は保護したまま、再接続の余地を残しています。";
+        setRetryableSubmission({
+          input: inputForSubmit,
+          attachments: submittedAttachments,
+          droppedWidgets: droppedWidgetsForSubmit,
+          toolSelectionRequest,
+          skipReview: true,
+          errorMessage: interruptionMessage,
+        });
+        setError(interruptionMessage);
+        dismissedComposerMentionToolsRef.current.clear();
+        setIsNewChatLaunching(false);
+        return;
+      }
       const preserveOperationForRetry = isLikelyTransportFailure(submitError);
       if (submittedConversationId && !preserveOperationForRetry && !isUnloadingRef.current && document.visibilityState !== "hidden") {
         forgetPendingRequest(submittedConversationId);
@@ -7174,6 +7289,7 @@ export function ChatApp() {
             <WorkspaceTabBar
               tabs={workspaceTabs}
               activeTabId={activeWorkspaceTabId}
+              conversationPresentations={conversationPresentations}
               onSelect={handleWorkspaceTabSelect}
               onClose={handleWorkspaceTabClose}
               onCreate={handleWorkspaceTabCreate}
@@ -7181,7 +7297,14 @@ export function ChatApp() {
 
             {showRegion("chat_header") && isChatWorkspace && !isCalendarMode && !isKanbanMode && (
               <Renderers.chatHeader
-                title={activeWorkspaceTab ? workspaceTabDisplayTitle(activeWorkspaceTab) : activeChatTitle}
+                title={activeWorkspaceTab
+                  ? workspaceTabDisplayTitle(
+                    activeWorkspaceTab,
+                    activeWorkspaceTab.conversationId
+                      ? conversationPresentations[activeWorkspaceTab.conversationId]
+                      : undefined,
+                  )
+                  : activeChatTitle}
                 showPreview={effectiveShowPreview}
                 canShowPreview={showRegion("activity_preview") && canShowCanvas}
                 canOpenSettings={showRegion("settings_modal")}
@@ -7495,6 +7618,7 @@ export function ChatApp() {
             onToggleChatPromptUsage={setShowPromptUsageInMessages}
             yoloMode={ultraYoloMode}
             workspaceTabs={workspaceTabs}
+            conversationPresentations={conversationPresentations}
             activeWorkspaceTabId={activeWorkspaceTabId}
             activeConversationId={activeConversationId}
             onSettingChange={handleSettingChange}

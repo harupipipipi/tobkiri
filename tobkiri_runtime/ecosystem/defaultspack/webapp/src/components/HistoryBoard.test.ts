@@ -361,6 +361,14 @@ test("HistoryBoard ignores stored SVG markup and renders host icon IDs", () => {
       icon_id: "database",
       icon_svg: '<svg onload="globalThis.pwned=true"></svg>',
     },
+    presentation: {
+      conversationId: "custom-icon-chat",
+      title: "Custom icon chat",
+      iconId: "database",
+      activity: "waiting",
+      unread: true,
+      accessibleStatusLabel: "Waiting for approval or input, unread",
+    },
   }];
   const baseProps = {
     activeChatId: null,
@@ -377,6 +385,8 @@ test("HistoryBoard ignores stored SVG markup and renders host icon IDs", () => {
     assert.match(html, /data-history-chat-icon="true"/);
     assert.match(html, /data-history-chat-icon-id="database"/);
     assert.match(html, /data-history-chat-icon-size="14"/);
+    assert.match(html, /data-conversation-activity="waiting"/);
+    assert.match(html, /data-conversation-unread="true"/);
     assert.match(html, /style="width:14px;height:14px;flex-basis:14px"/);
     assert.doesNotMatch(html, /onload=/);
     assert.doesNotMatch(html, /globalThis\.pwned/);
