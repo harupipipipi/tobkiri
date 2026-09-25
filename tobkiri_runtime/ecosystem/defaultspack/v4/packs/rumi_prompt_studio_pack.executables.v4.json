@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_prompt_studio_pack",
-  "source_identity": "sha256:1eceeddcdf5347c6ea1165cccb51feba06725fc88cb7b10594d2681760cbf970",
+  "source_identity": "sha256:8f7a318a355a66dea4f2ad29bb97a2f540a850c21d274eee081d2e39339e1611",
   "variants": [
     {
       "variant_id": "rumi_prompt_studio_pack.prompt-studio.author.python",
@@ -174,6 +174,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:6145f7480ba0ca22f0d90471734dc74d6be35c2a4b73024cada7d3da4f7aab78",
-  "catalog_digest": "sha256:9406f656270e9c8535b5c521995f7cb1e1fe1456242e47ffbffd6aa792a0efcc"
+  "materialization_catalog_digest": "sha256:9e7580fdc2b7f7b76b97faca18c92f8055425b1bda128395223360b286434800",
+  "catalog_digest": "sha256:aad8051ad49300068ec775dfb12b37d6c90f49ad1816d22a40b7ba08da54b77d"
 }
