@@ -1782,6 +1782,65 @@ test("settings modal contains focus, dismisses nested layers in order, and resto
   await expect(dialog).toBeHidden();
 });
 
+test("settings categories remain reachable without horizontal overflow on mobile", async ({ page }) => {
+  test.slow();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installDefaultspackApiMocks(page);
+  await page.goto("/static/");
+  const settingsButton = page.locator('button[title="Settings"]:visible');
+  await expect(settingsButton).toBeVisible({ timeout: 45_000 });
+  await settingsButton.click();
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  const navigation = dialog.getByRole("navigation", { name: "Settings categories" });
+  const categoryButtons = navigation.locator("button");
+  await expect(navigation).toBeVisible();
+  expect(await categoryButtons.count()).toBeGreaterThan(4);
+
+  const geometry = await navigation.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    right: element.getBoundingClientRect().right,
+  }));
+  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth);
+  expect(geometry.scrollHeight).toBeGreaterThan(geometry.clientHeight);
+  expect(geometry.right).toBeLessThanOrEqual(390);
+
+  const horizontalBounds = await categoryButtons.evaluateAll((buttons) => buttons.map((button) => {
+    const bounds = button.getBoundingClientRect();
+    return { left: bounds.left, right: bounds.right, width: bounds.width };
+  }));
+  for (const bounds of horizontalBounds) {
+    expect(bounds.left).toBeGreaterThanOrEqual(0);
+    expect(bounds.right).toBeLessThanOrEqual(390);
+    expect(bounds.width).toBeGreaterThan(0);
+  }
+
+  const lastCategory = categoryButtons.last();
+  await lastCategory.scrollIntoViewIfNeeded();
+  await lastCategory.click();
+  await expect(lastCategory).toHaveAttribute("aria-current", "page");
+
+  const firstCategory = categoryButtons.first();
+  await firstCategory.focus();
+  await page.keyboard.press("Enter");
+  await expect(firstCategory).toHaveAttribute("aria-current", "page");
+  await expect(firstCategory).toBeFocused();
+
+  const search = navigation.getByRole("textbox", { name: /^Search settings/ });
+  await search.fill("no-such-mobile-setting");
+  await expect(navigation.getByText("No matching settings.")).toBeVisible();
+  await expect(
+    dialog.getByLabel("Search results").getByText("No matching settings in this section."),
+  ).toBeVisible();
+  expect(await navigation.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(
+    await navigation.evaluate((element) => element.clientWidth),
+  );
+  await navigation.getByRole("button", { name: "Clear settings search" }).click();
+  await expect(categoryButtons.first()).toBeVisible();
+});
+
 test("tool hub service selections can be scoped to the conversation and survive reload", async ({ page }) => {
   await openDefaultspack(page);
 
