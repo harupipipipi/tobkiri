@@ -1887,6 +1887,36 @@ function settingNumber(value: unknown, fallback: number): number {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
+export type MimoCodingWorkerMode = "docker" | "managed_desktop";
+
+export function normalizeMimoCodingWorkerMode(value: unknown): MimoCodingWorkerMode {
+  const mode = String(value ?? "").trim().toLowerCase();
+  if (["non_docker", "non-docker", "local", "managed_desktop", "managed-desktop", "desktop"].includes(mode)) {
+    return "managed_desktop";
+  }
+  return "docker";
+}
+
+export function mimoCodingWorkerSettingsPayload(settings: Record<string, unknown> | undefined): {
+  worker_mode: MimoCodingWorkerMode;
+  docker_worker_count: number;
+} {
+  const rawMode = String(settings?.worker_mode ?? "").trim();
+  const rawWorkerCount = settingNumber(settings?.docker_worker_count, 3);
+  const workerMode = rawMode
+    ? normalizeMimoCodingWorkerMode(rawMode)
+    : rawWorkerCount <= 0
+      ? "managed_desktop"
+      : "docker";
+  if (workerMode === "managed_desktop") {
+    return { worker_mode: workerMode, docker_worker_count: 0 };
+  }
+  return {
+    worker_mode: workerMode,
+    docker_worker_count: Math.max(1, Math.min(16, rawWorkerCount)),
+  };
+}
+
 function isAbortError(errorValue: unknown): boolean {
   return Boolean(
     errorValue
@@ -6320,6 +6350,7 @@ export function ChatApp() {
     const value = mimoCodingMaxToolCalls();
     return value === null ? {} : { max_tool_calls: value };
   };
+  const mimoCodingWorkerPayload = () => mimoCodingWorkerSettingsPayload(settingsValues.mimo_coding_company);
   const selectedCodingWorkspaceRecord = () => (
     effectiveWorkspaceId
       ? codingWorkspaces.find((workspace) => workspace.workspace_id === effectiveWorkspaceId) ?? null
@@ -6350,7 +6381,7 @@ export function ChatApp() {
         vision_model: preferredMimoVisionModel(),
         fast_model: preferredMimoFastModel(),
         qa_targets: mimoCodingTargets(),
-        docker_worker_count: Math.max(1, Math.min(16, settingNumber(settingsValues.mimo_coding_company?.docker_worker_count, 3))),
+        ...mimoCodingWorkerPayload(),
         docker_personas: mimoCodingPersonas(),
         ...mimoCodingWorkspacePayload(),
         run_initial_review_now: settingsValues.mimo_coding_company?.run_initial_review_now !== false,
@@ -6475,7 +6506,7 @@ export function ChatApp() {
           vision_model: preferredMimoVisionModel(),
           fast_model: preferredMimoFastModel(),
           qa_targets: mimoCodingTargets(),
-          docker_worker_count: Math.max(1, Math.min(16, settingNumber(settingsValues.mimo_coding_company?.docker_worker_count, 3))),
+          ...mimoCodingWorkerPayload(),
           docker_personas: mimoCodingPersonas(),
           ...mimoCodingWorkspacePayload(),
           run_initial_review_now: settingsValues.mimo_coding_company?.run_initial_review_now !== false,
