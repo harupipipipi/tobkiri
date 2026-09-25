@@ -9,8 +9,6 @@ import { twMerge } from 'tailwind-merge';
 
 import { ArtifactPreviewDialog, type ArtifactPreviewDialogItem } from './ArtifactPreviewDialog';
 import { ErrorNotice } from './ErrorNotice';
-import { safePreviewImageUrl } from './toolPreviewImagePolicy';
-export { MAX_INLINE_PREVIEW_IMAGE_URL_LENGTH, safePreviewImageUrl } from './toolPreviewImagePolicy';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -74,7 +72,7 @@ export type ToolPreviewMode = 'auto' | 'manual';
 export const MEMO_PREVIEW_ID = '__memo__';
 const TIMELINE_TAB_ID = '__timeline__';
 export const REMOTE_PREVIEW_BLOCKED_MESSAGE = 'Remote preview blocked: unverified tool URLs are not fetched.';
-export const MAX_INLINE_PREVIEW_TEXT_LENGTH = 1024 * 1024;
+export const MAX_INLINE_PREVIEW_IMAGE_URL_LENGTH = 5 * 1024 * 1024;
 // Keep inline HTML preview documents in an opaque origin. Combining
 // allow-scripts with allow-same-origin would let preview HTML escape the
 // sandbox boundary.
@@ -200,6 +198,15 @@ function previewIcon(data: ToolPreviewData, size = 12) {
   return <Image size={size} className="text-blue-400" />;
 }
 
+export function safePreviewImageUrl(url: string | undefined, _baseUrl?: string): string | undefined {
+  if (!url) return undefined;
+  if (
+    url.length <= MAX_INLINE_PREVIEW_IMAGE_URL_LENGTH
+    && /^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(url)
+  ) return url;
+  return undefined;
+}
+
 function looksLikeHtml(data: FilePreview, content?: string): boolean {
   const name = data.filename.toLowerCase();
   const mime = String(data.mimeType ?? '').toLowerCase();
@@ -226,7 +233,7 @@ function escapeHtmlAttribute(value: string): string {
     .replace(/>/g, '&gt;');
 }
 
-const HTML_PREVIEW_CSP = "default-src 'none'; img-src 'none'; style-src 'unsafe-inline'; font-src 'none'; connect-src 'none'; media-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'; navigate-to 'none'";
+const HTML_PREVIEW_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; connect-src 'none'; media-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'; navigate-to 'none'";
 
 function stripHtmlNavigationPrimitives(content: string): string {
   return content
@@ -691,13 +698,10 @@ function CodePreviewContent({ data }: { data: CodePreview }) {
 
 export function remotePreviewText(data: FilePreview) {
   const inlineContent = displayPreviewContent(data);
-  const inlineContentTooLarge = (inlineContent?.length ?? 0) > MAX_INLINE_PREVIEW_TEXT_LENGTH;
   return {
-    error: inlineContentTooLarge
-      ? 'Inline preview blocked: tool content exceeds the safe rendering limit.'
-      : inlineContent === undefined && data.url ? REMOTE_PREVIEW_BLOCKED_MESSAGE : null,
+    error: inlineContent === undefined && data.url ? REMOTE_PREVIEW_BLOCKED_MESSAGE : null,
     isLoading: false,
-    text: inlineContentTooLarge ? '' : inlineContent ?? '',
+    text: inlineContent ?? '',
   };
 }
 
@@ -785,6 +789,9 @@ function HtmlPreviewContent({
             referrerPolicy="no-referrer"
           />
         ) : !isLoading ? (
+          error && data.url ? (
+            <RemotePreviewBoundary url={data.url} title={data.filename} />
+          ) : (
           <div className="flex h-full items-center justify-center bg-zinc-950 px-4 text-center text-[11px] text-zinc-500">
             {error ? (
               <ErrorNotice
@@ -794,6 +801,7 @@ function HtmlPreviewContent({
               />
             ) : 'HTML preview の内容がありません。'}
           </div>
+          )
         ) : null}
       </div>
     </div>
@@ -803,18 +811,6 @@ function HtmlPreviewContent({
 function FilePreviewContent({ data }: { data: FilePreview }) {
   const loaded = remotePreviewText(data);
   const content = loaded.text;
-  if (loaded.error && !content) {
-    if (data.url && loaded.error === REMOTE_PREVIEW_BLOCKED_MESSAGE) {
-      return <RemotePreviewBoundary url={data.url} title={data.filename} />;
-    }
-    return (
-      <div className="flex h-full items-center justify-center bg-zinc-950 px-4 text-center">
-        <p role="alert" className="max-w-xl text-[11px] leading-relaxed text-amber-300">
-          {loaded.error}
-        </p>
-      </div>
-    );
-  }
   const looksLikeJson = data.filename.toLowerCase().endsWith('.json') || String(content ?? '').trimStart().startsWith('{');
   if (looksLikeHtml(data, content) && (content || data.url)) {
     return <HtmlPreviewContent data={data} content={content} error={loaded.error} isLoading={loaded.isLoading} />;
@@ -824,7 +820,9 @@ function FilePreviewContent({ data }: { data: FilePreview }) {
       return <div className="flex h-full items-center justify-center text-[11px] text-zinc-600">diff を読み込んでいます</div>;
     }
     if (loaded.error && !content) {
-      return (
+      return data.url ? (
+        <RemotePreviewBoundary url={data.url} title={data.filename} />
+      ) : (
         <ErrorNotice
           className="m-3 text-[11px]"
           copyLabel="diff プレビューエラーをコピー"
@@ -858,6 +856,8 @@ function FilePreviewContent({ data }: { data: FilePreview }) {
       <div className="flex-1 overflow-y-auto">
         {loaded.isLoading ? (
           <div className="flex h-full items-center justify-center text-[11px] text-zinc-600">内容を読み込んでいます</div>
+        ) : loaded.error && !content && data.url ? (
+          <RemotePreviewBoundary url={data.url} title={data.filename} />
         ) : loaded.error && !content ? (
           <ErrorNotice
             className="m-3 text-[11px]"
