@@ -43,6 +43,7 @@ class _ResolvedCatalog:
                 "function_principal_id": binding.principal_ref.value,
                 "provider_id": binding.function.function_id,
                 "input_schema_digest": input_digest,
+                "output_schema_digest": output_digest,
                 "effect_ceiling": [binding.operation.effect_class.value],
             }
             # Caller edges can share an identical target operation projection.

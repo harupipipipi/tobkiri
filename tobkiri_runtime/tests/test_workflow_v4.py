@@ -297,6 +297,186 @@ def test_palette_rejects_conflicting_effects_for_same_operation(
         provider.invoke("operation.palette", {})
 
 
+
+
+def test_graph_compiler_snapshot_maps_branches_and_dependencies_to_runtime_steps(
+    runtime: tuple[WorkflowProviderV4, Catalog, Authority, Invoker],
+) -> None:
+    """A representative diagram compiles to the reviewed runtime-step snapshot."""
+
+    provider, _catalog, _authority, _invoker = runtime
+    graph_schema = json.loads(
+        (PACK_ROOT / "schemas/rumi-graph.v1.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    Draft202012Validator(graph_schema).validate(graph_fixture())
+    result = provider.invoke(
+        "graph.compile-preview", {"rumi_graph": graph_fixture()}
+    )
+    expected_steps = json.loads(
+        (GRAPH_FIXTURE_ROOT / "branching_runtime_steps.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert result["graph_compile_api_version"] == (
+        "io.tobkiri.rumi-graph-compile.v4"
+    )
+    assert result["document"]["steps"] == expected_steps
+    assert [step["step_id"] for step in result["compiled"]["steps"]] == [
+        "prepare",
+        "left",
+        "right",
+        "join",
+    ]
+    assert result["compiled"]["steps"][3]["depends_on"] == ["left", "right"]
+    assert result["graph_compile_digest"] == digest(
+        {
+            key: value
+            for key, value in result.items()
+            if key != "graph_compile_digest"
+        }
+    )
+
+
+def test_graph_compiler_round_trip_is_deterministic_and_uses_manifest_ports(
+    runtime: tuple[WorkflowProviderV4, Catalog, Authority, Invoker],
+) -> None:
+    """Normalized output recompiles identically with catalog-derived ports."""
+
+    provider, _catalog, _authority, _invoker = runtime
+    first = provider.invoke(
+        "graph.compile-preview", {"rumi_graph": graph_fixture()}
+    )
+    second = provider.invoke(
+        "graph.compile-preview", {"rumi_graph": first["normalized_graph"]}
+    )
+    assert second["document"] == first["document"]
+    assert second["normalized_graph"] == first["normalized_graph"]
+    assert second["graph_compile_digest"] == first["graph_compile_digest"]
+    prepare = next(
+        node
+        for node in first["normalized_graph"]["nodes"]
+        if node["id"] == "prepare-node"
+    )
+    assert prepare["data"]["ports"] == [
+        {
+            "id": "contract-input",
+            "direction": "input",
+            "contracts": [INPUT_SCHEMA_DIGEST],
+        },
+        {
+            "id": "contract-output",
+            "direction": "output",
+            "contracts": [OUTPUT_SCHEMA_DIGEST],
+        },
+    ]
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (
+            lambda graph: graph["nodes"][0]["data"].pop("ports"),
+            "must have 1..64 port contracts",
+        ),
+        (
+            lambda graph: graph["edges"][0].update(
+                {"targetHandle": "missing-port"}
+            ),
+            "target port is unavailable",
+        ),
+        (
+            lambda graph: graph["nodes"][0]["data"]["ports"][0].update(
+                {"contracts": ["schema:wrong"]}
+            ),
+            "port contracts do not match",
+        ),
+    ],
+)
+def test_graph_compiler_rejects_missing_or_incompatible_ports(
+    runtime: tuple[WorkflowProviderV4, Catalog, Authority, Invoker],
+    mutation: Any,
+    message: str,
+) -> None:
+    """Missing handles and incompatible contracts fail closed before preview."""
+
+    provider, _catalog, _authority, _invoker = runtime
+    graph = graph_fixture()
+    mutation(graph)
+    with pytest.raises(WorkflowValidationError, match=message):
+        provider.invoke("graph.compile-preview", {"rumi_graph": graph})
+
+
+def test_graph_compiler_rejects_cycles_and_non_exact_operation_identity(
+    runtime: tuple[WorkflowProviderV4, Catalog, Authority, Invoker],
+) -> None:
+    """Cycles and ambient/legacy operation lookup never reach Workflow runtime."""
+
+    provider, _catalog, _authority, _invoker = runtime
+    cyclic = graph_fixture()
+    cyclic["edges"].append(
+        {
+            "id": "e-cycle",
+            "source": "right-node",
+            "target": "prepare-node",
+            "sourceHandle": "contract-output",
+            "targetHandle": "contract-input",
+        }
+    )
+    with pytest.raises(WorkflowValidationError, match="contains a cycle"):
+        provider.invoke("graph.compile-preview", {"rumi_graph": cyclic})
+
+    unpinned = graph_fixture()
+    unpinned["nodes"][1]["data"]["request"].pop("function_principal_id")
+    with pytest.raises(WorkflowValidationError, match="function_principal_id"):
+        provider.invoke("graph.compile-preview", {"rumi_graph": unpinned})
+
+
+def test_graph_compiler_rejects_forged_step_ports_and_schema_invalid_metadata(
+    runtime: tuple[WorkflowProviderV4, Catalog, Authority, Invoker],
+) -> None:
+    """Caller metadata cannot override manifest ports or widen the graph schema."""
+
+    provider, _catalog, _authority, _invoker = runtime
+    forged = graph_fixture()
+    forged["nodes"][1]["data"]["ports"] = [
+        {
+            "id": "contract-input",
+            "direction": "input",
+            "contracts": ["schema:forged"],
+        },
+        {
+            "id": "contract-output",
+            "direction": "output",
+            "contracts": ["schema:forged"],
+        },
+    ]
+    with pytest.raises(WorkflowValidationError, match="must match the captured"):
+        provider.invoke("graph.compile-preview", {"rumi_graph": forged})
+
+    unknown = graph_fixture()
+    unknown["legacy_handler"] = "ambient.lookup"
+    with pytest.raises(WorkflowValidationError, match="unknown properties"):
+        provider.invoke("graph.compile-preview", {"rumi_graph": unknown})
+
+    duplicate_contract = graph_fixture()
+    duplicate_contract["nodes"][0]["data"]["ports"][0]["contracts"].append(
+        INPUT_SCHEMA_DIGEST
+    )
+    with pytest.raises(WorkflowValidationError, match="non-empty string array"):
+        provider.invoke(
+            "graph.compile-preview", {"rumi_graph": duplicate_contract}
+        )
+
+    invalid_position = graph_fixture()
+    invalid_position["nodes"][1]["position"] = {"x": 10}
+    with pytest.raises(WorkflowValidationError, match="position is invalid"):
+        provider.invoke(
+            "graph.compile-preview", {"rumi_graph": invalid_position}
+        )
+
+
 def test_run_pins_revision_activation_and_commits_atomic_authority(
     runtime: tuple[WorkflowProviderV4, Catalog, Authority, Invoker],
 ) -> None:
