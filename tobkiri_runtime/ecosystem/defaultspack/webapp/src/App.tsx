@@ -2651,6 +2651,7 @@ export function ChatApp() {
   const highRiskResumeStartedRef = useRef(new Set<string>());
   const highRiskCancelStartedRef = useRef(new Set<string>());
   const highRiskApprovalWindowOpenedRequestRef = useRef<string | null>(null);
+  const browserApprovalTokenRef = useRef<Map<string, string>>(new Map());
   const lastHealthyAtRef = useRef<number | null>(null);
   const consecutiveHealthFailuresRef = useRef(0);
   const authorityApprovalWindowRequestRef = useRef<string | null>(null);
@@ -5930,6 +5931,9 @@ export function ChatApp() {
     const pendingTurnId = pendingRequests[activeConversationId]?.savedTurn
       ? pendingRequests[activeConversationId].operationId ?? ""
       : "";
+    const actionKey = browserApprovalSettlementKey(currentApproval);
+    if (activeBrowserApprovalActionRef.current === actionKey) return;
+    activeBrowserApprovalActionRef.current = actionKey;
     setError(null);
     setIsGenerating(true);
     const approvalToolIds = [currentApproval.toolName].filter(Boolean);
