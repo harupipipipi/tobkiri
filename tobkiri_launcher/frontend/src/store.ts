@@ -883,8 +883,8 @@ export const useAppStore = create<AppState>((set, get) => ({
                 && Boolean(pack && !matchingPackMutation(current, pack));
             }),
           ),
-        });
           packConflicts: data.pack_conflicts ?? [],
+        });
         if (!options.skipMutationReconciliation) {
           scheduleHydratedPackStatusReconciliation(get, set);
         }
