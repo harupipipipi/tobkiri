@@ -23,6 +23,12 @@ from domain.ai_client.rumi_process import (
     ensure_default_rumi_model_pack,
     resolve_rumi_base_model,
 )
+from domain.ai_client.thinking_control import (
+    LEGACY_THINKING_LEVELS,
+    normalize_thinking_control,
+    serialize_thinking_control,
+    validate_thinking_control,
+)
 from domain.frontend_settings_client import update_settings_document, update_settings_state
 from domain.frontend_settings_store import (
     FrontendSettingsStore,

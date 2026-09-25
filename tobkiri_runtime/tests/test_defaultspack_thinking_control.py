@@ -20,6 +20,21 @@ from domain.ai_client.thinking_control import (  # noqa: E402
     serialize_thinking_control,
     validate_thinking_control,
 )
+from domain.frontend_settings_store import (  # noqa: E402
+    defaultspack_frontend_settings_path,
+)
+from ecosystem.tobkiri_ui_settings_pack.runtime.store import (  # noqa: E402
+    FrontendSettingsStore as IsolatedSettingsStore,
+)
+
+
+def _service(tmp_path: Path) -> ModelRuntimeSettingsService:
+    return ModelRuntimeSettingsService(
+        tmp_path,
+        settings_owner=IsolatedSettingsStore(
+            defaultspack_frontend_settings_path(tmp_path)
+        ),
+    )
 
 
 NUMERIC_CONTRACT = {
@@ -107,7 +122,7 @@ def test_request_binding_rejects_non_thinking_payload_paths() -> None:
 def test_service_persists_raw_and_normalized_profile_control(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _service(tmp_path)
     profile = {
         "profile_id": "example/numeric",
         "qualified_model_id": "example/numeric",
@@ -138,7 +153,7 @@ def test_service_persists_raw_and_normalized_profile_control(
 def test_service_revalidates_client_stored_normalized_value(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _service(tmp_path)
     profile = {
         "profile_id": "example/numeric",
         "qualified_model_id": "example/numeric",
@@ -169,7 +184,7 @@ def test_service_revalidates_client_stored_normalized_value(
 def test_profile_without_a_valid_default_omits_thinking_parameters(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _service(tmp_path)
     profile = {
         "profile_id": "example/numeric",
         "qualified_model_id": "example/numeric",
@@ -193,7 +208,7 @@ def test_profile_without_a_valid_default_omits_thinking_parameters(
 def test_profile_default_is_validated_and_bound_at_runtime(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _service(tmp_path)
     profile = {
         "profile_id": "example/numeric",
         "qualified_model_id": "example/numeric",
@@ -213,7 +228,7 @@ def test_profile_default_is_validated_and_bound_at_runtime(
 
 
 def test_legacy_profiles_remain_enum_compatible(tmp_path: Path) -> None:
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _service(tmp_path)
 
     assert service.validate_thinking_level("xhigh")["valid"] is True
     assert service.validate_thinking_level("32k")["valid"] is False
