@@ -53,6 +53,9 @@ SCHEMA_ALIASES = {
     "external_pack_catalog": "external_normal_pack_catalog_v4.schema.json",
     "defaults_setup": "defaults_setup_v4.schema.json",
     "saved_conversation_input": "saved_conversation_input_v1.schema.json",
+    "pack_conflict_report": "pack_conflict_report_v1.schema.json",
+    "repair_pack_plan": "repair_pack_plan_v1.schema.json",
+    "generated_repair_pack": "generated_repair_pack_v1.schema.json",
 }
 
 _ID_FIELDS = {

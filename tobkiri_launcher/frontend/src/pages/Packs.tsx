@@ -64,6 +64,9 @@ export function Packs() {
   const t = useT();
   const packs = useAppStore(state => state.packs);
   const packCatalogBinding = useAppStore(state => state.packCatalogBinding);
+  const packConflicts = useAppStore(state => state.packConflicts);
+  const packRepairPending = useAppStore(state => state.packRepairPending);
+  const runPackRepairAction = useAppStore(state => state.runPackRepairAction);
   const packsLoading = useAppStore(state => state.packsLoading);
   const packsError = useAppStore(state => state.packsError);
   const packInstallPending = useAppStore(state => state.packInstallPending);

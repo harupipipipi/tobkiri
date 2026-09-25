@@ -211,6 +211,8 @@ interface AppState {
   refreshRuntimeHealth: () => Promise<void>;
   packs: Pack[];
   packCatalogBinding: PackControlBinding | null;
+  packConflicts: PackConflictReport[];
+  packRepairPending: Record<string, boolean>;
   packsLoading: boolean;
   packsError: string | null;
   packInstallPending: Record<string, boolean>;
@@ -789,6 +791,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   packs: [],
   packCatalogBinding: null,
+  packConflicts: [],
+  packRepairPending: {},
   packsLoading: false,
   packsError: null,
   packInstallPending: {},
@@ -880,6 +884,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             }),
           ),
         });
+          packConflicts: data.pack_conflicts ?? [],
         if (!options.skipMutationReconciliation) {
           scheduleHydratedPackStatusReconciliation(get, set);
         }
