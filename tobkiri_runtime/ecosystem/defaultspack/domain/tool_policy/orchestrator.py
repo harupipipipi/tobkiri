@@ -12,10 +12,12 @@ from domain.tool.catalog_contract_client import ContractToolCatalog as ToolRegis
 
 from .audit import audit_tool_policy
 from .internal_context import (
+    mark_trusted_review_gate_context,
     profile_policy_context_is_trusted,
     sanitize_tool_context,
     sanitize_untrusted_tool_context,
     seal_tool_context,
+    trusted_review_gate_context,
 )
 from .policy import decide_tool_policy
 
@@ -46,6 +48,7 @@ class ToolOrchestrator:
 
     def run(self, tool_name: str, arguments: dict[str, Any] | None, context: dict[str, Any] | None) -> dict[str, Any]:
         profile_policy_trusted = profile_policy_context_is_trusted(context)
+        review_gate_context = trusted_review_gate_context(context)
         if profile_policy_trusted:
             context = sanitize_tool_context(context)
         else:
@@ -89,6 +92,12 @@ class ToolOrchestrator:
         )
 
         invoke_context = seal_tool_context(context, decision.to_dict())
+        if review_gate_context is not None:
+            mark_trusted_review_gate_context(
+                invoke_context,
+                execution_mode=review_gate_context[0],
+                mode_context_id=review_gate_context[1],
+            )
         invoke_context["sandbox_mode"] = decision.sandbox_mode
         if _is_cancelled(invoke_context):
             return error("Tool execution cancelled", "CANCELLED")

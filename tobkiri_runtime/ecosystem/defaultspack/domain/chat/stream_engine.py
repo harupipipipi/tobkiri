@@ -4615,6 +4615,19 @@ class ChatRunEngine:
         invoke_context["tool_call_id"] = tool_call_id
         invoke_context["is_cancelled"] = self._is_cancelled
         invoke_context["stream_event_callback"] = self._legacy_stream_event_callback
+        from domain.tool_policy.internal_context import (
+            mark_trusted_review_gate_context,
+        )
+
+        mark_trusted_review_gate_context(
+            invoke_context,
+            execution_mode="fusion_agent",
+            mode_context_id=str(
+                invoke_context.get("conversation_id")
+                or invoke_context.get("run_id")
+                or self._run_id
+            ),
+        )
         if prepared.call_handler is not None:
             result = prepared.call_handler(
                 "defaults.tool.invoke",

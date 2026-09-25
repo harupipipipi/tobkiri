@@ -11,7 +11,6 @@ from domain.integrations.http_client import post_json_public_url
 def external_send_tool(
     arguments: dict[str, Any] | None, context: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    del context
     args = arguments or {}
     provider = str(args.get("provider") or args.get("target_provider") or "").strip().lower()
     text = str(args.get("text") or args.get("message") or "").strip()
@@ -39,6 +38,8 @@ def external_send_tool(
                 "target": _target_summary(provider, args),
             }
         )
+
+    del context
 
     if provider == "line":
         adapter = LineResponseAdapter()
@@ -88,7 +89,11 @@ def external_send_tool(
             },
         )
         return _tool_ok(
-            {"provider": provider, "sent": bool(result.get("ok")), "provider_response": result}
+            {
+                "provider": provider,
+                "sent": bool(result.get("ok")),
+                "provider_response": result,
+            }
         )
 
     return _tool_error(f"unsupported provider: {provider}")

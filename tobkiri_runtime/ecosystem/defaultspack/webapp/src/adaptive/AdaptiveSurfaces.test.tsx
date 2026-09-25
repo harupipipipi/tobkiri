@@ -17,6 +17,7 @@ import {
 import { OperatingProfilePage } from "./OperatingProfilePage";
 import {
   compileAdaptiveOnboardingAnswers,
+  saveAdaptiveOperatingProfile,
   toActivityState,
   toAutomationState,
   toEvidenceBundle,
@@ -222,6 +223,66 @@ test("OperatingProfilePage renders profile controls and guardrails", () => {
   assert.match(html, /Profile summary/);
   assert.match(html, /Autonomy mode/);
   assert.match(html, /Approval policy/);
+  assert.match(html, /Agent review gate/);
+  assert.match(html, /Reviewer profile/);
+  assert.match(html, /Save and activate/);
+});
+
+test("operating profile save previews and activates durable review settings", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  globalThis.fetch = (async (input, init) => {
+    calls.push({ input, init });
+    if (calls.length === 1) {
+      return new Response(JSON.stringify({
+        status: "ok",
+        data: { plan: { plan_id: "signed-plan", signature: "hmac-sha256:test" } },
+      }), { status: 200 });
+    }
+    return new Response(JSON.stringify({
+      status: "ok",
+      data: {
+        operating_profile: {
+          profile_id: "default",
+          review_topology: {
+            mode: "blocking",
+            reviewer_profile: "reviewer_agent",
+            require_separate_run: true,
+            applies_to: ["commit", "push"],
+            store_findings: true,
+          },
+        },
+      },
+    }), { status: 200 });
+  }) as typeof fetch;
+
+  const saved = await saveAdaptiveOperatingProfile({
+    ...demoOperatingProfile,
+    reviewPolicy: {
+      mode: "blocking",
+      reviewerProfile: "reviewer_agent",
+      requireSeparateRun: true,
+      appliesTo: ["commit", "push"],
+      storeFindings: true,
+    },
+  });
+
+  assert.equal(calls.length, 2);
+  assert.equal(
+    requestTarget(calls[0]?.input ?? ""),
+    routeKey(`api/operating-profiles/${demoOperatingProfile.id}/preview`),
+  );
+  assert.equal(requestTarget(calls[1]?.input ?? ""), routeKey("api/onboarding/apply"));
+  const previewBody = JSON.parse(String(calls[0]?.init?.body));
+  assert.deepEqual(previewBody.answers.review_topology.applies_to, ["commit", "push"]);
+  assert.equal(previewBody.answers.review_topology.reviewer_profile, "reviewer_agent");
+  assert.deepEqual(JSON.parse(String(calls[1]?.init?.body)), {
+    plan: { plan_id: "signed-plan", signature: "hmac-sha256:test" },
+  });
+  assert.equal(saved.reviewPolicy?.mode, "blocking");
 });
 
 test("ActivityCenter renders activity counters and review queue", () => {
