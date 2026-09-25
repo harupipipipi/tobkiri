@@ -42,7 +42,12 @@ from .v4_models import (
     interactive_confirmation_digest,
     intersect_scopes,
 )
-from .v4_store import AuditUnavailable, AuthorityStore, AuthorityStoreError
+from .v4_store import (
+    AuditUnavailable,
+    AuthorityStore,
+    AuthorityStoreError,
+    PendingEffectUpdate,
+)
 
 
 __all__ = [
@@ -72,6 +77,7 @@ __all__ = [
     "InvocationContext",
     "InvocationLease",
     "LeaseState",
+    "PendingEffectUpdate",
     "ProviderAuthorityRecord",
     "SecurityEpoch",
     "SuccessorEvidence",

@@ -14,14 +14,22 @@ from typing import Any, Mapping
 import pytest
 
 from core_runtime.authority.v4 import AuthorityDenied, AuthorityScope, authority_digest
+from tobkiri_host.effects import EffectDisposition, ProviderOutcome
 from tobkiri_host.interactive_effects import (
     PendingEffectController,
     PendingEffectError,
     PendingEffectState,
 )
-from tobkiri_host.models import OpaqueAuthorityRef
+from tobkiri_host.models import InvocationFrame, OpaqueAuthorityRef
 from tobkiri_host.ports import InteractiveApprovalStatus
 
+from tests.test_tobkiri_host_authority_v4_adapter import (
+    _adapter as _authority_adapter,
+    _broker as _authority_broker,
+    _context as _authority_context,
+)
+from tobkiri_host.authority_v4 import AuthorityV4Adapter
+from tobkiri_host.broker import RequestBroker
 from tests.test_tobkiri_host_execution_integration import context, frame, make_broker
 from tests.test_authority_v4_lifecycle import _Harness
 
@@ -763,6 +771,14 @@ def test_owner_resume_deadline_bounds_real_authority_store_guard(
     harness = _Harness(tmp_path)
     approvals = _Approvals()
     controller = _controller(harness.store, approvals)
+    # Real pending-effect storage takes the fused path; let the fake ports
+    # apply each spec to the same store, as the real adapter would.
+    fixture.authority.pending_cas = (
+        harness.store.compare_and_swap_host_pending_effect
+    )
+    fixture.audit.pending_cas = (
+        harness.store.compare_and_swap_host_pending_effect
+    )
     guard = open(harness.store._guard_path, "r+b")
     try:
         pending, _prepared = _prepare(controller, fixture.broker)
@@ -1118,3 +1134,199 @@ def test_resume_marker_overrun_never_invokes_and_settles_ambiguous() -> None:
     assert fixture.backend.invocations == 0
     assert "audit_dispatched" in fixture.events
     assert "provider_invoked" not in fixture.events
+
+
+def _fused_resume_fixture(
+    tmp_path,
+    outcome: ProviderOutcome,
+    *,
+    audit_fault: Any = None,
+) -> tuple[Any, AuthorityV4Adapter, RequestBroker, PendingEffectController, Any]:
+    """Wire a resume path whose pending rows share the real lease store."""
+
+    harness = _Harness(tmp_path, audit_fault=audit_fault)
+    adapter = _authority_adapter(harness)
+    broker = _authority_broker(harness, adapter, outcome)
+    approvals = _Approvals()
+    controller = PendingEffectController(
+        persistence=adapter,
+        approvals=approvals,
+        coordinator_principal=OpaqueAuthorityRef(harness.caller.principal_id),
+        coordinator_publisher_lineage="publisher.caller",
+        clock=lambda: 100.0,
+    )
+    ctx = _authority_context(harness)
+    prepared = broker.prepare(
+        InvocationFrame(
+            contract_id="host.http",
+            version_range=">=1,<2",
+            operation_id="invoke",
+            payload={"message": "hello"},
+            idempotency_key="request-fused",
+        ),
+        ctx,
+    )
+    scope = AuthorityScope(
+        capability=harness.scope.capability,
+        semantics_digest=harness.scope.semantics_digest,
+        dimensions={
+            **harness.scope.dimensions,
+            "invocation_owner_id": ("owner-1",),
+            "caller_session_id": (ctx.caller_session_id,),
+            "plan_digest": (ctx.plan_digest,),
+        },
+        quotas=dict(harness.scope.quotas),
+        exact_request_digest=prepared.request_digest,
+    )
+    pending = controller.prepare(
+        prepared=prepared,
+        context=ctx,
+        effect_scope=scope.to_dict(),
+        invocation_owner_id="owner-1",
+        presentation_owner_principal_id="authority:presenter",
+        presentation_owner_session_id="presenter-session",
+        presentation_metadata={
+            "summary": "Send notification",
+            "confirmation_phrase": "SEND",
+        },
+        expires_at=1_000.0,
+        typed_confirmation_phrase="SEND",
+    )
+    approvals.approve(pending.approval_request_id)
+    return harness, adapter, broker, controller, pending
+
+
+def _stored_lease_state(harness: Any) -> str | None:
+    """Read the only invocation-lease row for Host-only test inspection."""
+
+    with harness.store._connection() as connection:  # Host-only inspection.
+        row = connection.execute("SELECT state FROM invocation_leases").fetchone()
+    return None if row is None else str(row["state"])
+
+
+def test_resume_fuses_pending_effect_into_lease_commits_end_to_end(
+    tmp_path,
+) -> None:
+    """Real store, adapter, and broker: resume settles every durable record
+    inside the lease's own transactions."""
+
+    harness, _adapter, broker, controller, pending = _fused_resume_fixture(
+        tmp_path, ProviderOutcome({"ok": True})
+    )
+    try:
+        result = controller.resume(
+            pending.effect_id,
+            broker,
+            wall_clock=lambda: 100.0,
+            monotonic_clock=lambda: 10.0,
+        )
+    finally:
+        broker.close()
+
+    assert result.state is PendingEffectState.SUCCEEDED
+    stored = harness.store.get_host_pending_effect(pending.effect_id)
+    assert stored is not None
+    revision, payload = stored
+    # create -> approval_pending -> approved -> claimed -> dispatched
+    # -> succeeded; the last two revisions committed inside the lease's
+    # dispatch and finish transactions, not separate CAS writes.
+    assert revision == 6
+    assert payload["state"] == "succeeded"
+    assert _stored_lease_state(harness) == "committed"
+    assert harness.store.grant_usage(harness.grant.grant_id) == (0, 1)
+
+
+def test_resume_fused_unknown_outcome_settles_both_records_ambiguous(
+    tmp_path,
+) -> None:
+    """An unproven provider outcome settles lease and pending AMBIGUOUS."""
+
+    harness, _adapter, broker, controller, pending = _fused_resume_fixture(
+        tmp_path,
+        ProviderOutcome(None, disposition=EffectDisposition.UNKNOWN),
+    )
+    try:
+        result = controller.resume(
+            pending.effect_id,
+            broker,
+            wall_clock=lambda: 100.0,
+            monotonic_clock=lambda: 10.0,
+        )
+    finally:
+        broker.close()
+
+    assert result.state is PendingEffectState.AMBIGUOUS
+    stored = harness.store.get_host_pending_effect(pending.effect_id)
+    assert stored is not None
+    revision, payload = stored
+    assert revision == 6
+    assert payload["state"] == "ambiguous"
+    assert _stored_lease_state(harness) == "ambiguous"
+    assert harness.store.grant_usage(harness.grant.grant_id) == (0, 1)
+
+
+def test_resume_fused_commit_crash_converges_both_records_ambiguous(
+    tmp_path,
+) -> None:
+    """A crash inside the fused finish commit cannot split the records.
+
+    The dead transaction rolls the lease settlement back; recovery then
+    converges both durable representations to AMBIGUOUS, never COMMITTED
+    beside DISPATCHED.
+    """
+
+    fault = {"armed": False}
+
+    def audit_fault() -> None:
+        if fault["armed"]:
+            raise RuntimeError("simulated crash inside the fused commit")
+
+    harness, adapter, broker, controller, pending = _fused_resume_fixture(
+        tmp_path,
+        ProviderOutcome({"ok": True}),
+        audit_fault=audit_fault,
+    )
+    try:
+        # Arm the crash exactly at the former second-commit boundary: the
+        # fused finish transaction is where the lease terminal marker, Grant
+        # usage, audit, and pending CAS now commit together.
+        original_commit = adapter.commit_effect
+
+        def crashing_commit(
+            reservation, outcome_digest, *, pending_effect_update=None
+        ):
+            fault["armed"] = True
+            return original_commit(
+                reservation,
+                outcome_digest,
+                pending_effect_update=pending_effect_update,
+            )
+
+        adapter.commit_effect = crashing_commit  # type: ignore[method-assign]
+        result = controller.resume(
+            pending.effect_id,
+            broker,
+            wall_clock=lambda: 100.0,
+            monotonic_clock=lambda: 10.0,
+        )
+    finally:
+        fault["armed"] = False
+        broker.close()
+
+    # The fused commit died before either durable record settled; the worker
+    # could only report the still-live pre-terminal state.
+    assert result.state in {
+        PendingEffectState.CLAIMED,
+        PendingEffectState.DISPATCHED,
+    }
+    assert _stored_lease_state(harness) == "dispatched"
+    stored = harness.store.get_host_pending_effect(pending.effect_id)
+    assert stored is not None and stored[1]["state"] == "dispatched"
+
+    # Recovery converges both sides to AMBIGUOUS — no split-brain remains.
+    assert harness.kernel.recover()
+    controller.recover()
+    assert _stored_lease_state(harness) == "ambiguous"
+    assert (
+        controller.status(pending.effect_id).state is PendingEffectState.AMBIGUOUS
+    )

@@ -8,7 +8,7 @@ canonical types in ``core_runtime.authority``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal, Mapping, Protocol
+from typing import Any, Literal, Mapping, Protocol, runtime_checkable
 
 from .contracts import ResolvedOperationBinding
 from .models import OpaqueAuthorityRef, RequestContext, RuntimeEvidence
@@ -55,6 +55,41 @@ class OpaqueInvocationLease:
             raise ValueError("InvocationLease token must be non-empty and bounded")
 
 
+class PendingEffectUpdateSpec(Protocol):
+    """Structural view of one Host pending-effect CAS for a fused commit.
+
+    The authority adapter applies the update inside the same SQLite
+    transaction as the lease transition it accompanies, so the lease's
+    durable marker and the pending-effect revision can never diverge across
+    a crash.  The Host controller alone produces these values; a Broker or
+    adapter only forwards them.
+    """
+
+    effect_id: str
+    expected_revision: int
+    payload: Mapping[str, Any]
+
+
+@runtime_checkable
+class PendingEffectLeaseLink(Protocol):
+    """Host-private fused-CAS chain binding one pending effect to one lease.
+
+    The Broker asks the link for the exact pending-effect update matching
+    each lease lifecycle call it is about to make, then forwards it so the
+    two records commit atomically.  Implementations are produced only by the
+    durable pending-effect controller after a successful claim.
+    """
+
+    def dispatch_update(self) -> PendingEffectUpdateSpec:
+        """Return the CAS fused with the lease's DISPATCHED commit."""
+
+    def commit_update(self, outcome_digest: str) -> PendingEffectUpdateSpec:
+        """Return the CAS fused with the lease's COMMITTED commit."""
+
+    def failure_update(self, *, ambiguous: bool) -> PendingEffectUpdateSpec:
+        """Return the CAS fused with a FAILED/AMBIGUOUS lease commit."""
+
+
 class AuthorityPort(Protocol):
     """Adapter contract expected from ``core_runtime.authority``.
 
@@ -85,6 +120,8 @@ class AuthorityPort(Protocol):
         context: RequestContext,
         target: OpaqueAuthorityRef,
         lease: OpaqueInvocationLease,
+        *,
+        pending_effect_update: PendingEffectUpdateSpec | None = None,
     ) -> None:
         """Fail closed on epoch, revocation, domain, or lease mismatch."""
 
@@ -428,7 +465,14 @@ class InteractiveEffectPort(Protocol):
 
 
 class PendingEffectPersistencePort(Protocol):
-    """Encrypted Host-only persistence for a durable PendingEffect state machine."""
+    """Encrypted Host-only persistence for a durable PendingEffect state machine.
+
+    Stores that keep pending effects in the same SQLite database as
+    ``invocation_leases`` also expose a truthy
+    ``supports_fused_lease_pending_effect_cas`` attribute.  The controller
+    then fuses each lifecycle CAS into the matching lease transaction; any
+    other store takes the legacy separate-CAS path instead.
+    """
 
     def create_host_pending_effect(
         self,
@@ -474,6 +518,8 @@ class AuditPort(Protocol):
         self,
         reservation: OpaqueAuditReservation,
         outcome_digest: str,
+        *,
+        pending_effect_update: PendingEffectUpdateSpec | None = None,
     ) -> None:
         """Durably commit a completed effect."""
 
@@ -482,6 +528,8 @@ class AuditPort(Protocol):
         reservation: OpaqueAuditReservation,
         stable_code: str,
         ambiguous: bool,
+        *,
+        pending_effect_update: PendingEffectUpdateSpec | None = None,
     ) -> None:
         """Durably record failure or uncertainty without provider strings."""
 

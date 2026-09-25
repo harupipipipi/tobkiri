@@ -28,6 +28,7 @@ from core_runtime.authority.v4 import (
     InvocationContext,
     InvocationLease,
     LeaseState,
+    PendingEffectUpdate,
     ProviderAuthorityRecord,
     authority_digest,
     interactive_confirmation_digest,
@@ -49,8 +50,25 @@ from .ports import (
     InteractiveApprovalStatus,
     OpaqueAuditReservation,
     OpaqueInvocationLease,
+    PendingEffectUpdateSpec,
     StaticAuthorityQuery,
 )
+
+
+def _fused_pending_update(
+    spec: PendingEffectUpdateSpec | None,
+) -> PendingEffectUpdate | None:
+    """Freeze a port-level update spec into the store's CAS value type."""
+
+    if spec is None:
+        return None
+    if isinstance(spec, PendingEffectUpdate):
+        return spec
+    return PendingEffectUpdate(
+        effect_id=spec.effect_id,
+        expected_revision=spec.expected_revision,
+        payload=spec.payload,
+    )
 
 
 class PrincipalReferenceResolver(Protocol):
@@ -405,6 +423,23 @@ class AuthorityV4Adapter:
         ]
         return records
 
+    @property
+    def supports_fused_lease_pending_effect_cas(self) -> bool:
+        """Whether pending-effect CAS can join the lease transactions.
+
+        This adapter's pending-effect table lives in the same store that
+        owns ``invocation_leases``, so resume can fuse each lifecycle CAS
+        into the matching lease commit.
+        """
+
+        return bool(
+            getattr(
+                self._kernel.store,
+                "supports_fused_lease_pending_effect_cas",
+                False,
+            )
+        )
+
     def deny_interactive_approval(
         self,
         command: InteractiveApprovalDecisionCommand,
@@ -486,8 +521,15 @@ class AuthorityV4Adapter:
         context: RequestContext,
         target: OpaqueAuthorityRef,
         lease: OpaqueInvocationLease,
+        *,
+        pending_effect_update: PendingEffectUpdateSpec | None = None,
     ) -> None:
-        """Atomically consume the lease at the final Provider boundary."""
+        """Atomically consume the lease at the final Provider boundary.
+
+        ``pending_effect_update`` fuses the durable pending-effect CAS into
+        the lease dispatch transaction so the two Host records commit — or
+        roll back — together.
+        """
 
         target_principal = self._resolve_exact(target)
         token = self._decode_transport(lease)
@@ -500,6 +542,7 @@ class AuthorityV4Adapter:
             target_domain_id=context.target_domain_id,
             target_boot_epoch=context.target_boot_epoch,
             request_digest=durable.request_digest,
+            pending_effect_update=_fused_pending_update(pending_effect_update),
         )
 
     def fence_request(self, request_id: str) -> None:
@@ -574,6 +617,8 @@ class AuthorityV4Adapter:
         self,
         reservation: OpaqueAuditReservation,
         outcome_digest: str,
+        *,
+        pending_effect_update: PendingEffectUpdateSpec | None = None,
     ) -> None:
         """Durably commit the effect in the canonical audit transaction."""
 
@@ -584,6 +629,7 @@ class AuthorityV4Adapter:
             lease.lease_id,
             state=LeaseState.COMMITTED,
             outcome_digest=outcome_digest,
+            pending_effect_update=_fused_pending_update(pending_effect_update),
         )
         self._forget(lease.request_id)
 
@@ -592,6 +638,8 @@ class AuthorityV4Adapter:
         reservation: OpaqueAuditReservation,
         stable_code: str,
         ambiguous: bool,
+        *,
+        pending_effect_update: PendingEffectUpdateSpec | None = None,
     ) -> None:
         """Durably record a failed or ambiguous Provider outcome."""
 
@@ -609,6 +657,7 @@ class AuthorityV4Adapter:
             lease.lease_id,
             state=LeaseState.AMBIGUOUS if ambiguous else LeaseState.FAILED,
             outcome_digest=outcome_digest,
+            pending_effect_update=_fused_pending_update(pending_effect_update),
         )
         self._forget(lease.request_id)
 

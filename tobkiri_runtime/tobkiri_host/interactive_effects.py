@@ -20,7 +20,11 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, Callable, ContextManager, Mapping
 
-from core_runtime.authority.v4 import AuthorityScope, authority_digest
+from core_runtime.authority.v4 import (
+    AuthorityScope,
+    PendingEffectUpdate,
+    authority_digest,
+)
 from core_runtime.authority.v4_models import canonical_json
 
 from .broker import PreparedInvocation, PreparedInvocationSnapshot, RequestBroker
@@ -226,6 +230,83 @@ class _PendingEffect:
             )
         except (KeyError, TypeError, ValueError, PendingEffectError) as exc:
             raise PendingEffectError("pending effect is unavailable") from exc
+
+
+class _LeaseLinkedPendingEffect:
+    """Fused-CAS chain binding one claimed effect to its invocation lease.
+
+    Built immediately after a successful claim from the freshly loaded
+    CLAIMED record.  The Broker forwards each produced update to the
+    authority adapter, which commits it in the same SQLite transaction as
+    the matching lease transition.  Every spec encodes the exact permitted
+    edge (CLAIMED->DISPATCHED, DISPATCHED->terminal); a stale or raced
+    revision simply fails the whole transaction and the record converges
+    through the ordinary settle/recovery paths.
+    """
+
+    def __init__(
+        self,
+        *,
+        effect_id: str,
+        claimed_record: "_PendingEffect",
+        claimed_revision: int,
+        clock: Callable[[], float],
+    ) -> None:
+        self._effect_id = effect_id
+        self._claimed = claimed_record
+        self._claimed_revision = claimed_revision
+        self._clock = clock
+
+    def dispatch_update(self) -> PendingEffectUpdate:
+        """CLAIMED->DISPATCHED fused with the lease's dispatch commit."""
+
+        return PendingEffectUpdate(
+            effect_id=self._effect_id,
+            expected_revision=self._claimed_revision,
+            payload=self._claimed.with_state(
+                PendingEffectState.DISPATCHED,
+                now=self._clock(),
+            ).to_dict(),
+        )
+
+    def commit_update(self, outcome_digest: str) -> PendingEffectUpdate:
+        """DISPATCHED->SUCCEEDED fused with the lease's commit."""
+
+        return self._terminal_update(
+            PendingEffectState.SUCCEEDED,
+            outcome_digest=outcome_digest,
+        )
+
+    def failure_update(self, *, ambiguous: bool) -> PendingEffectUpdate:
+        """DISPATCHED->AMBIGUOUS fused with a failure/ambiguous commit."""
+
+        # Post-dispatch failures stay conservatively ambiguous regardless
+        # of the lease's FAILED/AMBIGUOUS projection: a provider error can
+        # never prove the external effect did not happen.
+        del ambiguous
+        return self._terminal_update(PendingEffectState.AMBIGUOUS)
+
+    def _terminal_update(
+        self,
+        state: PendingEffectState,
+        *,
+        outcome_digest: str | None = None,
+    ) -> PendingEffectUpdate:
+        """Build the post-dispatch CAS expected at the claimed+1 revision."""
+
+        dispatched = self._claimed.with_state(
+            PendingEffectState.DISPATCHED,
+            now=self._clock(),
+        )
+        return PendingEffectUpdate(
+            effect_id=self._effect_id,
+            expected_revision=self._claimed_revision + 1,
+            payload=dispatched.with_state(
+                state,
+                now=self._clock(),
+                outcome_digest=outcome_digest,
+            ).to_dict(),
+        )
 
 
 class PendingEffectController:
@@ -552,15 +633,16 @@ class PendingEffectController:
     ) -> PendingEffectStatus:
         """Claim one approved effect, dispatch it, and boundedly await it.
 
-        Owner verification, the CAS claim, durable DISPATCHED marker, and the
-        Provider invocation run on one detached worker against the operation's
-        already-durable ``execute_not_after_wall`` deadline.  The caller never
-        blocks past ``dispatch_grace_seconds`` on AuthorityStore contention,
-        Provider latency, or nested Host work.  Broker invokes
-        ``before_dispatch`` only after its final
-        authority recheck and audit dispatch marker, immediately before it
-        submits work to the provider backend; every error after that hook is
-        conservatively ambiguous and is never retried by this controller.
+        Owner verification, the CAS claim, the durable DISPATCHED marker, and
+        the Provider invocation run on one detached worker against the
+        operation's already-durable ``execute_not_after_wall`` deadline.  The
+        caller never blocks past ``dispatch_grace_seconds`` on AuthorityStore
+        contention, Provider latency, or nested Host work.  When this store
+        supports it, the worker hands the Broker a fused CAS chain so the
+        lease's DISPATCHED and terminal markers commit in the same
+        transactions as this record's revisions; every error after the
+        durable dispatch marker is conservatively ambiguous and is never
+        retried by this controller.
 
         The returned status is the latest state durably committed by the
         worker before the response deadline.  A fast Provider
@@ -590,6 +672,7 @@ class PendingEffectController:
 
         def execute() -> None:
             claimed_by_worker = False
+            fused = False
             try:
                 try:
                     if presentation_owner is not None:
@@ -606,12 +689,49 @@ class PendingEffectController:
                     claimed = self.claim(effect_id)
                     claimed_by_worker = True
                     latest[:] = [claimed]
-                    _revision, record = self._load(effect_id)
+                    revision, record = self._load(effect_id)
                     if record.state is not PendingEffectState.CLAIMED:
                         raise PendingEffectError("pending effect is unavailable")
 
-                    def mark_dispatched() -> None:
-                        latest[:] = [self.mark_dispatched(effect_id)]
+                    # When the pending-effect table shares the lease
+                    # database, the lease's durable dispatch/finish markers
+                    # carry this effect's CAS inside the same SQLite
+                    # transactions: a crash can never split the lease state
+                    # from the pending record.  Other stores keep the legacy
+                    # separate-CAS marker before the provider boundary.
+                    link: _LeaseLinkedPendingEffect | None = None
+                    fused = bool(
+                        getattr(
+                            self._persistence,
+                            "supports_fused_lease_pending_effect_cas",
+                            False,
+                        )
+                    )
+                    before_dispatch: Callable[[], None]
+                    if fused:
+                        link = _LeaseLinkedPendingEffect(
+                            effect_id=effect_id,
+                            claimed_record=record,
+                            claimed_revision=revision,
+                            clock=self._clock,
+                        )
+
+                        def note_dispatched() -> None:
+                            # The fused dispatch commit already durably
+                            # marked DISPATCHED; republish it for the
+                            # caller deadline.
+                            try:
+                                latest[:] = [self.status(effect_id)]
+                            except PendingEffectError:
+                                pass
+
+                        before_dispatch = note_dispatched
+                    else:
+
+                        def mark_dispatched() -> None:
+                            latest[:] = [self.mark_dispatched(effect_id)]
+
+                        before_dispatch = mark_dispatched
 
                     # Restore identity only from the encrypted, claimed Host
                     # record.  This scope supplies no Grant and never changes
@@ -633,7 +753,8 @@ class PendingEffectController:
                             execute_not_after_wall=record.expires_at,
                             wall_clock=wall_clock,
                             monotonic_clock=monotonic_clock,
-                            before_dispatch=mark_dispatched,
+                            before_dispatch=before_dispatch,
+                            pending_effect_link=link,
                         )
                 except Exception:
                     settled = (
@@ -643,23 +764,43 @@ class PendingEffectController:
                     )
                     if settled is not None:
                         latest[:] = [settled]
+                    elif claimed_by_worker:
+                        # A fused lease commit may have already settled the
+                        # record; report the durable state, not a bare error.
+                        try:
+                            latest[:] = [self.status(effect_id)]
+                        except PendingEffectError:
+                            pass
                     failure.append(PendingEffectError("pending effect is unavailable"))
                     return
                 if not isinstance(outcome, Mapping):
                     settled = self._settle_dispatch_failure(effect_id)
                     if settled is not None:
                         latest[:] = [settled]
+                    else:
+                        try:
+                            latest[:] = [self.status(effect_id)]
+                        except PendingEffectError:
+                            pass
                     return
-                try:
-                    latest[:] = [
-                        self.finish(
-                            effect_id,
-                            succeeded=True,
-                            outcome_digest=authority_digest(dict(outcome)),
-                        )
-                    ]
-                except PendingEffectError:
-                    pass
+                if fused:
+                    # The fused lease commit already wrote the terminal
+                    # state; surface it instead of issuing a second CAS.
+                    try:
+                        latest[:] = [self.status(effect_id)]
+                    except PendingEffectError:
+                        pass
+                else:
+                    try:
+                        latest[:] = [
+                            self.finish(
+                                effect_id,
+                                succeeded=True,
+                                outcome_digest=authority_digest(dict(outcome)),
+                            )
+                        ]
+                    except PendingEffectError:
+                        pass
             finally:
                 done.set()
 

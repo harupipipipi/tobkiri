@@ -34,7 +34,12 @@ from .v4_models import (
     interactive_confirmation_digest,
     intersect_scopes,
 )
-from .v4_store import AuditUnavailable, AuthorityStore, AuthorityStoreError
+from .v4_store import (
+    AuditUnavailable,
+    AuthorityStore,
+    AuthorityStoreError,
+    PendingEffectUpdate,
+)
 
 
 @dataclass(frozen=True)
@@ -123,10 +128,18 @@ class AuthorityKernelProtocol(Protocol):
         target_domain_id: str,
         target_boot_epoch: int,
         request_digest: str,
+        pending_effect_update: PendingEffectUpdate | None = None,
     ) -> InvocationLease:
         """Consume a Lease at the Provider effect boundary."""
 
-    def finish(self, lease_id: str, *, state: LeaseState, outcome_digest: str) -> None:
+    def finish(
+        self,
+        lease_id: str,
+        *,
+        state: LeaseState,
+        outcome_digest: str,
+        pending_effect_update: PendingEffectUpdate | None = None,
+    ) -> None:
         """Commit the authoritative effect outcome."""
 
     def fence_request(self, request_id: str) -> list[str]:
@@ -953,6 +966,7 @@ class AuthorityKernel:
         target_domain_id: str,
         target_boot_epoch: int,
         request_digest: str,
+        pending_effect_update: PendingEffectUpdate | None = None,
     ) -> InvocationLease:
         """Consume a Lease once, immediately before a Host effect begins."""
 
@@ -963,9 +977,17 @@ class AuthorityKernel:
             target_domain_id=target_domain_id,
             target_boot_epoch=target_boot_epoch,
             request_digest=request_digest,
+            pending_effect_update=pending_effect_update,
         )
 
-    def finish(self, lease_id: str, *, state: LeaseState, outcome_digest: str) -> None:
+    def finish(
+        self,
+        lease_id: str,
+        *,
+        state: LeaseState,
+        outcome_digest: str,
+        pending_effect_update: PendingEffectUpdate | None = None,
+    ) -> None:
         """Durably commit success, failure, or ambiguous external effect."""
 
         if self._emergency_stop:
@@ -974,6 +996,7 @@ class AuthorityKernel:
             lease_id,
             state=state,
             outcome_digest=outcome_digest,
+            pending_effect_update=pending_effect_update,
         )
 
     def recover(self) -> list[str]:

@@ -54,6 +54,7 @@ from .ports import (
     FinalAuthorizationQuery,
     OpaqueAuditReservation,
     OpaqueInvocationLease,
+    PendingEffectLeaseLink,
     StaticAuthorityQuery,
 )
 from tobkiri_protocol.canonical import strict_loads
@@ -436,13 +437,16 @@ class RequestBroker:
         wall_clock: Callable[[], float] = time.time,
         monotonic_clock: Callable[[], float] = time.monotonic,
         before_dispatch: Callable[[], None] | None = None,
+        pending_effect_link: PendingEffectLeaseLink | None = None,
     ) -> Mapping[str, Any]:
         """Execute one durable Host snapshot without re-running adapters.
 
         The snapshot's encrypted future store is responsible for durability;
         this Broker validates it against the currently pinned catalog and the
         original Host context before entering the same effect pipeline used by
-        an immediate invocation.
+        an immediate invocation.  When ``pending_effect_link`` is supplied,
+        each lease lifecycle commit also carries the pending-effect CAS the
+        link produces, so the lease and the durable effect settle atomically.
         """
 
         with self._lifecycle_lock:
@@ -450,6 +454,10 @@ class RequestBroker:
                 raise RuntimeError("request broker is closed")
         if not isinstance(snapshot, PreparedInvocationSnapshot):
             raise TypeError("prepared invocation snapshot is required")
+        if pending_effect_link is not None and not isinstance(
+            pending_effect_link, PendingEffectLeaseLink
+        ):
+            raise TypeError("pending effect lease link is invalid")
         prepared = self._prepared_from_snapshot(snapshot, context)
         deadline = _fresh_prepared_deadline(
             timeout_ms=prepared.timeout_ms,
@@ -473,6 +481,7 @@ class RequestBroker:
             effect_scope=effect_scope,
             monotonic_clock=monotonic_clock,
             before_dispatch=before_dispatch,
+            pending_effect_link=pending_effect_link,
         )
 
     def _execute_prepared(
@@ -485,6 +494,7 @@ class RequestBroker:
         before_dispatch: Callable[[], None] | None,
         cancellation_requested: threading.Event | None = None,
         nested_cancellation_proof: NestedCancellationProof | None = None,
+        pending_effect_link: PendingEffectLeaseLink | None = None,
     ) -> Mapping[str, Any]:
         """Run the shared static-auth through dispatch pipeline once."""
 
@@ -668,6 +678,7 @@ class RequestBroker:
                 background_requests,
                 nested_cancellation_proof,
                 acceptance_request_id,
+                pending_effect_link,
             )
         except Exception:
             if lease_issued:
@@ -861,16 +872,25 @@ class RequestBroker:
         background_requests: list[Future[object]],
         nested_cancellation_proof: NestedCancellationProof | None,
         acceptance_request_id: str | None,
+        pending_effect_link: PendingEffectLeaseLink | None = None,
     ) -> Mapping[str, Any]:
         future: Future[object] | None = None
         proof = nested_cancellation_proof
         child_id: int | None = None
         provider_entry_claimed = threading.Event()
         try:
+            recheck_kwargs: dict[str, Any] = {}
+            if pending_effect_link is not None:
+                # Fused commit: the pending-effect CAS and the lease's
+                # DISPATCHED marker land in one transaction or not at all.
+                recheck_kwargs["pending_effect_update"] = (
+                    pending_effect_link.dispatch_update()
+                )
             self._authority.recheck_effect_boundary(
                 envelope.context,
                 envelope.target_principal,
                 envelope.lease,
+                **recheck_kwargs,
             )
             # The final authority recheck may consume the remaining request
             # budget.  Prove the request is still live before the durable
@@ -1005,7 +1025,11 @@ class RequestBroker:
                 EffectDisposition.ACCEPTED,
                 EffectDisposition.UNKNOWN,
             }:
-                self._record_audit_failure(audit_reservation, ambiguous=True)
+                self._record_audit_failure(
+                    audit_reservation,
+                    ambiguous=True,
+                    pending_effect_link=pending_effect_link,
+                )
                 raise_ambiguous(
                     self._reconciliation,
                     request_id=envelope.context.request_id,
@@ -1017,9 +1041,18 @@ class RequestBroker:
             payload = dict(raw.payload or {})
             self._catalog.validate_output(binding, payload)
             if audit_reservation is not None:
+                outcome_digest = _digest(payload)
+                commit_kwargs: dict[str, Any] = {}
+                if pending_effect_link is not None:
+                    # Fused commit: lease COMMITTED, Grant use, audit, and
+                    # the pending-effect terminal CAS settle atomically.
+                    commit_kwargs["pending_effect_update"] = (
+                        pending_effect_link.commit_update(outcome_digest)
+                    )
                 self._audit.commit_effect(
                     audit_reservation,
-                    _digest(payload),
+                    outcome_digest,
+                    **commit_kwargs,
                 )
             if acceptance_request_id is not None and self._acceptance_receipts is not None:
                 self._acceptance_receipts.record_completed(acceptance_request_id)
@@ -1066,7 +1099,11 @@ class RequestBroker:
                 and provider_entry_claimed.is_set()
                 and binding.operation.effect_class is EffectClass.EXTERNAL_EFFECT
             )
-            self._record_audit_failure(audit_reservation, ambiguous=ambiguous)
+            self._record_audit_failure(
+                audit_reservation,
+                ambiguous=ambiguous,
+                pending_effect_link=pending_effect_link,
+            )
             if ambiguous:
                 raise_ambiguous(
                     self._reconciliation,
@@ -1105,7 +1142,11 @@ class RequestBroker:
                             acceptance_request_id,
                             exit_status(envelope.context.request_id),
                         )
-            self._record_audit_failure(audit_reservation, ambiguous=False)
+            self._record_audit_failure(
+                audit_reservation,
+                ambiguous=False,
+                pending_effect_link=pending_effect_link,
+            )
             raise ProviderExecutionError("provider execution failed") from exc
         finally:
             # A completed Future retains the provider exception and traceback until
@@ -1125,12 +1166,21 @@ class RequestBroker:
         reservation: OpaqueAuditReservation | None,
         *,
         ambiguous: bool,
+        pending_effect_link: PendingEffectLeaseLink | None = None,
     ) -> None:
         if reservation is not None:
+            failure_kwargs: dict[str, Any] = {}
+            if pending_effect_link is not None:
+                # Post-dispatch failures settle the pending effect
+                # conservatively ambiguous inside the same transaction.
+                failure_kwargs["pending_effect_update"] = (
+                    pending_effect_link.failure_update(ambiguous=ambiguous)
+                )
             self._audit.fail_effect(
                 reservation,
                 "ambiguous_effect" if ambiguous else "provider_failed",
                 ambiguous,
+                **failure_kwargs,
             )
 
     @staticmethod

@@ -91,8 +91,10 @@ class MinimalAuthority:
         context: RequestContext,
         target: OpaqueAuthorityRef,
         lease: OpaqueInvocationLease,
+        *,
+        pending_effect_update: object = None,
     ) -> None:
-        del context, target, lease
+        del context, target, lease, pending_effect_update
         self.events.append("authority.effect")
 
     def fence_request(self, request_id: str) -> None:
@@ -127,8 +129,14 @@ class MinimalAudit:
         del reservation
         self.events.append("audit.dispatched")
 
-    def commit_effect(self, reservation: OpaqueAuditReservation, outcome_digest: str) -> None:
-        del reservation, outcome_digest
+    def commit_effect(
+        self,
+        reservation: OpaqueAuditReservation,
+        outcome_digest: str,
+        *,
+        pending_effect_update: object = None,
+    ) -> None:
+        del reservation, outcome_digest, pending_effect_update
         self.events.append("audit.commit")
 
     def fail_effect(
@@ -136,8 +144,10 @@ class MinimalAudit:
         reservation: OpaqueAuditReservation,
         stable_code: str,
         ambiguous: bool,
+        *,
+        pending_effect_update: object = None,
     ) -> None:
-        del reservation, stable_code, ambiguous
+        del reservation, stable_code, ambiguous, pending_effect_update
         self.events.append("audit.fail")
 
 

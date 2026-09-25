@@ -206,6 +206,22 @@ class FakeAuthority:
         self.events = events
         self.fail_static = fail_static
         self.fenced: list[str] = []
+        # Optional fused-CAS target mirroring the real adapter: tests that
+        # back pending effects with a real AuthorityStore inject its
+        # compare_and_swap_host_pending_effect here so fused lease updates
+        # apply at the same call point as production.
+        self.pending_cas = None
+
+    def _apply_pending_update(self, update) -> None:
+        if update is None:
+            return
+        if self.pending_cas is None:
+            raise AssertionError("FakeAuthority cannot apply fused CAS")
+        self.pending_cas(
+            update.effect_id,
+            expected_revision=update.expected_revision,
+            payload=update.payload,
+        )
 
     def check_static_path(self, query) -> None:
         self.events.append("authority_static")
@@ -216,7 +232,15 @@ class FakeAuthority:
         self.events.append("authority_final")
         return OpaqueInvocationLease(b"opaque-request-bound-lease")
 
-    def recheck_effect_boundary(self, context, target, lease) -> None:
+    def recheck_effect_boundary(
+        self,
+        context,
+        target,
+        lease,
+        *,
+        pending_effect_update=None,
+    ) -> None:
+        self._apply_pending_update(pending_effect_update)
         self.events.append("authority_effect_recheck")
 
     def fence_request(self, request_id: str) -> None:
@@ -235,6 +259,19 @@ class FakeAudit:
         self.events = events
         self.fail_reserve = fail_reserve
         self.failures: list[tuple[str, bool]] = []
+        # Optional fused-CAS target, as on FakeAuthority.
+        self.pending_cas = None
+
+    def _apply_pending_update(self, update) -> None:
+        if update is None:
+            return
+        if self.pending_cas is None:
+            raise AssertionError("FakeAudit cannot apply fused CAS")
+        self.pending_cas(
+            update.effect_id,
+            expected_revision=update.expected_revision,
+            payload=update.payload,
+        )
 
     def reserve_effect(self, context, binding, request_digest):
         self.events.append("audit_reserved")
@@ -245,10 +282,25 @@ class FakeAudit:
     def mark_dispatched(self, reservation) -> None:
         self.events.append("audit_dispatched")
 
-    def commit_effect(self, reservation, outcome_digest) -> None:
+    def commit_effect(
+        self,
+        reservation,
+        outcome_digest,
+        *,
+        pending_effect_update=None,
+    ) -> None:
+        self._apply_pending_update(pending_effect_update)
         self.events.append("audit_committed")
 
-    def fail_effect(self, reservation, stable_code, ambiguous) -> None:
+    def fail_effect(
+        self,
+        reservation,
+        stable_code,
+        ambiguous,
+        *,
+        pending_effect_update=None,
+    ) -> None:
+        self._apply_pending_update(pending_effect_update)
         self.events.append("audit_failed")
         self.failures.append((stable_code, ambiguous))
 

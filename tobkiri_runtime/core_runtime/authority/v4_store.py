@@ -65,6 +65,22 @@ class AuditUnavailable(AuthorityStoreError):
     """Raised when an authoritative audit reservation cannot be committed."""
 
 
+@dataclass(frozen=True)
+class PendingEffectUpdate:
+    """One Host pending-effect CAS fused into a lease lifecycle transaction.
+
+    The update carries the same contract as
+    ``compare_and_swap_host_pending_effect``: the row is rewritten only when
+    its stored revision still equals ``expected_revision`` and the outcome is
+    audited — but inside the enclosing lease transaction so a crash can never
+    split the lease's terminal marker from the pending-effect state.
+    """
+
+    effect_id: str
+    expected_revision: int
+    payload: Mapping[str, Any]
+
+
 Record: TypeAlias = (
     ProviderAuthorityRecord
     | ApprovalRecord
@@ -287,6 +303,12 @@ class AuthorityStore:
             thread lock and cross-process lifecycle guard before a connection
             attempt fails closed.
     """
+
+    #: ``host_pending_effects`` lives in this same database, so a
+    #: pending-effect CAS can be committed inside a lease lifecycle
+    #: transaction atomically.  The pending-effect controller reads this
+    #: capability before it hands a fused update chain to the Broker.
+    supports_fused_lease_pending_effect_cas = True
 
     def __init__(
         self,
@@ -1557,51 +1579,85 @@ class AuthorityStore:
 
         if isinstance(expected_revision, bool) or expected_revision <= 0:
             raise AuthorityDenied("pending effect is unavailable")
-        normalized = self._validated_pending_effect_payload(effect_id, payload)
-        digest = authority_digest(normalized)
-        now = self._clock()
         try:
             with self._lock, self._connection() as connection:
                 connection.execute("BEGIN IMMEDIATE")
-                row = connection.execute(
-                    "SELECT revision FROM host_pending_effects WHERE effect_id=?",
-                    (effect_id,),
-                ).fetchone()
-                if row is None or int(row["revision"]) != expected_revision:
-                    raise AuthorityDenied("pending effect is unavailable")
-                next_revision = expected_revision + 1
-                updated = connection.execute(
-                    "UPDATE host_pending_effects SET revision=?, state=?,"
-                    " payload_digest=?, encrypted_payload=?, updated_at=?"
-                    " WHERE effect_id=? AND revision=?",
-                    (
-                        next_revision,
-                        str(normalized["state"]),
-                        digest,
-                        self._encrypt(normalized),
-                        now,
-                        effect_id,
-                        expected_revision,
-                    ),
-                )
-                if updated.rowcount != 1:
-                    raise AuthorityDenied("pending effect is unavailable")
-                self._append_audit(
+                next_revision = self._apply_pending_effect_update(
                     connection,
-                    event_id="pending-effect-update-" + secrets.token_hex(16),
-                    event_type="pending_effect",
-                    event_state=str(normalized["state"]),
-                    payload={
-                        "effect_id": effect_id,
-                        "revision": next_revision,
-                        "payload_digest": digest,
-                    },
+                    PendingEffectUpdate(
+                        effect_id=effect_id,
+                        expected_revision=expected_revision,
+                        payload=payload,
+                    ),
                 )
                 connection.commit()
         except (AuthorityDenied, AuditUnavailable):
             raise
         except sqlite3.Error as exc:
             raise AuthorityStoreError("pending effect could not be updated") from exc
+        return next_revision
+
+    def _apply_pending_effect_update(
+        self,
+        connection: _IdentityBoundConnection,
+        update: PendingEffectUpdate,
+    ) -> int:
+        """CAS one pending-effect row inside an already-open transaction.
+
+        Lease lifecycle commits call this so the pending-effect revision, the
+        lease state, the authoritative audit, and Grant usage all commit or
+        roll back as one durable unit.  A failed revision guard aborts the
+        whole transaction, which is exactly the fail-closed behavior cancel
+        and recovery races rely on.
+        """
+
+        if (
+            not isinstance(update.effect_id, str)
+            or not update.effect_id
+            or isinstance(update.expected_revision, bool)
+            or not isinstance(update.expected_revision, int)
+            or update.expected_revision <= 0
+        ):
+            raise AuthorityDenied("pending effect is unavailable")
+        normalized = self._validated_pending_effect_payload(
+            update.effect_id, update.payload
+        )
+        digest = authority_digest(normalized)
+        now = self._clock()
+        row = connection.execute(
+            "SELECT revision FROM host_pending_effects WHERE effect_id=?",
+            (update.effect_id,),
+        ).fetchone()
+        if row is None or int(row["revision"]) != update.expected_revision:
+            raise AuthorityDenied("pending effect is unavailable")
+        next_revision = update.expected_revision + 1
+        updated = connection.execute(
+            "UPDATE host_pending_effects SET revision=?, state=?,"
+            " payload_digest=?, encrypted_payload=?, updated_at=?"
+            " WHERE effect_id=? AND revision=?",
+            (
+                next_revision,
+                str(normalized["state"]),
+                digest,
+                self._encrypt(normalized),
+                now,
+                update.effect_id,
+                update.expected_revision,
+            ),
+        )
+        if updated.rowcount != 1:
+            raise AuthorityDenied("pending effect is unavailable")
+        self._append_audit(
+            connection,
+            event_id="pending-effect-update-" + secrets.token_hex(16),
+            event_type="pending_effect",
+            event_state=str(normalized["state"]),
+            payload={
+                "effect_id": update.effect_id,
+                "revision": next_revision,
+                "payload_digest": digest,
+            },
+        )
         return next_revision
 
     @_process_owned
@@ -3073,8 +3129,15 @@ class AuthorityStore:
         target_domain_id: str,
         target_boot_epoch: int,
         request_digest: str,
+        pending_effect_update: PendingEffectUpdate | None = None,
     ) -> InvocationLease:
-        """Atomically consume a Lease immediately before the Provider effect."""
+        """Atomically consume a Lease immediately before the Provider effect.
+
+        When ``pending_effect_update`` is supplied, its CAS is committed in
+        the same transaction as the lease's DISPATCHED marker and dispatch
+        audit: a crash can no longer leave the lease consumed while the
+        pending effect still reads CLAIMED.
+        """
 
         self.expire_leases()
         lease_id, expected_digest = self._decode_lease_token(token)
@@ -3156,6 +3219,11 @@ class AuthorityStore:
                         "request_digest": lease.request_digest,
                     },
                 )
+                if pending_effect_update is not None:
+                    self._apply_pending_effect_update(
+                        connection,
+                        pending_effect_update,
+                    )
                 connection.commit()
                 return lease
         except AuthorityDenied:
@@ -3239,8 +3307,15 @@ class AuthorityStore:
         *,
         state: LeaseState,
         outcome_digest: str,
+        pending_effect_update: PendingEffectUpdate | None = None,
     ) -> None:
-        """Durably finish a dispatched effect and its Grant reservation."""
+        """Durably finish a dispatched effect and its Grant reservation.
+
+        When ``pending_effect_update`` is supplied, the pending-effect CAS
+        joins the lease terminal state, Grant-use release/commit, and audit
+        append in one transaction, so a crash cannot leave the lease terminal
+        while the pending effect remains DISPATCHED.
+        """
 
         if state not in {LeaseState.COMMITTED, LeaseState.FAILED, LeaseState.AMBIGUOUS}:
             raise ValueError("invalid final Lease state")
@@ -3290,6 +3365,11 @@ class AuthorityStore:
                         "outcome_digest": outcome_digest,
                     },
                 )
+                if pending_effect_update is not None:
+                    self._apply_pending_effect_update(
+                        connection,
+                        pending_effect_update,
+                    )
                 connection.commit()
         except AuthorityDenied:
             raise

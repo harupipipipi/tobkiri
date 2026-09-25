@@ -46,6 +46,7 @@ from core_runtime.authority.v4_store import (
     AuditUnavailable,
     AuthorityStore,
     AuthorityStoreError,
+    PendingEffectUpdate,
 )
 
 
@@ -1251,3 +1252,229 @@ def test_transactional_approval_failure_leaves_no_partial_authority(
     assert harness.store.get_approval("approval-new") is None
     assert harness.store.get_provider_authority("provider-authority-new") is None
     assert harness.store.get_grant("grant-new") is None
+
+
+def _pending_effect_payload(effect_id: str, state: str) -> dict[str, object]:
+    """Return the minimal canonical pending-effect document for fused tests."""
+
+    return {"effect_id": effect_id, "state": state}
+
+
+def _fused_update(effect_id: str, revision: int, state: str) -> PendingEffectUpdate:
+    """Return the fused CAS spec a lease-linked pending effect produces."""
+
+    return PendingEffectUpdate(
+        effect_id=effect_id,
+        expected_revision=revision,
+        payload=_pending_effect_payload(effect_id, state),
+    )
+
+
+def _pending_state(store: AuthorityStore, effect_id: str) -> tuple[int, str]:
+    revision, payload = store.get_host_pending_effect(effect_id) or (0, {})
+    return revision, str(payload.get("state"))
+
+
+def test_fused_lease_dispatch_and_finish_commit_pending_effect_atomically(
+    tmp_path: Path,
+) -> None:
+    """Lease markers, audit, Grant usage, and the pending CAS share commits."""
+
+    harness = _Harness(tmp_path)
+    harness.store.create_host_pending_effect(
+        "effect-1", _pending_effect_payload("effect-1", "claimed")
+    )
+    result = harness.kernel.authorize(harness.context(), harness.scope)
+    lease = harness.kernel.dispatch(
+        result.lease_token,
+        target_domain_id=harness.target_domain.domain_id,
+        target_boot_epoch=harness.target_domain.boot_epoch,
+        request_digest=_digest("5"),
+        pending_effect_update=_fused_update("effect-1", 1, "dispatched"),
+    )
+
+    stored = harness.store.get_lease(lease.lease_id)
+    assert stored is not None and stored[1] is LeaseState.DISPATCHED
+    assert _pending_state(harness.store, "effect-1") == (2, "dispatched")
+
+    harness.kernel.finish(
+        lease.lease_id,
+        state=LeaseState.COMMITTED,
+        outcome_digest=_digest("7"),
+        pending_effect_update=_fused_update("effect-1", 2, "succeeded"),
+    )
+
+    stored = harness.store.get_lease(lease.lease_id)
+    assert stored is not None and stored[1] is LeaseState.COMMITTED
+    assert _pending_state(harness.store, "effect-1") == (3, "succeeded")
+    assert harness.store.grant_usage(harness.grant.grant_id) == (0, 1)
+
+
+def test_fused_dispatch_rolls_back_lease_and_audit_when_pending_cas_loses(
+    tmp_path: Path,
+) -> None:
+    """A lost CAS race must not leave a consumed lease or its audit behind."""
+
+    harness = _Harness(tmp_path)
+    harness.store.create_host_pending_effect(
+        "effect-1", _pending_effect_payload("effect-1", "claimed")
+    )
+    # A cancel wins the revision race before dispatch reaches the store.
+    harness.store.compare_and_swap_host_pending_effect(
+        "effect-1",
+        expected_revision=1,
+        payload=_pending_effect_payload("effect-1", "cancelled"),
+    )
+    result = harness.kernel.authorize(harness.context(), harness.scope)
+    audit_before = len(harness.store.audit_events())
+
+    with pytest.raises(AuthorityDenied):
+        harness.kernel.dispatch(
+            result.lease_token,
+            target_domain_id=harness.target_domain.domain_id,
+            target_boot_epoch=harness.target_domain.boot_epoch,
+            request_digest=_digest("5"),
+            pending_effect_update=_fused_update("effect-1", 1, "dispatched"),
+        )
+
+    _lease, state = harness.store.inspect_lease_token(result.lease_token)
+    assert state is LeaseState.ISSUED
+    assert len(harness.store.audit_events()) == audit_before
+    assert _pending_state(harness.store, "effect-1") == (2, "cancelled")
+
+
+def test_fused_dispatch_rolls_back_when_audit_fails_mid_transaction(
+    tmp_path: Path,
+) -> None:
+    """A crash at the former second commit leaves neither marker behind."""
+
+    fault = {"armed": False, "appends": 0}
+
+    def audit_fault() -> None:
+        if not fault["armed"]:
+            return
+        fault["appends"] += 1
+        if fault["appends"] == 2:
+            raise RuntimeError("simulated crash inside the fused commit")
+
+    harness = _Harness(tmp_path, audit_fault=audit_fault)
+    harness.store.create_host_pending_effect(
+        "effect-1", _pending_effect_payload("effect-1", "claimed")
+    )
+    result = harness.kernel.authorize(harness.context(), harness.scope)
+    audit_before = len(harness.store.audit_events())
+    fault["armed"] = True
+
+    with pytest.raises(AuditUnavailable):
+        harness.kernel.dispatch(
+            result.lease_token,
+            target_domain_id=harness.target_domain.domain_id,
+            target_boot_epoch=harness.target_domain.boot_epoch,
+            request_digest=_digest("5"),
+            pending_effect_update=_fused_update("effect-1", 1, "dispatched"),
+        )
+    fault["armed"] = False
+
+    # The lease's dispatched row and audit were written before the injected
+    # crash point, yet the single transaction rolled everything back.
+    _lease, state = harness.store.inspect_lease_token(result.lease_token)
+    assert state is LeaseState.ISSUED
+    assert _pending_state(harness.store, "effect-1") == (1, "claimed")
+    assert len(harness.store.audit_events()) == audit_before
+
+
+def test_fused_finish_rolls_back_lease_and_grant_when_pending_cas_loses(
+    tmp_path: Path,
+) -> None:
+    """A cancel winning the terminal CAS rolls back the lease settlement too.
+
+    Recovery then converges both surviving durable records to AMBIGUOUS.
+    """
+
+    harness = _Harness(tmp_path)
+    harness.store.create_host_pending_effect(
+        "effect-1", _pending_effect_payload("effect-1", "claimed")
+    )
+    result = harness.kernel.authorize(harness.context(), harness.scope)
+    lease = harness.kernel.dispatch(
+        result.lease_token,
+        target_domain_id=harness.target_domain.domain_id,
+        target_boot_epoch=harness.target_domain.boot_epoch,
+        request_digest=_digest("5"),
+        pending_effect_update=_fused_update("effect-1", 1, "dispatched"),
+    )
+    assert harness.store.grant_usage(harness.grant.grant_id) == (1, 0)
+
+    # A cancel wins the pending revision race after dispatch.
+    harness.store.compare_and_swap_host_pending_effect(
+        "effect-1",
+        expected_revision=2,
+        payload=_pending_effect_payload("effect-1", "ambiguous"),
+    )
+    audit_before = len(harness.store.audit_events())
+
+    with pytest.raises(AuthorityDenied):
+        harness.kernel.finish(
+            lease.lease_id,
+            state=LeaseState.COMMITTED,
+            outcome_digest=_digest("7"),
+            pending_effect_update=_fused_update("effect-1", 2, "succeeded"),
+        )
+
+    # Lease state, Grant usage, and audit all rolled back together.
+    stored = harness.store.get_lease(lease.lease_id)
+    assert stored is not None and stored[1] is LeaseState.DISPATCHED
+    assert harness.store.grant_usage(harness.grant.grant_id) == (1, 0)
+    assert len(harness.store.audit_events()) == audit_before
+
+    # Recovery converges both durable representations to AMBIGUOUS.
+    assert harness.kernel.recover() == [lease.lease_id]
+    stored = harness.store.get_lease(lease.lease_id)
+    assert stored is not None and stored[1] is LeaseState.AMBIGUOUS
+    assert harness.store.grant_usage(harness.grant.grant_id) == (0, 1)
+    assert _pending_state(harness.store, "effect-1") == (3, "ambiguous")
+
+
+def test_fused_dispatch_contention_leaves_exactly_one_winner(
+    tmp_path: Path,
+) -> None:
+    """Two fused dispatches over one pending revision cannot both commit."""
+
+    harness = _Harness(tmp_path)
+    harness.store.create_host_pending_effect(
+        "effect-1", _pending_effect_payload("effect-1", "claimed")
+    )
+    first = harness.kernel.authorize(
+        harness.context(request_id="request-1", request_digest=_digest("5a")),
+        harness.scope,
+    )
+    second = harness.kernel.authorize(
+        harness.context(request_id="request-2", request_digest=_digest("5b")),
+        harness.scope,
+    )
+
+    winner = harness.kernel.dispatch(
+        first.lease_token,
+        target_domain_id=harness.target_domain.domain_id,
+        target_boot_epoch=harness.target_domain.boot_epoch,
+        request_digest=_digest("5a"),
+        pending_effect_update=_fused_update("effect-1", 1, "dispatched"),
+    )
+    assert _pending_state(harness.store, "effect-1") == (2, "dispatched")
+
+    with pytest.raises(AuthorityDenied):
+        harness.kernel.dispatch(
+            second.lease_token,
+            target_domain_id=harness.target_domain.domain_id,
+            target_boot_epoch=harness.target_domain.boot_epoch,
+            request_digest=_digest("5b"),
+            pending_effect_update=_fused_update("effect-1", 1, "dispatched"),
+        )
+
+    # The losing transaction rolled back completely: its lease stays ISSUED
+    # and the pending record still reflects only the winner's transition.
+    _lease, loser_state = harness.store.inspect_lease_token(second.lease_token)
+    assert loser_state is LeaseState.ISSUED
+    stored = harness.store.get_lease(winner.lease_id)
+    assert stored is not None and stored[1] is LeaseState.DISPATCHED
+    assert _pending_state(harness.store, "effect-1") == (2, "dispatched")
