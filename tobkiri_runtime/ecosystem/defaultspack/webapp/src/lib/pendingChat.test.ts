@@ -12,6 +12,7 @@ import {
   savedTurnProgressState,
   savedTurnTerminalNotice,
   updateSavedTurnNotice,
+  activePendingChatOperation,
   isAssistantMessageStillRunning,
   shouldClearPendingAfterConversationRefresh,
   shouldForgetPendingAfterPollError,
