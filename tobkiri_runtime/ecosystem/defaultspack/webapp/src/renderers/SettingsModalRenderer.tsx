@@ -122,6 +122,10 @@ function MobilePairingReviewField({ sectionId, field, value, onChange }: Setting
   );
 }
 
+function settingsCategoryTestId(sectionId: string): string {
+  return `settings-category-${sectionId.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "section"}`;
+}
+
 function formatReadonlyValue(value: unknown, fallback: unknown): string {
   const resolved = value ?? fallback ?? "";
   if (typeof resolved === "boolean") return resolved ? "保存済み" : "未設定";
@@ -5056,6 +5060,9 @@ export function SettingsModalRenderer({
                             <button
                               key={section.id}
                               type="button"
+                              aria-label={`${localizedCopy("Settings category", "設定カテゴリ")}: ${section.label}`}
+                              data-settings-category={section.id}
+                              data-testid={settingsCategoryTestId(section.id)}
                               onClick={() => openSection(section.id)}
                               aria-current={activeSection?.id === section.id ? "page" : undefined}
                               className={cn(
