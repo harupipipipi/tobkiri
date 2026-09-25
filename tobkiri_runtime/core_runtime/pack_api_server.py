@@ -2477,6 +2477,133 @@ location.replace({target_literal})}})
                 {"error": "Named Profile mutation was rejected", "status_code": 400}
             )
 
+    # ------------------------------------------------------------------
+    # Runtime update management (Tobkiri runtime / defaultspack targets)
+    # ------------------------------------------------------------------
+
+    _UPDATE_SETTINGS_BODY_FIELDS = frozenset({"auto_update"})
+    _UPDATE_APPLY_BODY_FIELDS = frozenset({"target", "force"})
+
+    def _v4_check_updates(self) -> dict[str, object]:
+        """Return per-target update status from the GitHub update manager."""
+
+        from .github_update_manager import (
+            GitHubUpdateError,
+            UpdateTarget,
+            get_github_update_manager,
+        )
+
+        manager = get_github_update_manager()
+        targets: list[UpdateTarget] = list(manager.update_target_ids) or [
+            "tobkiri",
+            "defaultspack",
+        ]
+        try:
+            checks = manager.check_many(targets)
+        except GitHubUpdateError as error:
+            logger.warning("v4 updates check unavailable: %s", error)
+            fallback_updates = []
+            for target in targets:
+                try:
+                    current_version = manager.current_version(target)
+                except GitHubUpdateError:
+                    # An unregistered fallback target must degrade to a
+                    # version-less entry, not abort the whole read with 503.
+                    current_version = "0.0.0"
+                fallback_updates.append(
+                    {
+                        "target": target,
+                        "current_version": current_version,
+                        "latest_version": current_version,
+                        "update_available": False,
+                        "release_url": "",
+                        "repo": manager.repo,
+                    }
+                )
+            return {"updates": fallback_updates, "check_error": str(error)}
+        return {"updates": [check.to_dict() for check in checks]}
+
+    def _handle_v4_update_settings_mutation(
+        self,
+        path: str,
+        body: Mapping[str, object],
+    ) -> None:
+        if not self._check_auth("POST", path):
+            self._send_response(APIResponse(False, error="Unauthorized"), 401)
+            return
+        if set(body) - self._UPDATE_SETTINGS_BODY_FIELDS:
+            self._send_mapping_result(
+                {"error": "Update settings mutation shape is invalid", "status_code": 400}
+            )
+            return
+        auto_update = body.get("auto_update")
+        if not isinstance(auto_update, dict):
+            self._send_mapping_result(
+                {"error": "auto_update must be an object", "status_code": 400}
+            )
+            return
+        # Fail closed on coercible shapes: only real booleans may toggle a
+        # persisted auto-update flag (a truthy string must never enable it).
+        if any(not isinstance(value, bool) for value in auto_update.values()):
+            self._send_mapping_result(
+                {"error": "auto_update values must be booleans", "status_code": 400}
+            )
+            return
+        from .github_update_manager import get_github_update_manager
+
+        manager = get_github_update_manager()
+        unknown = set(auto_update) - set(manager.update_target_ids) - {
+            "tobkiri",
+            "rumiai",
+            "defaultspack",
+        }
+        if unknown:
+            self._send_mapping_result(
+                {
+                    "error": f"Unknown update target: {sorted(unknown)[0]}",
+                    "status_code": 400,
+                }
+            )
+            return
+        try:
+            normalized = dict(auto_update)
+            if "tobkiri" not in normalized and "rumiai" in normalized:
+                normalized["tobkiri"] = normalized["rumiai"]
+            normalized.pop("rumiai", None)
+            self._send_mapping_result(
+                manager.set_auto_update_settings(normalized)
+            )
+        except Exception:
+            logger.exception("Runtime update settings mutation failed")
+            self._send_mapping_result(
+                {"error": "Runtime update settings mutation was rejected", "status_code": 400}
+            )
+
+    def _handle_v4_apply_update(self, path: str, body: Mapping[str, object]) -> None:
+        if not self._check_auth("POST", path):
+            self._send_response(APIResponse(False, error="Unauthorized"), 401)
+            return
+        if set(body) - self._UPDATE_APPLY_BODY_FIELDS:
+            self._send_mapping_result(
+                {"error": "Update apply mutation shape is invalid", "status_code": 400}
+            )
+            return
+        target = body.get("target")
+        if not isinstance(target, str) or target not in {
+            "tobkiri",
+            "rumiai",
+            "defaultspack",
+        }:
+            self._send_mapping_result(
+                {"error": "Unknown update target", "status_code": 400}
+            )
+            return
+        from .github_update_manager import (
+            GitHubUpdateError,
+            get_github_update_manager,
+            normalize_update_target,
+        )
+
     def do_OPTIONS(self) -> None:
         """Answer local panel preflight without widening the origin set."""
 

@@ -2747,3 +2747,261 @@ def test_log_redaction_removes_bootstrap_code() -> None:
     redacted = PackAPIHandler._redact_log_value("/panel/?code=top-secret&x=1")
     assert redacted == "/panel/?code=[REDACTED]&x=1"
     assert "top-secret" not in redacted
+
+
+# ---------------------------------------------------------------------------
+# Runtime update management endpoints
+# ---------------------------------------------------------------------------
+
+
+def _update_test_descriptor() -> dict[str, object]:
+    return {
+        "schema": "io.tobkiri.update-target.v1",
+        "target": "tobkiri",
+        "source_root": "tobkiri_runtime",
+        "destination_root": ".",
+        "version_path": "pyproject.toml",
+        "version_format": "pyproject",
+        "protected_paths": ["user_data", "user_data/**"],
+        "restart_required": True,
+    }
+
+
+def _update_manager(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Install one offline update manager rooted at a temp runtime tree."""
+
+    from core_runtime.github_update_manager import GitHubUpdateManager
+    import core_runtime.github_update_manager as update_module
+
+    base = tmp_path / "runtime"
+    base.mkdir()
+    (base / "pyproject.toml").write_text(
+        '[project]\nname = "rumi-ai"\nversion = "1.0.0"\n',
+        encoding="utf-8",
+    )
+    manager = GitHubUpdateManager(
+        base_dir=base,
+        repo="example/rumiai",
+        timeout=1,
+        update_target_descriptors=[_update_test_descriptor()],
+    )
+    monkeypatch.setattr(update_module, "_global_update_manager", manager)
+    return manager
+
+
+def test_v4_update_settings_round_trip_persists_inside_user_data(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """POST persists the flag under user_data and reads back through GET."""
+
+    _update_manager(tmp_path, monkeypatch)
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified-desktop"),
+        dispatch_session=_Dispatch(),
+    )
+    server.start()
+    try:
+        status, _payload, _headers = _request(
+            server, "GET", "/api/v4/updates/settings"
+        )
+        assert status == 401
+        cookie, csrf, origin = _panel_session(server)
+        authed_get = {"Cookie": cookie, "Origin": origin}
+        authed_post = {**authed_get, "X-Rumi-CSRF": csrf}
+
+        status, payload, _ = _request(
+            server, "GET", "/api/v4/updates/settings", headers=authed_get
+        )
+        assert status == 200
+        assert payload["data"]["auto_update"] == {"tobkiri": False}
+
+        # Mutations without CSRF stay unauthorized and write nothing.
+        status, _payload, _ = _request(
+            server,
+            "POST",
+            "/api/v4/updates/settings",
+            body={"auto_update": {"tobkiri": True}},
+            headers=authed_get,
+        )
+        assert status == 401
+
+        status, payload, _ = _request(
+            server,
+            "POST",
+            "/api/v4/updates/settings",
+            body={"auto_update": {"tobkiri": True}},
+            headers=authed_post,
+        )
+        assert status == 200
+        assert payload["data"]["auto_update"]["tobkiri"] is True
+
+        status, payload, _ = _request(
+            server, "GET", "/api/v4/updates/settings", headers=authed_get
+        )
+        assert status == 200
+        assert payload["data"]["auto_update"]["tobkiri"] is True
+
+        # The flag is durable and confined to the runtime user_data root.
+        settings_file = (
+            tmp_path / "runtime" / "user_data" / "settings" / "update_preferences.json"
+        )
+        persisted = json.loads(settings_file.read_text(encoding="utf-8"))
+        assert persisted["auto_update"]["tobkiri"] is True
+    finally:
+        server.stop()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"auto_update": {"tobkiri": "true"}},
+        {"auto_update": {"tobkiri": 1}},
+        {"auto_update": "enabled"},
+        {"auto_update": {"tobkiri": True}, "extra": 1},
+        {"auto_update": {"ghost_pack": True}},
+    ],
+)
+def test_v4_update_settings_mutation_fails_closed_on_bad_input(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    body: Mapping[str, object],
+) -> None:
+    """Non-boolean, non-object, unknown-target, or widened shapes get 400."""
+
+    manager = _update_manager(tmp_path, monkeypatch)
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified-desktop"),
+        dispatch_session=_Dispatch(),
+    )
+    server.start()
+    try:
+        cookie, csrf, origin = _panel_session(server)
+        status, _payload, _ = _request(
+            server,
+            "POST",
+            "/api/v4/updates/settings",
+            body=body,
+            headers={
+                "Cookie": cookie,
+                "Origin": origin,
+                "X-Rumi-CSRF": csrf,
+            },
+        )
+        assert status == 400
+        # A rejected mutation must not persist anything.
+        assert manager.read_auto_update_settings()["auto_update"] == {
+            "tobkiri": False
+        }
+    finally:
+        server.stop()
+
+
+def test_v4_updates_check_reports_feed_failure_without_503(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed release feed degrades to per-target entries plus check_error."""
+
+    from core_runtime.github_update_manager import GitHubUpdateError
+
+    manager = _update_manager(tmp_path, monkeypatch)
+
+    def _offline_check(targets: object) -> object:
+        raise GitHubUpdateError("release feed offline")
+
+    monkeypatch.setattr(manager, "check_many", _offline_check)
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified-desktop"),
+        dispatch_session=_Dispatch(),
+    )
+    server.start()
+    try:
+        status, _payload, _headers = _request(server, "GET", "/api/v4/updates")
+        assert status == 401
+        cookie, _csrf, origin = _panel_session(server)
+        status, payload, _ = _request(
+            server,
+            "GET",
+            "/api/v4/updates",
+            headers={"Cookie": cookie, "Origin": origin},
+        )
+        assert status == 200
+        assert payload["data"]["check_error"] == "release feed offline"
+        updates = payload["data"]["updates"]
+        assert len(updates) == 1
+        assert updates[0]["target"] == "tobkiri"
+        assert updates[0]["current_version"] == "1.0.0"
+        assert updates[0]["update_available"] is False
+    finally:
+        server.stop()
+
+
+def test_v4_update_apply_is_authenticated_validated_and_reports_restart(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Apply accepts only known targets and reports the restart flag."""
+
+    from core_runtime.github_update_manager import UpdateApplyResult
+
+    manager = _update_manager(tmp_path, monkeypatch)
+    applied: list[tuple[str, bool]] = []
+
+    def _apply(target: str, *, force: bool = False) -> UpdateApplyResult:
+        applied.append((target, force))
+        return UpdateApplyResult(
+            target=target,
+            current_version="1.0.0",
+            latest_version="1.1.0",
+            release_url="https://github.example/releases/v1.1.0",
+            backup_dir="/backup",
+            applied_files=["app.py"],
+            skipped_files=["user_data/secret.txt"],
+        )
+
+    monkeypatch.setattr(manager, "apply", _apply)
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified-desktop"),
+        dispatch_session=_Dispatch(),
+    )
+    server.start()
+    try:
+        status, _payload, _headers = _request(
+            server, "POST", "/api/v4/updates/apply", body={"target": "tobkiri"}
+        )
+        assert status == 401
+        cookie, csrf, origin = _panel_session(server)
+        authed = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+
+        for body in (
+            {"target": "uncontributed"},
+            {"target": "tobkiri", "unexpected": True},
+            {"target": 7},
+        ):
+            status, _payload, _ = _request(
+                server, "POST", "/api/v4/updates/apply", body=body, headers=authed
+            )
+            assert status == 400
+        assert applied == []
+
+        status, payload, _ = _request(
+            server,
+            "POST",
+            "/api/v4/updates/apply",
+            body={"target": "rumiai", "force": True},
+            headers=authed,
+        )
+        assert status == 200
+        assert payload["data"]["target"] == "tobkiri"
+        assert payload["data"]["restart_required"] is True
+        assert applied == [("tobkiri", True)]
+    finally:
+        server.stop()
