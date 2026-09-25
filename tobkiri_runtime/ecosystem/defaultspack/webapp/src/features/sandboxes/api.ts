@@ -276,10 +276,13 @@ export const sandboxesApi = {
   },
 
   ensureRuntime(providerId?: string | null) {
+    const operationRequestId = requestId("ensure");
     return request<RuntimeOperation>(defaultspackContractRoute("api/runtime/ensure"), {
       method: "POST",
       body: JSON.stringify({
-        request_id: requestId("ensure"),
+        request_id: operationRequestId,
+        idempotency_key: operationRequestId,
+        target_revision: "ready-current",
         provider_id: providerId || undefined,
       }),
     });

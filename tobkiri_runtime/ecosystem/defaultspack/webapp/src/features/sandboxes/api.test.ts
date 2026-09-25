@@ -76,6 +76,8 @@ test("ensureRuntime uses Defaultspack local auth and CSRF headers", async () => 
   assert.equal(headers.get("X-Rumi-CSRF"), "panel-csrf-1");
   assert.equal(body.provider_id, "windows_wsl");
   assert.match(body.request_id, /^ensure-/);
+  assert.equal(body.idempotency_key, body.request_id);
+  assert.equal(body.target_revision, "ready-current");
 });
 
 test("createDesktop does not accept client-supplied owner authority", async () => {

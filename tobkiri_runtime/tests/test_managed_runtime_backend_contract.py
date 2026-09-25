@@ -33,7 +33,11 @@ from ecosystem.defaultspack.backend.sandbox.models import (
     RuntimeRequirements,
     SecretsPolicy,
 )
-from ecosystem.defaultspack.backend.sandbox.operation_store import RuntimeOperationStore
+from ecosystem.defaultspack.backend.sandbox.operation_store import (
+    RuntimeOperationConflict,
+    RuntimeOperationLeaseLost,
+    RuntimeOperationStore,
+)
 from ecosystem.defaultspack.backend.sandbox.provider_registry import ProviderRegistry
 from ecosystem.defaultspack.backend.sandbox.sandbox_manager import SandboxManager
 from ecosystem.defaultspack.backend.sandbox.testing.fake_guest_agent import FakeGuestAgent
@@ -2566,8 +2570,10 @@ def test_runtime_ensure_persists_running_progress_events(tmp_path) -> None:
         def __init__(self) -> None:
             super().__init__(provider_id="fake-runtime")
             self.running_snapshot: dict[str, object] | None = None
+            self.request_snapshot = None
 
         def ensure(self, request, progress):
+            self.request_snapshot = request
             progress.emit(
                 ProgressEvent(
                     operation_id="fake-ensure",
@@ -2599,6 +2605,15 @@ def test_runtime_ensure_persists_running_progress_events(tmp_path) -> None:
     )
     api._reset_service_for_tests(service)
     try:
+        unsupported = api.run(
+            {
+                "_handler": "runtime_ensure",
+                "provider_id": "fake-runtime",
+                "request_id": "unsupported-revision",
+                "target_revision": "fake-2",
+            },
+            {},
+        )
         ensure = api.run(
             {"_handler": "runtime_ensure", "provider_id": "fake-runtime", "request_id": "fake-ensure"},
             {},
@@ -2609,6 +2624,9 @@ def test_runtime_ensure_persists_running_progress_events(tmp_path) -> None:
     reloaded = RuntimeOperationStore(tmp_path / "runtime_operations.json")
 
     assert provider.running_snapshot is not None
+    assert unsupported["error"]["code"] == "RUNTIME_TARGET_REVISION_UNSUPPORTED"
+    assert provider.request_snapshot.operation_id == "fake-ensure"
+    assert provider.request_snapshot.target_revision == "ready-current"
     assert provider.running_snapshot["status"] == "running"
     assert provider.running_snapshot["step"] == "doctor"
     assert provider.running_snapshot["progress"] == 10
@@ -2678,8 +2696,8 @@ def test_runtime_operation_cancel_preserves_cancelled_status_after_worker_finish
         api._reset_service_for_tests(None)
 
     assert ensure["data"]["status"] == "running"
-    assert cancelled["data"]["status"] == "cancelled"
-    assert cancelled["data"]["cancelled"] is True
+    assert cancelled["data"]["status"] == "cancel_requested"
+    assert cancelled["data"]["cancelled"] is False
     assert final["data"]["status"] == "cancelled"
     assert [event["stage"] for event in final["data"]["progress_events"]] == ["packages"]
 
@@ -2752,8 +2770,8 @@ def test_runtime_operation_cancel_terminates_active_subprocess(tmp_path) -> None
         api._reset_service_for_tests(None)
 
     assert ensure["data"]["status"] == "running"
-    assert cancelled["data"]["status"] == "cancelled"
-    assert cancelled["data"]["cancelled"] is True
+    assert cancelled["data"]["status"] == "cancel_requested"
+    assert cancelled["data"]["cancelled"] is False
     assert final["data"]["status"] == "cancelled"
     assert not finished_file.exists()
     assert [event["stage"] for event in final["data"]["progress_events"]] == ["packages"]
@@ -2852,7 +2870,8 @@ def test_runtime_operations_are_single_flight_per_provider(tmp_path) -> None:
         api._reset_service_for_tests(None)
 
     assert ensure["data"]["operation_id"] == "ensure-op"
-    assert concurrent_update["data"]["operation_id"] == "ensure-op"
+    assert concurrent_update["status"] == "error"
+    assert concurrent_update["error"]["code"] == "RUNTIME_OPERATION_IDEMPOTENCY_CONFLICT"
     assert provider.update_calls == 1
     assert ensure_done["status"] == "completed"
     assert update["data"]["operation_id"] == "update-op"
@@ -2901,7 +2920,7 @@ def test_runtime_operation_store_preserves_cancelled_running_operation(tmp_path)
     assert cancelled["cancelled"] is True
     assert final["status"] == "cancelled"
     assert final["cancelled"] is True
-    assert [event["stage"] for event in final["progress_events"]] == ["packages", "ready"]
+    assert [event["stage"] for event in final["progress_events"]] == ["packages"]
 
 
 def test_runtime_operation_store_marks_nonterminal_operations_interrupted_on_restart(tmp_path) -> None:
@@ -2942,6 +2961,522 @@ def test_runtime_operation_store_marks_nonterminal_operations_interrupted_on_res
     assert reloaded.get("running-op")["error"]["code"] == "RUNTIME_OPERATION_INTERRUPTED"
     assert reloaded.get("running-op")["progress"] == 40
     assert reloaded.get("completed-op")["status"] == "completed"
+
+
+def test_runtime_operation_store_deduplicates_exact_requests_and_conflicts_on_drift(tmp_path) -> None:
+    store = RuntimeOperationStore(tmp_path / "runtime_operations.json")
+    base = {
+        "operation_id": "ensure-op",
+        "idempotency_key": "idem-1",
+        "request_digest": "digest-1",
+        "provider_id": "fake-runtime",
+        "status": "queued",
+        "updated_at": "2026-06-22T00:00:00Z",
+    }
+
+    created, reserved = store.reserve_provider_operation(base)
+    replayed, replay_reserved = RuntimeOperationStore(
+        tmp_path / "runtime_operations.json"
+    ).reserve_provider_operation(dict(base))
+
+    assert reserved is True
+    assert replay_reserved is False
+    assert replayed["operation_id"] == created["operation_id"]
+    with pytest.raises(RuntimeOperationConflict):
+        store.reserve_provider_operation({**base, "operation_id": "different-op", "request_digest": "digest-2"})
+    with pytest.raises(RuntimeOperationConflict):
+        store.reserve_provider_operation(
+            {
+                **base,
+                "operation_id": "uninstall-op",
+                "idempotency_key": "uninstall-idem",
+                "request_digest": "uninstall-digest",
+                "action": "uninstall",
+            }
+        )
+
+
+def test_runtime_operation_worker_lease_fences_stale_progress_and_projects_lkg(tmp_path) -> None:
+    store = RuntimeOperationStore(tmp_path / "runtime_operations.json")
+    store.reserve_provider_operation({
+        "operation_id": "lease-op",
+        "idempotency_key": "lease-idem",
+        "request_digest": "lease-digest",
+        "provider_id": "fake-runtime",
+        "status": "queued",
+        "step": "queued",
+        "message": "Queued",
+        "progress": 0,
+        "updated_at": "2026-06-22T00:00:00Z",
+    })
+    first, acquired = store.acquire_lease(
+        "lease-op",
+        worker_id="worker-1",
+        acquired_at="2026-06-22T00:00:01Z",
+        lease_expires_at="2026-06-22T00:00:11Z",
+    )
+    assert acquired is True
+    assert first is not None
+    first_fence = int(first["fencing_token"])
+    store.append_progress(
+        {"operation_id": "lease-op", "stage": "packages", "message": "Installing packages", "percent": 40},
+        provider_id="fake-runtime",
+        updated_at="2026-06-22T00:00:02Z",
+        worker_id="worker-1",
+        fencing_token=first_fence,
+        lease_expires_at="2026-06-22T00:00:11Z",
+    )
+
+    unavailable = store.get_projected("lease-op", now="2026-06-22T00:00:12Z")
+    second, second_acquired = store.acquire_lease(
+        "lease-op",
+        worker_id="worker-2",
+        acquired_at="2026-06-22T00:00:12Z",
+        lease_expires_at="2026-06-22T00:00:22Z",
+    )
+
+    assert unavailable is not None
+    assert unavailable["worker_availability"] == "unavailable"
+    assert unavailable["freshness"] == "last_known_good"
+    assert unavailable["progress"] == 40
+    assert second_acquired is True
+    assert second is not None
+    assert int(second["fencing_token"]) > first_fence
+    with pytest.raises(RuntimeOperationLeaseLost):
+        store.append_progress(
+            {"operation_id": "lease-op", "stage": "late", "message": "Stale worker progress", "percent": 100},
+            provider_id="fake-runtime",
+            updated_at="2026-06-22T00:00:13Z",
+            worker_id="worker-1",
+            fencing_token=first_fence,
+        )
+
+
+def test_runtime_cancellation_requires_worker_ack_and_blocks_late_completion(tmp_path) -> None:
+    store = RuntimeOperationStore(tmp_path / "runtime_operations.json")
+    store.reserve_provider_operation({
+        "operation_id": "cancel-ack-op",
+        "idempotency_key": "cancel-idem",
+        "request_digest": "cancel-digest",
+        "provider_id": "fake-runtime",
+        "status": "queued",
+        "updated_at": "2026-06-22T00:00:00Z",
+    })
+    leased, acquired = store.acquire_lease(
+        "cancel-ack-op",
+        worker_id="worker-1",
+        acquired_at="2026-06-22T00:00:01Z",
+        lease_expires_at="2026-06-22T00:00:11Z",
+    )
+    assert acquired is True
+    assert leased is not None
+    fence = int(leased["fencing_token"])
+
+    requested = store.request_cancel(
+        "cancel-ack-op",
+        updated_at="2026-06-22T00:00:02Z",
+        worker_active=True,
+    )
+    late = store.put(
+        {"operation_id": "cancel-ack-op", "status": "completed", "updated_at": "2026-06-22T00:00:03Z"},
+        worker_id="worker-1",
+        fencing_token=fence,
+    )
+    acknowledged = store.acknowledge_cancel(
+        "cancel-ack-op",
+        updated_at="2026-06-22T00:00:04Z",
+        worker_id="worker-1",
+        fencing_token=fence,
+    )
+
+    assert requested is not None
+    assert requested["status"] == "cancel_requested"
+    assert late["status"] == "cancel_requested"
+    assert acknowledged is not None
+    assert acknowledged["status"] == "cancelled"
+    assert acknowledged["cancel_acknowledged_at"] == "2026-06-22T00:00:04Z"
+
+
+def test_live_cross_process_cancel_waits_for_worker_ack_or_lease_expiry(tmp_path) -> None:
+    store = RuntimeOperationStore(tmp_path / "runtime_operations.json")
+    operation, reserved = store.reserve_provider_operation(
+        {
+            "operation_id": "op-cross-process-cancel",
+            "provider_id": "fake-runtime",
+            "idempotency_key": "cancel-once",
+            "request_digest": "digest",
+            "status": "queued",
+            "updated_at": "2026-06-22T00:00:00Z",
+        }
+    )
+    assert reserved is True
+    operation, acquired = store.acquire_lease(
+        operation["operation_id"],
+        worker_id="worker-a",
+        acquired_at="2026-06-22T00:00:00Z",
+        lease_expires_at="2026-06-22T00:01:00Z",
+    )
+    assert acquired is True
+
+    requested = RuntimeOperationStore(
+        tmp_path / "runtime_operations.json"
+    ).request_cancel(
+        operation["operation_id"],
+        updated_at="2026-06-22T00:00:01Z",
+        worker_active=True,
+    )
+
+    assert requested["status"] == "cancel_requested"
+    assert store.recoverable(now="2026-06-22T00:00:02Z") == []
+    assert [
+        item["operation_id"]
+        for item in store.recoverable(now="2026-06-22T00:01:01Z")
+    ] == [operation["operation_id"]]
+
+
+def test_heartbeat_delivers_cross_process_cancel_to_owning_worker(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from ecosystem.defaultspack.blocks.sandbox import api
+    from ecosystem.defaultspack.backend.sandbox.cancellation import (
+        CancellationRegistry,
+        CancellationToken,
+    )
+
+    monkeypatch.setattr(api, "_RUNTIME_OPERATION_LEASE_SECONDS", 0.03)
+    store = RuntimeOperationStore(tmp_path / "runtime_operations.json")
+    operation, _ = store.reserve_provider_operation(
+        {
+            "operation_id": "heartbeat-cancel-op",
+            "provider_id": "fake-runtime",
+            "idempotency_key": "heartbeat-cancel",
+            "request_digest": "digest",
+            "status": "queued",
+            "updated_at": api.timestamp(),
+        }
+    )
+    operation, acquired = store.acquire_lease(
+        operation["operation_id"],
+        worker_id="worker-a",
+        acquired_at=api.timestamp(),
+        lease_expires_at=api._future_timestamp(1),
+    )
+    assert acquired is True
+    token = CancellationToken()
+    registry = CancellationRegistry()
+    registry.register(operation["operation_id"], token)
+    service = SimpleNamespace(
+        operation_store=store,
+        operation_cancellations=registry,
+    )
+    stop = threading.Event()
+    heartbeat = threading.Thread(
+        target=api._heartbeat_runtime_worker,
+        args=(
+            service,
+            operation["operation_id"],
+            "worker-a",
+            int(operation["fencing_token"]),
+            stop,
+        ),
+    )
+    heartbeat.start()
+    RuntimeOperationStore(tmp_path / "runtime_operations.json").request_cancel(
+        operation["operation_id"],
+        updated_at=api.timestamp(),
+        worker_active=True,
+    )
+    heartbeat.join(timeout=2)
+    stop.set()
+
+    assert token.cancelled is True
+    assert not heartbeat.is_alive()
+
+
+def test_live_deadline_waits_for_worker_ack_before_terminal_outcome(tmp_path) -> None:
+    store = RuntimeOperationStore(tmp_path / "runtime_operations.json")
+    operation, _ = store.reserve_provider_operation(
+        {
+            "operation_id": "deadline-op",
+            "provider_id": "fake-runtime",
+            "idempotency_key": "deadline-once",
+            "request_digest": "digest",
+            "status": "queued",
+            "deadline_at": "2026-06-22T00:00:05Z",
+            "updated_at": "2026-06-22T00:00:00Z",
+        }
+    )
+    operation, acquired = store.acquire_lease(
+        operation["operation_id"],
+        worker_id="worker-a",
+        acquired_at="2026-06-22T00:00:00Z",
+        lease_expires_at="2026-06-22T00:01:00Z",
+    )
+    assert acquired is True
+
+    expired = store.expire_deadlines(now="2026-06-22T00:00:06Z")
+
+    assert expired[0]["status"] == "cancel_requested"
+    assert expired[0]["error"]["code"] == "RUNTIME_OPERATION_DEADLINE_EXCEEDED"
+    acknowledged = store.acknowledge_cancel(
+        operation["operation_id"],
+        updated_at="2026-06-22T00:00:07Z",
+        worker_id="worker-a",
+        fencing_token=int(operation["fencing_token"]),
+    )
+    assert acknowledged["status"] == "cancelled"
+
+
+def test_provider_execution_lock_serializes_side_effects_across_store_instances(tmp_path) -> None:
+    path = tmp_path / "runtime_operations.json"
+    first_store = RuntimeOperationStore(path)
+    second_store = RuntimeOperationStore(path)
+    first_entered = threading.Event()
+    release_first = threading.Event()
+    second_entered = threading.Event()
+
+    def hold_first() -> None:
+        with first_store.provider_execution("fake-runtime"):
+            first_entered.set()
+            release_first.wait(timeout=3)
+
+    def enter_second() -> None:
+        with second_store.provider_execution("fake-runtime"):
+            second_entered.set()
+
+    first_thread = threading.Thread(target=hold_first)
+    second_thread = threading.Thread(target=enter_second)
+    first_thread.start()
+    assert first_entered.wait(timeout=3)
+    second_thread.start()
+    assert not second_entered.wait(timeout=0.1)
+    release_first.set()
+    first_thread.join(timeout=3)
+    second_thread.join(timeout=3)
+    assert second_entered.is_set()
+
+
+def test_stale_worker_revalidates_fence_before_provider_side_effects(tmp_path) -> None:
+    from ecosystem.defaultspack.blocks.sandbox import api
+
+    store = RuntimeOperationStore(tmp_path / "runtime_operations.json")
+    operation, _ = store.reserve_provider_operation(
+        {
+            "operation_id": "stale-worker-op",
+            "provider_id": "fake-runtime",
+            "idempotency_key": "stale-worker",
+            "request_digest": "digest",
+            "action": "ensure",
+            "status": "queued",
+            "updated_at": "2026-06-22T00:00:00Z",
+        }
+    )
+    stale, acquired = store.acquire_lease(
+        operation["operation_id"],
+        worker_id="worker-a",
+        acquired_at="2026-06-22T00:00:00Z",
+        lease_expires_at="2026-06-22T00:00:01Z",
+    )
+    assert acquired is True
+    replacement, acquired = store.acquire_lease(
+        operation["operation_id"],
+        worker_id="worker-b",
+        acquired_at="2026-06-22T00:00:02Z",
+        lease_expires_at="2999-06-22T00:00:00Z",
+    )
+    assert acquired is True
+    store.put(
+        {
+            "operation_id": operation["operation_id"],
+            "status": "completed",
+            "updated_at": "2026-06-22T00:00:03Z",
+        },
+        worker_id="worker-b",
+        fencing_token=int(replacement["fencing_token"]),
+    )
+    side_effects: list[str] = []
+    service = SimpleNamespace(
+        operation_store=store,
+        operation_cancellations=api.CancellationRegistry(),
+    )
+
+    api._run_runtime_worker(
+        service,
+        stale,
+        lambda sink: side_effects.append("ran"),
+    )
+
+    assert side_effects == []
+    assert store.get(operation["operation_id"])["status"] == "completed"
+
+
+def test_runtime_operation_authority_binding_filters_reads_and_cancellation(tmp_path) -> None:
+    from ecosystem.defaultspack.blocks.sandbox import api
+
+    registry = ProviderRegistry()
+    registry.register(FakeRuntimeProvider(provider_id="fake-runtime"))
+    store = RuntimeOperationStore(tmp_path / "runtime_operations.json")
+    operation, _ = store.reserve_provider_operation(
+        {
+            "operation_id": "authority-op",
+            "provider_id": "fake-runtime",
+            "idempotency_key": "authority-idem",
+            "request_digest": "authority-digest",
+            "authority_binding": {
+                "principal_id": "principal-a",
+                "profile_id": "profile-a",
+                "workspace_id": "workspace-a",
+                "authority_request_id": "request-a",
+                "authority_grant_id": "grant-a",
+                "plan_digest": "plan-a",
+                "profile_revision": "revision-a",
+            },
+            "status": "queued",
+            "updated_at": "2026-06-22T00:00:00Z",
+        }
+    )
+    store.acquire_lease(
+        operation["operation_id"],
+        worker_id="worker-a",
+        acquired_at="2026-06-22T00:00:00Z",
+        lease_expires_at="2999-06-22T00:00:00Z",
+    )
+    store.put(
+        {
+            "operation_id": "legacy-unbound-op",
+            "provider_id": "fake-runtime",
+            "status": "completed",
+            "updated_at": "2026-06-22T00:00:01Z",
+        }
+    )
+    service = SimpleNamespace(
+        provider_registry=registry,
+        manager=SandboxManager(state_dir=tmp_path, provider_registry=registry),
+        operation_store=store,
+        frame_cache=FrameCache(min_capture_interval_seconds=0),
+        lease_manager=ControlLeaseManager(),
+    )
+    matching = {
+        "principal_id": "principal-a",
+        "profile_id": "profile-a",
+        "workspace_id": "workspace-a",
+        "plan_digest": "plan-a",
+        "profile_revision": "revision-a",
+    }
+    mismatched = {**matching, "principal_id": "principal-b"}
+    api._reset_service_for_tests(service)
+    try:
+        visible = api.run({"_handler": "runtime_operations"}, matching)
+        hidden = api.run({"_handler": "runtime_operations"}, mismatched)
+        forbidden_get = api.run(
+            {"_handler": "runtime_operation_get", "operation_id": "authority-op"},
+            mismatched,
+        )
+        forbidden_cancel = api.run(
+            {"_handler": "runtime_operation_cancel", "operation_id": "authority-op"},
+            mismatched,
+        )
+        forbidden_legacy = api.run(
+            {
+                "_handler": "runtime_operation_get",
+                "operation_id": "legacy-unbound-op",
+            },
+            matching,
+        )
+    finally:
+        api._reset_service_for_tests(None)
+
+    assert [item["operation_id"] for item in visible["data"]["operations"]] == [
+        "authority-op"
+    ]
+    assert hidden["data"]["operations"] == []
+    assert forbidden_get["error"]["code"] == "RUNTIME_OPERATION_FORBIDDEN"
+    assert forbidden_cancel["error"]["code"] == "RUNTIME_OPERATION_FORBIDDEN"
+    assert forbidden_legacy["error"]["code"] == "RUNTIME_OPERATION_FORBIDDEN"
+    assert store.get("authority-op")["status"] == "running"
+
+
+def test_runtime_authority_binding_never_persists_secret_context_values() -> None:
+    from ecosystem.defaultspack.blocks.sandbox import api
+
+    binding = api._runtime_authority_binding(
+        {
+            "principal_id": "principal-a",
+            "profile_id": "profile-a",
+            "workspace_id": "workspace-a",
+            "plan_digest": "plan-a",
+            "profile_revision": "revision-a",
+            "api_key": "sk-secret",
+            "lease_token": "lease-secret",
+            "authorization": "Bearer secret",
+        }
+    )
+
+    serialized = repr(binding)
+    assert binding["principal_id"] == "principal-a"
+    assert "sk-secret" not in serialized
+    assert "lease-secret" not in serialized
+    assert "Bearer secret" not in serialized
+
+
+def test_runtime_restart_reconciles_expired_lease_without_interrupted_failure(tmp_path) -> None:
+    from ecosystem.defaultspack.blocks.sandbox import api
+
+    registry = ProviderRegistry()
+    provider = FakeRuntimeProvider(provider_id="fake-runtime", ready=True)
+    registry.register(provider)
+    store = RuntimeOperationStore(tmp_path / "runtime_operations.json")
+    store.reserve_provider_operation({
+        "operation_id": "recover-op",
+        "idempotency_key": "recover-idem",
+        "request_digest": "recover-digest",
+        "provider_id": "fake-runtime",
+        "action": "ensure",
+        "requested_target_revision": "fake-1",
+        "request_contract": {"action": "ensure", "provider_id": "fake-runtime", "target_revision": "fake-1"},
+        "status": "running",
+        "step": "packages",
+        "message": "Installing packages",
+        "progress": 40,
+        "updated_at": "2026-06-22T00:00:00Z",
+        "deadline_at": "2999-06-22T00:00:00Z",
+        "worker_id": "old-worker",
+        "fencing_token": 1,
+        "lease_expires_at": "2026-06-22T00:00:01Z",
+        "authority_binding": {
+            "principal_id": "local-user",
+            "profile_id": "",
+            "workspace_id": "",
+            "authority_request_id": "",
+            "authority_grant_id": "",
+            "plan_digest": "",
+            "profile_revision": "",
+        },
+    })
+    service = SimpleNamespace(
+        provider_registry=registry,
+        manager=SandboxManager(state_dir=tmp_path, provider_registry=registry),
+        operation_store=store,
+        operation_worker_id="new-worker",
+        operation_cancellations=api.CancellationRegistry(),
+        operation_recovery_lock=threading.RLock(),
+        operation_recovering=set(),
+        frame_cache=FrameCache(min_capture_interval_seconds=0),
+        lease_manager=ControlLeaseManager(),
+    )
+
+    api._recover_runtime_operations(service, None)
+    deadline = time.monotonic() + 3
+    recovered = store.get("recover-op")
+    while time.monotonic() < deadline and recovered["status"] != "completed":
+        time.sleep(0.02)
+        recovered = store.get("recover-op")
+
+    assert recovered["status"] == "completed"
+    assert recovered["step"] == "reconciled_ready"
+    assert recovered["error"] is None
+    assert recovered.get("worker_id") == "new-worker"
 
 
 def test_runtime_uninstall_reconciles_manager_desktops_and_local_state(tmp_path) -> None:

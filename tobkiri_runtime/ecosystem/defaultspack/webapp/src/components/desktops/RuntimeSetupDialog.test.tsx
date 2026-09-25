@@ -29,6 +29,12 @@ test("runtime setup dialog exposes cancel only while operation is running", () =
       onCancel: () => undefined,
     }),
   );
+  const cancelRequested = renderToStaticMarkup(
+    createElement(RuntimeSetupDialog, {
+      operation: operation("cancel_requested"),
+      onCancel: () => undefined,
+    }),
+  );
   const cancelled = renderToStaticMarkup(
     createElement(RuntimeSetupDialog, {
       operation: operation("cancelled"),
@@ -37,6 +43,40 @@ test("runtime setup dialog exposes cancel only while operation is running", () =
   );
 
   assert.match(running, />Cancel</);
+  assert.match(running, /type="button"/);
+  assert.match(running, /role="status"/);
+  assert.match(running, /aria-live="polite"/);
+  assert.match(running, /role="progressbar"/);
+  assert.match(running, /aria-valuenow="40"/);
+  assert.match(cancelRequested, /disabled=""/);
+  assert.match(cancelRequested, />Cancelling</);
   assert.doesNotMatch(completed, />Cancel</);
   assert.doesNotMatch(cancelled, />Cancel</);
+});
+
+test("runtime setup dialog announces success and error outcomes accessibly", () => {
+  const completed = renderToStaticMarkup(
+    createElement(RuntimeSetupDialog, {
+      operation: {
+        ...operation("completed"),
+        message: "Runtime is ready",
+      },
+    }),
+  );
+  const failed = renderToStaticMarkup(
+    createElement(RuntimeSetupDialog, {
+      operation: {
+        ...operation("failed"),
+        message: "Runtime setup failed",
+        error: { code: "RUNTIME_FAILED", message: "Package installation failed" },
+      },
+    }),
+  );
+
+  assert.match(completed, /role="status"/);
+  assert.match(completed, /Runtime is ready/);
+  assert.match(completed, /aria-valuenow="100"/);
+  assert.match(failed, /role="alert"/);
+  assert.match(failed, /Package installation failed/);
+  assert.doesNotMatch(failed, />Cancel</);
 });

@@ -73,6 +73,11 @@ class CancellationRegistry:
         token.cancel()
         return True
 
+    def contains(self, operation_id: str) -> bool:
+        """Return whether this process owns an active operation worker."""
+        with self._lock:
+            return str(operation_id) in self._tokens
+
 
 _LOCAL = threading.local()
 
