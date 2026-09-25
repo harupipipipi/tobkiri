@@ -2,7 +2,12 @@ import { BrainCircuit, CheckCircle2, KeyRound, Save, ShieldCheck, UserRound } fr
 import { useEffect, useRef, useState } from "react";
 
 import type { AdaptiveOperatingProfile } from "../lib/adaptiveApi";
-import { fetchAdaptiveOperatingProfile, saveAdaptiveOperatingProfile } from "../lib/adaptiveApi";
+import {
+  AdaptiveApiError,
+  createAdaptiveRequestId,
+  fetchAdaptiveOperatingProfile,
+  saveAdaptiveOperatingProfile,
+} from "../lib/adaptiveApi";
 import { ErrorNotice } from "../components/ErrorNotice";
 import {
   AdaptiveEmptyState,
@@ -32,13 +37,7 @@ const autonomyOptions = [
   { value: "autonomous", label: "Autonomous inside policy" },
 ] as const;
 
-export function OperatingProfilePage({
-  initialProfile,
-  onOpenOnboarding,
-}: {
-  initialProfile?: AdaptiveOperatingProfile;
-  onOpenOnboarding?: () => void;
-}) {
+export function OperatingProfilePage({ initialProfile }: { initialProfile?: AdaptiveOperatingProfile }) {
   const { data, status, error, refresh, updateData } = useAdaptiveResource({
     demoData: demoOperatingProfile,
     initialData: initialProfile,
@@ -55,6 +54,7 @@ export function OperatingProfilePage({
   const [reloadPrompt, setReloadPrompt] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const restoredKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!data) return;
@@ -116,10 +116,7 @@ export function OperatingProfilePage({
       adaptiveDraftKey("operating-profile", data.id),
       {
         baseRevision: options.nextBaseRevision ?? baseRevision,
-        // A local edit is a new mutation. Retrying a network-uncertain save
-        // keeps its explicit request ID, but a changed draft must not reuse
-        // the old ID and receive an idempotency-conflict response.
-        requestId: options.nextRequestId === undefined ? null : options.nextRequestId,
+        requestId: options.nextRequestId === undefined ? requestId : options.nextRequestId,
         resourceId: data.resourceId,
         updatedAt: new Date().toISOString(),
         value: { summary, autonomyLevel },
@@ -139,7 +136,15 @@ export function OperatingProfilePage({
       return;
     }
     setSaveError(null);
-    setSaveStatus("Saving profile draft...");
+    const nextRequestId = requestId ?? createAdaptiveRequestId(`operating-profile-${data.id}`);
+    setRequestId(nextRequestId);
+    persistDraft(summaryDraft, autonomyDraft, {
+      nextRequestId,
+      nextState: "saving",
+      nextStatus: `Saving profile draft against revision ${baseRevision}...`,
+    });
+    setDraftState("saving");
+    setSaveStatus(`Saving profile draft against revision ${baseRevision}...`);
     try {
       const saved = await saveAdaptiveOperatingProfile({
         ...data,
@@ -157,10 +162,27 @@ export function OperatingProfilePage({
       setRequestId(null);
       setConflictRevision(null);
       clearAdaptiveDraft(adaptiveDraftKey("operating-profile", data.id));
-      setSaveStatus(`Profile draft saved locally at revision ${saved.revision}. It does not change runtime policy until an onboarding plan is applied.`);
+      setSaveStatus(`Profile draft confirmed at revision ${saved.revision}.`);
     } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      const nextState = err instanceof AdaptiveApiError && err.code === "REVISION_CONFLICT"
+        ? "conflict"
+        : err instanceof AdaptiveApiError && err.status > 0
+          ? "failed"
+          : "offline";
+      if (err instanceof AdaptiveApiError && err.code === "REVISION_CONFLICT") {
+        const latestRevision = Number(err.details.current_revision);
+        setConflictRevision(Number.isSafeInteger(latestRevision) && latestRevision >= 0
+          ? latestRevision
+          : data.revision);
+      }
+      persistDraft(summaryDraft, autonomyDraft, {
+        nextRequestId,
+        nextState,
+        nextStatus: `Draft remains unsaved. ${detail}`,
+      });
       setSaveStatus(null);
-      setSaveError(`Kept local draft. ${err instanceof Error ? err.message : String(err)}`);
+      setSaveError(`Kept local draft. ${detail}`);
     }
   };
 
@@ -202,9 +224,9 @@ export function OperatingProfilePage({
     <section className={`${adaptivePageClass} ${adaptivePanelClass}`} aria-label="Adaptive operating profile">
       <SurfaceHeader
         eyebrow="Adaptive runtime"
-        title="Operating Profile Draft"
-        description="Review an assistant profile draft. It stays local until you compile and apply an onboarding plan through the authenticated runtime flow."
-        action={<ToneBadge tone={draftState === "confirmed" && status === "live" ? "good" : draftState === "conflict" || draftState === "failed" ? "danger" : "warning"}>{draftState === "confirmed" && status === "live" ? "Draft saved" : draftState === "saving" ? "Saving draft" : draftState === "conflict" ? "Conflict" : draftState === "offline" ? "Offline draft" : draftState === "failed" ? "Save failed" : "Unsaved"}</ToneBadge>}
+        title="Operating Profile"
+        description="Review the assistant role, autonomy, approval policy, privacy posture, and pack recommendations as one reusable profile."
+        action={<ToneBadge tone={draftState === "confirmed" && status === "live" ? "good" : draftState === "conflict" || draftState === "failed" ? "danger" : "warning"}>{draftState === "confirmed" && status === "live" ? "Confirmed" : draftState === "saving" ? "Pending" : draftState === "conflict" ? "Conflict" : draftState === "offline" ? "Offline draft" : draftState === "failed" ? "Save failed" : "Unsaved"}</ToneBadge>}
       />
       <ResourceBanner status={status} error={error} onRefresh={requestReload} />
       {!data ? (
@@ -224,10 +246,8 @@ export function OperatingProfilePage({
               value={summaryDraft}
               onChange={(event) => {
                 setSummaryDraft(event.target.value);
-                setRequestId(null);
-                persistDraft(event.target.value, autonomyDraft, { nextRequestId: null });
+                persistDraft(event.target.value, autonomyDraft);
               }}
-              disabled={draftState === "saving"}
               className="mt-2 min-h-24 w-full rounded-md border border-zinc-800 bg-zinc-950/60 p-3 text-sm leading-6 text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
               aria-label="Operating profile summary"
             />
@@ -240,10 +260,8 @@ export function OperatingProfilePage({
                 onChange={(event) => {
                   const next = event.target.value as typeof autonomyDraft;
                   setAutonomyDraft(next);
-                  setRequestId(null);
-                  persistDraft(summaryDraft, next, { nextRequestId: null });
+                  persistDraft(summaryDraft, next);
                 }}
-                disabled={draftState === "saving"}
                 className="mt-2 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-2 text-sm text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
                 aria-label="Autonomy mode"
               >
@@ -264,25 +282,15 @@ export function OperatingProfilePage({
               type="button"
               className={adaptivePrimaryControlClass}
               onClick={() => void handleSave()}
-              disabled={draftState === "saving" || draftState === "conflict"}
-              aria-label="Save local operating profile draft"
+              disabled={draftState === "saving"}
+              aria-label="Save operating profile draft"
             >
               <Save size={14} aria-hidden="true" />
-              Save local draft
+              Save draft
             </button>
             <button type="button" className={adaptiveControlClass} onClick={requestReload} aria-label="Reload operating profile">
               Reload
             </button>
-            {onOpenOnboarding ? (
-              <button
-                type="button"
-                className={adaptiveControlClass}
-                onClick={onOpenOnboarding}
-                aria-label="Review and apply an onboarding plan"
-              >
-                Review and apply plan
-              </button>
-            ) : null}
           </div>
           {saveError ? (
             <ErrorNotice
@@ -293,7 +301,26 @@ export function OperatingProfilePage({
               message={saveError}
             />
           ) : null}
-          {saveStatus ? <p className="mt-2 rounded-md border border-zinc-800 bg-zinc-950/45 px-3 py-2 text-xs text-zinc-300">{saveStatus}</p> : null}
+          {reloadPrompt ? (
+            <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 p-3" role="alert">
+              <p className="text-xs text-amber-100">This profile has an unsaved local draft. Save, discard, or cancel before reloading.</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button type="button" className={adaptivePrimaryControlClass} onClick={() => void handleSave()}>Save</button>
+                <button type="button" className={adaptiveControlClass} onClick={discardAndReload}>Discard and reload</button>
+                <button type="button" className={adaptiveControlClass} onClick={() => setReloadPrompt(false)}>Cancel</button>
+              </div>
+            </div>
+          ) : null}
+          {draftState === "conflict" ? (
+            <div className="mt-3 rounded-md border border-rose-500/30 bg-rose-500/10 p-3" role="alert">
+              <p className="text-xs text-rose-100">Backend revision {conflictRevision ?? data.revision} differs from this draft base revision {baseRevision}.</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button type="button" className={adaptiveControlClass} onClick={keepDraftOnLatestRevision}>Keep draft for retry</button>
+                <button type="button" className={adaptiveControlClass} onClick={discardAndReload}>Use backend version</button>
+              </div>
+            </div>
+          ) : null}
+          {saveStatus ? <p className="mt-2 rounded-md border border-zinc-800 bg-zinc-950/45 px-3 py-2 text-xs text-zinc-300" role="status" aria-live="polite">{saveStatus}</p> : null}
         </div>
 
         <aside className={adaptiveSectionClass} aria-label="Profile guardrails">

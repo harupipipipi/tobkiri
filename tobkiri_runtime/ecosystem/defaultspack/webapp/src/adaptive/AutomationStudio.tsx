@@ -1,8 +1,17 @@
 import { FlaskConical, Play, Plus, Power, RotateCw, Workflow } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import type { AdaptiveAutomation, AdaptiveAutomationState } from "../lib/adaptiveApi";
-import { fetchAdaptiveAutomations, updateAdaptiveAutomation } from "../lib/adaptiveApi";
+import type {
+  AdaptiveAutomation,
+  AdaptiveAutomationState,
+  AdaptiveTone,
+} from "../lib/adaptiveApi";
+import {
+  AdaptiveApiError,
+  createAdaptiveRequestId,
+  fetchAdaptiveAutomations,
+  updateAdaptiveAutomation,
+} from "../lib/adaptiveApi";
 import { ErrorNotice } from "../components/ErrorNotice";
 import {
   AdaptiveEmptyState,
@@ -24,14 +33,12 @@ function AutomationItem({
   automation,
   mutation,
   onDiscard,
-  onRefresh,
   onRetry,
   onToggle,
 }: {
   automation: AdaptiveAutomation;
   mutation?: AutomationMutation;
   onDiscard: () => void;
-  onRefresh: () => void;
   onRetry: () => void;
   onToggle: () => void;
 }) {
@@ -85,11 +92,7 @@ function AutomationItem({
         <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 p-3" role="status">
           <p className="text-xs text-amber-100">The backend still reports this automation as {enabled ? "enabled" : "paused"}. {mutation.error}</p>
           <div className="mt-2 flex gap-2">
-            {mutation.status === "conflict" ? (
-              <button type="button" className={adaptiveControlClass} onClick={onRefresh}>Reload backend</button>
-            ) : (
-              <button type="button" className={adaptiveControlClass} onClick={onRetry}>Retry</button>
-            )}
+            <button type="button" className={adaptiveControlClass} onClick={onRetry}>Retry</button>
             <button type="button" className={adaptiveControlClass} onClick={onDiscard}>Discard request</button>
           </div>
         </div>
@@ -128,19 +131,22 @@ export function AutomationStudio({ initialState }: { initialState?: AdaptiveAuto
   const [mutations, setMutations] = useState<Record<string, AutomationMutation>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
-  const automations = useMemo(
-    () => (data?.automations ?? []).map((automation) => ({
-      ...automation,
-      enabled: enabledOverrides[automation.id] ?? automation.enabled,
-    })),
-    [data, enabledOverrides],
-  );
+  const automations = useMemo(() => data?.automations ?? [], [data]);
 
-  const handleToggle = async (automation: AdaptiveAutomation) => {
-    const nextEnabled = !(enabledOverrides[automation.id] ?? automation.enabled);
-    setEnabledOverrides((current) => ({ ...current, [automation.id]: nextEnabled }));
+  const submitToggle = async (automation: AdaptiveAutomation, previous?: AutomationMutation) => {
+    const intent = previous?.intent ?? !automation.enabled;
+    const requestId = previous?.requestId ?? createAdaptiveRequestId(`automation-${automation.id}`);
+    const expectedRevision = previous?.expectedRevision ?? automation.revision;
+    const pending: AutomationMutation = {
+      error: "",
+      expectedRevision,
+      intent,
+      requestId,
+      status: "pending",
+    };
+    setMutations((current) => ({ ...current, [automation.id]: pending }));
     setOperationError(null);
-    setMessage(nextEnabled ? "Automation enabled locally." : "Automation paused locally.");
+    setMessage(`${automation.name}: saving ${intent ? "enable" : "pause"} request...`);
     try {
       const updated = await updateAdaptiveAutomation(
         automation.id,
@@ -160,8 +166,18 @@ export function AutomationStudio({ initialState }: { initialState?: AdaptiveAuto
       });
       setMessage(`${automation.name}: confirmed ${updated.enabled ? "enabled" : "paused"} at revision ${updated.revision}.`);
     } catch (err) {
-      setMessage(null);
-      setOperationError(`Kept local automation state. ${err instanceof Error ? err.message : String(err)}`);
+      const detail = err instanceof Error ? err.message : String(err);
+      const nextStatus: AutomationMutation["status"] = err instanceof AdaptiveApiError && err.code === "REVISION_CONFLICT"
+        ? "conflict"
+        : err instanceof AdaptiveApiError && err.status > 0
+          ? "failed"
+          : "offline";
+      setMutations((current) => {
+        if (current[automation.id]?.requestId !== requestId) return current;
+        return { ...current, [automation.id]: { ...pending, error: detail, status: nextStatus } };
+      });
+      setOperationError(detail);
+      setMessage(`${automation.name}: request was not confirmed. The displayed enabled state was rolled back to the backend value.`);
     }
   };
 
@@ -172,12 +188,6 @@ export function AutomationStudio({ initialState }: { initialState?: AdaptiveAuto
       return next;
     });
     setMessage("Unsaved automation request discarded.");
-  };
-
-  const refreshAfterConflict = (automationId: string) => {
-    discardMutation(automationId);
-    refresh();
-    setMessage("Reloading backend-confirmed automation revisions before a new request.");
   };
 
   return (
@@ -209,7 +219,7 @@ export function AutomationStudio({ initialState }: { initialState?: AdaptiveAuto
           message={operationError}
         />
       ) : null}
-      {message ? <div className="border-t border-zinc-800/70 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-300">{message}</div> : null}
+      {message ? <div className="border-t border-zinc-800/70 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-300" role="status" aria-live="polite">{message}</div> : null}
       {!data ? (
         <AdaptiveEmptyState>Adaptive automations are unavailable until the API returns live state.</AdaptiveEmptyState>
       ) : (
@@ -228,7 +238,6 @@ export function AutomationStudio({ initialState }: { initialState?: AdaptiveAuto
                 automation={automation}
                 mutation={mutations[automation.id]}
                 onDiscard={() => discardMutation(automation.id)}
-                onRefresh={() => refreshAfterConflict(automation.id)}
                 onRetry={() => void submitToggle(automation, mutations[automation.id])}
                 onToggle={() => void submitToggle(automation)}
               />
