@@ -1347,6 +1347,13 @@ def capture_production_dispatch(
         ]
         | None
     ) = None,
+    saved_deepthink_gate: (
+        Callable[
+            [str, list[dict[str, Any]], list[dict[str, Any]]],
+            Mapping[str, Any],
+        ]
+        | None
+    ) = None,
 ) -> V4DispatchSession:
     """Capture ProductionRuntimeV4 and its RequestBroker from verified records."""
 
@@ -2268,7 +2275,11 @@ def capture_production_dispatch(
             ),
         )
 
-    saved_callbacks = SavedBridgeCallbacks(saved_dispatch, require_saved_targets)
+    saved_callbacks = SavedBridgeCallbacks(
+        saved_dispatch,
+        require_saved_targets,
+        deepthink_gate=saved_deepthink_gate,
+    )
 
     def saved_capability_bridge(
         outer_request: object,

@@ -223,6 +223,7 @@ class Kernel:
                                 inputs.authority_approval_window_open
                             ),
                             model_search=inputs.model_search,
+                            saved_deepthink_gate=inputs.saved_deepthink_gate,
                         )
                     except Exception:
                         authority_store.close()

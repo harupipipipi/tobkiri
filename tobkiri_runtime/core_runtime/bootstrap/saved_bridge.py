@@ -31,6 +31,26 @@ from ..authority.v4 import AuthorityDenied
 Target = tuple[str, str]
 
 
+class SavedDeepThinkUnavailableError(ValueError):
+    """DeepThink was requested with no Host readiness gate bound.
+
+    The gate runs local metadata only; when a profile cannot supply it the
+    request must fail before any write instead of silently degrading to a
+    plain completion.
+    """
+
+    code = "DEEPTHINK_GATE_UNAVAILABLE"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "code": self.code,
+            "message": str(self),
+            "cause": "the active profile has no saved DeepThink readiness gate",
+            "fix": "Turn DeepThink off or use a profile whose defaults expose "
+            "the saved-turn DeepThink gate",
+        }
+
+
 def project_saved_ai_result(value: Mapping[str, Any]) -> dict[str, Any]:
     """Cross the strict guest ABI with reply data, not floating-point telemetry."""
     return {
@@ -53,6 +73,9 @@ TOOL_TARGETS = (DEFINITION, TOOL)
 ALLOWED_TARGETS = (*REQUIRED_TARGETS, *TOOL_TARGETS, PROMPT_TARGET)
 Dispatch = Callable[[object, Target, Mapping[str, Any]], Mapping[str, Any]]
 RequireTargets = Callable[[object, tuple[Target, ...]], None]
+DeepThinkGate = Callable[
+    [str, list[dict[str, Any]], list[dict[str, Any]]], Mapping[str, Any]
+]
 
 
 def _request(outer: object) -> dict[str, Any]:
@@ -167,9 +190,34 @@ def _messages(
 class SavedBridgeCallbacks:
     """Bind the four guest stages to finite Host-owned dispatch callbacks."""
 
-    def __init__(self, dispatch: Dispatch, require_targets: RequireTargets) -> None:
+    def __init__(
+        self,
+        dispatch: Dispatch,
+        require_targets: RequireTargets,
+        *,
+        deepthink_gate: DeepThinkGate | None = None,
+    ) -> None:
         self._dispatch = dispatch
         self._require_targets = require_targets
+        self._deepthink_gate = deepthink_gate
+
+    def _deepthink_report(
+        self,
+        model: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Run the Host-local readiness gate; never reaches providers."""
+        if self._deepthink_gate is None:
+            raise SavedDeepThinkUnavailableError(
+                "saved bridge DeepThink readiness gate is unavailable"
+            )
+        report = self._deepthink_gate(model, messages, tools)
+        if not isinstance(report, Mapping) or not report:
+            raise SavedDeepThinkUnavailableError(
+                "saved bridge DeepThink readiness report is invalid"
+            )
+        return dict(report)
 
     def _conversation(self, outer: object, request: Mapping[str, Any]) -> Mapping[str, Any]:
         outcome = self._dispatch(
@@ -288,6 +336,8 @@ class SavedBridgeCallbacks:
         }
         if tools["tools"]:
             payload["tool_calling"] = True
+        if request.get("deepthink_enabled") is True:
+            payload["deepthink"] = True
         if len(canonical_json(payload)) > 60 * 1024:
             raise AuthorityDenied("saved bridge readiness input exceeds budget")
         outcome = self._dispatch(outer, READINESS, payload)
@@ -299,6 +349,11 @@ class SavedBridgeCallbacks:
             or value.get("model_profile_id") != model
         ):
             raise AuthorityDenied("saved bridge AI route is unavailable")
+        if request.get("deepthink_enabled") is True:
+            # Reject an unrunnable chain before the user message is written.
+            self._deepthink_report(
+                model, payload["messages"], list(tools["tools"])
+            )
 
     def __call__(
         self, outer: object, frame: Mapping[str, Any] | SavedToolFrame
@@ -387,13 +442,17 @@ class SavedBridgeCallbacks:
             expected_fields = {"messages", "model_reference", "requirements"}
             if prompt is not None:
                 expected_fields.add("system_prompt_digest")
+            deepthink = request.get("deepthink_enabled") is True
+            expected_requirements = {"request_surface": "conversation.saved"}
+            if deepthink:
+                expected_requirements["deepthink"] = True
             if (
                 set(payload) != expected_fields
                 or payload.get("system_prompt_digest") != saved_prompt_digest(prompt)
                 or payload["model_reference"] != conversation.get("model_reference")
                 or canonical_json(payload["messages"])
                 != canonical_json([*_messages(conversation, system_prompt=prompt), *trace])
-                or payload["requirements"] != {"request_surface": "conversation.saved"}
+                or payload["requirements"] != expected_requirements
             ):
                 raise AuthorityDenied("saved bridge AI input differs from the owner")
             selected = self._tools(outer, request)
@@ -412,15 +471,50 @@ class SavedBridgeCallbacks:
                         },
                     }
                 )
+            deepthink_report: dict[str, Any] | None = None
+            if deepthink:
+                # Recheck against the just-acknowledged owner before generation.
+                # The user append already committed, so a structured failure
+                # here reports the persisted user message, not a clean reject.
+                try:
+                    deepthink_report = self._deepthink_report(
+                        str(conversation.get("model_reference") or ""),
+                        [
+                            *_messages(
+                                conversation,
+                                flatten_text_blocks=True,
+                                system_prompt=prompt,
+                            ),
+                            *[
+                                {
+                                    "role": "assistant",
+                                    "content": canonical_json(item).decode(),
+                                }
+                                for item in trace
+                            ],
+                        ],
+                        list(selected["tools"]),
+                    )
+                except Exception as error:
+                    try:
+                        error.saved_user_persistence = "saved"
+                    except Exception:
+                        pass
+                    raise
             outcome = self._dispatch(outer, target, arguments)
+            additions: dict[str, Any] = {}
             if (
-                enabled
-                and outcome.get("status") == "ok"
+                outcome.get("status") == "ok"
                 and isinstance(outcome.get("value"), Mapping)
             ):
+                if enabled:
+                    additions["tool_definitions"] = selected["definitions"]
+                if deepthink_report is not None:
+                    additions["deepthink"] = deepthink_report
+            if additions:
                 return {
                     **outcome,
-                    "value": {**outcome["value"], "tool_definitions": selected["definitions"]},
+                    "value": {**outcome["value"], **additions},
                 }
             return outcome
         else:

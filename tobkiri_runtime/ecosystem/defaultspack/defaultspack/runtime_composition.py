@@ -158,6 +158,34 @@ def _model_search(
     return projected
 
 
+def _saved_deepthink_gate(
+    model: str,
+    messages: list[dict[str, object]],
+    tools: list[dict[str, object]],
+) -> Mapping[str, object]:
+    """Resolve the Defaultspack DeepThink gate at invocation time.
+
+    The gate runs entirely on local model/credential metadata — the same
+    ``_enforce_deepthink_preflight`` oracle ``prepare_chat_run`` uses — so a
+    saved turn never reaches provider generation during the check, and no
+    credential material crosses the PackVM boundary.
+    """
+
+    import importlib
+    import sys
+
+    domain_root = importlib.import_module("ecosystem.defaultspack.domain")
+    sys.modules.setdefault("domain", domain_root)
+
+    from domain.chat.deepthink_preflight import saved_deepthink_preflight_report
+
+    return saved_deepthink_preflight_report(
+        model,
+        messages=list(messages),
+        tools=list(tools),
+    )
+
+
 def defaultspack_activation_snapshot_loader(
     *,
     active: object,
@@ -251,6 +279,7 @@ def defaultspack_runtime_capture_inputs(
         chat_continuation_resume=delegates.chat_continuation_resume,
         authority_approval_window_open=delegates.authority_approval_window_open,
         model_search=delegates.model_search,
+        saved_deepthink_gate=delegates.saved_deepthink_gate,
     )
 
 
@@ -284,6 +313,10 @@ class DefaultspackDispatchDelegates:
         ],
         Mapping[str, object],
     ]
+    saved_deepthink_gate: Callable[
+        [str, list[dict[str, object]], list[dict[str, object]]],
+        Mapping[str, object],
+    ]
 
 
 def defaultspack_dispatch_delegates() -> DefaultspackDispatchDelegates:
@@ -301,6 +334,7 @@ def defaultspack_dispatch_delegates() -> DefaultspackDispatchDelegates:
         chat_continuation_resume=_resume_chat_continuation,
         authority_approval_window_open=_open_authority_approval_window,
         model_search=_model_search,
+        saved_deepthink_gate=_saved_deepthink_gate,
     )
 
 
