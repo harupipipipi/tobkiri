@@ -42,6 +42,7 @@ import {
   composerInlineMentionParts,
   isDuplicateComposerSubmission,
   isComposerImeEvent,
+  isComputerControlToolId,
   commandShowsToggleState,
   commandArgumentEntryPrefix,
   commandArgumentGuideForInput,
@@ -1759,4 +1760,45 @@ test("composer suppresses duplicate submissions without blocking a changed draft
   assert.equal(isDuplicateComposerSubmission(lock, signature, 1_450), true);
   assert.equal(isDuplicateComposerSubmission(lock, signature, 1_701), false);
   assert.equal(isDuplicateComposerSubmission(lock, composerSubmissionSignature("hello again", ["file-a", "file-b"]), 1_100), false);
+});
+test("browser-only tools do not claim computer control in the composer", () => {
+  assert.equal(isComputerControlToolId("browser_companion"), false);
+  assert.equal(isComputerControlToolId("browser_use"), true);
+  assert.equal(isComputerControlToolId("computer_use"), true);
+  assert.equal(isComputerControlToolId("browser_computer"), true);
+
+  const baseProps = {
+    input: "",
+    placeholder: "Message Tobkiri...",
+    isGenerating: false,
+    selectedProfile: {
+      profile_id: "stub/default",
+      display_name: "Stub Default",
+      provider_id: "stub",
+      model_id: "default",
+    },
+    favoriteProfiles: [],
+    belowExtensions: [],
+    thinkingLevel: null,
+    contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+    onInputChange: () => undefined,
+    onSubmit: () => undefined,
+    onModelProfileSelect: () => undefined,
+    onThinkingLevelChange: () => undefined,
+  };
+  const browserHtml = renderToStaticMarkup(createElement(ComposerRenderer, {
+    ...baseProps,
+    inlineExtensions: [{ id: "browser_companion", label: "Browser Companion", category: "tool" as const }],
+    selectedToolIds: ["browser_companion"],
+    toolSelectionTargets: [{ kind: "tool" as const, id: "browser_companion", scope: "turn" as const, intent: "include" as const }],
+  }));
+  const computerHtml = renderToStaticMarkup(createElement(ComposerRenderer, {
+    ...baseProps,
+    inlineExtensions: [{ id: "browser_computer", label: "Browser + Computer", category: "tool" as const }],
+    selectedToolIds: ["browser_computer"],
+  }));
+
+  assert.match(browserHtml, /Browser Companion/);
+  assert.doesNotMatch(browserHtml, /aria-label="PC操作"/);
+  assert.match(computerHtml, /aria-label="PC操作"/);
 });

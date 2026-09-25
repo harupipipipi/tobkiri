@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "752667cd3787159e9687982bd3cc94958ac59345f016101b19737f5a332c2ea6",
+    "digest": "fdde752994f5131cf99ca95ade491640690144ab06538ee022c351a139772c6d",
     "entries": [
       {
         "path": "index.html",
@@ -115,8 +115,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 343414,
-        "sha256": "3629e4aca98dee8003d182d260736d82310237a7ec94e2cc80a8d4df08f0fa1d"
+        "size": 343607,
+        "sha256": "ae09268cdd93f192384141704c0f6e073ef655ad32aa0b88a21a3518160d55b0"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -420,13 +420,13 @@
       },
       {
         "path": "src/components/RightSidebar.test.tsx",
-        "size": 14467,
-        "sha256": "a4e0bea0591898cf3eac23eee130715646aa0439cca440b3be01bf31e600b067"
+        "size": 15732,
+        "sha256": "6a91b8755c34a2877552edba6149d1a4097c32e9e60c90c2c2be1be3060c0700"
       },
       {
         "path": "src/components/RightSidebar.tsx",
-        "size": 138991,
-        "sha256": "b3bcb54715953f5c7399ee29878aa879dafd692c491927cd557cfc465f03d7b0"
+        "size": 140238,
+        "sha256": "90a8aa6deb5671f8f96ed78fe7ec0d25708a1ceac776572fb5e8a0b2e22c1e37"
       },
       {
         "path": "src/components/RuntimeCapabilityBanner.tsx",
@@ -1720,13 +1720,13 @@
       },
       {
         "path": "src/renderers/ComposerRenderer.test.ts",
-        "size": 62998,
-        "sha256": "da4f1b7b4dbeaa1b92842b61468b6ae222d9eac5ba3e73c9580e9b3641a42abb"
+        "size": 64744,
+        "sha256": "6724b72645152e5efecad6e0a8145d987ef0a9bbf33c3d40a26c0385bfdb6077"
       },
       {
         "path": "src/renderers/ComposerRenderer.tsx",
-        "size": 203543,
-        "sha256": "0debc7542054014f5ab24d0afc9ee83d539c4b9ae7685c4ab7c76dc7c3618978"
+        "size": 203597,
+        "sha256": "802e8fa7ad8369a5fc350b96b48c9b002c27e96a24efab69079f908a9b0762e0"
       },
       {
         "path": "src/renderers/HistoryBoardRenderer.tsx",
@@ -1931,7 +1931,7 @@
     ]
   },
   "bundle": {
-    "digest": "8ac203be7df476d2a9fd3108ee2a361d32259e40f9c1da2a8dc371ae16122f3f",
+    "digest": "f010710111fc24121e76e44d460f3c98c938d235319b8d6e33106e4b7d32412f",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1945,8 +1945,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2239224,
-        "sha256": "c475c0b32af8b76b9cc825bf7061a09e6e1f493a6f910f18d2319bbd85eb9758"
+        "size": 2239609,
+        "sha256": "032f2d5b1a523a84fa7d515043bc53e2899ef83f586d6aa5a9f995db79abfa4f"
       },
       {
         "path": "shell-rolldown-runtime.js",
