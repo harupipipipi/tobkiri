@@ -116,13 +116,53 @@ pub(crate) struct ApplicationProcessManager {
     state: Mutex<ApplicationProcessState>,
 }
 
+/// A process group this Launcher created, recorded with the kernel
+/// start-time token of its leader pid. The marker is re-verified before
+/// any group signal so a pid recycled by a foreign process cannot
+/// redirect the kill onto that process's group.
+#[derive(Clone)]
+struct OwnedProcessGroup {
+    pgid: u32,
+    leader_marker: Option<u64>,
+    /// Port the leader was serving when this group was recorded for an
+    /// adopted listener (`None` for groups led by a spawned child). An
+    /// adopted leader was never spawned by this Launcher, so a group
+    /// recorded for one needs a positive identity proof before it may be
+    /// signalled — see `stop_unix_process_group_id`.
+    adopted_port: Option<u16>,
+}
+
+impl OwnedProcessGroup {
+    fn record(pgid: u32) -> Self {
+        Self {
+            pgid,
+            leader_marker: crate::process_utils::process_start_marker(pgid),
+            adopted_port: None,
+        }
+    }
+
+    /// Record the group an adopted listener leads. `port` stays with the
+    /// entry so the pid+port identity proof from the reclaim path can be
+    /// re-checked before any group signal is sent.
+    fn record_adopted(pgid: u32, port: u16) -> Self {
+        Self {
+            adopted_port: Some(port),
+            ..Self::record(pgid)
+        }
+    }
+}
+
 #[derive(Default)]
 struct ApplicationProcessState {
     child: Option<crate::python_env::PythonChild>,
     /// Process groups created by this Launcher. Keep the ids even after the
     /// direct pack-shell child exits because its Python descendant may still
     /// be serving 8766 as an orphan.
-    owned_process_groups: Vec<u32>,
+    owned_process_groups: Vec<OwnedProcessGroup>,
+    /// Port of the adopted guardian listener, kept separately from
+    /// launch_metadata so abandoning a pending restart cannot lose the
+    /// pid+port pair needed to reap it on stop().
+    adopted_listener_port: Option<u16>,
     launch_metadata: Option<DefaultspackDesktopMetadata>,
     restart_in_progress: bool,
     stop_requested: bool,
@@ -213,10 +253,10 @@ impl ApplicationProcessManager {
                         replaced_run_id = state.active_run_id.take();
                         state.active_guardian_pid = None;
                         state.launch_metadata = None;
-                        state.owned_process_groups.retain(|pid| {
+                        state.owned_process_groups.retain(|entry| {
                             replaced_child
                                 .as_ref()
-                                .map_or(true, |child| child.id() != *pid)
+                                .map_or(true, |child| child.id() != entry.pgid)
                         });
                     }
                     Some(status) => {
@@ -317,9 +357,10 @@ impl ApplicationProcessManager {
             state.stop_requested = true;
             let adopted_listener = state.active_guardian_pid.take().and_then(|pid| {
                 state
-                    .launch_metadata
-                    .as_ref()
-                    .map(|metadata| (pid, metadata.port()))
+                    .adopted_listener_port
+                    .take()
+                    .or_else(|| state.launch_metadata.as_ref().map(|m| m.port()))
+                    .map(|port| (pid, port))
             });
             state.launch_metadata = None;
             state.next_restart_at = None;
@@ -341,20 +382,41 @@ impl ApplicationProcessManager {
         let had_live_child = child.is_some();
         let child_pid = child.as_ref().map(crate::python_env::PythonChild::id);
 
+        // The adopted-listener reap must run even when the group stop fails,
+        // so the group result is accumulated and propagated afterwards. On
+        // Unix it runs through the pid+port-verified path BEFORE the
+        // process-group pass: the check re-proves port ownership immediately
+        // before each signal, so a recycled pid can never redirect a group
+        // signal onto a foreign process. The group pass then only meets the
+        // adopted entry through its stricter identity fence when reaping
+        // leaderless orphans.
         #[cfg(unix)]
-        stop_owned_unix_process_groups(child, owned_process_groups)?;
+        let group_stop_result = {
+            if let Some((pid, port)) = adopted_listener {
+                if Some(pid) != child_pid {
+                    if let Err(error) = stop_adopted_defaultspack_listener(pid, port) {
+                        warn!("Failed to stop adopted Defaultspack listener {pid}: {error:#}");
+                    }
+                }
+            }
+            stop_owned_unix_process_groups(child, owned_process_groups)
+        };
 
         #[cfg(not(unix))]
-        {
+        let group_stop_result = {
             let _ = owned_process_groups;
-            if let Some(mut child) = child {
-                info!("Stopping managed Defaultspack (pid {})", child.id());
-                stop_child(&mut child)?;
+            match child {
+                Some(mut child) => {
+                    info!("Stopping managed Defaultspack (pid {})", child.id());
+                    stop_child(&mut child)
+                }
+                None => Ok(()),
             }
-        }
+        };
 
         // A guardian adopted outside the managed child is only covered by the
         // owned groups when it happens to lead one; reap it by pid otherwise.
+        #[cfg(not(unix))]
         if let Some((pid, port)) = adopted_listener {
             if Some(pid) != child_pid {
                 if let Err(error) = stop_adopted_defaultspack_listener(pid, port) {
@@ -362,6 +424,8 @@ impl ApplicationProcessManager {
                 }
             }
         }
+
+        group_stop_result?;
 
         if !had_live_child {
             info!("No live managed Defaultspack child remained during stop");
@@ -450,13 +514,57 @@ impl ApplicationProcessManager {
         };
         match port_gate {
             PendingRestartPort::AdoptedListener(pid) => {
-                info!(
-                    "Defaultspack restart deferred: adopted listener pid {pid} still owns the port"
-                );
-                let mut state = self.lock_state()?;
-                state.restart_in_progress = false;
-                state.next_restart_at =
-                    Some(Instant::now() + DEFAULTSPACK_ADOPTED_LISTENER_RECHECK_INTERVAL);
+                let retire_port = {
+                    let mut state = self.lock_state()?;
+                    state.restart_in_progress = false;
+                    if state.stop_requested || state.child.is_some() {
+                        return Ok(());
+                    }
+                    if state.active_guardian_pid == Some(pid) && state.active_run_id.is_some() {
+                        // A registered adopted listener is a supervised
+                        // endpoint, not an obstacle: a respawn against it can
+                        // only fail with EADDRINUSE, so the monitor keeps
+                        // deferring until it exits on its own.
+                        info!(
+                            "Defaultspack restart deferred: adopted listener pid {pid} still owns the port"
+                        );
+                        state.next_restart_at =
+                            Some(Instant::now() + DEFAULTSPACK_ADOPTED_LISTENER_RECHECK_INTERVAL);
+                        return Ok(());
+                    }
+                    // The wrapper that owned this guardian run exited and the
+                    // exit path took the registration with it, so the
+                    // surviving adopted listener is an unguarded orphan that
+                    // would defer every respawn forever. Retire it through
+                    // the pid+port-verified path so the restart proceeds
+                    // under full supervision.
+                    state
+                        .adopted_listener_port
+                        .or_else(|| state.launch_metadata.as_ref().map(|m| m.port()))
+                };
+                let Some(port) = retire_port else {
+                    return Ok(());
+                };
+                match stop_adopted_defaultspack_listener(pid, port) {
+                    Ok(()) => {
+                        info!(
+                            "Retired unguarded adopted Defaultspack listener {pid}; restart can proceed"
+                        );
+                        let mut state = self.lock_state()?;
+                        if state.active_guardian_pid == Some(pid) {
+                            state.active_guardian_pid = None;
+                            state.adopted_listener_port = None;
+                        }
+                        state.next_restart_at = Some(Instant::now());
+                    }
+                    Err(error) => {
+                        let delay = self.record_spawn_failure()?;
+                        warn!(
+                            "Failed to retire unguarded adopted Defaultspack listener {pid}; retry is scheduled after {} ms: {error:#}",
+                            delay.as_millis()
+                        );
+                    }
+                }
                 return Ok(());
             }
             PendingRestartPort::Occupied { pid, port } => {
@@ -633,8 +741,14 @@ impl ApplicationProcessManager {
                 // Host-contract state onto a superseded child.
                 true
             } else {
-                if !state.owned_process_groups.contains(&pid) {
-                    state.owned_process_groups.push(pid);
+                if !state
+                    .owned_process_groups
+                    .iter()
+                    .any(|entry| entry.pgid == pid)
+                {
+                    state
+                        .owned_process_groups
+                        .push(OwnedProcessGroup::record(pid));
                 }
                 if let Err(error) = self.debug_approval.register_guardian(
                     run_id.clone(),
@@ -734,10 +848,21 @@ impl ApplicationProcessManager {
         let mut state = self.lock_state()?;
         state.active_run_id = Some(run_id);
         state.active_guardian_pid = Some(process_id);
-        if !state.owned_process_groups.contains(&process_id) {
+        state.adopted_listener_port = Some(metadata.port());
+        if !state
+            .owned_process_groups
+            .iter()
+            .any(|entry| entry.pgid == process_id)
+        {
             // A listener adopted outside the managed child may still lead its
-            // own process group; recording it lets stop() reap that group.
-            state.owned_process_groups.push(process_id);
+            // own process group; recording it with its verified port lets
+            // stop() reap that group without trusting a recycled pid.
+            state
+                .owned_process_groups
+                .push(OwnedProcessGroup::record_adopted(
+                    process_id,
+                    metadata.port(),
+                ));
         }
         state.launch_metadata = Some(metadata.clone());
         state.stop_requested = false;
@@ -793,19 +918,29 @@ impl ApplicationProcessManager {
     /// The port check runs outside the state lock and is only reached when a
     /// restart is actually due, so it cannot slow the common monitor path.
     fn pending_restart_port_gate(&self) -> Result<PendingRestartPort> {
-        let (guardian_pid, port) = {
+        let (guardian_pid, metadata) = {
             let state = self.lock_state()?;
             if state.child.is_some() {
                 return Ok(PendingRestartPort::Free);
             }
-            let Some(metadata) = state.launch_metadata.as_ref() else {
+            let Some(metadata) = state.launch_metadata.clone() else {
                 return Ok(PendingRestartPort::Free);
             };
-            (state.active_guardian_pid, metadata.port())
+            (state.active_guardian_pid, metadata)
         };
+        let port = metadata.port();
         match crate::kernel_manager::detect_port_listener(port)? {
             None => Ok(PendingRestartPort::Free),
-            Some(listener) if Some(listener.pid) == guardian_pid => {
+            // The recorded guardian pid may have been recycled by a foreign
+            // squatter; only a listener that still identifies as the
+            // Defaultspack defers the restart — anything else churns through
+            // the bounded occupied-port path instead of deferring forever.
+            Some(listener)
+                if Some(listener.pid) == guardian_pid
+                    && crate::dock_registration::identify_defaultspack_listener(
+                        &listener, &metadata,
+                    ) =>
+            {
                 Ok(PendingRestartPort::AdoptedListener(listener.pid))
             }
             Some(listener) => Ok(PendingRestartPort::Occupied {
@@ -835,15 +970,15 @@ impl ApplicationProcessManager {
 #[cfg(unix)]
 fn stop_owned_unix_process_groups(
     mut child: Option<crate::python_env::PythonChild>,
-    owned_process_groups: Vec<u32>,
+    owned_process_groups: Vec<OwnedProcessGroup>,
 ) -> Result<()> {
     let child_group = child.as_ref().map(crate::python_env::PythonChild::id);
     let mut groups = owned_process_groups
         .into_iter()
-        .filter(|process_group| Some(*process_group) != child_group)
+        .filter(|entry| Some(entry.pgid) != child_group)
         .collect::<Vec<_>>();
-    groups.sort_unstable();
-    groups.dedup();
+    groups.sort_unstable_by_key(|entry| entry.pgid);
+    groups.dedup_by_key(|entry| entry.pgid);
 
     // A wrapper can exit while its process group remains alive, and multiple
     // previously-owned groups can therefore be retained for shutdown. Their
@@ -880,6 +1015,29 @@ fn stop_adopted_defaultspack_listener(pid: u32, port: u16) -> Result<()> {
         }
         _ => Ok(()),
     }
+}
+
+/// Whether `port` is still served by a listener running under `pid` — the
+/// pid+port identity proof shared with the reclaim path. An inspection
+/// failure counts as unverified rather than as ours.
+#[cfg(unix)]
+fn adopted_listener_owns_port(pid: u32, port: u16) -> bool {
+    crate::kernel_manager::detect_port_listener(port)
+        .ok()
+        .flatten()
+        .is_some_and(|listener| listener.pid == pid)
+}
+
+/// Whether `pid` is verifiably dead. EPERM counts as alive: a process that
+/// cannot be probed cannot be proven gone, so its group must never receive
+/// our signal on this evidence alone.
+#[cfg(unix)]
+fn unix_process_verifiably_dead(pid: u32) -> bool {
+    if pid == 0 || pid > i32::MAX as u32 {
+        return false;
+    }
+    (unsafe { libc::kill(pid as i32, 0) }) != 0
+        && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
 }
 
 fn managed_defaultspack_run_id() -> String {
@@ -1063,9 +1221,49 @@ pub(crate) fn stop_unix_process_group(
 }
 
 #[cfg(unix)]
-fn stop_unix_process_group_id(process_group: u32) -> Result<()> {
+fn stop_unix_process_group_id(group: OwnedProcessGroup) -> Result<()> {
+    let process_group = group.pgid;
     if !process_group_exists(process_group) {
         return Ok(());
+    }
+
+    // Fence pid reuse: a recorded leader that still lives under its pid must
+    // be the same kernel process — a recycled pid heading a foreign group
+    // must never receive our signals. A leader that is verifiably gone
+    // leaves a leaderless group that can only hold our orphans, and on
+    // platforms without start markers the recorded value is None.
+    let leader_verified = match group.leader_marker {
+        Some(recorded) => match crate::process_utils::process_start_marker(process_group) {
+            Some(current) if current != recorded => {
+                warn!(
+                    "Skipping owned process group {process_group}: its pid was recycled by an unrelated process"
+                );
+                return Ok(());
+            }
+            Some(_) => true,
+            None => false,
+        },
+        None => false,
+    };
+
+    // A group recorded for an adopted listener needs a positive identity
+    // proof before it may be signalled: its leader was never spawned by
+    // this Launcher, so when the start marker cannot verify it, the
+    // pid+port proof from the reclaim path or a verifiably dead leader —
+    // whose group can then only hold our orphans — must attest it
+    // instead. Signalling an unverifiable group could hit a foreign
+    // process that recycled the pid, so it is left alone.
+    if !leader_verified {
+        if let Some(port) = group.adopted_port {
+            let still_ours = adopted_listener_owns_port(process_group, port)
+                || unix_process_verifiably_dead(process_group);
+            if !still_ours {
+                warn!(
+                    "Skipping adopted Defaultspack process group {process_group}: its leader could not be re-verified"
+                );
+                return Ok(());
+            }
+        }
     }
 
     let _ = send_process_group_signal(process_group, "-TERM");
@@ -1593,7 +1791,9 @@ mod tests {
         let child = command.spawn().unwrap();
         {
             let mut state = manager.lock_state().unwrap();
-            state.owned_process_groups.push(child.id());
+            state
+                .owned_process_groups
+                .push(OwnedProcessGroup::record(child.id()));
             state.child = Some(crate::python_env::PythonChild::development(child));
             state.restart_in_progress = true;
         }
@@ -1672,7 +1872,9 @@ mod tests {
         let process_group = child.id();
         {
             let mut state = manager.lock_state().unwrap();
-            state.owned_process_groups.push(process_group);
+            state
+                .owned_process_groups
+                .push(OwnedProcessGroup::record(process_group));
             state.child = Some(crate::python_env::PythonChild::development(child));
         }
         assert!((0..40).any(|_| {
@@ -1726,7 +1928,10 @@ mod tests {
         let group_b = child_b.id();
         {
             let mut state = manager.lock_state().unwrap();
-            state.owned_process_groups.extend([group_a, group_b]);
+            state.owned_process_groups.extend([
+                OwnedProcessGroup::record(group_a),
+                OwnedProcessGroup::record(group_b),
+            ]);
             state.child = Some(crate::python_env::PythonChild::development(child_a));
         }
         assert!((0..40).any(|_| {
@@ -1788,7 +1993,9 @@ mod tests {
             .expect("shell did not record its orphaned Defaultspack descendant pid");
         {
             let mut state = manager.lock_state().unwrap();
-            state.owned_process_groups.push(process_group);
+            state
+                .owned_process_groups
+                .push(OwnedProcessGroup::record(process_group));
         }
 
         manager.stop().unwrap();
