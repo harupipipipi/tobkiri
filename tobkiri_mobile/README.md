@@ -163,6 +163,28 @@ normal pairing tests.
 
 TestFlight and App Store builds are **coming soon**. The **Settings → アプリ**
 panel in the defaultspack control panel reflects this state.
+In the app, set the server URL to `http://<pc-lan-ip>:8765` and paste the token.
+Keep the PC firewall limited to your private network. Do not expose this port
+directly to the public internet.
+When using the Tauri desktop Viewer, closing the Viewer window sends it to the
+background and keeps the Kernel API available for remote clients. Use the tray
+menu's `Quit` item when you want to stop the Kernel and exit Rumi completely.
+Android debug/profile builds allow cleartext HTTP for trusted-LAN development.
+Android release builds do not globally allow cleartext traffic; use HTTPS or an
+explicit release network policy if distributing a LAN-only build.
+## API Coverage
+| Purpose | Method | Path |
+| --- | --- | --- |
+| Health check | `GET` | `/health` |
+| PC conversation summaries | `GET` | `/api/mobile/v1/conversations` |
+| Module list | `GET` | `/api/defaultspack/modules` |
+| Module detail | `GET` | `/api/defaultspack/modules/{id}` |
+| Enable module | `POST` | `/api/defaultspack/modules/{id}/enable` |
+| Disable module | `POST` | `/api/defaultspack/modules/{id}/disable` |
+| Reload module | `POST` | `/api/defaultspack/modules/{id}/reload` |
+| Roll back module | `POST` | `/api/defaultspack/modules/{id}/rollback` |
+| Migration status | `GET` | `/api/defaultspack/migration/status` |
+| Pack requests | `GET` | `/api/defaultspack/pack-requests` |
 
 ## PC conversation drawer
 
