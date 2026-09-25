@@ -436,7 +436,8 @@ class RumiProcessRunner:
                         "Infer the user's background, skill level, likely domain knowledge, preferred detail level, emotional state, interests, habits, "
                         "and what kind of answer would feel immediately useful. Predict user-information hypotheses such as AI好き, 未来予測好き, "
                         "benchmark説, testing説, student説, practitioner説, or playful prompt説 when plausible. Attach rough probabilities to every assumption, "
-                        "including rare but meaningful 1% hypotheses, and adapt the answer strategy without asking the user."
+                        "including rare but meaningful 1% hypotheses, and adapt the answer strategy without asking the user. "
+                        + rumi_process.RUMI_USER_BACKGROUND_CONSTRAINT
                     ),
                     True,
                 ),

@@ -420,6 +420,7 @@ _ALIAS_MODULES = (
     ("tobkiri_runtime.core_runtime.pack_function_runtime", "core_runtime.pack_function_runtime"),
     ("tobkiri_runtime.core_runtime.pack_importer", "core_runtime.pack_importer"),
     ("tobkiri_runtime.core_runtime.pack_applier", "core_runtime.pack_applier"),
+    ("tobkiri_runtime.core_runtime.external_pack_catalog_v4", "core_runtime.external_pack_catalog_v4"),
     ("tobkiri_runtime.core_runtime.kernel_handlers_runtime", "core_runtime.kernel_handlers_runtime"),
     ("tobkiri_runtime.core_runtime.flow_loader", "core_runtime.flow_loader"),
     ("tobkiri_runtime.core_runtime.flow_modifier", "core_runtime.flow_modifier"),

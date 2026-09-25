@@ -22,6 +22,12 @@ RUMI_DEEPTHINK_WARNING = "DeepThink is enabled. This task may take several hours
 RUMI_DEEPTHINK_WARNING_JA = "DeepThinkが有効です。タスクには数時間かかる可能性があります。"
 RUMI_DEEPTHINK_SOURCE = "harupipipipi/thinker"
 RUMI_DEEPTHINK_MAX_SECTIONS = 3
+RUMI_USER_BACKGROUND_CONSTRAINT = (
+    "Do not infer or record sensitive personal attributes (for example health, "
+    "religion, political beliefs, ethnicity, sexual orientation, precise "
+    "location, or finances) or unverifiable private facts; keep every user "
+    "hypothesis task-relevant and evidence-backed."
+)
 RUMI_QUARANTINE_MESSAGE = (
     "Rumi quarantined this draft before delivery because the review chain could not verify a marked final response."
 )
@@ -383,6 +389,7 @@ def build_deepthink_planner_messages(
         [
             "Plan for a strong answer. Maximize useful assumptions, possible user intentions, hidden requirements, and risk predictions from the user's input.",
             "Infer the user's background, skill level, tolerance for detail, emotional state, interests, likely motivation, and what answer depth would feel useful.",
+            RUMI_USER_BACKGROUND_CONSTRAINT,
             "Generate broad hypothesis space, including playful intent, benchmark/testing intent, hobby interest, and fringe low-probability readings when they are plausible.",
             "When you make assumptions, attach rough probabilities such as 65%, 20%, 5%, or 1%.",
             "Use probabilities as flexible hypothesis labels, not as a reason to narrow the answer or discard low-probability but high-impact readings.",

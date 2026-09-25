@@ -400,8 +400,8 @@ class AIClient:
 
         return defaultspack_frontend_settings_path(None)
 
-    def _api_routes(self):
-        data = self._settings_data()
+    def _api_routes(self, *, settings_owner: SettingsOwnerPort | None = None):
+        data = self._settings_data(settings_owner=settings_owner)
         if not data:
             return {}
         models = data.get("models") if isinstance(data.get("models"), dict) else {}
@@ -474,8 +474,8 @@ class AIClient:
                 routes.append({"model": model_ref, "routes": route_refs})
         return routes
 
-    def _routes_for_model(self, model):
-        routes = self._api_routes()
+    def _routes_for_model(self, model, *, settings_owner: SettingsOwnerPort | None = None):
+        routes = self._api_routes(settings_owner=settings_owner)
         if model in routes:
             return routes[model]
         if isinstance(model, str) and "/" in model:
@@ -1096,8 +1096,8 @@ class AIClient:
         if last_error is not None:
             raise last_error
 
-    def _composite_models(self):
-        data = self._settings_data()
+    def _composite_models(self, *, settings_owner: SettingsOwnerPort | None = None):
+        data = self._settings_data(settings_owner=settings_owner)
         models = data.get("models") if isinstance(data.get("models"), dict) else {}
         raw = self._jsonish(models.get("composite_models"), [])
         if isinstance(raw, dict):
@@ -1120,10 +1120,10 @@ class AIClient:
                 composites[composite_id] = item
         return composites
 
-    def _composite_for_model(self, model):
+    def _composite_for_model(self, model, *, settings_owner: SettingsOwnerPort | None = None):
         if not isinstance(model, str):
             return None
-        composites = self._composite_models()
+        composites = self._composite_models(settings_owner=settings_owner)
         if model in composites:
             return composites[model]
         if "/" in model:
@@ -1131,14 +1131,11 @@ class AIClient:
             return composites.get(tail)
         return None
 
-    def _model_pack_for_model(self, model):
+    def _model_pack_for_model(self, model, *, settings_owner: SettingsOwnerPort | None = None):
         if not isinstance(model, str):
             return None
-        store = ModelPackStore(
-            self._settings_data().get("models")
-            if isinstance(self._settings_data().get("models"), dict)
-            else {}
-        )
+        models = self._settings_data(settings_owner=settings_owner).get("models")
+        store = ModelPackStore(models if isinstance(models, dict) else {})
         return store.get(model)
 
     def _complete_model_pack(self, model_pack, messages, tools=None, params=None, *, settings_owner: SettingsOwnerPort | None = None):
@@ -1198,12 +1195,20 @@ class AIClient:
             response["metadata"] = response_metadata
         return response
 
-    def _complete_composite(self, composite, messages, tools=None, params=None):
-        mode = str(composite.get("mode") or composite.get("type") or "fallback_chain")
+    @staticmethod
+    def _composite_member_list(composite):
+        """Normalize a composite's member list (``members``/``models``/``chain``)."""
         members = composite.get("members", composite.get("models", composite.get("chain", [])))
         if isinstance(members, str):
             members = [part.strip() for part in members.split(",") if part.strip()]
-        if not isinstance(members, list) or not members:
+        if not isinstance(members, list):
+            return []
+        return members
+
+    def _complete_composite(self, composite, messages, tools=None, params=None):
+        mode = str(composite.get("mode") or composite.get("type") or "fallback_chain")
+        members = self._composite_member_list(composite)
+        if not members:
             raise RuntimeError("composite model has no members")
         if mode == "ensemble":
             return self._complete_ensemble(composite, members, messages, tools, params)
@@ -1577,14 +1582,18 @@ class AIClient:
         index = min(max(0, int(default_index or 0)), len(members) - 1)
         return members[index]
 
-    def _resolve_rumi_member_model(self, model, params=None):
+    def _resolve_rumi_member_model(self, model, params=None, *, model_inventory=None):
         model_id = str(model or "").strip()
         if model_id != rumi_process.RUMI_BASE_MODEL:
             return model
         if isinstance(params, dict) and params.get("rumi_require_intended_base_model"):
             return model
+        # ``model_inventory`` lets local-only callers (e.g. the DeepThink
+        # preflight) substitute the declarative catalog for ``list_models``,
+        # which may query live provider inventories.
+        inventory = self.list_models() if model_inventory is None else model_inventory
         available_models: list[str] = []
-        for profile in self.list_models():
+        for profile in inventory:
             if not isinstance(profile, dict):
                 continue
             for key in ("id", "profile_id", "qualified_model_id", "model_ref"):
