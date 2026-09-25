@@ -3,7 +3,7 @@
     "core_runtime/workflow_v4/__init__.py": "sha256:87fa6f81160b8d623cd0e1a8c9d306377ff66689b59e3cf1da44b75227176eef",
     "core_runtime/workflow_v4/engine.py": "sha256:0cdc57c4f01f25b766c3ae73e477b02936600b3430cf9317a207ae6a999269e5",
     "core_runtime/workflow_v4/graph_compiler.py": "sha256:2a241170da7570c1ae10e11f39a611ab634be783f5d094e2205db5456127b733",
-    "core_runtime/workflow_v4/integration.py": "sha256:ed2959affeccbc68ef92e2ea4a1bb7f93f9a2c8cdbdd593c75f2a4bc5783f831",
+    "core_runtime/workflow_v4/integration.py": "sha256:5210d0a0fd9fb62c177016bcbca50633bc015eb01ebb8726c3c1526ccf09a842",
     "core_runtime/workflow_v4/models.py": "sha256:b0ea417c3507761d8f3b024534b7e67d183807c9978ef7676437bfd8d43dbbb6",
     "core_runtime/workflow_v4/protocols.py": "sha256:1c775cd87cbe80f5090204d639a7ece2c2a557d6cad2c975b91d7947fe254219",
     "core_runtime/workflow_v4/provider.py": "sha256:a3cab8434b68e04e30e0c56835a565f4759ac146c6807c7404dce69cbaffa967",

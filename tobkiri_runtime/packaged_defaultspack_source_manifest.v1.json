@@ -1134,8 +1134,8 @@
     {
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
-      "size": 26526,
-      "sha256": "dc4e5af102b325d06db2491dd37a4787b78f5dfa062c7acdb84f137bc3356344",
+      "size": 57698,
+      "sha256": "7891af9b5e340c8b4173009429bfddbe37ec7d7dd7bc203effdb9c66641b8b61",
       "executable": false
     },
     {
@@ -1156,7 +1156,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
       "size": 49250,
-      "sha256": "df0e20308fb828ee9f3579129f9fec26da59c2816a63e372675b53268aa266e7",
+      "sha256": "59cd3933f27528e42cc0702ea730ce550760335455995ea7bb33e11c6cc65f11",
       "executable": false
     },
     {
@@ -1170,7 +1170,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
       "size": 65116,
-      "sha256": "32bbc82c5404f8724801ea322aaad3c97163ed8c33c5d16051b97e00d71c35bb",
+      "sha256": "2ba496f8917855761ed6319c19d46ab41cb1830a816af229260b39b916df76f1",
       "executable": false
     },
     {
@@ -3171,15 +3171,15 @@
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_workflow_pack.executables.v4.json",
       "type": "regular-file",
-      "size": 35263,
-      "sha256": "ec925091a8737b66f06d231ce01a8585dd4a133d114244c7ae91c768fba8d3c8",
+      "size": 35374,
+      "sha256": "a1baa2584e8564cd8e1e18affebb82415f5f6d1d96244fca848788f4c60f22ca",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_workflow_pack.pack.v4.json",
       "type": "regular-file",
-      "size": 15904,
-      "sha256": "370236a53119467c10340c4fca45a805842d07198dabc4c9618ec0a027af1349",
+      "size": 12565,
+      "sha256": "8b8bf46cfedf203f6cd7fc8c5dd47862afd7eb94026b1ef8e2ef2965b8e136c5",
       "executable": false
     },
     {
