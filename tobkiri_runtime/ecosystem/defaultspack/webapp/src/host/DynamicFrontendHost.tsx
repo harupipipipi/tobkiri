@@ -24,6 +24,15 @@ import {
 } from "./ConversationV4View";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { ApplicationBuiltinView } from "./ApplicationBuiltinView";
+import {
+  FRONTEND_COMPONENT_API_VERSION,
+  FrontendComponentRegistry,
+  UNSUPPORTED_COMPONENT_ID,
+  parseFrontendComponentBinding,
+  registerVerifiedPackComponents,
+  type FrontendComponentBinding,
+  type FrontendComponentProps,
+} from "./frontendComponentRegistry";
 
 export { frontendActionErrorMessage } from "./ConversationV4View";
 
@@ -171,6 +180,7 @@ function ContributionView({
   item: VerifiedFrontendContribution;
   catalog: FrontendCatalog;
   capabilities: FrontendCapabilityInvoker;
+  componentRegistry: FrontendComponentRegistry;
 }) {
   const boundCapabilities = useMemo(
     () => bindFrontendCapabilityClient(catalog, item, capabilities),
@@ -194,6 +204,7 @@ function ContributionView({
         item={item}
         catalogHash={catalog.catalog_hash}
         capabilities={boundCapabilities}
+        componentRegistry={componentRegistry}
       />
     );
   }
@@ -519,7 +530,7 @@ function VerifiedBuiltinModule({
   }), [item, module.export, module.path]);
   return (
     <Suspense fallback={<HostStatus title={`Loading ${item.label}`} />}>
-      <Loaded />
+      <Loaded {...props} />
     </Suspense>
   );
 }
