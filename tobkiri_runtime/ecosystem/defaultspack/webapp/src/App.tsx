@@ -6667,7 +6667,7 @@ export function ChatApp() {
     try {
       if (submittedAttachments.length || submittedSkillIds.length
         || submittedDroppedWidgets.some((widget) => widget.type !== "tool" || widget.widgetKind !== "tool_toggle") || isCodingWorkspaceSubmit
-        || groupIdForSubmit || rumiDataPathForSubmit || deepthinkEnabled
+        || groupIdForSubmit || rumiDataPathForSubmit
         || (activeProfile?.supports_thinking && selectedThinkingLevel)
         || Object.keys(templateAiInputParams).length || Object.keys(effectiveStructuredComposerValues).length
         || Object.keys(templatePolicyReferencePayload).length || composerInputMetadata?.id
@@ -6747,8 +6747,17 @@ export function ChatApp() {
         conversation_revision: conversation.conversation_revision!,
         content: userText,
         tool_selection: savedToolSelection,
+        deepthink_enabled: deepthinkEnabled ? true : undefined,
       });
       if (result.turn.status !== "completed" || !result.turn.result_reference) {
+        const structured = result.turn.error;
+        if (result.turn.status === "failed" && structured && typeof structured === "object") {
+          const parts = [structured.message, structured.cause, structured.fix]
+            .filter((item): item is string => typeof item === "string" && Boolean(item.trim()));
+          if (parts.length) {
+            throw new Error(`${parts.join(" — ")} 自動再送はしません。`);
+          }
+        }
         throw new Error("送信結果の照合が必要です。自動再送はしません。");
       }
       const snapshot = await api.getConversation(conversation.id);
@@ -6756,7 +6765,14 @@ export function ChatApp() {
       if (snapshotState === "pending") {
         throw new Error("保存された応答をまだ確認できません。再送せず照合を待ちます。");
       }
-      setError(savedTurnSnapshotNotice(snapshotState));
+      const readinessReport = result.turn.result_reference.deepthink;
+      const readinessNotice = readinessReport?.member_models?.length
+        ? `DeepThink review chain: ${readinessReport.member_models.join(" → ")}`
+        : "";
+      const snapshotNotice = savedTurnSnapshotNotice(snapshotState);
+      setError(
+        [snapshotNotice, readinessNotice].filter(Boolean).join(" ") || null,
+      );
       setActiveConversation((current) => current?.id === snapshot.id ? snapshot : current);
       setConversations((current) => [
         { ...snapshot, messages: [] }, ...current.filter((item) => item.id !== snapshot.id),

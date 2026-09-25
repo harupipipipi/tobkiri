@@ -127,6 +127,14 @@ export function savedTurnTerminalNotice(
     return "送信の停止を確認しました。保存済みメッセージを表示し、自動再送はしません。";
   }
   if (turn.status === "failed") {
+    const structured = turn.error;
+    if (structured && typeof structured === "object") {
+      const parts = [structured.message, structured.cause, structured.fix]
+        .filter((item): item is string => typeof item === "string" && Boolean(item.trim()));
+      if (parts.length) {
+        return `送信は失敗で終了しました。${parts.join(" — ")} 自動再送はしません。`;
+      }
+    }
     return "送信は失敗で終了しました。保存済みメッセージを表示し、自動再送はしません。";
   }
   return null;
