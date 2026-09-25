@@ -120,10 +120,8 @@ import { boundedDurationLabel } from "./lib/duration";
 import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/desktopApproval";
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
-import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
 import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
 import { shortcutLabel, shortcutSpecMatchesEvent, workspaceTabShortcutAction } from "./lib/keyboardShortcuts";
-import { PENDING_CHAT_REQUEST_TTL_MS, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
 import { reportClientDiagnostic } from "./lib/clientDiagnostics";
 import {
