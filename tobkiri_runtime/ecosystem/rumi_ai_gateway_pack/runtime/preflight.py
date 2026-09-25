@@ -64,10 +64,15 @@ def create_preflight_operation(
     def operation(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         if name != FUNCTION_ID:
             raise ValueError("AI preflight operation is invalid")
-        if set(payload) - {"tool_calling"} != {"model_profile_id", "messages"}:
+        if set(payload) - {"tool_calling", "deepthink"} != {
+            "model_profile_id",
+            "messages",
+        }:
             raise ValueError("AI preflight input fields are invalid")
         if type(payload.get("tool_calling", False)) is not bool:
             raise ValueError("AI preflight tool requirement is invalid")
+        if type(payload.get("deepthink", False)) is not bool:
+            raise ValueError("AI preflight DeepThink requirement is invalid")
         identifier = payload["model_profile_id"]
         messages = payload["messages"]
         if (not isinstance(identifier, str) or not identifier.strip() or len(identifier) > 256
@@ -77,9 +82,14 @@ def create_preflight_operation(
                        or not isinstance(message["content"], str) for message in messages)
                 or len(canonical_json(dict(payload))) > 60 * 1024):
             raise ValueError("AI preflight input is invalid")
+        requirements = {
+            key: True
+            for key in ("tool_calling", "deepthink")
+            if payload.get(key)
+        }
         resolved = resolve("resolve", {
             "model_profile_id": identifier, "messages": messages,
-            **({"requirements": {"tool_calling": True}} if payload.get("tool_calling") else {}),
+            **({"requirements": requirements} if requirements else {}),
         })
         selected = [item for item in readonly.providers(gateway.GENERATE_PROVIDER_CONTRACT)
                     if item.get("provider_instance_id") == resolved.get("provider_instance_id")

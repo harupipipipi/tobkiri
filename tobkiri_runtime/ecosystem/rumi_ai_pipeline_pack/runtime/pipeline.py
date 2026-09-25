@@ -26,6 +26,7 @@ _REQUIREMENT_KEYS = {
     "preferred_provider_id",
     "preferred_provider_instance_id",
     "health_max_age",
+    "deepthink",
 }
 
 

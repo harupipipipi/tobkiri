@@ -63,6 +63,11 @@ def run(input_data, context, *, settings_owner=None):
                     "preferred_model_id": model,
                     "tool_calling": bool(tools),
                     "request_surface": "legacy.ai_complete",
+                    **(
+                        {"deepthink": True}
+                        if params.get("deepthink_enabled") is True
+                        else {}
+                    ),
                 },
             }
         )

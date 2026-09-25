@@ -141,6 +141,7 @@ class RouteRequirement:
     preferred_provider_id: str | None
     preferred_provider_instance_id: str | None
     health_max_age: float
+    deepthink: bool = False
 
 
 @dataclass(frozen=True)
@@ -585,6 +586,7 @@ def _requirement(request: Mapping[str, Any]) -> RouteRequirement:
             0.0,
             _optional_float(requirement.get("health_max_age")) or 60.0,
         ),
+        deepthink=requirement.get("deepthink") is True,
     )
 
 
@@ -947,6 +949,7 @@ def _requirement_payload(requirement: RouteRequirement) -> dict[str, Any]:
             requirement.preferred_provider_instance_id
         ),
         "health_max_age": requirement.health_max_age,
+        "deepthink": requirement.deepthink,
     }
 
 
@@ -1112,6 +1115,7 @@ def _record_diagnostic(
             "data_residency": requirement.data_residency,
             "maximum_cost": requirement.maximum_cost,
             "health_max_age": requirement.health_max_age,
+            "deepthink": requirement.deepthink,
         },
         "candidates": [
             {
