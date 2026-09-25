@@ -354,6 +354,22 @@ const opencodeZenProfile = {
   availability: { configured: false, status: "requires_api_key" },
 };
 
+const gpt55ProProfile = {
+  profile_id: "opencode-zen/gpt-5.5-pro",
+  qualified_model_id: "opencode-zen/gpt-5.5-pro",
+  provider_id: "opencode-zen",
+  provider_display_name: "OpenCode Zen",
+  model_id: "gpt-5.5-pro",
+  display_name: "GPT-5.5 Pro via OpenCode Zen",
+  max_context: 200_000,
+  max_context_tokens: 200_000,
+  supports_thinking: true,
+  supports_tool_calling: true,
+  supports_vision: true,
+  local: false,
+  availability: { configured: true },
+};
+
 const sidebarItems = [
   {
     id: "web_search",
@@ -920,7 +936,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
     }
 
     if (path === routeKey("api/ai/profiles")) {
-      return fulfill(route, { profiles: [smokeProfile, googleProfile, opencodeProfile, opencodeZenProfile], count: 4 });
+      return fulfill(route, { profiles: [smokeProfile, googleProfile, opencodeProfile, opencodeZenProfile, gpt55ProProfile], count: 5 });
     }
 
     if (path === routeKey("api/ai/models/search") && method === "POST") {
@@ -930,7 +946,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
         : [String(payload.type ?? "").trim()];
       const models = types.includes("embedding")
         ? [embeddingProfile]
-        : [smokeProfile, googleProfile, opencodeProfile, opencodeZenProfile];
+        : [smokeProfile, googleProfile, opencodeProfile, opencodeZenProfile, gpt55ProProfile];
       return fulfill(route, { models, count: models.length });
     }
 
@@ -2718,6 +2734,41 @@ test("model picker keeps unconfigured opencode zen visible for first-run setup",
   const search = page.getByPlaceholder(/モデルを検索/);
   await search.fill("minimax");
   await expect(page.getByText("MiniMax M3 Free via OpenCode Zen")).toBeVisible();
+});
+
+test("centered composer model picker owns typed search instead of history search", async ({ page }) => {
+  await openDefaultspack(page);
+  await page.getByTitle("New Chat").first().click();
+  await expect(page.locator(".rumi-new-chat-stage")).toBeVisible();
+
+  const historySearch = page.getByPlaceholder("Search conversations");
+  await historySearch.fill("history sentinel");
+
+  await page.locator(".rumi-new-chat-stage").getByRole("button", { name: /Stub Default/ }).click();
+  const modelSearch = page.getByRole("combobox", { name: "モデルを検索" });
+  await expect(modelSearch).toBeFocused();
+
+  await page.keyboard.type("opencode zen");
+  await expect(modelSearch).toHaveValue("opencode zen");
+  await expect(historySearch).toHaveValue("history sentinel");
+  await expect(page.getByText("MiniMax M3 Free via OpenCode Zen")).toBeVisible();
+
+  await modelSearch.fill("");
+  await expect(modelSearch).toBeFocused();
+  await page.keyboard.type("gpt-5.5-pro");
+  await expect(modelSearch).toHaveValue("gpt-5.5-pro");
+  await expect(historySearch).toHaveValue("history sentinel");
+  await expect(page.getByRole("option", { name: /5\.5 Pro via OpenCode Zen/ })).toBeVisible();
+
+  await page.getByLabel("close model dropdown").click({ position: { x: 4, y: 4 } });
+  await expect(modelSearch).toBeHidden();
+
+  await page.locator(".rumi-new-chat-stage").getByRole("button", { name: /Stub Default/ }).click();
+  const reopenedModelSearch = page.getByRole("combobox", { name: "モデルを検索" });
+  await expect(reopenedModelSearch).toBeFocused();
+  await page.getByLabel("close model dropdown").click({ position: { x: 4, y: 4 } });
+  await expect(reopenedModelSearch).toBeHidden();
+  await expect(historySearch).toHaveValue("history sentinel");
 });
 
 test("preview pane opens from the chat canvas peek", async ({ page }) => {
