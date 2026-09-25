@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "pack_id": "rumi_company_state_store_pack",
-  "source_identity": "sha256:04cf26ce2e1e9bd249d4e6ce9dab2cd12ad4dda11b8b78abc0b9eef7ab4ee116",
+  "pack_id": "rumi_team_state_store_pack",
+  "source_identity": "sha256:85d48602ea4f332c70289b048ef93b7c47142cb690b1d0273c2e122e841cd998",
   "variants": [
     {
-      "variant_id": "rumi_company_state_store_pack.company-state.action.python",
-      "function_id": "rumi_company_state_store_pack.company-state.action",
+      "variant_id": "rumi_team_state_store_pack.team-state.action.python",
+      "function_id": "rumi_team_state_store_pack.team-state.action",
       "implementation_path": "runtime/store.py",
-      "implementation_digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f",
+      "implementation_digest": "sha256:f481d78a9818b85820566e7b1bbc104613dcffc3aacf4badc693aa61039e9c57",
       "execution_kind": "pack_vm",
       "platform": "any",
       "architecture": "any",
@@ -17,10 +17,10 @@
       "execution_domain_profile": "sandbox.default.v1",
       "operations": [
         {
-          "contract_id": "tobkiri.action.company.state.v1",
+          "contract_id": "tobkiri.action.team.state.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:d0c3f520322553871e3a352cfe6a8eaa0036514526ade9cea2f3f355b1e70cd7",
-          "operation_id": "rumi_company_state_store_pack.company-state-action",
+          "revision_digest": "sha256:20d41dcac9e304fcd8739b5f17bf0dfcba6b5de2e3c98ee352a263b21006945f",
+          "operation_id": "rumi_team_state_store_pack.team-state-action",
           "input_schema": {
             "type": "object"
           },
@@ -38,10 +38,10 @@
       ]
     },
     {
-      "variant_id": "rumi_company_state_store_pack.company-state.resource.python",
-      "function_id": "rumi_company_state_store_pack.company-state.resource",
+      "variant_id": "rumi_team_state_store_pack.team-state.resource.python",
+      "function_id": "rumi_team_state_store_pack.team-state.resource",
       "implementation_path": "runtime/store.py",
-      "implementation_digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f",
+      "implementation_digest": "sha256:f481d78a9818b85820566e7b1bbc104613dcffc3aacf4badc693aa61039e9c57",
       "execution_kind": "pack_vm",
       "platform": "any",
       "architecture": "any",
@@ -51,10 +51,10 @@
       "execution_domain_profile": "sandbox.default.v1",
       "operations": [
         {
-          "contract_id": "tobkiri.resource.company.v1",
+          "contract_id": "tobkiri.resource.team.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:e479e9a2bc9e07eee9dbc84480b00f3ff66eca7b5b7deb2a529ee53c355b1467",
-          "operation_id": "rumi_company_state_store_pack.company-state-resource",
+          "revision_digest": "sha256:ab43ca0fb6443f954a9db9c1e07ca93c535902de2c3e407579316d06cd9752d1",
+          "operation_id": "rumi_team_state_store_pack.team-state-resource",
           "input_schema": {
             "type": "object"
           },
@@ -72,6 +72,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:d5337dfbbd20ee981b3e56202bcc2b77dd91e56f6a9b757bc7d55aa6f65ebdd0",
-  "catalog_digest": "sha256:702ec4e14d45612557664f77b31b461dd10e1807ea03993f77fc3300dd73abcc"
+  "materialization_catalog_digest": "sha256:eec83cb5ae06c307ed9582c96804f151b225ff57c40aa8bcd9f2139e6df8044e",
+  "catalog_digest": "sha256:53c243c8b22b2136c6fe62598bc074c00c828e65d4425f9a2844983f670f8514"
 }

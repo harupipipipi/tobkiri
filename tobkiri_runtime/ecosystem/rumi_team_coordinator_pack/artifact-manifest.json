@@ -3,7 +3,7 @@
   "artifacts": [
     {
       "path": "runtime/coordinator.py",
-      "sha256": "799ec86beadb27fa0bec690f2ba5fffdc9f3da2d8cb95b3b49d59f59ad885724",
+      "sha256": "cd2d06b9bd6bb08025a13edd92c696bb4b2c1033463298bcafb5b151543f34b8",
       "role": "runtime"
     }
   ]

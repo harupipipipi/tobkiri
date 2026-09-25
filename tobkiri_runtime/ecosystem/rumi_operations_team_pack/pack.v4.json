@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:87a289d18caad4f95916d7258f55e905658760bb70a005102673bee694c40b85",
+      "digest": "sha256:be3f872cdf81faed3954ae1ea4d1f1d929c25095589c204a6bd47310dec87ab5",
       "kind": "sidecar",
       "path": "executables.v4.json"
     }
@@ -9,9 +9,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:1688e552051d403ce9225509e3bd22d8da103eabda043b5ab6a60865f094b2b1",
-    "contract_catalog_digest": "sha256:d55dd5dbf070e3d15611e4f6ddfa151364390d3d72bf7ad0066fc1b35ec6acfb",
-    "source_identity": "sha256:101c7ab6badfadeb23628d84979c5ffd4c2a3045cfac174357f6c9fe6e80db29"
+    "artifact_set_digest": "sha256:631e6756a9885c5c724af164b6650e75998f86567e65c3cc4c664c4989b20666",
+    "contract_catalog_digest": "sha256:a03d25493a491d717e9870579898528ba236688b89b7611fe2aaa5a8b2472104",
+    "source_identity": "sha256:965d106c5a242f620aa5e71644171879862480d6fda04518f7b06e163f0be54d"
   },
   "migration": {
     "compatibility": "read_only",
@@ -24,7 +24,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:1688e552051d403ce9225509e3bd22d8da103eabda043b5ab6a60865f094b2b1",
+    "artifact_digest": "sha256:631e6756a9885c5c724af164b6650e75998f86567e65c3cc4c664c4989b20666",
     "display_name": "Rumi Operations Team Pack",
     "id": "rumi_operations_team_pack",
     "kind": "application",
@@ -34,7 +34,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:101c7ab6badfadeb23628d84979c5ffd4c2a3045cfac174357f6c9fe6e80db29",
+        "digest": "sha256:965d106c5a242f620aa5e71644171879862480d6fda04518f7b06e163f0be54d",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -45,7 +45,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:101c7ab6badfadeb23628d84979c5ffd4c2a3045cfac174357f6c9fe6e80db29",
+    "source_digest": "sha256:965d106c5a242f620aa5e71644171879862480d6fda04518f7b06e163f0be54d",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_operations_team_pack"
   },

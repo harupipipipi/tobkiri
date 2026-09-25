@@ -8,7 +8,7 @@
     {
       "path": "ui/app.js",
       "role": "isolated_ui",
-      "sha256": "sha256:f7108a7aad96882c34d841ff4fc0b5deb83d807bdb040c9e69086ef88a482b1c"
+      "sha256": "sha256:ef08f968c849e1ea359aea9f9e57ed35aa51882c0d1bd1f832d408411a98c057"
     },
     {
       "path": "ui/index.html",

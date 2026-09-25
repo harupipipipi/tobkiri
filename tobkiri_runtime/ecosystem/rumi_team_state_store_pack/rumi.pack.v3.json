@@ -63,7 +63,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:f774e6a4cc47d27ad059dd5cf627b29c4560c660789fbe0a823a49d227bc4270",
+      "artifact_hash": "sha256:f481d78a9818b85820566e7b1bbc104613dcffc3aacf4badc693aa61039e9c57",
       "contract_id": "rumi.resource.team.v1",
       "id": "team-state-resource",
       "loader": "python",
@@ -71,7 +71,7 @@
       "symbol": "create_team_resource"
     },
     {
-      "artifact_hash": "sha256:f774e6a4cc47d27ad059dd5cf627b29c4560c660789fbe0a823a49d227bc4270",
+      "artifact_hash": "sha256:f481d78a9818b85820566e7b1bbc104613dcffc3aacf4badc693aa61039e9c57",
       "contract_id": "rumi.action.team.state.v1",
       "id": "team-state-action",
       "loader": "python",
@@ -115,9 +115,9 @@
           "authoritative_owner": true,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:39e2228a060eeb75dc077f5428f33d199aebdc4cc07b434a5f80765e8198af44",
+            "artifact_digest": "sha256:c7bdb1266790f0c2283d8c7ff14b5e2b461ade66dc8684403949ac625e22ea05",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:869feb31d20a843784442f32b777ac69b6404fbb80405f32fed3e9fb77ffc76e"
+            "source_identity": "sha256:681db1759fa15acd82b4daa0e43366ad15291b8498a5f07e602c83f072904a99"
           },
           "owner_surfaces": [
             "companies",
@@ -136,7 +136,7 @@
         "pack_identity": "rumi:ecosystem/rumi_team_state_store_pack",
         "provenance": {
           "build_identity": "rumi_team_state_store_pack:1.0.0",
-          "content_hash": "sha256:f774e6a4cc47d27ad059dd5cf627b29c4560c660789fbe0a823a49d227bc4270",
+          "content_hash": "sha256:f481d78a9818b85820566e7b1bbc104613dcffc3aacf4badc693aa61039e9c57",
           "signature": null,
           "trust_class": "local"
         },
@@ -165,7 +165,7 @@
       "owner": "rumi_team_state_store_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:869feb31d20a843784442f32b777ac69b6404fbb80405f32fed3e9fb77ffc76e"
+      "source_identity": "sha256:681db1759fa15acd82b4daa0e43366ad15291b8498a5f07e602c83f072904a99"
     }
   },
   "migration": {
@@ -209,7 +209,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_team_state_store_pack:1.0.0",
-    "content_hash": "sha256:f774e6a4cc47d27ad059dd5cf627b29c4560c660789fbe0a823a49d227bc4270",
+    "content_hash": "sha256:f481d78a9818b85820566e7b1bbc104613dcffc3aacf4badc693aa61039e9c57",
     "signature": null,
     "trust_class": "local"
   },

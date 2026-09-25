@@ -57,7 +57,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:67a51afd30629cd6d005b35a6c865e50c9a6f67425a11dd288c3185478afb42d",
+      "artifact_hash": "sha256:0505f7622af33a1f7cfb8ea605f3cf00ce67f62387cb795fdec309d5349e59a1",
       "contract_id": "rumi.action.connector.route.v1",
       "id": "connector-team-route",
       "loader": "python",
@@ -109,9 +109,9 @@
           "authoritative_owner": false,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:dc089ec820b4e17de2452aecc5a6622344e4dd780045ada831ebc7825a5f767e",
+            "artifact_digest": "sha256:9eea8fd1b1f30169899ffe691d5e5865cae6eb6c3db69923279aad664bfd8dc1",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:50588f5f2981fb8e8d8616b9b713c89117c05a1f8bba2ddb3a0200fb9b0c5464"
+            "source_identity": "sha256:5465f642fa0e11b164b449fdb4915e4ab66070d8c5c1d8f5d298bc283f7eb71d"
           },
           "owner_surfaces": [],
           "projection_owner": "scripts/migrate_manifest_authority.py"
@@ -120,7 +120,7 @@
         "pack_identity": "rumi:ecosystem/rumi_connector_team_adapter_pack",
         "provenance": {
           "build_identity": "rumi_connector_team_adapter_pack:1.0.0",
-          "content_hash": "sha256:67a51afd30629cd6d005b35a6c865e50c9a6f67425a11dd288c3185478afb42d",
+          "content_hash": "sha256:0505f7622af33a1f7cfb8ea605f3cf00ce67f62387cb795fdec309d5349e59a1",
           "signature": null,
           "trust_class": "local"
         },
@@ -151,7 +151,7 @@
       "owner": "rumi_connector_team_adapter_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:50588f5f2981fb8e8d8616b9b713c89117c05a1f8bba2ddb3a0200fb9b0c5464"
+      "source_identity": "sha256:5465f642fa0e11b164b449fdb4915e4ab66070d8c5c1d8f5d298bc283f7eb71d"
     }
   },
   "migration": {
@@ -202,7 +202,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_connector_team_adapter_pack:1.0.0",
-    "content_hash": "sha256:67a51afd30629cd6d005b35a6c865e50c9a6f67425a11dd288c3185478afb42d",
+    "content_hash": "sha256:0505f7622af33a1f7cfb8ea605f3cf00ce67f62387cb795fdec309d5349e59a1",
     "signature": null,
     "trust_class": "local"
   },

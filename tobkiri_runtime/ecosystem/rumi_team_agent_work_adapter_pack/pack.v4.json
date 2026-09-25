@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:ea669d3e73d8f622b860d9988d96ac7fd2ec2ab9faf0a7c2bb4e331042895562",
+      "digest": "sha256:7dcd49b2e8220e464f901798e253a02ceb65f6acf507cf9395cb774cecc8f90d",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -33,9 +33,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:c69b1c95e4ac98d7749f006d6c7ea9d65e956eec06f281b379d0935835ef1a24",
-    "contract_catalog_digest": "sha256:bb57140b3d61ceb77978a40e8819cccab3b47d1cefc8c3d815266e396eb7bed3",
-    "source_identity": "sha256:010538ef93861a406e751c6540bbb17f89e03a1e7c87584ea630cd582fdfe3b3"
+    "artifact_set_digest": "sha256:b3c3855d734b57f3a261bb13e591b9f84c4dd235f85e5aa53571e5691444176a",
+    "contract_catalog_digest": "sha256:d96e31241726c7e34ad16898f35e2a668d3388d5f5cf4a3f624cbfc9d7c4ce86",
+    "source_identity": "sha256:c6c779d4a8323755442099d405dfb7838af748680b93654da9f7d51a2caed5d3"
   },
   "migration": {
     "compatibility": "read_only",
@@ -61,7 +61,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:c69b1c95e4ac98d7749f006d6c7ea9d65e956eec06f281b379d0935835ef1a24",
+    "artifact_digest": "sha256:b3c3855d734b57f3a261bb13e591b9f84c4dd235f85e5aa53571e5691444176a",
     "display_name": "Rumi Team Agent Work Adapter Pack",
     "id": "rumi_team_agent_work_adapter_pack",
     "kind": "normal_sandbox",
@@ -71,7 +71,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:010538ef93861a406e751c6540bbb17f89e03a1e7c87584ea630cd582fdfe3b3",
+        "digest": "sha256:c6c779d4a8323755442099d405dfb7838af748680b93654da9f7d51a2caed5d3",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -82,7 +82,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:010538ef93861a406e751c6540bbb17f89e03a1e7c87584ea630cd582fdfe3b3",
+    "source_digest": "sha256:c6c779d4a8323755442099d405dfb7838af748680b93654da9f7d51a2caed5d3",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_team_agent_work_adapter_pack"
   },

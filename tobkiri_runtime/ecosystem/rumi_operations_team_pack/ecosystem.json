@@ -23,9 +23,9 @@
     "author": "Rumi AI Team",
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:1688e552051d403ce9225509e3bd22d8da103eabda043b5ab6a60865f094b2b1",
+      "artifact_digest": "sha256:631e6756a9885c5c724af164b6650e75998f86567e65c3cc4c664c4989b20666",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:101c7ab6badfadeb23628d84979c5ffd4c2a3045cfac174357f6c9fe6e80db29"
+      "source_identity": "sha256:965d106c5a242f620aa5e71644171879862480d6fda04518f7b06e163f0be54d"
     },
     "description": "Operations Company and MiMo Coding Company profiles, routes, prompts, and UI extensions.",
     "format": "rumi.ecosystem.v1",
@@ -34,7 +34,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:101c7ab6badfadeb23628d84979c5ffd4c2a3045cfac174357f6c9fe6e80db29"
+      "source_content_hash": "sha256:965d106c5a242f620aa5e71644171879862480d6fda04518f7b06e163f0be54d"
     },
     "license": "MIT",
     "manifest_authority": "v4-authoritative",
@@ -46,7 +46,7 @@
   "pack_identity": "rumi:ecosystem/rumi_operations_team_pack",
   "provenance": {
     "build_identity": "rumi_operations_team_pack:1.0.0",
-    "content_hash": "sha256:1688e552051d403ce9225509e3bd22d8da103eabda043b5ab6a60865f094b2b1",
+    "content_hash": "sha256:631e6756a9885c5c724af164b6650e75998f86567e65c3cc4c664c4989b20666",
     "signature": null,
     "trust_class": "local"
   },

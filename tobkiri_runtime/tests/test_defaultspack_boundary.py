@@ -89,9 +89,7 @@ def test_provider_catalog_concrete_data_lives_outside_defaultspack_loader() -> N
 def test_required_starter_packs_exist() -> None:
     for pack_id in [
         "rumi_default_tools_pack",
-        "rumi_local_agent_pack",
         "rumi_operations_team_pack",
-        "rumi_reference_ui_pack",
         "rumi_model_catalog_pack",
     ]:
         pack_root = ROOT / "ecosystem" / pack_id

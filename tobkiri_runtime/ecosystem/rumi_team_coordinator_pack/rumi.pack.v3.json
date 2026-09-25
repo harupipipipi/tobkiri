@@ -107,7 +107,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:799ec86beadb27fa0bec690f2ba5fffdc9f3da2d8cb95b3b49d59f59ad885724",
+      "artifact_hash": "sha256:cd2d06b9bd6bb08025a13edd92c696bb4b2c1033463298bcafb5b151543f34b8",
       "contract_id": "rumi.resource.team.runtime.v1",
       "id": "team-runtime-resource",
       "loader": "python",
@@ -115,7 +115,7 @@
       "symbol": "create_team_runtime_resource"
     },
     {
-      "artifact_hash": "sha256:799ec86beadb27fa0bec690f2ba5fffdc9f3da2d8cb95b3b49d59f59ad885724",
+      "artifact_hash": "sha256:cd2d06b9bd6bb08025a13edd92c696bb4b2c1033463298bcafb5b151543f34b8",
       "contract_id": "rumi.action.team.coordinate.v1",
       "id": "team-coordinate-control",
       "loader": "python",
@@ -123,7 +123,7 @@
       "symbol": "create_team_control"
     },
     {
-      "artifact_hash": "sha256:799ec86beadb27fa0bec690f2ba5fffdc9f3da2d8cb95b3b49d59f59ad885724",
+      "artifact_hash": "sha256:cd2d06b9bd6bb08025a13edd92c696bb4b2c1033463298bcafb5b151543f34b8",
       "contract_id": "rumi.action.job.adapter.v1",
       "id": "company-supervisor-job-adapter",
       "loader": "python",
@@ -173,9 +173,9 @@
           "authoritative_owner": false,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:2d6f877eb16dab71c7c71ec979d54d3fc0ad99fbfffd3f8646230ed52adbc023",
+            "artifact_digest": "sha256:f6ffae000481214f4280676719574a82f53e52450ef07cb3b3a0cd46fc1c3717",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:a36239049a1bf8509f8562a5f8d8ca632c46b9c4e9002a1e206d93a7303e31bd"
+            "source_identity": "sha256:ae8d92f8d907b1a776844f388b7fd0e58d826983400414287aca38ed4c4734b6"
           },
           "owner_surfaces": [
             "company_coordination_process_state"
@@ -186,7 +186,7 @@
         "pack_identity": "rumi:ecosystem/rumi_team_coordinator_pack",
         "provenance": {
           "build_identity": "rumi_team_coordinator_pack:1.0.0",
-          "content_hash": "sha256:799ec86beadb27fa0bec690f2ba5fffdc9f3da2d8cb95b3b49d59f59ad885724",
+          "content_hash": "sha256:cd2d06b9bd6bb08025a13edd92c696bb4b2c1033463298bcafb5b151543f34b8",
           "signature": null,
           "trust_class": "local"
         },
@@ -219,7 +219,7 @@
       "owner": "rumi_team_coordinator_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:a36239049a1bf8509f8562a5f8d8ca632c46b9c4e9002a1e206d93a7303e31bd"
+      "source_identity": "sha256:ae8d92f8d907b1a776844f388b7fd0e58d826983400414287aca38ed4c4734b6"
     }
   },
   "migration": {
@@ -280,7 +280,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_team_coordinator_pack:1.0.0",
-    "content_hash": "sha256:799ec86beadb27fa0bec690f2ba5fffdc9f3da2d8cb95b3b49d59f59ad885724",
+    "content_hash": "sha256:cd2d06b9bd6bb08025a13edd92c696bb4b2c1033463298bcafb5b151543f34b8",
     "signature": null,
     "trust_class": "local"
   },

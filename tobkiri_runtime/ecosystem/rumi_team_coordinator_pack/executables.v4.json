@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:94dff60d300c49ffb4c86575e39f2f5ad085ff8ef46d633c9170556faa102fe2",
+  "catalog_digest": "sha256:85178301003068f7102ece38a43f10149b11cf38b01f45bf59db1cc2bf5fd19c",
   "pack_id": "rumi_team_coordinator_pack",
-  "source_identity": "sha256:a36239049a1bf8509f8562a5f8d8ca632c46b9c4e9002a1e206d93a7303e31bd",
+  "source_identity": "sha256:ae8d92f8d907b1a776844f388b7fd0e58d826983400414287aca38ed4c4734b6",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "rumi_team_coordinator_pack.job-adapter.team-supervisor",
-      "implementation_digest": "sha256:799ec86beadb27fa0bec690f2ba5fffdc9f3da2d8cb95b3b49d59f59ad885724",
+      "implementation_digest": "sha256:cd2d06b9bd6bb08025a13edd92c696bb4b2c1033463298bcafb5b151543f34b8",
       "implementation_path": "runtime/coordinator.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -44,7 +44,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "rumi_team_coordinator_pack.team.coordinate",
-      "implementation_digest": "sha256:799ec86beadb27fa0bec690f2ba5fffdc9f3da2d8cb95b3b49d59f59ad885724",
+      "implementation_digest": "sha256:cd2d06b9bd6bb08025a13edd92c696bb4b2c1033463298bcafb5b151543f34b8",
       "implementation_path": "runtime/coordinator.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -78,7 +78,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "rumi_team_coordinator_pack.team.runtime",
-      "implementation_digest": "sha256:799ec86beadb27fa0bec690f2ba5fffdc9f3da2d8cb95b3b49d59f59ad885724",
+      "implementation_digest": "sha256:cd2d06b9bd6bb08025a13edd92c696bb4b2c1033463298bcafb5b151543f34b8",
       "implementation_path": "runtime/coordinator.py",
       "materialization_mode": "on_demand",
       "operations": [

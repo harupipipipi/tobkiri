@@ -23,7 +23,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:50588f5f2981fb8e8d8616b9b713c89117c05a1f8bba2ddb3a0200fb9b0c5464",
+            "digest": "sha256:5465f642fa0e11b164b449fdb4915e4ab66070d8c5c1d8f5d298bc283f7eb71d",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -34,7 +34,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:50588f5f2981fb8e8d8616b9b713c89117c05a1f8bba2ddb3a0200fb9b0c5464",
+        "source_digest": "sha256:5465f642fa0e11b164b449fdb4915e4ab66070d8c5c1d8f5d298bc283f7eb71d",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_connector_team_adapter_pack"
       },
@@ -65,5 +65,5 @@
     }
   ],
   "pack_id": "rumi_connector_team_adapter_pack",
-  "source_identity": "sha256:50588f5f2981fb8e8d8616b9b713c89117c05a1f8bba2ddb3a0200fb9b0c5464"
+  "source_identity": "sha256:5465f642fa0e11b164b449fdb4915e4ab66070d8c5c1d8f5d298bc283f7eb71d"
 }
