@@ -1,7 +1,7 @@
 {
   "counts": {
-    "canonical_source_packs": 141,
-    "catalog_pack_directories": 141,
+    "canonical_source_packs": 142,
+    "catalog_pack_directories": 142,
     "gates": {
       "artifact_contracts": 0,
       "authority_resolved_plan_scope": 0,
@@ -11,18 +11,19 @@
       "executable_source_registry": 0,
       "launcher_safety": 0,
       "legacy_registry_and_installed_lookup": 0,
-      "migration_evidence": 0,
+      "migration_evidence": 1,
       "offline_projection": 0
     },
-    "legacy_manifest_declared_packs": 141,
+    "legacy_manifest_declared_packs": 142,
     "migration_status": {
+      "generated-draft": 1,
       "release-verified": 141
     },
-    "production_pack_directories": 141,
-    "v4_artifact_files": 564,
+    "production_pack_directories": 142,
+    "v4_artifact_files": 568,
     "v4_artifacts_per_pack": 4,
-    "v4_only_packs": 3,
-    "v4_pack_artifacts": 141,
+    "v4_only_packs": 4,
+    "v4_pack_artifacts": 142,
     "v4_profile_artifacts": 1
   },
   "findings": {
@@ -34,11 +35,26 @@
     "executable_source_registry": [],
     "launcher_safety": [],
     "legacy_registry_and_installed_lookup": [],
-    "migration_evidence": [],
+    "migration_evidence": [
+      {
+        "line": 1,
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "migration_release_proof_missing",
+        "sample_pack_ids": [
+          "tobkiri_voice_agent_pack"
+        ],
+        "status_counts": {
+          "generated-draft": 1,
+          "release-verified": 141
+        },
+        "symbol": "migration_release_proof_missing",
+        "unverified_count": 1
+      }
+    ],
     "offline_projection": []
   },
   "gate": {
-    "clean": true,
+    "clean": false,
     "expected_green": {
       "artifact_contracts": 0,
       "authority_resolved_plan_scope": 0,
@@ -51,7 +67,7 @@
       "migration_evidence": 0,
       "offline_projection": 0
     },
-    "status": "GREEN"
+    "status": "RED"
   },
   "gates": {
     "artifact_contracts": {
@@ -87,8 +103,23 @@
       "status": "GREEN"
     },
     "migration_evidence": {
-      "findings": [],
-      "status": "GREEN"
+      "findings": [
+        {
+          "line": 1,
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "migration_release_proof_missing",
+          "sample_pack_ids": [
+            "tobkiri_voice_agent_pack"
+          ],
+          "status_counts": {
+            "generated-draft": 1,
+            "release-verified": 141
+          },
+          "symbol": "migration_release_proof_missing",
+          "unverified_count": 1
+        }
+      ],
+      "status": "RED"
     },
     "offline_projection": {
       "findings": [],
@@ -258,9 +289,10 @@
       "tobkiri_host_pack_control",
       "tobkiri_mcp_connection_pack",
       "tobkiri_ui_settings_pack",
+      "tobkiri_voice_agent_pack",
       "tobkiri_workflow_pack"
     ],
-    "catalog_pack_directories": 141,
+    "catalog_pack_directories": 142,
     "declared_source_sets": {
       "direct_ids": [
         "defaultspack",
@@ -403,6 +435,7 @@
         "tobkiri_host_pack_control",
         "tobkiri_mcp_connection_pack",
         "tobkiri_ui_settings_pack",
+        "tobkiri_voice_agent_pack",
         "tobkiri_workflow_pack"
       ],
       "manifest_ids": [
@@ -546,6 +579,7 @@
         "tobkiri_host_pack_control",
         "tobkiri_mcp_connection_pack",
         "tobkiri_ui_settings_pack",
+        "tobkiri_voice_agent_pack",
         "tobkiri_workflow_pack"
       ],
       "manifest_source_ids": [
@@ -829,15 +863,18 @@
         "tobkiri_host_pack_control",
         "tobkiri_mcp_connection_pack",
         "tobkiri_ui_settings_pack",
+        "tobkiri_voice_agent_pack",
         "tobkiri_workflow_pack"
       ],
       "v4_only_ids": [
         "defaultspack",
         "tobkiri_mcp_connection_pack",
-        "tobkiri_ui_settings_pack"
+        "tobkiri_ui_settings_pack",
+        "tobkiri_voice_agent_pack"
       ]
     },
     "migration_status_counts": {
+      "generated-draft": 1,
       "release-verified": 141
     },
     "migration_status_records": [
@@ -1962,6 +1999,14 @@
         "v4_only": true
       },
       {
+        "classified_as": "generated-draft",
+        "declared_authority": "v4-authoritative",
+        "legacy_manifest_authority": "v4-authoritative",
+        "pack_id": "tobkiri_voice_agent_pack",
+        "v4_artifacts": true,
+        "v4_only": true
+      },
+      {
         "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
@@ -1970,8 +2015,8 @@
         "v4_only": false
       }
     ],
-    "production_pack_directories": 141,
-    "v4_artifact_files": 564,
+    "production_pack_directories": 142,
+    "v4_artifact_files": 568,
     "v4_artifacts_per_pack": 4,
     "v4_pack_artifacts": [
       "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
@@ -2114,6 +2159,7 @@
       "tobkiri_runtime/ecosystem/tobkiri_host_pack_control/pack.v4.json",
       "tobkiri_runtime/ecosystem/tobkiri_mcp_connection_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/pack.v4.json",
+      "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/pack.v4.json",
       "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/pack.v4.json"
     ],
     "v4_profile_artifacts": [
@@ -2123,8 +2169,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "f0cd1b36f93e8937d0c677d6eb312fe6ffcf0269",
-    "semantic_digest": "sha256:904ae478ca5011580dc3156149ce981fc97ec9dde88f873138f45b03488ec6ce",
+    "observed_head_sha": "aef377f7820ce79da8ac7ae9ff8c0e67abbcee36",
+    "semantic_digest": "sha256:b5a421f14fb005abbc46e31ddd1ff94fe002396b195dc196ae13e232213043e1",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }

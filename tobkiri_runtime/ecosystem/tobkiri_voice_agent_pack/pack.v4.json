@@ -1,0 +1,88 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:aa0ec3233f9288dd178011300f27719736c6bc43b34483a9d68f8008465e3bcd",
+      "kind": "asset",
+      "path": "README.md"
+    },
+    {
+      "digest": "sha256:31affceb73dc570f9dc96c0fbeb084f73c8eeb6ae042326f218cc54e11afea44",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:6af0cab5f6fdd0d78f7d16e4876dc859a8abcebd43321dfd6995d70f0a207cdf",
+      "kind": "asset",
+      "path": "frontend_extensions/voice_agent.ui.json"
+    },
+    {
+      "digest": "sha256:1080156a29f61420dff254aeb24535295afd4e3448a4fa7874c7cc33fd1975f4",
+      "kind": "asset",
+      "path": "prompts/voice_coordinator.system.md"
+    },
+    {
+      "digest": "sha256:5ea16a240931e2c3a85fd2d725a94d4816f17b40da6a045c3fc0602e3b4e1fbd",
+      "kind": "asset",
+      "path": "voice/coordinator.json"
+    },
+    {
+      "digest": "sha256:41734e31d360e2086eddef153e7570beb687188a53e27daf2c5fb9710d1b4b40",
+      "kind": "asset",
+      "path": "voice/protocol.py"
+    }
+  ],
+  "contracts": [],
+  "functions": [],
+  "integrity": {
+    "artifact_set_digest": "sha256:e3ee61297660740519cb525dbad73473ebf410ea46ef79be316d3314a6a999dd",
+    "contract_catalog_digest": "sha256:61c7787e734c89c21c7e9d97228f8d81aacfc00b56dd9f13e19de11d39e105d2",
+    "source_identity": "sha256:2cee062c97375b0abffe75d50256c951b917dc810df09d3e46645c5902b26a32"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [],
+  "pack": {
+    "artifact_digest": "sha256:e3ee61297660740519cb525dbad73473ebf410ea46ef79be316d3314a6a999dd",
+    "display_name": "Tobkiri Voice Agent",
+    "id": "tobkiri_voice_agent_pack",
+    "kind": "normal_sandbox",
+    "version": "0.1.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:2cee062c97375b0abffe75d50256c951b917dc810df09d3e46645c5902b26a32",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:2cee062c97375b0abffe75d50256c951b917dc810df09d3e46645c5902b26a32",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_voice_agent_pack"
+  },
+  "provider_catalog": [],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [],
+    "contract_dependencies": [],
+    "execution_boundary": "declarative_only",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

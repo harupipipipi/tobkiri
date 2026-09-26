@@ -1,0 +1,28 @@
+{
+  "sidebar_items": [
+    {
+      "id": "tobkiri-voice-agent",
+      "label": "Tobkiri Voice",
+      "category": "capability",
+      "description": "音声会話の準備中。設定と音声経路の接続後に利用できます。",
+      "tags": ["voice", "agent", "subagent"],
+      "ui": {
+        "item_icon": "tobkiri_voice_agent",
+        "widget_kind": "panel"
+      },
+      "origin": {
+        "kind": "pack",
+        "path": "tobkiri_voice_agent_pack/frontend_extensions/voice_agent.ui.json"
+      },
+      "panel": {
+        "kind": "info",
+        "title": "Tobkiri Voice",
+        "notes": [
+          "現在は準備中です。音声会話はまだ開始できません。",
+          "会話には現在選択中のモデルを使い、複雑な作業は subagent に委任します。",
+          "マイク・文字起こし・音声出力と設定の接続は後続の開発で追加します。"
+        ]
+      }
+    }
+  ]
+}

@@ -244,6 +244,15 @@ const TOOL_GROUP_LABELS: Record<string, string> = {
   other: "その他",
 };
 
+function VoiceAgentMark({ size = 18, className }: { size?: number; className?: string }) {
+  return (
+    <svg aria-hidden="true" className={className} width={size} height={size} viewBox="0 0 48 48">
+      <circle cx="24" cy="24" r="23" fill="white" />
+      <path d="M15 21v6m6-13v20m6-13v6m6-10v14" fill="none" stroke="#111" strokeWidth="2.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 const ITEM_ICONS: Record<string, ReactElement> = {
   agent: <Cpu size={18} />,
   artifacts: <Archive size={18} />,
@@ -304,6 +313,7 @@ const ITEM_ICONS: Record<string, ReactElement> = {
   tool_schema: <Route size={18} />,
   tool_web_search: <Globe size={18} />,
   tool_reddit_search: <Search size={18} />,
+  tobkiri_voice_agent: <VoiceAgentMark />,
   translate: <Languages size={18} />,
   web: <Globe size={18} />,
   web_search: <Search size={18} />,

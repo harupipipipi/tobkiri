@@ -159,6 +159,11 @@
       "artifact_digest": null,
       "pack_id": "rumi_prompt_studio_pack",
       "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "tobkiri_voice_agent_pack",
+      "role": "provider"
     }
   ],
   "intent_api_version": "io.tobkiri.profile-intent.v1",
