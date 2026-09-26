@@ -11,18 +11,19 @@
       "executable_source_registry": 1,
       "launcher_safety": 0,
       "legacy_registry_and_installed_lookup": 0,
-      "migration_evidence": 5,
+      "migration_evidence": 3,
       "offline_projection": 0
     },
     "legacy_manifest_declared_packs": 141,
     "migration_status": {
-      "generated-draft": 69,
-      "release-verified": 72
+      "generated-draft": 4,
+      "release-verified": 134,
+      "semantically-reviewed": 3
     },
     "production_pack_directories": 141,
     "v4_artifact_files": 564,
     "v4_artifacts_per_pack": 4,
-    "v4_only_packs": 4,
+    "v4_only_packs": 3,
     "v4_pack_artifacts": 141,
     "v4_profile_artifacts": 1
   },
@@ -63,42 +64,12 @@
     "legacy_registry_and_installed_lookup": [],
     "migration_evidence": [
       {
-        "diagnostic": "RED: migration proof drift: /private/tmp/rebase-clone/tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
-        "line": 1,
-        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
-        "rule": "migration_proof_generator_drift",
-        "symbol": "migration_proof_generator_drift"
-      },
-      {
         "extra": [
           "rumi_agent_workroom_pack",
           "rumi_company_agent_adapter_pack",
           "rumi_company_coordinator_pack",
           "rumi_company_state_store_pack",
           "rumi_company_surface_pack",
-          "rumi_connector_company_adapter_pack",
-          "rumi_operations_company_pack"
-        ],
-        "line": 1,
-        "missing": [
-          "rumi_connector_team_adapter_pack",
-          "rumi_operations_team_pack",
-          "rumi_run_lifecycle_pack",
-          "rumi_team_agent_work_adapter_pack",
-          "rumi_team_console_pack",
-          "rumi_team_coordinator_pack",
-          "rumi_team_state_store_pack"
-        ],
-        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
-        "rule": "independent_migration_proof_scope_mismatch",
-        "symbol": "independent_migration_proof_scope_mismatch"
-      },
-      {
-        "extra": [
-          "rumi_agent_workroom_pack",
-          "rumi_company_agent_adapter_pack",
-          "rumi_company_coordinator_pack",
-          "rumi_company_state_store_pack",
           "rumi_connector_company_adapter_pack",
           "rumi_operations_company_pack"
         ],
@@ -113,6 +84,7 @@
           "rumi_company_agent_adapter_pack",
           "rumi_company_coordinator_pack",
           "rumi_company_state_store_pack",
+          "rumi_company_surface_pack",
           "rumi_connector_company_adapter_pack",
           "rumi_operations_company_pack"
         ],
@@ -126,33 +98,21 @@
         "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
         "rule": "migration_release_proof_missing",
         "sample_pack_ids": [
-          "defaultspack",
-          "rumi_ai_gateway_pack",
-          "rumi_ai_modality_pack",
-          "rumi_ai_pipeline_pack",
-          "rumi_ai_routing_pack",
-          "rumi_ai_stream_pack",
-          "rumi_ai_tool_bridge_pack",
-          "rumi_ai_usage_pack",
-          "rumi_artifact_app_runtime_pack",
-          "rumi_browser_host_service_pack",
-          "rumi_clipboard_host_service_pack",
-          "rumi_command_protocol_pack",
-          "rumi_connector_settings_surface_pack",
           "rumi_connector_team_adapter_pack",
-          "rumi_conversation_store_pack",
-          "rumi_credential_broker_pack",
-          "rumi_customer_research_pack",
-          "rumi_data_analysis_pack",
-          "rumi_default_tool_projection_pack",
-          "rumi_default_tools_pack"
+          "rumi_operations_team_pack",
+          "rumi_run_lifecycle_pack",
+          "rumi_team_agent_work_adapter_pack",
+          "rumi_team_console_pack",
+          "rumi_team_coordinator_pack",
+          "rumi_team_state_store_pack"
         ],
         "status_counts": {
-          "generated-draft": 69,
-          "release-verified": 72
+          "generated-draft": 4,
+          "release-verified": 134,
+          "semantically-reviewed": 3
         },
         "symbol": "migration_release_proof_missing",
-        "unverified_count": 69
+        "unverified_count": 7
       }
     ],
     "offline_projection": []
@@ -235,42 +195,12 @@
     "migration_evidence": {
       "findings": [
         {
-          "diagnostic": "RED: migration proof drift: /private/tmp/rebase-clone/tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
-          "line": 1,
-          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
-          "rule": "migration_proof_generator_drift",
-          "symbol": "migration_proof_generator_drift"
-        },
-        {
           "extra": [
             "rumi_agent_workroom_pack",
             "rumi_company_agent_adapter_pack",
             "rumi_company_coordinator_pack",
             "rumi_company_state_store_pack",
             "rumi_company_surface_pack",
-            "rumi_connector_company_adapter_pack",
-            "rumi_operations_company_pack"
-          ],
-          "line": 1,
-          "missing": [
-            "rumi_connector_team_adapter_pack",
-            "rumi_operations_team_pack",
-            "rumi_run_lifecycle_pack",
-            "rumi_team_agent_work_adapter_pack",
-            "rumi_team_console_pack",
-            "rumi_team_coordinator_pack",
-            "rumi_team_state_store_pack"
-          ],
-          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
-          "rule": "independent_migration_proof_scope_mismatch",
-          "symbol": "independent_migration_proof_scope_mismatch"
-        },
-        {
-          "extra": [
-            "rumi_agent_workroom_pack",
-            "rumi_company_agent_adapter_pack",
-            "rumi_company_coordinator_pack",
-            "rumi_company_state_store_pack",
             "rumi_connector_company_adapter_pack",
             "rumi_operations_company_pack"
           ],
@@ -285,6 +215,7 @@
             "rumi_company_agent_adapter_pack",
             "rumi_company_coordinator_pack",
             "rumi_company_state_store_pack",
+            "rumi_company_surface_pack",
             "rumi_connector_company_adapter_pack",
             "rumi_operations_company_pack"
           ],
@@ -298,33 +229,21 @@
           "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
           "rule": "migration_release_proof_missing",
           "sample_pack_ids": [
-            "defaultspack",
-            "rumi_ai_gateway_pack",
-            "rumi_ai_modality_pack",
-            "rumi_ai_pipeline_pack",
-            "rumi_ai_routing_pack",
-            "rumi_ai_stream_pack",
-            "rumi_ai_tool_bridge_pack",
-            "rumi_ai_usage_pack",
-            "rumi_artifact_app_runtime_pack",
-            "rumi_browser_host_service_pack",
-            "rumi_clipboard_host_service_pack",
-            "rumi_command_protocol_pack",
-            "rumi_connector_settings_surface_pack",
             "rumi_connector_team_adapter_pack",
-            "rumi_conversation_store_pack",
-            "rumi_credential_broker_pack",
-            "rumi_customer_research_pack",
-            "rumi_data_analysis_pack",
-            "rumi_default_tool_projection_pack",
-            "rumi_default_tools_pack"
+            "rumi_operations_team_pack",
+            "rumi_run_lifecycle_pack",
+            "rumi_team_agent_work_adapter_pack",
+            "rumi_team_console_pack",
+            "rumi_team_coordinator_pack",
+            "rumi_team_state_store_pack"
           ],
           "status_counts": {
-            "generated-draft": 69,
-            "release-verified": 72
+            "generated-draft": 4,
+            "release-verified": 134,
+            "semantically-reviewed": 3
           },
           "symbol": "migration_release_proof_missing",
-          "unverified_count": 69
+          "unverified_count": 7
         }
       ],
       "status": "RED"
@@ -352,7 +271,7 @@
     "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_v4_runtime_and_protocol_composition_apis_are_live",
     "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_executable_source_registry_covers_every_executable_operation",
     "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_migration_status_promotes_only_pack_specific_semantic_proof",
-    "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_current_sha_evidence_is_red_while_pack_semantics_are_unproved",
+    "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_current_sha_evidence_is_green_when_pack_semantics_are_proved",
     "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_independent_migration_proof_rejects_tampered_signature"
   ],
   "pack_inventory": {
@@ -812,6 +731,7 @@
         "rumi_code_ide_pack",
         "rumi_code_migration_pack",
         "rumi_coding_sandbox_service_pack",
+        "rumi_command_protocol_pack",
         "rumi_computer_control_pack",
         "rumi_connector_gateway_pack",
         "rumi_connector_inbound_broker_pack",
@@ -1071,18 +991,18 @@
       ],
       "v4_only_ids": [
         "defaultspack",
-        "rumi_command_protocol_pack",
         "tobkiri_mcp_connection_pack",
         "tobkiri_ui_settings_pack"
       ]
     },
     "migration_status_counts": {
-      "generated-draft": 69,
-      "release-verified": 72
+      "generated-draft": 4,
+      "release-verified": 134,
+      "semantically-reviewed": 3
     },
     "migration_status_records": [
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "defaultspack",
@@ -1122,7 +1042,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_ai_gateway_pack",
@@ -1130,7 +1050,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_ai_modality_pack",
@@ -1138,7 +1058,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_ai_pipeline_pack",
@@ -1146,7 +1066,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_ai_routing_pack",
@@ -1154,7 +1074,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_ai_stream_pack",
@@ -1162,7 +1082,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_ai_tool_bridge_pack",
@@ -1170,7 +1090,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_ai_usage_pack",
@@ -1194,7 +1114,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_artifact_app_runtime_pack",
@@ -1226,7 +1146,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_browser_host_service_pack",
@@ -1250,7 +1170,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_clipboard_host_service_pack",
@@ -1282,12 +1202,12 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_command_protocol_pack",
         "v4_artifacts": true,
-        "v4_only": true
+        "v4_only": false
       },
       {
         "classified_as": "release-verified",
@@ -1338,7 +1258,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_connector_settings_surface_pack",
@@ -1346,7 +1266,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "semantically-reviewed",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_connector_team_adapter_pack",
@@ -1378,7 +1298,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_conversation_store_pack",
@@ -1386,7 +1306,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_credential_broker_pack",
@@ -1394,7 +1314,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_customer_research_pack",
@@ -1402,7 +1322,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_data_analysis_pack",
@@ -1410,7 +1330,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_default_tool_projection_pack",
@@ -1418,7 +1338,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_default_tools_pack",
@@ -1426,7 +1346,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_desktop_host_service_pack",
@@ -1482,7 +1402,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_file_inspect_pack",
@@ -1522,7 +1442,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_git_publish_pack",
@@ -1538,7 +1458,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_git_write_pack",
@@ -1546,7 +1466,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_host_authority_bridge_pack",
@@ -1570,7 +1490,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_human_operator_provider_pack",
@@ -1610,7 +1530,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_kanban_surface_pack",
@@ -1650,7 +1570,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_mcp_gateway_pack",
@@ -1658,7 +1578,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_mcp_server_pack",
@@ -1666,7 +1586,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_media_analysis_adapter_pack",
@@ -1674,7 +1594,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_media_capture_host_service_pack",
@@ -1682,7 +1602,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_media_inspect_service_pack",
@@ -1722,7 +1642,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_model_catalog_pack",
@@ -1730,7 +1650,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_model_evals_pack",
@@ -1738,7 +1658,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_model_registry_pack",
@@ -1762,7 +1682,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_office_authoring_pack",
@@ -1794,7 +1714,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_prompt_studio_pack",
@@ -1802,7 +1722,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_provider_adapters_pack",
@@ -1810,7 +1730,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_provider_registry_pack",
@@ -1834,7 +1754,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_research_pack",
@@ -1882,7 +1802,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_scheduler_surface_pack",
@@ -1890,7 +1810,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_scheduler_tool_adapter_pack",
@@ -1906,7 +1826,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_shell_execute_pack",
@@ -1962,7 +1882,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "semantically-reviewed",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_team_agent_work_adapter_pack",
@@ -1986,7 +1906,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "semantically-reviewed",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_team_state_store_pack",
@@ -2010,7 +1930,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_approval_bridge_pack",
@@ -2018,7 +1938,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_audit_pack",
@@ -2026,7 +1946,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_authoring_pack",
@@ -2034,7 +1954,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_broker_pack",
@@ -2042,7 +1962,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_capability_executor_pack",
@@ -2050,7 +1970,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_executor_selector_pack",
@@ -2058,7 +1978,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_guard_pack",
@@ -2066,7 +1986,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_local_executor_pack",
@@ -2074,7 +1994,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_mcp_executor_pack",
@@ -2082,7 +2002,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_policy_pack",
@@ -2090,7 +2010,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_registry_pack",
@@ -2098,7 +2018,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_remote_executor_pack",
@@ -2106,7 +2026,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_result_pack",
@@ -2114,7 +2034,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_sandbox_executor_pack",
@@ -2122,7 +2042,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_validation_pack",
@@ -2130,7 +2050,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_turn_runtime_pack",
@@ -2178,7 +2098,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "tobkiri_host_pack_control",
@@ -2186,7 +2106,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "tobkiri_mcp_connection_pack",
@@ -2194,7 +2114,7 @@
         "v4_only": true
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "tobkiri_ui_settings_pack",
@@ -2202,7 +2122,7 @@
         "v4_only": true
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "release-verified",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "tobkiri_workflow_pack",
@@ -2363,8 +2283,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "da6f518b1bb90b368666303f1bedc24ec2c0b66f",
-    "semantic_digest": "sha256:848bdc8e0ddb471344ebc8ca9528f1a160655ce05b335a2b9f4345fc7650e781",
+    "observed_head_sha": "a2f8e1b67831a316779fa3a0b7af7e73cab168b4",
+    "semantic_digest": "sha256:e454d0758b54219850e4efc3e528192d3c477144a5ddeb44589de6004ca2f616",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }
