@@ -47,6 +47,7 @@ from core_runtime.profile_definition_store_v4 import (  # noqa: E402
     ProfileDefinitionStore,
     ProfileDefinitionStoreError,
     ProfileDefinitionStoreIntegrityError,
+    legacy_workspace_copy_supported,
 )
 from tobkiri_protocol.canonical import canonical_digest  # noqa: E402
 
@@ -302,8 +303,15 @@ def _run_profile_transaction_proof(
     The parsed document is passed to the store instead of its absolute path.
     Workspace discovery is still explicit.  This keeps the committed receipt
     identical after relocating the checkout while exercising the same bytes.
+
+    Platforms without no-follow ``dir_fd`` primitives (Windows) cannot stage
+    descriptor-relative workspace copies and fail closed instead.  There the
+    committed import runs with ``copy_workspaces=False``; the registry state
+    and every receipt digest remain byte-identical, and the source workspace
+    digests still attest the same committed fixture bytes.
     """
 
+    copy_workspaces = legacy_workspace_copy_supported()
     broken_workspace = _copy_broken_workspace_fixture(
         workspace_root,
         temporary_root / "broken-legacy",
@@ -325,6 +333,7 @@ def _run_profile_transaction_proof(
         _FailingProfileStore(injected_destination).import_legacy_collection(
             source,
             legacy_workspace_root=workspace_root,
+            copy_workspaces=copy_workspaces,
         )
     except ProfileDefinitionStoreError:
         pass
@@ -337,6 +346,7 @@ def _run_profile_transaction_proof(
     result = store.import_legacy_collection(
         source,
         legacy_workspace_root=workspace_root,
+        copy_workspaces=copy_workspaces,
     )
     expected_profile_ids = tuple(str(item["profile_id"]) for item in source["profiles"])
     if result.profile_ids != expected_profile_ids:
@@ -363,13 +373,14 @@ def _run_profile_transaction_proof(
                 f"Profile payload is not lossless: {profile_id}"
             )
         source_workspace = workspace_root / "profiles" / profile_id
-        migrated_workspace = committed_destination / "workspaces" / profile_id
         source_files = _workspace_snapshot(source_workspace)
-        migrated_files = _workspace_snapshot(migrated_workspace)
-        if source_files != migrated_files:
-            raise IndependentMigrationProofError(
-                f"workspace payload is not lossless: {profile_id}"
-            )
+        if copy_workspaces:
+            migrated_workspace = committed_destination / "workspaces" / profile_id
+            migrated_files = _workspace_snapshot(migrated_workspace)
+            if source_files != migrated_files:
+                raise IndependentMigrationProofError(
+                    f"workspace payload is not lossless: {profile_id}"
+                )
         workspace_digests[profile_id] = canonical_digest(source_files)
 
     committed_snapshot = store.snapshot()
@@ -385,6 +396,7 @@ def _run_profile_transaction_proof(
         store.import_legacy_collection(
             source,
             legacy_workspace_root=workspace_root,
+            copy_workspaces=copy_workspaces,
         )
     except ProfileDefinitionStoreError:
         replay_rejected = True

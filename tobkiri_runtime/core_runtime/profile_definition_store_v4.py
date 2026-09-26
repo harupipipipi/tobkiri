@@ -2057,6 +2057,17 @@ def _require_directory_operations() -> None:
         )
 
 
+def legacy_workspace_copy_supported() -> bool:
+    """Return whether descriptor-relative legacy workspace copying is available.
+
+    Platforms without no-follow ``dir_fd`` primitives fail closed rather than
+    copying workspaces.  Callers on those platforms can still import the
+    registry itself with ``copy_workspaces=False``.
+    """
+
+    return _DESCRIPTOR_OPERATIONS_AVAILABLE
+
+
 def _open_directory_chain(path: Path) -> int | None:
     """Open every path component from the filesystem root without following links."""
 
@@ -2587,6 +2598,7 @@ def _copy_directory_from_descriptor(
 
 __all__ = [
     "LegacyMigrationResult",
+    "legacy_workspace_copy_supported",
     "PROFILE_STORE_FILENAME",
     "PROFILE_STORE_SCHEMA",
     "ProfileDefinitionNotFound",
