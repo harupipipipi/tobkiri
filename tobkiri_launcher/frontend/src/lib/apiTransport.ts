@@ -36,11 +36,20 @@ export class ApiRequestTimeoutError extends Error {
 
 export class ApiContractError extends Error {
   readonly data: unknown;
+  readonly status: number;
 
-  constructor(message: string, data: unknown) {
+  constructor(message: string, data: unknown, status = 0) {
     super(message);
     this.name = 'ApiContractError';
     this.data = data;
+    this.status = status;
+  }
+}
+
+export class PanelReauthorizationRequiredError extends Error {
+  constructor() {
+    super('The local panel session requires reauthorization.');
+    this.name = 'PanelReauthorizationRequiredError';
   }
 }
 
@@ -117,19 +126,35 @@ function isRecoverablePanelAuthError(status: number, errorMessage: string): bool
   return status === 401 || /Unauthorized|Invalid or expired code/i.test(errorMessage);
 }
 
+/** Replace an expired panel session through the Launcher-owned one-shot exchange. */
+export async function reauthorizePanelSession(): Promise<void> {
+  try {
+    const code = await requestDesktopPanelBootstrapCode();
+    if (!code) throw new PanelReauthorizationRequiredError();
+    await exchangePanelBootstrapCode(code);
+  } catch (error) {
+    if (error instanceof PanelReauthorizationRequiredError) throw error;
+    throw new PanelReauthorizationRequiredError();
+  }
+}
+
 export async function recoverExpiredPanelSession(currentRequestSignal?: AbortSignal): Promise<boolean> {
   if (panelSessionRecoveryPromise) return panelSessionRecoveryPromise;
 
   panelSessionRecoveryPromise = (async () => {
-    if (hasPendingPanelBootstrapCode()) {
-      await bootstrapPanelSession(currentRequestSignal);
-      return true;
-    }
+    try {
+      if (hasPendingPanelBootstrapCode()) {
+        await bootstrapPanelSession(currentRequestSignal);
+        return true;
+      }
 
-    const code = await requestDesktopPanelBootstrapCode();
-    if (!code) return false;
-    await exchangePanelBootstrapCode(code, currentRequestSignal);
-    return true;
+      const code = await requestDesktopPanelBootstrapCode();
+      if (!code) return false;
+      await exchangePanelBootstrapCode(code, currentRequestSignal);
+      return true;
+    } catch {
+      throw new PanelReauthorizationRequiredError();
+    }
   })();
 
   try {
@@ -253,7 +278,7 @@ export function createApiClient(
         ) {
           return fetchRequest(false, signal);
         }
-        throw new ApiContractError(errorMessage, errorData);
+        throw new ApiContractError(errorMessage, errorData, response.status);
       }
 
       const envelope: ApiResponse<T> = await response.json();
@@ -267,7 +292,7 @@ export function createApiClient(
         ) {
           return fetchRequest(false, signal);
         }
-        throw new ApiContractError(errorMessage, envelope.data);
+        throw new ApiContractError(errorMessage, envelope.data, response.status);
       }
       return envelope.data as T;
     };

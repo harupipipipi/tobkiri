@@ -149,6 +149,11 @@ test('review displays the exact Host confirmation and every operation binding', 
 test('the current GUI has no dependency on retired setup-pack routing', () => {
   assert.doesNotMatch(setupSource, /setupPack|setup_pack|\/setup\?return_to/);
   assert.doesNotMatch(appSource, /hasSelectedSetupPack|setupPacks/);
-  assert.doesNotMatch(appSource, /fetchDefaultsSetupState/);
+  assert.match(appSource, /fetchDefaultsSetupState/);
+  assert.match(appSource, /verifiedSetupState/);
+  assert.match(appSource, /next\.kind === 'missing'/);
+  assert.match(appSource, /SETUP_VERIFICATION_TIMEOUT_MS/);
+  assert.match(appSource, /failedSetupState/);
+  assert.doesNotMatch(appSource, /catch[\s\S]{0,240}setSetupDone\(false\)/);
   assert.doesNotMatch(appSource, /profile_reconfirmation_required/);
 });

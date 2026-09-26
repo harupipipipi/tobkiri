@@ -98,6 +98,21 @@ Function, Contract, scope, and Authority bindings. Missing, unknown, duplicate,
 wrong-type, stale, or digest-unbound fields are rejected; they are never made
 optional and never fall back to a legacy setup or Registry representation.
 
+The Launcher models startup verification as a finite, recoverable state machine.
+It distinguishes unknown/loading, verified active, authoritative missing,
+reauthorization required, offline/runtime unavailable, timeout, malformed, and
+other rejected responses. Only a successfully parsed `review_required` response
+with no denial diagnostic (the authoritative missing-selection result) may clear
+the local completed-setup flag. Every request failure preserves the
+completed shell and offers Retry, Reauthorize, or bounded client diagnostics as
+appropriate. An eight-second foreground timeout prevents an indefinite setup
+gate. A versioned local receipt records only the last verified outcome, timestamp,
+`profile_revision`, `plan_digest`, and `security_epoch`; it provides continuity
+while the Host starts but is never treated as Profile authority. A cached missing
+outcome cannot clear setup, and a fresh Host response always reconciles or replaces
+the receipt. Concurrent responses are ordered by a monotonic client generation so
+a late startup request cannot overwrite a newer retry.
+
 Production callers launch the generator through the shared isolated launcher:
 the child environment is rebuilt from a small neutral allowlist, Python is
 started with `-I -B -c`, and only the canonical `tobkiri_runtime` root is

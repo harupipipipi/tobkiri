@@ -28,6 +28,7 @@ import {
   restartKernel,
   selectPresentation,
   parseHealthResponse,
+  reauthorizePanelSession,
   setRuntimeDispatchStatus,
   updateNamedProfile,
 } from './api.ts';
@@ -1016,6 +1017,28 @@ test('panel bootstrap exchanges its session code before setup requests', async (
   assert.equal(exchangeCount, 1);
   assert.equal(lastFetchUrl, '/api/panel/auth/exchange');
   assert.equal(window.location.href, 'http://127.0.0.1:8765/panel/setup');
+});
+
+test('explicit panel reauthorization uses the Launcher-owned one-shot exchange', async () => {
+  await reauthorizePanelSession();
+
+  assert.equal(exchangeCount, 1);
+  assert.equal(lastFetchUrl, '/api/panel/auth/exchange');
+});
+
+test('API contract failures retain HTTP status for typed recovery decisions', async () => {
+  fetchHandler = async () => new Response(JSON.stringify({
+    success: false,
+    data: null,
+    error: 'runtime unavailable',
+  }), {status: 503, headers: {'Content-Type': 'application/json'}});
+
+  await assert.rejects(
+    apiFetch('/api/setup/packs'),
+    (error: unknown) => error instanceof Error
+      && error.name === 'ApiContractError'
+      && (error as Error & {status?: number}).status === 503,
+  );
 });
 
 test('setup and health requests remain separate from Pack contract dispatch', async () => {
