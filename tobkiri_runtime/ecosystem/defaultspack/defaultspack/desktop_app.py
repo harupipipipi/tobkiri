@@ -23,8 +23,6 @@ if TYPE_CHECKING:
     from core_runtime.panel_auth import PanelAuthManager
     from tobkiri_host.backends import ExecutionBackend
 
-from tobkiri_host.credential_store import host_credential_store_factory
-
 logger = logging.getLogger(__name__)
 
 _PACKVM_RECOVERY_ACTION = "Open Tobkiri Launcher > Packs to prepare PackVM."
@@ -415,12 +413,15 @@ def _active_profile_contract_context(active: Any) -> dict[str, str]:
 def _restore_active_profile_contracts(
     packvm_lifecycle: Any,
     *,
-    credential_store_factory: CredentialMaterialStoreFactory = (
-        host_credential_store_factory
-    ),
+    credential_store_factory: CredentialMaterialStoreFactory | None = None,
     packvm_backend_factory: Callable[[], ExecutionBackend | None] | None = None,
 ):
     """Capture the active Profile and verify its Application contract map."""
+
+    if credential_store_factory is None:
+        from tobkiri_host.credential_store import host_credential_store_factory
+
+        credential_store_factory = host_credential_store_factory
 
     from core_runtime.authority.v4 import AuthorityStore
     from core_runtime.bootstrap.production_v4 import capture_production_dispatch
@@ -717,6 +718,8 @@ def main(argv: list[str] | None = None) -> int:
         _parse_cli_args(argv)
     if not _IMPORT_PATH_READY:
         _ensure_import_path()
+    from tobkiri_host.credential_store import host_credential_store_factory
+
     _configure_persistent_user_state()
     _configure_http_environment()
     url = _url()

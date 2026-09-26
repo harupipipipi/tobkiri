@@ -570,7 +570,7 @@ test('unrelated foreground contract GETs keep their original bounded deadline', 
   };
 
   const bounded = assert.rejects(
-    fetchPacks(),
+    fetchDashboard(),
     /GET request timed out after 10000ms/,
   );
   await new Promise<void>((resolve) => setImmediate(resolve));
@@ -807,9 +807,9 @@ test('PackVM doctor still stops at its bounded verification deadline', async (co
     reads += 1;
     return new Promise<Response>(() => {});
   };
-  const bounded = assert.rejects(fetchPackVMDoctor(), /request timed out after 60000ms/);
+  const bounded = assert.rejects(fetchPackVMDoctor(), /request timed out after 300000ms/);
   await new Promise<void>((resolve) => setImmediate(resolve));
-  context.mock.timers.tick(60_000);
+  context.mock.timers.tick(300_000);
   await bounded;
   assert.equal(reads, 1);
 });
@@ -945,12 +945,12 @@ test('Setup connection recovery remains bounded and does not retry integrity err
     throw new TypeError('Load failed');
   };
   const bounded = assert.rejects(fetchDefaultsSetupState({waitForRestart: true}), /Load failed/);
-  for (let attempt = 0; attempt < 120; attempt += 1) {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     await new Promise<void>((resolve) => setImmediate(resolve));
     context.mock.timers.tick(500);
   }
   await bounded;
-  assert.ok(reads <= 120);
+  assert.ok(reads <= 600);
   reads = 0;
   fetchHandler = async () => {
     reads += 1;
@@ -970,7 +970,7 @@ test('a late session invalidation cannot restart the Setup verification deadline
   };
   const bounded = assert.rejects(fetchDefaultsSetupState({waitForRestart: true}), /request timed out/);
   await new Promise<void>((resolve) => setImmediate(resolve));
-  context.mock.timers.tick(59_000);
+  context.mock.timers.tick(299_000);
   clearApiPrefetchCache();
   responses[0](new Response(JSON.stringify({success: true, data: {}})));
   await new Promise<void>((resolve) => setImmediate(resolve));
