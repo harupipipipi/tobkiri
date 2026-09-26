@@ -280,7 +280,7 @@ export function cancelPackVM(operationId: string): Promise<ApiPackVMOperation> {
 export function fetchPackVMDoctor(): Promise<ApiPackVMDoctor> {
   // Verifying the pinned multi-GiB image can exceed the ordinary UI GET budget.
   // Keep a bounded, read-only deadline; never replay provisioning on timeout.
-  return hostApiFetch<unknown>(`${PACKVM_API_ROOT}/doctor`, {}, {timeoutMs: 60_000})
+  return hostApiFetch<unknown>(`${PACKVM_API_ROOT}/doctor`, {}, {timeoutMs: 300_000})
     .then(normalizePackVMDoctor);
 }
 

@@ -669,6 +669,30 @@ def test_revocation_between_issue_and_dispatch_fences_effect(tmp_path: Path) -> 
         )
 
 
+def test_bulk_revocation_snapshot_preserves_exact_and_global_fences(
+    tmp_path: Path,
+) -> None:
+    harness = _Harness(tmp_path)
+    requested = (harness.grant.grant_id, "grant-other")
+    assert harness.store.revoked_ids_for_kind("grant", requested) == frozenset()
+
+    harness.kernel.revoke(
+        target_kind="grant",
+        target_id=harness.grant.grant_id,
+        reason="exact grant revoked",
+    )
+    assert harness.store.revoked_ids_for_kind("grant", requested) == frozenset(
+        {harness.grant.grant_id}
+    )
+
+    harness.kernel.revoke(
+        target_kind="global",
+        target_id="global",
+        reason="global authority revoked",
+    )
+    assert harness.store.revoked_ids_for_kind("grant", requested) == frozenset(requested)
+
+
 @pytest.mark.parametrize(
     ("target_kind", "target_attribute"),
     [

@@ -2831,6 +2831,30 @@ class AuthorityStore:
         except sqlite3.Error as exc:
             raise AuthorityStoreError("revocation lookup failed") from exc
 
+    @_process_owned
+    def revoked_ids_for_kind(
+        self, target_kind: str, target_ids: Iterable[str]
+    ) -> frozenset[str]:
+        """Check a catalog's targets in one authenticated storage snapshot."""
+
+        requested = frozenset(target_ids)
+        if not requested:
+            return frozenset()
+        try:
+            with self._lock, self._connection() as connection:
+                rows = connection.execute(
+                    "SELECT target_kind, target_id FROM revocations"
+                    " WHERE target_kind=? OR target_kind='global'",
+                    (target_kind,),
+                ).fetchall()
+                if any(row[0] == "global" for row in rows):
+                    return requested
+                return frozenset(
+                    row[1] for row in rows if row[1] in requested
+                )
+        except sqlite3.Error as exc:
+            raise AuthorityStoreError("revocation lookup failed") from exc
+
     @staticmethod
     def _is_revoked(
         connection: _IdentityBoundConnection, target_kind: str, target_id: str

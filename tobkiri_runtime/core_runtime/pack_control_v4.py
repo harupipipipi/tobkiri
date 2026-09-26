@@ -1328,13 +1328,17 @@ def _active_grant_bindings(state: Mapping[str, Any]) -> set[tuple[str, str]]:
     try:
         with AuthorityStore(_user_data_root() / "authority" / "v4.sqlite3") as authority:
             result: set[tuple[str, str]] = set()
-            for grant in authority.list_grants():
+            grants = authority.list_grants()
+            revoked_grant_ids = authority.revoked_ids_for_kind(
+                "grant", (grant.grant_id for grant in grants)
+            )
+            for grant in grants:
                 if (
                     grant.revoked
                     or grant.profile_id != expected_profile
                     or grant.activation_id != expected_activation
                     or grant.security_epoch != expected_epoch
-                    or authority.is_revoked("grant", grant.grant_id)
+                    or grant.grant_id in revoked_grant_ids
                 ):
                     continue
                 dimensions = grant.scope.dimensions

@@ -218,7 +218,11 @@ function dispatchPackControl<T>(
     'runtime.restart': '/api/pack-control/restart',
   };
   if (operationId === 'catalog.read') {
-    return defaultspackApiFetch<T>(frontendContractPath('GET', '/api/pack-control/catalog'));
+    return defaultspackApiFetch<T>(
+      frontendContractPath('GET', '/api/pack-control/catalog'),
+      {},
+      {timeoutMs: 300_000},
+    );
   }
   const target = targets[operationId];
   if (!target) throw new Error(`Unselected Pack control operation: ${operationId}`);
