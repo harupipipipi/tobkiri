@@ -305,5 +305,9 @@ export function checkHealth(): Promise<HealthResponseData> {
 }
 
 export async function reconcileDefaultsRuntime(): Promise<void> {
-  await hostApiFetch<unknown>('/api/setup/runtime/reconcile', {method: 'POST'});
+  await hostApiFetch<unknown>(
+    '/api/setup/runtime/reconcile',
+    {method: 'POST'},
+    {timeoutMs: 300_000},
+  );
 }

@@ -456,6 +456,55 @@ class _Lifecycle:
         return {"status": "ok", "runtime_ready": True}
 
 
+def test_runtime_reconciliation_reuses_verified_ready_capture() -> None:
+    class ReadyLifecycle:
+        def get_health(self) -> dict[str, object]:
+            return {
+                "status": "ok",
+                "needs_setup": False,
+                "runtime_status": "runtime_ready",
+                "runtime_ready": True,
+            }
+
+    refreshes: list[object] = []
+    responses: list[dict[str, object]] = []
+
+    class ReconcileHandler(PackAPIHandler):
+        app_lifecycle_manager = ReadyLifecycle()
+        _runtime_refresh = staticmethod(refreshes.append)
+
+        def _reset_request_state(self) -> None:
+            pass
+
+        def _handle_packvm_acceptance(self, *_args: object) -> bool:
+            return False
+
+        def _handle_packvm_lifecycle(self, *_args: object) -> bool:
+            return False
+
+        def _handle_contract_request(self, *_args: object) -> bool:
+            return False
+
+        def _is_retired_setup_complete_path(self) -> bool:
+            return False
+
+        def _check_auth(self, *_args: object) -> bool:
+            return True
+
+        def _discard_request_body(self) -> None:
+            pass
+
+        def _send_mapping_result(self, result: dict[str, object]) -> None:
+            responses.append(result)
+
+    handler = object.__new__(ReconcileHandler)
+    handler.path = "/api/setup/runtime/reconcile"
+    handler.do_POST()
+
+    assert refreshes == []
+    assert responses == [{"state": "runtime_ready", "runtime_ready": True}]
+
+
 class _PackVMLifecycle:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, object]]] = []

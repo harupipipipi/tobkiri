@@ -2823,8 +2823,16 @@ location.replace({target_literal})}})
                 })
                 return
             try:
-                refresh(None)
                 health = lifecycle.get_health()
+                # A cold Host restart may already have published the exact
+                # active capture. Rebuilding it again on every Setup recovery
+                # request is expensive and can outlive the desktop request.
+                if not (
+                    health.get("runtime_ready") is True
+                    and health.get("needs_setup") is False
+                ):
+                    refresh(None)
+                    health = lifecycle.get_health()
             except Exception as error:
                 from .app_lifecycle_manager import mark_runtime_failed
 
