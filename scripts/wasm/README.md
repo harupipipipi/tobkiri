@@ -1,4 +1,6 @@
-# Shell Policy Wasm migration
+# Wasm migration candidates
+
+## Shell Policy
 
 The first candidate is `rumi_shell_policy_pack`: its command classification is
 pure computation. The Host still owns authorization and command execution.
@@ -71,6 +73,35 @@ closed as conformance-only. Direct-process RSS sampling on macOS is diagnostic
 only and cannot satisfy the resource-controller gate; macOS production requires
 a VZ/PackVM hard boundary. Do not report a reservation, RSS sample, RLIMIT_RSS,
 or RLIMIT_AS as proof of physical containment.
+
+## Application presentation
+
+`defaultspack.application-presentation` is another pure candidate. Its
+generated source projects sealed UI and command definitions from caller-supplied
+display data. With the pinned tools above, build its component from the reviewed
+source digest:
+
+```sh
+python scripts/wasm/build_application_presentation.py \
+  --source tobkiri_runtime/ecosystem/defaultspack/runtime/application_presentation.py \
+  --source-sha256 712e2540875dc130c3d393c85a104c99b37f8d5d0248201b09c6e84c748157f2 \
+  --output /tmp/tobkiri-wasm/presentation.wasm
+```
+
+From `tobkiri_runtime/`, run the real-component parity checks with the pinned
+toolchain and pytest installed:
+
+```sh
+python -B -m pytest tests/test_application_presentation_wasm.py -q
+```
+
+The build is a conformance artifact. The current Pack v4 Function and Profile
+still select PackVM. One executable variant is pinned per Function, and macOS
+currently lacks the hard resource controller required to register the direct
+Wasm backend for production. Replacing that variant now would make the
+presentation operation unavailable on macOS. Production cutover needs a
+verified hard boundary, exact artifact/Authority/Broker binding, and
+request-scoped worker cleanup before changing the Pack catalog.
 
 References: [Wasmtime sandboxing](https://docs.wasmtime.dev/security.html) and
 [componentize-py](https://github.com/bytecodealliance/componentize-py).
