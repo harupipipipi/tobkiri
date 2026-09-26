@@ -97,6 +97,7 @@ defaults 単体で既存の AI サービス（ChatGPT / Claude / Cursor / Devin�
 | ブラウザに返す実ファイルの置き場を見たい | `ui/` |
 | Browser Companion extension を見たい | `browser_extensions/rumi_browser_companion/` |
 | HTTP エンドポイントを見たい | `docs/chat.md`, `transport/http.py` |
+| managed desktop の visual QA evidence 境界を見たい | `docs/desktop_frame_evidence.md` |
 | viewer 経由の起動フローを知りたい | `../../docs/tobkiri_launcher_start.md` |
 
 `webapp/` は `Tobkiri` の standalone frontend source です。`defaultspack` の `/api/chat/...`、`/api/ui/...`、`/api/health` に接続します。`npm run build` の出力先は `ui/` で、HTTP サーバーはその build 済み asset を `/` と `/static/...` で配信します。

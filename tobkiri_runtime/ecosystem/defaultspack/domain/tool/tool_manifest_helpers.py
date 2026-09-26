@@ -48,6 +48,7 @@ REQUESTED_AGENT_OS_TOOL_IDS = [
     "desktop_list",
     "desktop_create",
     "desktop_frame",
+    "desktop_frame_evidence",
     "desktop_input",
     "desktop_control_acquire",
     "desktop_control_renew",

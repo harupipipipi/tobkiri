@@ -467,6 +467,13 @@
       "executable": false
     },
     {
+      "path": "ecosystem/defaultspack/tools/desktop_frame_evidence/manifest.json",
+      "type": "regular-file",
+      "size": 2032,
+      "sha256": "29b806d73bed95c16cb7975e721fac02ef029934319c4bcbcaf8ecca44f5d42c",
+      "executable": false
+    },
+    {
       "path": "ecosystem/defaultspack/tools/desktop_input/manifest.json",
       "type": "regular-file",
       "size": 2250,
