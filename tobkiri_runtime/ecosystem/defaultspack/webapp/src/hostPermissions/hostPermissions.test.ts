@@ -13,7 +13,9 @@ import {
   hostPermissionSummary,
   safeHostPermissionDiagnostic,
 } from "./hostPermissions";
+import { fetchHostPermissionsSnapshot } from "./hostPermissionsClient";
 import {
+  authorityUnavailableFeedback,
   HostPermissionsTable,
   StatusStrip,
 } from "./HostPermissionsPage";
@@ -56,6 +58,27 @@ function authorityRequest(overrides: Partial<AuthorityRequest>): AuthorityReques
     created_at: "2026-06-15T00:00:00.000Z",
     ...overrides,
   };
+}
+
+function setupWindowMock() {
+  (globalThis as Record<string, unknown>).window = {};
+}
+
+function contractRequestTarget(input: RequestInfo | URL): string {
+  const raw = String(input);
+  const marker = "/api/contracts/defaultspack/";
+  const markerIndex = raw.indexOf(marker);
+  if (markerIndex < 0) return raw;
+  const operation = decodeURIComponent(raw.slice(markerIndex + marker.length));
+  const separator = operation.indexOf(" ");
+  return separator < 0 ? operation : operation.slice(separator + 1);
+}
+
+function jsonResponse(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 describe("host permissions", () => {
@@ -204,5 +227,99 @@ describe("host permissions", () => {
     assert.match(diagnostic, /\[url\]/);
     assert.match(diagnostic, /\[path\]/);
     assert.doesNotMatch(diagnostic, /abcdefghijklmnop|alice|host\.test/);
+  });
+
+  it("marks the authority lookup unavailable while preserving OS permission rows", async (context) => {
+    setupWindowMock();
+    const originalFetch = globalThis.fetch;
+    context.after(() => {
+      globalThis.fetch = originalFetch;
+    });
+    globalThis.fetch = async (input) => {
+      const target = contractRequestTarget(input);
+      if (target.startsWith("/api/desktop-system-info")) {
+        return jsonResponse({
+          status: "ok",
+          data: desktopInfo({
+            host_permissions: {
+              "host.screen.capture": {
+                id: "host.screen.capture",
+                os_status: "granted",
+                stream_allowed: true,
+              },
+            },
+          }),
+        });
+      }
+      if (target.startsWith("/api/authority/requests")) {
+        throw new TypeError(
+          "fetch failed https://authority.invalid/lookup?access_token=deadbeefsecret",
+        );
+      }
+      return jsonResponse({}, 404);
+    };
+
+    const snapshot = await fetchHostPermissionsSnapshot();
+
+    // The renamed contract replaces the base `authorityError` string with an
+    // explicit unavailable flag plus a sanitized diagnostic.
+    assert.equal(snapshot.authorityUnavailable, true);
+    assert.match(snapshot.authorityDiagnostic ?? "", /fetch failed/);
+    assert.doesNotMatch(snapshot.authorityDiagnostic ?? "", /deadbeefsecret|authority\.invalid/);
+    assert.deepEqual(snapshot.authorityRequests, []);
+
+    // OS permission rows remain visible even when the approval history is not.
+    const screen = snapshot.rows.find((row) => row.id === "host.screen.capture");
+    assert.equal(screen?.osStatus, "approved");
+    assert.equal(snapshot.summary.total, hostPermissionDefinitions().length);
+  });
+
+  it("omits the authority divergence fields when the authority lookup succeeds", async (context) => {
+    setupWindowMock();
+    const originalFetch = globalThis.fetch;
+    context.after(() => {
+      globalThis.fetch = originalFetch;
+    });
+    globalThis.fetch = async (input) => {
+      const target = contractRequestTarget(input);
+      if (target.startsWith("/api/desktop-system-info")) {
+        return jsonResponse({ status: "ok", data: desktopInfo() });
+      }
+      if (target.startsWith("/api/authority/requests")) {
+        return jsonResponse({
+          success: true,
+          data: {
+            requests: [authorityRequest({ status: "approved" })],
+            pending: [],
+            count: 1,
+          },
+        });
+      }
+      return jsonResponse({}, 404);
+    };
+
+    const snapshot = await fetchHostPermissionsSnapshot();
+
+    assert.equal(snapshot.authorityUnavailable, undefined);
+    assert.equal(snapshot.authorityDiagnostic, undefined);
+    assert.equal(snapshot.authorityRequests.length, 1);
+    const screen = snapshot.rows.find((row) => row.id === "host.screen.capture");
+    assert.equal(screen?.rumiStatus, "approved");
+  });
+
+  it("locks the renamed authority-divergence contract as an error notice with a disclosed diagnostic", () => {
+    const feedback = authorityUnavailableFeedback("TypeError: lookup failed");
+
+    // The base `authorityError` path rendered a warning; the redesign uses an
+    // error alert plus a separately disclosed diagnostic instead.
+    assert.equal(feedback.notice.tone, "error");
+    assert.match(feedback.notice.text, /Tobkiri approval history is temporarily unavailable/);
+    assert.match(feedback.notice.text, /OS permission values remain visible/);
+    assert.equal(feedback.diagnostic, "TypeError: lookup failed");
+
+    // Missing diagnostics fall back to a generic label rather than leaking
+    // raw internals into the disclosure block.
+    assert.equal(authorityUnavailableFeedback(undefined).diagnostic, "Authority request lookup failed.");
+    assert.equal(authorityUnavailableFeedback("").diagnostic, "Authority request lookup failed.");
   });
 });

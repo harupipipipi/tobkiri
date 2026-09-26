@@ -26,6 +26,24 @@ import {
 type LoadState = "loading" | "ready" | "error";
 type Notice = { tone: "status" | "error"; text: string };
 
+/**
+ * Feedback shown when the authority-request lookup failed but OS permission
+ * rows still rendered. This is the renamed replacement for the former
+ * `authorityError` warning: the notice is an error alert while the sanitized
+ * diagnostic is disclosed separately instead of being inlined.
+ */
+export function authorityUnavailableFeedback(
+  authorityDiagnostic: string | undefined,
+): { notice: Notice; diagnostic: string } {
+  return {
+    notice: {
+      tone: "error",
+      text: "Tobkiri approval history is temporarily unavailable. OS permission values remain visible.",
+    },
+    diagnostic: authorityDiagnostic || "Authority request lookup failed.",
+  };
+}
+
 export function HostPermissionsPage() {
   const [snapshot, setSnapshot] = useState<HostPermissionsSnapshot | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -46,11 +64,9 @@ export function HostPermissionsPage() {
       setLoadState("ready");
 
       if (nextSnapshot.authorityUnavailable) {
-        setNotice({
-          tone: "error",
-          text: "Tobkiri approval history is temporarily unavailable. OS permission values remain visible.",
-        });
-        setDiagnostic(nextSnapshot.authorityDiagnostic || "Authority request lookup failed.");
+        const feedback = authorityUnavailableFeedback(nextSnapshot.authorityDiagnostic);
+        setNotice(feedback.notice);
+        setDiagnostic(feedback.diagnostic);
       } else if (!previousSignature) {
         setNotice({
           tone: "status",
