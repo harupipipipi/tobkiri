@@ -4250,8 +4250,13 @@ export function SettingsModalRenderer({
           </button>
         </div>
         {manifest.renderer.kind === "html" ? (
-          <div className="mt-3 h-44 overflow-hidden rounded-lg">
-            <PlacementHtmlRenderer manifest={manifest} />
+          <div className="mt-3 h-44 overflow-y-auto rounded-lg">
+            <PlacementHtmlRenderer
+              manifest={manifest}
+              onDisable={() => updatePinnedPlacements((current) => current.filter(
+                (placement) => !(placement.id === manifest.id && placement.surface === "settings"),
+              ))}
+            />
           </div>
         ) : action?.type === "open_settings_section" && settingsTarget ? (
           <button

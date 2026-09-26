@@ -86,6 +86,7 @@ test("html placements fail closed instead of creating an origin-bearing iframe",
   assert.equal(rendering.kind, "blocked_html");
   if (rendering.kind !== "blocked_html") return;
   assert.equal(rendering.reason, "unverified_active_content");
+  assert.equal(rendering.manifestId, "html-test");
   assert.equal(rendering.sourceLabel, "custom:example-extension");
   assert.match(rendering.message, /Arbitrary HTML placements are disabled/);
   assert.equal("sandbox" in rendering, false);
@@ -100,6 +101,16 @@ test("active and network-capable HTML payloads are all blocked", () => {
     '<form><button>Approve access</button></form>',
     '<svg><image href="http://192.168.1.1/secret"></image></svg>',
     '<style>@import url("https://fonts.example/font.css")</style>',
+    '<img src="file:///etc/passwd">',
+    '<img src="//169.254.169.254/latest/meta-data">',
+    '<a href="javascript:alert(1)">click</a>',
+    '<iframe srcdoc="<script>alert(1)</script>"></iframe>',
+    '<object data="https://evil.example/widget.html"></object>',
+    '<embed src="data:text/html,<script>alert(1)</script>">',
+    '<base href="https://evil.example/">',
+    '<video poster="http://10.0.0.5/tracker.png"><source src="http://10.0.0.5/x.mp4"></video>',
+    '<div style="background:url(http://[::1]/beacon)">x</div>',
+    '<<<malformed<<<>>>unclosed',
   ];
 
   for (const html of payloads) {
@@ -108,6 +119,30 @@ test("active and network-capable HTML payloads are all blocked", () => {
       label: "Adversarial HTML",
       source: { type: "custom" },
       renderer: { kind: "html", html },
+      placements: [{ surface: "settings", orientation: "vertical" }],
+    });
+    assert.equal(rendering.kind, "blocked_html");
+    if (rendering.kind === "blocked_html") {
+      assert.equal(rendering.reason, "unverified_active_content");
+      assert.equal(rendering.manifestId, "adversarial-html");
+    }
+  }
+});
+
+test("self-declared trusted flags never unblock HTML from any source", () => {
+  const sources = [
+    { type: "custom" },
+    { type: "integration", sourceId: "extension-pack" },
+    { type: "widget", sourceId: "catalog-widget" },
+    { type: "settings_section", sourceId: "models" },
+  ] as const;
+
+  for (const source of sources) {
+    const rendering = resolvePlacementHtmlRendering({
+      id: "trusted-flag-html",
+      label: "Trusted flag HTML",
+      source,
+      renderer: { kind: "html", trusted: true, html: "<p>harmless looking</p>" },
       placements: [{ surface: "settings", orientation: "vertical" }],
     });
     assert.equal(rendering.kind, "blocked_html");
