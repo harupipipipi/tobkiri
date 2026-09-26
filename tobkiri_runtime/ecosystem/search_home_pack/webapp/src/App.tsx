@@ -8,6 +8,7 @@ import {
   MODEL_SETTINGS_KEY,
   persistRouteStateRemotely,
   routeInput,
+  searchHomeRequestMessage,
   setPreferredModel,
   type SearchHomeModel,
 } from "./api";
@@ -25,6 +26,13 @@ import {
 import { NavigationReview } from "./NavigationReview";
 import { conversationHref, normalizeAnswerResponse, type AnswerResult } from "./answerState";
 import { evaluateExplicitDestinationInput } from "./destinationPolicy";
+import {
+  attachmentPreparationMessage,
+  attachmentSupportLabel,
+  attachmentSupportsAction,
+  encodeSearchHomeAttachment,
+  type SearchHomeAttachment,
+} from "./attachments";
 
 const ROUTE_DECISION_STORAGE_KEY = "rumi-search-home-route-decision";
 const ANSWER_ROUTE_TYPES = new Set(["ASK_AI", "ASK_AI_WITH_SEARCH"]);
@@ -276,17 +284,21 @@ export default function App() {
   const [selectedModel, setSelectedModel] = useState("");
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [modelFilter, setModelFilter] = useState("");
+  const [modelSaveError, setModelSaveError] = useState("");
   const [loading, setLoading] = useState(false);
   const [answerLoading, setAnswerLoading] = useState(false);
   const [answerResult, setAnswerResult] = useState<(AnswerResult & { query: string; requestedModel: string }) | null>(null);
   const [answerTransportError, setAnswerTransportError] = useState("");
   const [isFocused, setIsFocused] = useState(false);
-  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [attachedFile, setAttachedFile] = useState<SearchHomeAttachment | null>(null);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [attachmentError, setAttachmentError] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const modelPickerRef = useRef<HTMLDivElement | null>(null);
   const modelFilterRef = useRef<HTMLInputElement | null>(null);
   const committedNavigationRef = useRef(false);
   const answerRequestRef = useRef(0);
+  const answerAttachmentRef = useRef<SearchHomeAttachment | null>(null);
 
   const currentDecision = useMemo(() => {
     if (!decision) {
@@ -299,6 +311,7 @@ export default function App() {
   }, [decision, selectedIndex]);
 
   const activeAction = ACTIONS[selectedActionIndex]?.id ?? "smart";
+  const selectableActionCount = attachedFile ? 2 : ACTIONS.length;
   const selectedModelItem = useMemo(
     () => models.find((model) => modelId(model) === selectedModel) ?? null,
     [models, selectedModel],
@@ -309,6 +322,12 @@ export default function App() {
       : selectedModel
     : "Default model";
   const selectedModelStatus = selectedModelItem ? modelStatusLabel(selectedModelItem) : "default routing";
+  const attachmentModelUnsupported = Boolean(
+    attachedFile?.dataUrl &&
+      selectedModelItem &&
+      !selectedModelItem.supports_image_input &&
+      !selectedModelItem.supports_vision,
+  );
   const filteredModels = useMemo(() => {
     const needle = modelFilter.trim().toLowerCase();
     return models.filter((model) => {
@@ -426,7 +445,13 @@ export default function App() {
   }, [modelPickerOpen]);
 
   const runAnswer = useCallback(
-    async (query: string, baseDecision: RouteDecision = syntheticAnswerDecision(query)) => {
+    async (
+      query: string,
+      baseDecision: RouteDecision = syntheticAnswerDecision(query),
+      attachmentOverride?: SearchHomeAttachment | null,
+    ) => {
+      const requestAttachment = attachmentOverride === undefined ? attachedFile : attachmentOverride;
+      answerAttachmentRef.current = requestAttachment;
       setDecision(baseDecision);
       setSelectedIndex(-1);
       persistRouteState(baseDecision, -1);
@@ -435,17 +460,20 @@ export default function App() {
       setAnswerTransportError("");
       setAnswerLoading(true);
       try {
-        const payload = await answerInput(query, selectedModel);
+        const payload = await answerInput(query, selectedModel, requestAttachment ? [requestAttachment] : []);
         if (requestRevision !== answerRequestRef.current) return;
         setAnswerResult({ ...normalizeAnswerResponse(payload), query, requestedModel: selectedModel });
-      } catch {
+      } catch (error) {
         if (requestRevision !== answerRequestRef.current) return;
-        setAnswerTransportError("The answer request could not be completed. Check the connection and retry intentionally.");
+        setAnswerTransportError(searchHomeRequestMessage(
+          error,
+          "The answer request could not be completed. Check the connection and retry intentionally.",
+        ));
       } finally {
         if (requestRevision === answerRequestRef.current) setAnswerLoading(false);
       }
     },
-    [persistRouteState, selectedModel],
+    [attachedFile, persistRouteState, selectedModel],
   );
 
   const executeSearch = useCallback(
@@ -454,6 +482,15 @@ export default function App() {
       if (!query || loading || answerLoading) {
         return;
       }
+      if (attachedFile && !attachmentSupportsAction(action)) {
+        setAttachmentError("Attached files can only be used with Smart Resolve or AI Answer.");
+        return;
+      }
+      if (attachmentModelUnsupported) {
+        setAttachmentError("The selected model does not advertise image input. Choose a vision-capable model or remove the image.");
+        return;
+      }
+      setAttachmentError("");
       committedNavigationRef.current = false;
       setLoading(true);
       try {
@@ -498,7 +535,7 @@ export default function App() {
           return;
         }
 
-        const nextDecision = await routeInput(query, selectedModel);
+        const nextDecision = await routeInput(query, selectedModel, attachedFile ? [attachedFile] : []);
         const nextIndex = normalizeSelectedIndex(nextDecision, nextDecision.selected_index);
         setDecision(nextDecision);
         setSelectedIndex(nextIndex);
@@ -509,12 +546,18 @@ export default function App() {
         }
       } catch (submitError) {
         console.warn("Search Home route failed", submitError);
+        setAttachmentError(searchHomeRequestMessage(
+          submitError,
+          "The Search Home request could not be completed. Check the connection and retry.",
+        ));
       } finally {
         setLoading(false);
       }
     },
     [
       answerLoading,
+      attachedFile,
+      attachmentModelUnsupported,
       input,
       loading,
       navigate,
@@ -536,14 +579,29 @@ export default function App() {
     setSelectedModel(nextModel);
     setModelPickerOpen(false);
     setModelFilter("");
-    void setPreferredModel(nextModel).catch(() => undefined);
+    setModelSaveError("");
+    void setPreferredModel(nextModel).catch((error) => {
+      console.warn("Search Home model preference could not be saved", error);
+      setModelSaveError("Model selected for this request, but the preference could not be saved.");
+    });
   }, []);
 
-  const handleFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const nextFile = event.target.files?.[0] ?? null;
-    setAttachedFile(nextFile);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+    if (!nextFile) return;
+    setAttachedFile(null);
+    setAttachmentError("");
+    setAttachmentBusy(true);
+    try {
+      setAttachedFile(await encodeSearchHomeAttachment(nextFile));
+      setSelectedActionIndex(0);
+    } catch (error) {
+      setAttachmentError(attachmentPreparationMessage(error));
+    } finally {
+      setAttachmentBusy(false);
     }
   }, []);
 
@@ -552,7 +610,7 @@ export default function App() {
       <section className="hero-search">
         <div className="hero-header">
           <div>
-            <span className="product-mark">Rumi Search Home</span>
+            <span className="product-mark">Tobkiri Search Home</span>
             <h1>何を探しましょう？</h1>
           </div>
           <div className="model-control" ref={modelPickerRef}>
@@ -645,18 +703,30 @@ export default function App() {
                 </div>
               </div>
             ) : null}
+            {modelSaveError ? (
+              <span className="model-save-error" role="alert">
+                {modelSaveError}
+              </span>
+            ) : null}
           </div>
         </div>
 
         <form className="hero-form" onSubmit={handleSubmit}>
           <div className={`search-box${isFocused ? " search-box-focused" : ""}`}>
             <div className="search-row">
-              <input ref={fileInputRef} className="file-input" type="file" onChange={handleFileChange} />
+              <input
+                ref={fileInputRef}
+                className="file-input"
+                type="file"
+                accept="text/*,.c,.cfg,.conf,.cpp,.cs,.css,.csv,.go,.graphql,.h,.hpp,.html,.ini,.java,.js,.json,.jsx,.kt,.log,.lua,.md,.mdx,.mjs,.php,.properties,.py,.rb,.rs,.sh,.sql,.svg,.toml,.ts,.tsx,.txt,.xml,.yaml,.yml,.zsh,image/png,image/jpeg,image/gif,image/webp"
+                onChange={(event) => void handleFileChange(event)}
+              />
               <button
                 aria-label="Attach file"
                 className="icon-button"
                 title="ファイルを添付"
                 type="button"
+                disabled={attachmentBusy}
                 onClick={() => fileInputRef.current?.click()}
               >
                 +
@@ -674,11 +744,11 @@ export default function App() {
                   }
                   if (event.key === "ArrowDown") {
                     event.preventDefault();
-                    setSelectedActionIndex((current) => (current + 1) % ACTIONS.length);
+                    setSelectedActionIndex((current) => (current + 1) % selectableActionCount);
                   }
                   if (event.key === "ArrowUp") {
                     event.preventDefault();
-                    setSelectedActionIndex((current) => (current - 1 + ACTIONS.length) % ACTIONS.length);
+                    setSelectedActionIndex((current) => (current - 1 + selectableActionCount) % selectableActionCount);
                   }
                 }}
                 placeholder="検索ワードを入力..."
@@ -686,8 +756,8 @@ export default function App() {
                 spellCheck={false}
                 autoFocus
               />
-              <button className="submit-button" type="submit" disabled={!input.trim() || loading || answerLoading}>
-                <span>{loading || answerLoading ? "Working" : "検索"}</span>
+              <button className="submit-button" type="submit" disabled={!input.trim() || loading || answerLoading || attachmentBusy || attachmentModelUnsupported}>
+                <span>{attachmentBusy ? "Preparing file" : loading || answerLoading ? "Working" : "検索"}</span>
                 <span aria-hidden="true">→</span>
               </button>
             </div>
@@ -700,14 +770,20 @@ export default function App() {
                   </span>
                   <span className="file-meta">
                     <strong>{attachedFile.name}</strong>
-                    <span>{(attachedFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                    <span>{attachedFile.size < 1024 * 1024 ? `${(attachedFile.size / 1024).toFixed(1)} KB` : `${(attachedFile.size / 1024 / 1024).toFixed(2)} MB`} · Ready for AI</span>
                   </span>
-                  <button aria-label="Remove file" className="remove-file" type="button" onClick={() => setAttachedFile(null)}>
+                  <button aria-label="Remove file" className="remove-file" type="button" onClick={() => { setAttachedFile(null); setAttachmentError(""); }}>
                     ×
                   </button>
                 </div>
               </div>
             ) : null}
+
+            <div className={`attachment-help${attachmentError || attachmentModelUnsupported ? " attachment-help-error" : ""}`} role="status" aria-live="polite">
+              {attachmentModelUnsupported
+                ? "The selected model does not advertise image input. Choose a vision-capable model or remove the image."
+                : attachmentError || (attachmentBusy ? "Preparing attachment…" : attachmentSupportLabel())}
+            </div>
 
             {input.trim() ? (
               <div className="action-list" role="listbox" aria-label="Search actions">
@@ -718,6 +794,7 @@ export default function App() {
                     key={action.id}
                     role="option"
                     type="button"
+                    disabled={Boolean(attachedFile && !attachmentSupportsAction(action.id))}
                     onClick={() => {
                       setSelectedActionIndex(index);
                       void executeSearch(action.id);
@@ -726,7 +803,7 @@ export default function App() {
                   >
                     <span>
                       <strong>{action.title}</strong>
-                      <small>{action.subtitle(input.trim())}</small>
+                      <small>{attachedFile && !attachmentSupportsAction(action.id) ? "Unavailable while a file is attached" : action.subtitle(input.trim())}</small>
                     </span>
                   </button>
                 ))}
@@ -746,7 +823,12 @@ export default function App() {
           <section className="answer-card answer-card-error" role="alert">
             <strong>Answer request failed</strong>
             <p>{answerTransportError}</p>
-            <button type="button" onClick={() => void runAnswer(input.trim())}>Retry intentionally</button>
+            <button
+              type="button"
+              onClick={() => void runAnswer(input.trim(), syntheticAnswerDecision(input.trim()), answerAttachmentRef.current)}
+            >
+              Retry intentionally
+            </button>
           </section>
         ) : null}
 
@@ -767,12 +849,17 @@ export default function App() {
             </dl>
             <div className="answer-actions">
               {answerResult.conversationId ? (
-                <a href={conversationHref(answerResult.conversationId)}>Open conversation / Continue in Rumi</a>
+                <a href={conversationHref(answerResult.conversationId)}>Open conversation / Continue in Tobkiri</a>
               ) : null}
-              <button type="button" onClick={() => void runAnswer(answerResult.query)}>Retry intentionally</button>
+              <button
+                type="button"
+                onClick={() => void runAnswer(answerResult.query, syntheticAnswerDecision(answerResult.query), answerAttachmentRef.current)}
+              >
+                Retry intentionally
+              </button>
               <button type="button" onClick={() => { setAnswerResult(null); setAnswerTransportError(""); }}>Dismiss</button>
             </div>
-            <p className="answer-privacy-note">Answer text is kept in memory only. Reload recovery uses the durable Rumi conversation link when available.</p>
+            <p className="answer-privacy-note">Answer text is kept in memory only. Reload recovery uses the durable Tobkiri conversation link when available.</p>
           </section>
         ) : null}
       </section>

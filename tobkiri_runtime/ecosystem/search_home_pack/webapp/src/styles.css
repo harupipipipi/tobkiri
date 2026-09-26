@@ -125,6 +125,15 @@ a {
   z-index: 30;
 }
 
+.model-save-error {
+  display: block;
+  max-width: 22rem;
+  margin-top: 0.5rem;
+  color: #b42318;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
 .model-trigger {
   width: 100%;
   min-height: 54px;
@@ -413,6 +422,11 @@ a {
   outline: none;
 }
 
+.icon-button:disabled {
+  cursor: wait;
+  opacity: 0.45;
+}
+
 .search-input {
   width: 100%;
   min-width: 0;
@@ -461,6 +475,16 @@ a {
 
 .attachment-strip {
   padding: 0 20px 18px;
+}
+
+.attachment-help {
+  padding: 0 24px 14px;
+  color: #71717a;
+  font-size: 0.76rem;
+}
+
+.attachment-help-error {
+  color: #fda4af;
 }
 
 .attachment-strip::before,
@@ -553,6 +577,12 @@ a {
 .action-row-active {
   background: #1a1a1a;
   color: #f5f5f4;
+}
+
+.action-row:disabled {
+  cursor: not-allowed;
+  background: transparent;
+  color: #52525b;
 }
 
 .action-row span {
