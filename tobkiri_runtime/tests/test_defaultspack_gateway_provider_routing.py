@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+import json
 import sys
 from pathlib import Path
 
@@ -188,3 +190,136 @@ def test_openrouter_invocation_uses_catalog_without_network_refresh(monkeypatch)
         [],
         {},
     )
+
+
+def _stream_test_provider(monkeypatch):
+    monkeypatch.setattr(
+        "domain.ai_client.providers.openrouter_provider.openrouter_provider_options",
+        lambda: {},
+    )
+    from domain.ai_client.providers.openrouter_provider import OpenRouterProvider
+
+    provider = OpenRouterProvider(
+        known_models=[
+            {
+                "id": "openrouter/openai/test-model",
+                "model_id": "openai/test-model",
+                "provider_id": "openrouter",
+                "provider": "openrouter",
+                "name": "Test model",
+                "display_name": "Test model",
+                "type": "chat",
+            }
+        ]
+    )
+    monkeypatch.setattr(provider, "_load_remote_model_cache", lambda: None)
+    monkeypatch.setattr(
+        provider,
+        "_fetch_remote_models",
+        lambda: (_ for _ in ()).throw(AssertionError("invocation refreshed inventory")),
+    )
+    return provider
+
+
+class _FakeStreamResponse:
+    def __init__(self, payload: bytes) -> None:
+        self._buf = io.BytesIO(payload)
+        self.closed = False
+
+    def read(self, size: int = -1) -> bytes:
+        return self._buf.read(size)
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _sse_bytes(*objs) -> bytes:
+    payload = b""
+    for obj in objs:
+        payload += b"data: " + json.dumps(obj).encode() + b"\n\n"
+    return payload + b"data: [DONE]\n\n"
+
+
+def test_openrouter_stream_emits_single_terminal_event_with_real_usage(
+    monkeypatch,
+):
+    # OpenRouter repeats finish_reason on its trailing usage-bearing chunk;
+    # the terminal event must carry the real usage and appear exactly once.
+    provider = _stream_test_provider(monkeypatch)
+    wire = _sse_bytes(
+        {
+            "choices": [{"delta": {"content": "PO"}, "finish_reason": None}],
+            "usage": None,
+        },
+        {"choices": [{"delta": {}, "finish_reason": "stop"}], "usage": None},
+        {
+            "choices": [{"delta": {}, "finish_reason": "stop"}],
+            "usage": {
+                "prompt_tokens": 14,
+                "completion_tokens": 4,
+                "total_tokens": 18,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        provider, "_request_stream", lambda *a, **k: _FakeStreamResponse(wire)
+    )
+
+    events = list(
+        provider.stream(
+            "openrouter/openai/test-model",
+            [{"role": "user", "content": "hi"}],
+            [],
+            {},
+        )
+    )
+
+    ends = [e for e in events if e.get("type") == "stream_end"]
+    assert len(ends) == 1
+    assert ends[0]["usage"] == {
+        "input_tokens": 14,
+        "output_tokens": 4,
+        "total_tokens": 18,
+    }
+    assert ends[0]["finish_reason"] == "stop"
+    assert "".join(
+        e["delta"]["text"] for e in events if e.get("type") == "content_delta"
+    ) == "PO"
+
+
+def test_openai_style_usage_only_chunk_merges_into_terminal_event(monkeypatch):
+    # OpenAI-style streams finish on a choices chunk, then send a usage-only
+    # chunk with empty choices; usage must merge into the single terminal event.
+    provider = _stream_test_provider(monkeypatch)
+    wire = _sse_bytes(
+        {"choices": [{"delta": {"content": "hi"}, "finish_reason": None}]},
+        {"choices": [{"delta": {}, "finish_reason": "stop"}]},
+        {
+            "choices": [],
+            "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 1,
+                "total_tokens": 6,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        provider, "_request_stream", lambda *a, **k: _FakeStreamResponse(wire)
+    )
+
+    events = list(
+        provider.stream(
+            "openrouter/openai/test-model",
+            [{"role": "user", "content": "hi"}],
+            [],
+            {},
+        )
+    )
+
+    ends = [e for e in events if e.get("type") == "stream_end"]
+    assert len(ends) == 1
+    assert ends[0]["usage"] == {
+        "input_tokens": 5,
+        "output_tokens": 1,
+        "total_tokens": 6,
+    }
