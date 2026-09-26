@@ -5,6 +5,13 @@ from pathlib import Path
 from typing import Any
 
 from .._helpers import canonical_json
+from ..activation import (
+    TemplateActivationPlan,
+    TemplateActivationPlanner,
+    TemplateActivationState,
+)
+from ..collisions import resolve_catalog_collisions
+from ..discovery import TemplateRoot
 from ..models import (
     ResolvedTemplate,
     RumiTemplate,
@@ -12,12 +19,6 @@ from ..models import (
     TemplatePiece,
     TemplateStatus,
 )
-from ..activation import (
-    TemplateActivationPlan,
-    TemplateActivationPlanner,
-    TemplateActivationState,
-)
-from ..collisions import resolve_catalog_collisions
 from ..registry import build_template_registry
 from ..resolver import resolve_template
 from ..source_adapters import (
@@ -56,12 +57,12 @@ CATALOG_KEYS = (
 def build_template_catalog(
     *,
     defaultspack_root: str | Path | None = None,
-    roots: list[str | Path] | None = None,
+    roots: list[str | Path | TemplateRoot] | None = None,
     adapters: list[TemplateSourceAdapter] | None = None,
 ) -> dict[str, Any]:
     catalog = empty_template_catalog()
     registry, diagnostics = build_template_registry(
-        [str(root) for root in roots] if roots is not None else None,
+        list(roots) if roots is not None else None,
         defaultspack_root=str(defaultspack_root) if defaultspack_root is not None else None,
     )
     activation_plan = TemplateActivationPlanner(registry).build()
@@ -72,6 +73,13 @@ def build_template_catalog(
             resolved.diagnostics.extend(activation_plan.states[template_id].diagnostics)
         resolved_templates.append(resolved)
         diagnostics.extend(resolved.diagnostics)
+
+    source_templates = {template.id: template for template in registry.list()}
+    for diagnostic in diagnostics:
+        _attach_source_provenance(diagnostic, source_templates)
+    for resolved in resolved_templates:
+        for diagnostic in resolved.diagnostics:
+            _attach_source_provenance(diagnostic, source_templates)
 
     catalog = project_resolved_templates(resolved_templates, activation_plan=activation_plan)
     adapter_root = (
@@ -92,6 +100,23 @@ def build_template_catalog(
         [*catalog["template_diagnostics"], *(_diagnostic_to_dict(item) for item in diagnostics)]
     )
     return catalog
+
+
+def _attach_source_provenance(
+    diagnostic: TemplateDiagnostic,
+    templates: dict[str, RumiTemplate],
+) -> None:
+    """Add loader-owned Pack provenance to template diagnostics."""
+
+    template = templates.get(str(diagnostic.template_id or ""))
+    if template is None:
+        return
+    source_pack_id = str(template.metadata.get("source_pack_id") or "").strip()
+    source_kind = str(template.metadata.get("source_kind") or "").strip()
+    if source_pack_id:
+        diagnostic.details.setdefault("source_pack_id", source_pack_id)
+    if source_kind:
+        diagnostic.details.setdefault("source_kind", source_kind)
 
 
 def project_resolved_templates(
@@ -376,6 +401,7 @@ def _settings_section(template: RumiTemplate, piece: TemplatePiece) -> dict[str,
     item["origin"] = _origin(template, piece)
     item["trust_level"] = _value(template.trust_level)
     item["_source"] = _source(template)
+    _apply_source_provenance(item, template)
     return item
 
 
@@ -397,7 +423,8 @@ def _settings_section_for_field(template: RumiTemplate, piece: TemplatePiece) ->
     item["origin"] = _origin(template, piece)
     item["trust_level"] = _value(template.trust_level)
     item["_source"] = _source(template)
-    return {
+    _apply_source_provenance(item, template)
+    section = {
         "id": section_id,
         "label": _titleize(section_id),
         "fields": [item],
@@ -407,6 +434,8 @@ def _settings_section_for_field(template: RumiTemplate, piece: TemplatePiece) ->
         "_synthetic_field_section": True,
         "_source": _source(template),
     }
+    _apply_source_provenance(section, template)
+    return section
 
 
 def _apply_selector_schema(catalog: dict[str, Any]) -> None:
@@ -490,7 +519,21 @@ def _metadata_item_from_data(
     item["origin"] = _origin(template, piece)
     item["trust_level"] = _value(template.trust_level)
     item["_source"] = _source(template)
+    _apply_source_provenance(item, template)
     return item
+
+
+def _apply_source_provenance(item: dict[str, Any], template: RumiTemplate) -> None:
+    """Overwrite projected provenance with loader-owned template metadata."""
+
+    item.pop("source_pack_id", None)
+    item.pop("source_kind", None)
+    source_pack_id = str(template.metadata.get("source_pack_id") or "").strip()
+    source_kind = str(template.metadata.get("source_kind") or "").strip()
+    if source_pack_id:
+        item["source_pack_id"] = source_pack_id
+    if source_kind:
+        item["source_kind"] = source_kind
 
 
 def _template_summary(
@@ -683,6 +726,20 @@ def _merge_settings_fields(
                 "field_id": field_id,
                 "projected_id": projected_id,
                 "conflicting_projected_id": previous_projected_id,
+                "details": {
+                    "source_pack_ids": sorted(
+                        {
+                            str(previous.get("source_pack_id") or "defaultspack"),
+                            str(item.get("source_pack_id") or "defaultspack"),
+                        }
+                    ),
+                    "source_paths": sorted(
+                        {
+                            str(previous.get("_source") or ""),
+                            str(item.get("_source") or ""),
+                        }
+                    ),
+                },
             }
         )
     return [
