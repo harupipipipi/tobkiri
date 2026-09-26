@@ -860,6 +860,13 @@ class RuntimeProfileChangeService:
 class RuntimeSurfaceService:
     """Project verified Profile v4 state into typed Launcher read models."""
 
+    def project_operation_status(
+        self, status: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        """Attach the application surface version to a Host status receipt."""
+
+        return {"runtime_surface_api_version": RUNTIME_SURFACE_API_VERSION, **status}
+
     def __init__(
         self,
         *,

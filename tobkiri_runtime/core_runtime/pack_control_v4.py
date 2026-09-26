@@ -48,7 +48,6 @@ HOST_PROFILE_CONTROL_OPERATIONS = frozenset(
 
 PACK_CONTROL_CONTRACT = "tobkiri.host.pack-control.v4"
 CONTROL_PRESENTATION_CONTRACT = "tobkiri.host.control-presentation.v4"
-RUNTIME_SURFACE_API_VERSION = "io.tobkiri.launcher.runtime-surface.v4"
 CONTROL_PRESENTATION_OPERATIONS = frozenset(
     {
         "profile.change.activate",
@@ -107,6 +106,10 @@ class RuntimeSurfacePort(Protocol):
     def cancel_pending_reads(self) -> None: ...
 
     def close(self) -> None: ...
+
+    def project_operation_status(
+        self, status: Mapping[str, Any]
+    ) -> Mapping[str, Any]: ...
 
     def read_profile(
         self,
@@ -394,7 +397,7 @@ class HostProfileControlSession:
                     request_id,
                     session_id=_panel_session_root(session_id),
                 )
-                return {"runtime_surface_api_version": RUNTIME_SURFACE_API_VERSION, **status}
+                return self._runtime_surface.project_operation_status(status)
             action = operation_id.removeprefix("profile.change.")
             handler = getattr(self._profile_changes, action)
             result = handler(arguments, session_id=_panel_session_root(session_id))
@@ -714,7 +717,7 @@ class CapturedPackControlSession:
                         request_id,
                         session_id=_panel_session_root(session_id),
                     )
-                    return {"runtime_surface_api_version": RUNTIME_SURFACE_API_VERSION, **status}
+                    return self._runtime_surface.project_operation_status(status)
                 except ControlReconciliationNotFoundError as error:
                     raise PackControlOperationNotFound(
                         "operation request is absent from the current data root"
