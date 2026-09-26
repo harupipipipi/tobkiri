@@ -393,5 +393,5 @@ def test_production_factory_captures_pinned_runtime_files(
     assert backend._worker_command[1:4] == ("-I", "-B", "-c")
     bootstrap = backend._worker_command[4]
     assert "tobkiri_host.wasm_component" in bootstrap
-    assert str(Path(__file__).resolve().parents[1]) in bootstrap
+    assert repr(str(Path(__file__).resolve().parents[1])) in bootstrap
     assert backend.resource_controller_status.controller_id == "test-hard-controller"
