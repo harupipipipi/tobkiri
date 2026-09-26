@@ -49,6 +49,28 @@ class TestAppLifecycleManagerHealth:
         assert result["runtime_status"] == "panel_ready"
         assert result["launch_ready"] is False
 
+    def test_parallel_health_does_not_recapture_profile(self, tmp_path, monkeypatch):
+        from core_runtime import app_lifecycle_manager as lifecycle_module
+
+        alm = lifecycle_module.AppLifecycleManager(base_dir=tmp_path)
+        monkeypatch.setattr(
+            alm,
+            "check_setup_status",
+            lambda: (_ for _ in ()).throw(AssertionError("profile recaptured")),
+        )
+        monkeypatch.setattr(
+            lifecycle_module,
+            "get_runtime_readiness",
+            lambda: {"panel_ready": True},
+        )
+
+        with alm._health_capture_lock:
+            result = alm.get_health()
+
+        assert result["needs_setup"] is True
+        assert result["runtime_ready"] is False
+        assert result["launch_ready"] is False
+
     def test_health_needs_setup_true(self, tmp_path):
         """A fresh home requires explicit canonical Defaults v4 confirmation."""
         from core_runtime.app_lifecycle_manager import AppLifecycleManager

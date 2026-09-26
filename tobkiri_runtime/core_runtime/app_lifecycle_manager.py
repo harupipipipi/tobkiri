@@ -113,6 +113,7 @@ class AppLifecycleManager:
         repr=False,
     )
     _activation_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
+    _health_capture_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
 
     def check_setup_status(self) -> Dict[str, Any]:
         """
@@ -346,11 +347,10 @@ class AppLifecycleManager:
         Returns:
             {"status": "ok", "needs_setup": bool}
         """
-        # The activation request owns the canonical Profile transaction. A
-        # health probe during that transaction must not run another full
-        # capture: desktop readiness polling can otherwise create hundreds of
-        # competing authority/catalog reads before activation can finish.
-        if self._activation_lock.locked():
+        # A health probe must never start a competing full Profile capture
+        # during activation, or overlap another health capture. Desktop
+        # readiness polling can otherwise create hundreds of authority reads.
+        def pending_health() -> Dict[str, Any]:
             readiness = get_runtime_readiness()
             panel_ready = bool(readiness.get("panel_ready"))
             return {
@@ -366,7 +366,16 @@ class AppLifecycleManager:
                 "launch_ready": False,
                 "defaults_bootstrap_required": False,
             }
-        status = self.check_setup_status()
+        if self._activation_lock.locked():
+            return pending_health()
+        if not self._health_capture_lock.acquire(blocking=False):
+            return pending_health()
+        try:
+            if self._activation_lock.locked():
+                return pending_health()
+            status = self.check_setup_status()
+        finally:
+            self._health_capture_lock.release()
         return {
             "status": "error" if status.get("runtime_status") == "error" else "ok",
             "needs_setup": status.get("needs_setup", True),
