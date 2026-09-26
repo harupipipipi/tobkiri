@@ -16,6 +16,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping
+from urllib.parse import quote
 
 if os.name != "nt":
     import fcntl
@@ -643,8 +644,17 @@ class ControlReconciliationStore:
                 if self._database_identity is None:
                     self._database_identity = database_identity
             self._validate_storage_files()
+            # SQLite's URI parser treats pathlib's ``file://%3F/D:/...``
+            # rendering of a Windows extended path as an invalid authority.
+            # Encode the entire native path as the URI path to keep the exact
+            # ``\\?\`` spelling while preserving read-only open semantics.
+            read_uri = (
+                f"file:{quote(str(self.path), safe='')}?mode=ro"
+                if os.name == "nt"
+                else f"{self.path.as_uri()}?mode=ro"
+            )
             connection = sqlite3.connect(
-                f"{self.path.as_uri()}?mode=ro",
+                read_uri,
                 uri=True,
                 timeout=self._open_retry_seconds,
                 isolation_level=None,

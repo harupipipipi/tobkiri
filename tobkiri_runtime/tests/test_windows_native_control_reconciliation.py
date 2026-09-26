@@ -38,6 +38,37 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def test_native_windows_extended_path_operation_readback(tmp_path: Path) -> None:
+    """Launcher-style extended paths retain read-only journal replay access."""
+
+    path = Path("\\\\?\\" + str(tmp_path / "control #.sqlite3"))
+    store = ControlReconciliationStore(path, instance_id="windows-extended-path")
+    request_id = str(uuid.uuid4())
+    binding = {
+        "request_id": request_id,
+        "session_id": "extended-session",
+        "operation_id": "pack.install",
+        "contract_id": "pack.control.v1",
+        "request_digest": canonical_digest({"pack_id": "test-pack"}),
+    }
+    try:
+        pending, created = store.begin_operation(**binding)
+        assert created and pending["state"] == "pending"
+        assert store.lookup_operation(**binding)["state"] == "pending"
+        finished = store.finish_operation(
+            request_id,
+            session_id="extended-session",
+            state="succeeded",
+            result={"state": "succeeded"},
+        )
+        assert finished["state"] == "succeeded"
+        assert store.operation_status(
+            request_id, session_id="extended-session"
+        )["state"] == "succeeded"
+    finally:
+        store.close()
+
+
 class _Dispatch:
     """Small complete captured-session double for real HTTP journal tests."""
 
