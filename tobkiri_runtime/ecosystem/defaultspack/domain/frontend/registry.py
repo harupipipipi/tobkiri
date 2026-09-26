@@ -22,7 +22,7 @@ from domain.capability.catalog import CapabilityCatalog
 from domain.chat.store import ChatStore
 from domain.codex.app_server import codex_app_server_status
 from domain.codex.connection_store import codex_connection_status
-from domain.components.registry import DomainComponentRegistry, build_domain_component_roots
+from ..components.registry import DomainComponentRegistry, build_domain_component_roots
 from domain.dev.inspector import Inspector
 from domain.extensions.activation import selected_extension_pack_ids
 from domain.extensions.runtime import get_extension_registry
