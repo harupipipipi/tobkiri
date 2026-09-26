@@ -221,7 +221,7 @@ def _wait_until_ready(host: str, port: int, timeout: float = 10.0) -> bool:
     return False
 
 
-def _open_desktop_surface(url: str, title: str = "Rumi Search Home") -> str:
+def _open_desktop_surface(url: str, title: str = "Tobkiri Search Home") -> str:
     if os.environ.get("SEARCH_HOME_OPEN_BROWSER", "1") == "0":
         return "disabled"
 
@@ -448,7 +448,7 @@ def main() -> int:
     if not _wait_until_ready(host, port, timeout=10.0):
         raise RuntimeError("Search Home server did not become ready in time")
 
-    surface_result = _open_desktop_surface(url, title="Rumi Search Home")
+    surface_result = _open_desktop_surface(url, title="Tobkiri Search Home")
     if surface_result == "webview":
         if server is not None:
             server.stop()
