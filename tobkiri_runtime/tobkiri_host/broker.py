@@ -1121,6 +1121,8 @@ class RequestBroker:
             raise RequestTimedOutError("local execution exceeded deadline") from exc
         except AmbiguousEffectError:
             raise
+        except RequestTimedOutError:
+            raise
         except Exception as exc:
             if acceptance_request_id is not None and self._acceptance_receipts is not None:
                 if isinstance(exc, PackVMAcceptanceError):
