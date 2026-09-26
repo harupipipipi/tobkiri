@@ -346,6 +346,26 @@ class AppLifecycleManager:
         Returns:
             {"status": "ok", "needs_setup": bool}
         """
+        # The activation request owns the canonical Profile transaction. A
+        # health probe during that transaction must not run another full
+        # capture: desktop readiness polling can otherwise create hundreds of
+        # competing authority/catalog reads before activation can finish.
+        if self._activation_lock.locked():
+            readiness = get_runtime_readiness()
+            panel_ready = bool(readiness.get("panel_ready"))
+            return {
+                "status": "ok",
+                "needs_setup": True,
+                "panel_ready": panel_ready,
+                "runtime_ready": False,
+                "runtime_status": "panel_ready" if panel_ready else "starting",
+                "runtime_error": None,
+                "host_catalog_verified": False,
+                "profile_ceremony_available": False,
+                "active_profile_ready": False,
+                "launch_ready": False,
+                "defaults_bootstrap_required": False,
+            }
         status = self.check_setup_status()
         return {
             "status": "error" if status.get("runtime_status") == "error" else "ok",
