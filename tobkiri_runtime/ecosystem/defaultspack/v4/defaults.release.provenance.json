@@ -38,7 +38,7 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi-host-authority-bridge.pack.v4.json",
-      "digest": "sha256:b032eb057354f91f5a6e706455070b83f13ccd73236d0bd47f4dbdf2f0f70e0d"
+      "digest": "sha256:73f1b29f40d0d29cbc15264f46af5e2879c3925393371d0d98135c465727b6c8"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi-workspace-mount.pack.v4.json",
@@ -538,7 +538,7 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_host_authority_bridge_pack.executables.v4.json",
-      "digest": "sha256:0dacbf610211f0b81d48c823f19ad053e86a66192613038d9f3822b8e85eebaa"
+      "digest": "sha256:d2c538f2d10c663eb93c0e1086a562b0a645f81590597b1dafa03ecf86eb2527"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_host_capabilities_pack.executables.v4.json",
@@ -1337,9 +1337,9 @@
   },
   "catalog": {
     "bundle_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
-    "bundle_digest": "sha256:a54aee067b99d00065116c751e8892aeb8d2579f12baee84733dbe120dd20c9c",
-    "catalog_revision": "sha256:59dbfdc1d3f027428a941c648f1101ea8e21df5c30cf2c8a3c69e0c80f15db73",
-    "closure_digest": "sha256:f0185f679c3ae19d5e627ba933e535b06c507fb191af12c28193b3deb91ff6b1"
+    "bundle_digest": "sha256:b891c436a181defd486f1554be984684a92927d0fa0d1de69769783d48f588f5",
+    "catalog_revision": "sha256:1daf47dec249e69f0a5307606c084c46a2063a5fb81d2e546e3c589cdb40d465",
+    "closure_digest": "sha256:792ca808e9f13c0d1a090ed47eea58a44eed1910c98fab625755f4a1465db34f"
   },
   "outputs": [
     {
@@ -1348,8 +1348,8 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
-      "digest": "sha256:0fc7f25caad07da181b94957ee78263fb6abafdd956e46c32df30e2b86d91efe"
+      "digest": "sha256:c2c345d0807bb7ad55b024614f73ce716c88a8c62aa6ba5ca134c14e1782c9a0"
     }
   ],
-  "release_digest": "sha256:918da9b7ce7af2b23e7dccb78a59dd883a2e942037a18b06fc075a4903b5d73b"
+  "release_digest": "sha256:b152f2b1c4e4a0fcfe8a1dbd4f010f1f8623bcd093de6edd14c7372096051071"
 }

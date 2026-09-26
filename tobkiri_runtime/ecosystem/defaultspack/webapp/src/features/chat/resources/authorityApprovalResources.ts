@@ -10,6 +10,10 @@ import {
  * contract. The Host owns effect execution after a decision.
  */
 export const interactiveApprovalResources = {
+  createBatch: api.createInteractiveApprovalBatch,
+  getBatch: api.getInteractiveApprovalBatch,
+  approveBatch: api.approveInteractiveApprovalBatch,
+  denyBatch: api.denyInteractiveApprovalBatch,
   list() {
     return api.listInteractiveApprovals() as Promise<InteractiveApprovalRequestsResponse>;
   },
@@ -34,6 +38,7 @@ export const interactiveApprovalResources = {
 };
 
 export type {
+  InteractiveApprovalBatch,
   InteractiveApprovalRequest,
   InteractiveApprovalRequestsResponse,
-};
+} from "../../../lib/api";

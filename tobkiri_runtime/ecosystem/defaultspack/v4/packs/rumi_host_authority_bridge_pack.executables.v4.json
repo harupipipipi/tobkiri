@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_host_authority_bridge_pack",
-  "source_identity": "sha256:e30a1f98ee57a3c037d96c143df98e1206d85f08e4ee3aa4a02cd8c3aa070909",
+  "source_identity": "sha256:6c3d5324f03781e0c3aa8b17411654bb6d4a6ff96103d92eb5471c1900eb5817",
   "variants": [
     {
       "variant_id": "rumi_host_authority_bridge_pack.host-authority.approval-window.python",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
       "implementation_path": "runtime/bridge.py",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "implementation_digest": "sha256:dbe35b95aafa530469f34be0da99c67ce843fb094e893a639201d3ab52a071a4",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -52,7 +52,7 @@
       "variant_id": "rumi_host_authority_bridge_pack.host-authority.authorize.python",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.authorize",
       "implementation_path": "runtime/bridge.py",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "implementation_digest": "sha256:dbe35b95aafa530469f34be0da99c67ce843fb094e893a639201d3ab52a071a4",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -104,7 +104,7 @@
       "variant_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation.python",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
       "implementation_path": "runtime/bridge.py",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "implementation_digest": "sha256:dbe35b95aafa530469f34be0da99c67ce843fb094e893a639201d3ab52a071a4",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -211,7 +211,7 @@
       "variant_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval.python",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
       "implementation_path": "runtime/bridge.py",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "implementation_digest": "sha256:dbe35b95aafa530469f34be0da99c67ce843fb094e893a639201d3ab52a071a4",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -358,7 +358,7 @@
       "variant_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect.python",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
       "implementation_path": "runtime/bridge.py",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "implementation_digest": "sha256:dbe35b95aafa530469f34be0da99c67ce843fb094e893a639201d3ab52a071a4",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -424,6 +424,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:905a867294f0d596e852bb38c3813922b6fc1d5ef2e1b86f4810a7b2a5773e48",
-  "catalog_digest": "sha256:daf5f78df15656843d485b7c4a8e4836cc29702cd13094953ab1697f68f1dba1"
+  "materialization_catalog_digest": "sha256:902929ebdc3af86dccc8c01eb6344fd0f2fbbc447646e1691d2f8350fc7e8c6e",
+  "catalog_digest": "sha256:b801d32834c10ab15d018a4c67c120455a46294cf6527cc8f30fe49cc083a422"
 }
