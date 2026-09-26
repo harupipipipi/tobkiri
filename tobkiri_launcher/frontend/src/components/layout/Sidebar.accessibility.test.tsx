@@ -52,7 +52,9 @@ test('bottom-left avatar opens Profile/Settings with native links and returns fo
     assert.equal(dialog.querySelector('[role="menuitem"]'), null);
 
     await act(async () => {
-      dom.window.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: 'Escape'}));
+      dom.window.document.activeElement?.dispatchEvent(
+        new dom.window.KeyboardEvent('keydown', {bubbles: true, key: 'Escape'}),
+      );
       await nextTick();
     });
     assert.equal(dom.window.document.querySelector('[role="dialog"][aria-label="Profile menu"]'), null);

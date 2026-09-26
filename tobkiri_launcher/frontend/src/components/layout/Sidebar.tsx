@@ -218,7 +218,7 @@ export function Sidebar() {
             isSidebarOpen ? "p-3" : "flex justify-center p-1.5",
           )}
           >
-          <Popover>
+          <Popover mode="dialog">
             <PopoverTrigger
               className={cn(
                 "flex min-h-11 items-center rounded-lg text-left transition-[gap,padding,background-color] hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]",
@@ -226,7 +226,6 @@ export function Sidebar() {
                 isSidebarOpen ? "w-full gap-3 p-2" : "justify-center gap-0 p-2",
               )}
               aria-label={`${profile.username} profile and settings`}
-              aria-haspopup="dialog"
               title={!isSidebarOpen ? `${profile.username} profile and settings` : undefined}
             >
               <Avatar src={profile.avatar} username={profile.username} className="size-7 text-xs" />
@@ -256,6 +255,7 @@ export function Sidebar() {
                       key={route}
                       to={meta.path}
                       aria-current={isActive ? 'page' : undefined}
+                      data-popover-close
                       onFocus={() => { void preloadPanelRoute(route); }}
                       onPointerEnter={() => { void preloadPanelRoute(route); }}
                       className={cn(

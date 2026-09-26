@@ -49,8 +49,8 @@ export function Header() {
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="md:hidden">
-          <Popover>
-            <PopoverTrigger className="rounded-md p-2 text-text-muted transition hover:bg-bg-hover hover:text-text-main" aria-label={t('nav.open_menu')} aria-haspopup="dialog">
+          <Popover mode="dialog">
+            <PopoverTrigger className="rounded-md p-2 text-text-muted transition hover:bg-bg-hover hover:text-text-main" aria-label={t('nav.open_menu')}>
               <Menu className="h-4 w-4" />
             </PopoverTrigger>
             <PopoverContent align="left" className="w-64" role="dialog" aria-label={t('nav.mobile_navigation')}>
@@ -76,6 +76,7 @@ export function Header() {
                             key={route}
                             to={meta.path}
                             aria-current={isActive ? 'page' : undefined}
+                            data-popover-close
                             className={cn(
                               "min-h-11 rounded-md px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]",
                               isActive ? "bg-accent/8 text-accent" : "text-text-muted hover:bg-bg-hover hover:text-text-main",
@@ -128,11 +129,10 @@ export function Header() {
             <span>{runtimePill.label}</span>
           </div>
         )}
-        <Popover>
+        <Popover mode="dialog">
           <PopoverTrigger
             className="flex min-h-11 items-center gap-2 rounded-lg px-2 text-left transition hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
             aria-label={`${profile.username} profile and settings`}
-            aria-haspopup="dialog"
           >
             <span className="text-xs text-text-muted hidden sm:block">{profile.username}</span>
             <Avatar
@@ -156,6 +156,7 @@ export function Header() {
                     key={route}
                     to={meta.path}
                     aria-current={isActive ? 'page' : undefined}
+                    data-popover-close
                     onFocus={() => { void preloadPanelRoute(route); }}
                     onPointerEnter={() => { void preloadPanelRoute(route); }}
                     className={cn(
