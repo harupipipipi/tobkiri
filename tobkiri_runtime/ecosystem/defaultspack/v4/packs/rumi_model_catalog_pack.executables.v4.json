@@ -1,20 +1,20 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_model_catalog_pack",
-  "source_identity": "sha256:fd6b3cc1ed6161f8e728593b49ee4c6cb855574f1024eb5c7612f5bb8934f983",
+  "source_identity": "sha256:04de06cda0288393e5096bd465cfcf35e4191f4d74e09a359c33a0fcf17c99cc",
   "variants": [
     {
       "variant_id": "rumi_model_catalog_pack.model-catalog.bundled.python",
       "function_id": "rumi_model_catalog_pack.model-catalog.bundled",
       "implementation_path": "runtime/catalog.py",
-      "implementation_digest": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5",
-      "execution_kind": "host_extension",
+      "implementation_digest": "sha256:3cf1606f3354be053d2a1640254434645972d1afc3c500e24ea94017e0b13dcd",
+      "execution_kind": "pack_vm",
       "platform": "any",
       "architecture": "any",
       "runtime_abi": "python3.13",
-      "backend": "tobkiri.python-host-v4",
+      "backend": "tobkiri.python-pack-v4",
       "materialization_mode": "on_demand",
-      "execution_domain_profile": "host.extension.default.v1",
+      "execution_domain_profile": "sandbox.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.resource.ai.model.catalog.v1",
@@ -76,6 +76,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:40e40b0e293fa56022e7069b18800781f34c0793f2de27abfd50060b16788c1a",
-  "catalog_digest": "sha256:da8af751a0f707f30088940dab81149e92f87da7e38ebfa53b57d362abfc21e7"
+  "materialization_catalog_digest": "sha256:efa0f15c420b67d231535d0ae11585e45b4dbe860ad2b59f67eae01638e74e25",
+  "catalog_digest": "sha256:747495f088b4b8ab9c733ab68bdb6271b88860d45a0c017e67930a393fef8a42"
 }

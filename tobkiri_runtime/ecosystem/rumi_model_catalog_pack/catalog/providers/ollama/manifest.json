@@ -3,34 +3,76 @@
   "provider_id": "ollama",
   "category": "providers",
   "kind": "llm_provider",
-  "version": "1",
-  "status": "stable",
-  "display_name": "Ollama Local",
+  "version": "2",
+  "status": "experimental",
+  "display_name": "Ollama",
+  "description": "Local Ollama runtime with native installed-model discovery and OpenAI-compatible inference.",
   "entrypoints": {
-    "adapter": "../ai_client/providers/openai_compatible_provider.py"
+    "adapter": "../ai_client/providers/ollama_provider.py"
   },
   "security": {
     "credential_required": false,
-    "local_endpoint": true
+    "privacy": "local_by_default",
+    "model_management_requires_explicit_action": true,
+    "discovery_is_read_only": true
   },
   "provider_metadata": {
     "display_name": "Ollama",
     "kind": "local",
-    "env_vars": [],
+    "description": "Local Ollama runtime with native installed-model discovery.",
+    "env_vars": [
+      "OLLAMA_API_KEY"
+    ],
     "base_url_envs": [
       "OLLAMA_BASE_URL",
       "OLLAMA_HOST"
     ],
-    "catalog_only": true,
-    "supports_invoke": false,
-    "default_model": "llama3.1:8b",
-    "default_base_url": "http://127.0.0.1:11434/v1",
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_base_url": "local://ollama",
+    "default_model": "",
+    "default_model_for": {},
     "catalog_features": [
       "chat",
+      "streaming",
       "embedding",
+      "vision",
+      "tool_calls",
+      "reasoning",
       "local",
-      "openai_compatible"
+      "openai_compatible",
+      "runtime_model_discovery"
     ]
+  },
+  "provider_manifest": {
+    "id": "ollama",
+    "category": "llm_provider",
+    "version": "2",
+    "display_name": "Ollama",
+    "description": "Local Ollama server with native installed/running discovery and OpenAI-compatible inference.",
+    "enabled": true,
+    "priority": 150,
+    "adapter": "python_entrypoint",
+    "entrypoint": "domain.ai_client.providers.ollama_provider:OllamaProvider",
+    "api_key_env": "OLLAMA_API_KEY",
+    "base_url_env": "OLLAMA_BASE_URL",
+    "default_base_url": "local://ollama",
+    "credential_required": false,
+    "catalog_only": false,
+    "supports_invoke": true,
+    "config": {
+      "api_compatibility": "openai",
+      "inference_base_url_default": "http://127.0.0.1:11434/v1",
+      "management_base_url_default": "http://127.0.0.1:11434",
+      "management_base_url_env": "OLLAMA_HOST",
+      "model_sync": "ollama_native",
+      "model_list_path": "/api/tags",
+      "model_detail_path": "/api/show",
+      "running_models_path": "/api/ps",
+      "model_unload_path": "/api/generate",
+      "model_cache_ttl_seconds": 60,
+      "source_docs": "https://docs.ollama.com/api/tags"
+    }
   },
   "aliases": {
     "provider_ids": [
@@ -47,8 +89,13 @@
   "source_pack_id": "rumi_model_catalog_pack",
   "catalog_features": [
     "chat",
+    "streaming",
     "embedding",
+    "vision",
+    "tool_calls",
+    "reasoning",
     "local",
-    "openai_compatible"
+    "openai_compatible",
+    "runtime_model_discovery"
   ]
 }

@@ -244,7 +244,11 @@ class AIClient:
             if not isinstance(levels_value, list):
                 levels_value = metadata.get("thinking_levels")
             thinking_levels = list(levels_value) if isinstance(levels_value, list) else []
-            if supports_thinking and not thinking_levels:
+            if (
+                supports_thinking
+                and not thinking_levels
+                and not bool(thinking.get("levels_verified"))
+            ):
                 thinking_levels = ["low", "medium", "high", "xhigh"]
         else:
             return None

@@ -312,33 +312,37 @@ def test_local_openai_runtimes_discover_served_models_without_credentials(monkey
     assert [model["qualified_model_id"] for model in models] == ["vllm/served-model"]
 
 
-def test_ollama_uses_its_live_openai_compatible_models_endpoint_without_credentials(monkeypatch):
+def test_ollama_uses_its_native_installed_inventory_without_credentials(monkeypatch):
     from unittest.mock import patch
 
     from domain.ai_client.client import AIClient
-    from domain.ai_client.providers.openai_compatible_provider import OpenAICompatibleProvider
+    from domain.ai_client.providers.ollama_provider import OllamaProvider
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_ENABLE_LOCAL_PROVIDERS", "1")
     AIClient._instance = None
-    with (
-        patch.object(
-            OpenAICompatibleProvider,
-            "_fetch_remote_models",
-            return_value=[
-                {
-                    "id": "ollama/locally-loaded-model",
-                    "model_id": "locally-loaded-model",
-                    "provider_id": "ollama",
-                    "type": "chat",
-                    "metadata": {"source": "remote_models_endpoint"},
-                }
-            ],
-        ),
-        patch.object(OpenAICompatibleProvider, "_load_remote_model_cache", return_value=None),
+    with patch.object(
+        OllamaProvider,
+        "list_models",
+        return_value=[
+            {
+                "id": "ollama/installed-but-not-loaded:latest",
+                "model_id": "installed-but-not-loaded:latest",
+                "provider_id": "ollama",
+                "type": "chat",
+                "metadata": {
+                    "source": "ollama_native_api",
+                    "installed": True,
+                    "running": False,
+                },
+            }
+        ],
     ):
         models = AIClient().list_models(provider="ollama")
 
-    assert [model["qualified_model_id"] for model in models] == ["ollama/locally-loaded-model"]
+    assert [model["qualified_model_id"] for model in models] == [
+        "ollama/installed-but-not-loaded:latest"
+    ]
+    assert models[0]["metadata"]["installed"] is True
 
 
 def test_loopback_openai_compatible_connection_discovers_models_without_storing_a_fake_key(
@@ -1427,6 +1431,12 @@ def test_every_python_entrypoint_program_provider_uses_its_live_models_endpoint(
     )
 
     class Response:
+        def __init__(self, payload=None):
+            self.payload = payload or {
+                "data": [{"id": "account-visible-model"}],
+                "models": [{"key": "account-visible-model", "type": "llm"}],
+            }
+
         def __enter__(self):
             return self
 
@@ -1434,12 +1444,29 @@ def test_every_python_entrypoint_program_provider_uses_its_live_models_endpoint(
             return False
 
         def read(self):
-            return b'{"data":[{"id":"account-visible-model"}],"models":[{"key":"account-visible-model","type":"llm"}]}'
+            return json.dumps(self.payload).encode("utf-8")
 
     seen = []
 
     def fake_urlopen(request, **_kwargs):
         seen.append(request.full_url)
+        if request.full_url.endswith("/api/tags"):
+            return Response(
+                {
+                    "models": [
+                        {
+                            "name": "account-visible-model",
+                            "model": "account-visible-model",
+                            "digest": "account-visible-digest",
+                            "details": {"format": "gguf"},
+                        }
+                    ]
+                }
+            )
+        if request.full_url.endswith("/api/ps"):
+            return Response({"models": []})
+        if request.full_url.endswith("/api/show"):
+            return Response({"capabilities": ["completion"]})
         return Response()
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
