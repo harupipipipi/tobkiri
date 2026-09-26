@@ -7,6 +7,17 @@ policy but cannot activate the current task. Planning, generation, review, and
 profile-defined phases all use the resolved model; no provider or model id is
 built into DeepThink.
 
+After planning, DeepThink evaluates the selected model against the task. It may
+consider relevant past outputs, benchmarks, public reports, and tool observations
+when those are available, and records missing or uncertain evidence explicitly.
+The capability assessment is passed to tool/skill selection and later phases so
+the chosen method can compensate for a task-specific weakness (for example,
+using available computer-use tools for a visual workflow). Model-reported
+sources are recorded as claims rather than automatically treated as verified.
+Assessment does not install software, expose unavailable tools, or bypass the
+normal approval path. When there is no accessible evidence, it says so instead
+of fabricating a benchmark score or claiming to have inspected prior work.
+
 DeepThink reads contributions only from packs selected by the active resolved
 profile. A pack can add a manifest at:
 

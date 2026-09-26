@@ -33,6 +33,7 @@
       "phases": [
         { "id": "preflight", "label": "確認", "description": "実行条件を確認" },
         { "id": "planning", "label": "計画", "description": "回答の進め方を設計" },
+        { "id": "capability_assessment", "label": "能力評価", "description": "モデルの限界と作業手段を検討" },
         { "id": "integrations", "label": "連携", "description": "toolとskillを選定" },
         { "id": "evidence", "label": "根拠", "description": "情報と論点を整理" },
         { "id": "drafting", "label": "下書き", "description": "回答を組み立て" },

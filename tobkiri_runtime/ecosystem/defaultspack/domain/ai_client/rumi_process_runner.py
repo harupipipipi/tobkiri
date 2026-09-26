@@ -241,7 +241,7 @@ class RumiProcessRunner:
         process: dict[str, Any],
         max_reviews: int,
     ) -> dict[str, Any]:
-        from domain.ai_client.deepthink_preflight import require_deepthink_ready
+        from domain.ai_client.deepthink_capability import normalize_capability_assessment
         from domain.ai_client.deepthink_extensions import (
             available_skill_catalog,
             available_tool_catalog,
@@ -250,6 +250,7 @@ class RumiProcessRunner:
             selected_skill_instructions,
             selected_tool_definitions,
         )
+        from domain.ai_client.deepthink_preflight import require_deepthink_ready
         from domain.flow import FlowEngine
         from domain.flow.context import FlowPaused
 
@@ -281,6 +282,7 @@ class RumiProcessRunner:
             "warning": rumi_process.RUMI_DEEPTHINK_WARNING_JA,
             "harness_tool_selection": deepcopy(context.get("harness_tool_selection", {})),
             "plan": {},
+            "capability_assessment": {},
             "notes": [],
             "reviews": [],
             "section_drafts": [],
@@ -449,6 +451,7 @@ class RumiProcessRunner:
                             {
                                 "integration_plan": integration,
                                 "profile_phase_outputs": profile_outputs,
+                                "capability_assessment": data.get("capability_assessment") or {},
                             },
                             ensure_ascii=False,
                         )[:24_000]
@@ -474,6 +477,10 @@ class RumiProcessRunner:
             phase_status = {
                 "deepthink.preflight": ("preflight", "DeepThinkの実行環境を確認しています"),
                 "deepthink.plan": ("planning", "回答計画を作成しています"),
+                "deepthink.capability_assessment": (
+                    "capability_assessment",
+                    "モデルの限界と適切な作業手段を見極めています",
+                ),
                 "deepthink.integrations": (
                     "integrations",
                     "使用するtoolとskillを計画しています",
@@ -551,6 +558,58 @@ class RumiProcessRunner:
                 )
                 process["deepthink"]["plan"] = deepcopy(plan)
                 return ok(plan)
+            if function_name == "deepthink.capability_assessment":
+                discovery_ids = list(extension_contract.get("discovery_tools") or [])
+                output = generator(
+                    "deepthink_capability_assessment",
+                    [
+                        {
+                            "role": "system",
+                            "content": (
+                                "Assess the actual selected model's task-specific limits "
+                                "before choosing a method. Examine relevant prior outputs "
+                                "in the conversation, available benchmark results or public "
+                                "reports (including community reports), and tool observations "
+                                "when accessible. Do not invent scores, sources, model "
+                                "abilities, installed software, or past work. State when "
+                                "evidence is missing, stale, or not comparable to this task. "
+                                "Choose a practical method based on the limits: model, "
+                                "host_tool, software, delegate, or clarify. For example, "
+                                "recommend a permitted computer-use workflow when direct "
+                                "React coding cannot meet the goal. A recommendation never "
+                                "installs software or grants tool authority; use only tools "
+                                "available in this run and their normal approval path. "
+                                "You may call an available discovery tool to look for "
+                                "evidence. Otherwise return concise public JSON with keys "
+                                "evidence (array of {kind, reference, finding}), "
+                                "limitations (array), uncertainties (array), "
+                                "evidence_sufficient (boolean), and method "
+                                "({approach, reason, fallback}). Never output private "
+                                "chain-of-thought."
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": json.dumps(
+                                {
+                                    "model": generator_model,
+                                    "request": messages,
+                                    "plan": data.get("plan") or {},
+                                    "available_tools": available_tool_catalog(tools),
+                                    "available_skills": skill_catalog,
+                                },
+                                ensure_ascii=False,
+                            )[:64_000],
+                        },
+                    ],
+                    phase_tools=selected_tool_definitions(tools, discovery_ids),
+                    json_mode=True,
+                )
+                assessment = normalize_capability_assessment(
+                    rumi_process._parse_jsonish(output, {}), model=generator_model
+                )
+                process["deepthink"]["capability_assessment"] = deepcopy(assessment)
+                return ok(assessment)
             if function_name == "deepthink.integrations":
                 discovery_ids = list(extension_contract.get("discovery_tools") or [])
                 discovery_tools = selected_tool_definitions(tools, discovery_ids)
@@ -562,7 +621,11 @@ class RumiProcessRunner:
                             "content": (
                                 "Plan which host-provided tools and profile-visible skills "
                                 "are necessary for this DeepThink run. Select only ids from "
-                                "the supplied catalogs. Prefer no extra tool when it does not "
+                                "the supplied catalogs. Use the capability assessment to "
+                                "choose a feasible method and its fallback. Recommend software "
+                                "or computer use only when the host exposes that capability; "
+                                "selection itself never authorizes an action. Prefer no extra "
+                                "tool when it does not "
                                 "materially improve correctness. You may call a supplied "
                                 "discovery tool when its result is needed. Return one JSON "
                                 "object when no discovery call is needed."
@@ -574,6 +637,8 @@ class RumiProcessRunner:
                                 {
                                     "request": messages,
                                     "plan": data.get("plan") or {},
+                                    "capability_assessment": data.get("capability_assessment")
+                                    or {},
                                     "available_tools": available_tool_catalog(tools),
                                     "available_skills": skill_catalog,
                                     "discovery_tools": discovery_ids,
@@ -702,6 +767,8 @@ class RumiProcessRunner:
                                         "request": messages,
                                         "plan": data.get("plan") or {},
                                         "integrations": data.get("integrations") or {},
+                                        "capability_assessment": data.get("capability_assessment")
+                                        or {},
                                     },
                                     ensure_ascii=False,
                                 )[:48_000],
@@ -741,7 +808,10 @@ class RumiProcessRunner:
                             instruction=(
                                 "List only decision-relevant evidence, explicit user constraints, "
                                 "uncertainties, and alternative views. Use selected tools when "
-                                "fresh or external evidence is materially necessary. Do not infer "
+                                "fresh or external evidence is materially necessary. Verify "
+                                "material model-capability claims before relying on them; "
+                                "otherwise preserve their uncertainty and use a fallback. "
+                                "Do not infer "
                                 "sensitive traits or provide hidden chain-of-thought."
                             ),
                             input_only=True,
@@ -830,6 +900,7 @@ class RumiProcessRunner:
                             "evidence": data.get("evidence") or {},
                             "integrations": data.get("integrations") or {},
                             "profile_phase_outputs": data.get("profile_phase_outputs") or {},
+                            "capability_assessment": data.get("capability_assessment") or {},
                         },
                     ),
                     [],

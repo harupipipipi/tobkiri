@@ -61,13 +61,40 @@ def test_deepthink_runs_declarative_flow_and_revises_until_approved(
         nonlocal review_round
         del params
         system = str(messages[0]["content"])
-        calls.append({"model": model, "system": system, "tools": list(tools)})
+        calls.append(
+            {
+                "model": model,
+                "system": system,
+                "tools": list(tools),
+                "user": str(messages[1]["content"]) if len(messages) > 1 else "",
+            }
+        )
         if "Plan the response before writing it" in system:
             text = json.dumps(
                 {
                     "structure": ["Answer"],
                     "key_points": ["Be precise"],
                     "risks": ["Ambiguity"],
+                }
+            )
+        elif "Assess the actual selected model's task-specific limits" in system:
+            text = json.dumps(
+                {
+                    "evidence": [
+                        {
+                            "kind": "past_artifact",
+                            "reference": "conversation output",
+                            "finding": "Visual layout needs checking",
+                        }
+                    ],
+                    "limitations": ["Visual layout needs checking"],
+                    "uncertainties": [],
+                    "evidence_sufficient": True,
+                    "method": {
+                        "approach": "host_tool",
+                        "reason": "Inspect the result",
+                        "fallback": "Request feedback",
+                    },
                 }
             )
         elif "Write one visible pseudo DeepThinking step" in system:
@@ -145,6 +172,7 @@ def test_deepthink_runs_declarative_flow_and_revises_until_approved(
     assert metadata["flow"]["status"] == "completed"
     phases = [event["phase"] for event in metadata["events"]]
     assert "deepthink_planner" in phases
+    assert "deepthink_capability_assessment" in phases
     assert "deepthink_notes" in phases
     assert "deepthink_synthesizing" in phases
     assert phases.count("deepthink_reviewing") == 2
@@ -155,9 +183,16 @@ def test_deepthink_runs_declarative_flow_and_revises_until_approved(
         call for call in calls if "Plan the response before writing it" in call["system"]
     )
     assert planner_call["tools"] == []
+    integration_call = next(
+        call for call in calls if "Plan which host-provided tools" in call["system"]
+    )
+    assert json.loads(integration_call["user"])["capability_assessment"]["method"][
+        "approach"
+    ] == "host_tool"
     assert [event["deepthink_phase"] for event in activity_events] == [
         "preflight",
         "planning",
+        "capability_assessment",
         "integrations",
         "integrations",
         "legal_review",
@@ -178,6 +213,12 @@ def test_deepthink_runs_declarative_flow_and_revises_until_approved(
         "presentation" not in event for event in activity_events[1:]
     )
     assert metadata["deepthink"]["profile_phase_outputs"][0]["id"] == "legal_review"
+    assert metadata["deepthink"]["capability_assessment"]["model"] == (
+        "demo/conversation-model"
+    )
+    assert metadata["deepthink"]["capability_assessment"]["method"]["approach"] == (
+        "host_tool"
+    )
 
     run = FlowEngine().get_run(metadata["flow"]["run_id"])
     assert run["status"] == "completed"
@@ -297,6 +338,7 @@ def test_deepthink_flow_contract_has_safe_bounded_review_loop():
     assert [step["id"] for step in flow["steps"]] == [
         "preflight",
         "plan",
+        "capability_assessment",
         "integrations",
         "profile_phases",
         "evidence",
@@ -305,7 +347,7 @@ def test_deepthink_flow_contract_has_safe_bounded_review_loop():
         "review_loop",
         "final",
     ]
-    loop = flow["steps"][7]
+    loop = flow["steps"][8]
     assert loop["max_iterations"] == 8
     assert loop["until"] == "{{review.pass}}"
     assert loop["checkpoint_each_iteration"] is True
@@ -314,6 +356,34 @@ def test_deepthink_flow_contract_has_safe_bounded_review_loop():
     assert review_input["evidence"] == "{{evidence}}"
     assert review_input["integrations"] == "{{integrations}}"
     assert review_input["profile_phase_outputs"] == "{{profile_phase_outputs}}"
+    assert review_input["capability_assessment"] == "{{capability_assessment}}"
+
+
+def test_capability_assessment_does_not_promote_model_claims_to_verified():
+    from domain.ai_client.deepthink_capability import normalize_capability_assessment
+
+    assessment = normalize_capability_assessment(
+        {
+            "evidence": [
+                {
+                    "kind": "benchmark",
+                    "reference": "unverified score",
+                    "finding": "Some result",
+                    "verification": "verified",
+                }
+            ],
+            "limitations": ["Weak visual editing"],
+            "evidence_sufficient": True,
+            "method": {"approach": "software", "reason": "Inspect visually"},
+        },
+        model="selected/provider-model",
+    )
+    assert assessment["model"] == "selected/provider-model"
+    assert assessment["evidence"][0]["verification"] == "model_reported"
+    assert assessment["method"]["approach"] == "software"
+    unknown = normalize_capability_assessment("malformed", model="selected/model")
+    assert unknown["evidence_sufficient"] is False
+    assert unknown["method"]["approach"] == "clarify"
 
 
 def test_deepthink_runtime_can_shrink_but_not_widen_review_loop():

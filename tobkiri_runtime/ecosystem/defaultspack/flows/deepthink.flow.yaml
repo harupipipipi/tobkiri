@@ -20,12 +20,20 @@ steps:
     function: deepthink.plan
     input: {}
     output: plan
+  - id: capability_assessment
+    phase: capability_assessment
+    type: function
+    function: deepthink.capability_assessment
+    input:
+      plan: "{{plan}}"
+    output: capability_assessment
   - id: integrations
     phase: integrations
     type: function
     function: deepthink.integrations
     input:
       plan: "{{plan}}"
+      capability_assessment: "{{capability_assessment}}"
     output: integrations
   - id: profile_phases
     phase: profile_phases
@@ -34,6 +42,7 @@ steps:
     input:
       plan: "{{plan}}"
       integrations: "{{integrations}}"
+      capability_assessment: "{{capability_assessment}}"
     output: profile_phase_outputs
   - id: evidence
     phase: evidence
@@ -43,6 +52,7 @@ steps:
       plan: "{{plan}}"
       integrations: "{{integrations}}"
       profile_phase_outputs: "{{profile_phase_outputs}}"
+      capability_assessment: "{{capability_assessment}}"
     output: evidence
   - id: section_drafts
     phase: drafting
@@ -53,6 +63,7 @@ steps:
       evidence: "{{evidence}}"
       integrations: "{{integrations}}"
       profile_phase_outputs: "{{profile_phase_outputs}}"
+      capability_assessment: "{{capability_assessment}}"
     output: section_drafts
   - id: synthesize
     phase: synthesizing
@@ -64,6 +75,7 @@ steps:
       section_drafts: "{{section_drafts}}"
       integrations: "{{integrations}}"
       profile_phase_outputs: "{{profile_phase_outputs}}"
+      capability_assessment: "{{capability_assessment}}"
     output: draft
   - id: review_loop
     phase: reviewing
@@ -84,6 +96,7 @@ steps:
           evidence: "{{evidence}}"
           integrations: "{{integrations}}"
           profile_phase_outputs: "{{profile_phase_outputs}}"
+          capability_assessment: "{{capability_assessment}}"
         output: review
       - id: revise
         phase: revising
@@ -96,6 +109,7 @@ steps:
           evidence: "{{evidence}}"
           integrations: "{{integrations}}"
           profile_phase_outputs: "{{profile_phase_outputs}}"
+          capability_assessment: "{{capability_assessment}}"
           review: "{{review}}"
           iteration: "{{loop.iteration}}"
         output: draft

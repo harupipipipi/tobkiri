@@ -37,9 +37,10 @@ def test_default_profile_exposes_deepthink_discovery_and_all_skills():
         "indicator": "orbit",
         "active_phase": "signal",
     }
-    assert [item["id"] for item in contract["presentation"]["phases"]][:3] == [
+    assert [item["id"] for item in contract["presentation"]["phases"]][:4] == [
         "preflight",
         "planning",
+        "capability_assessment",
         "integrations",
     ]
     deepthink_manifest = json.loads(
