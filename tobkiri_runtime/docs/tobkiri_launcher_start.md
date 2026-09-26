@@ -4,6 +4,24 @@ Tobkiri Launcher is the desktop shell for the Tobkiri runtime. In a checkout,
 start it from `tobkiri_launcher/frontend` so the shell can find and launch the
 local runtime kernel.
 
+## Open an already built Launcher on Windows
+
+If the Launcher has already been built in this checkout, it can be started
+without a terminal:
+
+1. Open File Explorer and navigate to the checkout's
+   `tobkiri_launcher\src-tauri\target\x86_64-pc-windows-msvc\debug` folder.
+2. Double-click `tobkiri-launcher.exe`.
+3. In the Launcher, choose **Open Setup**, review the listed Defaults Profile,
+   select its confirmation checkbox, and choose **Activate Defaults Profile**.
+   If verification is requested, choose **Verify activation**. Then use
+   **Open Defaultspack** from Home.
+
+The executable exists only after the Windows development build has completed.
+For a normal installed copy, open **Tobkiri Launcher** from the Start menu.
+
+## Build and start from source
+
 ```bash
 cd tobkiri_launcher/frontend
 npm install

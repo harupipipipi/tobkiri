@@ -871,10 +871,10 @@ test('additive Profile review stops at its bounded read deadline', async (contex
   };
   const bounded = assert.rejects(
     fetchDefaultsSetupState({includeSourceAdditions: true}),
-    /GET request timed out after 60000ms: GET:\/api\/setup\/packs\?include_source_additions=true/,
+    /GET request timed out after 300000ms: GET:\/api\/setup\/packs\?include_source_additions=true/,
   );
   await new Promise<void>((resolve) => setImmediate(resolve));
-  context.mock.timers.tick(60_000);
+  context.mock.timers.tick(300_000);
   await bounded;
   assert.equal(reads, 1);
 });
@@ -908,10 +908,10 @@ test('Defaults activation allows the bounded cold start and still has a hard dea
   };
   const bounded = assert.rejects(
     activateDefaultsProfile(fixture.recommended_default_profile.confirmation),
-    /POST request timed out after 120000ms: \/api\/setup\/packs\/install/,
+    /POST request timed out after 300000ms: \/api\/setup\/packs\/install/,
   );
   await new Promise<void>((resolve) => setImmediate(resolve));
-  context.mock.timers.tick(120_000);
+  context.mock.timers.tick(300_000);
   await bounded;
   assert.equal(posts, 2);
 });

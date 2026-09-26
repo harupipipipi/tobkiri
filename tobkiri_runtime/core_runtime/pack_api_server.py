@@ -844,6 +844,7 @@ class PackAPIHandler(
         bound_operation_journal = operation_journal
         bound_web_mounts = web_mounts
         bound_runtime_refresh = runtime_refresh
+        bound_panel_refresh_lock = threading.Lock()
         bound_workspace_binding_resolver = workspace_binding_resolver
         bound_packvm_lifecycle = packvm_lifecycle
         bound_host_contract = (
@@ -879,6 +880,7 @@ class PackAPIHandler(
             _runtime_refresh = (
                 staticmethod(bound_runtime_refresh) if bound_runtime_refresh is not None else None
             )
+            _panel_refresh_lock = bound_panel_refresh_lock
             _workspace_binding_resolver = (
                 staticmethod(bound_workspace_binding_resolver)
                 if bound_workspace_binding_resolver is not None
@@ -2108,13 +2110,19 @@ class PackAPIHandler(
         presenter_request_id = (
             presenter_request.strip() if isinstance(presenter_request, str) else ""
         )
+        refresh_lock = getattr(self.__class__, "_panel_refresh_lock", None)
+        if refresh_lock is not None and refresh_lock.locked():
+            self._send_response(APIResponse(False, error="Panel recovery in progress"), 503)
+            return
         binding = self._current_panel_auth_binding()
         if binding is None:
             # Only the authenticated Launcher may trigger this recovery. It
             # republishes a verified contract before requesting a fresh code.
             # This request still belongs to the old capture; the Launcher's
             # bootstrap retry will reach the newly published handler.
-            if self._runtime_refresh is not None:
+            if self._runtime_refresh is not None and (
+                refresh_lock is None or refresh_lock.acquire(blocking=False)
+            ):
                 try:
                     self._runtime_refresh(None)
                 except Exception as error:
@@ -2124,6 +2132,9 @@ class PackAPIHandler(
                         "Authenticated panel runtime refresh failed",
                         exc_info=error,
                     )
+                finally:
+                    if refresh_lock is not None:
+                        refresh_lock.release()
             self._send_response(APIResponse(False, error="Unauthorized"), 401)
             return
         self._send_response(

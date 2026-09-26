@@ -834,7 +834,7 @@ fn development_defaults_roots(config: &AppConfig) -> Result<Option<(PathBuf, Pat
         let target_root = workspace_root.join("tobkiri_launcher/src-tauri/target");
         candidates.push((
             target_root.join("dev-defaults"),
-            target_root.join("debug/app"),
+            development_staged_runtime_root(config, &target_root)?,
         ));
     }
     for (candidate, runtime_candidate) in candidates {
@@ -863,6 +863,46 @@ fn development_defaults_roots(config: &AppConfig) -> Result<Option<(PathBuf, Pat
         return Ok(Some((root, bundle, materialized_pack_root)));
     }
     Ok(None)
+}
+
+#[cfg(debug_assertions)]
+fn development_staged_runtime_root(config: &AppConfig, target_root: &Path) -> Result<PathBuf> {
+    // A debug app bundle already points at its own sealed Resources/app tree.
+    if config
+        .app_dir
+        .join(crate::runtime_resource_integrity::MANIFEST_NAME)
+        .is_file()
+    {
+        return Ok(config.app_dir.clone());
+    }
+
+    // Cargo can place its executable under target/debug or
+    // target/<triple>/debug. Keep the staged app paired with that executable;
+    // target/debug/app may be absent or belong to another build.
+    let target_root = canonical_directory(target_root, "development target root")?;
+    let executable =
+        fs::canonicalize(std::env::current_exe().context("failed to find development executable")?)
+            .context("failed to resolve development executable")?;
+    Ok(
+        development_staged_runtime_for_executable(&target_root, &executable)
+            .unwrap_or_else(|| target_root.join("debug/app")),
+    )
+}
+
+#[cfg(debug_assertions)]
+fn development_staged_runtime_for_executable(
+    target_root: &Path,
+    executable: &Path,
+) -> Option<PathBuf> {
+    let executable_dir = executable.parent()?;
+    let build_dir = if executable_dir.file_name().and_then(|name| name.to_str()) == Some("deps") {
+        executable_dir.parent()?
+    } else {
+        executable_dir
+    };
+    build_dir
+        .starts_with(target_root)
+        .then(|| build_dir.join("app"))
 }
 
 #[cfg(not(debug_assertions))]
@@ -2669,6 +2709,33 @@ mod tests {
     use super::*;
     use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn development_stage_tracks_the_executables_target_directory() {
+        let target = Path::new("checkout/target");
+        assert_eq!(
+            development_staged_runtime_for_executable(
+                target,
+                Path::new("checkout/target/debug/tobkiri-launcher.exe")
+            ),
+            Some(target.join("debug/app"))
+        );
+        assert_eq!(
+            development_staged_runtime_for_executable(
+                target,
+                Path::new("checkout/target/x86_64-pc-windows-msvc/debug/deps/launcher-test.exe")
+            ),
+            Some(target.join("x86_64-pc-windows-msvc/debug/app"))
+        );
+        assert_eq!(
+            development_staged_runtime_for_executable(
+                target,
+                Path::new("other/target/debug/tobkiri-launcher.exe")
+            ),
+            None
+        );
+    }
 
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;

@@ -2344,7 +2344,7 @@ fn request_panel_bootstrap_code_with_retry_for(
     // A committed activation can replace the Kernel between health and this
     // request. Fast connection refusals must not exhaust the recovery budget
     // before the replacement finishes its verified cold capture.
-    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    let deadline = std::time::Instant::now() + Duration::from_secs(300);
     let retry_delay = Duration::from_millis(500);
     loop {
         let remaining = deadline.saturating_duration_since(std::time::Instant::now());
@@ -2610,7 +2610,7 @@ fn ensure_kernel_ready_for_panel_auth(
     kernel.start()?;
     drop(kernel);
 
-    health_check::wait_for_healthy(config.kernel_port, 60)?;
+    health_check::wait_for_healthy(config.kernel_port, 300)?;
     Ok(())
 }
 

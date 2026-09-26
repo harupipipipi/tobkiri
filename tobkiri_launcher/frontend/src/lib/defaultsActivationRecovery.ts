@@ -1,7 +1,7 @@
 import {ApiContractError} from './apiTransport';
 import type {DefaultsSetupState} from './defaultsSetup';
 
-const ACTIVATION_RESTART_DEADLINE_MS = 60_000;
+const ACTIVATION_RESTART_DEADLINE_MS = 300_000;
 const ACTIVATION_RESTART_RETRY_DELAY_MS = 500;
 
 export type DefaultsActivationRecoveryResult = {
