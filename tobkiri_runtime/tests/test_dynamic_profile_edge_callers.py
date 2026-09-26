@@ -123,6 +123,18 @@ def test_shared_provider_does_not_cross_product_distinct_contracts() -> None:
     assert ("b.b.own", "d.c.one", "c.one", "d.one") not in keys
 
 
+def test_selected_root_can_also_serve_as_another_roots_direct_dependency() -> None:
+    """Selecting a dependency itself keeps both exact callers without widening A."""
+
+    for selected in (("a", "d"), ("d", "a")):
+        keys = _keys(dynamic_profile_edges(_catalog(), "defaults", selected))
+
+        assert ("shell.main", "d.c.one", "c.one", "d.one") in keys
+        assert ("shell.main", "d.c.two", "c.two", "d.two") in keys
+        assert ("a.a.own", "d.c.one", "c.one", "d.one") in keys
+        assert ("a.a.own", "d.c.two", "c.two", "d.two") not in keys
+
+
 def test_static_edge_does_not_suppress_consumer_link() -> None:
     """A dependency's caller grant survives an identical Shell operation."""
 

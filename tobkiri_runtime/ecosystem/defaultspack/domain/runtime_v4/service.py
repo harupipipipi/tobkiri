@@ -451,6 +451,12 @@ def dynamic_profile_edges(
         pack_id, depth = pending.pop(0)
         prior_depth = depth_for_pack.setdefault(pack_id, depth)
         if prior_depth != depth:
+            # An explicitly selected root can also be another root's signed
+            # dependency.  The queue visits every root before its dependencies,
+            # so the shallower visit already processed that Pack.  Its exact
+            # caller/Contract pairs were recorded by the parent separately.
+            if prior_depth < depth:
+                continue
             raise ProfileResolutionDenied(
                 f"dynamic Pack dependency caller is ambiguous: {pack_id}"
             )
