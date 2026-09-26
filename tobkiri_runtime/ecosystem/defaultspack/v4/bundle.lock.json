@@ -1427,6 +1427,16 @@
       "digest": "sha256:48788f08646ad82deedef9d3f9a8a2d5e39b962fb3691d4af9d49b07c580542d"
     },
     {
+      "path": "packs/tobkiri_voice_agent_pack.executables.v4.json",
+      "kind": "executable_catalog",
+      "digest": "sha256:d477918c87f844770c0c9efbc0e582d35cab708e21c4405dfcddf03e795f1a5f"
+    },
+    {
+      "path": "packs/tobkiri_voice_agent_pack.pack.v4.json",
+      "kind": "pack",
+      "digest": "sha256:eaf5e09bbeb49a27775e4252aed8e1dbb1df4dba755f4ecdd43186765fe4b5ee"
+    },
+    {
       "path": "packs/tobkiri_workflow_pack.executables.v4.json",
       "kind": "executable_catalog",
       "digest": "sha256:266196dfa8c468bcae03f3ac436bbae48d87846621b2796a7ac849ffb42c5438"
@@ -1454,7 +1464,7 @@
     {
       "path": "defaults.profile.v5.json",
       "kind": "profile",
-      "digest": "sha256:31cbce12e3edab2d769f1225062a682e6639d5ab1144324a94ebd445eec95786"
+      "digest": "sha256:72af0c734cca0392337b6aec9f24b06197a668f59330b34759f3e2bec78ca8a1"
     }
   ]
 }

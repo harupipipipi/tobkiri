@@ -1134,8 +1134,8 @@
     {
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
-      "size": 57698,
-      "sha256": "d851e430feee1c77b60f138e56e4f9e9f325d4948c57c4ef1d3347745b522b89",
+      "size": 58091,
+      "sha256": "8e5e528db1e645ce6b757f5238fd554e54ea60b5c80552fc8fbaee97c51bcfc8",
       "executable": false
     },
     {
@@ -1148,29 +1148,29 @@
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.intent.v1.json",
       "type": "regular-file",
-      "size": 103543,
-      "sha256": "47f43e97cc1edec2eb4feceb04df31c56a0ec761a8db597a5b9d0f2bf0158568",
+      "size": 103657,
+      "sha256": "91db41f041236b74af651b20455da189eb1643dd6c88d6e79b19c484c2436df6",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
-      "size": 49250,
-      "sha256": "8a039aeb81c56215b3f523e2b18946fd6f0b058e8d6b2671c6cc6187c916fada",
+      "size": 49430,
+      "sha256": "d4df0e9ec3c559017070c3c753c7a853c36352671e2dfbf02bf2848f4bc49411",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
       "type": "regular-file",
-      "size": 121846,
-      "sha256": "31cbce12e3edab2d769f1225062a682e6639d5ab1144324a94ebd445eec95786",
+      "size": 121960,
+      "sha256": "72af0c734cca0392337b6aec9f24b06197a668f59330b34759f3e2bec78ca8a1",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
-      "size": 65116,
-      "sha256": "d616d6790125cbceb162c523652f55e98bed76a3acc6f45eb3d7b10c943d87ef",
+      "size": 65503,
+      "sha256": "aadf120af1b709911e3b2664c81b09deeb86d223bf662617226355f690a1fae0",
       "executable": false
     },
     {
@@ -3169,6 +3169,20 @@
       "executable": false
     },
     {
+      "path": "ecosystem/defaultspack/v4/packs/tobkiri_voice_agent_pack.executables.v4.json",
+      "type": "regular-file",
+      "size": 425,
+      "sha256": "d477918c87f844770c0c9efbc0e582d35cab708e21c4405dfcddf03e795f1a5f",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/v4/packs/tobkiri_voice_agent_pack.pack.v4.json",
+      "type": "regular-file",
+      "size": 3564,
+      "sha256": "eaf5e09bbeb49a27775e4252aed8e1dbb1df4dba755f4ecdd43186765fe4b5ee",
+      "executable": false
+    },
+    {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_workflow_pack.executables.v4.json",
       "type": "regular-file",
       "size": 33732,
@@ -3353,15 +3367,15 @@
     {
       "path": "scripts/quality/evidence/complete_v4_migration_red_64b2240e.json",
       "type": "regular-file",
-      "size": 81651,
-      "sha256": "9162ddf19e689a8ad7f7e4a92054cdbac656c5e4103c4f68f4026cddc8182e40",
+      "size": 83142,
+      "sha256": "75170eb5b9bcf9f5b6ae7f54c16907bf0ca433ca12a5f172f67ee712767ae3de",
       "executable": false
     },
     {
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
-      "size": 1096961,
-      "sha256": "8d6085223554bce1f1b9074bbdb934cc27b06b6ee20e3429147a8eee09fccd53",
+      "size": 1101948,
+      "sha256": "67ce2a0c0ed7d9027367932b85df63f1cf7eeb6c194560ded6e1810bb72d587f",
       "executable": false
     },
     {
