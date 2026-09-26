@@ -2,8 +2,35 @@
   "baseline_api_version": "io.tobkiri.pack-boundary-baseline.v1",
   "policy": "exact-current-shrink-only-from-reference",
   "summary": {
-    "by_rule": {},
-    "total": 0
+    "by_rule": {
+      "pack-boundary.empty-pack-boundary": 2
+    },
+    "total": 2
   },
-  "violations": []
+  "violations": [
+    {
+      "evidence": {
+        "contract_dependencies": 0,
+        "contracts": 0,
+        "functions": 0,
+        "pack_dependencies": 0
+      },
+      "fingerprint": "sha256:9496103f8c770c09b653857f06391304ed5f7d20e882fff8f016302dafc6adb1",
+      "line": 10,
+      "path": "tobkiri_runtime/ecosystem/rumi_operations_team_pack/pack.v4.json",
+      "rule_id": "pack-boundary.empty-pack-boundary"
+    },
+    {
+      "evidence": {
+        "contract_dependencies": 0,
+        "contracts": 0,
+        "functions": 0,
+        "pack_dependencies": 0
+      },
+      "fingerprint": "sha256:1db6c9797d73ac231c930d53be00f395a1167e353d5e2b54628a8e6042ff9eb2",
+      "line": 10,
+      "path": "tobkiri_runtime/ecosystem/rumi_run_lifecycle_pack/pack.v4.json",
+      "rule_id": "pack-boundary.empty-pack-boundary"
+    }
+  ]
 }
