@@ -99,19 +99,152 @@ button.secondary {
   background: #e7ddd0;
 }
 
-.status {
+button.compact {
+  padding: 9px 14px;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.feedback-panel,
+.connection-panel {
+  margin-top: 20px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.status-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.status-heading h2 {
+  margin-bottom: 0;
+  font-size: 1rem;
+}
+
+.state-badge {
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: #eee8df;
+}
+
+.state-badge.pending {
+  color: #6b4e00;
+  background: #fff0bd;
+}
+
+.state-badge.success,
+.state-badge.ok {
+  color: #155b2d;
+  background: #dcefe2;
+}
+
+.state-badge.error {
+  color: #8d2525;
+  background: #f8dede;
+}
+
+.action-state-list {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 0;
+  margin: 14px 0 0;
+  list-style: none;
+}
+
+.action-state-list li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.status-message {
   min-height: 24px;
-  margin-top: 18px;
+  margin: 12px 0 0;
   color: var(--muted);
   font-size: 0.95rem;
 }
 
-.status.ok {
+.status-message.success {
   color: #1f6a36;
 }
 
-.status.error {
+.status-message.error {
   color: #a23333;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 22px;
+  margin: 18px 0 0;
+}
+
+.status-grid div {
+  min-width: 0;
+}
+
+.status-grid dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.status-grid dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.fresh {
+  color: #1f6a36;
+}
+
+.stale {
+  color: #a05d16;
+}
+
+.diagnostics {
+  margin-top: 14px;
+  color: var(--muted);
+}
+
+.diagnostics summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.diagnostics pre {
+  max-height: 220px;
+  overflow: auto;
+  border-radius: 10px;
+  padding: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  background: #f0ebe4;
+}
+
+.copy-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
 }
 
 .capabilities {
@@ -126,6 +259,10 @@ button.secondary {
 
   .actions {
     flex-direction: column;
+  }
+
+  .status-grid {
+    grid-template-columns: 1fr;
   }
 
   button {
