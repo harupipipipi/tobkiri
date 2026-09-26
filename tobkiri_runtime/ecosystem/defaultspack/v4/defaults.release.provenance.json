@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.profile-release-provenance.v1",
   "profile_id": "defaults",
-  "profile_revision": "sha256:16d1ebc5788e5bc792ae5653045ae09cb522c696f3a44c2ac515ff41c13b68a8",
+  "profile_revision": "sha256:064f03b80483d83a0c44e2b5dcac86b39c228871dc827074cb6c8ad48a2598cb",
   "profile_definition_digest": "sha256:fe8148694dba7c2ad887ace011ac51b3b09a749c2ba719e871198943e9ec5a7c",
   "source_inputs": [
     {
@@ -1190,7 +1190,7 @@
     },
     {
       "path": "tobkiri_protocol/provenance.py",
-      "digest": "sha256:9598187b7a80a22505ee7eb7de391f1886c289da2d87e9e89d7a86d563571a31"
+      "digest": "sha256:181a9e8264a23ce3d049c7a9bf0a29e422732cec1797bfc1e7f716589d2d29e3"
     },
     {
       "path": "tobkiri_protocol/schemas/activation_record_v1.schema.json",
@@ -1337,19 +1337,19 @@
   },
   "catalog": {
     "bundle_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
-    "bundle_digest": "sha256:a54aee067b99d00065116c751e8892aeb8d2579f12baee84733dbe120dd20c9c",
+    "bundle_digest": "sha256:1ad852031faf01ab12146d9122bb196566e1fc424e387999d6f892214d6bd364",
     "catalog_revision": "sha256:59dbfdc1d3f027428a941c648f1101ea8e21df5c30cf2c8a3c69e0c80f15db73",
     "closure_digest": "sha256:f0185f679c3ae19d5e627ba933e535b06c507fb191af12c28193b3deb91ff6b1"
   },
   "outputs": [
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
-      "digest": "sha256:31cbce12e3edab2d769f1225062a682e6639d5ab1144324a94ebd445eec95786"
+      "digest": "sha256:4665a3d4691ebb638e653327d146b863e555b4b353cde1f584d7f2016e8df35f"
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
-      "digest": "sha256:0fc7f25caad07da181b94957ee78263fb6abafdd956e46c32df30e2b86d91efe"
+      "digest": "sha256:1508eccd3a8ca8255799afb1ae8491b8d1481caa2289afe36066c80212232647"
     }
   ],
-  "release_digest": "sha256:918da9b7ce7af2b23e7dccb78a59dd883a2e942037a18b06fc075a4903b5d73b"
+  "release_digest": "sha256:098c34b8df7c737d252a3ff6b54590eedd81a2036d4435596866fddfcca7ecba"
 }

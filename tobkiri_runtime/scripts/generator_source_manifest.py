@@ -814,19 +814,33 @@ def write_source_manifest(root: Path = _ROOT) -> None:
     path = root / SOURCE_MANIFEST_FILENAME
     payload = json.dumps(build_source_manifest(root), indent=2, ensure_ascii=False) + "\n"
     temporary: Path | None = None
+    previous_mode: int | None = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=root, prefix=f".{path.name}.", delete=False
+            mode="w",
+            encoding="utf-8",
+            newline="",
+            dir=root,
+            prefix=f".{path.name}.",
+            delete=False,
         ) as output:
             temporary = Path(output.name)
             output.write(payload)
             output.flush()
             os.fsync(output.fileno())
+        if os.name == "nt" and path.exists():
+            # Windows cannot replace a read-only target.
+            previous_mode = stat.S_IMODE(path.stat().st_mode)
+            path.chmod(previous_mode | stat.S_IWUSR)
         temporary.chmod(0o444)
         os.replace(temporary, path)
         temporary = None
     finally:
+        if temporary is not None and previous_mode is not None:
+            # A failed replacement must not unseal the original manifest.
+            path.chmod(previous_mode)
         if temporary is not None and temporary.exists():
+            temporary.chmod(0o666)
             temporary.unlink()
 
 

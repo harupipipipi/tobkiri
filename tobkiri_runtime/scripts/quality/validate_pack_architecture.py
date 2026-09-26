@@ -86,6 +86,7 @@ def write_schema_hashes(root: Path) -> Path:
     target.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
+        newline="",
     )
     return target
 

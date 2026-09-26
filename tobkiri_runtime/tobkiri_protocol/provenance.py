@@ -98,7 +98,13 @@ def repository_tree_digest(root: Path, paths: list[Path] | None = None) -> str:
     """Hash sorted relative path/digest pairs for a reproducible source tree."""
     selected = paths if paths is not None else _tracked_files(root)
     lines: list[str] = []
-    for path in sorted(selected):
+    def _sortable(path: Path) -> str:
+        try:
+            return path.relative_to(root).as_posix()
+        except ValueError:
+            return path.as_posix()
+
+    for path in sorted(selected, key=_sortable):
         if not path.is_file():
             continue
         try:

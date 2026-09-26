@@ -917,9 +917,10 @@ def write_presentation_catalog(repository_root: Path, output: Path | None = None
     target = (output or root / DEFAULT_CATALOG_RELATIVE).resolve()
     payload = generate_presentation_catalog(root, target)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
+    target.write_bytes(
+        (json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode(
+            "utf-8"
+        )
     )
     return target
 
