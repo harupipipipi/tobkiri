@@ -55,11 +55,11 @@ test('viewer async dialogs keep the modal open while confirm is pending', () => 
   const dialog = source('components/ui/DialogContainer.tsx');
   const store = source('store.ts');
 
-  assert.match(store, /onConfirm: \(\) => void \| Promise<void>/);
+  assert.match(store, /DialogConfig/);
   assert.match(dialog, /await dialog\.onConfirm\(\)/);
   assert.match(dialog, /loading=\{isConfirming\}/);
-  assert.match(dialog, /disabled=\{isConfirming\}/);
-  assert.match(dialog, /if \(!isConfirming\)[\s\S]*closeDialog\(\)/);
+  assert.match(dialog, /disabled=\{isConfirming && !isConflictRefresh && !dialog\.pendingCancellation\}/);
+  assert.match(dialog, /if \(!isConfirming \|\| isConflictRefresh\)[\s\S]*closeDialog\(\)/);
 });
 
 test('viewer overlays use shared layer tokens instead of competing z-50 classes', () => {

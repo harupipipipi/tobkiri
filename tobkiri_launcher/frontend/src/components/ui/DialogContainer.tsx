@@ -14,19 +14,28 @@ export function DialogContainer() {
   const closeDialog = useAppStore(state => state.closeDialog);
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
-  const isConfirmingRef = useRef(false);
-  const [isConfirming, setIsConfirming] = useState(false);
-  const [confirmationError, setConfirmationError] = useState<string | null>(null);
-  isConfirmingRef.current = isConfirming;
+  const stateRef = useRef<DialogConfirmationState>({status: 'idle'});
+  const attemptRef = useRef(0);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const [confirmationState, setConfirmationState] = useState<DialogConfirmationState>({status: 'idle'});
+  const [copied, setCopied] = useState(false);
+  stateRef.current = confirmationState;
+  const isConfirming = confirmationState.status === 'pending';
+  const isConflictRefresh = confirmationState.status === 'pending'
+    && confirmationState.phase === 'conflict_refresh';
+  const failure = 'failure' in confirmationState ? confirmationState.failure : null;
+  const failureSource = 'source' in confirmationState ? confirmationState.source : null;
 
   useEffect(() => {
+    attemptRef.current += 1;
     if (!dialog) {
-      setIsConfirming(false);
-      setConfirmationError(null);
+      setConfirmationState({status: 'idle'});
+      setCopied(false);
       return;
     }
 
-    setConfirmationError(null);
+    setConfirmationState({status: 'idle'});
+    setCopied(false);
     previousFocusRef.current = document.activeElement as HTMLElement | null;
 
     const timer = setTimeout(() => {
@@ -36,7 +45,14 @@ export function DialogContainer() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        if (!isConfirmingRef.current) {
+        if (stateRef.current.status !== 'pending') {
+          closeDialog();
+        } else if (stateRef.current.phase === 'conflict_refresh') {
+          attemptRef.current += 1;
+          closeDialog();
+        } else if (dialog.pendingCancellation) {
+          attemptRef.current += 1;
+          void dialog.pendingCancellation.cancel();
           closeDialog();
         }
         return;
@@ -44,12 +60,21 @@ export function DialogContainer() {
 
       if (e.key === 'Tab') {
         const focusableElements = dialogRef.current?.querySelectorAll<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          'button, summary, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
         );
         if (!focusableElements || focusableElements.length === 0) return;
 
         const firstElement = focusableElements[0];
         const lastElement = focusableElements[focusableElements.length - 1];
+        const activeIndex = [...focusableElements].indexOf(
+          document.activeElement as HTMLElement,
+        );
+
+        if (activeIndex === -1) {
+          e.preventDefault();
+          (e.shiftKey ? lastElement : firstElement).focus();
+          return;
+        }
 
         if (e.shiftKey) {
           if (document.activeElement === firstElement) {
@@ -74,33 +99,78 @@ export function DialogContainer() {
     };
   }, [dialog, closeDialog]);
 
+  useEffect(() => {
+    if (failure) errorRef.current?.focus();
+  }, [failure]);
+
   const handleClose = useCallback(() => {
-    if (!isConfirming) {
+    if (!isConfirming || isConflictRefresh) {
+      if (isConflictRefresh) attemptRef.current += 1;
+      closeDialog();
+    } else if (dialog?.pendingCancellation) {
+      attemptRef.current += 1;
+      void dialog.pendingCancellation.cancel();
       closeDialog();
     }
-  }, [closeDialog, isConfirming]);
+  }, [closeDialog, dialog, isConfirming, isConflictRefresh]);
 
   const handleConfirm = useCallback(async () => {
-    if (!dialog || isConfirmingRef.current) return;
-    isConfirmingRef.current = true;
-    setIsConfirming(true);
-    setConfirmationError(null);
+    if (!dialog || stateRef.current.status === 'pending') return;
+    const attempt = attemptRef.current + 1;
+    attemptRef.current = attempt;
+    stateRef.current = {status: 'pending', phase: 'confirm'};
+    setConfirmationState({status: 'pending', phase: 'confirm'});
+    setCopied(false);
     try {
       await dialog.onConfirm();
-      closeDialog();
+      if (
+        attemptRef.current !== attempt
+        || useAppStore.getState().dialog !== dialog
+      ) return;
+      setConfirmationState({status: 'success'});
+      if (useAppStore.getState().dialog === dialog) closeDialog();
     } catch (error) {
-      setConfirmationError(
-        formatUserFacingError(
-          error,
-          'The confirmation could not be completed.',
-          'dialog.confirm',
-        ),
-      );
-    } finally {
-      isConfirmingRef.current = false;
-      setIsConfirming(false);
+      if (
+        attemptRef.current !== attempt
+        || useAppStore.getState().dialog !== dialog
+      ) return;
+      const nextFailure = classifyConfirmationFailure(error);
+      setConfirmationState({status: nextFailure.status, failure: nextFailure, source: 'confirm'});
     }
   }, [dialog, closeDialog]);
+
+  const handleConflict = useCallback(async () => {
+    if (!dialog?.onConflict || stateRef.current.status === 'pending') return;
+    const attempt = attemptRef.current + 1;
+    attemptRef.current = attempt;
+    stateRef.current = {status: 'pending', phase: 'conflict_refresh'};
+    setConfirmationState({status: 'pending', phase: 'conflict_refresh'});
+    try {
+      await dialog.onConflict();
+      if (attemptRef.current === attempt && useAppStore.getState().dialog === dialog) closeDialog();
+    } catch (error) {
+      if (
+        attemptRef.current !== attempt
+        || useAppStore.getState().dialog !== dialog
+      ) return;
+      const nextFailure = classifyConfirmationFailure(error, {preDispatchRetrySafe: true});
+      setConfirmationState({
+        status: nextFailure.status,
+        failure: nextFailure,
+        source: 'conflict_refresh',
+      });
+    }
+  }, [closeDialog, dialog]);
+
+  const copyTechnicalDetails = useCallback(async () => {
+    if (!failure || !navigator.clipboard?.writeText) return;
+    try {
+      await navigator.clipboard.writeText(failure.technicalDetails);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  }, [failure]);
 
   if (!dialog) return null;
 
@@ -115,7 +185,8 @@ export function DialogContainer() {
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="dialog-title"
-        aria-describedby={confirmationError ? 'dialog-description dialog-error' : 'dialog-description'}
+        aria-describedby="dialog-description dialog-context"
+        aria-busy={isConfirming}
         tabIndex={-1}
         className="w-full max-w-md rounded-xl border border-border bg-bg-card p-6 shadow-[var(--shadow-lg)] outline-none"
         onClick={(e) => e.stopPropagation()}
@@ -135,14 +206,39 @@ export function DialogContainer() {
           </div>
         ) : null}
         <div className="mt-6 flex justify-end gap-3">
-          <Button variant="outline" onClick={handleClose} disabled={isConfirming}>
-            {dialog.cancelText || t('dialog.cancel')}
-          </Button>
-          <Button onClick={handleConfirm} loading={isConfirming}>
-            {isConfirming
-              ? (dialog.confirmPendingText || t('dialog.pending'))
-              : (dialog.confirmText || t('dialog.confirm'))}
-          </Button>
+          {isConflictRefresh ? (
+            <>
+              <Button variant="outline" onClick={handleClose}>Close</Button>
+              <Button loading disabled>Refreshing status…</Button>
+            </>
+          ) : failureSource === 'conflict_refresh' && failure?.retryAllowed ? (
+            <>
+              <Button variant="outline" onClick={handleClose}>Close</Button>
+              <Button onClick={() => void handleConflict()}>Retry status</Button>
+            </>
+          ) : failure?.status === 'conflict' && dialog.onConflict ? (
+            <>
+              <Button variant="outline" onClick={handleClose}>Close</Button>
+              <Button onClick={() => void handleConflict()}>Refresh status</Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                onClick={handleClose}
+                disabled={isConfirming && !isConflictRefresh && !dialog.pendingCancellation}
+              >
+                {failure && !failure.retryAllowed ? 'Close' : (dialog.cancelText || t('dialog.cancel'))}
+              </Button>
+              {(!failure || failure.retryAllowed) ? (
+                <Button onClick={handleConfirm} loading={isConfirming}>
+                  {isConfirming
+                    ? (dialog.confirmPendingText || t('dialog.pending'))
+                    : (failure ? 'Retry' : (dialog.confirmText || t('dialog.confirm')))}
+                </Button>
+              ) : null}
+            </>
+          )}
         </div>
       </div>
     </div>

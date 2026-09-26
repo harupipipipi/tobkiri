@@ -130,10 +130,13 @@ export function Packs() {
     showDialog({
       title: `Revoke ${pack.name} approval?`,
       message: `This will revoke Tobkiri approval and access for ${pack.name}. The Pack will be disabled, and its capabilities will be unavailable until a new approval succeeds.`,
+      objectLabel: pack.name,
+      actionLabel: 'Revoke Pack approval',
       confirmText: 'Revoke approval',
       confirmPendingText: 'Revoking approval…',
       cancelText: 'Keep approval',
-      onConfirm: () => revokePackApproval(pack.id),
+      onConfirm: () => revokePackApproval(pack.id, {errorSurface: 'dialog'}),
+      onConflict: () => loadPacks(true, {errorSurface: 'dialog'}),
     });
   };
 

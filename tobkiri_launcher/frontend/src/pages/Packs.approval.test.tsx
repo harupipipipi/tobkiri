@@ -8,6 +8,7 @@ import {MemoryRouter, Route, Routes} from 'react-router';
 import {DialogContainer} from '@/src/components/ui/DialogContainer';
 import {ApiContractError} from '@/src/lib/api';
 import type {PackControlBinding} from '@/src/lib/apiTypes';
+import {setRuntimeDispatchStatus} from '@/src/lib/runtimeDispatchGate';
 import {type Pack, useAppStore} from '@/src/store';
 import {Packs} from './Packs';
 
@@ -273,11 +274,14 @@ test('failed Pack approval revocation stays approved and surfaces the typed fail
     addToast: (message, type) => {
       if (type === 'error') errors.push(message);
     },
-    revokePackApproval: async () => {
+    revokePackApproval: async (_id, options) => {
       const error = new ApiContractError('HTTP 409 approval_revocation_denied', {
         code: 'approval_revocation_denied',
       });
-      useAppStore.getState().addToast(error.message, 'error');
+      assert.equal(options?.errorSurface, 'dialog');
+      if (options?.errorSurface !== 'dialog') {
+        useAppStore.getState().addToast(error.message, 'error');
+      }
       throw error;
     },
   });
@@ -295,13 +299,14 @@ test('failed Pack approval revocation stays approved and surfaces the typed fail
     assert.ok(dialog);
     await act(async () => buttonWithText(dialog, 'Revoke approval').click());
 
-    assert.deepEqual(errors, ['HTTP 409 approval_revocation_denied']);
+    assert.deepEqual(errors, []);
     assert.ok(container.querySelector('[role="alertdialog"]'));
     assert.ok(container.querySelector('[role="switch"]'));
     assert.match(container.textContent ?? '', /Approved/);
-    assert.match(container.textContent ?? '', /The confirmation could not be completed/);
+    assert.match(container.textContent ?? '', /changed before this action could be completed/);
     assert.match(container.textContent ?? '', /API_CONTRACT_REJECTED/);
     assert.match(container.textContent ?? '', /diagnostic diag-/);
+    assert.match(container.textContent ?? '', /Refresh status/);
     assert.doesNotMatch(container.textContent ?? '', /HTTP 409 approval_revocation_denied/);
     assert.doesNotMatch(container.textContent ?? '', /Approval revoked/);
   } finally {
@@ -355,6 +360,109 @@ test('approval confirmation prevents double submission while the revoke is pendi
     assert.equal(container.querySelector('[role="alertdialog"]'), null);
   } finally {
     release?.();
+    await act(async () => root.unmount());
+    useAppStore.setState(previousState, true);
+    dom.window.close();
+  }
+});
+
+test('real revoke conflict refreshes authoritative state without raw or duplicate feedback', serialTestOptions, async () => {
+  const previousState = useAppStore.getState();
+  const originalFetch = globalThis.fetch;
+  const {dom, container, root} = createSurface();
+  const rawError = 'host-secret approval race detail';
+  const routes: string[] = [];
+  const errors: string[] = [];
+  setRuntimeDispatchStatus('runtime_ready');
+  globalThis.fetch = (async (input, init) => {
+    const route = decodeURIComponent(
+      String(input).replace('/api/contracts/defaultspack/', ''),
+    );
+    routes.push(route);
+    if (route === 'POST /api/pack-control/approval-revoke') {
+      assert.deepEqual(JSON.parse(String(init?.body)), {pack_id: samplePack.id});
+      return new Response(JSON.stringify({
+        success: false,
+        data: {code: 'approval_revocation_denied'},
+        error: rawError,
+      }), {status: 409, headers: {'Content-Type': 'application/json'}});
+    }
+    assert.equal(route, 'GET /api/pack-control/catalog');
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        profile_id: samplePack.profileId,
+        workspace_id: samplePack.workspaceId,
+        profile_revision: samplePack.profileRevision,
+        plan_digest: samplePack.planDigest,
+        catalog_revision: 'catalog-after-conflict',
+        count: 1,
+        packs: [{
+          pack_id: samplePack.id,
+          name: samplePack.name,
+          version: samplePack.version,
+          description: samplePack.description,
+          is_core: false,
+          installed: true,
+          enabled: false,
+          artifact_digest: samplePack.artifactDigest,
+          approval_status: 'revoked',
+          approval_reason: 'approval_revoked',
+          approved: false,
+          hash_valid: true,
+          critical_changed: false,
+          approval_issues: ['approval_revoked'],
+          profile_id: samplePack.profileId,
+          workspace_id: samplePack.workspaceId,
+          profile_revision: samplePack.profileRevision,
+          plan_digest: samplePack.planDigest,
+          catalog_revision: 'catalog-after-conflict',
+        }],
+      },
+    }), {headers: {'Content-Type': 'application/json'}});
+  }) as typeof fetch;
+  useAppStore.setState({
+    packs: [samplePack],
+    dialog: null,
+    packsError: null,
+    packApprovalPending: {},
+    revokePackApproval: previousState.revokePackApproval,
+    loadPacks: async (force, options) => {
+      if (force && options?.errorSurface === 'dialog') {
+        return previousState.loadPacks(force, options);
+      }
+    },
+    addToast: (message, type) => {
+      if (type === 'error') errors.push(message);
+    },
+  });
+  await renderSurface(root);
+
+  try {
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>(
+        '[aria-label="Revoke approval for Research Pack"]',
+      )?.click();
+    });
+    const dialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
+    assert.ok(dialog);
+    await act(async () => buttonWithText(dialog, 'Revoke approval').click());
+    assert.match(dialog.textContent ?? '', /changed before this action could be completed/);
+    assert.doesNotMatch(container.textContent ?? '', new RegExp(rawError));
+    assert.deepEqual(errors, []);
+
+    await act(async () => buttonWithText(dialog, 'Refresh status').click());
+
+    assert.deepEqual(routes, [
+      'POST /api/pack-control/approval-revoke',
+      'GET /api/pack-control/catalog',
+    ]);
+    assert.equal(container.querySelector('[role="alertdialog"]'), null);
+    assert.match(container.textContent ?? '', /Approval revoked/);
+    assert.equal(useAppStore.getState().packsError, null);
+    assert.deepEqual(errors, []);
+  } finally {
+    globalThis.fetch = originalFetch;
     await act(async () => root.unmount());
     useAppStore.setState(previousState, true);
     dom.window.close();
