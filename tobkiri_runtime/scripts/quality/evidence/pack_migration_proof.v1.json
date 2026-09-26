@@ -12911,27 +12911,82 @@
       "semantic_comparison": {
         "equivalent": false,
         "errors": [
-          "function_mapping:rumi_team_coordinator_pack.company.coordinator",
-          "function_mapping:rumi_team_coordinator_pack.company.runtime",
-          "operation_mapping_missing:rumi_team_coordinator_pack.job-adapter.team-supervisor:rumi_team_coordinator_pack.company-supervisor-job-adapter"
+          "authority_semantics:rumi_team_coordinator_pack.team.coordinate",
+          "authority_semantics:rumi_team_coordinator_pack.team.runtime"
         ],
         "method": "legacy-to-v4-semantic-comparator.v1",
         "missing_categories": [
-          "function_mapping",
-          "operation_mapping_missing"
+          "authority_semantics"
         ],
         "operation_inventory": {
           "legacy_count": 3,
           "v4_count": 3
         },
-        "operation_mappings": [],
+        "operation_mappings": [
+          {
+            "authority_mapping": {
+              "legacy": {
+                "artifact_role": "runtime",
+                "cardinality": "many",
+                "contract_id": "rumi.action.job.adapter.v1",
+                "failure": "isolate",
+                "isolation": "process",
+                "lifecycle": {
+                  "data_owner": "rumi_team_coordinator_pack",
+                  "deprecated": false,
+                  "introduced": "1.0.0"
+                },
+                "provider_instance_id": "job-adapter.team-supervisor",
+                "required_capabilities": [
+                  "job.adapter.invoke"
+                ],
+                "security": "sensitive"
+              },
+              "status": "verified",
+              "v4": {
+                "cardinality": "many",
+                "contract_id": "tobkiri.action.job.adapter.v1",
+                "failure": "isolate",
+                "function_role": "brokered",
+                "instance_key": "company.supervisor",
+                "isolation": "process",
+                "lifecycle": {
+                  "data_owner": "rumi_team_coordinator_pack",
+                  "deprecated": false,
+                  "introduced": "1.0.0"
+                },
+                "provider_id": "rumi_team_coordinator_pack.job-adapter.team-supervisor",
+                "required_capabilities": [
+                  "job.adapter.invoke"
+                ],
+                "security": "sensitive"
+              }
+            },
+            "function_id": "rumi_team_coordinator_pack.job-adapter.team-supervisor",
+            "legacy_operation_id": "company-supervisor-job-adapter",
+            "legacy_operation_kind": "legacy-v3-entrypoint",
+            "parameter_mapping": {
+              "legacy_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+              "method": "canonical-json-schema-equality",
+              "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+              "rules": [
+                "input:identity",
+                "output:identity"
+              ],
+              "status": "verified",
+              "v4_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0"
+            },
+            "v4_contract_id": "tobkiri.action.job.adapter.v1",
+            "v4_operation_id": "rumi_team_coordinator_pack.team-supervisor-job-adapter"
+          }
+        ],
         "reason": "Pack-specific legacy and v4 semantic records do not compare exactly",
         "status": "unverified"
       },
       "source": {
         "digest": "sha256:55e4c2582caf5a304f26aac6f4d76f669cc3fa02140c796e1f99097bdfa636d5",
         "executable_source_registry": {
-          "digest": "sha256:4ca19f1eeb52b72b842d7718a1832b90007e73eeb587f5c186f68c9732d44f3e",
+          "digest": "sha256:39f7752631b3282637988e6d4faef819ab6f4266676871e9b49837e3915ff4ff",
           "path": "tobkiri_runtime/schemas/executable_sources.v1.json",
           "record_count": 3
         },
@@ -15666,7 +15721,7 @@
   "source": {
     "attestation": "none",
     "authority": "evidence-only",
-    "content_digest": "sha256:3b364f1120a276312d365c06b982bc20cfd4ed6a7ddcd8a178ec3aeac3ca7886",
+    "content_digest": "sha256:38ee6a920fdfb08e0a5616a16d4df0426e6897eb68ec0f176c4eec18f260fdd4",
     "feasibility_audit": {
       "semantically_reviewed": {
         "count": 74,
@@ -15749,18 +15804,19 @@
       },
       "unresolved": {
         "authority_semantics": {
-          "count": 6,
+          "count": 7,
           "pack_ids": [
             "rumi_git_publish_pack",
             "rumi_git_write_pack",
             "rumi_host_authority_bridge_pack",
             "rumi_mcp_gateway_pack",
             "rumi_prompt_studio_pack",
-            "rumi_shell_execute_pack"
+            "rumi_shell_execute_pack",
+            "rumi_team_coordinator_pack"
           ]
         },
         "function_mapping": {
-          "count": 8,
+          "count": 7,
           "pack_ids": [
             "rumi_ai_gateway_pack",
             "rumi_git_publish_pack",
@@ -15768,7 +15824,6 @@
             "rumi_host_authority_bridge_pack",
             "rumi_provider_registry_pack",
             "rumi_shell_execute_pack",
-            "rumi_team_coordinator_pack",
             "rumi_turn_runtime_pack"
           ]
         },
@@ -15843,12 +15898,6 @@
             "search_home_pack"
           ]
         },
-        "operation_mapping_missing": {
-          "count": 1,
-          "pack_ids": [
-            "rumi_team_coordinator_pack"
-          ]
-        },
         "pack_specific_authority_source_missing": {
           "count": 5,
           "pack_ids": [
@@ -15914,7 +15963,7 @@
     "freshness_basis": "exact-input-digests-and-deterministic-recomputation",
     "generator_id": "tobkiri.quality.migration-proof-generator",
     "generator_version": "2.1.0",
-    "input_digest": "sha256:72afe7b9f76c68fe9a5e343982dbf69cf7497f7747978394464cb86664e3bf55",
+    "input_digest": "sha256:a171991692f926324b46cf8f9e6b0ee67990cf97cec34769e74030ea39d34267",
     "input_paths": [
       "tobkiri_runtime/core_runtime/profile_definition_store_v4.py",
       "tobkiri_runtime/ecosystem/defaultspack/artifact-index.v4.json",
@@ -22728,7 +22777,7 @@
         "path": "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/schemas/workflow-result.v4.schema.json"
       },
       {
-        "digest": "sha256:8b6912bfa0d53f88fbdbc5b9daa22f8cdc894bfae0b245f42fea2b9eea563170",
+        "digest": "sha256:6bade1a670eb06ec2720a68d4e4362ae4c86f838f26f35ba77e9dbd9cedb2330",
         "kind": "hardened-executable-source-registry",
         "path": "tobkiri_runtime/schemas/executable_sources.v1.json"
       },
@@ -22738,7 +22787,7 @@
         "path": "tobkiri_runtime/scripts/quality/run_independent_migration_proof.py"
       },
       {
-        "digest": "sha256:707b1524e01d6211f667b02c710654b68263619183a322590e19fc32563df01f",
+        "digest": "sha256:966062db639052389c0a8ff8595f12e4603a6fc23bbd09755e1c1c83d0a35f73",
         "kind": "legacy-executable-source-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -22789,7 +22838,7 @@
       "release-verified": 0,
       "semantically-reviewed": 74
     },
-    "observed_head_sha": "a2f8e1b67831a316779fa3a0b7af7e73cab168b4",
+    "observed_head_sha": "affb74aa068bef198a9ea8292eee6646260ba33d",
     "pack_count": 141,
     "profile_collection_proof": {
       "identity_proof": {

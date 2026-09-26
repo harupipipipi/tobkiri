@@ -8,7 +8,7 @@
       "command_protocol_activation": 0,
       "declaration_disk_runtime": 0,
       "double_authority": 0,
-      "executable_source_registry": 1,
+      "executable_source_registry": 0,
       "launcher_safety": 0,
       "legacy_registry_and_installed_lookup": 0,
       "migration_evidence": 3,
@@ -33,33 +33,7 @@
     "command_protocol_activation": [],
     "declaration_disk_runtime": [],
     "double_authority": [],
-    "executable_source_registry": [
-      {
-        "actual_function_count": 202,
-        "actual_operation_count": 265,
-        "duplicate_count": 0,
-        "expected_function_count": 202,
-        "expected_operation_count": 265,
-        "invalid_count": 0,
-        "line": 1,
-        "mismatched_count": 0,
-        "missing_count": 3,
-        "missing_sample": [
-          "rumi_team_coordinator_pack.job-adapter.team-supervisor:rumi_team_coordinator_pack.team-supervisor-job-adapter",
-          "rumi_team_coordinator_pack.team.coordinate:rumi_team_coordinator_pack.team-coordinate-control",
-          "rumi_team_coordinator_pack.team.runtime:rumi_team_coordinator_pack.team-runtime-resource"
-        ],
-        "path": "tobkiri_runtime/schemas/executable_sources.v1.json",
-        "rule": "executable_source_registry_incomplete",
-        "symbol": "executable_source_registry_incomplete",
-        "unexpected_count": 3,
-        "unexpected_sample": [
-          "rumi_team_coordinator_pack.company.coordinator:rumi_team_coordinator_pack.team-coordinate-control",
-          "rumi_team_coordinator_pack.company.runtime:rumi_team_coordinator_pack.team-runtime-resource",
-          "rumi_team_coordinator_pack.job-adapter.team-supervisor:rumi_team_coordinator_pack.company-supervisor-job-adapter"
-        ]
-      }
-    ],
+    "executable_source_registry": [],
     "launcher_safety": [],
     "legacy_registry_and_installed_lookup": [],
     "migration_evidence": [
@@ -155,34 +129,8 @@
       "status": "GREEN"
     },
     "executable_source_registry": {
-      "findings": [
-        {
-          "actual_function_count": 202,
-          "actual_operation_count": 265,
-          "duplicate_count": 0,
-          "expected_function_count": 202,
-          "expected_operation_count": 265,
-          "invalid_count": 0,
-          "line": 1,
-          "mismatched_count": 0,
-          "missing_count": 3,
-          "missing_sample": [
-            "rumi_team_coordinator_pack.job-adapter.team-supervisor:rumi_team_coordinator_pack.team-supervisor-job-adapter",
-            "rumi_team_coordinator_pack.team.coordinate:rumi_team_coordinator_pack.team-coordinate-control",
-            "rumi_team_coordinator_pack.team.runtime:rumi_team_coordinator_pack.team-runtime-resource"
-          ],
-          "path": "tobkiri_runtime/schemas/executable_sources.v1.json",
-          "rule": "executable_source_registry_incomplete",
-          "symbol": "executable_source_registry_incomplete",
-          "unexpected_count": 3,
-          "unexpected_sample": [
-            "rumi_team_coordinator_pack.company.coordinator:rumi_team_coordinator_pack.team-coordinate-control",
-            "rumi_team_coordinator_pack.company.runtime:rumi_team_coordinator_pack.team-runtime-resource",
-            "rumi_team_coordinator_pack.job-adapter.team-supervisor:rumi_team_coordinator_pack.company-supervisor-job-adapter"
-          ]
-        }
-      ],
-      "status": "RED"
+      "findings": [],
+      "status": "GREEN"
     },
     "launcher_safety": {
       "findings": [],
@@ -2283,8 +2231,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "a2f8e1b67831a316779fa3a0b7af7e73cab168b4",
-    "semantic_digest": "sha256:e454d0758b54219850e4efc3e528192d3c477144a5ddeb44589de6004ca2f616",
+    "observed_head_sha": "affb74aa068bef198a9ea8292eee6646260ba33d",
+    "semantic_digest": "sha256:dbfcbbb6dbfad5bdb49ae6edce912a8ed3aea9d782c2950132d749b9a7259ce9",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }
