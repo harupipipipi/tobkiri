@@ -21,6 +21,7 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 from core_runtime.python_file_executor import (
+    PackApprovalChecker,
     PythonFileExecutor,
     ExecutionContext,
     ExecutionResult,
@@ -107,6 +108,88 @@ class TestApprovalCheckFailure(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertEqual(result.error_type, "approval_rejected")
         self.assertEqual(result.execution_mode, "rejected")
+
+
+class TestPackApprovalCheckerFailClosed(unittest.TestCase):
+    """ApprovalManager 取得失敗時は fail-closed で拒否する。
+
+    旧実装は ``except ImportError: pass`` で manager=None を「承認済み」
+    として扱い、approval registry 不在の環境では全 pack が黙って実行
+    されていた（fail-open）。import 失敗・DI factory 失敗ともに拒否へ
+    倒れ、理由は bounded でなければならない。
+    """
+
+    def _failing_checker(self, exc: BaseException) -> PackApprovalChecker:
+        import core_runtime.approval_manager as approval_module
+
+        def _raise(*_args, **_kwargs):
+            raise exc
+
+        checker = PackApprovalChecker()
+        self._approval_patch = patch.object(
+            approval_module, "get_approval_manager", _raise
+        )
+        self._approval_patch.start()
+        self.addCleanup(self._approval_patch.stop)
+        return checker
+
+    def test_import_failure_denies_is_approved(self):
+        """get_approval_manager の ImportError で承認判定は拒否になる"""
+        checker = self._failing_checker(ImportError("no module named 'approval_manager'"))
+
+        approved, reason = checker.is_approved("any_pack")
+
+        self.assertFalse(approved)
+        self.assertIsNotNone(reason)
+        self.assertIn("unavailable", reason)
+        self.assertIn("any_pack", reason)
+        # bounded error: トレースバックを含まない1行の理由
+        self.assertLessEqual(len(reason), 400)
+        self.assertNotIn("\n", reason)
+
+    def test_availability_failure_denies_is_approved(self):
+        """DI factory の非 ImportError 失敗でも fail-closed"""
+        checker = self._failing_checker(
+            RuntimeError("approval registry database is locked")
+        )
+
+        approved, reason = checker.is_approved("any_pack")
+
+        self.assertFalse(approved)
+        self.assertIsNotNone(reason)
+        self.assertIn("unavailable", reason)
+
+    def test_verify_hash_denied_when_manager_unavailable(self):
+        """検証基盤が無いのに hash 検証済みとして通さない"""
+        checker = self._failing_checker(ImportError("missing"))
+
+        verified, reason = checker.verify_hash("any_pack")
+
+        self.assertFalse(verified)
+        self.assertIsNotNone(reason)
+        self.assertIn("unavailable", reason)
+
+    def test_denial_reason_is_bounded_for_huge_exception_text(self):
+        """巨大な例外メッセージでも拒否理由は bounded"""
+        checker = self._failing_checker(RuntimeError("x" * 10000))
+
+        approved, reason = checker.is_approved("any_pack")
+
+        self.assertFalse(approved)
+        self.assertLessEqual(len(reason), 400)
+
+    def test_approved_pack_still_approved_when_manager_available(self):
+        """正常系: manager が居れば従来どおり承認パスが動く"""
+        from core_runtime.approval_manager import PackStatus
+
+        checker = PackApprovalChecker()
+        fake_manager = MagicMock()
+        fake_manager.get_status.return_value = PackStatus.APPROVED
+        fake_manager.verify_hash.return_value = True
+        checker._approval_manager = fake_manager
+
+        self.assertEqual(checker.is_approved("good_pack"), (True, None))
+        self.assertEqual(checker.verify_hash("good_pack"), (True, None))
 
 
 class TestDockerExecutionSuccess(unittest.TestCase):

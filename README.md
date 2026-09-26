@@ -27,14 +27,18 @@ pip install -r tobkiri_runtime/requirements.txt
 pip install -r tobkiri_runtime/requirements-dev.txt
 pip install -e ./tobkiri_runtime
 
-# 4. Run health check
-python -m rumi_ai --health
+# 4. Start the runtime (keeps running; blocks this terminal)
+python -m app
 
-# 5. Start the runtime
-python -m rumi_ai
+# 5. In a second terminal, check the running Host's health
+python -m app --health
 ```
 
+`python -m app --health` probes `http://127.0.0.1:8765/health` on the already-running Host. It never binds the listen port itself, so it is safe to run while an instance is up, and it exits non-zero when no Host is listening.
+
 After starting, open http://localhost:8765/panel/ in your browser to access the control panel.
+
+> `python -m rumi_ai` is a compatibility shim, not a startup command. Outside the repo checkout it resolves to `tobkiri_runtime/rumi_ai`, which intentionally fails closed with `Tobkiri requires a Launcher-injected Pack v4 activation snapshot` — the Pack v4 Host can only be activated by the real composition root (`python -m app`) or by Tobkiri Launcher.
 
 ## Read This When...
 
@@ -147,23 +151,23 @@ Windows PowerShell:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
-python -m rumi_ai --health
+python -m app --health
 cd tobkiri_launcher\frontend
 npm run tauri -- dev
 ```
 
-When the viewer window opens, complete setup if prompted, then use Home -> `Open Defaultspack` to launch the defaultspack UI. `python -m rumi_ai` is useful for starting or checking the kernel, but the fresh-user desktop path for defaultspack is through the viewer button, not a manual port-8766 launch.
+When the viewer window opens, complete setup if prompted, then use Home -> `Open Defaultspack` to launch the defaultspack UI. `python -m app` is useful for starting or checking the kernel, but the fresh-user desktop path for defaultspack is through the viewer button, not a manual port-8766 launch.
 
 macOS / Linux:
 
 ```bash
 source .venv/bin/activate
-python -m rumi_ai --health
+python -m app --health
 cd tobkiri_launcher/frontend
 npm run tauri -- dev
 ```
 
-`--health` はシステムボリューム使用率も確認します。`disk` probe が `DEGRADED` / `DOWN` の場合は、コード不具合ではなく空き容量不足の可能性があります。
+`--health` は起動中の Host の `/health` endpoint を probe します。Host が未起動の場合は `status: "down"` と非ゼロの exit code を返すので、先に `python -m app` または Launcher で kernel を起動してください。
 
 ## Common Tasks
 
@@ -180,13 +184,13 @@ just integrity
 ### Backend health check
 
 ```bash
-python -m rumi_ai --health
+python -m app --health
 ```
 
 ### Runtime startup
 
 ```bash
-python -m rumi_ai
+python -m app
 ```
 
 ### Viewer development
@@ -230,9 +234,7 @@ python -m pytest tests/test_capability_trust_store.py
 
 ## HMAC Migration
 
-```bash
-python -m rumi_ai migrate-hmac
-```
+The legacy `python -m rumi_ai migrate-hmac` subcommand was retired with the Pack v4 composition root. `python -m app` accepts only `--headless` and `--health`; unsigned configuration files are re-signed during Launcher-driven activation.
 
 ## Components
 
@@ -247,24 +249,24 @@ python -m rumi_ai migrate-hmac
 
 ### Common Issues
 
-#### 1. Health check fails with "disk probe DEGRADED/DOWN"
+#### 1. Health check reports `status: "down"` or `status: "error"`
 
-**Problem**: `python -m rumi_ai --health` shows disk probe as DEGRADED or DOWN.
+**Problem**: `python -m app --health` exits non-zero.
 
-**Solution**: This is usually a disk space issue, not a code problem. Identify the
-largest workspace or build artifacts first; recreating a virtual environment can
-consume additional disk space.
+**Solution**: `--health` only probes an already-running Host at
+`http://127.0.0.1:8765/health`; it never starts one. `status: "down"` means no
+Host is listening — start it with `python -m app` or Tobkiri Launcher.
+`status: "error"` means a Host answered but reports an unhealthy runtime; check
+the `runtime_status` / `runtime_error` fields in the JSON output. The probe port
+follows `RUMI_PORT`.
 ```bash
-# Check disk space
-df -h
-
-# Inspect large local artifacts before removing anything
-du -sh .venv node_modules tobkiri_launcher/frontend/node_modules 2>/dev/null
+# Confirm whether a Host is listening
+lsof -nP -iTCP:8765 -sTCP:LISTEN
 ```
 
 #### 2. Port 8765 already in use
 
-**Problem**: `python -m rumi_ai` fails with "Address already in use".
+**Problem**: `python -m app` fails with "Address already in use".
 
 **Solution**: Identify the listener first. Stop only the matching old Tobkiri/Rumi
 process gracefully; do not use a forced kill for routine port cleanup.

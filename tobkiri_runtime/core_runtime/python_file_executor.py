@@ -861,21 +861,47 @@ class ExecutionResult:
 class PackApprovalChecker:
     """Pack承認状態チェッカー"""
 
+    # 取得失敗時の拒否理由は呼び出し側へ bounded で返す
+    _UNAVAILABLE_DETAIL_LIMIT = 160
+
     def __init__(self):
         self._approval_manager = None
+        self._unavailable_reason: Optional[str] = None
         self._lock = threading.Lock()
 
     def _get_approval_manager(self):
-        """ApprovalManagerを遅延取得"""
+        """ApprovalManagerを遅延取得
+
+        取得に失敗した場合は None を返し、bounded な失敗理由を
+        ``_unavailable_reason`` に保持する。DI コンテナが後から
+        初期化されるケースを許容するため、失敗はキャッシュせず
+        呼び出しごとに再試行する（拒否判定自体は常に fail-closed）。
+        """
         if self._approval_manager is None:
             with self._lock:
                 if self._approval_manager is None:
                     try:
                         from .approval_manager import get_approval_manager
                         self._approval_manager = get_approval_manager()
-                    except ImportError:
-                        pass
+                        self._unavailable_reason = None
+                    except Exception as exc:
+                        self._unavailable_reason = self._bounded_error_detail(exc)
         return self._approval_manager
+
+    @classmethod
+    def _bounded_error_detail(cls, exc: Exception) -> str:
+        """例外を1行・長さ上限付きの拒否理由テキストへ正規化する。"""
+        detail = " ".join(f"{type(exc).__name__}: {exc}".split())
+        if len(detail) > cls._UNAVAILABLE_DETAIL_LIMIT:
+            detail = detail[: cls._UNAVAILABLE_DETAIL_LIMIT - 1] + "…"
+        return detail
+
+    def _unavailable_denial(self, operation: str) -> str:
+        detail = self._unavailable_reason or "approval registry unavailable"
+        return (
+            f"Approval manager unavailable; cannot {operation} "
+            f"(reason: {detail})"
+        )
 
     def is_approved(self, pack_id: str) -> Tuple[bool, Optional[str]]:
         """
@@ -886,8 +912,10 @@ class PackApprovalChecker:
         """
         am = self._get_approval_manager()
         if am is None:
-            # ApprovalManagerがない場合はpermissiveとして扱う
-            return True, None
+            # Fail closed: ApprovalManager が無いと承認を証明できないため拒否
+            return False, self._unavailable_denial(
+                f"verify approval status of pack '{pack_id}'"
+            )
 
         try:
             from .approval_manager import PackStatus
@@ -916,7 +944,10 @@ class PackApprovalChecker:
         """
         am = self._get_approval_manager()
         if am is None:
-            return True, None
+            # Fail closed: ハッシュ検証基盤が無いのに検証済み扱いにしない
+            return False, self._unavailable_denial(
+                f"verify hash of pack '{pack_id}'"
+            )
 
         try:
             if am.verify_hash(pack_id):

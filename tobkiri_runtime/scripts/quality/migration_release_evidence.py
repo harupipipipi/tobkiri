@@ -206,22 +206,43 @@ def _validate_runtime_step(
         not isinstance(step.get("admission_id"), str)
         or not step["admission_id"].strip()
         or not _is_digest(step.get("policy_digest"))
+        or not _is_digest(step.get("reservation_journal_digest"))
     ):
         raise MigrationReleaseEvidenceError(f"admission receipt is incomplete: {pack_id}")
     if step_name == "install" and (
         not isinstance(step.get("installation_id"), str)
         or not step["installation_id"].strip()
         or not _is_digest(step.get("admission_receipt_digest"))
+        or not _is_digest(step.get("content_digest"))
+        or not _is_digest(step.get("install_record_digest"))
+        or not _is_digest(step.get("catalog_revision"))
+        or not _is_digest(step.get("approval_record_digest"))
     ):
         raise MigrationReleaseEvidenceError(f"install receipt is incomplete: {pack_id}")
-    if step_name == "isolated-conformance" and step["status"] == "verified" and (
-        not _is_digest(step.get("test_suite_digest"))
-        or not _is_digest(step.get("result_digest"))
-        or not _is_digest(step.get("install_receipt_digest"))
-    ):
-        raise MigrationReleaseEvidenceError(
-            f"isolated conformance receipt is incomplete: {pack_id}"
-        )
+    if step_name == "isolated-conformance":
+        operation_count = step.get("operation_count")
+        if (
+            isinstance(operation_count, bool)
+            or not isinstance(operation_count, int)
+            or operation_count < 0
+            or not _is_digest(step.get("probe_result_digest"))
+            or not _is_digest(step.get("install_receipt_digest"))
+        ):
+            raise MigrationReleaseEvidenceError(
+                f"isolated conformance receipt lacks execution anchors: {pack_id}"
+            )
+        if step["status"] == "verified" and (
+            not _is_digest(step.get("test_suite_digest"))
+            or not _is_digest(step.get("result_digest"))
+            or step.get("result_digest") != step.get("probe_result_digest")
+        ):
+            raise MigrationReleaseEvidenceError(
+                f"isolated conformance receipt is incomplete: {pack_id}"
+            )
+        if step["status"] == "not-applicable" and operation_count != 0:
+            raise MigrationReleaseEvidenceError(
+                f"not-applicable conformance cannot report exercised operations: {pack_id}"
+            )
 
 
 def load_runtime_receipts(path: Path) -> dict[str, Mapping[str, Any]]:
@@ -262,12 +283,17 @@ def load_runtime_receipts(path: Path) -> dict[str, Mapping[str, Any]]:
             raise MigrationReleaseEvidenceError(
                 f"install receipt does not bind admission: {pack_id}"
             )
-        if (
-            isolated.get("status") == "verified"
-            and isolated.get("install_receipt_digest") != install.get("receipt_digest")
-        ):
+        if isolated.get("install_receipt_digest") != install.get("receipt_digest"):
             raise MigrationReleaseEvidenceError(
                 f"conformance receipt does not bind install: {pack_id}"
+            )
+        observed_at = [
+            record[step].get("observed_at")
+            for step in ("admission", "install", "isolated-conformance")
+        ]
+        if not observed_at[0] <= observed_at[1] <= observed_at[2]:
+            raise MigrationReleaseEvidenceError(
+                f"runtime receipt steps are not one ordered execution: {pack_id}"
             )
         if not _exact_digest(record, "release_receipt_digest"):
             raise MigrationReleaseEvidenceError(f"release receipt digest is invalid: {pack_id}")
@@ -307,10 +333,31 @@ def release_evidence_errors(
             errors.append(f"runtime_receipt_{field}_mismatch")
     isolated = runtime.get("isolated-conformance")
     semantic = review.get("semantic_record")
-    if (
-        isinstance(isolated, Mapping)
-        and isolated.get("status") == "not-applicable"
-        and (not isinstance(semantic, Mapping) or semantic.get("kind") != "admission-only")
-    ):
+    if not isinstance(isolated, Mapping):
+        return errors
+    status = isolated.get("status")
+    semantic_kind = semantic.get("kind") if isinstance(semantic, Mapping) else None
+    if status == "not-applicable" and semantic_kind != "admission-only":
         errors.append("isolated_conformance_not_verified")
+    if status != "verified":
+        return errors
+    if semantic_kind == "admission-only":
+        errors.append("isolated_conformance_verified_for_admission_only")
+        return errors
+    operation_count = isolated.get("operation_count")
+    inventory = semantic.get("operation_inventory") if isinstance(semantic, Mapping) else None
+    declared = inventory.get("v4_count") if isinstance(inventory, Mapping) else None
+    if isinstance(declared, int) and not isinstance(declared, bool):
+        # The executed operation inventory must equal the reviewed v4 count,
+        # so a "verified" receipt cannot silently exercise fewer operations
+        # than the semantic record describes (or invent operations for a
+        # reviewed zero-operation Pack).
+        if operation_count != declared:
+            errors.append("runtime_receipt_operation_count_mismatch")
+    elif (
+        not isinstance(operation_count, int)
+        or isinstance(operation_count, bool)
+        or operation_count <= 0
+    ):
+        errors.append("runtime_receipt_operations_not_exercised")
     return errors

@@ -563,6 +563,9 @@ def prepare_chat_run(
             and tool_policy.get("full_access") is True
         ):
             request_context["full_access"] = True
+        # Client-supplied tool_policy.profile_id was already removed by
+        # _sanitize_untrusted_chat_tool_policy; a value here can only come
+        # from server-side resolution (e.g. a catalog template policy).
         policy_profile_id = str(tool_policy.get("profile_id") or "").strip()
         if policy_profile_id and not request_context.get("profile_id"):
             request_context["profile_id"] = policy_profile_id
@@ -2048,6 +2051,11 @@ _CLIENT_TOOL_POLICY_APPROVAL_WEAKENING_FALSE_KEYS = {
     "write_actions_require_approval",
 }
 _CLIENT_TOOL_POLICY_UNTRUSTED_STRUCTURAL_KEYS = {
+    # The authority profile is never selected from the client payload —
+    # server-side callers inject it through context["profile_id"] (scheduler,
+    # subagent, verified local-UI authority context), exactly like
+    # metadata.profile_id which is only ever recorded as ignored.
+    "profile_id",
     "tool_permission_policy",
 }
 

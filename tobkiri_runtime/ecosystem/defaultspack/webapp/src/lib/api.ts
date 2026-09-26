@@ -3084,6 +3084,17 @@ export function defaultspackApiFetch(
   });
 }
 
+/** Read the Host contract error code attached to a non-2xx response body. */
+async function defaultspackErrorCodeFromBody(response: Response): Promise<string | undefined> {
+  try {
+    const envelope = objectRecord(await response.clone().json());
+    const code = objectRecord(envelope?.data)?.code ?? objectRecord(envelope?.error)?.code;
+    return typeof code === "string" && code ? code : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function* streamCommandInvocationEvents(
   invocationId: string,
   options: { afterSequence?: number; signal?: AbortSignal; waitSeconds?: number } = {},
@@ -3107,7 +3118,11 @@ export async function* streamCommandInvocationEvents(
         },
       );
       if (!response.ok || !response.body) {
-        const failure = new Error(explainDefaultspackApiError(response.status, undefined, response.statusText));
+        const code = await defaultspackErrorCodeFromBody(response);
+        const failure = new Error(
+          explainDefaultspackApiError(response.status, code ? { code } : undefined, response.statusText),
+        );
+        if (code) (failure as Error & { code?: string }).code = code;
         if (response.status < 500 && response.status !== 429) {
           throw Object.assign(failure, { retryableCommandStream: false });
         }
@@ -3634,6 +3649,106 @@ async function nativeCodingApprovalOperatorForDigest(
     expectedDigest,
     decision: "approve",
   });
+}
+
+// Conversation-scoped tool preferences live inside the conversation record's
+// `metadata.tool_preferences` field.  The pinned Frontend Contract Map exposes
+// the owned record through GET/PUT /api/chat/conversation (conversation-resource
+// and conversation-manage), so reads and writes normalize that field instead of
+// calling a dedicated sub-route.  The shapes below mirror
+// blocks/chat/tool_preferences.py, which enforced the same canonical form.
+const CONVERSATION_TOOL_PREFERENCE_MODES = new Set(["auto", "review", "manual", "none"]);
+const CONVERSATION_TOOL_PREFERENCE_SCOPES = new Set(["turn", "conversation"]);
+const CONVERSATION_TOOL_PREFERENCE_STRATEGIES = new Set([
+  "hybrid", "semantic", "catalog_ai", "all_with_hints", "all_schemas", "lexical",
+]);
+const CONVERSATION_TOOL_PREFERENCE_TARGET_KINDS = new Set(["activity", "service", "tool", "skill"]);
+const CONVERSATION_TOOL_PREFERENCE_MAX_TARGETS = 64;
+const CONVERSATION_TOOL_PREFERENCE_MAX_TARGET_ID = 160;
+const CONVERSATION_TOOL_PREFERENCE_MAX_PREVIEW_ID = 128;
+
+function conversationToolPreferencesFromMetadata(metadata: unknown): Record<string, unknown> {
+  return objectRecord(objectRecord(metadata)?.tool_preferences) ?? {};
+}
+
+function conversationToolPreferenceBool(value: unknown, fallback: boolean): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["1", "true", "yes", "on"].includes(normalized)) return true;
+    if (["0", "false", "no", "off"].includes(normalized)) return false;
+  }
+  if (value === null || value === undefined) return fallback;
+  return Boolean(value);
+}
+
+function conversationToolPreferenceTarget(value: unknown): Record<string, string> | null {
+  if (typeof value === "string") {
+    const id = value.trim();
+    return id ? { kind: "tool", id } : null;
+  }
+  const record = objectRecord(value);
+  if (!record) return null;
+  let kind = String(record.kind ?? record.type ?? "").trim().toLowerCase();
+  if (!CONVERSATION_TOOL_PREFERENCE_TARGET_KINDS.has(kind)) {
+    if (record.tool_id && !record.service_id) kind = "tool";
+    else if (record.service_id && !record.tool_id) kind = "service";
+  }
+  const id = String(
+    record.id ?? record.tool_id ?? record.service_id ?? record.activity_id ?? record.skill_id ?? "",
+  ).trim();
+  if (!id || !CONVERSATION_TOOL_PREFERENCE_TARGET_KINDS.has(kind)) return null;
+  return { kind, id };
+}
+
+function conversationToolPreferenceTargets(value: unknown): Array<Record<string, string>> {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    throw new Error("preferences include/exclude must be arrays");
+  }
+  const targets: Array<Record<string, string>> = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const target = conversationToolPreferenceTarget(item);
+    if (!target || target.id.length > CONVERSATION_TOOL_PREFERENCE_MAX_TARGET_ID) continue;
+    const key = `${target.kind}:${target.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    targets.push(target);
+    if (targets.length >= CONVERSATION_TOOL_PREFERENCE_MAX_TARGETS) break;
+  }
+  return targets;
+}
+
+function sanitizeConversationToolPreferences(value: unknown): Record<string, unknown> {
+  const record = objectRecord(value);
+  if (!record) throw new Error("preferences must be an object");
+  const mode = String(record.mode ?? "auto").trim().toLowerCase();
+  if (!CONVERSATION_TOOL_PREFERENCE_MODES.has(mode)) {
+    throw new Error("preferences.mode must be one of auto, review, manual, none");
+  }
+  const scope = String(record.scope ?? "conversation").trim().toLowerCase();
+  if (!CONVERSATION_TOOL_PREFERENCE_SCOPES.has(scope)) {
+    throw new Error("preferences.scope must be one of turn, conversation");
+  }
+  const strategy = String(record.strategy ?? "").trim().toLowerCase();
+  if (strategy && !CONVERSATION_TOOL_PREFERENCE_STRATEGIES.has(strategy)) {
+    throw new Error("preferences.strategy is not supported");
+  }
+  const previewId = String(record.preview_id ?? "").trim();
+  if (previewId.length > CONVERSATION_TOOL_PREFERENCE_MAX_PREVIEW_ID) {
+    throw new Error("preferences.preview_id is too long");
+  }
+  return {
+    mode,
+    include: conversationToolPreferenceTargets(record.include),
+    exclude: conversationToolPreferenceTargets(record.exclude),
+    scope,
+    strategy: strategy || null,
+    must_use: conversationToolPreferenceBool(record.must_use, false),
+    review: conversationToolPreferenceBool(record.review, mode === "review"),
+    preview_id: previewId || null,
+  };
 }
 
 export const api = {
@@ -4259,18 +4374,33 @@ export const api = {
     });
   },
 
-  getConversationToolPreferences(conversationId: string) {
-    return request<{ conversation_id: string; preferences: Record<string, unknown> }>(
-      defaultspackContractRoute(`api/conversations/${encodeURIComponent(conversationId)}/tool-preferences`),
-      { cache: "no-store" },
-    );
+  async getConversationToolPreferences(conversationId: string) {
+    // No dedicated contract route exists for the preferences sub-resource;
+    // read the owned conversation record and take its metadata field.
+    const conversation = await api.getConversation(conversationId);
+    return {
+      conversation_id: conversationId,
+      preferences: conversationToolPreferencesFromMetadata(conversation.metadata),
+    };
   },
 
-  updateConversationToolPreferences(conversationId: string, preferences: Record<string, unknown>) {
-    return request<{ conversation_id: string; preferences: Record<string, unknown> }>(
-      defaultspackContractRoute(`api/conversations/${encodeURIComponent(conversationId)}/tool-preferences`),
-      { method: "PUT", body: JSON.stringify({ preferences }) },
+  async updateConversationToolPreferences(conversationId: string, preferences: Record<string, unknown>) {
+    // Preserve unrelated metadata keys and write through the revision-bound
+    // captured conversation-manage operation at PUT /api/chat/conversation.
+    const conversation = await api.getConversation(conversationId);
+    const metadata = {
+      ...(objectRecord(conversation.metadata) ?? {}),
+      tool_preferences: sanitizeConversationToolPreferences(preferences),
+    };
+    const updated = await api.updateConversation(
+      conversationId,
+      { metadata },
+      conversation.conversation_revision,
     );
+    return {
+      conversation_id: conversationId,
+      preferences: conversationToolPreferencesFromMetadata(updated.metadata),
+    };
   },
 
   async executeResolvedUiCommand(payload: {

@@ -10,38 +10,62 @@ manifest は、承認済み pack が独自 renderer/module を配布する必要
 
 ## まず知っておくこと
 
-- backend contract は `domain/frontend/registry.py`
+- backend contract は `domain/frontend/registry.py` (`FrontendRegistry.build_catalog`)
 - standalone frontend は `webapp/src/App.tsx`
 - right sidebar は `webapp/src/components/RightSidebar.tsx`
 - settings は `/api/ui/settings`
 - preview feed は `/api/ui/conversations/{id}/preview`
-- shell layout は `user_data/shared/frontend_shell.json` から差し替えられる
+- shell layout は active な Pack v4 Profile/ShellDefinition と、有効化された
+  pack の manifest (`shell_layout` / `shell_renderers`) だけで決まる。
+  **mutable な `user_data` JSON は layout authority ではない**
+  (`FrontendRegistry._load_shell_config()` は常に `{}` を返す)。
+
+## Sealed model: 読み込み順と有効化
+
+backend extension manifest (`extensions/` 配下の JSON) は次の順で読み込まれる
+(`domain/extensions/runtime.py` の `build_extensions_roots`)。
+
+1. `ecosystem/defaultspack/extensions/`
+2. active Profile の effective set に含まれる sibling pack の `extensions/`
+
+frontend extension manifest (`*.ui.json`) は次の 2 系統だけから読み込まれる
+(`domain/frontend/registry.py` の `_frontend_extension_dirs`)。
+
+1. **有効化された pack の `frontend_extensions/`**
+   `ecosystem/<pack_id>/frontend_extensions/*.ui.json`。対象は
+   `selected_extension_pack_ids()` が返す pack ID、つまり検証済み Pack v4
+   activation の effective set (`core_runtime.resolved_profile_scope.effective_pack_ids()`)
+   に含まれ、かつ `pack.v4.json` の `pack.id` がディレクトリ名と一致する
+   pack だけ。
+2. **digest 固定の ui_projection root**
+   active Profile の `content_projections` のうち `kind="ui_projection"` の
+   各 projection について、`profile_projections/<artifact_root>/frontend_extensions/*.ui.json`
+   (`selected_projection_roots`)。projection root は読み込み時に
+   `content_digest` で再検証され、digest がずれていれば fail closed する。
+
+この loader が読まないもの (書いても何も起きない):
+
+- `user_data/shared/frontend_extensions/*.ui.json` — user overlay 経路は廃止。
+- `user_data/shared/frontend_shell.json` — `_load_shell_config()` は常に `{}`。
+- effective set に入っていない sibling pack の `frontend_extensions/`。
+- `user_data/settings/setup_pack_selection.json` — 旧 selection file は
+  live な選択 authority ではなく、Profile への一方通行の移行入力に過ぎない。
+  selection file が無い dev 環境で「全 sibling pack を読む」fallback も存在しない。
+  Profile が active でない限り `effective_pack_ids()` は空で、pack の
+  `frontend_extensions/` は一切読まれない。
+
+テストで一時 manifest を使う場合だけ、backend manifest は
+`build_extensions_roots(..., extra_roots=...)` に明示的に渡す。frontend
+`.ui.json` 側の test seam は `domain.frontend.registry.selected_extension_pack_ids`
+の patch (例: `tests/test_defaultspack_ui_registry.py`)。
 
 ## 拡張ポイント
 
-### 読み込み順と有効化
+### 0. Shell layout / renderer を差し替える
 
-backend extension manifest は次の順で読み込まれる。
-
-1. `ecosystem/defaultspack/extensions/`
-2. 選択中の sibling pack の `extensions/`
-
-runtime は captured Pack v4 activation に含まれない filesystem root や
-ambient environment variable を extension root として読み込まない。テストで
-一時 manifest を使う場合だけ、`build_extensions_roots(..., extra_roots=...)` に
-明示的に渡す。
-
-frontend extension manifest は sibling pack の `frontend_extensions/` と
-`user_data/shared/frontend_extensions/` から読み込まれる。
-
-`user_data/settings/setup_pack_selection.json` がある場合、sibling pack は
-`target_pack_ids` / `active_target_pack_id` / legacy `target_pack_id` に含まれる
-pack だけが有効になる。`defaultspack` と user overlay は常に読み込まれる。
-selection file がない開発環境では、従来どおり全 sibling pack を読み込む。
-
-### 0. Shell layout を差し替える
-
-`user_data/shared/frontend_shell.json` に `shell_layout` を置くと、既存 React を編集せずに表示 region を並べ替えたり無効化できる。
+`shell_layout` と `shell_renderers` の schema 自体は有効だが、置き場所は
+**有効化された pack の `frontend_extensions/*.ui.json`** (または component の
+`ui_surfaces` manifest の `ui` config) である。
 
 ```json
 {
@@ -57,7 +81,16 @@ selection file がない開発環境では、従来どおり全 sibling pack を
 }
 ```
 
-`shell_renderers` は renderer ID と frontend component 名の契約を表す。builtin renderer は `webapp/src/renderers/` に分かれており、`module` と `trust: "local"` を指定した同一 origin の `/static/renderers/`, `/static/assets/renderers/`, `/static/user_renderers/` 配下だけ lazy load できる。読み込み失敗時は error boundary で builtin fallback に戻る。
+`shell_renderers` は renderer ID と frontend component 名の契約を表す。builtin
+renderer は `webapp/src/renderers/` に分かれている。`module` による lazy load
+は frontend 側でさらに厳しく gate されている (`webapp/src/renderers/trustedRendererLoader.tsx`):
+same-origin の `/static/renderers/` と `/static/assets/renderers/` 配下の
+`.js` だけが対象で、さらに `verified: true` と backend 検証済みの builtin
+provenance (`provenance.source: "builtin"`, `content_hash`, `build_id`) が必須。
+`/static/user_renderers/` は frontend の trust list に無く、これらの prefix は
+sealed frontend bundle 内を指すため、manifest から任意 JS を載せる経路は
+事実上存在しない。読み込み条件を満たさない renderer は error boundary /
+quarantine で builtin fallback に戻る。
 
 ```json
 {
@@ -66,10 +99,7 @@ selection file がない開発環境では、従来どおり全 sibling pack を
       "id": "composer",
       "component": "Composer",
       "regions": ["composer"],
-      "fallback": "hidden",
-      "module": "/static/renderers/custom-composer.js",
-      "export": "default",
-      "trust": "local"
+      "fallback": "hidden"
     }
   ]
 }
@@ -79,7 +109,9 @@ selection file がない開発環境では、従来どおり全 sibling pack を
 
 ### 1. 右バーに項目を追加する
 
-`user_data/shared/frontend_extensions/*.ui.json` に `sidebar_items` を追加する。
+有効化された pack の `frontend_extensions/<name>.ui.json` に `sidebar_items` を追加する
+(現行 Profile で実際に読まれている例:
+`ecosystem/rumi_model_catalog_pack/frontend_extensions/provider_catalog.ui.json`)。
 
 ```json
 {
@@ -109,9 +141,10 @@ selection file がない開発環境では、従来どおり全 sibling pack を
 }
 ```
 
-`category` は `tool`, `widget`, `system`, `integration` のいずれか。
+`category` の既知値は `widget`, `activity`, `capability`, `integration`,
+`system`, `tool` (sort 順は `_sidebar_item_sort_key`)。未知の category は最後に回る。
 
-## 2. 設定を追加する
+### 2. 設定を追加する
 
 同じ manifest に `settings_sections` を追加する。
 
@@ -139,9 +172,14 @@ selection file がない開発環境では、従来どおり全 sibling pack を
 }
 ```
 
-保存先は `user_data/shared/frontend_settings.json`。frontend は schema を見て form を自動生成する。
+frontend は schema を見て form を自動生成し、値は `PUT /api/ui/settings` で
+明示的に bind された settings owner 経由で永続化される。managed install での
+durable file は `$RUMI_USER_DATA/defaultspack/shared/frontend_settings.json`
+(`RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH` で override 可)。
+`pack_root/user_data/shared/frontend_settings.json` は明示的な pack_root
+binding (主にテスト) の場合の互換 path であり、書き込み authority を与えない。
 
-## 3. Chat 描画を拡張する
+### 3. Chat 描画を拡張する
 
 registry は `chat_renderers` で「どの block/widget type をどの renderer が担当するか」の metadata を返す。
 
@@ -158,7 +196,8 @@ registry は `chat_renderers` で「どの block/widget type をどの renderer 
 }
 ```
 
-この metadata 自体は契約で、実際の renderer 実装は builtin renderer registry に追加する。
+この metadata 自体は契約で、実際の renderer 実装は builtin renderer registry
+(`webapp/src/renderers/`, 現状の dispatch は `ChatMessagesRenderer.tsx`) に追加する。
 
 今の builtin renderer:
 
@@ -168,13 +207,13 @@ registry は `chat_renderers` で「どの block/widget type をどの renderer 
 - `widget` fallback
 - unknown block fallback (`json` / `text` / `hidden`)
 
-## 4. Tool schema を右バーへ自動反映する
+### 4. Tool schema を右バーへ自動反映する
 
 `ToolRegistry` に登録された tool は自動で right sidebar item になる。tool ごとの `schema.parameters` は panel field に変換される。
 
 つまり tool を増やすだけでも右バーに項目が増える。
 
-## 5. Preview feed を増やす
+### 5. Preview feed を増やす
 
 preview feed は次のソースを集約している。
 
@@ -186,17 +225,43 @@ preview feed は次のソースを集約している。
 
 新しい preview を増やしたいときは `domain/frontend/registry.py` の `_preview_from_log()` または `_preview_from_message()` を拡張する。
 
+## 開発フロー: sidebar item を足すには
+
+`.ui.json` は pack の sealed artifact set の一部 (`artifact-index.v4.json` に
+`role: "asset"` として digest 列挙される) なので、編集後は reseal と
+re-activation が必要。
+
+1. `ecosystem/<pack_id>/frontend_extensions/<name>.ui.json` を編集する。
+2. pack の v4 artifact を再生成して `artifact-index.v4.json` の digest を
+   更新する (`python scripts/migrate_pack_artifacts_v4.py`)。
+3. pack-set / Profile の activation ceremony (resolve → review → Authority
+   approval → activation) をやり直して、新しい digest を active Profile に
+   commit する。`/api/ui/catalog` は request ごとに `FrontendRegistry` を
+   組み立てるので、activation 後の再起動不要で反映される。
+
+ui_projection 側 (`profile_projections/<id>/frontend_extensions/`) を編集する
+場合は、projection の `content_digest` が読み込み時に再検証されるため、
+`scripts/generate_profile_artifacts.py` で Profile artifact を再生成してから
+activate する。
+
+まだ effective set に入っていない新しい pack は、source tree を置くだけでは
+読まれない。Host-owned admission と pack-set transaction (`/api/setup/packs`
+ceremony) を通して install/enable する必要がある
+(docs/pack-development-guide.md 参照)。
+
 ## 設計方針
 
 - frontend は「tool が何か」を知らない
 - backend は「画面の完成形」を知らない
 - 両者は registry/schema/preview contract だけで結ばれる
 - 追加は manifest と renderer 実装の 2 箇所で済ませる
+- manifest の供給元はすべて検証済み Pack v4 activation に縛られる。
+  mutable な user_data ファイルは UI の layout/extension authority にならない
 
 ## 変更時の確認
 
 ```bash
-cd ecosystem/defaultspack/webapp
+cd tobkiri_runtime/ecosystem/defaultspack/webapp
 npm test
 npm run lint
 npm run build

@@ -7252,7 +7252,7 @@
     },
     "rumi_scheduler_tool_adapter_pack": {
       "pack_id": "rumi_scheduler_tool_adapter_pack",
-      "review_attestation_digest": "sha256:a77724b8f770ae2210a5a9a8c8394e1edbbfc760d6e2440bcb4a4d47a7fec472",
+      "review_attestation_digest": "sha256:1848095545cdb1c9b22e09948bca6536ab659d7d3145be7bc6c8b38db813401a",
       "review_basis": {
         "evidence_paths": [
           "tobkiri_runtime/ecosystem/rumi_scheduler_tool_adapter_pack/pack.v4.json",
@@ -7280,7 +7280,7 @@
           "canonical input/output schema equality where declared"
         ]
       },
-      "reviewed_at": "2026-09-26T15:40:00+09:00",
+      "reviewed_at": "2026-09-27T00:23:09+09:00",
       "reviewer_id": "devin:independent-semantic-review:v1",
       "semantic_record": {
         "accepted_divergences": [
@@ -7415,9 +7415,9 @@
         "status": "verified"
       },
       "semantic_record_digest": "sha256:14517227fbc84cf174742a4219ad609eb6348324b6b10caf6f83a10637651a78",
-      "source_digest": "sha256:739a58b333c0971c496f7b2329eca5b1337d5a96ac49d530cda908268816c1f1",
+      "source_digest": "sha256:03d3b70bd97fa5318ebb1ffadf3c4f794f1d2361479d955803aae00bbf3c4e2c",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:1988901dd42b0c34d3cb4e84a37d99acdc6f4131e92b2839b55d2fe99e6fabb2"
+      "target_digest": "sha256:eb5ade2b8037355b12306fd97c12d8bc7b15403d304dbdaf8071e467ee754601"
     },
     "rumi_security_review_pack": {
       "pack_id": "rumi_security_review_pack",

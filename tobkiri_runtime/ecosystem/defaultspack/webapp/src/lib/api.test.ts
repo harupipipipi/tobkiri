@@ -1661,6 +1661,130 @@ test("other API failures are not mistaken for an unregistered contract operation
   assert.equal(isDefaultspackContractOperationUnknownError(legacy), true);
 });
 
+test("conversation tool preferences read through the canonical conversation record route", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const requests: Array<{ url: string; method: string; body?: unknown }> = [];
+  globalThis.fetch = async (url, init) => {
+    requests.push({
+      url: String(url),
+      method: String(init?.method ?? "GET"),
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+    });
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        id: "conv-1",
+        conversation_revision: 7,
+        title: "t",
+        model: "m",
+        tags: [],
+        is_starred: false,
+        is_archived: false,
+        created_at: 1,
+        updated_at: 1,
+        messages: [],
+        metadata: {
+          ui_state: { theme: "dark" },
+          tool_preferences: { mode: "manual", include: [{ kind: "service", id: "svc-1" }] },
+        },
+      },
+      error: null,
+    }));
+  };
+
+  const result = await api.getConversationToolPreferences("conv-1");
+  assert.deepEqual(result, {
+    conversation_id: "conv-1",
+    preferences: { mode: "manual", include: [{ kind: "service", id: "svc-1" }] },
+  });
+  assert.equal(requests.length, 1);
+  assert.equal(
+    requests[0].url,
+    `/api/contracts/defaultspack/${encodeURIComponent("GET /api/chat/conversation?conversation_id=conv-1")}`,
+  );
+});
+
+test("conversation tool preferences write merges metadata through the canonical update route", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const requests: Array<{ url: string; method: string; body?: Record<string, unknown> }> = [];
+  const record = (metadata: Record<string, unknown>) => ({
+    id: "conv-1",
+    conversation_revision: 8,
+    title: "t",
+    model: "m",
+    tags: [],
+    is_starred: false,
+    is_archived: false,
+    created_at: 1,
+    updated_at: 1,
+    messages: [],
+    metadata,
+  });
+  globalThis.fetch = async (url, init) => {
+    const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined;
+    requests.push({ url: String(url), method: String(init?.method ?? "GET"), body });
+    const updates = body && typeof body.updates === "object" && body.updates !== null
+      ? body.updates as Record<string, unknown>
+      : {};
+    const metadata = updates.metadata && typeof updates.metadata === "object"
+      ? updates.metadata as Record<string, unknown>
+      : { ui_state: { theme: "dark" } };
+    return new Response(JSON.stringify({ success: true, data: record(metadata), error: null }));
+  };
+
+  const result = await api.updateConversationToolPreferences("conv-1", {
+    mode: "manual",
+    include: [{ kind: "service", id: "svc-1" }, "tool-extra", { kind: "bogus", id: "skip" }],
+  });
+  assert.deepEqual(requests.map((entry) => entry.method), ["GET", "PUT"]);
+  assert.equal(
+    requests[1].url,
+    `/api/contracts/defaultspack/${encodeURIComponent("PUT /api/chat/conversation")}`,
+  );
+  assert.deepEqual(requests[1].body, {
+    conversation_id: "conv-1",
+    updates: {
+      metadata: {
+        ui_state: { theme: "dark" },
+        tool_preferences: {
+          mode: "manual",
+          include: [{ kind: "service", id: "svc-1" }, { kind: "tool", id: "tool-extra" }],
+          exclude: [],
+          scope: "conversation",
+          strategy: null,
+          must_use: false,
+          review: false,
+          preview_id: null,
+        },
+      },
+    },
+    expected_conversation_revision: 8,
+  });
+  assert.equal(result.conversation_id, "conv-1");
+  assert.equal((result.preferences as Record<string, unknown>).mode, "manual");
+});
+
+test("command event stream surfaces the Host contract error code", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    success: false,
+    data: { state: "contract_dispatch_denied", code: "CONTRACT_OPERATION_UNKNOWN" },
+    error: "Unknown frontend contract operation",
+  }), { status: 404, statusText: "Not Found" });
+
+  const events = streamCommandInvocationEvents("inv-1", { waitSeconds: 0 });
+  const failure = await events.next().then(
+    () => null,
+    (error: unknown) => error,
+  );
+  assert.ok(failure instanceof Error);
+  assert.match(failure.message, /CONTRACT_OPERATION_UNKNOWN/);
+  assert.ok(isDefaultspackContractOperationUnknownError(failure));
+});
+
 test("selected tools are cleared after send unless settings opt in", () => {
   assert.equal(keepSelectedToolsAfterSend({}), false);
   assert.equal(keepSelectedToolsAfterSend({ tools: { keep_selected_tools_after_send: "false" } }), false);

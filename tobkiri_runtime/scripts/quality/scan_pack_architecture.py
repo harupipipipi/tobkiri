@@ -43,6 +43,24 @@ PRODUCT_SPECIAL_CASE_EXCLUDED_PATHS = frozenset(
         Path("scripts") / "quality" / "check_core_no_favoritism.py",
     }
 )
+# Kernel sources whose sanctioned Pack-binding tables legitimately embed Pack
+# identifiers inside container literals or call arguments.  Entries stay
+# covered by the direct-reference product Pack rules; only embedded/nested
+# detection is waived.  Each row is an explicit debt record, not a silent miss.
+EMBEDDED_PACK_TABLE_EXCLUDED_PATHS = frozenset(
+    {
+        Path("tobkiri_runtime")
+        / "core_runtime"
+        / "bootstrap"
+        / "saved_bridge.py",
+        Path("tobkiri_runtime")
+        / "core_runtime"
+        / "interactive_effect_coordinator.py",
+        Path("tobkiri_runtime")
+        / "core_runtime"
+        / "legacy_profile_successor_v4.py",
+    }
+)
 IMPORT_RE = re.compile(
     r"(?:import|export)\s+(?:[^'\"]+?\s+from\s+)?['\"]([^'\"]+)['\"]|"
     r"import\s*\(\s*['\"]([^'\"]+)['\"]\s*\)"
@@ -587,8 +605,18 @@ def _pack_values(
     node: ast.AST | None,
     aliases: Mapping[str, set[str]],
     pack_names: set[str],
+    *,
+    nested: bool = False,
 ) -> set[str]:
-    """Resolve the small constant subset needed for product-branch checks."""
+    """Resolve the small constant subset needed for product-branch checks.
+
+    With ``nested`` enabled the resolver also descends into the compound
+    literal and call-adjacent forms (dict keys/values, list/set/tuple items,
+    subscripts, conditionals, boolean operands, and binary concatenation or
+    path joins) so kernel code cannot hide a Pack identifier inside a data
+    table.  Calls stay excluded: call arguments are reported on the Call node
+    itself so one reference is not double-counted.
+    """
     if node is None:
         return set()
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
@@ -599,16 +627,50 @@ def _pack_values(
         result: set[str] = set()
         for value in node.values:
             if isinstance(value, ast.FormattedValue):
-                result.update(_pack_values(value.value, aliases, pack_names))
+                result.update(
+                    _pack_values(value.value, aliases, pack_names, nested=nested)
+                )
         return result
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-        return _pack_values(node.left, aliases, pack_names) | _pack_values(
-            node.right, aliases, pack_names
+    if isinstance(node, ast.BinOp) and (
+        isinstance(node.op, ast.Add) or nested
+    ):
+        return _pack_values(
+            node.left, aliases, pack_names, nested=nested
+        ) | _pack_values(node.right, aliases, pack_names, nested=nested)
+    if not nested:
+        return set()
+    if isinstance(node, ast.Dict):
+        result = set()
+        for key in node.keys:
+            if key is not None:
+                result.update(_pack_values(key, aliases, pack_names, nested=True))
+        for value in node.values:
+            result.update(_pack_values(value, aliases, pack_names, nested=True))
+        return result
+    if isinstance(node, (ast.List, ast.Set, ast.Tuple)):
+        result = set()
+        for element in node.elts:
+            result.update(_pack_values(element, aliases, pack_names, nested=True))
+        return result
+    if isinstance(node, ast.BoolOp):
+        result = set()
+        for value in node.values:
+            result.update(_pack_values(value, aliases, pack_names, nested=True))
+        return result
+    if isinstance(node, ast.IfExp):
+        return _pack_values(node.body, aliases, pack_names, nested=True) | _pack_values(
+            node.orelse, aliases, pack_names, nested=True
         )
+    if isinstance(node, ast.Subscript):
+        return _pack_values(node.slice, aliases, pack_names, nested=True)
+    if isinstance(node, (ast.Starred, ast.Await, ast.NamedExpr)):
+        return _pack_values(node.value, aliases, pack_names, nested=True)
     return set()
 
 
-def _pack_aliases(tree: ast.AST, pack_names: set[str]) -> dict[str, set[str]]:
+def _pack_aliases(
+    tree: ast.AST, pack_names: set[str], *, nested: bool = False
+) -> dict[str, set[str]]:
     """Resolve literal and import aliases without executing application code."""
     aliases: dict[str, set[str]] = {}
     for node in ast.walk(tree):
@@ -624,13 +686,13 @@ def _pack_aliases(tree: ast.AST, pack_names: set[str]) -> dict[str, set[str]]:
                 if references:
                     aliases[imported.asname or imported.name] = references
         elif isinstance(node, ast.Assign):
-            references = _pack_values(node.value, aliases, pack_names)
+            references = _pack_values(node.value, aliases, pack_names, nested=nested)
             if references:
                 for target in node.targets:
                     if isinstance(target, ast.Name):
                         aliases[target.id] = references
         elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            references = _pack_values(node.value, aliases, pack_names)
+            references = _pack_values(node.value, aliases, pack_names, nested=nested)
             if references:
                 aliases[node.target.id] = references
     return aliases
@@ -646,9 +708,13 @@ def _scan_product_special_cases(
     """Reject product Pack special cases, including simple indirection.
 
     Pack-owned code may name its own implementation, but kernel/Host code must
-    remain catalog-driven.  The check deliberately resolves only literals and
-    import aliases; dynamic values remain an explicit unknown for the runtime
-    gate rather than becoming a trusted exception here.
+    remain catalog-driven.  Kernel sources additionally reject Pack
+    identifiers embedded in dict literals, container members, call arguments,
+    and keyword arguments; the three sanctioned Pack-binding tables in
+    ``EMBEDDED_PACK_TABLE_EXCLUDED_PATHS`` are the reviewed carve-out.  The
+    check deliberately resolves only literals and import aliases; dynamic
+    values remain an explicit unknown for the runtime gate rather than
+    becoming a trusted exception here.
     """
     if source_pack in pack_names:
         return set()
@@ -656,7 +722,17 @@ def _scan_product_special_cases(
         tree = ast.parse(text, filename=str(path))
     except SyntaxError:
         return set()
-    aliases = _pack_aliases(tree, pack_names)
+    # Embedded/nested Pack references (dict members, container items, call
+    # arguments) are enforced on kernel sources, where no sanctioned Pack-name
+    # data table should exist outside EMBEDDED_PACK_TABLE_EXCLUDED_PATHS.
+    # Host and tooling trees keep the direct-reference rules only: they
+    # legitimately carry Pack-name data (generators, alias tables, CLI
+    # defaults), so compound-form enforcement there is a separate triage wave.
+    nested = (
+        source_pack == "kernel"
+        and path.relative_to(root) not in EMBEDDED_PACK_TABLE_EXCLUDED_PATHS
+    )
+    aliases = _pack_aliases(tree, pack_names, nested=nested)
     found: set[Violation] = set()
 
     def add(node: ast.AST, rule: str, target: str) -> None:
@@ -684,7 +760,7 @@ def _scan_product_special_cases(
                 add(node, "product_pack_import", ",".join(sorted(references)))
         elif isinstance(node, (ast.Assign, ast.AnnAssign)):
             value = node.value
-            references = _pack_values(value, aliases, pack_names)
+            references = _pack_values(value, aliases, pack_names, nested=nested)
             if references:
                 add(node, "product_pack_reference", ",".join(sorted(references)))
         elif isinstance(node, ast.Call):
@@ -693,10 +769,24 @@ def _scan_product_special_cases(
                 references = _pack_values(node.args[0], aliases, pack_names)
                 if references:
                     add(node, "product_pack_import", ",".join(sorted(references)))
+            elif nested:
+                references = set()
+                for argument in node.args:
+                    references.update(
+                        _pack_values(argument, aliases, pack_names, nested=True)
+                    )
+                for keyword in node.keywords:
+                    references.update(
+                        _pack_values(keyword.value, aliases, pack_names, nested=True)
+                    )
+                if references:
+                    add(node, "product_pack_reference", ",".join(sorted(references)))
         elif isinstance(node, ast.Compare):
-            references = _pack_values(node.left, aliases, pack_names)
+            references = _pack_values(node.left, aliases, pack_names, nested=nested)
             for comparator in node.comparators:
-                references.update(_pack_values(comparator, aliases, pack_names))
+                references.update(
+                    _pack_values(comparator, aliases, pack_names, nested=nested)
+                )
             if references:
                 add(node, "product_pack_branch", ",".join(sorted(references)))
     return found

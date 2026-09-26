@@ -992,6 +992,40 @@ class CapturedPackControlSession:
             if pack_id == str(profile.get("base_pack") or ""):
                 raise PackControlUnapproved("the active Base Pack cannot be disabled")
             packs.remove(pack_id)
+            # A Pack still declared as a signed dependency of an enabled Pack
+            # would be re-admitted through that Pack's dependency graph during
+            # resolution, so reporting it as disabled would lie.  Require the
+            # covering Pack to be disabled first.
+            from .bootstrap.profile_capture import host_profile_catalog
+
+            _remaining_catalog, remaining_closure = catalog_with_admitted_pack_closure(
+                host_profile_catalog(), packs
+            )
+            if pack_id in remaining_closure:
+                raise PackControlConflict(
+                    "Pack is required by an enabled Pack dependency graph"
+                )
+            # Packs admitted only through a signed dependency graph hold no
+            # install or approval receipt.  They cannot remain selected as
+            # roots once their covering Pack leaves, so they drop out of the
+            # requested set instead of failing the receipt gate.
+            required_ids = _required_profile_pack_ids(self._binding.profile_id)
+            installed = _read_control_state(self._binding.profile_id)
+            records = load_pack_catalog()
+            retained: list[str] = []
+            for candidate in packs:
+                if candidate in required_ids:
+                    retained.append(candidate)
+                    continue
+                candidate_record = records.get(candidate)
+                if candidate not in installed or candidate_record is None:
+                    continue
+                approved, _reason = _approval_status(
+                    candidate, candidate_record, self._binding, read_only=True
+                )
+                if approved:
+                    retained.append(candidate)
+            packs = retained
         _activate_pack_set(state, packs)
         self._recapture()
         return {"pack_id": pack_id, "enabled": enabled, **self._binding_payload()}
@@ -1414,13 +1448,25 @@ def _binding_for_resolved(resolved: Any) -> _Binding:
 
 
 def verify_reconfirmed_pack_approvals(resolved: Any, catalog: Any) -> None:
-    """Require live install and approval receipts for preserved optional Packs."""
+    """Require live install and approval receipts for preserved optional roots.
+
+    A Pack admitted only through another optional Pack's signed dependency
+    graph carries no receipt of its own; it is verified against the canonical
+    catalog below rather than holding a receipt the enable ceremony never
+    required.
+    """
     required = _required_profile_pack_ids(
         str(resolved.profile["profile_id"]), catalog=catalog
     )
     optional = {str(item["pack_id"]) for item in resolved.profile["packs"]} - required
+    dependency_covered = {
+        str(dependency_id)
+        for pack_id in optional
+        for dependency_id in catalog.packs[pack_id]["requirements"]["pack_dependencies"]
+        if str(dependency_id) in optional
+    }
     _verify_optional_pack_approvals(
-        optional, _binding_for_resolved(resolved), read_only=True
+        optional - dependency_covered, _binding_for_resolved(resolved), read_only=True
     )
     for pack_id in optional:
         if _pack_manifest_artifact_digest(pack_id) != catalog.packs[pack_id]["pack"]["artifact_digest"]:
@@ -1720,23 +1766,44 @@ def resolve_profile_pack_set(
         # Optional Pack operations are part of the immutable resolved Profile,
         # so mint the exact authority references before resolving the plan.
         # The resolver derives only the selected Pack/dependency closure and
-        # binds every operation to the selected Shell caller.
-        for edge in runtime.dynamic_profile_edges(catalog, profile_id, additional_pack_ids):
-            bindings[_edge_key(edge)] = _authority_reference(edge, snapshot_digest)
-        approved_digests = {str(item["artifact_digest"]) for item in baseline.lock["effective_set"]}
-        selected_optional = requested_closure - mandatory
-        _verify_optional_pack_approvals(selected_optional, _binding_for_resolved(baseline))
-        for pack_id in sorted(selected_optional):
-            approved_digests.add(str(catalog.packs[pack_id]["pack"]["artifact_digest"]))
-        resolved = runtime.resolve_profile(
-            catalog,
-            profile_id,
-            approved_artifact_digests=approved_digests,
-            authority_snapshot_digest=snapshot_digest,
-            authority_bindings=bindings,
-            security_epoch=authority.security_epoch,
-            additional_pack_ids=additional_pack_ids,
-        )
+        # binds every operation to its signed caller.
+        try:
+            for edge in runtime.dynamic_profile_edges(
+                catalog, profile_id, additional_pack_ids
+            ):
+                bindings[_edge_key(edge)] = _authority_reference(edge, snapshot_digest)
+            approved_digests = {
+                str(item["artifact_digest"]) for item in baseline.lock["effective_set"]
+            }
+            selected_optional = requested_closure - mandatory
+            # Approval receipts bind the user-selected closure roots.  A Pack
+            # admitted only through an approved Pack's signed dependency graph
+            # is verified against the canonical catalog and carries no receipt
+            # of its own, matching the root-only receipt review used during
+            # Profile reconfirmation.
+            _verify_optional_pack_approvals(
+                set(additional_pack_ids), _binding_for_resolved(baseline)
+            )
+            for pack_id in sorted(selected_optional):
+                digest = catalog.packs[pack_id]["pack"]["artifact_digest"]
+                approved_digests.add(str(digest))
+            resolved = runtime.resolve_profile(
+                catalog,
+                profile_id,
+                approved_artifact_digests=approved_digests,
+                authority_snapshot_digest=snapshot_digest,
+                authority_bindings=bindings,
+                security_epoch=authority.security_epoch,
+                additional_pack_ids=additional_pack_ids,
+            )
+        except Exception as error:
+            if runtime.is_resolution_denied(
+                error
+            ) and not runtime.is_reconfirmation_required(error):
+                raise PackControlInvalidRequest(
+                    "selected Profile Pack set cannot resolve"
+                ) from error
+            raise
     return resolved
 
 

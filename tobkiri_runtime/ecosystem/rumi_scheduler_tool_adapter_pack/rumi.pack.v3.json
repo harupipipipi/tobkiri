@@ -85,7 +85,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
+      "artifact_hash": "sha256:8ed554a43f3d0507df77a9c76e3504d5358a3bb2a83361f8e199645d67e9a39c",
       "contract_id": "rumi.resource.tool.definition.contribution.v1",
       "id": "scheduler-tool-definitions",
       "loader": "python",
@@ -93,7 +93,7 @@
       "symbol": "create_definition_contribution"
     },
     {
-      "artifact_hash": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
+      "artifact_hash": "sha256:8ed554a43f3d0507df77a9c76e3504d5358a3bb2a83361f8e199645d67e9a39c",
       "contract_id": "rumi.service.tool.local.operation.v1",
       "id": "scheduler-tool-operation",
       "loader": "python",
@@ -138,9 +138,9 @@
           "authoritative_owner": false,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:1988901dd42b0c34d3cb4e84a37d99acdc6f4131e92b2839b55d2fe99e6fabb2",
+            "artifact_digest": "sha256:eb5ade2b8037355b12306fd97c12d8bc7b15403d304dbdaf8071e467ee754601",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:71352402394a22ee41089620b5eb0ef196a0d4bc41c155a8920d0ee52f42ef61"
+            "source_identity": "sha256:1c889953e338d40e0bf0fee977807c2ce5b643a21e338f517f46cb43d9e38b21"
           },
           "owner_surfaces": [
             "scheduler_tool_definitions"
@@ -151,7 +151,7 @@
         "pack_identity": "rumi:ecosystem/rumi_scheduler_tool_adapter_pack",
         "provenance": {
           "build_identity": "rumi_scheduler_tool_adapter_pack:1.0.0",
-          "content_hash": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
+          "content_hash": "sha256:8ed554a43f3d0507df77a9c76e3504d5358a3bb2a83361f8e199645d67e9a39c",
           "signature": null,
           "trust_class": "local"
         },
@@ -195,7 +195,7 @@
       "owner": "rumi_scheduler_tool_adapter_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:71352402394a22ee41089620b5eb0ef196a0d4bc41c155a8920d0ee52f42ef61"
+      "source_identity": "sha256:1c889953e338d40e0bf0fee977807c2ce5b643a21e338f517f46cb43d9e38b21"
     }
   },
   "migration": {
@@ -261,7 +261,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_scheduler_tool_adapter_pack:1.0.0",
-    "content_hash": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
+    "content_hash": "sha256:8ed554a43f3d0507df77a9c76e3504d5358a3bb2a83361f8e199645d67e9a39c",
     "signature": null,
     "trust_class": "local"
   },

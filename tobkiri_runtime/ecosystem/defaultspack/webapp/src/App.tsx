@@ -2604,6 +2604,11 @@ export function ChatApp() {
   // registers it; latch this off on CONTRACT_OPERATION_UNKNOWN instead of
   // surfacing a 404 for every conversation.
   const [steerSupported, setSteerSupported] = useState(true);
+  // The conversation preview and command-invocation event HTTP operations only
+  // exist when the active frontend contract map registers them; latch each off
+  // on CONTRACT_OPERATION_UNKNOWN instead of repeating a 404 on every render.
+  const [conversationPreviewSupported, setConversationPreviewSupported] = useState(true);
+  const [commandInvocationEventsSupported, setCommandInvocationEventsSupported] = useState(true);
   const [previewMode, setPreviewMode] = useLocalStorage<ToolPreviewMode>("rumi-preview-mode", "auto");
   const [activityPreviewWidth, setActivityPreviewWidth] = useLocalStorage("rumi-activity-preview-width", 340);
   const [canvasMemo, setCanvasMemo] = useLocalStorage("rumi-canvas-memo", "");
@@ -3076,7 +3081,12 @@ export function ChatApp() {
   ), [commandCatalog, settingsValues.commands?.registered_slash_commands, usesResolvedCommandProtocol]);
 
   useEffect(() => {
-    if (!usesResolvedCommandProtocol || pendingCommandApproval || effectiveCommandCatalog.length === 0) return;
+    if (
+      !usesResolvedCommandProtocol
+      || pendingCommandApproval
+      || effectiveCommandCatalog.length === 0
+      || !commandInvocationEventsSupported
+    ) return;
     let cancelled = false;
     void api.pendingCommandApprovals()
       .then(({ pending_approvals: approvals }) => {
@@ -3112,12 +3122,22 @@ export function ChatApp() {
         });
       })
       .catch((restoreError) => {
+        if (isDefaultspackContractOperationUnknownError(restoreError)) {
+          setCommandInvocationEventsSupported(false);
+          return;
+        }
         if (!cancelled) console.error("Failed to restore pending command approval", restoreError);
       });
     return () => {
       cancelled = true;
     };
-  }, [effectiveCommandCatalog, mode, pendingCommandApproval, usesResolvedCommandProtocol]);
+  }, [
+    commandInvocationEventsSupported,
+    effectiveCommandCatalog,
+    mode,
+    pendingCommandApproval,
+    usesResolvedCommandProtocol,
+  ]);
 
   useEffect(() => {
     if (!pendingHighRiskCommand) return;
@@ -3836,7 +3856,7 @@ export function ChatApp() {
   }
 
   async function refreshPreview(conversationId: string | null) {
-    if (!conversationId) {
+    if (!conversationId || !conversationPreviewSupported) {
       setPreviews([]);
       setActivePreviewId(null);
       return;
@@ -3851,7 +3871,11 @@ export function ChatApp() {
         setShowPreview(true);
       }
     } catch (previewError) {
-      console.error(previewError);
+      if (isDefaultspackContractOperationUnknownError(previewError)) {
+        setConversationPreviewSupported(false);
+      } else {
+        console.error(previewError);
+      }
       setPreviews([]);
       setActivePreviewId(null);
     }
@@ -5283,12 +5307,17 @@ export function ChatApp() {
   };
 
   const followCommandProgress = async (invocationId: string) => {
+    if (!commandInvocationEventsSupported) return;
     try {
       for await (const event of api.streamCommandInvocationEvents(invocationId)) {
         setCommandProgressEvents((current) => [...current, event].slice(-12));
       }
     } catch (streamError) {
       if (streamError instanceof DOMException && streamError.name === "AbortError") return;
+      if (isDefaultspackContractOperationUnknownError(streamError)) {
+        setCommandInvocationEventsSupported(false);
+        return;
+      }
       setError(streamError instanceof Error ? streamError.message : "Command progress stream failed.");
     }
   };

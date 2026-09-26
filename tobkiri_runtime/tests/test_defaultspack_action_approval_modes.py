@@ -132,6 +132,47 @@ def test_remote_full_access_policy_remains_untrusted() -> None:
     }
 
 
+def test_tool_policy_profile_id_is_untrusted_for_remote_clients() -> None:
+    """Client tool_policy.profile_id must not select the authority profile.
+
+    Regression: params.tool_policy.profile_id used to flow into
+    request_context["profile_id"] when no profile was resolved, letting a
+    remote caller claim an autonomous profile (e.g. the coding company).
+    """
+    from domain.chat.run_request import _sanitize_untrusted_chat_tool_policy
+
+    policy, ignored = _sanitize_untrusted_chat_tool_policy(
+        {
+            "profile_id": "defaultspack.mimo_coding_company",
+            "tool_choice": "auto",
+        }
+    )
+
+    assert "profile_id" not in policy
+    assert "profile_id" in ignored
+    assert policy["tool_choice"] == "auto"
+
+
+def test_tool_policy_profile_id_is_untrusted_even_for_local_ui() -> None:
+    """profile_id stays distrusted even for a verified local UI full mode.
+
+    Parity with metadata.profile_id: the authority profile is only ever
+    injected through the trusted context channel, never through params.
+    """
+    from domain.chat.run_request import _sanitize_untrusted_chat_tool_policy
+
+    policy, ignored = _sanitize_untrusted_chat_tool_policy(
+        {
+            "action_approval_mode": "full",
+            "profile_id": "defaultspack.mimo_coding_company",
+        },
+        trusted_local_ui=True,
+    )
+
+    assert "profile_id" not in policy
+    assert "profile_id" in ignored
+
+
 def test_agent_mode_strips_legacy_yolo_bypass() -> None:
     from domain.chat.run_request import _sanitize_untrusted_chat_tool_policy
 

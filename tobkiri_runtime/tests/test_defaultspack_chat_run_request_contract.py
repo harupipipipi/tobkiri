@@ -804,6 +804,60 @@ def test_prepare_chat_run_does_not_trust_client_tool_policy_approval_bypass(
     ChatStore._instance = None
 
 
+def test_prepare_chat_run_strips_client_tool_policy_profile_id(tmp_path, monkeypatch):
+    """params.tool_policy.profile_id must not elevate the authority profile.
+
+    Regression: a client could claim ``defaultspack.mimo_coding_company`` via
+    ``tool_policy.profile_id`` whenever no profile was pre-resolved, because
+    the key was absent from the untrusted-tool-policy strip list (unlike
+    ``metadata.profile_id``). The value must be stripped, recorded in
+    ``ignored_client_tool_policy_keys``, and never reach ``profile_policy``.
+    """
+    from domain.chat.store import ChatStore
+
+    store = _setup_store(tmp_path, monkeypatch)
+    conv = store.create_conversation(model="stub/default")
+
+    prepared = _prepare_chat_run(tmp_path,
+        {
+            "conversation_id": conv["id"],
+            "message": {"content": "claim the autonomous profile"},
+            "params": {
+                "tool_policy": {
+                    "profile_id": "defaultspack.mimo_coding_company",
+                    "tool_choice": "auto",
+                }
+            },
+        },
+        {},
+    )
+
+    # The claimed profile must not replace the server-resolved one.
+    assert prepared.request_context.get("profile_id") == "defaults"
+    assert prepared.request_context.get("profile_id") != "defaultspack.mimo_coding_company"
+    assert "profile_id" in prepared.request_context["ignored_client_tool_policy_keys"]
+
+    # The stripped key must not linger inside the merged profile policy either
+    # (profile_policy.profile_id is a fallback profile source downstream).
+    profile_policy = prepared.request_context.get("profile_policy") or {}
+    assert profile_policy.get("profile_id") != "defaultspack.mimo_coding_company"
+
+    # The persisted user message keeps the audit trail of the ignored key.
+    persisted = store.get_conversation(conv["id"]) or {}
+    stored_metadata = next(
+        (
+            message.get("metadata") or {}
+            for message in persisted.get("messages", [])
+            if message.get("id") == prepared.user_message.get("id")
+        ),
+        {},
+    )
+    assert "profile_id" in stored_metadata.get(
+        "ignored_client_tool_policy_keys", []
+    )
+    ChatStore._instance = None
+
+
 def test_approval_probe_restores_canonical_module_aliases() -> None:
     """A fresh approval probe must not split aliases used by coding blocks."""
 

@@ -155,7 +155,10 @@ def test_reconfirmation_excludes_optional_packs_with_stale_approvals(
     assert approval_path.is_file()
 
 
-@pytest.mark.parametrize("pack_id", [TARGET_PACK, "rumi_agent_workroom_pack"])
+@pytest.mark.parametrize(
+    "pack_id",
+    [TARGET_PACK, "rumi_agent_workroom_pack", "rumi_scheduler_tool_adapter_pack"],
+)
 def test_catalog_install_approve_enable_and_restart_read_back(captured_session, pack_id: str) -> None:
     """The positive lifecycle survives a fresh captured session."""
     session, _state_path, user_data = captured_session
@@ -210,6 +213,121 @@ def test_catalog_install_approve_enable_and_restart_read_back(captured_session, 
 
     with AuthorityStore(user_data / "authority" / "v4.sqlite3") as authority:
         assert authority.active_activation_reservation(str(first_activation)) is None
+
+
+def test_scheduler_enable_projects_signed_dependency_edges(captured_session) -> None:
+    """Enabling the scheduler Pack admits its signed dependency graph.
+
+    The approved Pack is the only receipt-verified closure root.  Its signed
+    dependency Packs are admitted through the graph and receive exact caller
+    edges in the resolved Profile: the tool Registry and local executor gain
+    consumer edges into the Pack's contributed Contracts, while the Pack's
+    Functions gain caller edges into the Providers for its required
+    Contracts.
+    """
+    session, _state_path, user_data = captured_session
+    pack_id = "rumi_scheduler_tool_adapter_pack"
+    _invoke(session, "pack.install", {"pack_id": pack_id})
+    candidate = _invoke(session, "approval.candidate", {"pack_id": pack_id})
+    _invoke(
+        session,
+        "approval.approve",
+        {"pack_id": pack_id, "candidate_id": candidate["candidate_id"]},
+    )
+    assert _invoke(session, "pack.enable", {"pack_id": pack_id})["enabled"] is True
+
+    resolved = capture_default_profile().resolved.profile
+    enabled_ids = {str(item["pack_id"]) for item in resolved["packs"]}
+    assert {"rumi_schedule_store_pack", "rumi_scheduler_runtime_pack"} <= enabled_ids
+    edge_keys = {
+        (
+            str(edge["caller_function_id"]),
+            str(edge["target_provider_id"]),
+            str(edge["contract_id"]),
+            str(edge["operation_id"]),
+        )
+        for edge in resolved["requested_edges"]
+    }
+    # Signed consumers reach the contributed operations through exact edges.
+    assert (
+        "rumi_tool_registry_pack.tool-registry.definition",
+        "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
+        "tobkiri.resource.tool.definition.contribution.v1",
+        "rumi_scheduler_tool_adapter_pack.scheduler-tool-definitions",
+    ) in edge_keys
+    assert (
+        "rumi_tool_local_executor_pack.tool-executor.local",
+        "rumi_scheduler_tool_adapter_pack.tool-adapter.scheduler",
+        "tobkiri.service.tool.local.operation.v1",
+        "rumi_scheduler_tool_adapter_pack.scheduler-tool-operation",
+    ) in edge_keys
+    # The adapter's Functions may call the Providers for required Contracts.
+    for caller in (
+        "rumi_scheduler_tool_adapter_pack.tool-adapter.scheduler",
+        "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
+    ):
+        assert (
+            caller,
+            "rumi_host_authority_bridge_pack.host-authority.authorize",
+            "tobkiri.service.host.authorize.v1",
+            "rumi_host_authority_bridge_pack.host-authority",
+        ) in edge_keys
+    # The Shell still gains only the Pack's own contributed operations.
+    assert (
+        "shell.tauri.default",
+        "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
+        "tobkiri.resource.tool.definition.contribution.v1",
+        "rumi_scheduler_tool_adapter_pack.scheduler-tool-definitions",
+    ) in edge_keys
+
+    from core_runtime.authority.v4 import AuthorityStore
+    from core_runtime.bootstrap.production_v4 import capture_production_dispatch
+    from ecosystem.defaultspack.defaultspack.runtime_composition import (
+        defaultspack_activation_snapshot_loader,
+    )
+    from ecosystem.defaultspack.domain.runtime_surface_v4 import (
+        create_runtime_surface_services,
+    )
+    from tests.conformance_support.packaged_profile import (
+        packaged_profile_bundle_root,
+    )
+
+    contribution_contract = "tobkiri.resource.tool.definition.contribution.v1"
+    with AuthorityStore(user_data / "authority" / "v4.sqlite3") as store:
+        dispatch = capture_production_dispatch(
+            capture_default_profile(),
+            bundle_root=packaged_profile_bundle_root(),
+            ecosystem_root=Path(__file__).resolve().parents[1] / "ecosystem",
+            authority_store=store,
+            activation_snapshot_loader=defaultspack_activation_snapshot_loader,
+            runtime_surface_factory=create_runtime_surface_services,
+        )
+        providers = dispatch.provider_metadata(contribution_contract)
+        assert {
+            (str(item["provider_instance_id"]), str(item["operation_id"]))
+            for item in providers
+        } == {
+            (
+                "tool-definitions.scheduler",
+                "rumi_scheduler_tool_adapter_pack.scheduler-tool-definitions",
+            )
+        }
+        from tobkiri_host.wasm_backend import production_wasm_backend
+
+        backend = production_wasm_backend()
+        if not backend.status.ready_for_production:
+            return
+        catalog = dispatch.invoke(
+            "tobkiri.resource.tool.definition.v1",
+            "rumi_tool_registry_pack.tool-definition-resource",
+            {"operation": "list", "_session_id": "scheduler-enable"},
+        )
+    tool_ids = {str(item["tool_id"]) for item in catalog["definitions"]}
+    assert {"scheduler_list", "scheduler_create", "scheduler_get"} <= tool_ids
+    assert {
+        str(item["provider_instance_id"])
+        for item in catalog.get("contributions") or []
+    } == {"tool-definitions.scheduler"}
 
 
 def test_control_operation_reuses_only_its_scoped_capture(

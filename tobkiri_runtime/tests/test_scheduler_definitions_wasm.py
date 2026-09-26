@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -25,6 +26,12 @@ PACK = ROOT / "ecosystem" / "rumi_scheduler_tool_adapter_pack"
 COMPONENT = PACK / "runtime" / "definitions_component.wasm"
 OPERATION = "rumi_scheduler_tool_adapter_pack.scheduler-tool-definitions"
 FUNCTION = "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler"
+LOCAL_CONTRACT = "tobkiri.service.tool.local.operation.v1"
+LOCAL_PROVIDER = "rumi_scheduler_tool_adapter_pack.tool-adapter.scheduler"
+LOCAL_OPERATION = "rumi_scheduler_tool_adapter_pack.scheduler-tool-operation"
+# Keep in sync with the local executor's identifier gate in
+# ``rumi_tool_local_executor_pack/runtime/executor.py``.
+_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}")
 
 
 def _digest(value: bytes) -> str:
@@ -147,3 +154,43 @@ def test_production_profile_authority_and_broker_invoke_scheduler_component(
     assert {item["provider_instance_id"] for item in actual["contributions"]} == {
         "tool-definitions.scheduler"
     }
+
+
+def test_contributed_definitions_resolve_to_a_declared_local_operation() -> None:
+    """Every contributed local definition must name a dispatchable operation.
+
+    The local executor fails closed unless ``execution.operation`` is a valid
+    identifier that matches exactly one captured provider route, so a missing
+    or invented operation id would leave catalog-visible tools undispatchable.
+    """
+
+    catalog = json.loads((PACK / "executables.v4.json").read_text(encoding="utf-8"))
+    routes = {
+        (variant["function_id"], operation["operation_id"])
+        for variant in catalog["variants"]
+        if variant.get("backend")
+        for operation in variant.get("operations", ())
+        if operation.get("contract_id") == LOCAL_CONTRACT
+    }
+    assert (LOCAL_PROVIDER, LOCAL_OPERATION) in routes
+
+    for source in (
+        create_definition_contribution(None)("catalog", {})["definitions"],
+        PureComponent(COMPONENT.read_bytes(), _digest(COMPONENT.read_bytes()))
+        .invoke(OPERATION, {})["definitions"],
+    ):
+        assert source, "scheduler contribution must not be empty"
+        for definition in source:
+            execution = definition.get("execution")
+            assert isinstance(execution, dict)
+            assert execution.get("kind") == "local"
+            assert execution.get("contract_id") == LOCAL_CONTRACT
+            for key in ("provider_instance_id", "operation"):
+                value = execution.get(key)
+                assert isinstance(value, str)
+                assert _IDENTIFIER.fullmatch(value), (
+                    f"{definition.get('tool_id')}: {key} is not a valid identifier"
+                )
+            assert execution["provider_instance_id"] == LOCAL_PROVIDER
+            assert execution["operation"] == LOCAL_OPERATION
+            assert (execution["provider_instance_id"], execution["operation"]) in routes

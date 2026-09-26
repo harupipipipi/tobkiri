@@ -11,8 +11,13 @@ SCHEDULE_RESOURCE = "rumi.resource.schedule.v1"
 SCHEDULE_ACTION = "rumi.action.schedule.v1"
 SCHEDULER_ACTION = "rumi.action.scheduler.v1"
 CONTRIBUTION = "rumi.resource.tool.definition.contribution.v1"
-LOCAL_OPERATION = "rumi.service.tool.local.operation.v1"
-LOCAL_PROVIDER = "tool-adapter.scheduler"
+# Definitions are data: the Registry stores each execution descriptor verbatim
+# and the local executor/selector compare it to canonical v4 identities, so the
+# execution block must carry the canonical contract id plus the Pack-qualified
+# provider and operation identities rather than the legacy contract alias.
+LOCAL_OPERATION_CONTRACT = "tobkiri.service.tool.local.operation.v1"
+LOCAL_PROVIDER = "rumi_scheduler_tool_adapter_pack.tool-adapter.scheduler"
+LOCAL_OPERATION_ID = "rumi_scheduler_tool_adapter_pack.scheduler-tool-operation"
 SERVICE_PACK_ID = "rumi_scheduler_tool_adapter_pack"
 STORE_PACK_ID = "rumi_schedule_store_pack"
 RUNTIME_PACK_ID = "rumi_scheduler_runtime_pack"
@@ -376,8 +381,9 @@ def _definition(
         "result_schema": {"type": "object"},
         "execution": {
             "kind": "local",
-            "contract_id": LOCAL_OPERATION,
+            "contract_id": LOCAL_OPERATION_CONTRACT,
             "provider_instance_id": LOCAL_PROVIDER,
+            "operation": LOCAL_OPERATION_ID,
         },
         "authority": authority,
         "risk": risk,

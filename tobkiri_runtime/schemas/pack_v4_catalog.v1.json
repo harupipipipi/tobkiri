@@ -14274,7 +14274,7 @@
         {
           "contract_id": "tobkiri.service.tool.local.operation.v1",
           "function_id": "rumi_scheduler_tool_adapter_pack.tool-adapter.scheduler",
-          "implementation_digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
+          "implementation_digest": "sha256:8ed554a43f3d0507df77a9c76e3504d5358a3bb2a83361f8e199645d67e9a39c",
           "isolation": "pack_vm",
           "operation_ids": [
             "rumi_scheduler_tool_adapter_pack.scheduler-tool-operation"
@@ -14283,7 +14283,7 @@
         {
           "contract_id": "tobkiri.resource.tool.definition.contribution.v1",
           "function_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
-          "implementation_digest": "sha256:13e5031b5327950835112ef8481c97e2bb6040358083334c8ed6cd2bd8a9287f",
+          "implementation_digest": "sha256:4cfe0377e8aaaaa7f7530f729e31fe54f959904d3eb373cdb7630faf8895e611",
           "isolation": "wasm_component",
           "operation_ids": [
             "rumi_scheduler_tool_adapter_pack.scheduler-tool-definitions"
@@ -14323,7 +14323,7 @@
             {
               "entrypoint_id": "scheduler-tool-definitions",
               "id": "rumi_scheduler_tool_adapter_pack.scheduler-tool-definitions",
-              "implementation_digest": "sha256:13e5031b5327950835112ef8481c97e2bb6040358083334c8ed6cd2bd8a9287f"
+              "implementation_digest": "sha256:4cfe0377e8aaaaa7f7530f729e31fe54f959904d3eb373cdb7630faf8895e611"
             }
           ],
           "owner": "rumi_scheduler_tool_adapter_pack",
@@ -14356,7 +14356,7 @@
             {
               "entrypoint_id": "scheduler-tool-operation",
               "id": "rumi_scheduler_tool_adapter_pack.scheduler-tool-operation",
-              "implementation_digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae"
+              "implementation_digest": "sha256:8ed554a43f3d0507df77a9c76e3504d5358a3bb2a83361f8e199645d67e9a39c"
             }
           ],
           "owner": "rumi_default_tool_projection_pack",
@@ -14407,12 +14407,12 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
+          "digest": "sha256:8ed554a43f3d0507df77a9c76e3504d5358a3bb2a83361f8e199645d67e9a39c",
           "kind": "executable",
           "path": "runtime/adapter.py"
         },
         {
-          "digest": "sha256:13e5031b5327950835112ef8481c97e2bb6040358083334c8ed6cd2bd8a9287f",
+          "digest": "sha256:4cfe0377e8aaaaa7f7530f729e31fe54f959904d3eb373cdb7630faf8895e611",
           "kind": "executable",
           "path": "runtime/definitions_component.wasm"
         }
@@ -14425,7 +14425,7 @@
           "rule_id": "pack-v4-one-way-migration-input"
         },
         {
-          "digest": "sha256:860e038f0b401320c77bdac7b887dcb56e867b74a9fb69d438509fbf9d63df80",
+          "digest": "sha256:9fb63f1d5ad710b8ad9b8cfc14b166ffebea62bdf4f6d67d1fa4854bac00f22c",
           "path": "ecosystem/rumi_scheduler_tool_adapter_pack/rumi.pack.v3.json",
           "rule_id": "pack-v4-one-way-migration-input"
         }

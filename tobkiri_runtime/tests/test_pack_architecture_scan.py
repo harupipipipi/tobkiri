@@ -180,6 +180,121 @@ def test_policy_checker_literals_do_not_self_trigger_product_special_case(
     )
 
 
+def _kernel_source(tmp_path: Path, name: str, source: str) -> str:
+    kernel = tmp_path / "tobkiri_runtime" / "core_runtime"
+    kernel.mkdir(parents=True, exist_ok=True)
+    target = kernel / name
+    target.write_text(source, encoding="utf-8")
+    return f"tobkiri_runtime/core_runtime/{name}"
+
+
+def test_kernel_embedded_pack_references_are_detected(tmp_path: Path) -> None:
+    """Dict literals, containers, and call args cannot hide Pack coupling."""
+    _pack(tmp_path, "pack_a")
+    _kernel_source(
+        tmp_path,
+        "coupled.py",
+        "ROUTES = {'fast': 'pack_a'}\n"
+        "install_helper('pack_a')\n"
+        "record = resolve(pack_id='pack_a')\n"
+        "handler = TABLE['pack_a']\n",
+    )
+
+    violations = _scanner().scan_repository(tmp_path)
+
+    embedded = [
+        item
+        for item in violations
+        if item.path.endswith("coupled.py") and item.rule == "product_pack_reference"
+    ]
+    assert len(embedded) == 4
+    assert all(item.source == "kernel" and item.target == "pack_a" for item in embedded)
+
+
+def test_kernel_pack_id_membership_in_container_literal_is_detected(
+    tmp_path: Path,
+) -> None:
+    """A ``pack_id in {...}`` branch names the Pack as surely as ``==``."""
+    _pack(tmp_path, "pack_a")
+    _kernel_source(
+        tmp_path,
+        "branchy.py",
+        "if request.pack_id in {'pack_a', 'pack_b'}:\n"
+        "    pass\n"
+        "choice = 'pack_a' if fallback else other\n",
+    )
+
+    violations = _scanner().scan_repository(tmp_path)
+
+    matching = [item for item in violations if item.path.endswith("branchy.py")]
+    assert any(item.rule == "product_pack_branch" for item in matching)
+    assert any(item.rule == "product_pack_reference" for item in matching)
+
+
+def test_kernel_embedded_pack_reference_alias_is_detected(tmp_path: Path) -> None:
+    """Aliasing a Pack-keyed table cannot launder the reference."""
+    _pack(tmp_path, "pack_a")
+    _kernel_source(
+        tmp_path,
+        "indirect.py",
+        "TABLE = {'route': 'pack_a'}\n"
+        "dispatch(TABLE)\n",
+    )
+
+    violations = _scanner().scan_repository(tmp_path)
+
+    assert any(
+        item.path.endswith("indirect.py")
+        and item.rule == "product_pack_reference"
+        and item.target == "pack_a"
+        for item in violations
+    )
+
+
+def test_sanctioned_kernel_pack_table_keeps_direct_form_coverage(
+    tmp_path: Path,
+) -> None:
+    """Embedded-table exemption never waives the direct-reference rules."""
+    _pack(tmp_path, "pack_a")
+    _pack(tmp_path, "rumi_provider_adapters_pack")
+    kernel_path = _kernel_source(
+        tmp_path,
+        "legacy_profile_successor_v4.py",
+        "_PROVIDERS = {'io.tobkiri.generate.v1': 'rumi_provider_adapters_pack'}\n"
+        "resolve_pack('rumi_provider_adapters_pack')\n"
+        "DIRECT = 'pack_a'\n",
+    )
+
+    violations = [
+        item for item in _scanner().scan_repository(tmp_path) if item.path == kernel_path
+    ]
+
+    assert not any(item.target == "rumi_provider_adapters_pack" for item in violations)
+    assert any(
+        item.rule == "product_pack_reference" and item.target == "pack_a"
+        for item in violations
+    )
+
+
+def test_host_compound_pack_references_are_documented_deferred_scope(
+    tmp_path: Path,
+) -> None:
+    """Host/tooling Pack-name data stays out of embedded-form enforcement."""
+    _pack(tmp_path, "pack_a")
+    host = tmp_path / "tools.py"
+    host.write_text(
+        "TABLE = {'route': 'pack_a'}\ninstall_helper('pack_a')\n",
+        encoding="utf-8",
+    )
+
+    violations = _scanner().scan_repository(tmp_path)
+
+    assert not any(
+        item.path == "tools.py" and item.rule.startswith("product_pack_")
+        for item in violations
+    )
+
+
 @pytest.mark.parametrize(
     ("relative_path", "expected_source"),
     [
