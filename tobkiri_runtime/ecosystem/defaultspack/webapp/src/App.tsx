@@ -68,6 +68,14 @@ import {
   filterModelProfilesBySelector,
   modelSelectorSchemaFromCatalog,
 } from "./features/models";
+import {
+  normalizeThinkingControlInput,
+  profileThinkingControlDefault,
+  thinkingControlCandidates,
+  thinkingControlForProfile,
+  thinkingControlInputError,
+  thinkingControlMode,
+} from "./features/models/thinkingControl";
 import type { ConversationToolPreferences } from "./features/tools/types";
 import { useToolSelectionController } from "./features/tools/useToolSelectionController";
 import {
@@ -2137,7 +2145,7 @@ function profileSupportsFast(profile: ModelProfile | null | undefined): boolean 
 }
 
 function profileSupportsThinking(profile: ModelProfile | null | undefined): boolean {
-  return Boolean(profile?.supports_thinking && profile.thinking_levels?.length);
+  return thinkingControlMode(profile) !== "none";
 }
 
 function bestConfiguredCandidate(candidates: ModelProfile[]): ModelProfile | null {
@@ -2881,11 +2889,27 @@ export function ChatApp() {
   );
   const favoriteProfiles = favoriteModelProfiles(settingsValues.models?.favorite_profiles, selectableModelProfiles, preferredModel);
   const thinkingLevels = (settingsValues.models?.thinking_level_by_profile ?? {}) as Record<string, unknown>;
+  const thinkingControls = (settingsValues.models?.thinking_control_by_profile ?? {}) as Record<string, unknown>;
+  const activeProfileKey = profileKey(activeProfile, preferredModel);
+  const activeThinkingControl = thinkingControls[activeProfileKey];
+  const activeThinkingValue = typeof activeThinkingControl === "object" && activeThinkingControl !== null
+    ? (activeThinkingControl as Record<string, unknown>).raw
+    : thinkingLevels[activeProfileKey];
+  const profileDrivenThinking = thinkingControlForProfile(activeProfile).source === "profile";
+  const validActiveThinkingValue = activeThinkingValue === null || activeThinkingValue === undefined
+    ? null
+    : thinkingControlInputError(activeProfile, String(activeThinkingValue)) === null
+      ? activeThinkingValue
+      : null;
+  const profileDefaultThinkingValue = profileThinkingControlDefault(activeProfile);
   const selectedThinkingLevel = String(
-    thinkingLevels[profileKey(activeProfile, preferredModel)]
-    ?? settingsValues.models?.thinking_level
-    ?? activeProfile?.default_thinking_level
-    ?? "medium",
+    validActiveThinkingValue
+    ?? (profileDrivenThinking
+      ? profileDefaultThinkingValue
+      : settingsValues.models?.thinking_level
+        ?? activeProfile?.default_thinking_level
+        ?? "medium")
+    ?? "",
   );
   const deepthinkEnabled = parseCommandBoolean(settingsValues.models?.deepthink_enabled, false);
   const commandStateRevisionsRef = useRef<Record<string, number>>({});
@@ -3307,6 +3331,24 @@ export function ChatApp() {
       .filter((command) => command.id !== "price" || Boolean(priceLowCandidate || priceHighCandidate))
       .filter((command) => command.id !== "think" || profileSupportsThinking(activeProfile))
       .map((command) => {
+        if (command.id === "think") {
+          const control = thinkingControlForProfile(activeProfile);
+          const controlMode = thinkingControlMode(activeProfile);
+          const candidates = thinkingControlCandidates(activeProfile);
+          const inputSchema = control.input_schema;
+          const profileArgs = controlMode === "enum"
+            ? [{ name: "level", type: "enum" as const, required: false, values: candidates, greedy: true }]
+            : [{
+                name: "level",
+                type: "string" as const,
+                required: false,
+                greedy: true,
+                placeholder: controlMode === "number"
+                  ? `Budget${inputSchema?.unit ? ` (${inputSchema.unit})` : ""}`
+                  : "Provider-native value",
+              }];
+          return { ...command, args: profileArgs };
+        }
         const stateRef = protocolCommandStateRef(command);
         const protocolState = stateRef === "host:approval.full_access"
           ? ultraYoloMode
@@ -4771,11 +4813,27 @@ export function ChatApp() {
 
   const handleThinkingLevelChange = (level: string | null) => {
     const key = profileKey(activeProfile, preferredModel);
+    const raw = level ?? (profileDrivenThinking ? "" : "medium");
+    const validationError = thinkingControlInputError(activeProfile, raw);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    const normalized = normalizeThinkingControlInput(activeProfile, raw);
     updateModelSettings({
-      thinking_level: level ?? "medium",
+      thinking_level: normalized,
       thinking_level_by_profile: {
         ...thinkingLevels,
-        [key]: level,
+        [key]: normalized,
+      },
+      thinking_control_by_profile: {
+        ...thinkingControls,
+        [key]: {
+          raw,
+          normalized,
+          input_type: activeProfile?.thinking_control?.input_schema?.type ?? "enum",
+          unit: activeProfile?.thinking_control?.input_schema?.unit ?? "",
+        },
       },
     });
   };
@@ -7009,7 +7067,9 @@ export function ChatApp() {
       favoriteProfiles={favoriteProfiles}
       modelProfiles={selectableModelProfiles}
       modelSelectorSchema={modelSelectorSchema}
-      thinkingLevel={activeProfile?.supports_thinking ? selectedThinkingLevel : null}
+      thinkingLevel={profileSupportsThinking(activeProfile) && selectedThinkingLevel
+        ? selectedThinkingLevel
+        : null}
       contextUsage={contextUsage}
       inlineExtensions={composerExtensions}
       belowExtensions={[]}

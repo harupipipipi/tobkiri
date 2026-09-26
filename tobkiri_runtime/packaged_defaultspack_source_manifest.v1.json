@@ -21,8 +21,8 @@
     {
       "path": "ecosystem/defaultspack/commands/default_commands.json",
       "type": "regular-file",
-      "size": 17691,
-      "sha256": "b020faaf39f0c2d42804da85d380f21bb860942da036511b7ba253e984451af8",
+      "size": 17670,
+      "sha256": "fcd9e48fe5f2406cb0e4beef8b81e8d4a7c99b190a3602f05db2ed61b6a841d3",
       "executable": false
     },
     {
@@ -3354,14 +3354,14 @@
       "path": "scripts/quality/evidence/complete_v4_migration_red_64b2240e.json",
       "type": "regular-file",
       "size": 81651,
-      "sha256": "8e5148f6ca7ca104e23c91635dc28a084f924764ae1a866e7591ae1ee0728cca",
+      "sha256": "b9bc84a904c181680dc4e7264b16eff436c84b216050ae4d6acfcc2747a5ab6f",
       "executable": false
     },
     {
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 1096961,
-      "sha256": "d7fc7691173de7f8a1be81e83f59546a79b251a1299a06b42edaed1b756e8285",
+      "sha256": "ccd957f2303b4b3bed05d92310c0b26c38ddf772822d8deea635ab794e51e1b4",
       "executable": false
     },
     {

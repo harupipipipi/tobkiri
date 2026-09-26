@@ -445,6 +445,11 @@ def prepare_chat_run(
                 conversation_id=conversation_id,
             )["level"]
         )
+    apply_thinking_control = getattr(
+        model_settings_service, "apply_thinking_control", None
+    )
+    if callable(apply_thinking_control):
+        params = apply_thinking_control(model, params)
     if "deepthink_enabled" not in params:
         params["deepthink_enabled"] = bool(model_settings.get("deepthink_enabled", False))
 

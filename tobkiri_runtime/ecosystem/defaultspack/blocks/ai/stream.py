@@ -14,13 +14,17 @@ def run(input_data, context, *, settings_owner=None):
         return error("messages is required", "MISSING_PARAM")
     tools = input_data.get("tools", [])
     params = dict(input_data.get("params") or {})
+    model_settings_service = ModelRuntimeSettingsService(
+        settings_owner=settings_owner
+    )
     if "thinking_level" not in params:
-        params["thinking_level"] = ModelRuntimeSettingsService(
-            settings_owner=settings_owner
-        ).get_effective_thinking_level(
+        params["thinking_level"] = model_settings_service.get_effective_thinking_level(
             profile_id=model,
             conversation_id=input_data.get("conversation_id"),
         )["level"]
+    apply_thinking_control = getattr(model_settings_service, "apply_thinking_control", None)
+    if callable(apply_thinking_control):
+        params = apply_thinking_control(str(model), params)
 
     stream_id = gen_id()
 

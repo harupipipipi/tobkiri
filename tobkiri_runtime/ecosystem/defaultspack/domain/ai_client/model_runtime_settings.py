@@ -23,6 +23,12 @@ from domain.ai_client.rumi_process import (
     ensure_default_rumi_model_pack,
     resolve_rumi_base_model,
 )
+from domain.ai_client.thinking_control import (
+    LEGACY_THINKING_LEVELS,
+    normalize_thinking_control,
+    serialize_thinking_control,
+    validate_thinking_control,
+)
 from domain.frontend_settings_client import update_settings_document, update_settings_state
 from domain.frontend_settings_store import (
     FrontendSettingsStore,
@@ -31,7 +37,7 @@ from domain.frontend_settings_store import (
 )
 
 
-VALID_THINKING_LEVELS = {"none", "low", "medium", "high", "xhigh"}
+VALID_THINKING_LEVELS = set(LEGACY_THINKING_LEVELS)
 DEFAULT_MODEL = "stub/default"
 LEGACY_CLOUD_DEFAULT_MODELS = {
     "openrouter/tencent/hy3:free",
@@ -177,11 +183,18 @@ class ModelRuntimeSettingsService:
         else:
             level = settings.get("thinking_level")
             scope = "global"
+        control = self._stored_thinking_control(
+            settings,
+            scope=scope,
+            profile_id=profile_id,
+            conversation_id=conversation_id,
+        )
         return {
             "scope": scope,
             "profile_id": profile_id,
             "conversation_id": conversation_id,
-            "level": self._normalize_level(level),
+            "level": control.get("raw") if control is not None else self._normalize_level(level),
+            "control": deepcopy(control),
         }
 
     def set_thinking_level(
@@ -194,7 +207,13 @@ class ModelRuntimeSettingsService:
         validation = self.validate_thinking_level(level, profile_id)
         if not validation["valid"]:
             raise ValueError(validation["message"])
-        normalized = validation["level"]
+        normalized = validation["normalized"]
+        stored_control = {
+            "raw": validation["raw"],
+            "normalized": normalized,
+            "input_type": validation["input_type"],
+            "unit": validation.get("unit", ""),
+        }
         scope = str(scope or "global")
         settings = self.get_settings()
         patch: dict[str, Any] = {}
@@ -204,14 +223,25 @@ class ModelRuntimeSettingsService:
             values = dict(settings.get("thinking_level_by_profile") or {})
             values[str(profile_id)] = normalized
             patch["thinking_level_by_profile"] = values
+            controls = dict(settings.get("thinking_control_by_profile") or {})
+            controls[str(profile_id)] = stored_control
+            patch["thinking_control_by_profile"] = controls
         elif scope == "conversation":
             if not conversation_id:
                 raise ValueError("conversation_id is required for conversation thinking level")
             values = dict(settings.get("thinking_level_by_conversation") or {})
             values[str(conversation_id)] = normalized
             patch["thinking_level_by_conversation"] = values
+            controls = dict(settings.get("thinking_control_by_conversation") or {})
+            controls[str(conversation_id)] = stored_control
+            patch["thinking_control_by_conversation"] = controls
         elif scope == "turn":
-            return {"scope": "turn", "level": normalized, "persisted": False}
+            return {
+                "scope": "turn",
+                "level": normalized,
+                "control": stored_control,
+                "persisted": False,
+            }
         else:
             patch["thinking_level"] = normalized
             scope = "global"
@@ -221,6 +251,7 @@ class ModelRuntimeSettingsService:
             "profile_id": profile_id,
             "conversation_id": conversation_id,
             "level": normalized,
+            "control": stored_control,
             "persisted": scope != "turn",
             "settings": updated,
         }
@@ -306,29 +337,118 @@ class ModelRuntimeSettingsService:
     ) -> dict[str, Any]:
         settings = self.get_settings()
         if conversation_id:
+            control = self._control_from_map(
+                settings.get("thinking_control_by_conversation"), conversation_id
+            )
+            if control is not None:
+                control = self._validated_stored_control(profile_id, control)
+                return {
+                    "level": control["normalized"],
+                    "control": control,
+                    "scope": "conversation",
+                    "conversation_id": conversation_id,
+                }
             by_conversation = settings.get("thinking_level_by_conversation", {})
             if isinstance(by_conversation, dict):
                 level = by_conversation.get(conversation_id)
                 if self._normalize_level(level) == level:
                     return {"level": level, "scope": "conversation", "conversation_id": conversation_id}
         if profile_id:
+            control = self._control_from_map(
+                settings.get("thinking_control_by_profile"), profile_id
+            )
+            if control is not None:
+                control = self._validated_stored_control(profile_id, control)
+                return {
+                    "level": control["normalized"],
+                    "control": control,
+                    "scope": "profile",
+                    "profile_id": profile_id,
+                }
             by_profile = settings.get("thinking_level_by_profile", {})
             if isinstance(by_profile, dict):
                 level = by_profile.get(profile_id)
                 if self._normalize_level(level) == level:
                     return {"level": level, "scope": "profile", "profile_id": profile_id}
+            profile_default = self._profile_thinking_default(profile_id)
+            if profile_default is not None:
+                return {
+                    "level": profile_default,
+                    "scope": "profile",
+                    "profile_id": profile_id,
+                }
+            if self.get_thinking_control(profile_id).get("source") == "profile":
+                return {"level": None, "scope": "profile", "profile_id": profile_id}
         return {"level": self._normalize_level(settings.get("thinking_level")), "scope": "global"}
 
-    def validate_thinking_level(self, level: str, profile_id: str | None = None) -> dict[str, Any]:
-        del profile_id
-        normalized = self._normalize_level(level)
+    def get_thinking_control(self, profile_id: str | None = None) -> dict[str, Any]:
+        """Return the selected profile's authoritative thinking contract."""
+        profile = self._thinking_profile(profile_id) if profile_id else None
+        return normalize_thinking_control(profile)
+
+    def validate_thinking_level(
+        self, level: str, profile_id: str | None = None
+    ) -> dict[str, Any]:
+        """Validate raw input with a profile contract, retaining the legacy API name."""
+        result = validate_thinking_control(self.get_thinking_control(profile_id), level)
+        result["level"] = result["normalized"]
+        return result
+
+    def serialize_thinking_control(
+        self, profile_id: str, raw_value: str
+    ) -> dict[str, Any]:
+        """Validate and serialize a profile thinking value for a provider request."""
+        contract = self.get_thinking_control(profile_id)
+        validation = validate_thinking_control(contract, raw_value)
+        if not validation["valid"]:
+            raise ValueError(validation["message"])
         return {
-            "valid": normalized in VALID_THINKING_LEVELS and str(level or "").strip() in VALID_THINKING_LEVELS,
-            "level": normalized,
-            "message": "" if str(level or "").strip() in VALID_THINKING_LEVELS else "thinking level must be one of none, low, medium, high, xhigh",
+            "control": validation,
+            "provider_params": serialize_thinking_control(
+                contract, validation["normalized"]
+            ),
         }
 
+    def apply_thinking_control(
+        self, profile_id: str, params: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Apply an explicit profile binding without provider-specific branching."""
+        result = deepcopy(params)
+        raw_value = str(result.get("thinking_level") or "").strip()
+        contract = self.get_thinking_control(profile_id)
+        if contract.get("source") == "profile":
+            if not raw_value:
+                result.pop("thinking_level", None)
+                return result
+            if "thinking_level" not in result:
+                return result
+            serialized = self.serialize_thinking_control(profile_id, raw_value)
+            provider_params = serialized["provider_params"]
+            if not provider_params:
+                return result
+            result.pop("thinking_level", None)
+            return self._deep_merge(result, provider_params)
+
+        stored_controls = self.get_settings().get("thinking_control_by_profile")
+        has_stored_control = isinstance(stored_controls, dict) and isinstance(
+            stored_controls.get(profile_id), dict
+        )
+        if raw_value in VALID_THINKING_LEVELS and not has_stored_control:
+            return result
+        return result
+
     def normalize_for_provider(self, provider_id: str, model_id: str, level: str) -> dict[str, Any]:
+        profile_id = f"{str(provider_id or '').strip()}/{str(model_id or '').strip()}"
+        contract = self.get_thinking_control(profile_id)
+        if contract.get("source") == "profile":
+            serialized = self.serialize_thinking_control(profile_id, level)
+            return {
+                "provider_id": provider_id,
+                "model_id": model_id,
+                "requested_level": level,
+                "level": serialized["control"]["normalized"],
+                "provider_params": serialized["provider_params"],
+            }
         normalized = self._normalize_level(level)
         provider = str(provider_id or "").strip().lower()
         result: dict[str, Any] = {
@@ -429,6 +549,8 @@ class ModelRuntimeSettingsService:
             "favorite_profiles": [DEFAULT_MODEL],
             "thinking_level_by_profile": {DEFAULT_MODEL: DEFAULT_THINKING_LEVEL},
             "thinking_level_by_conversation": {},
+            "thinking_control_by_profile": {},
+            "thinking_control_by_conversation": {},
             "utility_models": normalize_utility_models({}),
             "utility_model_policy": normalize_utility_model_policy({}),
             "model_api_routes": "",
@@ -626,7 +748,12 @@ class ModelRuntimeSettingsService:
         models["preferred_model"] = preferred_model
         models["favorite_profiles"] = normalized_favorites or ["stub/default"]
 
-        for key in ("thinking_level_by_profile", "thinking_level_by_conversation"):
+        for key in (
+            "thinking_level_by_profile",
+            "thinking_level_by_conversation",
+            "thinking_control_by_profile",
+            "thinking_control_by_conversation",
+        ):
             values_by_scope = models.get(key)
             if isinstance(values_by_scope, str):
                 try:
@@ -863,6 +990,85 @@ class ModelRuntimeSettingsService:
     def _normalize_level(self, value: Any) -> str:
         level = str(value or "").strip()
         return level if level in VALID_THINKING_LEVELS else DEFAULT_THINKING_LEVEL
+
+    def _thinking_profile(self, profile_id: str | None) -> dict[str, Any] | None:
+        requested = str(profile_id or "").strip()
+        if not requested:
+            return None
+        settings = self.get_settings()
+        for profile in self._list_profile_catalog_for_resolution(settings):
+            identifiers = {
+                str(profile.get(key) or "").strip()
+                for key in ("profile_id", "qualified_model_id", "id")
+            }
+            provider = str(
+                profile.get("provider_id") or profile.get("provider") or ""
+            ).strip()
+            model = str(profile.get("model_id") or profile.get("model") or "").strip()
+            if provider and model:
+                identifiers.add(f"{provider}/{model}")
+            if requested in identifiers:
+                return profile
+        return None
+
+    def _profile_thinking_default(self, profile_id: str) -> Any | None:
+        """Return a valid profile-owned default without falling back to legacy state."""
+        profile = self._thinking_profile(profile_id)
+        if not isinstance(profile, dict):
+            return None
+        contract = normalize_thinking_control(profile)
+        if contract.get("source") != "profile":
+            return None
+        candidate = profile.get("default_thinking_level")
+        if candidate is None:
+            thinking = profile.get("thinking")
+            candidate = thinking.get("default_level") if isinstance(thinking, dict) else None
+        if candidate is None:
+            return None
+        validation = validate_thinking_control(contract, candidate)
+        return validation["normalized"] if validation.get("valid") else None
+
+    @staticmethod
+    def _control_from_map(value: Any, key: str) -> dict[str, Any] | None:
+        if not isinstance(value, dict) or not isinstance(value.get(key), dict):
+            return None
+        control = value[key]
+        if "normalized" not in control or not str(control.get("raw") or "").strip():
+            return None
+        return deepcopy(control)
+
+    def _stored_thinking_control(
+        self,
+        settings: dict[str, Any],
+        *,
+        scope: str,
+        profile_id: str | None,
+        conversation_id: str | None,
+    ) -> dict[str, Any] | None:
+        if scope == "profile" and profile_id:
+            return self._control_from_map(
+                settings.get("thinking_control_by_profile"), profile_id
+            )
+        if scope == "conversation" and conversation_id:
+            return self._control_from_map(
+                settings.get("thinking_control_by_conversation"), conversation_id
+            )
+        return None
+
+    def _validated_stored_control(
+        self, profile_id: str | None, control: dict[str, Any]
+    ) -> dict[str, Any]:
+        validation = self.validate_thinking_level(
+            str(control.get("raw") or ""), profile_id
+        )
+        if not validation["valid"]:
+            raise ValueError(validation["message"])
+        return {
+            "raw": validation["raw"],
+            "normalized": validation["normalized"],
+            "input_type": validation["input_type"],
+            "unit": validation.get("unit", ""),
+        }
 
     @staticmethod
     def _coerce_bool(value: Any, *, default: bool = False) -> bool:

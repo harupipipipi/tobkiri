@@ -1515,6 +1515,26 @@ export function conversationArtifactFileUrl(conversationId: string, path: string
   );
 }
 
+export type ThinkingControlInputSchema = {
+  type?: "number" | "enum" | "text";
+  unit?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  values?: Array<string | number>;
+  pattern?: string;
+  max_length?: number;
+  allow_auto?: boolean;
+  auto_value?: string | number;
+};
+
+export type ThinkingControlContract = {
+  supported?: boolean;
+  input_schema?: ThinkingControlInputSchema;
+  request_binding?: { path?: string; value?: unknown };
+  source?: "profile" | "legacy";
+};
+
 export type ModelProfile = {
   profile_id: string;
   display_name: string;
@@ -1535,7 +1555,8 @@ export type ModelProfile = {
   supports_tool_calling?: boolean;
   supports_fast?: boolean;
   thinking_levels?: string[];
-  default_thinking_level?: string | null;
+  thinking_control?: ThinkingControlContract;
+  default_thinking_level?: string | number | null;
   speed_tier?: string;
   quality_tier?: string;
   knowledge_level?: number;
