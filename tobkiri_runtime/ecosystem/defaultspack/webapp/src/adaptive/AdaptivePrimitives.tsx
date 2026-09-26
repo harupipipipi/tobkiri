@@ -15,10 +15,10 @@ export const adaptiveSectionClass =
   "border-t border-zinc-800/70 p-3 first:border-t-0";
 
 export const adaptiveControlClass =
-  "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-950/60 px-2.5 text-xs font-medium text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-950/60 px-2.5 text-xs font-medium text-zinc-300 transition motion-reduce:transition-none hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 disabled:cursor-not-allowed disabled:opacity-50";
 
 export const adaptivePrimaryControlClass =
-  "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-cyan-400/40 bg-cyan-400/10 px-2.5 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-400/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border border-cyan-400/40 bg-cyan-400/10 px-2.5 text-xs font-semibold text-cyan-100 transition motion-reduce:transition-none hover:bg-cyan-400/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 disabled:cursor-not-allowed disabled:opacity-50";
 
 const toneClasses: Record<AdaptiveTone, string> = {
   neutral: "border-zinc-700/80 bg-zinc-800/45 text-zinc-200",
@@ -45,7 +45,7 @@ export function ToneBadge({
   tone?: AdaptiveTone;
 }) {
   return (
-    <span className={`inline-flex min-h-6 items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${toneClasses[tone]}`}>
+    <span className={`inline-flex min-h-7 items-center rounded-md border px-2 py-0.5 text-xs font-semibold ${toneClasses[tone]}`}>
       {children}
     </span>
   );
@@ -85,7 +85,7 @@ export function ResourceBanner({
 }) {
   if (status === "live") {
     return (
-      <div className="flex items-center gap-2 border-t border-zinc-800/70 bg-emerald-500/5 px-3 py-2 text-[11px] text-emerald-200">
+      <div role="status" aria-live="polite" aria-atomic="true" className="flex items-center gap-2 border-t border-zinc-800/70 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-200">
         <CheckCircle2 size={13} aria-hidden="true" />
         <span>Live adaptive state loaded.</span>
       </div>
@@ -93,7 +93,7 @@ export function ResourceBanner({
   }
   if (status === "loading") {
     return (
-      <div className="flex items-center gap-2 border-t border-zinc-800/70 bg-cyan-500/5 px-3 py-2 text-[11px] text-cyan-200">
+      <div role="status" aria-live="polite" aria-atomic="true" className="flex items-center gap-2 border-t border-zinc-800/70 bg-cyan-500/5 px-3 py-2 text-xs text-cyan-200">
         <Loader2 size={13} className="animate-spin" aria-hidden="true" />
         <span>Loading adaptive state.</span>
       </div>
@@ -121,7 +121,7 @@ export function ResourceBanner({
     );
   }
   return (
-    <div className="flex flex-col gap-2 border-t border-zinc-800/70 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+    <div role="status" aria-live="polite" aria-atomic="true" className="flex flex-col gap-2 border-t border-zinc-800/70 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-100 sm:flex-row sm:items-center sm:justify-between">
       <span className="flex min-w-0 items-center gap-2">
         <AlertTriangle size={13} className="shrink-0" aria-hidden="true" />
         <span className="min-w-0 whitespace-normal break-words" title={error ?? undefined}>
@@ -145,6 +145,27 @@ export function AdaptiveEmptyState({ children }: { children: ReactNode }) {
   );
 }
 
+export function AdaptiveStatusMessage({
+  children,
+  className = "",
+  urgent = false,
+}: {
+  children: ReactNode;
+  className?: string;
+  urgent?: boolean;
+}) {
+  return (
+    <p
+      role={urgent ? "alert" : "status"}
+      aria-live={urgent ? "assertive" : "polite"}
+      aria-atomic="true"
+      className={className}
+    >
+      {children}
+    </p>
+  );
+}
+
 export function MetricTile({
   label,
   value,
@@ -156,7 +177,7 @@ export function MetricTile({
 }) {
   return (
     <div className="rounded-md border border-zinc-800 bg-zinc-950/45 p-2">
-      <p className="text-[10px] uppercase tracking-wide text-zinc-500">{label}</p>
+      <p className="text-xs font-medium text-zinc-400">{label}</p>
       <p className={`mt-1 text-lg font-semibold ${tone === "danger" ? "text-rose-200" : tone === "warning" ? "text-amber-200" : tone === "good" ? "text-emerald-200" : tone === "info" ? "text-cyan-200" : "text-zinc-100"}`}>
         {value}
       </p>

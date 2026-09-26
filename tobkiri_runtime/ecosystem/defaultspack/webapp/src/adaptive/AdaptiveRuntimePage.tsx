@@ -1,5 +1,5 @@
 import { Activity, Bot, FileSearch, GitBranch, Settings2, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import { ActivityCenter } from "./ActivityCenter";
 import { AutomationStudio } from "./AutomationStudio";
@@ -7,6 +7,7 @@ import { ContextBudgetPanel, EvidenceViewer, RepositoryMapPanel } from "./Eviden
 import { OnboardingShell } from "./OnboardingShell";
 import { OperatingProfilePage } from "./OperatingProfilePage";
 import { adaptiveControlClass } from "./AdaptivePrimitives";
+import { useAdaptiveTabs } from "./AdaptiveTabs";
 
 type AdaptiveView = "onboarding" | "profile" | "activity" | "automation" | "context";
 
@@ -17,6 +18,7 @@ const views: Array<{ id: AdaptiveView; label: string; icon: typeof Sparkles }> =
   { id: "automation", label: "Automation", icon: Bot },
   { id: "context", label: "Context", icon: FileSearch },
 ];
+const viewIds = views.map((item) => item.id);
 
 function AdaptiveContent({ view }: { view: AdaptiveView }) {
   if (view === "profile") return <OperatingProfilePage />;
@@ -40,6 +42,13 @@ function AdaptiveContent({ view }: { view: AdaptiveView }) {
 
 export function AdaptiveRuntimePage() {
   const [view, setView] = useState<AdaptiveView>("onboarding");
+  const selectView = useCallback((nextView: AdaptiveView) => setView(nextView), []);
+  const tabs = useAdaptiveTabs({
+    ids: viewIds,
+    selectedId: view,
+    onSelect: selectView,
+    idPrefix: "adaptive-runtime-view",
+  });
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100" aria-label="Adaptive runtime">
       <div className="sticky top-0 rumi-layer-panel border-b border-zinc-800/80 bg-zinc-950/95 px-3 py-2 backdrop-blur">
@@ -51,7 +60,12 @@ export function AdaptiveRuntimePage() {
               <p className="truncate text-xs text-zinc-500">Operating profiles, activity, automation, and evidence</p>
             </div>
           </div>
-          <div className="flex gap-1 overflow-x-auto" role="tablist" aria-label="Adaptive runtime views">
+          <div
+            className="flex gap-1 overflow-x-auto"
+            role="tablist"
+            aria-label="Adaptive runtime views"
+            aria-orientation="horizontal"
+          >
             {views.map((item) => {
               const Icon = item.icon;
               const active = item.id === view;
@@ -59,10 +73,9 @@ export function AdaptiveRuntimePage() {
                 <button
                   key={item.id}
                   type="button"
-                  role="tab"
-                  aria-selected={active}
+                  {...tabs.tabProps(item.id)}
+                  aria-label={item.label}
                   className={`${adaptiveControlClass} ${active ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100" : ""}`}
-                  onClick={() => setView(item.id)}
                 >
                   <Icon size={14} aria-hidden="true" />
                   {item.label}
@@ -72,7 +85,14 @@ export function AdaptiveRuntimePage() {
           </div>
         </div>
       </div>
-      <AdaptiveContent view={view} />
+      <div
+        id={tabs.panelId(view)}
+        role="tabpanel"
+        aria-labelledby={tabs.tabId(view)}
+        tabIndex={0}
+      >
+        <AdaptiveContent view={view} />
+      </div>
     </main>
   );
 }
