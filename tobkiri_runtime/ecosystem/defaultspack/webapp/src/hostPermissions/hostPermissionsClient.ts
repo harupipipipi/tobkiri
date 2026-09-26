@@ -1,4 +1,5 @@
 import { api, type AuthorityRequest } from "../lib/api";
+import { redactDiagnosticText } from "../lib/clientDiagnostics";
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "../lib/desktopSystemInfo";
 import { buildHostPermissionRows, hostPermissionSummary, type HostPermissionRow } from "./hostPermissions";
 
@@ -7,7 +8,8 @@ export type HostPermissionsSnapshot = {
   authorityRequests: AuthorityRequest[];
   rows: HostPermissionRow[];
   summary: ReturnType<typeof hostPermissionSummary>;
-  authorityError?: string;
+  authorityUnavailable?: boolean;
+  authorityDiagnostic?: string;
 };
 
 export async function fetchHostPermissionsSnapshot(): Promise<HostPermissionsSnapshot> {
@@ -17,7 +19,10 @@ export async function fetchHostPermissionsSnapshot(): Promise<HostPermissionsSna
       .then((result) => ({ result, error: "" }))
       .catch((error) => ({
         result: { requests: [], pending: [], count: 0 },
-        error: error instanceof Error ? error.message : "Authority requests are unavailable.",
+        error: redactDiagnosticText(
+          error instanceof Error ? `${error.name}: ${error.message}` : error,
+          480,
+        ) || "Authority request lookup failed.",
       })),
   ]);
   const authorityRequests = authorityResult.result.requests;
@@ -27,6 +32,11 @@ export async function fetchHostPermissionsSnapshot(): Promise<HostPermissionsSna
     authorityRequests,
     rows,
     summary: hostPermissionSummary(rows),
-    ...(authorityResult.error ? { authorityError: authorityResult.error } : {}),
+    ...(authorityResult.error
+      ? {
+          authorityUnavailable: true,
+          authorityDiagnostic: authorityResult.error,
+        }
+      : {}),
   };
 }
