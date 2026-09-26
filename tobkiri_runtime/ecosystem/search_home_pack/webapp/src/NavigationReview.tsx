@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, KeyboardEvent } from "react";
 
 import {
   normalizeSelectedIndex,
@@ -8,6 +8,10 @@ import {
   type RouteCandidate,
   type RouteDecision,
 } from "./routerTypes";
+import {
+  resolveRouteReviewKeyboardAction,
+  routeReviewKeyboardAction,
+} from "./routeReviewKeyboard";
 
 const styles: Record<string, CSSProperties> = {
   card: {
@@ -188,6 +192,20 @@ const styles: Record<string, CSSProperties> = {
     color: "#fecaca",
     fontSize: "0.82rem",
   },
+  shortcutPanel: {
+    marginTop: 16,
+    padding: 12,
+    border: "1px solid #3f3f46",
+    borderRadius: 14,
+    background: "#18181b",
+    color: "#d4d4d8",
+    fontSize: "0.82rem",
+    lineHeight: 1.55,
+  },
+  shortcutKeys: {
+    margin: "6px 0 0",
+    color: "#a7f3d0",
+  },
 };
 
 function candidateRiskLabels(candidate: RouteCandidate | null): string[] {
@@ -209,6 +227,8 @@ export function NavigationReview({
   onOpenFallback,
   onCopy,
   onCancel,
+  shortcutsRequireReview = false,
+  onEnableShortcuts,
   status,
   error,
 }: {
@@ -219,6 +239,8 @@ export function NavigationReview({
   onOpenFallback: () => void;
   onCopy: () => void;
   onCancel: () => void;
+  shortcutsRequireReview?: boolean;
+  onEnableShortcuts?: () => void;
   status?: string | null;
   error?: string | null;
 }) {
@@ -229,9 +251,46 @@ export function NavigationReview({
   const fallback = reviewRouteDestination(decision.fallback_url);
   const riskLabels = candidateRiskLabels(candidate);
   const selectedTitle = candidate?.title || (destination.ok ? "選択した移動先" : "ブロックされた移動先");
+  const shortcutsEnabled = !shortcutsRequireReview;
+  const handleReviewKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    const action = routeReviewKeyboardAction(
+      {
+        altKey: event.altKey,
+        ctrlKey: event.ctrlKey,
+        currentTarget: event.currentTarget,
+        defaultPrevented: event.defaultPrevented,
+        isComposing: event.nativeEvent.isComposing,
+        key: event.key,
+        metaKey: event.metaKey,
+        repeat: event.repeat,
+        shiftKey: event.shiftKey,
+        target: event.target,
+      },
+      shortcutsEnabled,
+    );
+    if (!action) return;
+    event.preventDefault();
+    const result = resolveRouteReviewKeyboardAction(
+      decision,
+      normalizedIndex,
+      action,
+    );
+    if (!result.shouldConfirm) {
+      onSelectIndex(result.nextIndex);
+      return;
+    }
+    if (destination.ok) onOpenSelected();
+  };
 
   return (
-    <section aria-labelledby="route-review-title" style={styles.card}>
+    <section
+      aria-describedby="route-review-shortcuts"
+      aria-labelledby="route-review-title"
+      aria-keyshortcuts={shortcutsEnabled ? "ArrowLeft ArrowRight Enter" : undefined}
+      onKeyDown={handleReviewKeyDown}
+      style={styles.card}
+      tabIndex={0}
+    >
       <div style={styles.headingRow}>
         <div>
           <p style={styles.eyebrow}>移動前の確認</p>
@@ -243,6 +302,32 @@ export function NavigationReview({
           </p>
         </div>
         <span style={styles.host}>{destination.ok ? destination.host : "ブロック"}</span>
+      </div>
+
+      <div id="route-review-shortcuts" style={styles.shortcutPanel}>
+        <strong>{shortcutsEnabled ? "候補レビューのキーボード操作" : "復元した候補は再確認が必要です"}</strong>
+        <p style={styles.shortcutKeys}>
+          {shortcutsEnabled
+            ? `この枠にフォーカス中のみ ← / → で候補を選択。別の Enter 操作で「${destination.ok ? destination.url : "ブロックされた移動先"}」を開きます。`
+            : "移動先を再検証し、現在のセッションで確認するまでショートカットは動作しません。"}
+        </p>
+        <p style={styles.muted}>
+          ブラウザ、支援技術、OS、IMEとの競合を避けるため、修飾キー付き操作、キーリピート、変換中のキーは無視します。
+        </p>
+        {shortcutsRequireReview ? (
+          <button
+            disabled={!destination.ok}
+            onClick={onEnableShortcuts}
+            style={{
+              ...styles.secondaryButton,
+              ...(!destination.ok ? styles.disabledButton : {}),
+              marginTop: 10,
+            }}
+            type="button"
+          >
+            移動先を再検証してショートカットを有効にする
+          </button>
+        ) : null}
       </div>
 
       <div style={styles.destination}>

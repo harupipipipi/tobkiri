@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
 
-def test_browser_companion_background_supports_search_home_candidate_navigation():
+def test_browser_companion_background_retains_state_without_navigation_authority():
     extension_root = (
         DEFAULTSPACK_ROOT
         / "browser_extensions"
@@ -27,9 +27,9 @@ def test_browser_companion_background_supports_search_home_candidate_navigation(
     assert 'import "./search_home_destination_policy.js"' in background
     assert "rumi:search-home:set-route-state" in background
     assert "rumi:search-home:get-route-state" in background
-    assert "rumi:search-home:advance-candidate" in background
+    assert "rumi:search-home:advance-candidate" not in background
     assert "SEARCH_HOME_ROUTE_STATE_KEY" in background
-    assert 'chrome.tabs.update(tabId, { url })' in background
+    assert "advanceSearchHomeRouteState" not in background
     assert "trustedSearchHomeSourceOrigin" in background
     assert "isTrustedStoredSearchHomeRouteState(current)" in background
     assert 'result.verdict === "allow" ? RumiSearchHomeDestinationPolicy.safeForPersistence(result.url) : ""' in background
@@ -37,7 +37,7 @@ def test_browser_companion_background_supports_search_home_candidate_navigation(
     assert "embedded_credentials" in policy
 
 
-def test_browser_companion_content_script_captures_search_home_hotkeys():
+def test_browser_companion_content_script_never_captures_search_home_hotkeys():
     content = (
         DEFAULTSPACK_ROOT
         / "browser_extensions"
@@ -51,14 +51,11 @@ def test_browser_companion_content_script_captures_search_home_hotkeys():
     assert "event.origin === window.location.origin" in content
     assert "source_origin: event.origin" in content
     assert 'type: "rumi:search-home:get-route-state"' in content
-    assert 'window.addEventListener(\n    "keydown"' in content
-    assert 'event.key === "ArrowRight"' in content
-    assert 'event.key === "ArrowLeft"' in content
-    assert 'event.key === "Enter"' in content
+    assert 'window.addEventListener(\n    "keydown"' not in content
+    assert "isSearchHomeHotkey" not in content
     assert "searchHomeRouteStateExpiresAt = Number.isFinite(expiresAt) ? expiresAt : 0" in content
     assert "refreshSearchHomeRouteState();" in content
-    assert 'action: event.key === "ArrowLeft" ? "prev" : event.key === "ArrowRight" ? "next" : "open"' in content
-    assert "event.preventDefault()" in content
+    assert "rumi:search-home:advance-candidate" not in content
 
 
 def test_browser_companion_destination_policy_rejects_tampered_state_and_requires_confirmation():
@@ -120,7 +117,7 @@ def test_browser_companion_destination_policy_rejects_tampered_state_and_require
     assert manifest["x_rumi_search_home_origins"] == ["http://127.0.0.1:8777"]
 
 
-def test_browser_companion_background_search_home_action_contract():
+def test_browser_companion_has_no_search_home_action_contract():
     background = (
         DEFAULTSPACK_ROOT
         / "browser_extensions"
@@ -128,13 +125,11 @@ def test_browser_companion_background_search_home_action_contract():
         / "background.js"
     ).read_text(encoding="utf-8")
 
-    assert "function normalizeSearchHomeRouteAction" in background
-    assert 'value === "previous" || value === "prev" || value === "left"' in background
-    assert 'value === "open" || value === "enter"' in background
-    assert 'normalizedAction === "open"' in background
+    assert "normalizeSearchHomeRouteAction" not in background
+    assert "advanceSearchHomeRouteState" not in background
 
 
-def test_browser_companion_content_script_restores_search_home_state_after_navigation():
+def test_browser_companion_restores_state_without_installing_navigation_hotkeys():
     node = shutil.which("node")
     if not node:
         pytest.skip("node is required to exercise the browser companion content script lifecycle")
@@ -162,12 +157,6 @@ def test_browser_companion_content_script_restores_search_home_state_after_navig
                 const response = { ok: true, active: true, expires_at: now + 60_000 };
                 if (callback) {
                   setImmediate(() => callback(response));
-                }
-                return undefined;
-              }
-              if (message.type === "rumi:search-home:advance-candidate") {
-                if (callback) {
-                  callback({ ok: true });
                 }
                 return undefined;
               }
@@ -219,30 +208,14 @@ def test_browser_companion_content_script_restores_search_home_state_after_navig
         vm.runInContext(content, context, { filename: "content_script.js" });
 
         setTimeout(() => {
-          const keydown = (listeners.keydown || [])[0];
-          if (!keydown) {
-            throw new Error("keydown listener was not registered");
-          }
-          let prevented = false;
-          let stopped = false;
-          keydown({
-            key: "ArrowRight",
-            preventDefault() {
-              prevented = true;
-            },
-            stopPropagation() {
-              stopped = true;
-            }
-          });
           if (!runtimeMessages.some((message) => message.type === "rumi:search-home:get-route-state")) {
             throw new Error("content script did not restore Search Home state from background");
           }
-          const advance = runtimeMessages.find((message) => message.type === "rumi:search-home:advance-candidate");
-          if (!advance || advance.action !== "next") {
-            throw new Error(`unexpected advance message: ${JSON.stringify(advance)}`);
+          if ((listeners.keydown || []).length !== 0) {
+            throw new Error("Search Home navigation keydown listener was registered");
           }
-          if (!prevented || !stopped) {
-            throw new Error("restored Search Home hotkey was not captured");
+          if (runtimeMessages.some((message) => message.type === "rumi:search-home:advance-candidate")) {
+            throw new Error("Search Home navigation message escaped the review surface");
           }
         }, 20);
         """

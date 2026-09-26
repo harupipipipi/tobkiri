@@ -85,9 +85,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case "rumi:search-home:get-route-state":
         sendResponse(await getSearchHomeRouteState(sender?.tab?.id));
         return;
-      case "rumi:search-home:advance-candidate":
-        sendResponse(await advanceSearchHomeRouteState(sender?.tab?.id, message.action));
-        return;
       default:
         sendResponse({ ok: false, error: `Unknown message type: ${message.type}` });
     }
@@ -808,52 +805,6 @@ async function getSearchHomeRouteState(tabId) {
     selected_index: current.selected_index,
     expires_at: searchHomeRouteStateExpiresAt(current)
   };
-}
-
-async function advanceSearchHomeRouteState(tabId, action) {
-  if (!Number.isInteger(tabId)) {
-    return { ok: false, error: "Active tab is required for Search Home navigation." };
-  }
-  const states = await loadSearchHomeRouteStates();
-  const current = normalizeSearchHomeRouteState(states[String(tabId)]);
-  if (!current || !isFreshSearchHomeRouteState(current) || !isTrustedStoredSearchHomeRouteState(current)) {
-    return { ok: false, error: "No fresh Search Home route state was found for this tab." };
-  }
-  let url = "";
-  let nextIndex = normalizeSearchHomeIndex(current, current.selected_index);
-  const normalizedAction = normalizeSearchHomeRouteAction(action);
-  if (normalizedAction === "fallback") {
-    url = normalizeSearchHomeCandidateUrl(current.fallback_url);
-  } else if (normalizedAction === "open") {
-    const selectedCandidate = current.target_candidates[nextIndex];
-    url = normalizeSearchHomeCandidateUrl(selectedCandidate?.final_url || selectedCandidate?.url || current.target_url);
-  } else {
-    const delta = normalizedAction === "prev" ? -1 : 1;
-    nextIndex = nextSearchHomeIndex(current, delta);
-    const nextCandidate = current.target_candidates[nextIndex];
-    url = normalizeSearchHomeCandidateUrl(nextCandidate?.final_url || nextCandidate?.url);
-  }
-  if (!url) {
-    return { ok: false, error: "No destination URL was available for the requested Search Home action." };
-  }
-  delete states[String(tabId)];
-  await saveSearchHomeRouteStates(states);
-  await chrome.tabs.update(tabId, { url });
-  return { ok: true, tab_id: tabId, url, selected_index: nextIndex };
-}
-
-function normalizeSearchHomeRouteAction(action) {
-  const value = String(action || "").trim().toLowerCase();
-  if (value === "previous" || value === "prev" || value === "left") {
-    return "prev";
-  }
-  if (value === "open" || value === "enter") {
-    return "open";
-  }
-  if (value === "fallback") {
-    return "fallback";
-  }
-  return "next";
 }
 
 function normalizeSearchHomeRouteState(value, options = {}) {

@@ -30,6 +30,28 @@ test("route shortcuts are not installed globally and sensitive route data is not
   assert.doesNotMatch(appSource, /routeNavigationForHotkey/);
   assert.doesNotMatch(appSource, /postMessage\([\s\S]*?,\s*["']\*["']\s*\)/);
   assert.match(appSource, /window\.location\.origin/);
+  assert.match(reviewSource, /onKeyDown=\{handleReviewKeyDown\}/);
+  assert.match(reviewSource, /tabIndex=\{0\}/);
+});
+
+test("restored decisions require fresh-state validation and explicit shortcut review", () => {
+  assert.match(appSource, /isFreshRestoredRouteState\(payload\)/);
+  assert.match(appSource, /setRestoredReviewRequired\(true\)/);
+  assert.match(reviewSource, /復元した候補は再確認が必要です/);
+  assert.match(reviewSource, /移動先を再検証してショートカットを有効にする/);
+});
+
+test("shortcut instructions localize the exact destination and platform conflicts", () => {
+  assert.match(reviewSource, /destination\.url/);
+  assert.match(reviewSource, /この枠にフォーカス中のみ/);
+  assert.match(reviewSource, /ブラウザ、支援技術、OS、IMEとの競合/);
+});
+
+test("cancel clears retained route state so shortcuts cannot reactivate on reload", () => {
+  assert.match(appSource, /clearRouteStateRemotely\(\)/);
+  assert.match(appSource, /removeItem\(ROUTE_SESSION_STORAGE_KEY\)/);
+  assert.match(appSource, /setDecision\(null\)/);
+  assert.match(appSource, /setRestoredReviewRequired\(false\)/);
 });
 
 test("390px layout wraps the heading, input actions, and action descriptions", () => {

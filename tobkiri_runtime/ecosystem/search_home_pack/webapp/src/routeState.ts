@@ -9,12 +9,34 @@ import {
 
 export const ROUTE_DECISION_STORAGE_KEY = "rumi-search-home-route-decision";
 
+const MAX_ROUTE_STATE_AGE_MS = 6 * 60 * 60 * 1000;
+const MAX_CLOCK_SKEW_MS = 30_000;
+
 function isObjectLike(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
 
 function asBoundedString(value: unknown, maxLength: number): string {
   return typeof value === "string" ? value.slice(0, maxLength) : "";
+}
+
+/** Return whether a restored route record is current and securely identified. */
+export function isFreshRestoredRouteState(
+  value: unknown,
+  now = Date.now(),
+): boolean {
+  if (!isObjectLike(value)) return false;
+  const stateId = String(value.state_id || "");
+  const issuedAt = Date.parse(String(value.issued_at || ""));
+  const expiresAt = Date.parse(String(value.expires_at || ""));
+  return (
+    /^[A-Za-z0-9_-]{16,128}$/.test(stateId) &&
+    Number.isFinite(issuedAt) &&
+    Number.isFinite(expiresAt) &&
+    issuedAt <= now + MAX_CLOCK_SKEW_MS &&
+    expiresAt > now &&
+    expiresAt - issuedAt <= MAX_ROUTE_STATE_AGE_MS
+  );
 }
 
 export function coerceCandidate(value: unknown): RouteCandidate | null {
@@ -107,7 +129,12 @@ export function loadDecisionFromSessionStorage(storage: Storage | null): RouteDe
       if (!raw) {
         continue;
       }
-      const decision = parser(JSON.parse(raw));
+      const parsed = JSON.parse(raw);
+      if (key === ROUTE_SESSION_STORAGE_KEY && !isFreshRestoredRouteState(parsed)) {
+        storage.removeItem(key);
+        continue;
+      }
+      const decision = parser(parsed);
       if (decision) {
         return decision;
       }
