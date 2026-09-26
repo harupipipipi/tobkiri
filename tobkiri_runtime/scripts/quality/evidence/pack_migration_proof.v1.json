@@ -15825,7 +15825,7 @@
   "source": {
     "attestation": "none",
     "authority": "evidence-only",
-    "content_digest": "sha256:8611b7e8dd6fd38480ec8871cd880a99586c794b7216336f9529206ecc210022",
+    "content_digest": "sha256:c93de2063d1991067dd79da09eed21b6883861722172ffdaf462aacb624224b2",
     "feasibility_audit": {
       "semantically_reviewed": {
         "count": 75,
@@ -16067,7 +16067,7 @@
     "freshness_basis": "exact-input-digests-and-deterministic-recomputation",
     "generator_id": "tobkiri.quality.migration-proof-generator",
     "generator_version": "2.1.0",
-    "input_digest": "sha256:c7a1af7e95f54292c402d6db8c2213d2bc7ba12093d5652c7e90003a1a691e23",
+    "input_digest": "sha256:9761db144c2dbefec22171ff3ad1f0da1b7fd1ddd36b1eeb5c4a3f3df421c550",
     "input_paths": [
       "tobkiri_runtime/core_runtime/profile_definition_store_v4.py",
       "tobkiri_runtime/ecosystem/defaultspack/artifact-index.v4.json",
@@ -17218,7 +17218,7 @@
     ],
     "inputs": [
       {
-        "digest": "sha256:2d596bb48679a6305e25ad14ca8dd42b57f7f03802e9516681a2afc6f6098db8",
+        "digest": "sha256:af6d45386909d077e2e6f4f790113cf06625370b963fb38dc760ec7a5d668a69",
         "kind": "profile-import-algorithm",
         "path": "tobkiri_runtime/core_runtime/profile_definition_store_v4.py"
       },
@@ -22898,7 +22898,7 @@
         "path": "tobkiri_runtime/schemas/executable_sources.v1.json"
       },
       {
-        "digest": "sha256:93f4dc0b59d9941c19daef48fa0a5d4a15fa10a60d473b8b78f430f393e549c8",
+        "digest": "sha256:1dbc0313f18947161ae9e7cf9e639bebde2c4bf80dc0fbe235f4272083f7326b",
         "kind": "proof-algorithm",
         "path": "tobkiri_runtime/scripts/quality/run_independent_migration_proof.py"
       },
@@ -22954,7 +22954,7 @@
       "release-verified": 0,
       "semantically-reviewed": 75
     },
-    "observed_head_sha": "bf9bfa8d0d3c9e8c0afe51cba45244e9aad051c4",
+    "observed_head_sha": "648bc7de77dee028d9179e61a7cbd41d3440d84b",
     "pack_count": 141,
     "profile_collection_proof": {
       "identity_proof": {

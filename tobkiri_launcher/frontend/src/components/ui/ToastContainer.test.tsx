@@ -71,8 +71,10 @@ test('each severity has one non-nested announcement and appearing toasts do not 
     assert.equal(queue.hasAttribute('role'), false);
     assert.equal(queue.hasAttribute('aria-live'), false);
     const announcements = [...surface.container.querySelectorAll('[aria-live]')];
-    assert.equal(announcements.length, 4);
-    assert.equal(surface.container.querySelectorAll('[role="status"]').length, 3);
+    // 4 toast announcements + the error toast's copy-feedback live region
+    // from CopyErrorButton (a separate non-nested polite status announcer).
+    assert.equal(announcements.length, 5);
+    assert.equal(surface.container.querySelectorAll('[role="status"]').length, 4);
     assert.equal(surface.container.querySelectorAll('[role="alert"]').length, 1);
     assert.equal(surface.container.querySelector('[role="alert"]')?.getAttribute('aria-live'), 'assertive');
     assert.ok(announcements.every((node) => node.querySelector('[aria-live]') === null));

@@ -3361,7 +3361,7 @@
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
       "size": 1096961,
-      "sha256": "845e46b036aa6fcb242d6353b762901c08daeb147784d084409ee337b8c20deb",
+      "sha256": "d7cc17083ca579f341a388f1b933f0fb5a81f67b8abc25d824fad2339ac535ba",
       "executable": false
     },
     {
@@ -3416,8 +3416,8 @@
     {
       "path": "scripts/quality/run_independent_migration_proof.py",
       "type": "regular-file",
-      "size": 48304,
-      "sha256": "93f4dc0b59d9941c19daef48fa0a5d4a15fa10a60d473b8b78f430f393e549c8",
+      "size": 48948,
+      "sha256": "1dbc0313f18947161ae9e7cf9e639bebde2c4bf80dc0fbe235f4272083f7326b",
       "executable": false
     },
     {
