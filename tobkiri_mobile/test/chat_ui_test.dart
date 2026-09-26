@@ -149,6 +149,17 @@ void main() {
         home: child,
       );
 
+  Widget wrapWithLargeText(Widget child) => MaterialApp(
+        theme: buildRumiTheme(dark: true),
+        builder: (context, content) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: const TextScaler.linear(2),
+          ),
+          child: content!,
+        ),
+        home: child,
+      );
+
   testWidgets('chat screen renders simple empty state with composer',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(393, 852));
@@ -214,6 +225,159 @@ void main() {
     expect(find.text('チャット'), findsOneWidget);
     expect(find.textContaining('こんにちは'), findsNWidgets(2));
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'local delete requires confirmation, stays in drawer, and supports durable undo',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(393, 852));
+    final storage = _FakeChatStorage();
+    final store = ChatStore(storage: storage);
+    final conversation = await store.createAndPersist();
+    const title = '長いタイトルの削除確認チャット';
+    await store.rename(conversation.id, title);
+    final secureStorage = _FakeSecureStorage();
+
+    await tester.pumpWidget(wrapWithLargeText(ChatScreen(
+      store: store,
+      configStore: ApiConfigStore(storage: secureStorage),
+      deviceStore: MobileDeviceStore(storage: secureStorage),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('チャット一覧'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('$titleの操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('削除'));
+    await tester.pumpAndSettle();
+    expect(find.text('「$title」を削除しますか？'), findsOneWidget);
+    expect(find.textContaining('PC上の会話やリモート履歴は削除されません'), findsOneWidget);
+    await tester.tap(find.text('キャンセル'));
+    await tester.pumpAndSettle();
+    expect(store.conversations.single.id, conversation.id);
+    expect(find.text('チャット'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('$titleの操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('削除'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('最近削除したチャットへ移動'));
+    await tester.pumpAndSettle();
+
+    expect(store.deletedConversations.single.id, conversation.id);
+    expect(find.text('最近削除したチャット'), findsOneWidget);
+    expect(find.text('接続先'), findsOneWidget);
+    expect(find.text('新しいチャット'), findsWidgets);
+    expect(find.text('元に戻す'), findsOneWidget);
+    final activeTile = find
+        .ancestor(
+          of: find.text('新しいチャット'),
+          matching: find.byType(ListTile),
+        )
+        .first;
+    final focusedContext = FocusManager.instance.primaryFocus?.context;
+    expect(focusedContext, isNotNull);
+    expect(
+      find.descendant(
+        of: activeTile,
+        matching: find.byElementPredicate(
+          (element) => identical(element, focusedContext),
+        ),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byTooltip('$titleを復元'));
+    await tester.pumpAndSettle();
+
+    expect(store.deletedConversations, isEmpty);
+    expect(store.active?.id, conversation.id);
+    expect(find.text(title), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('drawer exposes live deletion state and PC deletion ownership',
+      (tester) async {
+    final semanticsHandle = tester.ensureSemantics();
+    final deleted = Conversation(
+      id: 'deleted-1',
+      title: '復元できるチャット',
+      messages: [],
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+      deletedAt: DateTime(2026),
+    );
+    await tester.pumpWidget(wrap(Scaffold(
+      body: ChatDrawer(
+        spaces: const [
+          Space.local,
+          Space(id: 'pc-1', label: 'PC', kind: SpaceKind.pc),
+        ],
+        activeSpaceId: Space.local.id,
+        conversations: const [],
+        deletedConversations: [deleted],
+        activeId: null,
+        deletionStatus: 'チャットを最近削除したチャットへ移動しました',
+        onNewChat: () {},
+        onSelectSpace: (_) {},
+        onSelect: (_) {},
+        onDelete: (_) {},
+        onRestore: (_) {},
+        onRename: (_) {},
+        onPin: (_) {},
+        onReconnectSpace: () {},
+        onContinueOffline: () {},
+        onOpenSettings: () {},
+      ),
+    )));
+    await tester.pumpAndSettle();
+
+    final deletionStatus = tester.getSemantics(
+      find.bySemanticsLabel('チャットを最近削除したチャットへ移動しました'),
+    );
+    expect(
+      deletionStatus.getSemanticsData().flagsCollection.isLiveRegion,
+      isTrue,
+    );
+    expect(find.byTooltip('復元できるチャットを復元'), findsOneWidget);
+
+    await tester.pumpWidget(wrap(Scaffold(
+      body: ChatDrawer(
+        spaces: const [
+          Space(id: 'pc-1', label: 'PC', kind: SpaceKind.pc),
+        ],
+        activeSpaceId: 'pc-1',
+        conversations: const [],
+        pcConversations: [
+          PcConversationItem(
+            id: 'pc-chat',
+            title: 'PC chat',
+            messageCount: 1,
+            updatedAt: DateTime(2026),
+            pinned: false,
+            preview: 'preview',
+          ),
+        ],
+        activeId: 'pc-chat',
+        onNewChat: () {},
+        onSelectSpace: (_) {},
+        onSelect: (_) {},
+        onDelete: (_) {},
+        onRename: (_) {},
+        onPin: (_) {},
+        onReconnectSpace: () {},
+        onContinueOffline: () {},
+        onOpenSettings: () {},
+      ),
+    )));
+    await tester.pumpAndSettle();
+    expect(
+      find.bySemanticsLabel(RegExp('削除は接続先のPCで管理します')),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('PC会話は接続先のPCで管理します'), findsOneWidget);
+    semanticsHandle.dispose();
   });
 
   testWidgets('connection chip hides raw pc urls', (tester) async {
