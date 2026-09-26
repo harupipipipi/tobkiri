@@ -2128,3 +2128,7 @@
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }
+## Pack v4 migration evidence
+
+- Evidence freshness: **PASS**
+- Semantic migration status: **GREEN** (blocking)
