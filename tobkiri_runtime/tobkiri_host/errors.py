@@ -39,6 +39,26 @@ class BackendUnavailableError(HostCoreError):
     code = "backend_unavailable"
 
 
+class SavedTurnRejectedError(BackendUnavailableError):
+    """A saved turn was definitively rejected before any guest-visible effect.
+
+    Raised only where the failure provably precedes guest execution — the
+    Host-side saved preflight denial or a deterministic domain-allocation
+    refusal — so no outcome receipt can ever exist.  The durable turn
+    coordinator reads ``saved_terminal_error_code`` to settle the record
+    ``failed`` instead of parking it in the fail-closed ``waiting`` state.
+    Unmarked backend failures remain ambiguous and keep waiting.
+    """
+
+    code = "saved_turn_rejected"
+
+    def __init__(self, reason: str, *, error_code: str = "BACKEND_UNAVAILABLE") -> None:
+        if not isinstance(error_code, str) or not 0 < len(error_code) <= 64:
+            raise ValueError("saved terminal error code is invalid")
+        super().__init__(reason)
+        self.saved_terminal_error_code = error_code
+
+
 class AuthorizationError(HostCoreError):
     """The security core denied or could not verify the request."""
 

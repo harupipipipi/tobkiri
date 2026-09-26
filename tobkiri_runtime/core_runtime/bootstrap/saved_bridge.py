@@ -187,6 +187,21 @@ def _messages(
     return result
 
 
+def _requires_tool_calling(request: Mapping[str, Any]) -> bool:
+    """Return whether the tool selection is a hard routing requirement.
+
+    An ``auto`` selection without ``must_use`` only offers tools to the
+    model; it must not exclude a saved profile whose tool capability is
+    unverified (connection-bound profiles resolve through a catalog
+    descriptor without capability evidence). An explicit ``manual``
+    selection or ``must_use`` stays fail-closed.
+    """
+    selection = request.get("tool_selection")
+    if not isinstance(selection, Mapping):
+        return False
+    return bool(selection.get("must_use")) or selection.get("mode") == "manual"
+
+
 class SavedBridgeCallbacks:
     """Bind the four guest stages to finite Host-owned dispatch callbacks."""
 
@@ -334,7 +349,7 @@ class SavedBridgeCallbacks:
                 {"role": "user", "content": request["content"]},
             ],
         }
-        if tools["tools"]:
+        if tools["tools"] and _requires_tool_calling(request):
             payload["tool_calling"] = True
         if request.get("deepthink_enabled") is True:
             payload["deepthink"] = True
@@ -348,7 +363,17 @@ class SavedBridgeCallbacks:
             or value.get("ready") is not True
             or value.get("model_profile_id") != model
         ):
-            raise AuthorityDenied("saved bridge AI route is unavailable")
+            # The bridge result only ever carries a bounded Host-owned code;
+            # surface it so a terminal preflight rejection can report the
+            # diagnostic instead of an undifferentiated denial.
+            error = outcome.get("error")
+            code = error.get("code") if isinstance(error, Mapping) else None
+            raise AuthorityDenied(
+                "saved bridge AI route is unavailable",
+                code=code
+                if type(code) is str and re.fullmatch(r"[A-Za-z0-9_]{1,64}", code)
+                else "authority_denied",
+            )
         if request.get("deepthink_enabled") is True:
             # Reject an unrunnable chain before the user message is written.
             self._deepthink_report(
@@ -462,10 +487,13 @@ class SavedBridgeCallbacks:
                 key: value for key, value in payload.items() if key != "system_prompt_digest"
             }
             if selected["tools"]:
+                requirements = dict(payload["requirements"])
+                if _requires_tool_calling(request):
+                    requirements["tool_calling"] = True
                 arguments.update(
                     {
                         "tools": selected["tools"],
-                        "requirements": {**payload["requirements"], "tool_calling": True},
+                        "requirements": requirements,
                         "parameters": {
                             "tool_choice": "required"
                             if request["tool_selection"].get("must_use") and not trace

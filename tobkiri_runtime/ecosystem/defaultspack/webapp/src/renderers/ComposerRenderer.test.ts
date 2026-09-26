@@ -1435,6 +1435,63 @@ test("steer errors use an assertive error notice with a separate copy action", (
   assert.doesNotMatch(html, /text-zinc-500[^>]*>Steer queue failed/);
 });
 
+test("composer without a registered steer route shows no steer affordance while generating", () => {
+  const html = renderToStaticMarkup(
+    createElement(ComposerRenderer, {
+      input: "次は短くして",
+      placeholder: "メッセージを入力...",
+      isGenerating: true,
+      steerEnabled: false,
+      selectedProfile: {
+        profile_id: "stub/default",
+        display_name: "Stub Default",
+        provider_id: "stub",
+        model_id: "default",
+      },
+      favoriteProfiles: [],
+      inlineExtensions: [],
+      belowExtensions: [],
+      thinkingLevel: null,
+      contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+      onInputChange: () => undefined,
+      onSubmit: () => undefined,
+      onModelProfileSelect: () => undefined,
+      onThinkingLevelChange: () => undefined,
+      onSteerSubmit: () => undefined,
+    }),
+  );
+
+  assert.doesNotMatch(html, /追加の指示を入力/);
+  assert.doesNotMatch(html, /Enterで追加指示を送信/);
+  assert.doesNotMatch(html, /追加指示を送る/);
+  assert.match(html, /aria-label="応答の完了を待っています"/);
+});
+
+test("composer without a registered steer route still exposes stop while generating", () => {
+  const html = renderToStaticMarkup(
+    createElement(ComposerRenderer, {
+      input: "",
+      placeholder: "メッセージを入力...",
+      isGenerating: true,
+      steerEnabled: false,
+      selectedProfile: null,
+      favoriteProfiles: [],
+      inlineExtensions: [],
+      belowExtensions: [],
+      thinkingLevel: null,
+      contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+      onInputChange: () => undefined,
+      onSubmit: () => undefined,
+      onModelProfileSelect: () => undefined,
+      onThinkingLevelChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /aria-label="生成を停止"/);
+  assert.match(html, /title="停止"/);
+  assert.doesNotMatch(html, /追加指示/);
+});
+
 test("vision unsupported banner appears when image input exists and selected model lacks vision", () => {
   const html = renderToStaticMarkup(
     createElement(ComposerRenderer, {

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, usesBrowserComputerApprovalEndpoint } from "./api";
+import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, isDefaultspackContractOperationUnknownError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, usesBrowserComputerApprovalEndpoint } from "./api";
 import type { ComposerCommandItem } from "./api";
 import { authorityApprovalRuntimeContent } from "./authorityApproval";
 import { deleteCalendarScheduleBeforeLocalChange } from "./calendarScheduleDeletion";
@@ -1628,6 +1628,37 @@ test("authority ui operator unavailable errors explain the viewer signing secret
   assert.match(message, /AUTHORITY_UI_OPERATOR_UNAVAILABLE/);
   assert.match(message, /署名secret/);
   assert.match(message, /RUMI_PANEL_BOOTSTRAP_SECRET/);
+});
+
+test("unregistered contract operations surface an identifiable unknown-operation error", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (url, init) => {
+    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent("POST /api/chat/steer")}`);
+    assert.equal(init?.method, "POST");
+    return new Response(JSON.stringify({
+      success: false,
+      data: { state: "contract_dispatch_denied", code: "CONTRACT_OPERATION_UNKNOWN" },
+      error: "Unknown contract operation",
+    }), { status: 404, statusText: "Not Found" });
+  };
+
+  const failure = await api.conversationSteer({ action: "list", conversation_id: "c-1" }).then(
+    () => { throw new Error("expected the steer request to fail"); },
+    (error: unknown) => error,
+  );
+  assert.ok(failure instanceof Error);
+  assert.match(failure.message, /HTTP 404 Not Found/);
+  assert.ok(isDefaultspackContractOperationUnknownError(failure));
+});
+
+test("other API failures are not mistaken for an unregistered contract operation", () => {
+  assert.equal(isDefaultspackContractOperationUnknownError(new Error("HTTP 500")), false);
+  assert.equal(isDefaultspackContractOperationUnknownError("CONTRACT_OPERATION_UNKNOWN"), false);
+  const coded = Object.assign(new Error("HTTP 403 Forbidden"), { code: "FORBIDDEN" });
+  assert.equal(isDefaultspackContractOperationUnknownError(coded), false);
+  const legacy = new Error("HTTP 404 Not Found\n詳細: Unknown contract operation");
+  assert.equal(isDefaultspackContractOperationUnknownError(legacy), true);
 });
 
 test("selected tools are cleared after send unless settings opt in", () => {

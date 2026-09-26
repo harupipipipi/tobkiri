@@ -54,7 +54,7 @@ import { ConversationShareLanding, ImportedConversationNotice } from "./pages/Co
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "./components/HistoryBoard";
 import type { ToolPreviewItem, ToolPreviewMode } from "./components/ToolPreview";
 import { buildToolPreviewDisplayItems, hasCanvasItems } from "./components/ToolPreview";
-import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, mergeComposerCommands, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
+import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, isDefaultspackContractOperationUnknownError, mergeComposerCommands, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
 import { applyCommandStateSnapshots, createCommandInvocationId } from "./lib/commandState";
 import type { ActionApprovalMode } from "./features/tools/ActionApprovalControl";
 import {
@@ -2600,6 +2600,10 @@ export function ChatApp() {
   const [modelSteerStatus, setModelSteerStatus] = useState<ComposerSteerStatus | null>(null);
   const [modelSteerBusy, setModelSteerBusy] = useState(false);
   const [steerItems, setSteerItems] = useState<ConversationSteerItem[]>([]);
+  // The steer HTTP operation only exists when the active frontend contract map
+  // registers it; latch this off on CONTRACT_OPERATION_UNKNOWN instead of
+  // surfacing a 404 for every conversation.
+  const [steerSupported, setSteerSupported] = useState(true);
   const [previewMode, setPreviewMode] = useLocalStorage<ToolPreviewMode>("rumi-preview-mode", "auto");
   const [activityPreviewWidth, setActivityPreviewWidth] = useLocalStorage("rumi-activity-preview-width", 340);
   const [canvasMemo, setCanvasMemo] = useLocalStorage("rumi-canvas-memo", "");
@@ -4830,7 +4834,7 @@ export function ChatApp() {
 
   const refreshSteerQueue = useCallback(async (conversationIdOverride?: string) => {
     const conversationId = conversationIdOverride ?? activeConversationId;
-    if (!conversationId) {
+    if (!conversationId || !steerSupported) {
       setSteerItems([]);
       return;
     }
@@ -4848,18 +4852,24 @@ export function ChatApp() {
         message: `${queuedCount}件のステアが待機中`,
       } : null);
     } catch (steerError) {
-      setModelSteerStatus({
-        kind: "error",
-        message: steerError instanceof Error ? steerError.message : "Steer refresh failed",
-      });
+      if (isDefaultspackContractOperationUnknownError(steerError)) {
+        setSteerSupported(false);
+        setSteerItems([]);
+        setModelSteerStatus(null);
+      } else {
+        setModelSteerStatus({
+          kind: "error",
+          message: steerError instanceof Error ? steerError.message : "Steer refresh failed",
+        });
+      }
     } finally {
       setModelSteerBusy(false);
     }
-  }, [activeConversationId]);
+  }, [activeConversationId, steerSupported]);
 
   const queueConversationSteer = useCallback(async (promptOverride?: string) => {
     const prompt = String(promptOverride ?? input).trim();
-    if (!activeConversationId || !prompt) return;
+    if (!activeConversationId || !prompt || !steerSupported) return;
     setModelSteerBusy(true);
     try {
       await api.conversationSteer({
@@ -4882,14 +4892,20 @@ export function ChatApp() {
       });
       await refreshSteerQueue();
     } catch (steerError) {
-      setModelSteerStatus({
-        kind: "error",
-        message: steerError instanceof Error ? steerError.message : "Steer queue failed",
-      });
+      if (isDefaultspackContractOperationUnknownError(steerError)) {
+        setSteerSupported(false);
+        setSteerItems([]);
+        setModelSteerStatus(null);
+      } else {
+        setModelSteerStatus({
+          kind: "error",
+          message: steerError instanceof Error ? steerError.message : "Steer queue failed",
+        });
+      }
     } finally {
       setModelSteerBusy(false);
     }
-  }, [activeConversationId, input, isConversationPending, isGenerating, refreshSteerQueue, setInput]);
+  }, [activeConversationId, input, isConversationPending, isGenerating, refreshSteerQueue, setInput, steerSupported]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -7042,6 +7058,7 @@ export function ChatApp() {
       steerBusy={modelSteerBusy}
       steerQueuedCount={steerItems.filter((item) => item.status === "queued").length}
       steerPreviewItems={isCentered ? [] : activeComposerSteerItems(steerItems, isGenerating || isConversationPending)}
+      steerEnabled={steerSupported}
       suppressPopovers={Boolean(visibleBrowserApproval || authorityApproval || runtimeApproval || staleRuntimeApprovalNotice)}
       onOpenModelManager={() => openSettingsSection("models")}
       onOpenToolSettings={() => openSettingsSection("tools")}

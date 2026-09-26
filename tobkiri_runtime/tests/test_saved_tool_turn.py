@@ -25,11 +25,17 @@ class ToolTurn:
         self.store = store or ConversationStore("defaults", user_data_root=path)
         if store is None:
             self.store.create({"id": "conversation-1", "model_reference": "model-1"}, expected_revision=0)
+        selection = selection or {"mode": "auto"}
         self.request = {
             "turn_id": turn, "conversation_id": "conversation-1",
             "conversation_revision": self.store.get("conversation-1")["conversation_revision"],
-            "content": "Read the selected information", "tool_selection": selection or {"mode": "auto"},
+            "content": "Read the selected information", "tool_selection": selection,
         }
+        # An auto offer is not a routing requirement; only an explicit manual
+        # selection or must_use keeps tool_calling as a hard route requirement.
+        self.required = bool(
+            selection.get("must_use") or selection.get("mode") == "manual"
+        )
         self.outer = SimpleNamespace(context=SimpleNamespace(request_id=turn), payload={"request": self.request})
         self.calls = []
         self.ai_calls = 0
@@ -69,11 +75,11 @@ class ToolTurn:
                 "name": "file_read", "description": "Read", "parameters": {"type": "object"},
             }}], "definitions": {"file_read": "b" * 64}}
         elif target == READINESS:
-            assert payload["tool_calling"] is True
+            assert payload.get("tool_calling", False) is self.required
             value = {"ready": True, "model_profile_id": "model-1"}
         elif target == AI:
             assert payload["tools"][0]["function"]["name"] == "file_read"
-            assert payload["requirements"]["tool_calling"] is True
+            assert payload["requirements"].get("tool_calling", False) is self.required
             self.ai_calls += 1
             value = {"status": "ok", "output": "Done", "tool_intents": []}
             if self.ai_calls <= self.rounds:

@@ -185,6 +185,27 @@ def execute_saved_turn(
                     "assistant_persistence": "not_written",
                 },
             )
+        terminal_code = _terminal_rejection(error)
+        if terminal_code is not None:
+            # The supervisor only marks rejections that provably precede any
+            # guest-visible effect (preflight denial or deterministic domain
+            # allocation refusal), so no outcome receipt can exist; settle
+            # failed with the diagnostic code instead of wedging on waiting.
+            return _settle(
+                store,
+                record,
+                "failed",
+                {
+                    "phase": "saved_execution_failed",
+                    "error_code": terminal_code,
+                    "error": {
+                        "code": terminal_code,
+                        "message": "Saved conversation did not complete.",
+                    },
+                    "user_persistence": "not_written",
+                    "assistant_persistence": "not_written",
+                },
+            )
         # Dispatch may have committed effects before raising or losing its
         # reply. Never retry it or expose provider/parser exception contents.
         return _settle(
@@ -409,6 +430,27 @@ def _deepthink_rejection(
                     persistence if persistence in {"not_written", "saved"} else "not_written"
                 )
             return None
+        current = current.__cause__ or current.__context__
+    return None
+
+
+def _terminal_rejection(error: BaseException) -> str | None:
+    """Return the surfaced code when dispatch provably never reached the guest.
+
+    Only Host-side rejections that precede any guest-visible effect carry a
+    ``saved_terminal_error_code`` — the saved preflight denial and a
+    deterministic domain-allocation refusal — so no outcome receipt can ever
+    exist and the durable record may settle ``failed``.  Unmarked failures
+    stay uncertain and keep the fail-closed ``waiting`` state.
+    """
+
+    current: BaseException | None = error
+    for _ in range(8):
+        if current is None:
+            return None
+        code = getattr(current, "saved_terminal_error_code", None)
+        if type(code) is str and 0 < len(code) <= 64:
+            return code
         current = current.__cause__ or current.__context__
     return None
 

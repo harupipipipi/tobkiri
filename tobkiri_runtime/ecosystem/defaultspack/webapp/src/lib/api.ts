@@ -3224,6 +3224,20 @@ export function explainDefaultspackApiError(
   ].filter(Boolean).join("\n");
 }
 
+/**
+ * Whether a failure means the Host has no registered contract route for the
+ * requested operation (CONTRACT_OPERATION_UNKNOWN).  UI paths gated on such an
+ * operation use this to disable themselves instead of surfacing the 404.
+ */
+export function isDefaultspackContractOperationUnknownError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = (error as Error & { code?: unknown }).code;
+  if (typeof code === "string") {
+    return code === "CONTRACT_OPERATION_UNKNOWN";
+  }
+  return /unknown (?:frontend )?contract operation/i.test(error.message);
+}
+
 type DefaultspackApiPath = string | DefaultspackContractRoute;
 
 /** Process reachability is distinct from verified Profile execution readiness. */
@@ -3273,11 +3287,16 @@ async function request<T>(
   const hostEnvelope = objectRecord(payload);
   if (hostEnvelope && typeof hostEnvelope.success === "boolean") {
     if (!response.ok || hostEnvelope.success !== true || hostEnvelope.error != null) {
-      throw new Error(explainDefaultspackApiError(
+      const failure = new Error(explainDefaultspackApiError(
         response.status,
         typeof hostEnvelope.error === "string" ? { message: hostEnvelope.error } : undefined,
         response.statusText,
       ));
+      const hostErrorCode = objectRecord(hostEnvelope.data)?.code;
+      if (typeof hostErrorCode === "string" && hostErrorCode) {
+        (failure as Error & { code?: string }).code = hostErrorCode;
+      }
+      throw failure;
     }
     if (!("data" in hostEnvelope)) {
       throw invalidApiContractResponse(path, "missing Host data envelope");
@@ -3294,11 +3313,15 @@ async function request<T>(
   }
 
   if (isApiErrorEnvelope(payload)) {
-    throw new Error(explainDefaultspackApiError(
+    const failure = new Error(explainDefaultspackApiError(
       response.status,
       payload.error,
       response.statusText,
     ));
+    if (payload.error.code) {
+      (failure as Error & { code?: string }).code = payload.error.code;
+    }
+    throw failure;
   }
   if (!isApiOkEnvelope(payload)) {
     if (!response.ok) {

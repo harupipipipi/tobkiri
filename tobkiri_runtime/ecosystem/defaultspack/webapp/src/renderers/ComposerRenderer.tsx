@@ -2645,6 +2645,7 @@ export function ComposerRenderer({
   steerBusy = false,
   steerQueuedCount = 0,
   steerPreviewItems = [],
+  steerEnabled = true,
   suppressPopovers = false,
   onOpenModelManager,
   onOpenToolSettings,
@@ -2838,7 +2839,7 @@ export function ComposerRenderer({
   const activeToolGroup = toolGroups.find((group) => group.id === openToolGroup) ?? toolGroups[0] ?? null;
   const showToolGroups = toolItems.length > 4;
   const isEscapedSlash = input.startsWith("//");
-  const isSteerMode = isGenerating && !isNewConversation;
+  const isSteerMode = steerEnabled && isGenerating && !isNewConversation;
   const effectiveComposerPlaceholder = composerPlaceholderCopy({
     isSteerMode,
     mode,
@@ -3467,7 +3468,7 @@ export function ComposerRenderer({
       event.preventDefault();
       if (isGenerating) {
         const prompt = input.trim();
-        if (prompt && !steerBusy) {
+        if (prompt && !steerBusy && steerEnabled) {
           onSteerSubmit?.(prompt);
         } else if (!prompt) {
           onStopGenerating?.();
@@ -3485,7 +3486,7 @@ export function ComposerRenderer({
       submissionLockRef.current = { signature, submittedAt: now };
       onSubmit(event);
     },
-    [attachedFiles, input, isGenerating, needsApiKey, onStopGenerating, onSteerSubmit, onSubmit, pendingMentionAttachmentPaths.length, selectedProfile, steerBusy],
+    [attachedFiles, input, isGenerating, needsApiKey, onStopGenerating, onSteerSubmit, onSubmit, pendingMentionAttachmentPaths.length, selectedProfile, steerBusy, steerEnabled],
   );
 
   const handleSendButtonClick = useCallback(
@@ -4177,16 +4178,20 @@ export function ComposerRenderer({
           onClick={handleSendButtonClick}
           tabIndex={chromeButtonTabIndex}
           aria-label={isGenerating
-            ? (input.trim() ? "追加指示を送る" : "生成を停止")
+            ? (input.trim()
+              ? (steerEnabled ? "追加指示を送る" : "応答の完了を待っています")
+              : "生成を停止")
             : pendingMentionAttachmentPaths.length > 0
               ? "ファイルを読み込み中"
               : "メッセージを送信"}
-          disabled={!isGenerating && (
-            pendingMentionAttachmentPaths.length > 0
-            || (!input.trim() && attachedFiles.length === 0)
-          )}
+          disabled={isGenerating
+            ? Boolean(input.trim()) && !steerEnabled
+            : pendingMentionAttachmentPaths.length > 0
+              || (!input.trim() && attachedFiles.length === 0)}
           title={isGenerating
-            ? (input.trim() ? "追加指示を送る" : "停止")
+            ? (input.trim()
+              ? (steerEnabled ? "追加指示を送る" : "応答の完了後に送信できます")
+              : "停止")
             : pendingMentionAttachmentPaths.length > 0
               ? "ファイルを読み込み中"
               : "送信"}
@@ -4204,7 +4209,7 @@ export function ComposerRenderer({
         >
           {isGenerating && !input.trim() ? (
             <Square size={11} strokeWidth={2.4} fill="currentColor" aria-hidden="true" />
-          ) : isGenerating ? (
+          ) : isGenerating && steerEnabled ? (
             <CornerDownRight size={15} strokeWidth={2.4} />
           ) : (
             <SendButtonIcon size={isNewConversation ? 18 : 16} />

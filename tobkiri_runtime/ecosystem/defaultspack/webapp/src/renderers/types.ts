@@ -224,6 +224,8 @@ export type ComposerRendererProps = {
   steerBusy?: boolean;
   steerQueuedCount?: number;
   steerPreviewItems?: ConversationSteerItem[];
+  /** False when the active contract map registers no steer operation. */
+  steerEnabled?: boolean;
   suppressPopovers?: boolean;
   onOpenModelManager?: () => void;
   onOpenToolSettings?: () => void;
