@@ -1080,7 +1080,7 @@ export function ToolPreviewPanel({
     if (!isVisible) setForegroundPreview(null);
   }, [isVisible]);
 
-  if (!isVisible || displayItems.length === 0) return null;
+  if (!isVisible || pickerItems.length === 0) return null;
 
   const openTabItems = openPreviewIds
     .map((id) => displayItems.find((item) => item.id === id))

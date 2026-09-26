@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   artifactDialogItemFromToolPreview,
@@ -10,9 +12,27 @@ import {
   isCanvasPreviewItemRenderable,
   MEMO_PREVIEW_ID,
   selectCanvasTab,
+  ToolPreviewPanel,
   WEB_PREVIEW_IFRAME_SANDBOX,
   type ToolPreviewItem,
 } from "./ToolPreview";
+
+test("empty Canvas exposes memo creation before any artifact exists", () => {
+  const props = {
+    previews: [],
+    isVisible: true,
+    onClose: () => undefined,
+    mode: "manual" as const,
+    onModeChange: () => undefined,
+    memo: "",
+  };
+  const html = renderToStaticMarkup(createElement(ToolPreviewPanel, {
+    ...props,
+    onMemoChange: () => undefined,
+  }));
+  assert.match(html, /aria-label="Canvas タブを追加"/);
+  assert.equal(renderToStaticMarkup(createElement(ToolPreviewPanel, props)), "");
+});
 
 const previews: ToolPreviewItem[] = [
   {
@@ -29,7 +49,7 @@ const previews: ToolPreviewItem[] = [
   },
 ];
 
-test("canvas stays hidden until a preview or memo content exists", () => {
+test("canvas has content only after a preview or memo content exists", () => {
   assert.equal(hasCanvasItems([], ""), false);
   assert.equal(hasCanvasItems([], "   "), false);
   assert.equal(hasCanvasItems(previews, ""), true);

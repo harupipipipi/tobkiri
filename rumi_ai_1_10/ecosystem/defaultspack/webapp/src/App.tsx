@@ -2651,8 +2651,9 @@ function ChatApp() {
       }),
     ].sort((a, b) => b.timestamp - a.timestamp);
   }, [messageToolPreviews, previews]);
-  const canShowCanvas = hasCanvasItems(canvasPreviews, canvasMemo) || liveBrowserState.state_revision >= 0;
-  const effectiveShowPreview = showPreview && canShowCanvas;
+  const hasCanvasContent = hasCanvasItems(canvasPreviews, canvasMemo) || liveBrowserState.state_revision >= 0;
+  // Local memo creation is available before the first tool artifact exists.
+  const effectiveShowPreview = showPreview;
   const effectiveCommandCatalog = useMemo(() => (
     mergeRegisteredSlashCommands(
       commandCatalog,
@@ -5584,10 +5585,10 @@ function ChatApp() {
               <Renderers.chatHeader
                 title={activeWorkspaceTab ? workspaceTabDisplayTitle(activeWorkspaceTab) : activeChatTitle}
                 showPreview={effectiveShowPreview}
-                canShowPreview={showRegion("activity_preview") && canShowCanvas}
+                canShowPreview={showRegion("activity_preview")}
                 canOpenSettings={showRegion("settings_modal")}
                 onTogglePreview={() => {
-                  if (canShowCanvas) setShowPreview((value) => !value);
+                  setShowPreview((value) => !value);
                 }}
                 onOpenSettings={() => setIsSettingsOpen(true)}
               />
@@ -5735,7 +5736,7 @@ function ChatApp() {
 
             {showRegion("composer") && isChatWorkspace && !isNewConversation && !isCalendarMode && !isKanbanMode && (
               <div className="relative">
-                {showRegion("activity_preview") && !effectiveShowPreview && canShowCanvas && (
+                {showRegion("activity_preview") && !effectiveShowPreview && hasCanvasContent && (
                   <CanvasPeek
                     previews={canvasPreviews}
                     memo={canvasMemo}
