@@ -229,7 +229,7 @@ def test_requested_legacy_profile_does_not_expand_connected_tools(
     monkeypatch.setattr(
         capability_catalog,
         "effective_pack_ids",
-        lambda: frozenset({"defaultspack", "rumi_operations_company_pack"}),
+        lambda: frozenset({"defaultspack", "rumi_operations_team_pack"}),
     )
     run_request_module._profile_snapshot.cache_clear()
     stale_runtime_profile = {

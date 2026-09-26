@@ -1051,7 +1051,7 @@ _LEGACY_DEFAULTSPACK_EFFECTIVE_PACK_IDS = frozenset(
         "rumi_default_tools_pack",
         "rumi_desktop_host_service_pack",
         "rumi_local_agent_pack",
-        "rumi_operations_company_pack",
+        "rumi_operations_team_pack",
     }
 )
 
@@ -1876,14 +1876,14 @@ def _patch_imported_facade_globals(
 
 def _install_company_owner_contract_test_double(tmp_path, monkeypatch):
     """Bind legacy Company routes to the canonical profile-scoped owner."""
-    from ecosystem.rumi_company_state_store_pack.runtime.store import (
-        CompanyStateStore,
+    from ecosystem.rumi_team_state_store_pack.runtime.store import (
+        TeamStateStore,
         _arguments,
     )
     from domain.company import contract_facade
     from domain.tool_policy.internal_context import mark_tool_server_approval_context
 
-    owner = CompanyStateStore("default", root=tmp_path)
+    owner = TeamStateStore("default", root=tmp_path)
     receipts = set()
 
     def invoke(contract_id, operation, payload):
@@ -1900,7 +1900,7 @@ def _install_company_owner_contract_test_double(tmp_path, monkeypatch):
             if operation == "list":
                 return owner.snapshot()
             if operation == "get":
-                return owner.get(str(payload.get("company_id") or ""))
+                return owner.get(str(payload.get("team_id") or ""))
             raise AssertionError(f"unexpected company resource call: {operation}")
         if contract_id == contract_facade.ACTION:
             receipt = str(payload.get("authority_receipt") or "")

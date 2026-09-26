@@ -114,7 +114,7 @@
       "type": "string",
       "enum": [
         "defaultspack",
-        "rumi_operations_company_pack",
+        "rumi_operations_team_pack",
         "none"
       ]
     }

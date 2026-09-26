@@ -4,7 +4,7 @@ This document uses `team workspace` as the user-facing name for the long-running
 coordination surface built on top of defaultspack primitives. Internal ids,
 routes, and pack paths may still use `company` for compatibility. The
 product-specific Operations Company profile lives in
-`ecosystem/rumi_operations_company_pack/`; defaultspack owns the generic
+`ecosystem/rumi_operations_team_pack/`; defaultspack owns the generic
 contracts it uses: chat storage, agent runtime, scheduler, memory, compact
 context, tool policy, approval, audit, and workspace-scoped coding.
 
@@ -20,7 +20,7 @@ model-independent defaultspack infrastructure. They own durable coordination
 state, routing, execution handoff, scheduling, approval, audit, and workspace
 policy. They must not be described as a MiMo-only company or coding runtime.
 
-`ecosystem/rumi_operations_company_pack/` owns the optional MiMo Coding
+`ecosystem/rumi_operations_team_pack/` owns the optional MiMo Coding
 Company profile and harness. Concrete model/provider names, including MiMo
 model aliases and OpenCode Zen integrations, belong there or in provider
 configuration. Compatibility modules, ids, and routes may still use `company`;

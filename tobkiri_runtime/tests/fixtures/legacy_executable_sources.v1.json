@@ -224,6 +224,11 @@
       "pack_id": "rumi_command_protocol_pack",
       "entrypoint_id": "high-risk-manage",
       "operation_id": "high_risk_command.manage"
+    },
+    {
+      "pack_id": "rumi_team_coordinator_pack",
+      "entrypoint_id": "company-supervisor-job-adapter",
+      "operation_id": "rumi_team_coordinator_pack.team-supervisor-job-adapter"
     }
   ],
   "function_id_overrides": [
@@ -231,6 +236,16 @@
       "pack_id": "rumi_git_write_pack",
       "entrypoint_id": "git-write",
       "function_id": "rumi_git_write_pack.git-commit.service"
+    },
+    {
+      "pack_id": "rumi_team_coordinator_pack",
+      "entrypoint_id": "team-coordinate-control",
+      "function_id": "rumi_team_coordinator_pack.team.coordinate"
+    },
+    {
+      "pack_id": "rumi_team_coordinator_pack",
+      "entrypoint_id": "team-runtime-resource",
+      "function_id": "rumi_team_coordinator_pack.team.runtime"
     }
   ],
   "packs": {

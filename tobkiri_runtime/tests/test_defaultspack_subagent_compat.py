@@ -875,7 +875,7 @@ def test_mimo_monitor_ignores_active_subagent_child_running_durable_draft(monkey
         },
     )
 
-    from ecosystem.rumi_operations_company_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
+    from ecosystem.rumi_operations_team_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
 
     runtime = MimoCodingCompanyRuntime()
     monkeypatch.setattr(runtime, "_conversation_age_seconds", lambda conversation: 1.0)
@@ -1274,7 +1274,7 @@ def test_mimo_monitor_repairs_stale_running_durable_subagent_draft(monkeypatch, 
         },
     )
 
-    from ecosystem.rumi_operations_company_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
+    from ecosystem.rumi_operations_team_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
 
     runtime = MimoCodingCompanyRuntime()
     monkeypatch.setattr(runtime, "_conversation_age_seconds", lambda conversation: 999.0)
@@ -1323,7 +1323,7 @@ def test_mimo_monitor_repairs_stale_subagent_child_missing_from_parent_index(mon
         },
     )
 
-    from ecosystem.rumi_operations_company_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
+    from ecosystem.rumi_operations_team_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
 
     runtime = MimoCodingCompanyRuntime()
     monkeypatch.setattr(runtime, "_conversation_age_seconds", lambda conversation: 999.0)
@@ -1374,7 +1374,7 @@ def test_mimo_monitor_repairs_stale_subagent_child_under_company_loop(monkeypatc
         },
     )
 
-    from ecosystem.rumi_operations_company_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
+    from ecosystem.rumi_operations_team_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
 
     runtime = MimoCodingCompanyRuntime()
     monkeypatch.setattr(runtime, "_conversation_age_seconds", lambda conversation: 999.0)
@@ -1460,7 +1460,7 @@ def test_mimo_monitor_keeps_failed_subagent_child_unanswered(monkeypatch, tmp_pa
         ]
     )
 
-    from ecosystem.rumi_operations_company_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
+    from ecosystem.rumi_operations_team_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
 
     runtime = MimoCodingCompanyRuntime()
     monkeypatch.setattr(runtime, "_conversation_age_seconds", lambda conversation: 999.0)

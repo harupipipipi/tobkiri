@@ -1,0 +1,30 @@
+handoff_matrix:
+  pack_boundary_rule: owner_surface_wins_then_explicit_handoff
+  items:
+  - surface: tool_execution
+    resolution: handoff_to_rumi_default_tools_pack
+    requires_human_review: true
+  - surface: agent_service_choreography
+    resolution: handoff_to_rumi_operations_team_pack
+    requires_human_review: true
+  - surface: browser_action
+    resolution: handoff_to_rumi_default_tools_pack
+    requires_human_review: true
+  - surface: desktop_action
+    resolution: handoff_to_rumi_default_tools_pack
+    requires_human_review: true
+  - surface: schedule_execution
+    resolution: handoff_to_defaultspack
+    requires_human_review: true
+  - surface: file_persistence
+    resolution: handoff_to_defaultspack
+    requires_human_review: true
+  - surface: metrics_collection
+    resolution: handoff_to_defaultspack
+    requires_human_review: true
+  - surface: subagent_pr_management
+    resolution: handoff_to_rumi_operations_team_pack
+    requires_human_review: true
+  - surface: model_routing
+    resolution: handoff_to_rumi_model_catalog_pack
+    requires_human_review: true

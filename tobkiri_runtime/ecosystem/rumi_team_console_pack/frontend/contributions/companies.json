@@ -1,0 +1,30 @@
+{
+  "version": "rumi.ui.contribution.v1",
+  "id": "rumi.companies.route",
+  "kind": "route",
+  "mode": "isolated",
+  "label": "Companies",
+  "description": "Inspect profile-scoped Company state and coordinator status.",
+  "priority": 100,
+  "route": "/companies",
+  "view": {
+    "type": "isolated_application",
+    "mutations": "approved_action_only"
+  },
+  "isolated": {
+    "path": "/isolated/packs/rumi_team_console_pack/index.html",
+    "rpc_contracts": [
+      "rumi.resource.team.v1",
+      "rumi.resource.team.runtime.v1"
+    ]
+  },
+  "localization": {
+    "en": "Companies",
+    "ja": "会社"
+  },
+  "accessibility": {
+    "name": "Companies",
+    "keyboard": true,
+    "live": "polite"
+  }
+}

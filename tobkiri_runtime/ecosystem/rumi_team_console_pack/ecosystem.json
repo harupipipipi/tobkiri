@@ -1,0 +1,71 @@
+{
+  "connectivity": {
+    "provides": [],
+    "requires": [
+      "rumi.resource.team.runtime.v1",
+      "rumi.resource.team.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_team_coordinator_pack": ">=1.0.0,<2.0.0",
+    "rumi_team_state_store_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Removable Company content and isolated read-only UI projection.",
+  "display_name": "Rumi Company Surface",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:bafc56a725940484d8e89689a26ce032cb67d304ba452116b46e0a541960dfcc",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:7f9207c5d9d0c63281775e4675bed6a89df8fbc5bb61c20b9f050100c6c6a8f2"
+    },
+    "executable_code": true,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:7f9207c5d9d0c63281775e4675bed6a89df8fbc5bb61c20b9f050100c6c6a8f2"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "isolated_ui": true,
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "companies_route",
+      "companies_content"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_team_console_pack",
+  "pack_identity": "rumi:ecosystem/rumi_team_console_pack",
+  "provenance": {
+    "build_identity": "rumi_team_console_pack:1.0.0",
+    "content_hash": "sha256:c4ef1edcf7162472c2c7a124dc0a412f6d108f69098079f4e25ec1e5000aa2ad",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "team.runtime.observe",
+    "team.state.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [
+    "frontend/contributions/companies.json"
+  ],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

@@ -44,4 +44,4 @@ Not eligible by default. Promotion requires the blockers below to be cleared wit
 
 ## Handoff Model
 
-The pack uses defaultspack as the base and hands adjacent runtime actions to explicit owner packs. Runtime tooling stays in `defaultspack`, and approval-aware downstream business execution routes through `rumi_operations_company_pack`.
+The pack uses defaultspack as the base and hands adjacent runtime actions to explicit owner packs. Runtime tooling stays in `defaultspack`, and approval-aware downstream business execution routes through `rumi_operations_team_pack`.

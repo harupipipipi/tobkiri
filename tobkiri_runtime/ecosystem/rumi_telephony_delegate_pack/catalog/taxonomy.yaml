@@ -13,8 +13,8 @@ taxonomy:
   - escalation_record
   handoff_targets:
   - defaultspack
-  - rumi_meeting_intelligence_pack
-  - rumi_operations_company_pack
+  - rumi_local_agent_pack
+  - rumi_operations_team_pack
   forbidden_ownership:
   - actual dialing
   - ASR/TTS runtime

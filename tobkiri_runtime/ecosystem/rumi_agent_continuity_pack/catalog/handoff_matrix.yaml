@@ -3,7 +3,7 @@ handoff_matrix:
   pack_boundary_rule: owner_surface_wins_then_explicit_handoff
   items:
   - surface: run_board_events_checkpoints
-    resolution: handoff_to_rumi_agent_workroom_pack
+    resolution: handoff_to_rumi_run_lifecycle_pack
   - surface: memory_storage_recall
     resolution: handoff_to_rumi_memory_knowledge_pack
   - surface: metrics_telemetry_ledgers

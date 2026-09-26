@@ -1,0 +1,222 @@
+profile_id: defaultspack.mimo_coding_company
+version: rumi.profile.v1
+kind: runtime_profile
+locale: ja
+
+display_name:
+  ja: MiMo コーディング会社
+  en: MiMo Coding Company
+
+description:
+  ja: Xiaomi MiMo を主軸に、自己改善・長時間実行・QA swarm・不足 tool/skill の補完まで回す company 型 coding profile。
+  en: MiMo-first company-style coding profile for self-improvement, long-running repo work, QA swarms, and building missing tools or skills instead of stopping.
+
+default_graph: defaultspack.operations_company
+default_flow: agent_chat
+
+surfaces:
+  preferred: desktop
+  enabled: [desktop, cli]
+
+permissions:
+  can_create_profile: true
+  can_update_profile: true
+  can_delete_profile: false
+  can_enable_node: true
+  can_disable_node: true
+  can_enable_unapproved_nodes: false
+  can_install_packs: false
+  can_edit_bindings: false
+  require_audit: false
+
+enabled_nodes:
+  - rumi.start
+  - defaultspack.agent
+  - defaultspack.ai_client
+  - defaultspack.tool
+  - defaultspack.memory
+  - defaultspack.prompt
+  - defaultspack.frontend
+  - defaultspack.cli_surface
+
+disabled_nodes: []
+
+node_settings:
+  defaultspack.ai_client:
+    default_model: xiaomi-token-plan-sgp/mimo-v2.5-pro
+    model_self_selection:
+      enabled: true
+      allowlist:
+        - xiaomi-token-plan-sgp/mimo-v2.5-pro
+        - xiaomi-token-plan-sgp/mimo-v2.5
+        - xiaomi-token-plan-sgp/mimo-v2-pro
+        - xiaomi-token-plan-sgp/mimo-v2-omni
+        - xiaomi-token-plan-sgp/mimo-v2-flash
+        - gitlawb-opengateway/mimo-v2.5-pro
+        - gitlawb-opengateway/mimo-v2.5
+        - gitlawb-opengateway/mimo-v2-pro
+        - gitlawb-opengateway/mimo-v2-omni
+        - gitlawb-opengateway/mimo-v2-flash
+        - groq/openai/gpt-oss-120b
+        - cerebras/gpt-oss-120b
+        - stub/default
+      default_reasoning_effort: high
+      max_switches_per_day: 48
+      require_audit_reason: false
+    utility_models:
+      subagent_default: xiaomi-token-plan-sgp/mimo-v2.5-pro
+      model_router: xiaomi-token-plan-sgp/mimo-v2.5-pro
+      vision_ocr: xiaomi-token-plan-sgp/mimo-v2-omni
+      tool_selector: xiaomi-token-plan-sgp/mimo-v2-flash
+      prompt_compactor: xiaomi-token-plan-sgp/mimo-v2-flash
+      context_summarizer: xiaomi-token-plan-sgp/mimo-v2-flash
+      fast_reply: xiaomi-token-plan-sgp/mimo-v2-flash
+  defaultspack.tool:
+    shared_with_profiles:
+      - defaultspack.local_agent
+      - defaultspack.coding
+      - defaultspack.operations_company
+      - defaultspack.mimo_coding_company
+    browser_profile_id: defaultspack-shared
+    allowed_actions:
+      - rumi_api
+      - todo
+      - subagent
+      - web_search
+      - reddit_search
+      - file_reader
+      - browser_use
+      - browser_computer
+      - browser_companion
+      - computer_use
+      - desktop_list
+      - desktop_create
+      - desktop_frame
+      - desktop_input
+      - coding_file_read
+      - coding_file_search
+      - coding_file_list
+      - coding_file_write
+      - coding_file_create
+      - coding_file_patch
+      - coding_file_restore
+      - coding_git_status
+      - coding_git_diff
+      - coding_git_commit
+      - coding_git_push
+      - coding_github_pr_create
+      - coding_terminal_exec
+      - sandbox_exec
+      - python_exec
+      - node_exec
+      - knowledge_create
+      - knowledge_list
+      - knowledge_get
+      - knowledge_search
+      - knowledge_update
+  defaultspack.memory:
+    mode: long_running
+    conversation_strategy: single_agent_thread
+    compact_context: true
+    compact_after_messages: 40
+    protect_last_messages: 16
+    summary_target_ratio: 0.25
+    session_search: true
+    store:
+      decisions: true
+      incidents: true
+      handoffs: true
+  defaultspack.agent:
+    organization_profile: mimo_coding_company
+    non_stop: true
+    max_concurrent_children: 6
+    max_spawn_depth: 2
+    client_facing_role: client_manager
+
+policy:
+  non_stop: true
+  can_run_24_7: true
+  scheduled_tasks_enabled: true
+  monitor_tasks_enabled: true
+  normal_status_silent: true
+  exception_delivery_required: true
+  max_tool_calls: 18
+  allow_shell: true
+  allow_file_write: true
+  write_actions_require_approval: false
+  delete_actions_require_approval: true
+  terminal_actions_require_approval: false
+  external_send_requires_approval: true
+  settings_mutation_requires_approval: false
+  browser_cache_scope: shared_defaultspack
+  tool_allowlist:
+    - rumi_api
+    - todo
+    - subagent
+    - web_search
+    - reddit_search
+    - file_reader
+    - browser_use
+    - browser_computer
+    - browser_companion
+    - computer_use
+    - desktop_list
+    - desktop_create
+    - desktop_frame
+    - desktop_input
+    - coding_file_read
+    - coding_file_search
+    - coding_file_list
+    - coding_file_write
+    - coding_file_create
+    - coding_file_patch
+    - coding_file_restore
+    - coding_git_status
+    - coding_git_diff
+    - coding_git_commit
+    - coding_git_push
+    - coding_github_pr_create
+    - coding_terminal_exec
+    - sandbox_exec
+    - python_exec
+    - node_exec
+    - knowledge_create
+    - knowledge_list
+    - knowledge_get
+    - knowledge_search
+    - knowledge_update
+  tool_denylist: []
+  model_allowlist:
+    - xiaomi-token-plan-sgp/mimo-v2.5-pro
+    - xiaomi-token-plan-sgp/mimo-v2.5
+    - xiaomi-token-plan-sgp/mimo-v2-pro
+    - xiaomi-token-plan-sgp/mimo-v2-omni
+    - xiaomi-token-plan-sgp/mimo-v2-flash
+    - gitlawb-opengateway/mimo-v2.5-pro
+    - gitlawb-opengateway/mimo-v2.5
+    - gitlawb-opengateway/mimo-v2-pro
+    - gitlawb-opengateway/mimo-v2-omni
+    - gitlawb-opengateway/mimo-v2-flash
+    - groq/openai/gpt-oss-120b
+    - cerebras/gpt-oss-120b
+    - stub/default
+
+metadata:
+  pack_id: rumi_operations_team_pack
+  category: coding
+  agent_service_profile: true
+  role_model: company
+  client_manager_agent_id: client_manager
+  channel_model: slack_like_mentions
+  chat_contract:
+    one_agent_one_conversation: true
+    default_conversation_kind: mimo_coding_company
+    compression: adaptive
+  organization_roles:
+    - client_manager
+    - project_manager
+    - coding_engineer
+    - reviewer
+    - browser_qa
+    - toolsmith
+    - scheduler

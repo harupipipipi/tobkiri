@@ -21,7 +21,7 @@ def _isolate_provider_capability_catalog(monkeypatch):
         lambda _model: {"supports_tool_calling": True},
     )
     monkeypatch.setattr(
-        "ecosystem.rumi_operations_company_pack.domain.agent.mimo_coding_company.get_all_known_models",
+        "ecosystem.rumi_operations_team_pack.domain.agent.mimo_coding_company.get_all_known_models",
         lambda provider_id=None: [],
         raising=False,
     )
@@ -622,7 +622,7 @@ def test_company_channel_get_requires_selected_company_record(tmp_path, monkeypa
 
 
 def test_operations_company_runtime_syncs_default_company_record(tmp_path, monkeypatch):
-    from ecosystem.rumi_operations_company_pack.domain.agent.operations_company import OperationsCompanyRuntime
+    from ecosystem.rumi_operations_team_pack.domain.agent.operations_company import OperationsCompanyRuntime
     from domain.agent.scheduler import Scheduler
     from domain.chat.store import ChatStore
 
@@ -654,7 +654,7 @@ def test_operations_company_runtime_syncs_default_company_record(tmp_path, monke
 
 
 def test_mimo_coding_company_runtime_syncs_default_company_record(tmp_path, monkeypatch):
-    from ecosystem.rumi_operations_company_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
+    from ecosystem.rumi_operations_team_pack.domain.agent.mimo_coding_company import MimoCodingCompanyRuntime
     from domain.agent.scheduler import Scheduler
     from domain.chat.store import ChatStore
 

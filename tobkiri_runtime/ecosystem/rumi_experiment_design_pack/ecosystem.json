@@ -110,7 +110,7 @@
         "reason": "Provide runtime tooling for analytics queries, telemetry-adjacent work, rollout preparation, feature-flag handoff packets, and model-benchmark handoffs outside this pack."
       },
       {
-        "pack_id": "rumi_operations_company_pack",
+        "pack_id": "rumi_operations_team_pack",
         "reason": "Own approval-aware downstream business execution when a design packet is ready for operating review."
       }
     ],

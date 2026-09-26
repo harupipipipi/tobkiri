@@ -16,11 +16,11 @@ from domain.safety import approval
 from domain.tool_policy.internal_context import tool_server_approval_context_is_internal
 
 AUTHORITY = "rumi.service.host.authorize.v1"
-RESOURCE = "rumi.resource.company.v1"
-ACTION = "rumi.action.company.state.v1"
-STATE_PACK_ID = "rumi_company_state_store_pack"
-COORDINATOR = "rumi.action.company.coordinator.v1"
-COORDINATOR_PACK_ID = "rumi_company_coordinator_pack"
+RESOURCE = "tobkiri.resource.team.v1"
+ACTION = "tobkiri.action.team.state.v1"
+STATE_PACK_ID = "rumi_team_state_store_pack"
+COORDINATOR = "tobkiri.action.team.coordinate.v1"
+COORDINATOR_PACK_ID = "rumi_team_coordinator_pack"
 
 
 class CompanyFacadeError(RuntimeError):
@@ -475,7 +475,7 @@ class CompanyContractFacade:
         if company is None:
             raise CompanyFacadeError("NOT_FOUND", "company not found", 404)
         _reject_subagent_team_write(_legacy_company(company))
-        arguments = {"company_id": company_id, "task_id": task_id}
+        arguments = {"team_id": company_id, "task_id": task_id}
         receipt = _receipt_for(
             self.input,
             self.context,
@@ -483,8 +483,8 @@ class CompanyContractFacade:
             "dispatch_task",
             arguments,
             service_pack_id=COORDINATOR_PACK_ID,
-            authority="company.coordinate",
-            operation="company.coordinator.dispatch_task",
+            authority="team.coordinate",
+            operation="team.coordinate.dispatch_task",
         )
         result = _invoke(
             COORDINATOR,
@@ -511,20 +511,37 @@ class CompanyContractFacade:
                 "Company owner is unavailable",
                 503,
             )
-        exact = {
+        legacy_exact = {
             "expected_revision": int(snapshot.get("revision") or 0),
             **dict(arguments),
         }
-        receipt = _receipt(self.input, self.context, self.profile_id, name, exact)
+        canonical_name = (
+            f"team.{name.removeprefix('company.')}"
+            if name.startswith("company.")
+            else name
+        )
+        exact = _team_arguments(legacy_exact)
+        receipt = _receipt(
+            self.input,
+            self.context,
+            self.profile_id,
+            canonical_name,
+            exact,
+        )
         result = _invoke(
             ACTION,
-            name,
+            canonical_name,
             {**exact, **receipt, "profile_id": self.profile_id},
         )
-        return dict(result) if isinstance(result, Mapping) else {}
+        return _company_result(result) if isinstance(result, Mapping) else {}
 
     def _resource(self, name: str, payload: Mapping[str, Any]) -> Any:
-        return _invoke(RESOURCE, name, {"profile_id": self.profile_id, **dict(payload)})
+        result = _invoke(
+            RESOURCE,
+            name,
+            {"profile_id": self.profile_id, **_team_arguments(payload)},
+        )
+        return _company_result(result)
 
     def _raw_company(self, company_id: str) -> dict[str, Any] | None:
         value = self._resource("get", {"company_id": company_id})
@@ -838,8 +855,8 @@ def _receipt(
     return _receipt_for(
         input_data, context, profile_id, name, arguments,
         service_pack_id=STATE_PACK_ID,
-        authority="company.state.manage",
-        operation=f"company.state.{name}",
+        authority="team.state.manage",
+        operation=f"team.state.{name}",
     )
 
 
@@ -899,6 +916,34 @@ def _receipt_for(
         "caller_pack_id": "defaultspack",
         "caller_function_id": scope["caller_function_id"],
         "session_id": scope["session_id"],
+    }
+
+
+def _team_arguments(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Translate legacy route identity without changing authority semantics."""
+
+    result = dict(value)
+    if "team_id" not in result and "company_id" in result:
+        result["team_id"] = result.pop("company_id")
+    return result
+
+
+def _company_result(value: Any) -> Any:
+    """Project canonical Team keys only at the explicit compatibility edge."""
+
+    if isinstance(value, list):
+        return [_company_result(item) for item in value]
+    if not isinstance(value, Mapping):
+        return value
+    aliases = {
+        "team": "company",
+        "teams": "companies",
+        "team_id": "company_id",
+        "deleted_team_id": "deleted_company_id",
+    }
+    return {
+        aliases.get(str(key), str(key)): _company_result(item)
+        for key, item in value.items()
     }
 
 

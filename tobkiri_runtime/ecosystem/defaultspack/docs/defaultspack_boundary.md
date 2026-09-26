@@ -30,7 +30,7 @@ The default local experience is assembled from defaultspack plus starter packs:
 
 - `rumi_default_tools_pack`: default tool manifests and tool functions.
 - `rumi_local_agent_pack`: local agent prompts, profiles, presets, and examples.
-- `rumi_operations_company_pack`: Operations Company profile, graph, routes, and UI.
+- `rumi_operations_team_pack`: Operations Company profile, graph, routes, and UI.
 - `rumi_reference_ui_pack`: reference sidebar and panel manifests.
 - `rumi_model_catalog_pack`: provider/model catalog manifests and provider UI.
 

@@ -82,7 +82,7 @@ def test_effective_prompt_falls_back_to_defaultspack_prompt_component(tmp_path: 
 def test_effective_prompt_can_resolve_sibling_pack_prompt_from_profile_id(monkeypatch, tmp_path: Path):
     from types import SimpleNamespace
 
-    trusted_packs = {"defaultspack", "rumi_operations_company_pack"}
+    trusted_packs = {"defaultspack", "rumi_operations_team_pack"}
     monkeypatch.setattr(
         "core_runtime.resolved_profile_scope.persisted_resolved_profile",
         lambda: SimpleNamespace(
@@ -102,7 +102,7 @@ def test_effective_prompt_can_resolve_sibling_pack_prompt_from_profile_id(monkey
         tmp_path,
         profile_id="defaultspack.mimo_coding_company",
         prompt_id="mimo_coding_company",
-        base_pack="rumi_operations_company_pack",
+        base_pack="rumi_operations_team_pack",
     )
 
     result = run(
@@ -116,4 +116,4 @@ def test_effective_prompt_can_resolve_sibling_pack_prompt_from_profile_id(monkey
 
     assert "MiMo Coding Company" in result["data"]["content"]
     assert result["data"]["source_type"] == "pack_default"
-    assert result["data"]["source"] == "rumi_operations_company_pack.mimo_coding_company"
+    assert result["data"]["source"] == "rumi_operations_team_pack.mimo_coding_company"

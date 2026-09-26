@@ -12,7 +12,6 @@
     "rumi_agent_continuity_pack",
     "rumi_agent_runtime_service_pack",
     "rumi_agent_state_store_pack",
-    "rumi_agent_workroom_pack",
     "rumi_agentic_qa_pack",
     "rumi_ai_gateway_pack",
     "rumi_ai_modality_pack",
@@ -35,18 +34,14 @@
     "rumi_code_migration_pack",
     "rumi_coding_sandbox_service_pack",
     "rumi_command_protocol_pack",
-    "rumi_company_agent_adapter_pack",
-    "rumi_company_coordinator_pack",
-    "rumi_company_state_store_pack",
-    "rumi_company_surface_pack",
     "rumi_computer_control_pack",
-    "rumi_connector_company_adapter_pack",
     "rumi_connector_gateway_pack",
     "rumi_connector_inbound_broker_pack",
     "rumi_connector_oauth_broker_pack",
     "rumi_connector_outbound_broker_pack",
     "rumi_connector_registry_service_pack",
     "rumi_connector_settings_surface_pack",
+    "rumi_connector_team_adapter_pack",
     "rumi_connector_transport_gateway_pack",
     "rumi_connector_turn_adapter_pack",
     "rumi_context_runtime_pack",
@@ -100,7 +95,7 @@
     "rumi_observability_pack",
     "rumi_office_authoring_pack",
     "rumi_omnichannel_agent_inbox_pack",
-    "rumi_operations_company_pack",
+    "rumi_operations_team_pack",
     "rumi_p2p_connector_pack",
     "rumi_prompt_studio_pack",
     "rumi_provider_adapters_pack",
@@ -108,6 +103,7 @@
     "rumi_qr_pairing_connector_pack",
     "rumi_repository_context_pack",
     "rumi_research_pack",
+    "rumi_run_lifecycle_pack",
     "rumi_runtime_benchmark_pack",
     "rumi_sandbox_runtime_pack",
     "rumi_schedule_store_pack",
@@ -122,6 +118,10 @@
     "rumi_study_coach_pack",
     "rumi_subagent_placement_pack",
     "rumi_subagent_pr_manager_pack",
+    "rumi_team_agent_work_adapter_pack",
+    "rumi_team_console_pack",
+    "rumi_team_coordinator_pack",
+    "rumi_team_state_store_pack",
     "rumi_telephony_delegate_pack",
     "rumi_terminal_session_pack",
     "rumi_tool_approval_bridge_pack",
@@ -1782,56 +1782,6 @@
         "source_format": "rumi.pack.v3.json"
       },
       "version": "1.0.0",
-      "workspace_boundary": "pack_local"
-    },
-    {
-      "approval_policy": "none",
-      "authority": "v4-authoritative",
-      "capabilities": [],
-      "dependencies": {},
-      "description": "Declarative async agent workroom contracts for run state, plans, progress events, checkpoint/resume, intervention, replay, and run-board review.",
-      "display_name": "Rumi Agent Workroom Pack",
-      "execution_boundary": "declarative_only",
-      "kind": "application",
-      "legacy_ids": [
-        "rumi:ecosystem/rumi_agent_workroom_pack",
-        "rumi_agent_workroom_pack"
-      ],
-      "legacy_operations": [],
-      "migration": {
-        "removal_wave": 10,
-        "sunset_at": "2027-12-31"
-      },
-      "network": {
-        "allowed_domains": [],
-        "allowed_ports": []
-      },
-      "pack_id": "rumi_agent_workroom_pack",
-      "provided_contracts": [],
-      "required_contracts": [],
-      "runtime_artifacts": [
-        {
-          "digest": "sha256:cdd1fa81daef7322aead4f002dc41aa9d7c672caad83a0114ebbb199d7b6e35d",
-          "index_role": "asset",
-          "kind": "asset",
-          "path": "asset_index.json"
-        }
-      ],
-      "secrets": [],
-      "source_evidence": [
-        {
-          "digest": "sha256:98d1c4f55d735690547f870aaf54f916510ea3bc8fa3a5a7b575a5b8c75712bf",
-          "path": "ecosystem/rumi_agent_workroom_pack/ecosystem.json",
-          "rule_id": "pack-v4-one-way-migration-input"
-        }
-      ],
-      "source_provenance": {
-        "historical_classification": "legacy-authoritative",
-        "mode": "offline-one-way-import",
-        "owner": "rumi_agent_workroom_pack",
-        "source_format": "ecosystem.json"
-      },
-      "version": "0.1.0",
       "workspace_boundary": "pack_local"
     },
     {
@@ -4106,8 +4056,14 @@
                   "additionalProperties": false,
                   "maxProperties": 1,
                   "properties": {
-                    "query": {"maxLength": 200, "type": "string"},
-                    "section": {"maxLength": 200, "type": "string"}
+                    "query": {
+                      "maxLength": 200,
+                      "type": "string"
+                    },
+                    "section": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
                   },
                   "type": "object"
                 },
@@ -4121,13 +4077,25 @@
                 },
                 "command_ref": {
                   "enum": [
-                    "defaultspack:help", "defaultspack:new", "defaultspack:clear",
-                    "defaultspack:tools", "defaultspack:status", "defaultspack:settings",
-                    "defaultspack:history", "defaultspack:context",
-                    "defaultspack:permissions", "defaultspack:approvals",
-                    "defaultspack:usage", "defaultspack:theme", "defaultspack:keymap",
-                    "defaultspack:plugins", "defaultspack:mcp", "defaultspack:skills",
-                    "defaultspack:hooks", "defaultspack:diff", "defaultspack:files"
+                    "defaultspack:help",
+                    "defaultspack:new",
+                    "defaultspack:clear",
+                    "defaultspack:tools",
+                    "defaultspack:status",
+                    "defaultspack:settings",
+                    "defaultspack:history",
+                    "defaultspack:context",
+                    "defaultspack:permissions",
+                    "defaultspack:approvals",
+                    "defaultspack:usage",
+                    "defaultspack:theme",
+                    "defaultspack:keymap",
+                    "defaultspack:plugins",
+                    "defaultspack:mcp",
+                    "defaultspack:skills",
+                    "defaultspack:hooks",
+                    "defaultspack:diff",
+                    "defaultspack:files"
                   ]
                 },
                 "conversation_id": {
@@ -4179,32 +4147,52 @@
           "contract_id": "tobkiri.resource.command.state.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
-          "lifecycle": {"deprecated": false, "introduced": "1.0.0"},
-          "operations": [{
-            "entrypoint_id": "command.state.query",
-            "id": "command.state.query",
-            "implementation_digest": "sha256:9171d03ffe8847830e788dc7edfd99c508ead810f71019bd680fd2d5ddd7c5f4"
-          }],
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "command.state.query",
+              "id": "command.state.query",
+              "implementation_digest": "sha256:9171d03ffe8847830e788dc7edfd99c508ead810f71019bd680fd2d5ddd7c5f4"
+            }
+          ],
           "owner": "rumi_command_protocol_pack",
           "provider_id": "rumi_command_protocol_pack.command.state",
-          "required_capabilities": ["command.catalog.read"],
+          "required_capabilities": [
+            "command.catalog.read"
+          ],
           "schemas": {
-            "error": {"type": "object"},
+            "error": {
+              "type": "object"
+            },
             "input": {
               "additionalProperties": false,
               "properties": {
-                "profile_id": {"maxLength": 128, "minLength": 1, "type": "string"},
+                "profile_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
                 "state_refs": {
-                  "items": {"const": "defaultspack:models.deepthink_enabled"},
+                  "items": {
+                    "const": "defaultspack:models.deepthink_enabled"
+                  },
                   "maxItems": 16,
                   "type": "array",
                   "uniqueItems": true
                 }
               },
-              "required": ["profile_id", "state_refs"],
+              "required": [
+                "profile_id",
+                "state_refs"
+              ],
               "type": "object"
             },
-            "output": {"type": "object"}
+            "output": {
+              "type": "object"
+            }
           },
           "security": "sensitive",
           "version": "1.0.0"
@@ -4214,36 +4202,78 @@
           "contract_id": "tobkiri.resource.command.datasource.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
-          "lifecycle": {"deprecated": false, "introduced": "1.0.0"},
-          "operations": [{
-            "entrypoint_id": "command.datasource.query",
-            "id": "command.datasource.query",
-            "implementation_digest": "sha256:77b83ccd9223b51aa89c8e0203693cc6d76eb7dd6d0189ca6d570d585c1129c7"
-          }],
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "command.datasource.query",
+              "id": "command.datasource.query",
+              "implementation_digest": "sha256:77b83ccd9223b51aa89c8e0203693cc6d76eb7dd6d0189ca6d570d585c1129c7"
+            }
+          ],
           "owner": "rumi_command_protocol_pack",
           "provider_id": "rumi_command_protocol_pack.command.datasource",
-          "required_capabilities": ["command.catalog.read"],
+          "required_capabilities": [
+            "command.catalog.read"
+          ],
           "schemas": {
-            "error": {"type": "object"},
+            "error": {
+              "type": "object"
+            },
             "input": {
               "additionalProperties": false,
               "properties": {
-                "profile_id": {"maxLength": 128, "minLength": 1, "type": "string"},
-                "datasource_ref": {"enum": ["tobkiri:model_catalog", "tobkiri:provider_catalog"]},
-                "query": {"maxLength": 200, "type": "string"},
-                "cursor": {"maxLength": 8, "pattern": "^[0-9]+$", "type": "string"},
-                "limit": {"maximum": 100, "minimum": 1, "type": "integer"},
+                "profile_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "datasource_ref": {
+                  "enum": [
+                    "tobkiri:model_catalog",
+                    "tobkiri:provider_catalog"
+                  ]
+                },
+                "query": {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                "cursor": {
+                  "maxLength": 8,
+                  "pattern": "^[0-9]+$",
+                  "type": "string"
+                },
+                "limit": {
+                  "maximum": 100,
+                  "minimum": 1,
+                  "type": "integer"
+                },
                 "selected_values": {
-                  "items": {"maxLength": 256, "minLength": 1, "type": "string"},
+                  "items": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "maxItems": 100,
                   "type": "array"
                 },
-                "request_id": {"maxLength": 160, "minLength": 1, "type": "string"}
+                "request_id": {
+                  "maxLength": 160,
+                  "minLength": 1,
+                  "type": "string"
+                }
               },
-              "required": ["profile_id", "datasource_ref"],
+              "required": [
+                "profile_id",
+                "datasource_ref"
+              ],
               "type": "object"
             },
-            "output": {"type": "object"}
+            "output": {
+              "type": "object"
+            }
           },
           "security": "sensitive",
           "version": "1.0.0"
@@ -4429,548 +4459,6 @@
     {
       "approval_policy": "none",
       "authority": "v4-authoritative",
-      "capabilities": [
-        "company.work",
-        "conversation.manage",
-        "conversation.read",
-        "job.dispatch",
-        "message.manage"
-      ],
-      "dependencies": {
-        "rumi_conversation_store_pack": ">=1.0.0,<2.0.0",
-        "rumi_job_action_broker_pack": ">=1.0.0,<2.0.0"
-      },
-      "description": "Company task projection into conversation and agent job contracts.",
-      "display_name": "Rumi Company Agent Adapter",
-      "execution_boundary": "sandbox",
-      "kind": "normal_sandbox",
-      "legacy_ids": [
-        "rumi.action.company.work.v1",
-        "rumi:ecosystem/rumi_company_agent_adapter_pack",
-        "rumi_company_agent_adapter_pack"
-      ],
-      "legacy_operations": [],
-      "migration": {
-        "removal_wave": 10,
-        "sunset_at": "2027-12-31"
-      },
-      "network": {
-        "allowed_domains": [],
-        "allowed_ports": []
-      },
-      "pack_id": "rumi_company_agent_adapter_pack",
-      "provided_contracts": [
-        {
-          "cardinality": "many",
-          "contract_id": "tobkiri.action.company.work.v1",
-          "failure": "isolate",
-          "instance_key": "agent",
-          "isolation": "in_process",
-          "lifecycle": {
-            "data_owner": "rumi_company_state_store_pack",
-            "deprecated": false,
-            "introduced": "1.0.0"
-          },
-          "operations": [
-            {
-              "entrypoint_id": "company-agent-work",
-              "id": "rumi_company_agent_adapter_pack.company-agent-work",
-              "implementation_digest": "sha256:11909f9bd8fb202506c6972183dab8f7587ba29f9776a196e20609f9d7530580"
-            }
-          ],
-          "owner": "rumi_company_agent_adapter_pack",
-          "provider_id": "rumi_company_agent_adapter_pack.company-work.agent",
-          "required_capabilities": [
-            "company.work"
-          ],
-          "schemas": {
-            "input": {
-              "type": "object"
-            },
-            "output": {
-              "type": "object"
-            }
-          },
-          "security": "sensitive",
-          "version": "1.0.0"
-        }
-      ],
-      "required_contracts": [
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.action.conversation.manage.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        },
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.action.job.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        },
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.action.message.manage.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        },
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.resource.conversation.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        }
-      ],
-      "runtime_artifacts": [
-        {
-          "digest": "sha256:11909f9bd8fb202506c6972183dab8f7587ba29f9776a196e20609f9d7530580",
-          "kind": "executable",
-          "path": "runtime/adapter.py"
-        }
-      ],
-      "secrets": [],
-      "source_evidence": [
-        {
-          "digest": "sha256:ce275836c5033d953d0206a93134bd45a9411ff22ab037be0ec4059be9420fe8",
-          "path": "ecosystem/rumi_company_agent_adapter_pack/ecosystem.json",
-          "rule_id": "pack-v4-one-way-migration-input"
-        },
-        {
-          "digest": "sha256:da8961566d098dd091d90ad899b5aa34037a1fa56dc5a2e3fb6ed05789e6619f",
-          "path": "ecosystem/rumi_company_agent_adapter_pack/rumi.pack.v3.json",
-          "rule_id": "pack-v4-one-way-migration-input"
-        }
-      ],
-      "source_provenance": {
-        "historical_classification": "v3-authoritative",
-        "mode": "offline-one-way-import",
-        "owner": "rumi_company_agent_adapter_pack",
-        "source_format": "rumi.pack.v3.json"
-      },
-      "version": "1.0.0",
-      "workspace_boundary": "pack_local"
-    },
-    {
-      "approval_policy": "capability_gated",
-      "authority": "v4-authoritative",
-      "capabilities": [
-        "company.coordinate",
-        "company.runtime.observe",
-        "company.state.manage",
-        "company.state.read",
-        "company.work",
-        "host.authority.consume",
-        "job.adapter.invoke"
-      ],
-      "dependencies": {
-        "rumi_company_state_store_pack": ">=1.0.0,<2.0.0",
-        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
-      },
-      "description": "Contract-only Company routing, work dispatch, and supervision.",
-      "display_name": "Rumi Company Coordinator",
-      "execution_boundary": "sandbox",
-      "kind": "normal_sandbox",
-      "legacy_ids": [
-        "rumi.action.company.coordinator.v1",
-        "rumi.action.job.adapter.v1",
-        "rumi.resource.company.runtime.v1",
-        "rumi:ecosystem/rumi_company_coordinator_pack",
-        "rumi_company_coordinator_pack"
-      ],
-      "legacy_operations": [],
-      "migration": {
-        "removal_wave": 10,
-        "sunset_at": "2027-12-31"
-      },
-      "network": {
-        "allowed_domains": [],
-        "allowed_ports": []
-      },
-      "pack_id": "rumi_company_coordinator_pack",
-      "provided_contracts": [
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.action.company.coordinator.v1",
-          "failure": "fail_closed",
-          "isolation": "process",
-          "lifecycle": {
-            "data_owner": "rumi_company_coordinator_pack",
-            "deprecated": false,
-            "introduced": "1.0.0"
-          },
-          "operations": [
-            {
-              "entrypoint_id": "company-coordinator-control",
-              "id": "rumi_company_coordinator_pack.company-coordinator-control",
-              "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36"
-            }
-          ],
-          "owner": "rumi_company_coordinator_pack",
-          "provider_id": "rumi_company_coordinator_pack.company.coordinator",
-          "required_capabilities": [
-            "company.coordinate"
-          ],
-          "schemas": {
-            "input": {
-              "type": "object"
-            },
-            "output": {
-              "type": "object"
-            }
-          },
-          "security": "restricted",
-          "version": "1.0.0"
-        },
-        {
-          "cardinality": "many",
-          "contract_id": "tobkiri.action.job.adapter.v1",
-          "failure": "isolate",
-          "instance_key": "company.supervisor",
-          "isolation": "process",
-          "lifecycle": {
-            "data_owner": "rumi_company_coordinator_pack",
-            "deprecated": false,
-            "introduced": "1.0.0"
-          },
-          "operations": [
-            {
-              "entrypoint_id": "company-supervisor-job-adapter",
-              "id": "rumi_company_coordinator_pack.company-supervisor-job-adapter",
-              "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36"
-            }
-          ],
-          "owner": "rumi_company_coordinator_pack",
-          "provider_id": "rumi_company_coordinator_pack.job-adapter.company-supervisor",
-          "required_capabilities": [
-            "job.adapter.invoke"
-          ],
-          "schemas": {
-            "input": {
-              "type": "object"
-            },
-            "output": {
-              "type": "object"
-            }
-          },
-          "security": "sensitive",
-          "version": "1.0.0"
-        },
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.resource.company.runtime.v1",
-          "failure": "fail_closed",
-          "isolation": "process",
-          "lifecycle": {
-            "data_owner": "rumi_company_coordinator_pack",
-            "deprecated": false,
-            "introduced": "1.0.0"
-          },
-          "operations": [
-            {
-              "entrypoint_id": "company-runtime-resource",
-              "id": "rumi_company_coordinator_pack.company-runtime-resource",
-              "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36"
-            }
-          ],
-          "owner": "rumi_company_coordinator_pack",
-          "provider_id": "rumi_company_coordinator_pack.company.runtime",
-          "required_capabilities": [
-            "company.runtime.observe"
-          ],
-          "schemas": {
-            "input": {
-              "type": "object"
-            },
-            "output": {
-              "type": "object"
-            }
-          },
-          "security": "internal",
-          "version": "1.0.0"
-        }
-      ],
-      "required_contracts": [
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.action.company.state.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        },
-        {
-          "cardinality": "many",
-          "contract_id": "tobkiri.action.company.work.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        },
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.resource.company.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        },
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.service.host.authorize.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        }
-      ],
-      "runtime_artifacts": [
-        {
-          "digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
-          "kind": "executable",
-          "path": "runtime/coordinator.py"
-        }
-      ],
-      "secrets": [],
-      "source_evidence": [
-        {
-          "digest": "sha256:e23f64cb668d439ab6dc76a98e68dc1ae20b8328591a23bf1f3d4aafbe6743d9",
-          "path": "ecosystem/rumi_company_coordinator_pack/ecosystem.json",
-          "rule_id": "pack-v4-one-way-migration-input"
-        },
-        {
-          "digest": "sha256:916441349d288d45c8e339fd86dd885fc54b82a00a6c12305600a2dd9803d8ea",
-          "path": "ecosystem/rumi_company_coordinator_pack/rumi.pack.v3.json",
-          "rule_id": "pack-v4-one-way-migration-input"
-        }
-      ],
-      "source_provenance": {
-        "historical_classification": "v3-authoritative",
-        "mode": "offline-one-way-import",
-        "owner": "rumi_company_coordinator_pack",
-        "source_format": "rumi.pack.v3.json"
-      },
-      "version": "1.0.0",
-      "workspace_boundary": "pack_local"
-    },
-    {
-      "approval_policy": "capability_gated",
-      "authority": "v4-authoritative",
-      "capabilities": [
-        "company.state.manage",
-        "company.state.read",
-        "host.authority.consume"
-      ],
-      "dependencies": {
-        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
-      },
-      "description": "Authoritative Company organization and operations state.",
-      "display_name": "Rumi Company State Store",
-      "execution_boundary": "sandbox",
-      "kind": "normal_sandbox",
-      "legacy_ids": [
-        "rumi.action.company.state.v1",
-        "rumi.resource.company.v1",
-        "rumi:ecosystem/rumi_company_state_store_pack",
-        "rumi_company_state_store_pack"
-      ],
-      "legacy_operations": [],
-      "migration": {
-        "removal_wave": 10,
-        "sunset_at": "2027-12-31"
-      },
-      "network": {
-        "allowed_domains": [],
-        "allowed_ports": []
-      },
-      "pack_id": "rumi_company_state_store_pack",
-      "provided_contracts": [
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.action.company.state.v1",
-          "failure": "fail_closed",
-          "isolation": "in_process",
-          "lifecycle": {
-            "data_owner": "rumi_company_state_store_pack",
-            "deprecated": false,
-            "introduced": "1.0.0"
-          },
-          "operations": [
-            {
-              "entrypoint_id": "company-state-action",
-              "id": "rumi_company_state_store_pack.company-state-action",
-              "implementation_digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f"
-            }
-          ],
-          "owner": "rumi_company_state_store_pack",
-          "provider_id": "rumi_company_state_store_pack.company-state.action",
-          "required_capabilities": [
-            "company.state.manage"
-          ],
-          "schemas": {
-            "input": {
-              "type": "object"
-            },
-            "output": {
-              "type": "object"
-            }
-          },
-          "security": "restricted",
-          "version": "1.0.0"
-        },
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.resource.company.v1",
-          "failure": "fail_closed",
-          "isolation": "in_process",
-          "lifecycle": {
-            "data_owner": "rumi_company_state_store_pack",
-            "deprecated": false,
-            "introduced": "1.0.0"
-          },
-          "operations": [
-            {
-              "entrypoint_id": "company-state-resource",
-              "id": "rumi_company_state_store_pack.company-state-resource",
-              "implementation_digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f"
-            }
-          ],
-          "owner": "rumi_company_state_store_pack",
-          "provider_id": "rumi_company_state_store_pack.company-state.resource",
-          "required_capabilities": [
-            "company.state.read"
-          ],
-          "schemas": {
-            "input": {
-              "type": "object"
-            },
-            "output": {
-              "type": "object"
-            }
-          },
-          "security": "sensitive",
-          "version": "1.0.0"
-        }
-      ],
-      "required_contracts": [
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.service.host.authorize.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        }
-      ],
-      "runtime_artifacts": [
-        {
-          "digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f",
-          "kind": "executable",
-          "path": "runtime/store.py"
-        }
-      ],
-      "secrets": [],
-      "source_evidence": [
-        {
-          "digest": "sha256:2328367239d9fbe5133778baade41e7bf3c4e1d6caefea671767ca047c02f48a",
-          "path": "ecosystem/rumi_company_state_store_pack/ecosystem.json",
-          "rule_id": "pack-v4-one-way-migration-input"
-        },
-        {
-          "digest": "sha256:0bc989a6cc2986feec272b6abaa0ebc8aa23cea170dca344dfd64824f4b66e1b",
-          "path": "ecosystem/rumi_company_state_store_pack/rumi.pack.v3.json",
-          "rule_id": "pack-v4-one-way-migration-input"
-        }
-      ],
-      "source_provenance": {
-        "historical_classification": "v3-authoritative",
-        "mode": "offline-one-way-import",
-        "owner": "rumi_company_state_store_pack",
-        "source_format": "rumi.pack.v3.json"
-      },
-      "version": "1.0.0",
-      "workspace_boundary": "pack_local"
-    },
-    {
-      "approval_policy": "none",
-      "authority": "v4-authoritative",
-      "capabilities": [
-        "company.runtime.observe",
-        "company.state.read"
-      ],
-      "dependencies": {
-        "rumi_company_coordinator_pack": ">=1.0.0,<2.0.0",
-        "rumi_company_state_store_pack": ">=1.0.0,<2.0.0"
-      },
-      "description": "Removable Company content and isolated read-only UI projection.",
-      "display_name": "Rumi Company Surface",
-      "execution_boundary": "sandbox",
-      "kind": "application",
-      "legacy_ids": [
-        "rumi:ecosystem/rumi_company_surface_pack",
-        "rumi_company_surface_pack"
-      ],
-      "legacy_operations": [],
-      "migration": {
-        "removal_wave": 10,
-        "sunset_at": "2027-12-31"
-      },
-      "network": {
-        "allowed_domains": [],
-        "allowed_ports": []
-      },
-      "pack_id": "rumi_company_surface_pack",
-      "provided_contracts": [],
-      "required_contracts": [
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.resource.company.runtime.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        },
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.resource.company.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        }
-      ],
-      "runtime_artifacts": [
-        {
-          "digest": "sha256:0c501ba874d90285ae699aa8bd3b2d2ae390309d944997bd21efcdb610d0fef7",
-          "kind": "sidecar",
-          "path": "frontend/contributions/companies.json"
-        },
-        {
-          "digest": "sha256:c31fbeda40c6a35eff6045875110025aef8e3b995321ed5c89c016425c51ed02",
-          "kind": "sidecar",
-          "path": "ui/app.js"
-        },
-        {
-          "digest": "sha256:6ac91d25d326c3afc3998a26d9a7e5b1790c3d4ca102ef9d9421c4de11306f53",
-          "kind": "sidecar",
-          "path": "ui/index.html"
-        },
-        {
-          "digest": "sha256:b9d378f1c75cd3ff6977660deb62c9de5bc23100968de08d91daf46a8a0ad3d2",
-          "kind": "sidecar",
-          "path": "ui/style.css"
-        }
-      ],
-      "secrets": [],
-      "source_evidence": [
-        {
-          "digest": "sha256:0b286ae018c2a7773f75f7e215e2068650399195c10f5a59cb77580783bfd8ac",
-          "path": "ecosystem/rumi_company_surface_pack/ecosystem.json",
-          "rule_id": "pack-v4-one-way-migration-input"
-        },
-        {
-          "digest": "sha256:69a1b3b94d185a6795666f3d7ecb430b22222dda56dfa4ff85b8f4a0f3e29777",
-          "path": "ecosystem/rumi_company_surface_pack/rumi.pack.v3.json",
-          "rule_id": "pack-v4-one-way-migration-input"
-        }
-      ],
-      "source_provenance": {
-        "historical_classification": "v3-authoritative",
-        "mode": "offline-one-way-import",
-        "owner": "rumi_company_surface_pack",
-        "source_format": "rumi.pack.v3.json"
-      },
-      "version": "1.0.0",
-      "workspace_boundary": "pack_local"
-    },
-    {
-      "approval_policy": "none",
-      "authority": "v4-authoritative",
       "capabilities": [],
       "dependencies": {
         "rumi_default_tools_pack": ">=1.0.0"
@@ -5009,131 +4497,6 @@
         "mode": "offline-one-way-import",
         "owner": "rumi_computer_control_pack",
         "source_format": "ecosystem.json"
-      },
-      "version": "1.0.0",
-      "workspace_boundary": "pack_local"
-    },
-    {
-      "approval_policy": "none",
-      "authority": "v4-authoritative",
-      "capabilities": [
-        "company.coordinate",
-        "company.state.manage",
-        "company.state.read",
-        "connector.route",
-        "host.authority.consume"
-      ],
-      "dependencies": {
-        "rumi_company_coordinator_pack": ">=1.0.0,<2.0.0",
-        "rumi_company_state_store_pack": ">=1.0.0,<2.0.0",
-        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
-      },
-      "description": "Explicit connector-event projection into Company contracts.",
-      "display_name": "Rumi Connector Company Adapter",
-      "execution_boundary": "sandbox",
-      "kind": "normal_sandbox",
-      "legacy_ids": [
-        "rumi.action.connector.route.v1",
-        "rumi:ecosystem/rumi_connector_company_adapter_pack",
-        "rumi_connector_company_adapter_pack"
-      ],
-      "legacy_operations": [],
-      "migration": {
-        "removal_wave": 10,
-        "sunset_at": "2027-12-31"
-      },
-      "network": {
-        "allowed_domains": [],
-        "allowed_ports": []
-      },
-      "pack_id": "rumi_connector_company_adapter_pack",
-      "provided_contracts": [
-        {
-          "cardinality": "many",
-          "contract_id": "tobkiri.action.connector.route.v1",
-          "failure": "isolate",
-          "instance_key": "company",
-          "isolation": "in_process",
-          "lifecycle": {
-            "data_owner": "rumi_company_state_store_pack",
-            "deprecated": false,
-            "introduced": "1.0.0"
-          },
-          "operations": [
-            {
-              "entrypoint_id": "connector-company-route",
-              "id": "rumi_connector_company_adapter_pack.connector-company-route",
-              "implementation_digest": "sha256:585a6c6e0f2ed28c4d478eb4eaf39df73cbe3e4df9d2f7eb5196058bfc816a6d"
-            }
-          ],
-          "owner": "rumi_connector_company_adapter_pack",
-          "provider_id": "rumi_connector_company_adapter_pack.connector-route.company",
-          "required_capabilities": [
-            "connector.route"
-          ],
-          "schemas": {
-            "input": {
-              "type": "object"
-            },
-            "output": {
-              "type": "object"
-            }
-          },
-          "security": "sensitive",
-          "version": "1.0.0"
-        }
-      ],
-      "required_contracts": [
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.action.company.coordinator.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        },
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.action.company.state.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        },
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.resource.company.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        },
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.service.host.authorize.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        }
-      ],
-      "runtime_artifacts": [
-        {
-          "digest": "sha256:585a6c6e0f2ed28c4d478eb4eaf39df73cbe3e4df9d2f7eb5196058bfc816a6d",
-          "kind": "executable",
-          "path": "runtime/adapter.py"
-        }
-      ],
-      "secrets": [],
-      "source_evidence": [
-        {
-          "digest": "sha256:d5d293b5bb10fe5d65974300dfa0acc2d60b3ea0c2dd81b5b4193b982527f2f3",
-          "path": "ecosystem/rumi_connector_company_adapter_pack/ecosystem.json",
-          "rule_id": "pack-v4-one-way-migration-input"
-        },
-        {
-          "digest": "sha256:414db0f3b3521875c5ee99d1faab8cab7b0f9db8f519ea4250d2cbc3722afb3f",
-          "path": "ecosystem/rumi_connector_company_adapter_pack/rumi.pack.v3.json",
-          "rule_id": "pack-v4-one-way-migration-input"
-        }
-      ],
-      "source_provenance": {
-        "historical_classification": "v3-authoritative",
-        "mode": "offline-one-way-import",
-        "owner": "rumi_connector_company_adapter_pack",
-        "source_format": "rumi.pack.v3.json"
       },
       "version": "1.0.0",
       "workspace_boundary": "pack_local"
@@ -5870,6 +5233,132 @@
         "historical_classification": "v3-authoritative",
         "mode": "offline-one-way-import",
         "owner": "rumi_connector_settings_surface_pack",
+        "source_format": "rumi.pack.v3.json"
+      },
+      "version": "1.0.0",
+      "workspace_boundary": "pack_local"
+    },
+    {
+      "approval_policy": "none",
+      "authority": "v4-authoritative",
+      "capabilities": [
+        "team.coordinate",
+        "team.state.manage",
+        "team.state.read",
+        "connector.route",
+        "host.authority.consume"
+      ],
+      "dependencies": {
+        "rumi_team_coordinator_pack": ">=1.0.0,<2.0.0",
+        "rumi_team_state_store_pack": ">=1.0.0,<2.0.0",
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+      },
+      "description": "Explicit connector-event projection into Team contracts.",
+      "display_name": "Rumi Connector Team Adapter Pack",
+      "execution_boundary": "sandbox",
+      "kind": "normal_sandbox",
+      "legacy_ids": [
+        "rumi.action.connector.route.v1",
+        "rumi:ecosystem/rumi_connector_company_adapter_pack",
+        "rumi_connector_company_adapter_pack"
+      ],
+      "legacy_operations": [],
+      "migration": {
+        "removal_wave": 10,
+        "sunset_at": "2027-12-31",
+        "compatibility": "read_only"
+      },
+      "network": {
+        "allowed_domains": [],
+        "allowed_ports": []
+      },
+      "pack_id": "rumi_connector_team_adapter_pack",
+      "provided_contracts": [
+        {
+          "cardinality": "many",
+          "contract_id": "tobkiri.action.connector.route.v1",
+          "failure": "isolate",
+          "instance_key": "company",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_team_state_store_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "connector-team-route",
+              "id": "rumi_connector_team_adapter_pack.connector-team-route",
+              "implementation_digest": "sha256:0505f7622af33a1f7cfb8ea605f3cf00ce67f62387cb795fdec309d5349e59a1"
+            }
+          ],
+          "owner": "rumi_connector_team_adapter_pack",
+          "provider_id": "rumi_connector_team_adapter_pack.connector-route.team",
+          "required_capabilities": [
+            "connector.route"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        }
+      ],
+      "required_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.team.coordinate.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.team.state.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.team.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.host.authorize.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        }
+      ],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:0505f7622af33a1f7cfb8ea605f3cf00ce67f62387cb795fdec309d5349e59a1",
+          "kind": "executable",
+          "path": "runtime/adapter.py"
+        }
+      ],
+      "secrets": [],
+      "source_evidence": [
+        {
+          "digest": "sha256:88d7fdcf2dae7236545d073e83c94f4625a63e2fdbd79c823a1468d50d577800",
+          "path": "ecosystem/rumi_connector_team_adapter_pack/ecosystem.json",
+          "rule_id": "pack-v4-one-way-migration-input"
+        },
+        {
+          "digest": "sha256:c11da7e37718d19c1cd9327beff7362b5610352f4310e9c90c02546c36df24a8",
+          "path": "ecosystem/rumi_connector_team_adapter_pack/rumi.pack.v3.json",
+          "rule_id": "pack-v4-one-way-migration-input"
+        }
+      ],
+      "source_provenance": {
+        "historical_classification": "v3-authoritative",
+        "mode": "offline-one-way-import",
+        "owner": "rumi_connector_team_adapter_pack",
         "source_format": "rumi.pack.v3.json"
       },
       "version": "1.0.0",
@@ -8946,31 +8435,31 @@
             "interactive_approval.deny"
           ]
         },
-    {
-      "contract_id": "tobkiri.service.interactive-effect.v1",
+        {
+          "contract_id": "tobkiri.service.interactive-effect.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
           "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
           "operation_ids": [
             "interactive_effect.manage"
-      ]
-    },
-    {
-      "contract_id": "tobkiri.action.chat.approval-continuation.v1",
-      "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
-      "operation_ids": [
-        "chat_approval.approve",
-        "chat_approval.resume"
-      ]
-    },
-    {
-      "contract_id": "tobkiri.action.authority.approval-window.v1",
-      "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
-      "operation_ids": [
-        "authority_approval.open"
-      ]
-    }
+          ]
+        },
+        {
+          "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "operation_ids": [
+            "chat_approval.approve",
+            "chat_approval.resume"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.action.authority.approval-window.v1",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
+          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "operation_ids": [
+            "authority_approval.open"
+          ]
+        }
       ],
       "kind": "host_extension",
       "legacy_ids": [
@@ -9126,9 +8615,9 @@
           "security": "restricted",
           "version": "1.0.0"
         },
-    {
-      "cardinality": "one",
-      "contract_id": "tobkiri.service.interactive-effect.v1",
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.interactive-effect.v1",
           "failure": "fail_closed",
           "isolation": "process",
           "lifecycle": {
@@ -9197,102 +8686,134 @@
               "type": "object"
             }
           },
-      "security": "restricted",
-      "version": "1.0.0"
-    },
-    {
-      "cardinality": "one",
-      "contract_id": "tobkiri.action.chat.approval-continuation.v1",
-      "failure": "fail_closed",
-      "isolation": "process",
-      "lifecycle": {
-        "deprecated": false,
-        "introduced": "1.0.0"
-      },
-      "operations": [
-        {
-          "effect_ceiling": [
-            "host:brokered-execution",
-            "capability:host.authority.consume"
-          ],
-          "entrypoint_id": "approve",
-          "id": "chat_approval.approve",
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+          "security": "restricted",
+          "version": "1.0.0"
         },
         {
-          "effect_ceiling": [
-            "host:brokered-execution",
-            "capability:host.authority.consume"
-          ],
-          "entrypoint_id": "resume",
-          "id": "chat_approval.resume",
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
-        }
-      ],
-      "owner": "rumi_host_authority_bridge_pack",
-      "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
-      "required_capabilities": [
-        "host.authority.consume"
-      ],
-      "schemas": {
-        "error": {"type": "object"},
-        "input": {
-          "additionalProperties": false,
-          "properties": {
-            "conversation_id": {"maxLength": 255, "type": "string"},
-            "request_id": {"maxLength": 255, "type": "string"},
-            "resume_id": {"maxLength": 255, "type": "string"},
-            "turn_id": {"maxLength": 255, "type": "string"},
-            "ui_operator": {"type": "object"}
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+          "failure": "fail_closed",
+          "isolation": "process",
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
           },
-          "required": ["request_id", "conversation_id", "turn_id"],
-          "type": "object"
-        },
-        "output": {"type": "object"}
-      },
-      "security": "restricted",
-      "version": "1.0.0"
-    },
-    {
-      "cardinality": "one",
-      "contract_id": "tobkiri.action.authority.approval-window.v1",
-      "failure": "fail_closed",
-      "isolation": "process",
-      "lifecycle": {
-        "deprecated": false,
-        "introduced": "1.0.0"
-      },
-      "operations": [
-        {
-          "effect_ceiling": [
-            "host:brokered-execution",
-            "capability:host.authority.consume"
+          "operations": [
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:host.authority.consume"
+              ],
+              "entrypoint_id": "approve",
+              "id": "chat_approval.approve",
+              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+            },
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:host.authority.consume"
+              ],
+              "entrypoint_id": "resume",
+              "id": "chat_approval.resume",
+              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+            }
           ],
-          "entrypoint_id": "open",
-          "id": "authority_approval.open",
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
-        }
-      ],
-      "owner": "rumi_host_authority_bridge_pack",
-      "provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
-      "required_capabilities": [
-        "host.authority.consume"
-      ],
-      "schemas": {
-        "error": {"type": "object"},
-        "input": {
-          "additionalProperties": false,
-          "properties": {
-            "request_id": {"maxLength": 160, "pattern": "^[A-Za-z0-9_-]{1,160}$", "type": "string"}
+          "owner": "rumi_host_authority_bridge_pack",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+          "required_capabilities": [
+            "host.authority.consume"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "conversation_id": {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                "request_id": {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                "resume_id": {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                "turn_id": {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                "ui_operator": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "request_id",
+                "conversation_id",
+                "turn_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
           },
-          "required": ["request_id"],
-          "type": "object"
+          "security": "restricted",
+          "version": "1.0.0"
         },
-        "output": {"type": "object"}
-      },
-      "security": "restricted",
-      "version": "1.0.0"
-    }
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.authority.approval-window.v1",
+          "failure": "fail_closed",
+          "isolation": "process",
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:host.authority.consume"
+              ],
+              "entrypoint_id": "open",
+              "id": "authority_approval.open",
+              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+            }
+          ],
+          "owner": "rumi_host_authority_bridge_pack",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
+          "required_capabilities": [
+            "host.authority.consume"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "request_id": {
+                  "maxLength": 160,
+                  "pattern": "^[A-Za-z0-9_-]{1,160}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "request_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
+        }
       ],
       "required_contracts": [
         {
@@ -12351,8 +11872,8 @@
       "authority": "v4-authoritative",
       "capabilities": [],
       "dependencies": {},
-      "description": "",
-      "display_name": "rumi_operations_company_pack",
+      "description": "Declarative Operations Team and Coding Team resources.",
+      "display_name": "Rumi Operations Team Pack",
       "execution_boundary": "declarative_only",
       "kind": "application",
       "legacy_ids": [
@@ -12393,35 +11914,29 @@
       ],
       "migration": {
         "removal_wave": 10,
-        "sunset_at": "2027-12-31"
+        "sunset_at": "2027-12-31",
+        "compatibility": "read_only"
       },
       "network": {
         "allowed_domains": [],
         "allowed_ports": []
       },
-      "pack_id": "rumi_operations_company_pack",
+      "pack_id": "rumi_operations_team_pack",
       "provided_contracts": [],
       "required_contracts": [],
-      "runtime_artifacts": [
-        {
-          "digest": "sha256:ab45b027ff4ec985f1b385a6a341f2c8de06f1c74375dfb1c865a12c42d1e20f",
-          "index_role": "asset",
-          "kind": "asset",
-          "path": "frontend_extensions/operations_company.ui.json"
-        }
-      ],
+      "runtime_artifacts": [],
       "secrets": [],
       "source_evidence": [
         {
-          "digest": "sha256:533d2ec8fbf8ef0a571f8aa3ece5936418b45f1b3eefbf44037f3034645b6552",
-          "path": "ecosystem/rumi_operations_company_pack/ecosystem.json",
+          "digest": "sha256:075981a1004b603d617f51b5ef04ec612e5332162b990f180176607fce4979c7",
+          "path": "ecosystem/rumi_operations_team_pack/ecosystem.json",
           "rule_id": "pack-v4-one-way-migration-input"
         }
       ],
       "source_provenance": {
         "historical_classification": "legacy-authoritative",
         "mode": "offline-one-way-import",
-        "owner": "rumi_operations_company_pack",
+        "owner": "rumi_operations_team_pack",
         "source_format": "ecosystem.json"
       },
       "version": "1.0.0",
@@ -13145,7 +12660,7 @@
             {
               "entrypoint_id": "provider-registry-manage",
               "id": "rumi_provider_registry_pack.provider-registry-manage",
-          "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd"
+              "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd"
             },
             {
               "entrypoint_id": "provider-configure-prepare",
@@ -13762,6 +13277,50 @@
         "source_format": "rumi.pack.v3.json"
       },
       "version": "1.0.0",
+      "workspace_boundary": "pack_local"
+    },
+    {
+      "approval_policy": "none",
+      "authority": "v4-authoritative",
+      "capabilities": [],
+      "dependencies": {},
+      "description": "Declarative run lifecycle contracts for plans, progress, checkpoints, intervention, replay, and review.",
+      "display_name": "Rumi Run Lifecycle Pack",
+      "execution_boundary": "declarative_only",
+      "kind": "application",
+      "legacy_ids": [
+        "rumi:ecosystem/rumi_agent_workroom_pack",
+        "rumi_agent_workroom_pack"
+      ],
+      "legacy_operations": [],
+      "migration": {
+        "removal_wave": 10,
+        "sunset_at": "2027-12-31",
+        "compatibility": "read_only"
+      },
+      "network": {
+        "allowed_domains": [],
+        "allowed_ports": []
+      },
+      "pack_id": "rumi_run_lifecycle_pack",
+      "provided_contracts": [],
+      "required_contracts": [],
+      "runtime_artifacts": [],
+      "secrets": [],
+      "source_evidence": [
+        {
+          "digest": "sha256:ee3de12c27063719715d504e425667d9ea9ebe8318688dabaf5f0e522e19dcc6",
+          "path": "ecosystem/rumi_run_lifecycle_pack/ecosystem.json",
+          "rule_id": "pack-v4-one-way-migration-input"
+        }
+      ],
+      "source_provenance": {
+        "historical_classification": "legacy-authoritative",
+        "mode": "offline-one-way-import",
+        "owner": "rumi_run_lifecycle_pack",
+        "source_format": "ecosystem.json"
+      },
+      "version": "0.1.0",
       "workspace_boundary": "pack_local"
     },
     {
@@ -15360,6 +14919,557 @@
         "source_format": "ecosystem.json"
       },
       "version": "0.1.0",
+      "workspace_boundary": "pack_local"
+    },
+    {
+      "approval_policy": "none",
+      "authority": "v4-authoritative",
+      "capabilities": [
+        "team.work",
+        "conversation.manage",
+        "conversation.read",
+        "job.dispatch",
+        "message.manage"
+      ],
+      "dependencies": {
+        "rumi_conversation_store_pack": ">=1.0.0,<2.0.0",
+        "rumi_job_action_broker_pack": ">=1.0.0,<2.0.0"
+      },
+      "description": "Team task projection into conversation and agent job contracts.",
+      "display_name": "Rumi Team Agent Work Adapter Pack",
+      "execution_boundary": "sandbox",
+      "kind": "normal_sandbox",
+      "legacy_ids": [
+        "rumi.action.company.work.v1",
+        "rumi:ecosystem/rumi_company_agent_adapter_pack",
+        "rumi_company_agent_adapter_pack",
+        "tobkiri.action.company.work.v1"
+      ],
+      "legacy_operations": [],
+      "migration": {
+        "removal_wave": 10,
+        "sunset_at": "2027-12-31",
+        "compatibility": "read_only"
+      },
+      "network": {
+        "allowed_domains": [],
+        "allowed_ports": []
+      },
+      "pack_id": "rumi_team_agent_work_adapter_pack",
+      "provided_contracts": [
+        {
+          "cardinality": "many",
+          "contract_id": "tobkiri.action.team.work.v1",
+          "failure": "isolate",
+          "instance_key": "agent",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_team_state_store_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "team-agent-work",
+              "id": "rumi_team_agent_work_adapter_pack.team-agent-work",
+              "implementation_digest": "sha256:c5de5e80b78cf77bb38407d2bfe8cbc6ae0a55ca93d9c7305dc96a9d70f52e1a"
+            }
+          ],
+          "owner": "rumi_team_agent_work_adapter_pack",
+          "provider_id": "rumi_team_agent_work_adapter_pack.team-work.agent",
+          "required_capabilities": [
+            "team.work"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        }
+      ],
+      "required_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.conversation.manage.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.job.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.message.manage.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.conversation.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        }
+      ],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:c5de5e80b78cf77bb38407d2bfe8cbc6ae0a55ca93d9c7305dc96a9d70f52e1a",
+          "kind": "executable",
+          "path": "runtime/adapter.py"
+        }
+      ],
+      "secrets": [],
+      "source_evidence": [
+        {
+          "digest": "sha256:3b04462983e28267d23302b5fc3c74f9f5af5f91229a0eb66550774f75fb5f1d",
+          "path": "ecosystem/rumi_team_agent_work_adapter_pack/ecosystem.json",
+          "rule_id": "pack-v4-one-way-migration-input"
+        },
+        {
+          "digest": "sha256:d45ca110a68a755e3d7d0e0556e2e2c51c2c165099b46cc872530450ee5ca6e8",
+          "path": "ecosystem/rumi_team_agent_work_adapter_pack/rumi.pack.v3.json",
+          "rule_id": "pack-v4-one-way-migration-input"
+        }
+      ],
+      "source_provenance": {
+        "historical_classification": "v3-authoritative",
+        "mode": "offline-one-way-import",
+        "owner": "rumi_team_agent_work_adapter_pack",
+        "source_format": "rumi.pack.v3.json"
+      },
+      "version": "1.0.0",
+      "workspace_boundary": "pack_local"
+    },
+    {
+      "approval_policy": "none",
+      "authority": "v4-authoritative",
+      "capabilities": [
+        "team.runtime.observe",
+        "team.state.read"
+      ],
+      "dependencies": {
+        "rumi_team_coordinator_pack": ">=1.0.0,<2.0.0",
+        "rumi_team_state_store_pack": ">=1.0.0,<2.0.0"
+      },
+      "description": "Removable Team content and isolated read-only UI projection.",
+      "display_name": "Rumi Team Console Pack",
+      "execution_boundary": "sandbox",
+      "kind": "application",
+      "legacy_ids": [
+        "rumi:ecosystem/rumi_company_surface_pack",
+        "rumi_company_surface_pack"
+      ],
+      "legacy_operations": [],
+      "migration": {
+        "removal_wave": 10,
+        "sunset_at": "2027-12-31",
+        "compatibility": "read_only"
+      },
+      "network": {
+        "allowed_domains": [],
+        "allowed_ports": []
+      },
+      "pack_id": "rumi_team_console_pack",
+      "provided_contracts": [],
+      "required_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.team.runtime.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.team.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        }
+      ],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:754b8987b8715214ce449a035e6b519ec3a02b02ae4280d0d97eafad7394003d",
+          "kind": "sidecar",
+          "path": "frontend/contributions/companies.json"
+        },
+        {
+          "digest": "sha256:ef08f968c849e1ea359aea9f9e57ed35aa51882c0d1bd1f832d408411a98c057",
+          "kind": "sidecar",
+          "path": "ui/app.js"
+        },
+        {
+          "digest": "sha256:6ac91d25d326c3afc3998a26d9a7e5b1790c3d4ca102ef9d9421c4de11306f53",
+          "kind": "sidecar",
+          "path": "ui/index.html"
+        },
+        {
+          "digest": "sha256:b9d378f1c75cd3ff6977660deb62c9de5bc23100968de08d91daf46a8a0ad3d2",
+          "kind": "sidecar",
+          "path": "ui/style.css"
+        }
+      ],
+      "secrets": [],
+      "source_evidence": [
+        {
+          "digest": "sha256:f480f3255778981103bae182e8983081118369cf169ba11756a3a562a90ad327",
+          "path": "ecosystem/rumi_team_console_pack/ecosystem.json",
+          "rule_id": "pack-v4-one-way-migration-input"
+        },
+        {
+          "digest": "sha256:e74b9976b4fdc7571208fabf4f2acf500874c5da9a9c99f2bb5476d7060c9140",
+          "path": "ecosystem/rumi_team_console_pack/rumi.pack.v3.json",
+          "rule_id": "pack-v4-one-way-migration-input"
+        }
+      ],
+      "source_provenance": {
+        "historical_classification": "v3-authoritative",
+        "mode": "offline-one-way-import",
+        "owner": "rumi_team_console_pack",
+        "source_format": "rumi.pack.v3.json"
+      },
+      "version": "1.0.0",
+      "workspace_boundary": "pack_local"
+    },
+    {
+      "approval_policy": "capability_gated",
+      "authority": "v4-authoritative",
+      "capabilities": [
+        "team.coordinate",
+        "team.runtime.observe",
+        "team.state.manage",
+        "team.state.read",
+        "team.work",
+        "host.authority.consume",
+        "job.adapter.invoke"
+      ],
+      "dependencies": {
+        "rumi_team_state_store_pack": ">=1.0.0,<2.0.0",
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+      },
+      "description": "Contract-only Team routing, work dispatch, and supervision.",
+      "display_name": "Rumi Team Coordinator Pack",
+      "execution_boundary": "sandbox",
+      "kind": "normal_sandbox",
+      "legacy_ids": [
+        "rumi.action.company.coordinator.v1",
+        "rumi.action.job.adapter.v1",
+        "rumi.resource.company.runtime.v1",
+        "rumi:ecosystem/rumi_company_coordinator_pack",
+        "rumi_company_coordinator_pack",
+        "tobkiri.action.company.coordinator.v1",
+        "tobkiri.resource.company.runtime.v1"
+      ],
+      "legacy_operations": [],
+      "migration": {
+        "removal_wave": 10,
+        "sunset_at": "2027-12-31",
+        "compatibility": "read_only"
+      },
+      "network": {
+        "allowed_domains": [],
+        "allowed_ports": []
+      },
+      "pack_id": "rumi_team_coordinator_pack",
+      "provided_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.team.coordinate.v1",
+          "failure": "fail_closed",
+          "isolation": "process",
+          "lifecycle": {
+            "data_owner": "rumi_team_coordinator_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "team-coordinate-control",
+              "id": "rumi_team_coordinator_pack.team-coordinate-control",
+              "implementation_digest": "sha256:cd2d06b9bd6bb08025a13edd92c696bb4b2c1033463298bcafb5b151543f34b8"
+            }
+          ],
+          "owner": "rumi_team_coordinator_pack",
+          "provider_id": "rumi_team_coordinator_pack.team.coordinate",
+          "required_capabilities": [
+            "team.coordinate"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "many",
+          "contract_id": "tobkiri.action.job.adapter.v1",
+          "failure": "isolate",
+          "instance_key": "company.supervisor",
+          "isolation": "process",
+          "lifecycle": {
+            "data_owner": "rumi_team_coordinator_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "company-supervisor-job-adapter",
+              "id": "rumi_team_coordinator_pack.team-supervisor-job-adapter",
+              "implementation_digest": "sha256:cd2d06b9bd6bb08025a13edd92c696bb4b2c1033463298bcafb5b151543f34b8"
+            }
+          ],
+          "owner": "rumi_agent_runtime_service_pack",
+          "provider_id": "rumi_team_coordinator_pack.job-adapter.team-supervisor",
+          "required_capabilities": [
+            "job.adapter.invoke"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.team.runtime.v1",
+          "failure": "fail_closed",
+          "isolation": "process",
+          "lifecycle": {
+            "data_owner": "rumi_team_coordinator_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "team-runtime-resource",
+              "id": "rumi_team_coordinator_pack.team-runtime-resource",
+              "implementation_digest": "sha256:cd2d06b9bd6bb08025a13edd92c696bb4b2c1033463298bcafb5b151543f34b8"
+            }
+          ],
+          "owner": "rumi_team_coordinator_pack",
+          "provider_id": "rumi_team_coordinator_pack.team.runtime",
+          "required_capabilities": [
+            "team.runtime.observe"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "internal",
+          "version": "1.0.0"
+        }
+      ],
+      "required_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.team.state.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "many",
+          "contract_id": "tobkiri.action.team.work.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.team.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.host.authorize.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        }
+      ],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:cd2d06b9bd6bb08025a13edd92c696bb4b2c1033463298bcafb5b151543f34b8",
+          "kind": "executable",
+          "path": "runtime/coordinator.py"
+        }
+      ],
+      "secrets": [],
+      "source_evidence": [
+        {
+          "digest": "sha256:7646e6287d8302be2f6041820c298f09319d0f501a5c0c9659583447df055ace",
+          "path": "ecosystem/rumi_team_coordinator_pack/ecosystem.json",
+          "rule_id": "pack-v4-one-way-migration-input"
+        },
+        {
+          "digest": "sha256:af8d680bed35547e664f10ff849c5d2d11f9bf0e6ba1912a7b0dd136d3a00fe7",
+          "path": "ecosystem/rumi_team_coordinator_pack/rumi.pack.v3.json",
+          "rule_id": "pack-v4-one-way-migration-input"
+        }
+      ],
+      "source_provenance": {
+        "historical_classification": "v3-authoritative",
+        "mode": "offline-one-way-import",
+        "owner": "rumi_team_coordinator_pack",
+        "source_format": "rumi.pack.v3.json"
+      },
+      "version": "1.0.0",
+      "workspace_boundary": "pack_local"
+    },
+    {
+      "approval_policy": "capability_gated",
+      "authority": "v4-authoritative",
+      "capabilities": [
+        "team.state.manage",
+        "team.state.read",
+        "host.authority.consume"
+      ],
+      "dependencies": {
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+      },
+      "description": "Authoritative Team organization and operations state.",
+      "display_name": "Rumi Team State Store Pack",
+      "execution_boundary": "sandbox",
+      "kind": "normal_sandbox",
+      "legacy_ids": [
+        "rumi.action.company.state.v1",
+        "rumi.resource.company.v1",
+        "rumi:ecosystem/rumi_company_state_store_pack",
+        "rumi_company_state_store_pack",
+        "tobkiri.action.company.state.v1",
+        "tobkiri.resource.company.v1"
+      ],
+      "legacy_operations": [],
+      "migration": {
+        "removal_wave": 10,
+        "sunset_at": "2027-12-31",
+        "compatibility": "read_only"
+      },
+      "network": {
+        "allowed_domains": [],
+        "allowed_ports": []
+      },
+      "pack_id": "rumi_team_state_store_pack",
+      "provided_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.team.state.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_team_state_store_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "team-state-action",
+              "id": "rumi_team_state_store_pack.team-state-action",
+              "implementation_digest": "sha256:f481d78a9818b85820566e7b1bbc104613dcffc3aacf4badc693aa61039e9c57"
+            }
+          ],
+          "owner": "rumi_team_state_store_pack",
+          "provider_id": "rumi_team_state_store_pack.team-state.action",
+          "required_capabilities": [
+            "team.state.manage"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.team.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_team_state_store_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "team-state-resource",
+              "id": "rumi_team_state_store_pack.team-state-resource",
+              "implementation_digest": "sha256:f481d78a9818b85820566e7b1bbc104613dcffc3aacf4badc693aa61039e9c57"
+            }
+          ],
+          "owner": "rumi_team_state_store_pack",
+          "provider_id": "rumi_team_state_store_pack.team-state.resource",
+          "required_capabilities": [
+            "team.state.read"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        }
+      ],
+      "required_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.host.authorize.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        }
+      ],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:f481d78a9818b85820566e7b1bbc104613dcffc3aacf4badc693aa61039e9c57",
+          "kind": "executable",
+          "path": "runtime/store.py"
+        }
+      ],
+      "secrets": [],
+      "source_evidence": [
+        {
+          "digest": "sha256:12046563ddacc9f49016b3ebdd62546b5b5caa7749c11b8f39865923a27053d6",
+          "path": "ecosystem/rumi_team_state_store_pack/ecosystem.json",
+          "rule_id": "pack-v4-one-way-migration-input"
+        },
+        {
+          "digest": "sha256:9e7dbaf2434b4f952cb0bac771975576d08cee2121487abc47b50a7e6bdcd8c7",
+          "path": "ecosystem/rumi_team_state_store_pack/rumi.pack.v3.json",
+          "rule_id": "pack-v4-one-way-migration-input"
+        }
+      ],
+      "source_provenance": {
+        "historical_classification": "v3-authoritative",
+        "mode": "offline-one-way-import",
+        "owner": "rumi_team_state_store_pack",
+        "source_format": "rumi.pack.v3.json"
+      },
+      "version": "1.0.0",
       "workspace_boundary": "pack_local"
     },
     {
@@ -19221,31 +19331,41 @@
           "contract_id": "tobkiri.resource.ui.model-state.v1",
           "function_id": "tobkiri.ui.model-state.read",
           "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
-          "operation_ids": ["tobkiri_ui_settings_pack.model-state-read"]
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.model-state-read"
+          ]
         },
         {
           "contract_id": "tobkiri.action.ui.model-state.v1",
           "function_id": "tobkiri.ui.model-state.write",
           "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
-          "operation_ids": ["tobkiri_ui_settings_pack.model-state-write"]
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.model-state-write"
+          ]
         },
         {
           "contract_id": "tobkiri.resource.ui.recovery-diagnostic.v1",
           "function_id": "tobkiri.ui.recovery-diagnostic.read",
           "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
-          "operation_ids": ["tobkiri_ui_settings_pack.recovery-diagnostic-read"]
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.recovery-diagnostic-read"
+          ]
         },
         {
           "contract_id": "tobkiri.action.ui.recovery-diagnostic.v1",
           "function_id": "tobkiri.ui.recovery-diagnostic.write",
           "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
-          "operation_ids": ["tobkiri_ui_settings_pack.recovery-diagnostic-write"]
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.recovery-diagnostic-write"
+          ]
         },
         {
           "contract_id": "tobkiri.resource.ui.model-search.v1",
           "function_id": "tobkiri.ui.model-search.read",
-      "implementation_digest": "sha256:4f3bd4ae8b82c5e6190a243610bfb897eab50d6d730d4d1f5c9e246c487e93aa",
-          "operation_ids": ["tobkiri_ui_settings_pack.model-search"]
+          "implementation_digest": "sha256:4f3bd4ae8b82c5e6190a243610bfb897eab50d6d730d4d1f5c9e246c487e93aa",
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.model-search"
+          ]
         }
       ],
       "kind": "host_extension",
@@ -19474,22 +19594,35 @@
             "deprecated": false,
             "introduced": "1.0.0"
           },
-          "operations": [{
-            "entrypoint_id": "tobkiri_ui_settings_pack.projects-read",
-            "id": "tobkiri_ui_settings_pack.projects-read",
-            "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea"
-          }],
+          "operations": [
+            {
+              "entrypoint_id": "tobkiri_ui_settings_pack.projects-read",
+              "id": "tobkiri_ui_settings_pack.projects-read",
+              "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea"
+            }
+          ],
           "owner": "tobkiri_ui_settings_pack",
           "provider_id": "tobkiri.project.state.read",
-          "required_capabilities": ["ui.projects.read"],
+          "required_capabilities": [
+            "ui.projects.read"
+          ],
           "schemas": {
             "input": {
               "additionalProperties": false,
-              "properties": {"profile_id": {"minLength": 1, "type": "string"}},
-              "required": ["profile_id"],
+              "properties": {
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id"
+              ],
               "type": "object"
             },
-            "output": {"type": "object"}
+            "output": {
+              "type": "object"
+            }
           },
           "security": "sensitive",
           "version": "1.0.0"
@@ -19503,29 +19636,61 @@
             "deprecated": false,
             "introduced": "1.0.0"
           },
-          "operations": [{
-            "entrypoint_id": "tobkiri_ui_settings_pack.projects-replace",
-            "id": "tobkiri_ui_settings_pack.projects-replace",
-            "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea"
-          }],
+          "operations": [
+            {
+              "entrypoint_id": "tobkiri_ui_settings_pack.projects-replace",
+              "id": "tobkiri_ui_settings_pack.projects-replace",
+              "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea"
+            }
+          ],
           "owner": "tobkiri_ui_settings_pack",
           "provider_id": "tobkiri.project.state.replace",
-          "required_capabilities": ["ui.projects.write"],
+          "required_capabilities": [
+            "ui.projects.write"
+          ],
           "schemas": {
-            "error": {"type": "object"},
+            "error": {
+              "type": "object"
+            },
             "input": {
               "additionalProperties": false,
               "properties": {
-                "expected_revision": {"minimum": 0, "type": "integer"},
-                "migration_digest": {"pattern": "^sha256:[0-9a-f]{64}$", "type": "string"},
-                "mutation_id": {"maxLength": 256, "minLength": 1, "type": "string"},
-                "profile_id": {"minLength": 1, "type": "string"},
-                "projects": {"items": {"type": "object"}, "maxItems": 256, "type": "array"}
+                "expected_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "migration_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "mutation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "projects": {
+                  "items": {
+                    "type": "object"
+                  },
+                  "maxItems": 256,
+                  "type": "array"
+                }
               },
-              "required": ["profile_id", "projects", "expected_revision", "mutation_id"],
+              "required": [
+                "profile_id",
+                "projects",
+                "expected_revision",
+                "mutation_id"
+              ],
               "type": "object"
             },
-            "output": {"type": "object"}
+            "output": {
+              "type": "object"
+            }
           },
           "security": "sensitive",
           "version": "1.0.0"
@@ -19535,14 +19700,39 @@
           "contract_id": "tobkiri.resource.ui.model-state.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
-          "lifecycle": {"deprecated": false, "introduced": "1.0.0"},
-          "operations": [{"entrypoint_id": "tobkiri_ui_settings_pack.model-state-read", "id": "tobkiri_ui_settings_pack.model-state-read", "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af"}],
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "tobkiri_ui_settings_pack.model-state-read",
+              "id": "tobkiri_ui_settings_pack.model-state-read",
+              "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af"
+            }
+          ],
           "owner": "tobkiri_ui_settings_pack",
           "provider_id": "tobkiri.ui.model-state.read",
-          "required_capabilities": ["ui.model_state.read"],
+          "required_capabilities": [
+            "ui.model_state.read"
+          ],
           "schemas": {
-            "input": {"additionalProperties": false, "properties": {"profile_id": {"minLength": 1, "type": "string"}}, "required": ["profile_id"], "type": "object"},
-            "output": {"type": "object"}
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
           },
           "security": "sensitive",
           "version": "1.0.0"
@@ -19552,26 +19742,64 @@
           "contract_id": "tobkiri.action.ui.model-state.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
-          "lifecycle": {"deprecated": false, "introduced": "1.0.0"},
-          "operations": [{"entrypoint_id": "tobkiri_ui_settings_pack.model-state-write", "id": "tobkiri_ui_settings_pack.model-state-write", "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af"}],
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "tobkiri_ui_settings_pack.model-state-write",
+              "id": "tobkiri_ui_settings_pack.model-state-write",
+              "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af"
+            }
+          ],
           "owner": "tobkiri_ui_settings_pack",
           "provider_id": "tobkiri.ui.model-state.write",
-          "required_capabilities": ["ui.model_state.write"],
+          "required_capabilities": [
+            "ui.model_state.write"
+          ],
           "schemas": {
-            "error": {"type": "object"},
+            "error": {
+              "type": "object"
+            },
             "input": {
               "additionalProperties": false,
               "properties": {
-                "expected_revision": {"minimum": 0, "type": "integer"},
-                "kind": {"enum": ["preferred_model", "thinking_level", "deepthink_enabled"], "type": "string"},
-                "mutation_id": {"maxLength": 256, "minLength": 8, "type": "string"},
-                "profile_id": {"minLength": 1, "type": "string"},
+                "expected_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "kind": {
+                  "enum": [
+                    "preferred_model",
+                    "thinking_level",
+                    "deepthink_enabled"
+                  ],
+                  "type": "string"
+                },
+                "mutation_id": {
+                  "maxLength": 256,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
                 "value": {}
               },
-              "required": ["profile_id", "kind", "value", "expected_revision", "mutation_id"],
+              "required": [
+                "profile_id",
+                "kind",
+                "value",
+                "expected_revision",
+                "mutation_id"
+              ],
               "type": "object"
             },
-            "output": {"type": "object"}
+            "output": {
+              "type": "object"
+            }
           },
           "security": "sensitive",
           "version": "1.0.0"
@@ -19581,14 +19809,39 @@
           "contract_id": "tobkiri.resource.ui.recovery-diagnostic.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
-          "lifecycle": {"deprecated": false, "introduced": "1.0.0"},
-          "operations": [{"entrypoint_id": "tobkiri_ui_settings_pack.recovery-diagnostic-read", "id": "tobkiri_ui_settings_pack.recovery-diagnostic-read", "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af"}],
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "tobkiri_ui_settings_pack.recovery-diagnostic-read",
+              "id": "tobkiri_ui_settings_pack.recovery-diagnostic-read",
+              "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af"
+            }
+          ],
           "owner": "tobkiri_ui_settings_pack",
           "provider_id": "tobkiri.ui.recovery-diagnostic.read",
-          "required_capabilities": ["ui.recovery_diagnostic.read"],
+          "required_capabilities": [
+            "ui.recovery_diagnostic.read"
+          ],
           "schemas": {
-            "input": {"additionalProperties": false, "properties": {"profile_id": {"minLength": 1, "type": "string"}}, "required": ["profile_id"], "type": "object"},
-            "output": {"type": "object"}
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
           },
           "security": "sensitive",
           "version": "1.0.0"
@@ -19598,13 +19851,26 @@
           "contract_id": "tobkiri.action.ui.recovery-diagnostic.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
-          "lifecycle": {"deprecated": false, "introduced": "1.0.0"},
-          "operations": [{"entrypoint_id": "tobkiri_ui_settings_pack.recovery-diagnostic-write", "id": "tobkiri_ui_settings_pack.recovery-diagnostic-write", "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af"}],
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "tobkiri_ui_settings_pack.recovery-diagnostic-write",
+              "id": "tobkiri_ui_settings_pack.recovery-diagnostic-write",
+              "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af"
+            }
+          ],
           "owner": "tobkiri_ui_settings_pack",
           "provider_id": "tobkiri.ui.recovery-diagnostic.write",
-          "required_capabilities": ["ui.recovery_diagnostic.write"],
+          "required_capabilities": [
+            "ui.recovery_diagnostic.write"
+          ],
           "schemas": {
-            "error": {"type": "object"},
+            "error": {
+              "type": "object"
+            },
             "input": {
               "additionalProperties": false,
               "properties": {
@@ -19612,45 +19878,133 @@
                   "additionalProperties": false,
                   "maxProperties": 12,
                   "properties": {
-                    "category": {"maxLength": 80, "type": "string"},
-                    "context_id": {"maxLength": 256, "type": "string"},
+                    "category": {
+                      "maxLength": 80,
+                      "type": "string"
+                    },
+                    "context_id": {
+                      "maxLength": 256,
+                      "type": "string"
+                    },
                     "detail": {
                       "additionalProperties": false,
                       "maxProperties": 10,
                       "properties": {
-                        "column": {"minimum": 0, "type": "integer"},
-                        "component_stack": {"maxLength": 4096, "type": "string"},
-                        "error_code": {"maxLength": 240, "type": "string"},
-                        "error_name": {"maxLength": 240, "type": "string"},
-                        "frame_count": {"minimum": 0, "type": "integer"},
-                        "http_status": {"minimum": 0, "type": "integer"},
-                        "line": {"minimum": 0, "type": "integer"},
-                        "reason_type": {"maxLength": 240, "type": "string"},
-                        "route": {"maxLength": 1024, "type": "string"},
-                        "stack": {"maxLength": 8192, "type": "string"}
+                        "column": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "component_stack": {
+                          "maxLength": 4096,
+                          "type": "string"
+                        },
+                        "error_code": {
+                          "maxLength": 240,
+                          "type": "string"
+                        },
+                        "error_name": {
+                          "maxLength": 240,
+                          "type": "string"
+                        },
+                        "frame_count": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "http_status": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "line": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "reason_type": {
+                          "maxLength": 240,
+                          "type": "string"
+                        },
+                        "route": {
+                          "maxLength": 1024,
+                          "type": "string"
+                        },
+                        "stack": {
+                          "maxLength": 8192,
+                          "type": "string"
+                        }
                       },
                       "type": "object"
                     },
-                    "event_id": {"maxLength": 256, "minLength": 1, "type": "string"},
-                    "fingerprint": {"maxLength": 256, "minLength": 1, "type": "string"},
-                    "level": {"maxLength": 24, "type": "string"},
-                    "message": {"maxLength": 2048, "minLength": 1, "type": "string"},
-                    "privacy_mode": {"const": "standard", "type": "string"},
-                    "schema_version": {"const": "rumi.client_diagnostic.v2", "type": "string"},
-                    "session_id": {"maxLength": 256, "minLength": 1, "type": "string"},
-                    "source": {"maxLength": 80, "type": "string"}
+                    "event_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "fingerprint": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "level": {
+                      "maxLength": 24,
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 2048,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "privacy_mode": {
+                      "const": "standard",
+                      "type": "string"
+                    },
+                    "schema_version": {
+                      "const": "rumi.client_diagnostic.v2",
+                      "type": "string"
+                    },
+                    "session_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "source": {
+                      "maxLength": 80,
+                      "type": "string"
+                    }
                   },
-                  "required": ["schema_version", "event_id", "session_id", "fingerprint", "privacy_mode", "message"],
+                  "required": [
+                    "schema_version",
+                    "event_id",
+                    "session_id",
+                    "fingerprint",
+                    "privacy_mode",
+                    "message"
+                  ],
                   "type": "object"
                 },
-                "expected_revision": {"minimum": 0, "type": "integer"},
-                "mutation_id": {"maxLength": 256, "minLength": 8, "type": "string"},
-                "profile_id": {"minLength": 1, "type": "string"}
+                "expected_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "mutation_id": {
+                  "maxLength": 256,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                }
               },
-              "required": ["profile_id", "diagnostic", "expected_revision", "mutation_id"],
+              "required": [
+                "profile_id",
+                "diagnostic",
+                "expected_revision",
+                "mutation_id"
+              ],
               "type": "object"
             },
-            "output": {"type": "object"}
+            "output": {
+              "type": "object"
+            }
           },
           "security": "sensitive",
           "version": "1.0.0"
@@ -19660,7 +20014,10 @@
           "contract_id": "tobkiri.resource.ui.model-search.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
-          "lifecycle": {"deprecated": false, "introduced": "1.0.0"},
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
           "operations": [
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.model-search",
@@ -19670,30 +20027,67 @@
           ],
           "owner": "tobkiri_ui_settings_pack",
           "provider_id": "tobkiri.ui.model-search.read",
-          "required_capabilities": ["ui.model_search.read"],
+          "required_capabilities": [
+            "ui.model_search.read"
+          ],
           "schemas": {
             "input": {
               "additionalProperties": false,
               "properties": {
-                "configured_only": {"type": "boolean"},
-                "local_only": {"type": "boolean"},
-                "max_results": {"maximum": 1000, "minimum": 1, "type": "integer"},
-                "min_knowledge_level": {"maximum": 1000, "minimum": 0, "type": "integer"},
-                "model_type": {"maxLength": 64, "type": "string"},
-                "profile_id": {"minLength": 1, "type": "string"},
-                "provider": {"maxLength": 256, "type": "string"},
-                "provider_id": {"maxLength": 256, "type": "string"},
-                "query": {"maxLength": 512, "type": "string"},
+                "configured_only": {
+                  "type": "boolean"
+                },
+                "local_only": {
+                  "type": "boolean"
+                },
+                "max_results": {
+                  "maximum": 1000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "min_knowledge_level": {
+                  "maximum": 1000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "model_type": {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "provider": {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                "provider_id": {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                "query": {
+                  "maxLength": 512,
+                  "type": "string"
+                },
                 "requires": {
-                  "additionalProperties": {"type": "boolean"},
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
                   "maxProperties": 64,
                   "type": "object"
                 },
                 "speed_tier": {
                   "anyOf": [
-                    {"maxLength": 64, "type": "string"},
                     {
-                      "items": {"maxLength": 64, "type": "string"},
+                      "maxLength": 64,
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "maxLength": 64,
+                        "type": "string"
+                      },
                       "maxItems": 16,
                       "type": "array"
                     }
@@ -19701,19 +20095,29 @@
                 },
                 "type": {
                   "anyOf": [
-                    {"maxLength": 64, "type": "string"},
                     {
-                      "items": {"maxLength": 64, "type": "string"},
+                      "maxLength": 64,
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "maxLength": 64,
+                        "type": "string"
+                      },
                       "maxItems": 16,
                       "type": "array"
                     }
                   ]
                 }
               },
-              "required": ["profile_id"],
+              "required": [
+                "profile_id"
+              ],
               "type": "object"
             },
-            "output": {"type": "object"}
+            "output": {
+              "type": "object"
+            }
           },
           "security": "sensitive",
           "version": "1.0.0"

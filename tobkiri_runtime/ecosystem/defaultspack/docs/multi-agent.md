@@ -27,7 +27,7 @@ runtime.
 
 defaultspack owns the generic team workspace, worker runtime, and scheduled
 agent runtime. The optional MiMo Coding Company profile is owned by
-`ecosystem/rumi_operations_company_pack/`; MiMo model aliases and OpenCode Zen
+`ecosystem/rumi_operations_team_pack/`; MiMo model aliases and OpenCode Zen
 provider behavior are integration-specific, not a mode of this shared runtime.
 
 - `delegation` is the canonical action name for sending work to another agent.

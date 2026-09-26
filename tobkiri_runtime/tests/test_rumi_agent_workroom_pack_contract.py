@@ -13,7 +13,7 @@ from ecosystem.setup_pack.pack_selector import PackSelector
 pytestmark = pytest.mark.contract
 
 ROOT = Path(__file__).resolve().parent.parent
-PACK_ID = 'rumi_agent_workroom_pack'
+PACK_ID = 'rumi_run_lifecycle_pack'
 PACK_DIR = ROOT / "ecosystem" / PACK_ID
 V4_AUTHORITY_ARTIFACTS = {"pack.v4.json", "contracts.v4.json", "artifact-index.v4.json"}
 SETUP_PACK_JSON = ROOT / "ecosystem" / "setup_pack" / PACK_ID / "pack.json"
@@ -24,12 +24,12 @@ WORKFLOW_IDS = set(['workroom_initialization', 'task_plan_progression', 'checkpo
 QUALITY_CHECK_IDS = set(['append_only_event_log', 'checkpoint_resume_review', 'intervention_future_only', 'no_tool_execution', 'deterministic_replay', 'run_board_readability', 'handoff_owner_named', 'defaultspack_not_promoted'])
 OWNER_EXPECTED = set(['agent_workroom_session', 'run_event_log', 'task_plan_contract', 'progress_event_contract', 'checkpoint_resume_contract', 'interrupt_redirect_cancel_contract', 'deterministic_replay_index', 'run_board_ui_contract'])
 NON_OWNER_EXPECTED = set(['tool execution', 'browser action', 'desktop action', 'schedule execution', 'file persistence', 'metrics collection', 'subagent PR management', 'model routing'])
-OVERLAP_EXPECTED = {'tool_execution': 'handoff_to_rumi_default_tools_pack', 'agent_service_choreography': 'handoff_to_rumi_operations_company_pack', 'browser_action': 'handoff_to_rumi_default_tools_pack', 'desktop_action': 'handoff_to_rumi_default_tools_pack', 'schedule_execution': 'handoff_to_defaultspack', 'file_persistence': 'handoff_to_defaultspack', 'metrics_collection': 'handoff_to_defaultspack', 'subagent_pr_management': 'handoff_to_rumi_operations_company_pack', 'model_routing': 'handoff_to_rumi_model_catalog_pack', 'workroom_state_contract': 'owned_by_rumi_agent_workroom_pack', 'replay_index': 'owned_by_rumi_agent_workroom_pack', 'tool_aliases': 'prefer_explicit_pack_namespace'}
+OVERLAP_EXPECTED = {'tool_execution': 'handoff_to_rumi_default_tools_pack', 'agent_service_choreography': 'handoff_to_rumi_operations_team_pack', 'browser_action': 'handoff_to_rumi_default_tools_pack', 'desktop_action': 'handoff_to_rumi_default_tools_pack', 'schedule_execution': 'handoff_to_defaultspack', 'file_persistence': 'handoff_to_defaultspack', 'metrics_collection': 'handoff_to_defaultspack', 'subagent_pr_management': 'handoff_to_rumi_operations_team_pack', 'model_routing': 'handoff_to_rumi_model_catalog_pack', 'workroom_state_contract': 'owned_by_rumi_run_lifecycle_pack', 'replay_index': 'owned_by_rumi_run_lifecycle_pack', 'tool_aliases': 'prefer_explicit_pack_namespace'}
 PROMOTION_BLOCKERS = set(['no_durable_run_event_bus', 'no_signed_interrupt_tokens', 'tool_execution_owned_elsewhere', 'metrics_owned_by_defaultspack', 'file_persistence_owned_by_defaultspack'])
 PROMOTION_EVIDENCE = set(['deterministic_replay_cases', 'checkpoint_resume_cases', 'interrupt_redirect_cancel_cases', 'run_board_review_cases', 'handoff_acceptance_by_defaultspack', 'handoff_acceptance_by_operations_company_default_tools', 'handoff_acceptance_by_default_tools_pack'])
 BLOCKED_BY_DEFAULT = set(['execute tools from a workroom event', 'mutate browser or desktop state', 'schedule future work directly', 'write run files directly', 'rewrite replay history after checkpoint'])
 AGENT_RUN_STORE_FIELDS = set(['run_id', 'execution_id', 'session_key', 'conversation_id', 'agent_id', 'task', 'status', 'model', 'system_prompt_id', 'system_prompt_hash', 'runtime_profile_key', 'runtime_profile_json', 'capability_graph_json', 'created_at', 'updated_at', 'started_at', 'completed_at', 'parent_run_id', 'root_run_id', 'current_transcript_id', 'compaction_count', 'heartbeat_at', 'error', 'result_json', 'execution_json'])
-HANDOFF_TARGETS = set(['defaultspack', 'rumi_default_tools_pack', 'rumi_operations_company_pack', 'rumi_model_catalog_pack'])
+HANDOFF_TARGETS = set(['defaultspack', 'rumi_default_tools_pack', 'rumi_operations_team_pack', 'rumi_model_catalog_pack'])
 RUN_BOARD_FORBIDDEN_ACTIONS = set(['run_terminal', 'execute_tool', 'invoke_tool', 'call_tool', 'open_browser', 'browser_action', 'desktop_action', 'restore_files', 'write_files', 'delete_files', 'create_schedule', 'schedule_run', 'collect_metrics', 'export_metrics', 'push_pr', 'merge_pr', 'create_subagent_pr', 'call_api_route', '/api'])
 RUN_BOARD_REQUEST_ACTIONS = set(['request_interrupt', 'request_pause', 'request_resume', 'request_redirect', 'request_cancel', 'open_handoff_packet', 'approve_handoff_request', 'request_human_review', 'copy_review_summary'])
 
@@ -79,7 +79,7 @@ def test_required_assets_and_ecosystem_contract() -> None:
     assert HANDOFF_TARGETS <= set(optional_integrations)
     assert "tool execution" in optional_integrations["rumi_default_tools_pack"]
     assert "metrics" in optional_integrations["defaultspack"]
-    assert "choreography" in optional_integrations["rumi_operations_company_pack"]
+    assert "choreography" in optional_integrations["rumi_operations_team_pack"]
     actual = {
         str(path.relative_to(PACK_DIR))
         for path in PACK_DIR.rglob("*")
@@ -296,7 +296,7 @@ def test_no_runtime_api_or_tool_execution_ownership() -> None:
     assert ecosystem["metadata"]["executable_code"] is False
     assert ecosystem["metadata"]["declarative_only"] is True
     assert setup["overlap_policy"]["tool_execution"] == "handoff_to_rumi_default_tools_pack"
-    assert setup["overlap_policy"]["agent_service_choreography"] == "handoff_to_rumi_operations_company_pack"
+    assert setup["overlap_policy"]["agent_service_choreography"] == "handoff_to_rumi_operations_team_pack"
     for forbidden_key in ["api_routes", "routes", "tools", "functions", "blocks"]:
         assert forbidden_key not in ecosystem
         assert forbidden_key not in ecosystem["metadata"]

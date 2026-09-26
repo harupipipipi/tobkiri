@@ -5038,377 +5038,6 @@
       ],
       "variant_id": "rumi_command_protocol_pack.high-risk-command.service.python"
     },
-    "rumi_company_agent_adapter_pack.company-work.agent": {
-      "contract_id": "tobkiri.action.company.work.v1",
-      "contract_version": "1.0.0",
-      "error_schema": {
-        "type": "object"
-      },
-      "execution_kind": "source-verified",
-      "function_id": "rumi_company_agent_adapter_pack.company-work.agent",
-      "implementation_digest": "sha256:11909f9bd8fb202506c6972183dab8f7587ba29f9776a196e20609f9d7530580",
-      "implementation_path": "runtime/adapter.py",
-      "input_schema": {
-        "type": "object"
-      },
-      "operation_id": "rumi_company_agent_adapter_pack.company-agent-work",
-      "operations": [
-        {
-          "contract_id": "tobkiri.action.company.work.v1",
-          "contract_version": "1.0.0",
-          "entrypoint_id": "company-agent-work",
-          "error_schema": {
-            "type": "object"
-          },
-          "implementation_digest": "sha256:11909f9bd8fb202506c6972183dab8f7587ba29f9776a196e20609f9d7530580",
-          "implementation_path": "runtime/adapter.py",
-          "input_schema": {
-            "type": "object"
-          },
-          "kind": "legacy-v3-entrypoint",
-          "module": "ecosystem.rumi_company_agent_adapter_pack.runtime.adapter",
-          "operation_id": "rumi_company_agent_adapter_pack.company-agent-work",
-          "output_schema": {
-            "type": "object"
-          },
-          "path": "tobkiri_runtime/ecosystem/rumi_company_agent_adapter_pack/rumi.pack.v3.json",
-          "symbol": "create_company_work_adapter"
-        }
-      ],
-      "output_schema": {
-        "type": "object"
-      },
-      "owner": "rumi_company_agent_adapter_pack",
-      "pack_id": "rumi_company_agent_adapter_pack",
-      "source": [
-        {
-          "entrypoint_id": "company-agent-work",
-          "kind": "legacy-v3-entrypoint",
-          "module": "ecosystem.rumi_company_agent_adapter_pack.runtime.adapter",
-          "path": "tobkiri_runtime/ecosystem/rumi_company_agent_adapter_pack/rumi.pack.v3.json",
-          "symbol": "create_company_work_adapter"
-        }
-      ],
-      "variant_id": "rumi_company_agent_adapter_pack.company-work.agent.python"
-    },
-    "rumi_company_coordinator_pack.company.coordinator": {
-      "contract_id": "tobkiri.action.company.coordinator.v1",
-      "contract_version": "1.0.0",
-      "error_schema": {
-        "type": "object"
-      },
-      "execution_kind": "source-verified",
-      "function_id": "rumi_company_coordinator_pack.company.coordinator",
-      "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
-      "implementation_path": "runtime/coordinator.py",
-      "input_schema": {
-        "type": "object"
-      },
-      "operation_id": "rumi_company_coordinator_pack.company-coordinator-control",
-      "operations": [
-        {
-          "contract_id": "tobkiri.action.company.coordinator.v1",
-          "contract_version": "1.0.0",
-          "entrypoint_id": "company-coordinator-control",
-          "error_schema": {
-            "type": "object"
-          },
-          "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
-          "implementation_path": "runtime/coordinator.py",
-          "input_schema": {
-            "type": "object"
-          },
-          "kind": "legacy-v3-entrypoint",
-          "module": "ecosystem.rumi_company_coordinator_pack.runtime.coordinator",
-          "operation_id": "rumi_company_coordinator_pack.company-coordinator-control",
-          "output_schema": {
-            "type": "object"
-          },
-          "path": "tobkiri_runtime/ecosystem/rumi_company_coordinator_pack/rumi.pack.v3.json",
-          "symbol": "create_company_control"
-        }
-      ],
-      "output_schema": {
-        "type": "object"
-      },
-      "owner": "rumi_company_coordinator_pack",
-      "pack_id": "rumi_company_coordinator_pack",
-      "source": [
-        {
-          "entrypoint_id": "company-coordinator-control",
-          "kind": "legacy-v3-entrypoint",
-          "module": "ecosystem.rumi_company_coordinator_pack.runtime.coordinator",
-          "path": "tobkiri_runtime/ecosystem/rumi_company_coordinator_pack/rumi.pack.v3.json",
-          "symbol": "create_company_control"
-        }
-      ],
-      "variant_id": "rumi_company_coordinator_pack.company.coordinator.python"
-    },
-    "rumi_company_coordinator_pack.company.runtime": {
-      "contract_id": "tobkiri.resource.company.runtime.v1",
-      "contract_version": "1.0.0",
-      "error_schema": {
-        "type": "object"
-      },
-      "execution_kind": "source-verified",
-      "function_id": "rumi_company_coordinator_pack.company.runtime",
-      "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
-      "implementation_path": "runtime/coordinator.py",
-      "input_schema": {
-        "type": "object"
-      },
-      "operation_id": "rumi_company_coordinator_pack.company-runtime-resource",
-      "operations": [
-        {
-          "contract_id": "tobkiri.resource.company.runtime.v1",
-          "contract_version": "1.0.0",
-          "entrypoint_id": "company-runtime-resource",
-          "error_schema": {
-            "type": "object"
-          },
-          "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
-          "implementation_path": "runtime/coordinator.py",
-          "input_schema": {
-            "type": "object"
-          },
-          "kind": "legacy-v3-entrypoint",
-          "module": "ecosystem.rumi_company_coordinator_pack.runtime.coordinator",
-          "operation_id": "rumi_company_coordinator_pack.company-runtime-resource",
-          "output_schema": {
-            "type": "object"
-          },
-          "path": "tobkiri_runtime/ecosystem/rumi_company_coordinator_pack/rumi.pack.v3.json",
-          "symbol": "create_company_runtime_resource"
-        }
-      ],
-      "output_schema": {
-        "type": "object"
-      },
-      "owner": "rumi_company_coordinator_pack",
-      "pack_id": "rumi_company_coordinator_pack",
-      "source": [
-        {
-          "entrypoint_id": "company-runtime-resource",
-          "kind": "legacy-v3-entrypoint",
-          "module": "ecosystem.rumi_company_coordinator_pack.runtime.coordinator",
-          "path": "tobkiri_runtime/ecosystem/rumi_company_coordinator_pack/rumi.pack.v3.json",
-          "symbol": "create_company_runtime_resource"
-        }
-      ],
-      "variant_id": "rumi_company_coordinator_pack.company.runtime.python"
-    },
-    "rumi_company_coordinator_pack.job-adapter.company-supervisor": {
-      "contract_id": "tobkiri.action.job.adapter.v1",
-      "contract_version": "1.0.0",
-      "error_schema": {
-        "type": "object"
-      },
-      "execution_kind": "source-verified",
-      "function_id": "rumi_company_coordinator_pack.job-adapter.company-supervisor",
-      "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
-      "implementation_path": "runtime/coordinator.py",
-      "input_schema": {
-        "type": "object"
-      },
-      "operation_id": "rumi_company_coordinator_pack.company-supervisor-job-adapter",
-      "operations": [
-        {
-          "contract_id": "tobkiri.action.job.adapter.v1",
-          "contract_version": "1.0.0",
-          "entrypoint_id": "company-supervisor-job-adapter",
-          "error_schema": {
-            "type": "object"
-          },
-          "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
-          "implementation_path": "runtime/coordinator.py",
-          "input_schema": {
-            "type": "object"
-          },
-          "kind": "legacy-v3-entrypoint",
-          "module": "ecosystem.rumi_company_coordinator_pack.runtime.coordinator",
-          "operation_id": "rumi_company_coordinator_pack.company-supervisor-job-adapter",
-          "output_schema": {
-            "type": "object"
-          },
-          "path": "tobkiri_runtime/ecosystem/rumi_company_coordinator_pack/rumi.pack.v3.json",
-          "symbol": "create_company_job_adapter"
-        }
-      ],
-      "output_schema": {
-        "type": "object"
-      },
-      "owner": "rumi_company_coordinator_pack",
-      "pack_id": "rumi_company_coordinator_pack",
-      "source": [
-        {
-          "entrypoint_id": "company-supervisor-job-adapter",
-          "kind": "legacy-v3-entrypoint",
-          "module": "ecosystem.rumi_company_coordinator_pack.runtime.coordinator",
-          "path": "tobkiri_runtime/ecosystem/rumi_company_coordinator_pack/rumi.pack.v3.json",
-          "symbol": "create_company_job_adapter"
-        }
-      ],
-      "variant_id": "rumi_company_coordinator_pack.job-adapter.company-supervisor.python"
-    },
-    "rumi_company_state_store_pack.company-state.action": {
-      "contract_id": "tobkiri.action.company.state.v1",
-      "contract_version": "1.0.0",
-      "error_schema": {
-        "type": "object"
-      },
-      "execution_kind": "source-verified",
-      "function_id": "rumi_company_state_store_pack.company-state.action",
-      "implementation_digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f",
-      "implementation_path": "runtime/store.py",
-      "input_schema": {
-        "type": "object"
-      },
-      "operation_id": "rumi_company_state_store_pack.company-state-action",
-      "operations": [
-        {
-          "contract_id": "tobkiri.action.company.state.v1",
-          "contract_version": "1.0.0",
-          "entrypoint_id": "company-state-action",
-          "error_schema": {
-            "type": "object"
-          },
-          "implementation_digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f",
-          "implementation_path": "runtime/store.py",
-          "input_schema": {
-            "type": "object"
-          },
-          "kind": "legacy-v3-entrypoint",
-          "module": "ecosystem.rumi_company_state_store_pack.runtime.store",
-          "operation_id": "rumi_company_state_store_pack.company-state-action",
-          "output_schema": {
-            "type": "object"
-          },
-          "path": "tobkiri_runtime/ecosystem/rumi_company_state_store_pack/rumi.pack.v3.json",
-          "symbol": "create_company_action"
-        }
-      ],
-      "output_schema": {
-        "type": "object"
-      },
-      "owner": "rumi_company_state_store_pack",
-      "pack_id": "rumi_company_state_store_pack",
-      "source": [
-        {
-          "entrypoint_id": "company-state-action",
-          "kind": "legacy-v3-entrypoint",
-          "module": "ecosystem.rumi_company_state_store_pack.runtime.store",
-          "path": "tobkiri_runtime/ecosystem/rumi_company_state_store_pack/rumi.pack.v3.json",
-          "symbol": "create_company_action"
-        }
-      ],
-      "variant_id": "rumi_company_state_store_pack.company-state.action.python"
-    },
-    "rumi_company_state_store_pack.company-state.resource": {
-      "contract_id": "tobkiri.resource.company.v1",
-      "contract_version": "1.0.0",
-      "error_schema": {
-        "type": "object"
-      },
-      "execution_kind": "source-verified",
-      "function_id": "rumi_company_state_store_pack.company-state.resource",
-      "implementation_digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f",
-      "implementation_path": "runtime/store.py",
-      "input_schema": {
-        "type": "object"
-      },
-      "operation_id": "rumi_company_state_store_pack.company-state-resource",
-      "operations": [
-        {
-          "contract_id": "tobkiri.resource.company.v1",
-          "contract_version": "1.0.0",
-          "entrypoint_id": "company-state-resource",
-          "error_schema": {
-            "type": "object"
-          },
-          "implementation_digest": "sha256:a3fd51a3c28c083f0819932964fbab77b55d3cd0b7ab0958dd287d23139bdd9f",
-          "implementation_path": "runtime/store.py",
-          "input_schema": {
-            "type": "object"
-          },
-          "kind": "legacy-v3-entrypoint",
-          "module": "ecosystem.rumi_company_state_store_pack.runtime.store",
-          "operation_id": "rumi_company_state_store_pack.company-state-resource",
-          "output_schema": {
-            "type": "object"
-          },
-          "path": "tobkiri_runtime/ecosystem/rumi_company_state_store_pack/rumi.pack.v3.json",
-          "symbol": "create_company_resource"
-        }
-      ],
-      "output_schema": {
-        "type": "object"
-      },
-      "owner": "rumi_company_state_store_pack",
-      "pack_id": "rumi_company_state_store_pack",
-      "source": [
-        {
-          "entrypoint_id": "company-state-resource",
-          "kind": "legacy-v3-entrypoint",
-          "module": "ecosystem.rumi_company_state_store_pack.runtime.store",
-          "path": "tobkiri_runtime/ecosystem/rumi_company_state_store_pack/rumi.pack.v3.json",
-          "symbol": "create_company_resource"
-        }
-      ],
-      "variant_id": "rumi_company_state_store_pack.company-state.resource.python"
-    },
-    "rumi_connector_company_adapter_pack.connector-route.company": {
-      "contract_id": "tobkiri.action.connector.route.v1",
-      "contract_version": "1.0.0",
-      "error_schema": {
-        "type": "object"
-      },
-      "execution_kind": "source-verified",
-      "function_id": "rumi_connector_company_adapter_pack.connector-route.company",
-      "implementation_digest": "sha256:585a6c6e0f2ed28c4d478eb4eaf39df73cbe3e4df9d2f7eb5196058bfc816a6d",
-      "implementation_path": "runtime/adapter.py",
-      "input_schema": {
-        "type": "object"
-      },
-      "operation_id": "rumi_connector_company_adapter_pack.connector-company-route",
-      "operations": [
-        {
-          "contract_id": "tobkiri.action.connector.route.v1",
-          "contract_version": "1.0.0",
-          "entrypoint_id": "connector-company-route",
-          "error_schema": {
-            "type": "object"
-          },
-          "implementation_digest": "sha256:585a6c6e0f2ed28c4d478eb4eaf39df73cbe3e4df9d2f7eb5196058bfc816a6d",
-          "implementation_path": "runtime/adapter.py",
-          "input_schema": {
-            "type": "object"
-          },
-          "kind": "legacy-v3-entrypoint",
-          "module": "ecosystem.rumi_connector_company_adapter_pack.runtime.adapter",
-          "operation_id": "rumi_connector_company_adapter_pack.connector-company-route",
-          "output_schema": {
-            "type": "object"
-          },
-          "path": "tobkiri_runtime/ecosystem/rumi_connector_company_adapter_pack/rumi.pack.v3.json",
-          "symbol": "create_connector_route"
-        }
-      ],
-      "output_schema": {
-        "type": "object"
-      },
-      "owner": "rumi_connector_company_adapter_pack",
-      "pack_id": "rumi_connector_company_adapter_pack",
-      "source": [
-        {
-          "entrypoint_id": "connector-company-route",
-          "kind": "legacy-v3-entrypoint",
-          "module": "ecosystem.rumi_connector_company_adapter_pack.runtime.adapter",
-          "path": "tobkiri_runtime/ecosystem/rumi_connector_company_adapter_pack/rumi.pack.v3.json",
-          "symbol": "create_connector_route"
-        }
-      ],
-      "variant_id": "rumi_connector_company_adapter_pack.connector-route.company.python"
-    },
     "rumi_connector_inbound_broker_pack.connector-inbound.receive": {
       "contract_id": "tobkiri.transport.connector.inbound.v1",
       "contract_version": "1.0.0",
@@ -5832,6 +5461,59 @@
         }
       ],
       "variant_id": "rumi_connector_registry_service_pack.connector-registry.resource.python"
+    },
+    "rumi_connector_team_adapter_pack.connector-route.team": {
+      "contract_id": "tobkiri.action.connector.route.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_connector_team_adapter_pack.connector-route.team",
+      "implementation_digest": "sha256:0505f7622af33a1f7cfb8ea605f3cf00ce67f62387cb795fdec309d5349e59a1",
+      "implementation_path": "runtime/adapter.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_connector_team_adapter_pack.connector-team-route",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.connector.route.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "connector-team-route",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:0505f7622af33a1f7cfb8ea605f3cf00ce67f62387cb795fdec309d5349e59a1",
+          "implementation_path": "runtime/adapter.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_connector_team_adapter_pack.runtime.adapter",
+          "operation_id": "rumi_connector_team_adapter_pack.connector-team-route",
+          "output_schema": {
+            "type": "object"
+          },
+          "path": "tobkiri_runtime/ecosystem/rumi_connector_team_adapter_pack/rumi.pack.v3.json",
+          "symbol": "create_connector_route"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_connector_team_adapter_pack",
+      "pack_id": "rumi_connector_team_adapter_pack",
+      "source": [
+        {
+          "entrypoint_id": "connector-team-route",
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_connector_team_adapter_pack.runtime.adapter",
+          "path": "tobkiri_runtime/ecosystem/rumi_connector_team_adapter_pack/rumi.pack.v3.json",
+          "symbol": "create_connector_route"
+        }
+      ],
+      "variant_id": "rumi_connector_team_adapter_pack.connector-route.team.python"
     },
     "rumi_connector_transport_gateway_pack.connector-gateway.action": {
       "contract_id": "tobkiri.action.connector.gateway.v1",
@@ -11927,6 +11609,324 @@
       ],
       "variant_id": "rumi_subagent_placement_pack.subagent-placement.topology.python"
     },
+    "rumi_team_agent_work_adapter_pack.team-work.agent": {
+      "contract_id": "tobkiri.action.team.work.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_team_agent_work_adapter_pack.team-work.agent",
+      "implementation_digest": "sha256:c5de5e80b78cf77bb38407d2bfe8cbc6ae0a55ca93d9c7305dc96a9d70f52e1a",
+      "implementation_path": "runtime/adapter.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_team_agent_work_adapter_pack.team-agent-work",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.team.work.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "team-agent-work",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:c5de5e80b78cf77bb38407d2bfe8cbc6ae0a55ca93d9c7305dc96a9d70f52e1a",
+          "implementation_path": "runtime/adapter.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_team_agent_work_adapter_pack.runtime.adapter",
+          "operation_id": "rumi_team_agent_work_adapter_pack.team-agent-work",
+          "output_schema": {
+            "type": "object"
+          },
+          "path": "tobkiri_runtime/ecosystem/rumi_team_agent_work_adapter_pack/rumi.pack.v3.json",
+          "symbol": "create_team_work_adapter"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_team_agent_work_adapter_pack",
+      "pack_id": "rumi_team_agent_work_adapter_pack",
+      "source": [
+        {
+          "entrypoint_id": "team-agent-work",
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_team_agent_work_adapter_pack.runtime.adapter",
+          "path": "tobkiri_runtime/ecosystem/rumi_team_agent_work_adapter_pack/rumi.pack.v3.json",
+          "symbol": "create_team_work_adapter"
+        }
+      ],
+      "variant_id": "rumi_team_agent_work_adapter_pack.team-work.agent.python"
+    },
+    "rumi_team_coordinator_pack.job-adapter.team-supervisor": {
+      "contract_id": "tobkiri.action.job.adapter.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_team_coordinator_pack.job-adapter.team-supervisor",
+      "implementation_digest": "sha256:cd2d06b9bd6bb08025a13edd92c696bb4b2c1033463298bcafb5b151543f34b8",
+      "implementation_path": "runtime/coordinator.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_team_coordinator_pack.team-supervisor-job-adapter",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.job.adapter.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "company-supervisor-job-adapter",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:cd2d06b9bd6bb08025a13edd92c696bb4b2c1033463298bcafb5b151543f34b8",
+          "implementation_path": "runtime/coordinator.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_team_coordinator_pack.runtime.coordinator",
+          "operation_id": "rumi_team_coordinator_pack.team-supervisor-job-adapter",
+          "output_schema": {
+            "type": "object"
+          },
+          "path": "tobkiri_runtime/ecosystem/rumi_team_coordinator_pack/rumi.pack.v3.json",
+          "symbol": "create_team_job_adapter"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_team_coordinator_pack",
+      "pack_id": "rumi_team_coordinator_pack",
+      "source": [
+        {
+          "entrypoint_id": "company-supervisor-job-adapter",
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_team_coordinator_pack.runtime.coordinator",
+          "path": "tobkiri_runtime/ecosystem/rumi_team_coordinator_pack/rumi.pack.v3.json",
+          "symbol": "create_team_job_adapter"
+        }
+      ],
+      "variant_id": "rumi_team_coordinator_pack.job-adapter.team-supervisor.python"
+    },
+    "rumi_team_coordinator_pack.team.coordinate": {
+      "contract_id": "tobkiri.action.team.coordinate.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_team_coordinator_pack.team.coordinate",
+      "implementation_digest": "sha256:cd2d06b9bd6bb08025a13edd92c696bb4b2c1033463298bcafb5b151543f34b8",
+      "implementation_path": "runtime/coordinator.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_team_coordinator_pack.team-coordinate-control",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.team.coordinate.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "team-coordinate-control",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:cd2d06b9bd6bb08025a13edd92c696bb4b2c1033463298bcafb5b151543f34b8",
+          "implementation_path": "runtime/coordinator.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_team_coordinator_pack.runtime.coordinator",
+          "operation_id": "rumi_team_coordinator_pack.team-coordinate-control",
+          "output_schema": {
+            "type": "object"
+          },
+          "path": "tobkiri_runtime/ecosystem/rumi_team_coordinator_pack/rumi.pack.v3.json",
+          "symbol": "create_team_control"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_team_coordinator_pack",
+      "pack_id": "rumi_team_coordinator_pack",
+      "source": [
+        {
+          "entrypoint_id": "team-coordinate-control",
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_team_coordinator_pack.runtime.coordinator",
+          "path": "tobkiri_runtime/ecosystem/rumi_team_coordinator_pack/rumi.pack.v3.json",
+          "symbol": "create_team_control"
+        }
+      ],
+      "variant_id": "rumi_team_coordinator_pack.team.coordinate.python"
+    },
+    "rumi_team_coordinator_pack.team.runtime": {
+      "contract_id": "tobkiri.resource.team.runtime.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_team_coordinator_pack.team.runtime",
+      "implementation_digest": "sha256:cd2d06b9bd6bb08025a13edd92c696bb4b2c1033463298bcafb5b151543f34b8",
+      "implementation_path": "runtime/coordinator.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_team_coordinator_pack.team-runtime-resource",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.team.runtime.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "team-runtime-resource",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:cd2d06b9bd6bb08025a13edd92c696bb4b2c1033463298bcafb5b151543f34b8",
+          "implementation_path": "runtime/coordinator.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_team_coordinator_pack.runtime.coordinator",
+          "operation_id": "rumi_team_coordinator_pack.team-runtime-resource",
+          "output_schema": {
+            "type": "object"
+          },
+          "path": "tobkiri_runtime/ecosystem/rumi_team_coordinator_pack/rumi.pack.v3.json",
+          "symbol": "create_team_runtime_resource"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_team_coordinator_pack",
+      "pack_id": "rumi_team_coordinator_pack",
+      "source": [
+        {
+          "entrypoint_id": "team-runtime-resource",
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_team_coordinator_pack.runtime.coordinator",
+          "path": "tobkiri_runtime/ecosystem/rumi_team_coordinator_pack/rumi.pack.v3.json",
+          "symbol": "create_team_runtime_resource"
+        }
+      ],
+      "variant_id": "rumi_team_coordinator_pack.team.runtime.python"
+    },
+    "rumi_team_state_store_pack.team-state.action": {
+      "contract_id": "tobkiri.action.team.state.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_team_state_store_pack.team-state.action",
+      "implementation_digest": "sha256:f481d78a9818b85820566e7b1bbc104613dcffc3aacf4badc693aa61039e9c57",
+      "implementation_path": "runtime/store.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_team_state_store_pack.team-state-action",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.team.state.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "team-state-action",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:f481d78a9818b85820566e7b1bbc104613dcffc3aacf4badc693aa61039e9c57",
+          "implementation_path": "runtime/store.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_team_state_store_pack.runtime.store",
+          "operation_id": "rumi_team_state_store_pack.team-state-action",
+          "output_schema": {
+            "type": "object"
+          },
+          "path": "tobkiri_runtime/ecosystem/rumi_team_state_store_pack/rumi.pack.v3.json",
+          "symbol": "create_team_action"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_team_state_store_pack",
+      "pack_id": "rumi_team_state_store_pack",
+      "source": [
+        {
+          "entrypoint_id": "team-state-action",
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_team_state_store_pack.runtime.store",
+          "path": "tobkiri_runtime/ecosystem/rumi_team_state_store_pack/rumi.pack.v3.json",
+          "symbol": "create_team_action"
+        }
+      ],
+      "variant_id": "rumi_team_state_store_pack.team-state.action.python"
+    },
+    "rumi_team_state_store_pack.team-state.resource": {
+      "contract_id": "tobkiri.resource.team.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_team_state_store_pack.team-state.resource",
+      "implementation_digest": "sha256:f481d78a9818b85820566e7b1bbc104613dcffc3aacf4badc693aa61039e9c57",
+      "implementation_path": "runtime/store.py",
+      "input_schema": {
+        "type": "object"
+      },
+      "operation_id": "rumi_team_state_store_pack.team-state-resource",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.team.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "team-state-resource",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:f481d78a9818b85820566e7b1bbc104613dcffc3aacf4badc693aa61039e9c57",
+          "implementation_path": "runtime/store.py",
+          "input_schema": {
+            "type": "object"
+          },
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_team_state_store_pack.runtime.store",
+          "operation_id": "rumi_team_state_store_pack.team-state-resource",
+          "output_schema": {
+            "type": "object"
+          },
+          "path": "tobkiri_runtime/ecosystem/rumi_team_state_store_pack/rumi.pack.v3.json",
+          "symbol": "create_team_resource"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_team_state_store_pack",
+      "pack_id": "rumi_team_state_store_pack",
+      "source": [
+        {
+          "entrypoint_id": "team-state-resource",
+          "kind": "legacy-v3-entrypoint",
+          "module": "ecosystem.rumi_team_state_store_pack.runtime.store",
+          "path": "tobkiri_runtime/ecosystem/rumi_team_state_store_pack/rumi.pack.v3.json",
+          "symbol": "create_team_resource"
+        }
+      ],
+      "variant_id": "rumi_team_state_store_pack.team-state.resource.python"
+    },
     "rumi_terminal_session_pack.terminal-session.control": {
       "contract_id": "tobkiri.action.terminal.session.v1",
       "contract_version": "1.0.0",
@@ -16287,7 +16287,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:b09af6ea851a48fe045504990783a0d7690eee66778c5698a0157caec3c60444",
+    "input_digest": "sha256:bf5e30a4e2e8aa85ae3d7e6a42f66c255f5fb02a9cb9a43ce4d1ff437c7a705e",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -16314,16 +16314,12 @@
       "tobkiri_runtime/ecosystem/rumi_clipboard_host_service_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_coding_sandbox_service_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/artifact-manifest.json",
-      "tobkiri_runtime/ecosystem/rumi_company_agent_adapter_pack/artifact-manifest.json",
-      "tobkiri_runtime/ecosystem/rumi_company_coordinator_pack/artifact-manifest.json",
-      "tobkiri_runtime/ecosystem/rumi_company_state_store_pack/artifact-manifest.json",
-      "tobkiri_runtime/ecosystem/rumi_company_surface_pack/artifact-manifest.json",
-      "tobkiri_runtime/ecosystem/rumi_connector_company_adapter_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_connector_inbound_broker_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_connector_oauth_broker_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_connector_outbound_broker_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_connector_registry_service_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_connector_settings_surface_pack/artifact-manifest.json",
+      "tobkiri_runtime/ecosystem/rumi_connector_team_adapter_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_connector_transport_gateway_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_connector_turn_adapter_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_context_runtime_pack/artifact-manifest.json",
@@ -16379,6 +16375,10 @@
       "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_slack_connector_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_subagent_placement_pack/artifact-manifest.json",
+      "tobkiri_runtime/ecosystem/rumi_team_agent_work_adapter_pack/artifact-manifest.json",
+      "tobkiri_runtime/ecosystem/rumi_team_console_pack/artifact-manifest.json",
+      "tobkiri_runtime/ecosystem/rumi_team_coordinator_pack/artifact-manifest.json",
+      "tobkiri_runtime/ecosystem/rumi_team_state_store_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_terminal_session_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_tool_approval_bridge_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_tool_audit_pack/artifact-manifest.json",
@@ -16412,16 +16412,12 @@
       "tobkiri_runtime/ecosystem/rumi_clipboard_host_service_pack/rumi.pack.v3.json",
       "tobkiri_runtime/ecosystem/rumi_coding_sandbox_service_pack/rumi.pack.v3.json",
       "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/rumi.pack.v3.json",
-      "tobkiri_runtime/ecosystem/rumi_company_agent_adapter_pack/rumi.pack.v3.json",
-      "tobkiri_runtime/ecosystem/rumi_company_coordinator_pack/rumi.pack.v3.json",
-      "tobkiri_runtime/ecosystem/rumi_company_state_store_pack/rumi.pack.v3.json",
-      "tobkiri_runtime/ecosystem/rumi_company_surface_pack/rumi.pack.v3.json",
-      "tobkiri_runtime/ecosystem/rumi_connector_company_adapter_pack/rumi.pack.v3.json",
       "tobkiri_runtime/ecosystem/rumi_connector_inbound_broker_pack/rumi.pack.v3.json",
       "tobkiri_runtime/ecosystem/rumi_connector_oauth_broker_pack/rumi.pack.v3.json",
       "tobkiri_runtime/ecosystem/rumi_connector_outbound_broker_pack/rumi.pack.v3.json",
       "tobkiri_runtime/ecosystem/rumi_connector_registry_service_pack/rumi.pack.v3.json",
       "tobkiri_runtime/ecosystem/rumi_connector_settings_surface_pack/rumi.pack.v3.json",
+      "tobkiri_runtime/ecosystem/rumi_connector_team_adapter_pack/rumi.pack.v3.json",
       "tobkiri_runtime/ecosystem/rumi_connector_transport_gateway_pack/rumi.pack.v3.json",
       "tobkiri_runtime/ecosystem/rumi_connector_turn_adapter_pack/rumi.pack.v3.json",
       "tobkiri_runtime/ecosystem/rumi_context_runtime_pack/rumi.pack.v3.json",
@@ -16477,6 +16473,10 @@
       "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/rumi.pack.v3.json",
       "tobkiri_runtime/ecosystem/rumi_slack_connector_pack/rumi.pack.v3.json",
       "tobkiri_runtime/ecosystem/rumi_subagent_placement_pack/rumi.pack.v3.json",
+      "tobkiri_runtime/ecosystem/rumi_team_agent_work_adapter_pack/rumi.pack.v3.json",
+      "tobkiri_runtime/ecosystem/rumi_team_console_pack/rumi.pack.v3.json",
+      "tobkiri_runtime/ecosystem/rumi_team_coordinator_pack/rumi.pack.v3.json",
+      "tobkiri_runtime/ecosystem/rumi_team_state_store_pack/rumi.pack.v3.json",
       "tobkiri_runtime/ecosystem/rumi_terminal_session_pack/rumi.pack.v3.json",
       "tobkiri_runtime/ecosystem/rumi_tool_approval_bridge_pack/rumi.pack.v3.json",
       "tobkiri_runtime/ecosystem/rumi_tool_audit_pack/rumi.pack.v3.json",
@@ -16623,31 +16623,6 @@
         "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:6aab8672127fba2249256ced59b785e596992531a5d8846005233c5f57430500",
-        "kind": "legacy-artifact-manifest",
-        "path": "tobkiri_runtime/ecosystem/rumi_company_agent_adapter_pack/artifact-manifest.json"
-      },
-      {
-        "digest": "sha256:c889f695f339019340bb8e4d01fa670f6ad8615807abef5e08abef12e753a3a8",
-        "kind": "legacy-artifact-manifest",
-        "path": "tobkiri_runtime/ecosystem/rumi_company_coordinator_pack/artifact-manifest.json"
-      },
-      {
-        "digest": "sha256:6ea9d517974e46a19f35ccb996d44292e3c1539ef9d70129000d0c5bb407d694",
-        "kind": "legacy-artifact-manifest",
-        "path": "tobkiri_runtime/ecosystem/rumi_company_state_store_pack/artifact-manifest.json"
-      },
-      {
-        "digest": "sha256:ba4fb3edf25a1860e9e633c961594c8051304ecea55fa3ad35695c81117184f3",
-        "kind": "legacy-artifact-manifest",
-        "path": "tobkiri_runtime/ecosystem/rumi_company_surface_pack/artifact-manifest.json"
-      },
-      {
-        "digest": "sha256:30785526abb810ba867b31c8a2cdd571c44260eebd42d8d2e7e3c315fe3db571",
-        "kind": "legacy-artifact-manifest",
-        "path": "tobkiri_runtime/ecosystem/rumi_connector_company_adapter_pack/artifact-manifest.json"
-      },
-      {
         "digest": "sha256:b4bf8611a2fbe3b1ee20144a9f2c3bb8b91098ee5f0f14bf4aa9fe90e2644083",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_connector_inbound_broker_pack/artifact-manifest.json"
@@ -16671,6 +16646,11 @@
         "digest": "sha256:4a77e61fd89da631289e967c1f72a41f424b6f547cd1f7f1ab23dc91f6f97743",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_connector_settings_surface_pack/artifact-manifest.json"
+      },
+      {
+        "digest": "sha256:e65bfec0d0cf71605e7309077994f215b9561bf243ce2dc252a25752d7481dc3",
+        "kind": "legacy-artifact-manifest",
+        "path": "tobkiri_runtime/ecosystem/rumi_connector_team_adapter_pack/artifact-manifest.json"
       },
       {
         "digest": "sha256:a842c27728e3586bcb399d0a4a3470f8c17a95701512c8271f2e2275398e8823",
@@ -16948,6 +16928,26 @@
         "path": "tobkiri_runtime/ecosystem/rumi_subagent_placement_pack/artifact-manifest.json"
       },
       {
+        "digest": "sha256:dedab718a9dfa23f05bb6adfcde4f33b7a13e47d9294d3554dd8536639319946",
+        "kind": "legacy-artifact-manifest",
+        "path": "tobkiri_runtime/ecosystem/rumi_team_agent_work_adapter_pack/artifact-manifest.json"
+      },
+      {
+        "digest": "sha256:c4ef1edcf7162472c2c7a124dc0a412f6d108f69098079f4e25ec1e5000aa2ad",
+        "kind": "legacy-artifact-manifest",
+        "path": "tobkiri_runtime/ecosystem/rumi_team_console_pack/artifact-manifest.json"
+      },
+      {
+        "digest": "sha256:91fed2e0a9813493dd3b11dc82b59b6301a7eca721c93d9c905912a368e2d59e",
+        "kind": "legacy-artifact-manifest",
+        "path": "tobkiri_runtime/ecosystem/rumi_team_coordinator_pack/artifact-manifest.json"
+      },
+      {
+        "digest": "sha256:93ce8e93b76125293f3917b586abf6f036bab6cb76b4631b1adf396d77fe8b1c",
+        "kind": "legacy-artifact-manifest",
+        "path": "tobkiri_runtime/ecosystem/rumi_team_state_store_pack/artifact-manifest.json"
+      },
+      {
         "digest": "sha256:b38f919749cbf8d662234141f32a67ddc6549972a059a552176f182fdb9a3000",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_terminal_session_pack/artifact-manifest.json"
@@ -17038,7 +17038,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:707b1524e01d6211f667b02c710654b68263619183a322590e19fc32563df01f",
+        "digest": "sha256:966062db639052389c0a8ff8595f12e4603a6fc23bbd09755e1c1c83d0a35f73",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -17113,31 +17113,6 @@
         "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:1762c03614668cf5fe96f9a501d7e5b4db62a73124dba5d9ea263a774a2b8592",
-        "kind": "legacy-v3-manifest",
-        "path": "tobkiri_runtime/ecosystem/rumi_company_agent_adapter_pack/rumi.pack.v3.json"
-      },
-      {
-        "digest": "sha256:9e06f966a25f4b466a96d00a6a82245ec8ed6adea5d46c6335701cb28e05c4ef",
-        "kind": "legacy-v3-manifest",
-        "path": "tobkiri_runtime/ecosystem/rumi_company_coordinator_pack/rumi.pack.v3.json"
-      },
-      {
-        "digest": "sha256:062b3a851699f3e2f51c6651e6d0e7977059ef6d17ee67861db4aaa35fc2022a",
-        "kind": "legacy-v3-manifest",
-        "path": "tobkiri_runtime/ecosystem/rumi_company_state_store_pack/rumi.pack.v3.json"
-      },
-      {
-        "digest": "sha256:a42cf20b4caf1e73544aef19cb10b4eb88ebfeb1c2b538e673d72f59c7a515ca",
-        "kind": "legacy-v3-manifest",
-        "path": "tobkiri_runtime/ecosystem/rumi_company_surface_pack/rumi.pack.v3.json"
-      },
-      {
-        "digest": "sha256:90e1b54ff1cc0c432627c36ce1a1a7abab314a1497311dfc30c8d0a2d0c67f30",
-        "kind": "legacy-v3-manifest",
-        "path": "tobkiri_runtime/ecosystem/rumi_connector_company_adapter_pack/rumi.pack.v3.json"
-      },
-      {
         "digest": "sha256:3bcdc5a68306d96675b22a4ff6906d131e006ea445f2a520b5be68464d0ff523",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_connector_inbound_broker_pack/rumi.pack.v3.json"
@@ -17161,6 +17136,11 @@
         "digest": "sha256:7de4aefab7fbdc1c321e0ac3e0cd158795f29640010e1a405ebe0baa37080a23",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_connector_settings_surface_pack/rumi.pack.v3.json"
+      },
+      {
+        "digest": "sha256:9831158407944770ff65932a3a607fcb1d74308737582581e0cba4ff7603735e",
+        "kind": "legacy-v3-manifest",
+        "path": "tobkiri_runtime/ecosystem/rumi_connector_team_adapter_pack/rumi.pack.v3.json"
       },
       {
         "digest": "sha256:e296b5ad546153ac6d82e530e42d33c65227252a10ddc2ad6fc7f1388cbc6e96",
@@ -17436,6 +17416,26 @@
         "digest": "sha256:b43be17511ad8ebfebd9ecc6bf97356294df7f6c5bf29c2c6acbb6cabb2b9920",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_subagent_placement_pack/rumi.pack.v3.json"
+      },
+      {
+        "digest": "sha256:5ea8462a9158089c5a082e22f924f3936ecb271466d1802e0abf17bbbb0028a4",
+        "kind": "legacy-v3-manifest",
+        "path": "tobkiri_runtime/ecosystem/rumi_team_agent_work_adapter_pack/rumi.pack.v3.json"
+      },
+      {
+        "digest": "sha256:e23b4c804882b4a7801c3c88d5861c8ca26d12365e4a7addbbd3a92c375daebe",
+        "kind": "legacy-v3-manifest",
+        "path": "tobkiri_runtime/ecosystem/rumi_team_console_pack/rumi.pack.v3.json"
+      },
+      {
+        "digest": "sha256:aeb4a23ee7fdefbbe88bc7c34ddce956c48331c267edb2d46746f3cb1b1a7692",
+        "kind": "legacy-v3-manifest",
+        "path": "tobkiri_runtime/ecosystem/rumi_team_coordinator_pack/rumi.pack.v3.json"
+      },
+      {
+        "digest": "sha256:b8f8a43a18fc27e7d85f325051c6185e81854d0423e189e8c769d8fcd925915a",
+        "kind": "legacy-v3-manifest",
+        "path": "tobkiri_runtime/ecosystem/rumi_team_state_store_pack/rumi.pack.v3.json"
       },
       {
         "digest": "sha256:f2a1ce714d598db325cf76d3c6e3f8a41f7ffe23a95ca020468eeee97ca8377a",

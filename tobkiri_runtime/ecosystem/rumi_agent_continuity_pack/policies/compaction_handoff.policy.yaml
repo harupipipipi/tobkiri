@@ -17,5 +17,5 @@ policy:
   - recording_metrics_from_summary
   owner_handoffs:
     conversation_compaction_runtime: defaultspack
-    run_events_and_checkpoints: rumi_agent_workroom_pack
+    run_events_and_checkpoints: rumi_run_lifecycle_pack
     durable_memory: rumi_memory_knowledge_pack

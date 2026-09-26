@@ -30,7 +30,7 @@ def test_team_workspace_docs_define_model_and_profile_ownership() -> None:
     )
 
     assert "model-independent" in docs
-    assert "rumi_operations_company_pack" in docs
+    assert "rumi_operations_team_pack" in docs
     assert "MiMo Coding Company" in docs
     assert "OpenCode Zen" in docs
     assert "MiMo-only company" in docs

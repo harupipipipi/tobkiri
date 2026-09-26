@@ -23,7 +23,7 @@ workflows:
     execution: declarative_only
     description: Contract workflow for long running resume.
     handoffs:
-    - handoff_to_rumi_agent_workroom_pack
+    - handoff_to_rumi_run_lifecycle_pack
     - handoff_to_rumi_memory_knowledge_pack
     - handoff_to_rumi_observability_pack
     - handoff_to_rumi_workflow_scheduler_pack
@@ -34,7 +34,7 @@ workflows:
     execution: declarative_only
     description: Contract workflow for attention drift recovery.
     handoffs:
-    - handoff_to_rumi_agent_workroom_pack
+    - handoff_to_rumi_run_lifecycle_pack
     - handoff_to_rumi_memory_knowledge_pack
     - handoff_to_rumi_observability_pack
     - handoff_to_rumi_workflow_scheduler_pack
@@ -45,7 +45,7 @@ workflows:
     execution: declarative_only
     description: Contract workflow for compaction handoff.
     handoffs:
-    - handoff_to_rumi_agent_workroom_pack
+    - handoff_to_rumi_run_lifecycle_pack
     - handoff_to_rumi_memory_knowledge_pack
     - handoff_to_rumi_observability_pack
     - handoff_to_rumi_workflow_scheduler_pack
@@ -56,7 +56,7 @@ workflows:
     execution: declarative_only
     description: Contract workflow for run summary refresh.
     handoffs:
-    - handoff_to_rumi_agent_workroom_pack
+    - handoff_to_rumi_run_lifecycle_pack
     - handoff_to_rumi_memory_knowledge_pack
     - handoff_to_rumi_observability_pack
     - handoff_to_rumi_workflow_scheduler_pack
@@ -67,7 +67,7 @@ workflows:
     execution: declarative_only
     description: Contract workflow for branch resume packet.
     handoffs:
-    - handoff_to_rumi_agent_workroom_pack
+    - handoff_to_rumi_run_lifecycle_pack
     - handoff_to_rumi_memory_knowledge_pack
     - handoff_to_rumi_observability_pack
     - handoff_to_rumi_workflow_scheduler_pack
@@ -78,7 +78,7 @@ workflows:
     execution: declarative_only
     description: Contract workflow for health note review.
     handoffs:
-    - handoff_to_rumi_agent_workroom_pack
+    - handoff_to_rumi_run_lifecycle_pack
     - handoff_to_rumi_memory_knowledge_pack
     - handoff_to_rumi_observability_pack
     - handoff_to_rumi_workflow_scheduler_pack

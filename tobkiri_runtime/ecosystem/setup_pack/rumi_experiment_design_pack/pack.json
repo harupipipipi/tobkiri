@@ -27,7 +27,7 @@
     "runtime_telemetry": "handoff_to_defaultspack_tool_runtime",
     "production_rollout": "handoff_to_defaultspack_tool_runtime",
     "model_benchmarking": "handoff_to_defaultspack_tool_runtime",
-    "business_decision_execution": "handoff_to_rumi_operations_company_pack",
+    "business_decision_execution": "handoff_to_rumi_operations_team_pack",
     "feature_flag_mutation": "handoff_to_defaultspack_tool_runtime",
     "experiment_design_contract": "owned_by_rumi_experiment_design_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"

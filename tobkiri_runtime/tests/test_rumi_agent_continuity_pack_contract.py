@@ -187,7 +187,7 @@ NON_OWNER_EXPECTED = {
     "schedules monitors wakeups retries recurring follow-ups",
 }
 OVERLAP_EXPECTED = {
-    "run_board_events_checkpoints": "handoff_to_rumi_agent_workroom_pack",
+    "run_board_events_checkpoints": "handoff_to_rumi_run_lifecycle_pack",
     "memory_storage_recall": "handoff_to_rumi_memory_knowledge_pack",
     "metrics_telemetry_ledgers": "handoff_to_rumi_observability_pack",
     "schedules_wakeups_retries": "handoff_to_rumi_workflow_scheduler_pack",
@@ -434,7 +434,7 @@ def test_examples_fixtures_presets_profile_and_docs_boundaries() -> None:
     assert all("external_action" in item["must_not"] for item in examples)
     assert all(item["handoff_owner"] for item in examples)
     assert {
-        "rumi_agent_workroom_pack",
+        "rumi_run_lifecycle_pack",
         "defaultspack",
         "rumi_code_ide_pack",
         "rumi_observability_pack",
@@ -463,7 +463,7 @@ def test_examples_fixtures_presets_profile_and_docs_boundaries() -> None:
     for expected in ["Required Secrets", "None", "defaultspack", "Handoff", "Does Not Provide"]:
         assert expected in docs
     for expected in [
-        "rumi_agent_workroom_pack",
+        "rumi_run_lifecycle_pack",
         "rumi_memory_knowledge_pack",
         "rumi_observability_pack",
         "rumi_workflow_scheduler_pack",

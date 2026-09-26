@@ -1547,7 +1547,10 @@ def generate(*, check: bool) -> dict[str, int]:
                 if not path.is_file() or path.read_text(encoding="utf-8") != text:
                     raise PackV4MigrationError(f"generated Pack v4 artifact drift: {path}")
             else:
-                path.write_text(text, encoding="utf-8")
+                # Persist the exact canonical bytes used by cross-artifact
+                # digests.  Text-mode newline conversion breaks the digest
+                # graph on Windows immediately after generation.
+                path.write_bytes(text.encode("utf-8"))
     forbidden_alias_artifacts = {
         "artifact-index.v4.json",
         "contracts.v4.json",
