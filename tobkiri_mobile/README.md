@@ -164,6 +164,29 @@ normal pairing tests.
 TestFlight and App Store builds are **coming soon**. The **Settings → アプリ**
 panel in the defaultspack control panel reflects this state.
 
+## Authority approval review
+
+The Authority approvals screen is a decision surface, not an authority source.
+It presents the backend's structured consequence, exact target, affected
+resource, reason, risk, one-shot scope, non-persistence, requester, Profile,
+reviewing device, expiry, and audit statement before enabling a decision.
+Raw request identifiers and resource payloads are available only in an
+expandable technical section with recursive secret and credential redaction.
+
+Mobile approval remains restricted to one execution. High-impact requests
+require a separate review step, and requests marked for typed confirmation
+remain disabled until the backend-provided phrase matches exactly. Approvals
+use a fresh device-signed challenge; denial accepts an optional reason. The
+screen keeps approved, denied, expired, stale, offline, incomplete-response,
+and retry states visible in place instead of treating a missing or ambiguous
+response as success.
+
+The client does not grant capabilities, trust a client-supplied approval flag,
+or restore an unavailable legacy Authority route. Request status, Profile
+binding, resource constraints, challenge validity, settlement, and audit remain
+owned by the Authority Kernel. If the active v4 runtime does not project a
+mobile approval route, the screen fails closed.
+
 ## Development
 
 ```powershell

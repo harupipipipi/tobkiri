@@ -20,6 +20,17 @@ Scoped access tokens use the `rumi_at_` opaque-token format. Token issuance is r
 
 Mobile approval requires device attestation. A `mobile_approver` first requests a server-generated challenge for one exact request, profile, device, token, permission, resource hash, decision, scope, and server-fixed one-shot token TTL. The challenge route is guarded by `authority.request.approve` because it is the first step of the approve/deny flow, but creating a challenge does not issue a grant or one-shot approval. The mobile app signs the server canonical payload hash with the registered device Ed25519 key. Approval or denial consumes that challenge atomically; unsigned bodies, wrong-device signatures, replayed challenges, post-signing related-permission or TTL expansion, and challenges whose grants are no longer valid fail closed.
 
+The mobile decision surface consumes the Authority request presentation metadata
+without becoming a second authority source. It shows the full consequence,
+target, affected resource, reason, risk explanation, one-shot scope,
+non-persistence, requester/Profile/device, expiry, and audit statement. Critical
+requests pass the exact backend-supplied typed confirmation through the signed
+one-shot flow. Technical payloads are recursively redacted, ambiguous final
+responses are reconciled before success is shown, and authoritative settled or
+error states stay visible. The client remains a presentation and signed-decision
+surface; request creation, resource constraints, settlement, and audit remain
+server-owned.
+
 Non-core code does not run directly on the host. Capability execution classifies trusted core and shipped built-in pack code as `core_in_process`; third-party pack functions, provider code, raw subprocess declarations, binary entries, command entries, and Docker-style user functions require `managed_sandbox`. If the profile-scoped managed runtime, Bubblewrap, or cgroup controller is unavailable, execution fails with `SANDBOX_RUNTIME_UNAVAILABLE` or `SANDBOX_RESOURCE_CONTROLLER_UNAVAILABLE`; host subprocess and `RUMI_ALLOW_HOST_FALLBACK` are not sandbox substitutes.
 
 Profile runtime names are derived from a stable hash such as `rumi-profile-<sha256(profile_id)[:16]>`, never from raw profile IDs. The implemented managed sandbox slice stages regular function files into a temporary `/workspace`, rejects symlinks, hardlinks, devices, fifos, sockets, oversized trees, and oversized files before Bubblewrap starts, clears inherited environment variables, disables nested user namespaces, runs with network off, and applies systemd cgroup limits. The immutable root must be configured explicitly with `RUMI_SANDBOX_IMMUTABLE_ROOT` or a server-side request root, must not be `/`, must not be group/other writable, and must contain a non group/other writable `.rumi-sandbox-root` marker.
