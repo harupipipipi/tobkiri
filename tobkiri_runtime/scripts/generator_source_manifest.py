@@ -814,6 +814,7 @@ def write_source_manifest(root: Path = _ROOT) -> None:
     path = root / SOURCE_MANIFEST_FILENAME
     payload = json.dumps(build_source_manifest(root), indent=2, ensure_ascii=False) + "\n"
     temporary: Path | None = None
+    destination_was_readonly = False
     try:
         with tempfile.NamedTemporaryFile(
             mode="w", encoding="utf-8", dir=root, prefix=f".{path.name}.", delete=False
@@ -823,11 +824,21 @@ def write_source_manifest(root: Path = _ROOT) -> None:
             output.flush()
             os.fsync(output.fileno())
         temporary.chmod(0o444)
+        # Windows refuses to replace a read-only destination. The manifest is
+        # published read-only again by replacing it with the staged file.
+        if os.name == "nt" and path.exists():
+            destination_was_readonly = not bool(path.stat().st_mode & stat.S_IWRITE)
+            if destination_was_readonly:
+                path.chmod(0o600)
         os.replace(temporary, path)
         temporary = None
     finally:
         if temporary is not None and temporary.exists():
+            if os.name == "nt":
+                temporary.chmod(0o600)
             temporary.unlink()
+            if destination_was_readonly and path.exists():
+                path.chmod(0o444)
 
 
 def main() -> int:
