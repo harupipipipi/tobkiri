@@ -395,7 +395,13 @@ def dynamic_profile_edges(
     if source is None or not additional_pack_ids:
         return ()
     source_keys = {
-        (str(edge["contract_id"]), str(edge["operation_id"])) for edge in source["requested_edges"]
+        (
+            str(edge["caller_function_id"]),
+            str(edge["target_provider_id"]),
+            str(edge["contract_id"]),
+            str(edge["operation_id"]),
+        )
+        for edge in source["requested_edges"]
     }
     shell_request = source.get("shell")
     if not isinstance(shell_request, Mapping):
@@ -436,8 +442,9 @@ def dynamic_profile_edges(
         (str(pack_id), 0) for pack_id in dict.fromkeys(additional_pack_ids)
     ]
     depth_for_pack: dict[str, int] = {}
-    provider_callers: dict[str, tuple[str, ...]] = {}
-    provider_contracts: dict[str, tuple[str, ...]] = {}
+    # Keep the required Contracts attached to each caller. Unioning callers
+    # and Contracts separately would grant every caller their cross-product.
+    provider_caller_contracts: dict[str, dict[str, set[str]]] = {}
     consumer_links: list[tuple[str, str, tuple[str, ...]]] = []
     closure: set[str] = set()
     while pending:
@@ -497,20 +504,9 @@ def dynamic_profile_edges(
                     raise ProfileResolutionDenied(
                         f"dynamic Pack dependency caller is ambiguous: {pack_id}"
                     )
-                prior_callers = provider_callers.setdefault(
-                    dependency, pack_caller_ids
-                )
-                prior_contracts = provider_contracts.setdefault(
-                    dependency, served_contracts
-                )
-                if (
-                    prior_callers != pack_caller_ids
-                    or prior_contracts != served_contracts
-                ):
-                    raise ProfileResolutionDenied(
-                        "dynamic Pack dependency caller is ambiguous: "
-                        f"{dependency}"
-                    )
+                caller_contracts = provider_caller_contracts.setdefault(dependency, {})
+                for caller_id in pack_caller_ids:
+                    caller_contracts.setdefault(caller_id, set()).update(served_contracts)
             if consumed_contracts:
                 consumer_links.append((pack_id, dependency, consumed_contracts))
             pending.append((dependency, depth + 1))
@@ -555,20 +551,23 @@ def dynamic_profile_edges(
         if depth_for_pack[pack_id] > 1:
             continue
         manifest = catalog.packs[pack_id]
-        allowed_contracts = provider_contracts.get(pack_id)
+        caller_contracts = provider_caller_contracts.get(pack_id, {})
         for function in sorted(manifest["functions"], key=lambda item: str(item["id"])):
             for operation_id in sorted(str(item) for item in function["operations"]):
                 contract_id = _operation_contract(manifest, operation_id)
-                if contract_id is None or (contract_id, operation_id) in source_keys:
+                if contract_id is None:
                     continue
                 callers: set[str] = set()
                 if depth_for_pack[pack_id] == 0:
                     callers.add(caller_function_id)
-                if allowed_contracts is not None and contract_id in allowed_contracts:
-                    callers.update(provider_callers[pack_id])
+                callers.update(
+                    caller_id
+                    for caller_id, required in caller_contracts.items()
+                    if contract_id in required
+                )
                 for caller_id in sorted(callers):
                     key = (caller_id, str(function["id"]), contract_id, operation_id)
-                    if key in minted:
+                    if key in source_keys or key in minted:
                         continue
                     minted.add(key)
                     result.append(
@@ -589,7 +588,6 @@ def dynamic_profile_edges(
                     if (
                         contract_id is None
                         or contract_id not in shared_contracts
-                        or (contract_id, operation_id) in source_keys
                     ):
                         continue
                     key = (
@@ -598,7 +596,7 @@ def dynamic_profile_edges(
                         contract_id,
                         operation_id,
                     )
-                    if key in minted:
+                    if key in source_keys or key in minted:
                         continue
                     minted.add(key)
                     result.append(_edge(*key))

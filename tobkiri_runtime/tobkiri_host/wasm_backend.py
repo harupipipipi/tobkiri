@@ -12,6 +12,7 @@ import hashlib
 import importlib.metadata
 import importlib.util
 import math
+import os
 from pathlib import Path
 import threading
 import time
@@ -427,8 +428,13 @@ def production_wasm_backend() -> WasmComponentBackend:
         and "__pycache__" not in item.parts
         and item.suffix != ".pyc"
     )
+    native_engine_names = (
+        frozenset({"_wasmtime.dll"})
+        if os.name == "nt"
+        else frozenset({"_libwasmtime.so", "_libwasmtime.dylib"})
+    )
     if not wasmtime_files or not any(
-        item.name.startswith("_libwasmtime.") for item in wasmtime_files
+        item.name in native_engine_names for item in wasmtime_files
     ):
         raise BackendUnavailableError("the pinned Wasmtime native engine is incomplete")
     for relative in sorted(wasmtime_files, key=str):
