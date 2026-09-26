@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 
 import 'package:rumi_remote_app/src/data/pc/pc_catalog.dart';
 import 'package:rumi_remote_app/src/data/pc/pc_catalog_client.dart';
+import 'package:rumi_remote_app/src/pc_control_models.dart';
+import 'package:rumi_remote_app/src/pc_control_state.dart';
 import 'package:rumi_remote_app/src/settings/api_config_store.dart';
 
 const _pc = PcConnection(baseUrl: 'http://192.168.1.10:8765', token: 'tok');
@@ -332,6 +334,91 @@ void main() {
       expect(result.executed, isTrue);
       expect(result.selectedModel?.effectiveProfileId, 'openai/gpt-5.4');
     });
+
+    test('runtime control query uses the scoped mobile state facade', () async {
+      String? requestedPath;
+      Map<String, dynamic>? body;
+      final client = MockClient((request) async {
+        requestedPath = request.url.path;
+        body = jsonDecode(request.body) as Map<String, dynamic>;
+        return _ok({
+          'snapshot_id': 'snapshot-4',
+          'snapshot_revision': 4,
+          'states': [
+            {
+              'state_ref': pcThinkingLevelStateRef,
+              'value': 'high',
+              'revision': 4,
+              'freshness': 'authoritative',
+            },
+          ],
+        });
+      });
+
+      final pcClient = PcCatalogClient(client: client);
+      final snapshot = await pcClient.fetchControlSnapshot(_pc, {
+        pcThinkingLevelStateRef,
+      });
+      pcClient.close();
+
+      expect(requestedPath, '/api/mobile/v1/control-states/query');
+      expect(body?['state_refs'], [pcThinkingLevelStateRef]);
+      expect(snapshot.snapshotRevision, 4);
+      expect(snapshot.states[pcThinkingLevelStateRef]?.value, 'high');
+    });
+
+    test(
+      'runtime control invoke carries concurrency identity and parses state',
+      () async {
+        String? requestedPath;
+        Map<String, dynamic>? body;
+        final client = MockClient((request) async {
+          requestedPath = request.url.path;
+          body = jsonDecode(request.body) as Map<String, dynamic>;
+          return _ok({
+            'status': 'succeeded',
+            'operation_id': 'mobile-control-1',
+            'command_ref': 'defaultspack:think',
+            'client_sequence': 9,
+            'state_changes': [
+              {
+                'state_ref': pcThinkingLevelStateRef,
+                'value': 'xhigh',
+                'revision': 5,
+                'freshness': 'authoritative',
+              },
+            ],
+          });
+        });
+        final request = PcControlRequest(
+          definition: pcControlDefinitions.firstWhere(
+            (definition) => definition.id == 'thinking',
+          ),
+          value: 'xhigh',
+          invocationId: 'mobile-control-1',
+          clientSequence: 9,
+          expectedRevision: 4,
+          idempotencyKey: 'mobile-control-1',
+        );
+
+        final pcClient = PcCatalogClient(client: client);
+        final result = await pcClient.invokeControlCommand(
+          _pc,
+          request,
+          conversationId: 'conversation-1',
+        );
+        pcClient.close();
+
+        expect(requestedPath, '/api/mobile/v1/control-commands/invoke');
+        expect(body?['command_ref'], 'defaultspack:think');
+        expect(body?['client_sequence'], 9);
+        expect(body?['expected_revision'], 4);
+        expect(body?['idempotency_key'], 'mobile-control-1');
+        expect(body?['conversation_id'], 'conversation-1');
+        expect(result.disposition, PcCommandDisposition.accepted);
+        expect(result.stateChanges.single.value, 'xhigh');
+      },
+    );
 
     test('invokeTool posts to mobile tool invoke bridge', () async {
       String? requestedPath;

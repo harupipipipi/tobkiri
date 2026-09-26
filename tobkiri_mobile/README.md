@@ -61,8 +61,7 @@ The PC side (defaultspack webapp **Settings → アプリ**) emits JSON QR codes
   "serverPublicKey": "",
   "expiresAt": 1781830000000
 }
-
-Rumi Remote Mobile is the Flutter client for managing a PC-hosted Rumi
+Tobkiri Remote Mobile is the Flutter client for managing a PC-hosted Tobkiri
 `defaultspack` from iOS and Android devices on a trusted network.
 
 The app targets the Kernel Pack API on port `8765`, not the standalone
@@ -71,7 +70,7 @@ token and is the safer surface for LAN access.
 
 ## PC Setup
 
-Start Rumi with the Kernel API bound to the trusted LAN:
+Start Tobkiri with the Kernel API bound to the trusted LAN:
 
 ```powershell
 $env:RUMI_API_BIND_ADDRESS="0.0.0.0"
@@ -163,6 +162,26 @@ normal pairing tests.
 
 TestFlight and App Store builds are **coming soon**. The **Settings → アプリ**
 panel in the defaultspack control panel reflects this state.
+
+## PC runtime control semantics
+
+Tobkiri Mobile reads model, global thinking level, and DeepThink from one
+authoritative PC snapshot. A requested value remains separately marked as
+Pending until the PC returns a matching authoritative state change. Rejected
+requests retain the last confirmed value and show durable inline Retry feedback;
+timeouts remain Unknown until refresh resolves whether the PC committed the
+request. Command invocation IDs, client sequence numbers, state revisions, and
+idempotency keys prevent stale or duplicate responses from becoming active.
+
+Mode is request-scoped in Command Protocol v1, so the mobile app does not label
+one mode as the globally active PC mode. Tool eligibility and approvals remain
+owned by the PC Authority Kernel; mobile deliberately displays those as Unknown
+instead of creating independent Full Access or tool-authority state.
+
+The shipping chat UI reaches these controls only through the device-scoped
+mobile state-query and command-invocation facades. Those facades retain the
+local Authority Kernel and Command Protocol v1 as the single execution owner;
+the mobile client never forwards caller-supplied principal or owner overrides.
 
 ## Development
 

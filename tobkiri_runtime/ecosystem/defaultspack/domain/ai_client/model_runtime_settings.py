@@ -39,6 +39,8 @@ LEGACY_CLOUD_DEFAULT_MODELS = {
 }
 DEFAULT_THINKING_LEVEL = "medium"
 DEFAULT_DEEPTHINK_ENABLED = False
+PREFERRED_MODEL_STATE_REF = "defaultspack:models.preferred_model"
+GLOBAL_THINKING_LEVEL_STATE_REF = "defaultspack:models.thinking_level"
 DEEPTHINK_STATE_REF = "defaultspack:models.deepthink_enabled"
 CEREBRAS_REASONING_MODELS = {"gpt-oss-120b", "zai-glm-4.7"}
 MODEL_SLOT_MAIN = "main"
@@ -79,12 +81,54 @@ class ModelRuntimeSettingsService:
     def get_preferred_model(self) -> str:
         return str(self.get_settings().get("preferred_model") or DEFAULT_MODEL)
 
-    def set_preferred_model(self, profile_id: str) -> dict[str, Any]:
+    def set_preferred_model(
+        self,
+        profile_id: str,
+        *,
+        expected_revision: int | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Persist the preferred model as an authoritative desired state."""
         profile = str(profile_id or "").strip()
         if not profile:
             raise ValueError("profile_id is required")
-        settings = self.update_settings({"preferred_model": profile})
-        return {"profile_id": settings["preferred_model"], "settings": settings}
+
+        def mutate(
+            all_settings: dict[str, Any],
+        ) -> tuple[dict[str, Any], dict[str, Any]]:
+            current_models = all_settings.get("models", {})
+            if not isinstance(current_models, dict):
+                current_models = {}
+            sanitized = self.sanitize_models_patch(
+                {"preferred_model": profile}, current_models=current_models
+            )
+            updated_models = self.refresh_models_settings(
+                self._deep_merge(current_models, sanitized)
+            )
+            all_settings["models"] = dict(updated_models)
+            return all_settings, {
+                "profile_id": updated_models["preferred_model"],
+                "settings": updated_models,
+            }
+
+        updated = update_settings_state(
+            self._settings_store,
+            PREFERRED_MODEL_STATE_REF,
+            mutate,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            request_fingerprint=self._state_mutation_fingerprint(
+                PREFERRED_MODEL_STATE_REF,
+                profile,
+                expected_revision,
+            ),
+        )
+        updated["state_snapshot"] = self._state_snapshot(
+            PREFERRED_MODEL_STATE_REF,
+            str(updated["profile_id"]),
+            updated,
+        )
+        return updated
 
     def get_preferred_model_group(self) -> str:
         return str(self.get_settings().get("preferred_model_group") or "default")
@@ -190,7 +234,11 @@ class ModelRuntimeSettingsService:
         scope: str = "global",
         profile_id: str | None = None,
         conversation_id: str | None = None,
+        *,
+        expected_revision: int | None = None,
+        idempotency_key: str | None = None,
     ) -> dict[str, Any]:
+        """Set a thinking level, making global changes authoritative mutations."""
         validation = self.validate_thinking_level(level, profile_id)
         if not validation["valid"]:
             raise ValueError(validation["message"])
@@ -213,8 +261,11 @@ class ModelRuntimeSettingsService:
         elif scope == "turn":
             return {"scope": "turn", "level": normalized, "persisted": False}
         else:
-            patch["thinking_level"] = normalized
-            scope = "global"
+            return self._set_global_thinking_level(
+                normalized,
+                expected_revision=expected_revision,
+                idempotency_key=idempotency_key,
+            )
         updated = self.update_settings(patch)
         return {
             "scope": scope,
@@ -225,6 +276,56 @@ class ModelRuntimeSettingsService:
             "settings": updated,
         }
 
+    def _set_global_thinking_level(
+        self,
+        level: str,
+        *,
+        expected_revision: int | None,
+        idempotency_key: str | None,
+    ) -> dict[str, Any]:
+        """Persist global thinking under its independent state revision."""
+
+        def mutate(
+            all_settings: dict[str, Any],
+        ) -> tuple[dict[str, Any], dict[str, Any]]:
+            current_models = all_settings.get("models", {})
+            if not isinstance(current_models, dict):
+                current_models = {}
+            sanitized = self.sanitize_models_patch(
+                {"thinking_level": level}, current_models=current_models
+            )
+            updated_models = self.refresh_models_settings(
+                self._deep_merge(current_models, sanitized)
+            )
+            all_settings["models"] = dict(updated_models)
+            return all_settings, {
+                "scope": "global",
+                "profile_id": None,
+                "conversation_id": None,
+                "level": updated_models["thinking_level"],
+                "persisted": True,
+                "settings": updated_models,
+            }
+
+        updated = update_settings_state(
+            self._settings_store,
+            GLOBAL_THINKING_LEVEL_STATE_REF,
+            mutate,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            request_fingerprint=self._state_mutation_fingerprint(
+                GLOBAL_THINKING_LEVEL_STATE_REF,
+                level,
+                expected_revision,
+            ),
+        )
+        updated["state_snapshot"] = self._state_snapshot(
+            GLOBAL_THINKING_LEVEL_STATE_REF,
+            str(updated["level"]),
+            updated,
+        )
+        return updated
+
     def get_deepthink_enabled(self) -> dict[str, Any]:
         snapshot = self._read_all()
         settings = snapshot["models"]
@@ -233,6 +334,66 @@ class ModelRuntimeSettingsService:
             "state_ref": DEEPTHINK_STATE_REF,
             "revision": settings_state_revision(snapshot, DEEPTHINK_STATE_REF),
             "warning": "DeepThinkが有効なタスクには数時間かかる可能性があります。",
+        }
+
+    def authoritative_state_snapshot(
+        self,
+        state_refs: set[str] | None = None,
+    ) -> dict[str, Any]:
+        """Read model-control states and all revisions from one settings document.
+
+        The resulting values, per-state revisions, and document revision all
+        come from the same locked read, so clients never receive a mixed model
+        control snapshot.
+        """
+        requested = state_refs or {
+            PREFERRED_MODEL_STATE_REF,
+            GLOBAL_THINKING_LEVEL_STATE_REF,
+            DEEPTHINK_STATE_REF,
+        }
+        document = self._settings_store.read()
+        models = document.get("models", {})
+        if not isinstance(models, dict):
+            models = {}
+        resolved = self.refresh_models_settings(models)
+        revisions = document.get("_state_revisions", {})
+        if not isinstance(revisions, dict):
+            revisions = {}
+        document_revision = document.get("_settings_revision", 0)
+        if (
+            not isinstance(document_revision, int)
+            or isinstance(document_revision, bool)
+            or document_revision < 0
+        ):
+            document_revision = 0
+        values = {
+            # DeepThink first: it was the original sole query_states state.
+            DEEPTHINK_STATE_REF: bool(
+                resolved.get("deepthink_enabled", DEFAULT_DEEPTHINK_ENABLED)
+            ),
+            PREFERRED_MODEL_STATE_REF: str(
+                resolved.get("preferred_model") or DEFAULT_MODEL
+            ),
+            GLOBAL_THINKING_LEVEL_STATE_REF: self._normalize_level(
+                resolved.get("thinking_level")
+            ),
+        }
+        states = [
+            {
+                "state_ref": state_ref,
+                "value": value,
+                "revision": self._state_revision_from_mapping(revisions, state_ref),
+                "freshness": "authoritative",
+            }
+            for state_ref, value in values.items()
+            if state_ref in requested
+        ]
+        return {
+            "states": states,
+            "snapshot_id": f"defaultspack-model-controls-{document_revision}",
+            "snapshot_revision": document_revision,
+            "document_revision": document_revision,
+            "freshness": "authoritative",
         }
 
     def set_deepthink_enabled(
@@ -292,12 +453,56 @@ class ModelRuntimeSettingsService:
         updated["message"] = message
         updated["warning"] = "タスクには数時間かかる可能性があります。" if next_enabled else ""
         updated["state_snapshot"] = {
-            "state_ref": DEEPTHINK_STATE_REF,
-            "value": next_enabled,
-            "revision": int(updated.get("revision") or 0),
-            "freshness": "authoritative",
+            **self._state_snapshot(DEEPTHINK_STATE_REF, next_enabled, updated),
         }
         return updated
+
+    @staticmethod
+    def _state_mutation_fingerprint(
+        state_ref: str,
+        value: Any,
+        expected_revision: int | None,
+    ) -> str:
+        """Return the idempotency fingerprint for one authoritative control."""
+        return json.dumps(
+            {
+                "state_ref": state_ref,
+                "desired": value,
+                "expected_revision": expected_revision,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
+    @staticmethod
+    def _state_snapshot(
+        state_ref: str,
+        value: Any,
+        mutation_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Build the public authoritative state snapshot for a mutation."""
+        return {
+            "state_ref": state_ref,
+            "value": value,
+            "revision": int(mutation_result.get("revision") or 0),
+            "freshness": "authoritative",
+        }
+
+    @staticmethod
+    def _state_revision_from_mapping(
+        revisions: dict[str, Any],
+        state_ref: str,
+    ) -> int:
+        """Return one validated state revision from a settings document."""
+        revision = revisions.get(state_ref, 0)
+        if (
+            isinstance(revision, int)
+            and not isinstance(revision, bool)
+            and revision >= 0
+        ):
+            return revision
+        return 0
 
     def get_effective_thinking_level(
         self,
