@@ -1,6 +1,6 @@
-# Rumi Mobile
+# Tobkiri Mobile
 
-Rumi Mobile is the Flutter client for Rumi. It ships a ChatGPT-style chat UI
+Tobkiri Mobile is the Flutter client for Tobkiri. It ships a ChatGPT-style chat UI
 that runs **on-device** against any OpenAI-compatible endpoint, plus QR-based
 PC pairing.
 
@@ -62,7 +62,7 @@ The PC side (defaultspack webapp **Settings → アプリ**) emits JSON QR codes
   "expiresAt": 1781830000000
 }
 
-Rumi Remote Mobile is the Flutter client for managing a PC-hosted Rumi
+Tobkiri Mobile is the Flutter client for managing a PC-hosted Tobkiri
 `defaultspack` from iOS and Android devices on a trusted network.
 
 The app targets the Kernel Pack API on port `8765`, not the standalone
@@ -163,6 +163,26 @@ normal pairing tests.
 
 TestFlight and App Store builds are **coming soon**. The **Settings → アプリ**
 panel in the defaultspack control panel reflects this state.
+
+## Conversation navigation
+
+The Conversations tab connects with paired-device tokens restricted to exactly
+`chat.read` and `chat.write`. Connection details are kept in platform secure
+storage and requests use only the canonical `/api/mobile/v1/conversations`
+routes.
+
+Navigation adapts to the available window instead of the physical device type:
+
+- compact widths use a bounded temporary drawer and one app-bar New
+  conversation action;
+- medium widths keep spaces and conversations in a persistent navigation pane;
+- expanded widths show spaces beside the conversation list and reserve a gap
+  for a separating foldable hinge.
+
+Space choices are standard radio controls with explicit selected and
+online/offline semantics, keyboard focus, hover behavior, and scrollable
+vertical layout. This keeps space switching next to the conversation list and
+avoids hidden horizontal overflow at large text sizes or in split-screen.
 
 ## Development
 
