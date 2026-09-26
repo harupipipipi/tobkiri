@@ -359,7 +359,7 @@ async function invalidatePackMutationSurfaces(get: () => AppState): Promise<void
     let handled = 0;
     while (handled < packInvalidationRequested) {
       const requested = packInvalidationRequested;
-      const packVmExplicitlyUnavailable = get().packVmDoctor?.ready === false;
+      const packVmNotReadyAtStart = get().packVmDoctor?.ready !== true;
       const refreshes: Promise<void>[] = [
         // Operation-status reconciliation owns the current refresh. Do not
         // start a second hydrated-journal reconciliation from that refresh;
@@ -367,23 +367,23 @@ async function invalidatePackMutationSurfaces(get: () => AppState): Promise<void
         // a replaced/closed UI context.
         get().loadPacks(true, {skipMutationReconciliation: true}),
       ];
-      // The dynamic capability catalog is a PackVM-owned surface. An
-      // intentionally unavailable PackVM (for example an ad-hoc signed macOS
-      // build) must not turn a successful Host-owned Pack lifecycle mutation
-      // into an indeterminate result.
-      if (!packVmExplicitlyUnavailable) refreshes.push(get().loadFrontendCatalog(true));
+      // The dynamic capability catalog is a PackVM-owned surface.
+      // PackVM readiness must be positively attested before requiring its
+      // projection. A doctor that has not loaded yet cannot make a successful
+      // Host-owned Pack lifecycle mutation indeterminate.
+      if (!packVmNotReadyAtStart) refreshes.push(get().loadFrontendCatalog(true));
       await Promise.all(refreshes);
       // Readiness may become authoritative while the Host catalog refresh is
       // in flight. In that case the PackVM-owned projection is required after
       // all and must be refreshed before the mutation can be confirmed.
-      if (packVmExplicitlyUnavailable && get().packVmDoctor?.ready === true) {
+      if (packVmNotReadyAtStart && get().packVmDoctor?.ready === true) {
         await get().loadFrontendCatalog(true);
       }
       const refreshedState = get();
       if (
         refreshedState.packsError
         || (
-          refreshedState.packVmDoctor?.ready !== false
+          refreshedState.packVmDoctor?.ready === true
           && refreshedState.frontendCatalogError
         )
       ) {

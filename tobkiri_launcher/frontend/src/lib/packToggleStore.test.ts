@@ -358,7 +358,7 @@ test('install remains confirmed when the PackVM-owned frontend catalog is intent
   assert.deepEqual(successes, ['Pack installed.']);
 });
 
-test('install remains indeterminate while PackVM doctor readiness is unknown', async () => {
+test('install confirms the Host result while PackVM doctor readiness is unknown', async () => {
   const availablePack: Pack = {
     ...samplePack,
     installed: false,
@@ -368,11 +368,9 @@ test('install remains indeterminate while PackVM doctor readiness is unknown', a
     approvalReason: 'install_required',
     approvalIssues: ['install_required'],
   };
-  let installRequestId = '';
   const routes = installFetch(async (route, init) => {
     if (route === 'POST /api/pack-control/install') {
-      installRequestId = String(new Headers(init?.headers).get('X-Tobkiri-Request-ID') ?? '');
-      assert.match(installRequestId, /^[0-9a-f-]{36}$/i);
+      assert.match(String(new Headers(init?.headers).get('X-Tobkiri-Request-ID') ?? ''), /^[0-9a-f-]{36}$/i);
       return new Response(JSON.stringify({
         success: true,
         data: {...binding(), pack_id: samplePack.id, installed: true},
@@ -384,17 +382,7 @@ test('install remains indeterminate while PackVM doctor readiness is unknown', a
         data: {...binding(), packs: [catalogPack(false)], count: 1},
       }), {headers: {'Content-Type': 'application/json'}});
     }
-    if (route.startsWith('GET /api/runtime-surface/operation-status?')) {
-      assert.equal(
-        new URLSearchParams(route.split('?', 2)[1]).get('request_id'),
-        installRequestId,
-      );
-      return operationStatusResponse(route, 'pack.install');
-    }
-    assert.equal(route, 'GET /api/ui/catalog');
-    return new Response(JSON.stringify({success: true, data: {dynamic_host: dynamicCatalog()}}), {
-      headers: {'Content-Type': 'application/json'},
-    });
+    assert.fail(`Unexpected request while PackVM readiness is unknown: ${route}`);
   });
   useAppStore.setState({
     packs: [availablePack],
@@ -405,18 +393,14 @@ test('install remains indeterminate while PackVM doctor readiness is unknown', a
     frontendCatalogError: null,
   });
 
-  await assert.rejects(
-    useAppStore.getState().installPack(samplePack.id),
-    /mutation result is unknown/i,
-  );
+  await useAppStore.getState().installPack(samplePack.id);
 
-  assert.deepEqual(routes.map(normalizeOperationStatusRoute), [
+  assert.deepEqual(routes, [
     'POST /api/pack-control/install',
     'GET /api/pack-control/catalog',
-    'GET /api/runtime-surface/operation-status',
-    'GET /api/pack-control/catalog',
   ]);
-  assert.equal(Object.keys(useAppStore.getState().packMutationUnknown).length, 1);
+  assert.equal(useAppStore.getState().packs[0].installed, true);
+  assert.deepEqual(useAppStore.getState().packMutationUnknown, {});
 });
 
 test('install refreshes the PackVM catalog when readiness becomes available in flight', async () => {

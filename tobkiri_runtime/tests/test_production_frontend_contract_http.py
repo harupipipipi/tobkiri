@@ -5860,6 +5860,9 @@ def test_mutation_status_reconciles_lost_response_and_exact_approval_retry(
         time.sleep(0.02)
     assert status == 200, reconciled
     assert reconciled["data"]["state"] == "succeeded"
+    assert reconciled["data"]["runtime_surface_api_version"] == (
+        "io.tobkiri.launcher.runtime-surface.v4"
+    )
     assert reconciled["data"]["request_id"] == request_id
     assert reconciled["data"]["result_digest"].startswith("sha256:")
     approved = {"data": reconciled["data"]["result"]}

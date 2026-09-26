@@ -48,6 +48,7 @@ HOST_PROFILE_CONTROL_OPERATIONS = frozenset(
 
 PACK_CONTROL_CONTRACT = "tobkiri.host.pack-control.v4"
 CONTROL_PRESENTATION_CONTRACT = "tobkiri.host.control-presentation.v4"
+RUNTIME_SURFACE_API_VERSION = "io.tobkiri.launcher.runtime-surface.v4"
 CONTROL_PRESENTATION_OPERATIONS = frozenset(
     {
         "profile.change.activate",
@@ -387,12 +388,13 @@ class HostProfileControlSession:
                 _require_empty(arguments)
                 from .control_reconciliation_v4 import ControlReconciliationStore
 
-                return ControlReconciliationStore(
+                status = ControlReconciliationStore(
                     self._user_data_root / "control" / "reconciliation-v4.sqlite3"
                 ).operation_status(
                     request_id,
                     session_id=_panel_session_root(session_id),
                 )
+                return {"runtime_surface_api_version": RUNTIME_SURFACE_API_VERSION, **status}
             action = operation_id.removeprefix("profile.change.")
             handler = getattr(self._profile_changes, action)
             result = handler(arguments, session_id=_panel_session_root(session_id))
@@ -706,12 +708,13 @@ class CapturedPackControlSession:
                 )
 
                 try:
-                    return ControlReconciliationStore(
+                    status = ControlReconciliationStore(
                         runtime_user_data_root() / "control" / "reconciliation-v4.sqlite3"
                     ).operation_status(
                         request_id,
                         session_id=_panel_session_root(session_id),
                     )
+                    return {"runtime_surface_api_version": RUNTIME_SURFACE_API_VERSION, **status}
                 except ControlReconciliationNotFoundError as error:
                     raise PackControlOperationNotFound(
                         "operation request is absent from the current data root"
