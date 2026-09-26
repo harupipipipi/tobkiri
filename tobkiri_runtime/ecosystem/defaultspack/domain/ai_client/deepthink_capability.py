@@ -20,11 +20,15 @@ def normalize_capability_assessment(value: Any, *, model: str) -> dict[str, Any]
         kind = short(item.get("kind"), 32)
         if kind not in {"benchmark", "past_artifact", "external_report", "tool_result"}:
             continue
+        reference = short(item.get("reference"))
+        finding = short(item.get("finding"))
+        if not reference or not finding:
+            continue
         evidence.append(
             {
                 "kind": kind,
-                "reference": short(item.get("reference")),
-                "finding": short(item.get("finding")),
+                "reference": reference,
+                "finding": finding,
                 # A model's citation alone does not establish that a source was checked.
                 "verification": "model_reported",
             }
@@ -57,5 +61,5 @@ def normalize_capability_assessment(value: Any, *, model: str) -> dict[str, Any]
             "reason": short(method.get("reason")),
             "fallback": short(method.get("fallback")),
         },
-        "evidence_sufficient": bool(evidence) and bool(raw.get("evidence_sufficient")),
+        "evidence_sufficient": bool(evidence) and raw.get("evidence_sufficient") is True,
     }

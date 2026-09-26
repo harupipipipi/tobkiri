@@ -97,6 +97,17 @@ def test_deepthink_runs_declarative_flow_and_revises_until_approved(
                     },
                 }
             )
+        elif "Plan which host-provided tools" in system:
+            assert json.loads(messages[1]["content"])["capability_assessment"]["method"][
+                "approach"
+            ] == "host_tool"
+            text = json.dumps(
+                {
+                    "selected_tool_ids": ["host_search"],
+                    "selected_skill_ids": [],
+                    "rationale": "Verify the visual workflow",
+                }
+            )
         elif "Write one visible pseudo DeepThinking step" in system:
             text = json.dumps(
                 {"thinking": "Check explicit constraints.", "output": "Use evidence."}
@@ -189,6 +200,12 @@ def test_deepthink_runs_declarative_flow_and_revises_until_approved(
     assert json.loads(integration_call["user"])["capability_assessment"]["method"][
         "approach"
     ] == "host_tool"
+    evidence_call = next(
+        call for call in calls if "Write one visible pseudo DeepThinking step" in call["system"]
+    )
+    assert [tool["function"]["name"] for tool in evidence_call["tools"]] == [
+        "host_search"
+    ]
     assert [event["deepthink_phase"] for event in activity_events] == [
         "preflight",
         "planning",
@@ -314,6 +331,10 @@ def test_deepthink_flow_recovers_when_reviewer_and_json_repair_are_malformed(
     assert response["finish_reason"] == "stop"
     assert response["content"][0]["text"] == "Revised answer"
     assert metadata["review"]["approved"] is True
+    assert metadata["deepthink"]["capability_assessment"]["method"]["approach"] == (
+        "clarify"
+    )
+    assert metadata["deepthink"]["capability_assessment"]["evidence_sufficient"] is False
     assert any(
         event["phase"] == "review_json_fallback"
         and event["metadata"]["fail_closed"] is True
@@ -384,6 +405,17 @@ def test_capability_assessment_does_not_promote_model_claims_to_verified():
     unknown = normalize_capability_assessment("malformed", model="selected/model")
     assert unknown["evidence_sufficient"] is False
     assert unknown["method"]["approach"] == "clarify"
+    unsupported = normalize_capability_assessment(
+        {
+            "evidence": [{"kind": "benchmark", "reference": "", "finding": "Great"}],
+            "evidence_sufficient": "false",
+            "method": {"approach": "execute_anything"},
+        },
+        model="selected/model",
+    )
+    assert unsupported["evidence"] == []
+    assert unsupported["evidence_sufficient"] is False
+    assert unsupported["method"]["approach"] == "clarify"
 
 
 def test_deepthink_runtime_can_shrink_but_not_widen_review_loop():
@@ -695,3 +727,8 @@ def test_deepthink_returns_mixed_comment_and_tool_call_to_chat_approval_loop(
     process = response["metadata"]["rumi_process"]
     assert process["flow"]["status"] == "paused"
     assert process["review"]["reason"] == "tool_execution_requested"
+    assert any(
+        event["phase"] == "deepthink_capability_assessment"
+        for event in process["events"]
+    )
+    assert not any(event["phase"] == "deepthink_integrations" for event in process["events"])

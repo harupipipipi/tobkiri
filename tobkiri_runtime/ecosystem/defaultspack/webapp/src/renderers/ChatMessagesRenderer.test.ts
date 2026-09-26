@@ -837,6 +837,12 @@ test("declarative conversation activity renders a clear phase timeline without p
         },
         {
           type: "status",
+          phase: "deepthink_capability_assessment",
+          deepthink_phase: "capability_assessment",
+          message: "モデルの限界と作業手段を確認しました",
+        },
+        {
+          type: "status",
           phase: "deepthink_reviewing",
           deepthink_phase: "reviewing",
           message: "回答をレビューしました",
@@ -858,7 +864,8 @@ test("declarative conversation activity renders a clear phase timeline without p
   assert.match(html, /data-motion-surface="aurora"/);
   assert.match(html, />DeepThink</);
   assert.match(html, />実行中</);
-  assert.match(html, /2 \/ 8 phases/);
+  assert.match(html, /3 \/ 9 phases/);
+  assert.match(html, />能力評価</);
   assert.match(html, /Review 1/);
   assert.match(html, /改善点が見つかった/);
   assert.doesNotMatch(html, /must-not-render/);
