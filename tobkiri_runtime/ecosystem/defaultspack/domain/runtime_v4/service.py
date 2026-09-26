@@ -506,12 +506,21 @@ def dynamic_profile_edges(
                     f"Contract: {pack_id} -> {dependency}"
                 )
             if served_contracts:
-                if not pack_caller_ids:
+                # A presentation-only application has no Function principal.
+                # Its signed frontend contribution runs in the selected Shell,
+                # so that exact Shell Function is the caller for only the
+                # required Contracts this application declared. Other Pack
+                # kinds cannot acquire Shell authority by omitting Functions.
+                if pack_caller_ids:
+                    dependency_callers = pack_caller_ids
+                elif manifest["pack"].get("kind") == "application":
+                    dependency_callers = (caller_function_id,)
+                else:
                     raise ProfileResolutionDenied(
                         f"dynamic Pack dependency caller is ambiguous: {pack_id}"
                     )
                 caller_contracts = provider_caller_contracts.setdefault(dependency, {})
-                for caller_id in pack_caller_ids:
+                for caller_id in dependency_callers:
                     caller_contracts.setdefault(caller_id, set()).update(served_contracts)
             if consumed_contracts:
                 consumer_links.append((pack_id, dependency, consumed_contracts))

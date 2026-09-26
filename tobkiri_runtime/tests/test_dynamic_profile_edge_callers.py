@@ -5,7 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog, dynamic_profile_edges
+from ecosystem.defaultspack.domain.runtime_v4.service import ProfileResolutionDenied
 
 
 def _manifest(
@@ -147,3 +150,26 @@ def test_static_edge_does_not_suppress_consumer_link() -> None:
 
     assert ("d.c.one", "a.a.own", "a.own", "a.op") in keys
     assert ("shell.main", "a.a.own", "a.own", "a.op") not in keys
+
+
+def test_functionless_application_uses_exact_shell_caller_for_required_dependency() -> None:
+    """A signed UI surface can use its declared direct dependency via Shell."""
+
+    catalog = _catalog()
+    catalog.packs["a"]["pack"]["kind"] = "application"
+    catalog.packs["a"]["functions"] = []
+
+    keys = _keys(dynamic_profile_edges(catalog, "defaults", ("a",)))
+
+    assert keys == {("shell.main", "d.c.one", "c.one", "d.one")}
+
+
+def test_functionless_non_application_cannot_borrow_shell_caller() -> None:
+    """Removing Functions from another Pack kind never grants Shell authority."""
+
+    catalog = _catalog()
+    catalog.packs["a"]["pack"]["kind"] = "normal_sandbox"
+    catalog.packs["a"]["functions"] = []
+
+    with pytest.raises(ProfileResolutionDenied, match="caller is ambiguous"):
+        dynamic_profile_edges(catalog, "defaults", ("a",))
