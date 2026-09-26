@@ -92,6 +92,15 @@ Provider trace artifacts are written under
 `user_data/shared/chat/conversations/<conversation_id>/workspace/provider_traces/`.
 They include redacted capability, planning, payload, and response summaries.
 
+## Composer の `@` 候補とキーボード操作
+
+入力中の `@` メンションに一致する候補がない場合も、composer は候補なしの
+状態と操作方法を表示し、スクリーンリーダーへ通知します。候補がない状態では
+`Enter` は入力した文字列をそのまま送信し、`Shift+Enter` は改行、`Tab` は次の
+フォーカス可能な操作への移動として動作します。`Escape` は未確定のメンション
+だけを閉じます。無効化された tool は候補に含まれず、通常の tool/skill/service/
+file 候補がある場合の矢印キー移動と `Enter` 選択は維持されます。
+
 ## External input conversations
 
 External providers should not call chat internals with raw provider payloads.

@@ -104,9 +104,11 @@ test("verified Pack v4 conversation boots from the dynamic-host catalog", async 
 type ApiMockOptions = {
   beforeCommandCatalogResponse?: () => Promise<void> | void;
   beforeWorkspaceFileReadResponse?: (payload: Record<string, unknown>) => Promise<void> | void;
+  catalogSkills?: Array<Record<string, unknown>>;
   initialSettingsValues?: Record<string, Record<string, unknown>>;
   onConversationCreate?: (payload: Record<string, unknown>) => void;
   onStreamRequest?: (payload: Record<string, unknown>) => void;
+  sidebarItems?: Array<Record<string, unknown>>;
   streamEvents?: (message: Record<string, unknown>) => Record<string, unknown>[];
   conversationMutator?: (conversation: ReturnType<typeof smokeConversation>) => void;
   onApprovalDecision?: (decision: "approve" | "deny", payload: Record<string, unknown>) => void;
@@ -783,7 +785,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
             { id: "tool", label: "Tools" },
             { id: "system", label: "System" },
           ],
-          items: sidebarItems,
+          items: options.sidebarItems ?? sidebarItems,
         },
         settings: { sections: settingsSections, values: currentSettingsValues },
         chat_rendering: { renderers: [] },
@@ -800,7 +802,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
             { id: "note", type: "text", label: "補足", placeholder: "任意の補足" },
           ],
         }] : [],
-        skills: catalogSkills,
+        skills: options.catalogSkills ?? catalogSkills,
         extension_points: [],
       });
     }
@@ -2346,6 +2348,70 @@ test("composer mention keyboard and ARIA contracts stay predictable at Unicode a
   await expect.poll(() => streamRequests.length).toBe(1);
   const sentMessage = streamRequests[0].message as Record<string, unknown>;
   expect(sentMessage.content).toBe("@this_candidate_does_not_exist");
+});
+
+test("composer long and disabled mentions remain literal and sendable", async ({ page }) => {
+  const streamRequests: Record<string, unknown>[] = [];
+  await openDefaultspack(page, "/chat", {
+    catalogSkills: [],
+    initialSettingsValues: {
+      tools: { disabled_tool_ids: ["web_search"] },
+    },
+    onStreamRequest: (payload) => streamRequests.push(payload),
+  });
+
+  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const emptyState = page.getByTestId("composer-at-mention-empty");
+
+  await composer.fill("@web_search");
+  await expect(emptyState).toBeVisible();
+  await composer.press("Enter");
+  await expect.poll(() => streamRequests.length).toBe(1);
+  expect((streamRequests[0].message as Record<string, unknown>).content).toBe("@web_search");
+
+  const longMention = `@${"unknown".repeat(64)}`;
+  await composer.fill(longMention);
+  await expect(emptyState).toBeVisible();
+  await composer.press("Enter");
+  await expect.poll(() => streamRequests.length).toBe(2);
+  expect((streamRequests[1].message as Record<string, unknown>).content).toBe(longMention);
+});
+
+test("composer empty catalog announces no candidates without trapping keys", async ({ page }) => {
+  const streamRequests: Record<string, unknown>[] = [];
+  await openDefaultspack(page, "/chat", {
+    catalogSkills: [],
+    onStreamRequest: (payload) => streamRequests.push(payload),
+    sidebarItems: [],
+  });
+
+  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const mentions = page.getByTestId("composer-at-mention-candidates");
+  const emptyState = page.getByTestId("composer-at-mention-empty");
+
+  await composer.fill("@");
+  await expect(mentions).toBeVisible();
+  await expect(emptyState).toBeVisible();
+  await expect(emptyState).toHaveAttribute("role", "status");
+  await expect(emptyState).toHaveAttribute("aria-live", "polite");
+  await expect(composer).not.toHaveAttribute("aria-activedescendant");
+  await composer.press("Tab");
+  await expect(composer).not.toBeFocused();
+
+  await composer.fill("@");
+  await composer.press("Shift+Enter");
+  await expect(composer).toHaveValue("@\n");
+  expect(streamRequests).toHaveLength(0);
+
+  await composer.fill("@");
+  await composer.press("Escape");
+  await expect(mentions).toBeHidden();
+  await expect(composer).toHaveValue("");
+
+  await composer.fill("@");
+  await composer.press("Enter");
+  await expect.poll(() => streamRequests.length).toBe(1);
+  expect((streamRequests[0].message as Record<string, unknown>).content).toBe("@");
 });
 
 test("coding file mentions keep stable semantic metadata through submit", async ({ page }) => {
