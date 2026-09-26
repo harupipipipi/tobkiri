@@ -1,0 +1,63 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.command.invoke.v1",
+      "rumi.resource.command.catalog.v1",
+      "rumi.resource.command.datasource.v1",
+      "rumi.resource.command.state.v1",
+      "rumi.service.command.high-risk.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Command catalog, state, datasource, invoke, and high-risk command services for the typed command protocol.",
+  "display_name": "Tobkiri Command Protocol",
+  "host_execution": false,
+  "metadata": {
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:5ecbd66b3e2691b3ab9f55e65db79981547a9c267756df56aaf7647c9a1eb72c",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:a53c0b45c77e2f8950d5b7962423f36e890bc4194dbe3ef259bfb5a9a4da0a65"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:a53c0b45c77e2f8950d5b7962423f36e890bc4194dbe3ef259bfb5a9a4da0a65"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_command_protocol_pack",
+  "pack_identity": "rumi:ecosystem/rumi_command_protocol_pack",
+  "provenance": {
+    "build_identity": "rumi_command_protocol_pack:1.0.0",
+    "content_hash": "sha256:bf6752bc6fbb0d612e44a9a8141af15b0d8d92fe2ef37815facff326b58c72cc",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "command.catalog.read",
+    "command.invoke",
+    "host.authority.consume"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

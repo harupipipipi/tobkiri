@@ -1,0 +1,76 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.connector.oauth.v1",
+      "rumi.resource.connector.oauth.v1",
+      "rumi.transport.connector.oauth.callback.v1"
+    ],
+    "requires": [
+      "rumi.action.connector.registry.v1",
+      "rumi.action.credential.manage.v1",
+      "rumi.resource.connector.registry.v1",
+      "rumi.service.connector.oauth.provider.v1",
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_connector_registry_service_pack": ">=1.0.0,<2.0.0",
+    "rumi_credential_broker_pack": ">=1.0.0,<2.0.0",
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "PKCE-bound one-shot connector OAuth coordination over global contracts.",
+  "display_name": "Rumi Connector OAuth Broker",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:b5b637c3e820787d55f2eb5d87247bf1158c4eabbabaff6bd9684c8d853ca353",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:27512b8664810eb4db7e39616d0e62da64e16359815b176a8130e2b513cdf5ea"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:27512b8664810eb4db7e39616d0e62da64e16359815b176a8130e2b513cdf5ea"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "oauth_pending_flow_state"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_connector_oauth_broker_pack",
+  "pack_identity": "rumi:ecosystem/rumi_connector_oauth_broker_pack",
+  "provenance": {
+    "build_identity": "rumi_connector_oauth_broker_pack:1.0.0",
+    "content_hash": "sha256:60e25867b283ab9f353d9d87db70d9f877fa5549f7cbc3a1d997dc5deb8de15e",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "connector.oauth.callback",
+    "connector.oauth.manage",
+    "connector.oauth.read",
+    "connector.registry.manage",
+    "connector.registry.read",
+    "credential.manage",
+    "host.authority.consume"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

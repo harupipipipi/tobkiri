@@ -1,8 +1,149 @@
-import type { ChatMessage } from "./api";
+import type { ChatContinuationPacket, ChatMessage, Conversation, SavedTurnResult } from "./api";
+
+const STABLE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+
+/**
+ * Fail-closed identity check for a Host-bound approval-continuation packet.
+ *
+ * A continuation packet may only be projected onto the exact saved turn it
+ * was bound to: ``turn_id`` and ``operation_id`` must both equal the pending
+ * ``turnId`` (``""`` for an unbound continuation), the conversation and
+ * approval request identities must match exactly, and a terminal receipt
+ * must carry the same identities with a canonical terminal status.
+ */
+export function chatContinuationPacketMatchesTurn(
+  packet: Partial<ChatContinuationPacket> | null | undefined,
+  turnId: string,
+  conversationId: string,
+  requestId: string,
+): boolean {
+  if (!STABLE_ID_PATTERN.test(conversationId) || !STABLE_ID_PATTERN.test(requestId)
+    || (turnId !== "" && !STABLE_ID_PATTERN.test(turnId))) return false;
+  const matches = (value: {
+    turn_id?: string; conversation_id?: string; operation_id?: string; request_id?: string;
+  } | null | undefined) => Boolean(value)
+    && value!.turn_id === turnId && value!.operation_id === turnId
+    && value!.conversation_id === conversationId && value!.request_id === requestId;
+  if (!matches(packet)) return false;
+  const terminal = packet?.terminal;
+  return terminal === null || (typeof terminal === "object" && terminal !== null
+    && matches(terminal)
+    && ["completed", "failed", "cancelled"].includes(String(terminal.status)));
+}
+
+export function savedTurnSnapshotState(
+  turn: SavedTurnResult["turn"],
+  conversation: Pick<Conversation, "id" | "conversation_revision" | "messages"> | null,
+  conversationId: string,
+  turnId: string,
+): "pending" | "current" | "changed" | "unavailable" {
+  const reference = turn.result_reference;
+  if (turn.id !== turnId || turn.conversation_id !== conversationId
+    || turn.status !== "completed" || !reference
+    || reference.conversation_id !== conversationId
+    || !Number.isSafeInteger(reference.conversation_revision) || reference.conversation_revision < 1
+    || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(reference.user_message_id ?? "")
+    || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(reference.assistant_message_id ?? "")
+    || !/^sha256:[a-f0-9]{64}$/.test(reference.outcome_digest ?? "")) return "pending";
+  // null means a completed turn followed by an explicit unavailable conversation response.
+  // It is not evidence that the saved operation failed, nor permission to resend it.
+  if (conversation === null) return "unavailable";
+  if (conversation.id !== conversationId || !Number.isSafeInteger(conversation.conversation_revision)
+    || conversation.conversation_revision! < reference.conversation_revision) return "pending";
+  if (conversation.conversation_revision! > reference.conversation_revision) return "changed";
+  const user = conversation.messages.find((message) => message.id === reference.user_message_id);
+  const assistant = conversation.messages.find((message) => message.id === reference.assistant_message_id);
+  return user?.role === "user" && user.metadata?.turn_id === turnId
+    && assistant?.role === "assistant" && assistant.metadata?.turn_id === turnId
+    && !isAssistantMessageStillRunning(assistant) ? "current" : "pending";
+}
+
+export function savedTurnSnapshotNotice(state: ReturnType<typeof savedTurnSnapshotState>): string | null {
+  if (state === "changed") return "送信の保存完了を確認しました。会話はその後更新されているため、現在の内容を表示しています。";
+  if (state === "unavailable") return "送信の保存完了を確認しましたが、現在の会話は取得できません。自動再送はしません。";
+  return null;
+}
+
+export type SavedTurnProgressState =
+  | "ledger_only"
+  | "user_saved"
+  | "all_messages_saved_unconfirmed"
+  | "conversation_unavailable";
+
+export function savedTurnProgressState(
+  turn: SavedTurnResult["turn"],
+  conversation: Pick<Conversation, "id" | "conversation_revision" | "messages"> | null,
+  conversationId: string,
+  turnId: string,
+): SavedTurnProgressState {
+  if (conversation === null) return "conversation_unavailable";
+  if (turn.id !== turnId || turn.conversation_id !== conversationId
+    || turn.status === "completed" || conversation.id !== conversationId
+    || !Number.isSafeInteger(conversation.conversation_revision)
+    || (conversation.conversation_revision ?? 0) < 1) return "ledger_only";
+  const claim = [...(turn.events ?? [])].reverse().find(
+    (event) => event.name === "turn.running"
+      && event.details?.phase === "saved_execution_claimed",
+  );
+  const userId = claim?.details?.user_message_id;
+  const assistantId = claim?.details?.assistant_message_id;
+  if (typeof userId !== "string" || typeof assistantId !== "string"
+    || !/^message:[a-f0-9]{64}$/.test(userId)
+    || !/^message:[a-f0-9]{64}$/.test(assistantId)) return "ledger_only";
+  const messages = conversation.messages.filter(
+    (message) => message.metadata?.turn_id === turnId,
+  );
+  const userSaved = messages.some(
+    (message) => message.id === userId && message.role === "user",
+  );
+  const assistantSaved = messages.some(
+    (message) => message.id === assistantId && message.role === "assistant"
+      && !isAssistantMessageStillRunning(message),
+  );
+  if (userSaved && assistantSaved) return "all_messages_saved_unconfirmed";
+  return userSaved ? "user_saved" : "ledger_only";
+}
+
+export function savedTurnProgressNotice(state: SavedTurnProgressState): string {
+  if (state === "user_saved") {
+    return "ユーザーメッセージは保存済みです。assistant の保存状態を照合中です。自動再送はしません。";
+  }
+  if (state === "all_messages_saved_unconfirmed") {
+    return "user／assistant メッセージは保存済みです。turn の完了状態を照合中です。自動再送はしません。";
+  }
+  if (state === "conversation_unavailable") {
+    return "turn 台帳は未完了で、現在の会話を取得できません。自動再送せず照合を待ちます。";
+  }
+  return "turn 台帳は未完了です。保存状態を照合中のため自動再送はしません。";
+}
+
+export function savedTurnTerminalNotice(
+  turn: SavedTurnResult["turn"],
+  conversationId: string,
+  turnId: string,
+): string | null {
+  if (turn.id !== turnId || turn.conversation_id !== conversationId) return null;
+  if (turn.status === "cancelled") {
+    return "送信の停止を確認しました。保存済みメッセージを表示し、自動再送はしません。";
+  }
+  if (turn.status === "failed") {
+    const structured = turn.error;
+    if (structured && typeof structured === "object") {
+      const parts = [structured.message, structured.cause, structured.fix]
+        .filter((item): item is string => typeof item === "string" && Boolean(item.trim()));
+      if (parts.length) {
+        return `送信は失敗で終了しました。${parts.join(" — ")} 自動再送はしません。`;
+      }
+    }
+    return "送信は失敗で終了しました。保存済みメッセージを表示し、自動再送はしません。";
+  }
+  return null;
+}
 
 export type PendingChatRequest = {
   conversationId: string;
   operationId?: string;
+  savedTurn?: boolean;
   requestFingerprint?: string;
   startedAt: number;
   status: string;
@@ -10,6 +151,18 @@ export type PendingChatRequest = {
   toolStartedAt?: Record<string, number>;
   recoveredFromLocation?: boolean;
 };
+
+export function updateSavedTurnNotice(
+  current: Record<string, PendingChatRequest>, conversationId: string,
+  turnId: string, status: string,
+): Record<string, PendingChatRequest> {
+  const entry = current[conversationId];
+  // A delayed stop receipt belongs to the original turn, not the currently
+  // visible conversation or a newer request. Never restore a completed entry.
+  if (!entry?.savedTurn || entry.conversationId !== conversationId
+    || entry.operationId !== turnId || entry.status === status) return current;
+  return { ...current, [conversationId]: { ...entry, status } };
+}
 
 export const PENDING_CHAT_REQUEST_TTL_MS = 6 * 60 * 60_000;
 export const PENDING_USER_ONLY_GRACE_MS = 8_000;
@@ -37,6 +190,8 @@ export function shouldClearPendingAfterConversationRefresh(
   now = Date.now(),
 ): boolean {
   if (!latest || !request) return false;
+  // Saved turns require the durable completion reference, not editable message metadata.
+  if (request.savedTurn) return false;
   if (latest.role !== "user") return !isAssistantMessageStillRunning(latest);
   return now - request.startedAt >= PENDING_USER_ONLY_GRACE_MS;
 }

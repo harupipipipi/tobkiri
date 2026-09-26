@@ -4,14 +4,14 @@ from domain.subagent_team.service import SubagentTeamService
 from ._helpers import company_id_from, denied, direct_lifecycle_denied, invalid, is_denied, lifecycle_actor, missing_team, normalize_action, require_dict
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner=None):
     if require_dict(input_data) is None:
         return invalid("input_data must be a dict")
     company_id = company_id_from(input_data)
     if not company_id:
         return invalid("company_id is required")
     action = normalize_action(input_data.get("action"), "list")
-    service = SubagentTeamService()
+    service = SubagentTeamService(settings_owner=settings_owner)
     try:
         if action == "list":
             dms = service.list_dms(company_id)
@@ -19,7 +19,11 @@ def run(input_data, context):
                 return missing_team(company_id)
             return ok({"dms": dms, "total": len(dms)})
         if action in {"create", "ensure"}:
-            blocked = direct_lifecycle_denied(input_data, context if isinstance(context, dict) else {})
+            blocked = direct_lifecycle_denied(
+                input_data,
+                context if isinstance(context, dict) else {},
+                settings_owner=settings_owner,
+            )
             if blocked is not None:
                 return blocked
             dm = service.ensure_dm(

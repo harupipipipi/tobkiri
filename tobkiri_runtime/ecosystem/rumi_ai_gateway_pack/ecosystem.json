@@ -1,0 +1,92 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.resource.ai.routing.diagnostics.v1",
+      "rumi.service.ai.generate.v1",
+      "rumi.service.ai.stream.v1"
+    ],
+    "requires": [
+      "rumi.resource.ai.model.catalog.v1",
+      "rumi.resource.ai.model.profile.v1",
+      "rumi.resource.ai.provider.health.v1",
+      "rumi.service.ai.failover.decide.v1",
+      "rumi.service.ai.provider.generate.v1",
+      "rumi.service.ai.provider.stream.v1",
+      "rumi.service.ai.request.prepare.v1",
+      "rumi.service.ai.route.v1",
+      "rumi.service.ai.stream.normalize.v1",
+      "rumi.service.ai.tool_intent.normalize.v1",
+      "rumi.service.ai.usage.cost.v1"
+    ]
+  },
+  "dependencies": {},
+  "description": "Provider-neutral generation, routing, stream, usage, and diagnostic gateway.",
+  "display_name": "Rumi AI Gateway",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:9b2c98baeacac8b288387ac7c9d405f34bce7450aa5f228a7932da1960b139e4",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:d4b26de25976c7b3ce2f797786631a2222a3cdca41ec1bf2a4f17e1af52c9a36"
+    },
+    "executable_code": true,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:d4b26de25976c7b3ce2f797786631a2222a3cdca41ec1bf2a4f17e1af52c9a36"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none",
+    "owner_surfaces": [
+      "ai_gateway",
+      "routing",
+      "stream_normalization",
+      "retry_failover",
+      "usage_normalization",
+      "routing_diagnostics"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": [],
+    "security": {
+      "absolute_deadlines": true,
+      "opaque_credentials_only": true,
+      "provider_pack_agnostic": true,
+      "replay_safe_failover_only": true,
+      "tool_intent_only": true
+    }
+  },
+  "pack_id": "rumi_ai_gateway_pack",
+  "pack_identity": "rumi:ecosystem/rumi_ai_gateway_pack",
+  "provenance": {
+    "build_identity": "rumi_ai_gateway_pack:1.0.0",
+    "content_hash": "sha256:09c77441d392da705ea09bb0b005ba534933e06b20f1f8716e96c558fe3032b2",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "ai.gateway.diagnostics.read",
+    "ai.gateway.generate",
+    "ai.gateway.stream"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ChatStreamInterruptedError, api, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, usesBrowserComputerApprovalEndpoint } from "./api";
+import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, isDefaultspackContractOperationUnknownError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, usesBrowserComputerApprovalEndpoint } from "./api";
 import type { ComposerCommandItem } from "./api";
 import { authorityApprovalRuntimeContent } from "./authorityApproval";
 import { deleteCalendarScheduleBeforeLocalChange } from "./calendarScheduleDeletion";
@@ -12,6 +13,7 @@ import {
   MIMO_CODING_DEFAULT_FAST_MODEL,
   MIMO_CODING_DEFAULT_MODEL,
   MIMO_CODING_DEFAULT_VISION_MODEL,
+  commandSupportsMode,
   frontendCommandArgs,
   keepSelectedToolsAfterSend,
   parseCommandBoolean,
@@ -26,11 +28,350 @@ import { shouldAutoCompactHistory } from "../App";
 import { ImportedConversationNotice, shareImportDestination, sharePreviewSummary, shareTokenFromPath } from "../pages/ConversationShareLanding";
 import type { ConversationShareRecord } from "./api";
 
+function routeKey(path: string): string {
+  return `/${path}`;
+}
+
+function requestTarget(input: RequestInfo | URL): string {
+  const raw = String(input);
+  const marker = "/api/contracts/defaultspack/";
+  const markerIndex = raw.indexOf(marker);
+  if (markerIndex < 0) return raw;
+  const operation = decodeURIComponent(raw.slice(markerIndex + marker.length));
+  const separator = operation.indexOf(" ");
+  return separator < 0 ? operation : operation.slice(separator + 1);
+}
+
+function bindChatStream(body: string, init?: RequestInit): string {
+  const request = JSON.parse(String(init?.body ?? "{}")) as { idempotency_key?: string };
+  let sequence = 0;
+  return body.replace(/^data: (.+)$/gm, (line, payload: string) => {
+    if (payload === "[DONE]") return line;
+    const event = JSON.parse(payload) as Record<string, unknown>;
+    sequence += 1;
+    return `data: ${JSON.stringify({
+      ...event,
+      run_id: "run-1",
+      conversation_id: "c1",
+      chat_operation_id: request.idempotency_key,
+      seq: sequence,
+    })}`;
+  });
+}
+
+test("commands cannot execute outside their declared modes", () => {
+  const terminal = {
+    id: "terminal",
+    name: "terminal",
+    label: "Terminal",
+    category: "coding",
+    modes: ["coding"],
+    risk: "high",
+    visibility: "hidden",
+    execution: { type: "frontend", action: "request_terminal_approval" },
+  } satisfies ComposerCommandItem;
+
+  assert.equal(commandSupportsMode(terminal, "chat"), false);
+  assert.equal(commandSupportsMode(terminal, "agent"), false);
+  assert.equal(commandSupportsMode(terminal, "coding"), true);
+  assert.equal(commandSupportsMode({ ...terminal, modes: [] }, "chat"), false);
+});
+
+test("saved turn reconciliation is a read with no replay or caller Profile", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let calls = 0;
+  const turn = { id: "turn-1", conversation_id: "conversation-1", status: "waiting", revision: 3 };
+  globalThis.fetch = async (url, init) => {
+    calls += 1;
+    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent("GET /api/chat/turn?turn_id=turn-1")}`);
+    assert.equal(init?.method ?? "GET", "GET");
+    assert.equal(init?.body, undefined);
+    assert.equal(init?.cache, "no-store");
+    return new Response(JSON.stringify({ success: true, data: turn }));
+  };
+  assert.deepEqual(await api.getSavedTurn("turn-1", "conversation-1"), turn);
+  await assert.rejects(api.getSavedTurn("turn-1", "other"), /does not match/);
+  await assert.rejects(api.getSavedTurn("../bad", "conversation-1"), /stable turn ID/);
+  assert.equal(calls, 2);
+});
+
+test("saved turn event polling is finite, identity-bound, and never resends", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let calls = 0;
+  const identity = {
+    turn_id: "turn-1", conversation_id: "conversation-1",
+    operation_id: "turn-1", request_id: "saved-turn.request-1", turn_revision: 3,
+  };
+  const turn = {
+    id: "turn-1", conversation_id: "conversation-1", status: "running", revision: 3,
+  };
+  const snapshot = {
+    ...identity, status: "running", turn,
+    events: [{
+      ...identity, sequence: 0, name: "turn.queued", at: 1, details: {},
+    }],
+    terminal: null,
+  };
+  globalThis.fetch = async (url, init) => {
+    calls += 1;
+    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent(
+      "GET /api/chat/turn/events?turn_id=turn-1&conversation_id=conversation-1",
+    )}`);
+    assert.equal(init?.method ?? "GET", "GET");
+    assert.equal(init?.body, undefined);
+    assert.equal(init?.cache, "no-store");
+    return new Response(JSON.stringify({ success: true, data: snapshot }));
+  };
+  assert.deepEqual(await api.getSavedTurnEvents("turn-1", "conversation-1"), snapshot);
+  assert.equal(calls, 1);
+
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ success: true, data: {
+      ...snapshot,
+      events: [{ ...snapshot.events[0], conversation_id: "foreign" }],
+    } }));
+  };
+  await assert.rejects(
+    api.getSavedTurnEvents("turn-1", "conversation-1"),
+    /do not match/,
+  );
+  assert.equal(calls, 2);
+});
+
+test("saved reconciliation posts only an existing turn ID, never the original input", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let calls = 0;
+  const turn = { id: "turn-1", conversation_id: "conversation-1", status: "completed", revision: 4 };
+  globalThis.fetch = async (url, init) => {
+    calls += 1;
+    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent("POST /api/chat/turn/reconcile")}`);
+    assert.equal(init?.method, "POST");
+    assert.deepEqual(JSON.parse(String(init?.body)), { turn_id: "turn-1" });
+    return new Response(JSON.stringify({ success: true, data: { status: "completed", turn } }));
+  };
+  assert.deepEqual(await api.reconcileSavedTurn("turn-1", "conversation-1"), turn);
+  await assert.rejects(api.reconcileSavedTurn("turn-1", "other"), /does not match/);
+  await assert.rejects(api.reconcileSavedTurn("../bad", "conversation-1"), /stable turn ID/);
+  assert.equal(calls, 2);
+  globalThis.fetch = async () => { calls += 1; throw new Error("connection lost"); };
+  await assert.rejects(api.reconcileSavedTurn("turn-1", "conversation-1"), /connection lost/);
+  assert.equal(calls, 3);
+});
+
+test("saved turn uses exact canonical transport and never retries an uncertain outcome", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const input = { turn_id: "turn-1", conversation_id: "conversation-1", conversation_revision: 7, content: "hello" };
+  const result = { status: "reconciliation_required", turn: { id: "turn-1", conversation_id: "conversation-1", status: "waiting", revision: 3 } };
+  let calls = 0;
+  globalThis.fetch = async (url, init) => {
+    calls += 1;
+    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent("POST /api/chat/turn")}`);
+    assert.equal(init?.method, "POST");
+    assert.deepEqual(JSON.parse(String(init?.body)), { request: input });
+    return new Response(JSON.stringify({ success: true, data: result }));
+  };
+  assert.deepEqual(await api.startSavedTurn(input), result);
+  assert.equal(calls, 1);
+  globalThis.fetch = async () => { calls += 1; throw new Error("connection lost"); };
+  await assert.rejects(api.startSavedTurn(input), /connection lost/);
+  assert.equal(calls, 2);
+});
+
+test("saved turn rejects unsupported fields and invalid revisions before sending", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let calls = 0;
+  globalThis.fetch = async () => { calls += 1; throw new Error("must not send"); };
+  const input = { turn_id: "turn-1", conversation_id: "conversation-1", conversation_revision: 7, content: "hello" };
+  for (const patch of [{ approved: true }, { state: {} }, { attachments: [] }, { conversation_revision: 0 },
+    { conversation_revision: Number.MAX_SAFE_INTEGER + 1 }, { turn_id: "../escape" }, { content: " " }, { content: "あ".repeat(22000) }]) {
+    await assert.rejects(api.startSavedTurn({ ...input, ...patch }), /invalid|unsupported/);
+  }
+  assert.equal(calls, 0);
+});
+
+test("saved turn rejects another conversation outcome without replay", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ success: true, data: {
+      status: "completed", turn: { id: "turn-1", conversation_id: "other" },
+    } }));
+  };
+  await assert.rejects(api.startSavedTurn({ turn_id: "turn-1", conversation_id: "conversation-1", conversation_revision: 1, content: "hello" }), /unconfirmed/);
+  assert.equal(calls, 1);
+});
+
+test("conversation create pins identity and revision and does not retry conflicts", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const calls: RequestInit[] = [];
+  globalThis.fetch = async (input, init) => {
+    const operation = calls.length === 0
+      ? "GET /api/chat/conversations"
+      : "POST /api/chat/conversations";
+    assert.equal(String(input), `/api/contracts/defaultspack/${encodeURIComponent(operation)}`);
+    assert.equal(init?.method ?? "GET", calls.length === 0 ? "GET" : "POST");
+    calls.push(init ?? {});
+    return new Response(JSON.stringify(calls.length === 1
+      ? { success: true, data: { store_revision: 7 }, error: null }
+      : { success: false, data: null, error: "Revision conflict" }));
+  };
+  await assert.rejects(api.createConversation({ model: "selected-model" }), /Revision conflict/);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].method, "POST");
+  const body = JSON.parse(String(calls[1].body));
+  assert.equal(body.expected_revision, 7);
+  assert.equal(body.model, "selected-model");
+  assert.match(body.id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+});
+
+test("conversation create never writes without an exact snapshot revision", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  for (const store_revision of [undefined, null, true, -1, 1.5, "0"]) {
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ success: true, data: { store_revision }, error: null }));
+    };
+    await assert.rejects(api.createConversation(), /invalid revision/);
+    assert.equal(calls, 1);
+  }
+});
+
+test("conversation record writes retain the displayed revision without refetch", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const bodies: unknown[] = [];
+  globalThis.fetch = async (input, init) => {
+    const operation = bodies.length === 0
+      ? "PUT /api/chat/conversation"
+      : "DELETE /api/chat/conversation";
+    assert.equal(String(input), `/api/contracts/defaultspack/${encodeURIComponent(operation)}`);
+    assert.equal(init?.method, bodies.length === 0 ? "PUT" : "DELETE");
+    bodies.push(JSON.parse(String(init?.body)));
+    return new Response(JSON.stringify({ success: true, data: { deleted: true }, error: null }));
+  };
+  await api.updateConversation("c1", { title: "Changed" }, 2);
+  await api.deleteConversation("c1", 2);
+  assert.deepEqual(bodies, [
+    { conversation_id: "c1", updates: { title: "Changed" }, expected_conversation_revision: 2 },
+    { conversation_id: "c1", expected_conversation_revision: 2 },
+  ]);
+  await assert.rejects(api.updateConversation("c1", { title: "Changed" }, undefined), /revision/);
+  await assert.rejects(api.deleteConversation("c1", undefined), /revision/);
+  assert.equal(bodies.length, 2);
+});
+
+test("health uses the Host endpoint and preserves execution-not-ready evidence", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const health = {
+    status: "ok",
+    runtime_ready: false,
+    runtime_status: "panel_ready",
+    active_profile_ready: true,
+    profile_id: "defaults",
+  };
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), "/health");
+    assert.equal(init?.cache, "no-store");
+    return new Response(JSON.stringify({ success: true, data: health, error: null }));
+  };
+  assert.deepEqual(await api.health(), health);
+});
+
+test("Host envelopes do not hide Host or nested Pack failures", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  for (const payload of [
+    { success: false, data: { status: "ok" }, error: "Host denied" },
+    { success: true, data: { status: "ok" }, error: "Conflicting failure" },
+    { success: true, error: null },
+    { success: true, data: { status: "error", error: { code: "DENIED", message: "Pack denied" } }, error: null },
+  ]) {
+    globalThis.fetch = async () => new Response(JSON.stringify(payload));
+    await assert.rejects(api.health());
+  }
+});
+
+test("Host envelopes preserve endpoint shape validation and Pack result unwrapping", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    success: true, data: { packs: [] }, error: null,
+  }));
+  await assert.rejects(api.uiCatalog(), /endpoint schema/);
+  const health = { status: "ok", runtime_ready: false };
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    success: true, data: { status: "ok", data: health }, error: null,
+  }));
+  assert.deepEqual(await api.health(), health);
+});
+
+test("command event stream reconnects after fetch failure", async () => {
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  globalThis.fetch = (async () => {
+    attempts += 1;
+    if (attempts === 1) throw new TypeError("network unavailable");
+    return new Response(
+      'data: {"sequence":1,"type":"completed","payload":{}}\n\n',
+      { status: 200, headers: { "Content-Type": "text/event-stream" } },
+    );
+  }) as typeof fetch;
+  try {
+    const events: Array<Record<string, unknown>> = [];
+    for await (const event of streamCommandInvocationEvents("inv/retry", { waitSeconds: 0 })) {
+      events.push(event);
+    }
+    assert.equal(attempts, 2);
+    assert.deepEqual(events.map((event) => event.sequence), [1]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("command event stream resumes clean EOF with Last-Event-ID", async () => {
+  const originalFetch = globalThis.fetch;
+  const headers: string[] = [];
+  let attempts = 0;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    attempts += 1;
+    headers.push(new Headers(init?.headers).get("Last-Event-ID") ?? "");
+    const body = attempts === 1
+      ? 'data: {"sequence":1,"type":"progress","payload":{}}\n\n'
+      : 'data: {"sequence":2,"type":"completed","payload":{}}\n\n';
+    return new Response(body, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  }) as typeof fetch;
+  try {
+    const sequences: number[] = [];
+    for await (const event of streamCommandInvocationEvents("inv/resume", { waitSeconds: 0 })) {
+      sequences.push(Number(event.sequence));
+    }
+    assert.deepEqual(sequences, [1, 2]);
+    assert.deepEqual(headers, ["", "1"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("shareTokenFromPath accepts only a single landing path segment", () => {
   assert.equal(shareTokenFromPath("/share/local-token_123"), "local-token_123");
   assert.equal(shareTokenFromPath("/share/tunnel-token/"), "tunnel-token");
   assert.equal(shareTokenFromPath("/share/one/extra"), "");
-  assert.equal(shareTokenFromPath("/api/share/token"), "");
+  assert.equal(shareTokenFromPath(routeKey("api/share/token")), "");
 });
 
 test("conversation share helpers navigate to a fresh chat and render provenance", () => {
@@ -48,7 +389,7 @@ test("conversation share API reads and imports through token-scoped endpoints", 
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     requests.push({
-      url: String(input),
+      url: requestTarget(input),
       method: String(init?.method ?? "GET"),
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
@@ -65,8 +406,8 @@ test("conversation share API reads and imports through token-scoped endpoints", 
     globalThis.fetch = originalFetch;
   }
   assert.deepEqual(requests, [
-    { url: "/api/share/share%2Ftoken", method: "GET", body: undefined },
-    { url: "/api/share/share%2Ftoken/import", method: "POST", body: { source_url: "https://share.example/share/token", import_mode: "read_only" } },
+    { url: routeKey("api/share/share%2Ftoken"), method: "GET", body: undefined },
+    { url: routeKey("api/share/share%2Ftoken/import"), method: "POST", body: { source_url: "https://share.example/share/token", import_mode: "read_only" } },
   ]);
 });
 
@@ -74,7 +415,7 @@ test("conversation share API exports redacted history and revokes through token-
   const requests: Array<{ url: string; method: string; body?: string }> = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requests.push({ url: String(input), method: String(init?.method ?? "GET"), body: init?.body ? String(init.body) : undefined });
+    requests.push({ url: requestTarget(input), method: String(init?.method ?? "GET"), body: init?.body ? String(init.body) : undefined });
     const data = requests.length === 1 ? { conversation: { schema_version: 1, conversation: { messages: [] } } } : { revoked: true };
     return new Response(JSON.stringify({ status: "ok", data }), { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
@@ -85,8 +426,8 @@ test("conversation share API exports redacted history and revokes through token-
     globalThis.fetch = originalFetch;
   }
   assert.deepEqual(requests, [
-    { url: "/api/share/share%2Ftoken/export", method: "POST", body: "{}" },
-    { url: "/api/share/share%2Ftoken", method: "DELETE", body: undefined },
+    { url: routeKey("api/share/share%2Ftoken/export"), method: "POST", body: "{}" },
+    { url: routeKey("api/share/share%2Ftoken"), method: "DELETE", body: undefined },
   ]);
 });
 
@@ -94,7 +435,7 @@ test("mobile pairing review methods use authoritative encoded routes and explici
   const requests: Array<{ url: string; method: string; body?: unknown }> = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requests.push({ url: String(input), method: String(init?.method ?? "GET"), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    requests.push({ url: requestTarget(input), method: String(init?.method ?? "GET"), body: init?.body ? JSON.parse(String(init.body)) : undefined });
     return new Response(JSON.stringify({ status: "ok", data: { pairing_id: "pair/id", status: "claimed", pairing: { pairing_id: "pair/id", status: "claimed", expires_at: 1 }, claim: { device_label: "Phone", requested_scopes: [], allowed_scopes: [] }, claim_hash: "hash" } }), { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
   try {
@@ -104,10 +445,10 @@ test("mobile pairing review methods use authoritative encoded routes and explici
     await api.rejectMobilePairing("pair/id", "pairing cancelled by desktop reviewer");
   } finally { globalThis.fetch = originalFetch; }
   assert.deepEqual(requests, [
-    { url: "/api/mobile/v1/pairings/pair%2Fid/status", method: "GET", body: undefined },
-    { url: "/api/mobile/v1/pairings/pair%2Fid/review", method: "GET", body: undefined },
-    { url: "/api/mobile/v1/pairings/pair%2Fid/approve", method: "POST", body: { claim_hash: "hash", scopes: ["chat.read"] } },
-    { url: "/api/mobile/v1/pairings/pair%2Fid/reject", method: "POST", body: { reason: "pairing cancelled by desktop reviewer" } },
+    { url: routeKey("api/mobile/v1/pairings/pair%2Fid/status"), method: "GET", body: undefined },
+    { url: routeKey("api/mobile/v1/pairings/pair%2Fid/review"), method: "GET", body: undefined },
+    { url: routeKey("api/mobile/v1/pairings/pair%2Fid/approve"), method: "POST", body: { claim_hash: "hash", scopes: ["chat.read"] } },
+    { url: routeKey("api/mobile/v1/pairings/pair%2Fid/reject"), method: "POST", body: { reason: "pairing cancelled by desktop reviewer" } },
   ]);
 });
 
@@ -179,7 +520,7 @@ test("startProviderOAuth posts scope mode and requested services", async () => {
   let requestBody: Record<string, unknown> = {};
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestHeaders = new Headers(init?.headers);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
@@ -204,7 +545,7 @@ test("startProviderOAuth posts scope mode and requested services", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/ai/oauth");
+  assert.equal(requestUrl, routeKey("api/ai/oauth"));
   assert.deepEqual(requestBody, {
     action: "start",
     provider_id: "google",
@@ -217,7 +558,7 @@ test("providerOAuthStatus can request active diagnostics", async () => {
   let requestUrl = "";
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     return new Response(JSON.stringify({
       status: "ok",
       data: {
@@ -237,7 +578,7 @@ test("providerOAuthStatus can request active diagnostics", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/ai/oauth?provider_id=cloudflare&active_diagnostics=true");
+  assert.equal(requestUrl, routeKey("api/ai/oauth?provider_id=cloudflare&active_diagnostics=true"));
 });
 
 test("importProviderConnection posts credential imports to connections route", async () => {
@@ -246,7 +587,7 @@ test("importProviderConnection posts credential imports to connections route", a
   let requestBody: Record<string, unknown> = {};
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
@@ -269,7 +610,7 @@ test("importProviderConnection posts credential imports to connections route", a
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/connections/import");
+  assert.equal(requestUrl, routeKey("api/connections/import"));
   assert.ok(result);
   assert.deepEqual(requestBody, {
     provider_id: "cloudflare",
@@ -284,7 +625,7 @@ test("saveCodexAccessToken posts to Codex connection route and redacts response"
   let requestBody: Record<string, unknown> = {};
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
@@ -308,7 +649,7 @@ test("saveCodexAccessToken posts to Codex connection route and redacts response"
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/connections/codex");
+  assert.equal(requestUrl, routeKey("api/connections/codex"));
   assert.ok(result);
   assert.deepEqual(requestBody, {
     action: "save_token",
@@ -322,7 +663,7 @@ test("saveCodexAppServerConfig serializes safe endpoint config", async () => {
   let requestBody: Record<string, unknown> = {};
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
@@ -352,7 +693,7 @@ test("saveCodexAppServerConfig serializes safe endpoint config", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/connections/codex");
+  assert.equal(requestUrl, routeKey("api/connections/codex"));
   assert.deepEqual(requestBody, {
     action: "save_app_server",
     app_server: {
@@ -694,6 +1035,57 @@ test("composer command feedback surfaces pack block result messages and paths", 
   );
 });
 
+test("deepthink command feedback uses warning only while the mode is enabled", () => {
+  assert.equal(
+    composerCommandFeedbackTone({
+      command: {
+        id: "deepthink",
+        name: "deepthink",
+        label: "DeepThink",
+        category: "model",
+        visibility: "default",
+        risk: "medium",
+        execution: {
+          type: "rumi_function",
+          qualified_name: "defaultspack:ai_set_deepthink_enabled",
+        },
+      },
+      executed: true,
+      operation_status: "succeeded",
+      state_changes: [{
+        state_ref: "defaultspack:models.deepthink_enabled",
+        value: true,
+        revision: 1,
+      }],
+    }),
+    "warning",
+  );
+  assert.equal(
+    composerCommandFeedbackTone({
+      command: {
+        id: "deepthink",
+        name: "deepthink",
+        label: "DeepThink",
+        category: "model",
+        visibility: "default",
+        risk: "medium",
+        execution: {
+          type: "rumi_function",
+          qualified_name: "defaultspack:ai_set_deepthink_enabled",
+        },
+      },
+      executed: true,
+      operation_status: "succeeded",
+      state_changes: [{
+        state_ref: "defaultspack:models.deepthink_enabled",
+        value: false,
+        revision: 2,
+      }],
+    }),
+    "success",
+  );
+});
+
 test("template ai input selects composer and tool policy metadata", () => {
   const catalog = {
     ai_inputs: [
@@ -853,7 +1245,7 @@ test("template composer widgets become safe tool toggle widgets", () => {
         widget: {
           label: "Unsafe",
           widget_kind: "button",
-          action: { type: "call_endpoint", endpoint: "/api/anything" },
+          action: { type: "call_endpoint", endpoint: routeKey("api/anything") },
         },
       },
     ],
@@ -892,10 +1284,10 @@ test("template composer widgets become safe tool toggle widgets", () => {
   });
 });
 
-test("ultra yolo restore state returns to the previous yolo mode", () => {
+test("yolo full access always toggles back to ask instead of restoring agent approval", () => {
   assert.deepEqual(
     resolveUltraYoloModeState({ yoloMode: false, ultraYoloMode: false, restoreYoloMode: false }, true),
-    { yoloMode: true, ultraYoloMode: true, restoreYoloMode: false },
+    { yoloMode: false, ultraYoloMode: true, restoreYoloMode: false },
   );
   assert.deepEqual(
     resolveUltraYoloModeState({ yoloMode: true, ultraYoloMode: true, restoreYoloMode: false }, false),
@@ -903,7 +1295,7 @@ test("ultra yolo restore state returns to the previous yolo mode", () => {
   );
   assert.deepEqual(
     resolveUltraYoloModeState({ yoloMode: true, ultraYoloMode: true, restoreYoloMode: true }, false),
-    { yoloMode: true, ultraYoloMode: false, restoreYoloMode: false },
+    { yoloMode: false, ultraYoloMode: false, restoreYoloMode: false },
   );
 });
 
@@ -913,55 +1305,201 @@ test("history sidebar auto-compacts on narrow screens", () => {
   assert.equal(shouldAutoCompactHistory(760), false);
 });
 
-test("executeUiCommand preserves model candidate results", async () => {
+test("command protocol catalog is authoritative and invocation preserves its envelope", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => new Response(JSON.stringify({
-    status: "ok",
-    data: {
-      command: {
-        id: "model",
-        name: "model",
-        label: "Model",
-        category: "model",
-        visibility: "default",
-        risk: "low",
-        execution: { type: "model_command", action: "select_or_suggest_model" },
-      },
-      action: "show_model_candidates",
-      message: "Choose a model",
-      candidates: [
-        {
-          profile_id: "openai/gpt-5.1",
-          display_name: "GPT-5.1",
-          subtitle: "OpenAI / gpt-5.1",
-          requires_api_key: true,
-        },
-      ],
-      selected_model: {
-        profile_id: "google/gemini-2.5-flash",
-        display_name: "Gemini 2.5 Flash",
-        provider_id: "google",
-        model_id: "gemini-2.5-flash",
-        api_key_configured: true,
-      },
-    },
-  }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+  const requests: string[] = [];
+  const legacyCommand = {
+    id: "deepthink",
+    name: "deepthink",
+    label: "DeepThink",
+    category: "model",
+    visibility: "default",
+    risk: "medium",
+    execution: { type: "rumi_function", qualified_name: "defaultspack:ai_set_deepthink_enabled" },
+  };
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = requestTarget(input);
+    requests.push(url);
+    const data = url.endsWith("/catalog")
+      ? {
+          api_version: "tobkiri.commands/v1",
+          kind: "ResolvedCommandCatalog",
+          catalog_revision: "revision-1",
+          commands: [{
+            canonical_id: "defaultspack:deepthink",
+            pack_id: "defaultspack",
+            pack_generation: 1,
+            command_version: "1.0.0",
+            identity: { id: "deepthink", name: "deepthink", version: "1.0.0" },
+            presentation: {
+              label: { fallback: "DeepThink" },
+              category: "model",
+              visibility: "default",
+              icon: "deepthink",
+              input: { kind: "toggle", state_ref: "defaultspack:models.deepthink_enabled" },
+              mounts: [],
+            },
+            execution: { kind: "state_mutation", state_ref: "defaultspack:models.deepthink_enabled" },
+            availability: { status: "available" },
+            legacy: legacyCommand,
+          }],
+          state_snapshots: [],
+          diagnostics: [],
+        }
+      : {
+          api_version: "tobkiri.commands/v1",
+          operation_id: "operation-1",
+          status: "succeeded",
+          command_ref: "defaultspack:deepthink",
+          state_changes: [{
+            state_ref: "defaultspack:models.deepthink_enabled",
+            value: true,
+            revision: 1,
+            freshness: "authoritative",
+          }],
+          legacy_result: { command: legacyCommand, executed: true },
+        };
+    return new Response(JSON.stringify({ status: "ok", data }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
 
   try {
-    const result = await api.executeUiCommand({ command: "model", args: { query: "gpt" } });
-    assert.equal(result.action, "show_model_candidates");
-    assert.equal(result.message, "Choose a model");
-    assert.equal(result.candidates?.[0]?.profile_id, "openai/gpt-5.1");
-    assert.equal(result.candidates?.[0]?.requires_api_key, true);
-    const selectedModel = result.selected_model as { profile_id?: string; api_key_configured?: boolean } | null | undefined;
-    if (!selectedModel) {
-      assert.fail("expected selected_model to be a model candidate object");
-    }
-    assert.equal(selectedModel.profile_id, "google/gemini-2.5-flash");
-    assert.equal(selectedModel.api_key_configured, true);
+    const catalog = await api.resolvedUiCommands();
+    const result = await api.executeResolvedUiCommand({
+      command: catalog.commands[0].canonical_id ?? "",
+      args: { enabled: true },
+    });
+    assert.equal(catalog.protocol?.catalog_revision, "revision-1");
+    assert.equal(catalog.commands[0].protocol_presentation?.input.kind, "toggle");
+    assert.equal(result.operation_id, "operation-1");
+    assert.equal(result.state_changes?.[0].value, true);
   } finally {
     globalThis.fetch = originalFetch;
   }
+
+  assert.deepEqual(requests, [
+    routeKey("api/command-protocol/v1/catalog"),
+    routeKey("api/command-protocol/v1/invoke"),
+  ]);
+});
+
+test("high-risk command routes expose only invocation-scoped follow-ups", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+    requests.push({ url: requestTarget(input), body });
+    return new Response(JSON.stringify({
+      status: "ok",
+      data: body.phase === "list_pending"
+        ? { invocations: [] }
+        : {
+            invocation_id: "high-risk-1",
+            approval_request_id: "approval-1",
+            state: body.phase === "resume" ? "succeeded" : "approval_pending",
+            expires_at: 1234,
+            redacted_metadata: { action: "execute" },
+          },
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    await api.prepareHighRiskCommand({
+      invocation_id: "high-risk-1",
+      command_ref: "terminal",
+      arguments: { command: "git status", cwd: ".", env: {}, timeout: 30 },
+      presentation: { title: "Terminal", summary: "Run a terminal command." },
+    });
+    await api.listHighRiskCommands();
+    await api.highRiskCommandStatus("high-risk-1");
+    await api.resumeHighRiskCommand("high-risk-1");
+    await api.cancelHighRiskCommand("high-risk-1");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(requests.map((request) => request.url), [
+    routeKey("api/command-protocol/v1/high-risk"),
+    routeKey("api/command-protocol/v1/high-risk"),
+    routeKey("api/command-protocol/v1/high-risk"),
+    routeKey("api/command-protocol/v1/high-risk"),
+    routeKey("api/command-protocol/v1/high-risk"),
+  ]);
+  assert.deepEqual(requests[0].body, {
+    phase: "prepare",
+    invocation_id: "high-risk-1",
+    command_ref: "terminal",
+    arguments: { command: "git status", cwd: ".", env: {}, timeout: 30 },
+    presentation: { title: "Terminal", summary: "Run a terminal command." },
+  });
+  assert.deepEqual(requests.slice(1).map((request) => request.body), [
+    { phase: "list_pending" },
+    { phase: "status", invocation_id: "high-risk-1" },
+    { phase: "resume", invocation_id: "high-risk-1" },
+    { phase: "cancel", invocation_id: "high-risk-1" },
+  ]);
+  assert.doesNotMatch(JSON.stringify(requests.slice(1)), /effect_id|token|scope|arguments/i);
+});
+
+test("updateUiSettingsPatches sends field-scoped settings mutations", async () => {
+  const originalFetch = globalThis.fetch;
+  let body: unknown;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    body = JSON.parse(String(init?.body ?? "{}"));
+    return new Response(JSON.stringify({
+      status: "ok",
+      data: { values: { general: { composer_placeholder: "Hello" } }, document_revision: 8 },
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    await api.updateUiSettingsPatches([
+      { section: "general", field: "composer_placeholder", value: "Hello" },
+    ], 7);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.deepEqual(body, {
+    changes: { general: { composer_placeholder: "Hello" } }, expected_revision: 7,
+  });
+});
+
+test("settings patches reject malformed or unrelated acknowledgements without resending", async () => {
+  const originalFetch = globalThis.fetch;
+  const changes = { general: { composer_placeholder: "Hello" } };
+  try {
+    for (const data of [
+      { values: changes },
+      { values: changes, document_revision: 7 },
+      { values: changes, document_revision: "8" },
+      { values: { general: { composer_placeholder: "Different" } }, document_revision: 8 },
+      { values: { ...changes, models: { secret: "unexpected" } }, document_revision: 8 },
+    ]) {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls += 1;
+        return new Response(JSON.stringify({ status: "ok", data }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }) as typeof fetch;
+      await assert.rejects(api.updateUiSettingsPatches([
+        { section: "general", field: "composer_placeholder", value: "Hello" },
+      ], 7));
+      assert.equal(calls, 1);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("settings patches need an explicit revision and nonempty field changes", () => {
+  for (const revision of [-1, NaN, Infinity, 1.5]) {
+    assert.throws(() => api.updateUiSettingsPatches([
+      { section: "general", field: "language", value: "ja" },
+    ], revision));
+  }
+  assert.throws(() => api.updateUiSettingsPatches([], 0));
 });
 
 test("listModelProfiles bypasses browser cache", async () => {
@@ -969,7 +1507,7 @@ test("listModelProfiles bypasses browser cache", async () => {
   let requestCache: RequestCache | undefined;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestCache = init?.cache;
     return new Response(JSON.stringify({
       status: "ok",
@@ -988,77 +1526,62 @@ test("listModelProfiles bypasses browser cache", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/ai/profiles");
+  assert.equal(requestUrl, routeKey("api/ai/profiles"));
   assert.equal(requestCache, "no-store");
 });
 
-test("kanban API methods use first-class board and card routes", async () => {
-  const requests: Array<{ input: string; init?: RequestInit }> = [];
+const validUiCatalogFixture = {
+  app: { id: "defaultspack", name: "Tobkiri" },
+  sidebar: { filters: [], items: [] },
+  settings: { sections: [], values: {} },
+  chat_rendering: { renderers: [] },
+  extension_points: [],
+};
+
+async function assertUiCatalogResponseRejected(payload: unknown): Promise<void> {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requests.push({ input: String(input), init });
-    if (String(input).startsWith("/api/kanban/boards?")) {
-      return new Response(JSON.stringify({
-        status: "ok",
-        data: {
-          board: {
-            board_id: "board-1",
-            scope_type: "conversation",
-            scope_id: "conv 1",
-            title: "Chat board",
-          },
-          columns: [],
-          cards: [],
-        },
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
-    }
-    if (String(input).endsWith("/import-conversation")) {
-      return new Response(JSON.stringify({
-        status: "ok",
-        data: {
-          board: {
-            board_id: "board-1",
-            scope_type: "conversation",
-            scope_id: "conv 1",
-            title: "Chat board",
-          },
-          columns: [],
-          cards: [{ card_id: "card-imported", board_id: "board-1", column_id: "col-1", position: 1000, title: "Imported" }],
-        },
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
-    }
-    return new Response(JSON.stringify({
-      status: "ok",
-      data: {
-        card_id: "card-1",
-        board_id: "board-1",
-        column_id: "col-1",
-        position: 1000,
-        title: "Fix UI",
-      },
-    }), { status: 200, headers: { "Content-Type": "application/json" } });
-  }) as typeof fetch;
-
+  globalThis.fetch = (async () => new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  })) as typeof fetch;
   try {
-    const board = await api.kanbanGetOrCreateBoard({ type: "conversation", id: "conv 1" });
-    const card = await api.kanbanCreateCard("board-1", { title: "Fix UI", column_id: "col-1" });
-    const imported = await api.kanbanImportConversation("board-1", { conversation_id: "conv 1", column_id: "col-1" });
-
-    assert.equal(board.board.board_id, "board-1");
-    assert.equal(card.card_id, "card-1");
-    assert.equal(imported.cards[0]?.card_id, "card-imported");
+    await assert.rejects(api.uiCatalog(), /invalid Pack v4 response/);
   } finally {
     globalThis.fetch = originalFetch;
   }
+}
 
-  assert.equal(requests[0]?.input, "/api/kanban/boards?scope_type=conversation&scope_id=conv+1&bootstrap=true");
-  assert.equal(requests[0]?.init?.cache, "no-store");
-  assert.equal(requests[1]?.input, "/api/kanban/boards/board-1/cards");
-  assert.equal(requests[1]?.init?.method, "POST");
-  assert.deepEqual(JSON.parse(String(requests[1]?.init?.body ?? "{}")), { title: "Fix UI", column_id: "col-1" });
-  assert.equal(requests[2]?.input, "/api/kanban/boards/board-1/import-conversation");
-  assert.equal(requests[2]?.init?.method, "POST");
-  assert.deepEqual(JSON.parse(String(requests[2]?.init?.body ?? "{}")), { conversation_id: "conv 1", column_id: "col-1" });
+test("uiCatalog accepts the canonical Pack v4 response envelope", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    status: "ok",
+    data: validUiCatalogFixture,
+  }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+  try {
+    const catalog = await api.uiCatalog();
+    assert.equal(catalog.app?.id, "defaultspack");
+    assert.deepEqual(catalog.sidebar.items, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("uiCatalog rejects a missing Pack v4 data envelope", async () => {
+  await assertUiCatalogResponseRejected({ status: "ok" });
+});
+
+test("uiCatalog rejects malformed data instead of exposing missing sidebar items", async () => {
+  await assertUiCatalogResponseRejected({
+    status: "ok",
+    data: { ...validUiCatalogFixture, sidebar: { filters: [] } },
+  });
+});
+
+test("uiCatalog rejects the stale unwrapped catalog response", async () => {
+  await assertUiCatalogResponseRejected({
+    status: "ok",
+    ...validUiCatalogFixture,
+  });
 });
 
 test("defaultspack API errors include status and recovery context", () => {
@@ -1071,6 +1594,17 @@ test("defaultspack API errors include status and recovery context", () => {
   assert.match(message, /FORBIDDEN/);
   assert.match(message, /tool approval denied/);
   assert.match(message, /権限|承認/);
+});
+
+test("local auth errors identify the Launcher session instead of blaming the provider key", () => {
+  const message = explainDefaultspackApiError(401, {
+    code: "AUTH_REQUIRED",
+    message: "local auth token required",
+  }, "Unauthorized");
+
+  assert.match(message, /Tobkiri Launcher/);
+  assert.match(message, /APIキーの誤りではありません/);
+  assert.doesNotMatch(message, /ログイン状態、APIキー、OAuth 接続/);
 });
 
 test("browser authority QA disabled errors explain the launch requirement", () => {
@@ -1094,6 +1628,161 @@ test("authority ui operator unavailable errors explain the viewer signing secret
   assert.match(message, /AUTHORITY_UI_OPERATOR_UNAVAILABLE/);
   assert.match(message, /署名secret/);
   assert.match(message, /RUMI_PANEL_BOOTSTRAP_SECRET/);
+});
+
+test("unregistered contract operations surface an identifiable unknown-operation error", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (url, init) => {
+    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent("POST /api/chat/steer")}`);
+    assert.equal(init?.method, "POST");
+    return new Response(JSON.stringify({
+      success: false,
+      data: { state: "contract_dispatch_denied", code: "CONTRACT_OPERATION_UNKNOWN" },
+      error: "Unknown contract operation",
+    }), { status: 404, statusText: "Not Found" });
+  };
+
+  const failure = await api.conversationSteer({ action: "list", conversation_id: "c-1" }).then(
+    () => { throw new Error("expected the steer request to fail"); },
+    (error: unknown) => error,
+  );
+  assert.ok(failure instanceof Error);
+  assert.match(failure.message, /HTTP 404 Not Found/);
+  assert.ok(isDefaultspackContractOperationUnknownError(failure));
+});
+
+test("other API failures are not mistaken for an unregistered contract operation", () => {
+  assert.equal(isDefaultspackContractOperationUnknownError(new Error("HTTP 500")), false);
+  assert.equal(isDefaultspackContractOperationUnknownError("CONTRACT_OPERATION_UNKNOWN"), false);
+  const coded = Object.assign(new Error("HTTP 403 Forbidden"), { code: "FORBIDDEN" });
+  assert.equal(isDefaultspackContractOperationUnknownError(coded), false);
+  const legacy = new Error("HTTP 404 Not Found\n詳細: Unknown contract operation");
+  assert.equal(isDefaultspackContractOperationUnknownError(legacy), true);
+});
+
+test("conversation tool preferences read through the canonical conversation record route", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const requests: Array<{ url: string; method: string; body?: unknown }> = [];
+  globalThis.fetch = async (url, init) => {
+    requests.push({
+      url: String(url),
+      method: String(init?.method ?? "GET"),
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+    });
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        id: "conv-1",
+        conversation_revision: 7,
+        title: "t",
+        model: "m",
+        tags: [],
+        is_starred: false,
+        is_archived: false,
+        created_at: 1,
+        updated_at: 1,
+        messages: [],
+        metadata: {
+          ui_state: { theme: "dark" },
+          tool_preferences: { mode: "manual", include: [{ kind: "service", id: "svc-1" }] },
+        },
+      },
+      error: null,
+    }));
+  };
+
+  const result = await api.getConversationToolPreferences("conv-1");
+  assert.deepEqual(result, {
+    conversation_id: "conv-1",
+    preferences: { mode: "manual", include: [{ kind: "service", id: "svc-1" }] },
+  });
+  assert.equal(requests.length, 1);
+  assert.equal(
+    requests[0].url,
+    `/api/contracts/defaultspack/${encodeURIComponent("GET /api/chat/conversation?conversation_id=conv-1")}`,
+  );
+});
+
+test("conversation tool preferences write merges metadata through the canonical update route", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const requests: Array<{ url: string; method: string; body?: Record<string, unknown> }> = [];
+  const record = (metadata: Record<string, unknown>) => ({
+    id: "conv-1",
+    conversation_revision: 8,
+    title: "t",
+    model: "m",
+    tags: [],
+    is_starred: false,
+    is_archived: false,
+    created_at: 1,
+    updated_at: 1,
+    messages: [],
+    metadata,
+  });
+  globalThis.fetch = async (url, init) => {
+    const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined;
+    requests.push({ url: String(url), method: String(init?.method ?? "GET"), body });
+    const updates = body && typeof body.updates === "object" && body.updates !== null
+      ? body.updates as Record<string, unknown>
+      : {};
+    const metadata = updates.metadata && typeof updates.metadata === "object"
+      ? updates.metadata as Record<string, unknown>
+      : { ui_state: { theme: "dark" } };
+    return new Response(JSON.stringify({ success: true, data: record(metadata), error: null }));
+  };
+
+  const result = await api.updateConversationToolPreferences("conv-1", {
+    mode: "manual",
+    include: [{ kind: "service", id: "svc-1" }, "tool-extra", { kind: "bogus", id: "skip" }],
+  });
+  assert.deepEqual(requests.map((entry) => entry.method), ["GET", "PUT"]);
+  assert.equal(
+    requests[1].url,
+    `/api/contracts/defaultspack/${encodeURIComponent("PUT /api/chat/conversation")}`,
+  );
+  assert.deepEqual(requests[1].body, {
+    conversation_id: "conv-1",
+    updates: {
+      metadata: {
+        ui_state: { theme: "dark" },
+        tool_preferences: {
+          mode: "manual",
+          include: [{ kind: "service", id: "svc-1" }, { kind: "tool", id: "tool-extra" }],
+          exclude: [],
+          scope: "conversation",
+          strategy: null,
+          must_use: false,
+          review: false,
+          preview_id: null,
+        },
+      },
+    },
+    expected_conversation_revision: 8,
+  });
+  assert.equal(result.conversation_id, "conv-1");
+  assert.equal((result.preferences as Record<string, unknown>).mode, "manual");
+});
+
+test("command event stream surfaces the Host contract error code", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    success: false,
+    data: { state: "contract_dispatch_denied", code: "CONTRACT_OPERATION_UNKNOWN" },
+    error: "Unknown frontend contract operation",
+  }), { status: 404, statusText: "Not Found" });
+
+  const events = streamCommandInvocationEvents("inv-1", { waitSeconds: 0 });
+  const failure = await events.next().then(
+    () => null,
+    (error: unknown) => error,
+  );
+  assert.ok(failure instanceof Error);
+  assert.match(failure.message, /CONTRACT_OPERATION_UNKNOWN/);
+  assert.ok(isDefaultspackContractOperationUnknownError(failure));
 });
 
 test("selected tools are cleared after send unless settings opt in", () => {
@@ -1287,7 +1976,7 @@ test("testPromptStudio posts draft input and selected tools", async () => {
   let requestBody: any = null;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
@@ -1315,7 +2004,7 @@ test("testPromptStudio posts draft input and selected tools", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/prompts/test");
+  assert.equal(requestUrl, routeKey("api/prompts/test"));
   assert.deepEqual(requestBody, {
     profile_id: "prompt-profile",
     prompt_id: "default_chat",
@@ -1332,7 +2021,7 @@ test("rollbackPrompt posts conflict precondition body hash", async () => {
   let requestBody: any = null;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
@@ -1354,7 +2043,7 @@ test("rollbackPrompt posts conflict precondition body hash", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/prompts/default_chat/rollback");
+  assert.equal(requestUrl, routeKey("api/prompts/default_chat/rollback"));
   assert.deepEqual(requestBody, {
     profile_id: "default-profile",
     prompt_id: "default_chat",
@@ -1368,7 +2057,7 @@ test("searchConversations serializes spotlight search filters", async () => {
   let requestBody: any = null;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
@@ -1387,7 +2076,7 @@ test("searchConversations serializes spotlight search filters", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/chat/search");
+  assert.equal(requestUrl, routeKey("api/chat/search"));
   assert.deepEqual(requestBody, {
     query: "weather",
     mode: "conversations",
@@ -1399,7 +2088,118 @@ test("searchConversations serializes spotlight search filters", async () => {
   });
 });
 
-test("saveProviderApiKey serializes named API metadata", async () => {
+test("createModelProfile uses revisioned model writes and reconciles existing identity", async () => {
+  const originalFetch = globalThis.fetch;
+  const bodies: Record<string, unknown>[] = [];
+  const input = {
+    model_profile_id: "daily",
+    model_id: "model-1",
+    provider_instance_id: "provider.fixture",
+    display_name: "Daily",
+    provider_registry_revision: 4,
+  };
+  const profile = { profile_id: "daily", model_id: "model-1", provider_id: "provider.fixture", display_name: "Daily" };
+  let saved = false;
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === "POST") {
+      bodies.push(JSON.parse(String(init.body)));
+      saved = true;
+    }
+    return new Response(JSON.stringify({ status: "ok", data: {
+      profiles: saved ? [profile] : [], count: saved ? 1 : 0, registry_revision: saved ? 1 : 0,
+    } }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    assert.deepEqual(await api.createModelProfile(input), profile);
+    assert.deepEqual(await api.createModelProfile(input), profile);
+    await assert.rejects(api.createModelProfile({ ...input, model_id: "different" }), /既に存在/);
+    assert.deepEqual(bodies, [
+      { ...input, expected_revision: 0 },
+      { ...input, expected_revision: 1 },
+    ]);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("listProviderConnections uses the captured registry's exact opaque connection IDs", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ target: string; body?: Record<string, unknown> }> = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const target = requestTarget(input);
+    calls.push({
+      target,
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+    });
+    const data = {
+        revision: 7,
+        providers: [
+          {
+            provider_instance_id: "connection/openai:main",
+            display_name: "OpenAI main",
+            enabled: true,
+            credential_status: "configured",
+            health_status: "verified",
+            reachability: "available",
+            observed_at: 123.5,
+          },
+          {
+            provider_instance_id: "disabled/connection",
+            display_name: "Disabled connection",
+            enabled: false,
+            credential_status: "missing",
+            health_status: "unverified",
+            reachability: "unknown",
+            observed_at: null,
+          },
+        ],
+      };
+    return new Response(JSON.stringify({ success: true, data }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+  try {
+    assert.deepEqual(await api.listProviderConnections(), {
+      registry_revision: 7,
+      connections: [{
+        provider_instance_id: "connection/openai:main",
+        display_name: "OpenAI main",
+        credential_status: "configured",
+        health_status: "verified",
+        reachability: "available",
+        observed_at: 123.5,
+      }],
+    });
+    assert.deepEqual(calls, [{ target: routeKey("api/connections/status"), body: undefined }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("listProviderConnections rejects a provider response that carries undeclared fields", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    const data = {
+        revision: 7,
+        providers: [{
+          provider_instance_id: "connection/openai:main",
+          display_name: "OpenAI main",
+          enabled: true,
+          credential_handle: "credential:must-not-reach-ui",
+        }],
+      };
+    return new Response(JSON.stringify({ success: true, data }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(api.listProviderConnections(), /invalid Pack v4 response/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("saveProviderApiKey rejects unsupported metadata before sending a key", async () => {
   let requestBody: any = null;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -1411,7 +2211,7 @@ test("saveProviderApiKey serializes named API metadata", async () => {
   }) as typeof fetch;
 
   try {
-    await api.saveProviderApiKey("google", "secret", {
+    await assert.rejects(api.saveProviderApiKey("openai", "secret", {
       apiId: "main",
       name: "Main",
       baseUrl: "https://example.test/v1",
@@ -1419,22 +2219,245 @@ test("saveProviderApiKey serializes named API metadata", async () => {
       defaultModel: "gemini-test",
       quotaLabel: "paid",
       notes: "fast route",
-    });
+    }), /同時保存は未対応/);
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assert.deepEqual(requestBody, {
-    provider_id: "google",
-    value: "secret",
-    api_id: "main",
-    name: "Main",
-    base_url: "https://example.test/v1",
-    allowed_models: ["gemini-test"],
-    default_model: "gemini-test",
-    quota_label: "paid",
-    notes: "fast route",
+  assert.equal(requestBody, null);
+});
+
+function providerConfigurationFixture() {
+  const values = new Map<string, string>();
+  const calls: string[] = [];
+  const status = (state: string): ProviderConfigurationStatus => ({
+    effect_id: "effect-1", approval_request_id: "approval-1", state,
   });
+  const configuration = {
+    connection_name: "openai.main", protocol: "openai-compatible" as const,
+    endpoint: "https://provider.example/v1", key_value: "fixture-private-key",
+  };
+  const ports = {
+    storage: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value); },
+      removeItem: (key: string) => { values.delete(key); },
+    },
+    prepare: async () => { calls.push("prepare"); return status("approval_pending"); },
+    lookup: async (_correlation: string): Promise<ProviderConfigurationStatus> => {
+      calls.push("lookup"); throw new Error("receipt unavailable");
+    },
+    status: async () => { calls.push("status"); return status("approval_pending"); },
+    resume: async () => { calls.push("resume"); return status("succeeded"); },
+    cancel: async () => { calls.push("cancel"); return status("cancelled"); },
+    approval: async () => ({ request_id: "approval-1", state: "approved" }),
+    openApproval: async () => { calls.push("open"); return true; },
+    pause: async () => {},
+  };
+  return { values, calls, status, configuration, ports };
+}
+
+test("saveProviderApiKey sends canonical preparation and returns success only after Host resume", async () => {
+  const f = providerConfigurationFixture();
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const originalFetch = globalThis.fetch;
+  const bodies: Record<string, unknown>[] = [];
+  Object.defineProperty(globalThis, "window", {
+    configurable: true, value: { sessionStorage: f.ports.storage, location: { hash: "" } },
+  });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    bodies.push(body);
+    const path = requestTarget(input);
+    assert.match(path, /provider-key|interactive-approval/);
+    const data = path.includes("interactive-approval")
+      ? { request_id: "approval-1", state: "approved" }
+      : f.status(body.phase === "resume" ? "succeeded" : "approval_pending");
+    return new Response(JSON.stringify({ status: "ok", data }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+  try {
+    const result = await api.saveProviderApiKey("openai", "fixture-private-key", {
+      apiId: "main", baseUrl: "https://provider.example/v1",
+    });
+    assert.equal(result.configured, true);
+    assert.equal(result.model_availability.status, "route_required");
+    assert.match(String(bodies[0].correlation_id), /^[0-9a-f-]{36}$/);
+    assert.deepEqual(bodies, [
+      { phase: "prepare", effect_kind: "provider_configure", request: f.configuration, correlation_id: bodies[0].correlation_id },
+      { request_id: "approval-1" },
+      { phase: "resume", effect_id: "effect-1" },
+    ]);
+    assert.doesNotMatch(JSON.stringify(bodies.slice(1)), /fixture-private-key|https:/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+test("saveProviderApiKey forwards an explicit custom LLM protocol unchanged", async () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const originalFetch = globalThis.fetch;
+  const bodies: Record<string, unknown>[] = [];
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      sessionStorage: {
+        getItem: () => null,
+        setItem: () => undefined,
+        removeItem: () => undefined,
+      },
+      location: { hash: "" },
+    },
+  });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    bodies.push(body);
+    const path = requestTarget(input);
+    const data = path.includes("interactive-approval")
+      ? { request_id: "approval-1", state: "approved" }
+      : {
+        effect_id: "effect-1",
+        approval_request_id: "approval-1",
+        state: body.phase === "resume" ? "succeeded" : "approval_pending",
+      };
+    return new Response(JSON.stringify({ status: "ok", data }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const result = await api.saveProviderApiKey("acme-ai", "fixture-private-key", {
+      apiId: "main",
+      baseUrl: "https://models.example/v1",
+      kind: "llm",
+      protocol: "anthropic",
+    });
+    assert.equal(result.configured, true);
+    assert.deepEqual(bodies[0], {
+      phase: "prepare",
+      effect_kind: "provider_configure",
+      request: {
+        connection_name: "acme-ai.main",
+        protocol: "anthropic",
+        endpoint: "https://models.example/v1",
+        key_value: "fixture-private-key",
+      },
+      correlation_id: bodies[0].correlation_id,
+    });
+    assert.doesNotMatch(JSON.stringify(bodies.slice(1)), /fixture-private-key|https:/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+test("provider configuration waits for approval then resumes once and stores no raw key", async () => {
+  const f = providerConfigurationFixture();
+  let polls = 0;
+  f.ports.approval = async () => ({ request_id: "approval-1", state: polls++ ? "approved" : "pending" });
+  f.ports.pause = async () => {
+    const stored = JSON.stringify([...f.values]);
+    assert.doesNotMatch(stored, /fixture-private-key|https:/);
+    assert.deepEqual(f.calls, ["prepare", "open"]);
+  };
+  await configureProvider(f.configuration, f.ports);
+  assert.deepEqual(f.calls, ["prepare", "open", "status", "resume"]);
+  assert.equal(f.values.size, 0);
+});
+
+test("provider configuration preserves uncertain prepare without resending or leaking exceptions", async () => {
+  const f = providerConfigurationFixture();
+  f.ports.prepare = async () => { f.calls.push("prepare"); throw new Error(f.configuration.key_value); };
+  await assert.rejects(configureProvider(f.configuration, f.ports), (error: Error) => {
+    assert.doesNotMatch(error.message, /fixture-private-key/);
+    return true;
+  });
+  await assert.rejects(configureProvider(f.configuration, f.ports), /結果を確認できません/);
+  assert.deepEqual(f.calls, ["prepare", "lookup"]);
+});
+
+test("provider prepare reply loss recovers by correlation without resending the key", async () => {
+  const f = providerConfigurationFixture();
+  f.ports.prepare = async () => { f.calls.push("prepare"); throw new Error("lost reply"); };
+  await assert.rejects(configureProvider(f.configuration, f.ports));
+  const pending = JSON.parse([...f.values.values()][0]);
+  f.ports.lookup = async (correlation) => {
+    f.calls.push("lookup");
+    assert.equal(correlation, pending.correlation);
+    assert.match(correlation, /^[0-9a-f-]{36}$/);
+    return f.status("approval_pending");
+  };
+  await configureProvider(f.configuration, f.ports);
+  assert.deepEqual(f.calls, ["prepare", "lookup", "status", "resume"]);
+  assert.equal(f.values.size, 0);
+});
+
+test("provider configuration reconciles lost resume ACK and refuses changed input", async () => {
+  const f = providerConfigurationFixture();
+  f.ports.resume = async () => { f.calls.push("resume"); throw new Error("lost ACK"); };
+  await assert.rejects(configureProvider(f.configuration, f.ports), /結果を確認できません/);
+  await assert.rejects(configureProvider({ ...f.configuration, key_value: "replacement" }, f.ports), /入力を変更せず/);
+  f.ports.status = async () => { f.calls.push("status"); return f.status("succeeded"); };
+  await configureProvider(f.configuration, f.ports);
+  assert.deepEqual(f.calls, ["prepare", "resume", "status", "status"]);
+});
+
+test("changed provider input reconciles only a confirmed previous result without submitting the new key", async () => {
+  for (const state of ["succeeded", "cancelled", "ambiguous", "failed", "approval_pending"]) {
+    const f = providerConfigurationFixture();
+    f.ports.resume = async () => { f.calls.push("resume"); throw new Error("lost ACK"); };
+    await assert.rejects(configureProvider(f.configuration, f.ports));
+    f.ports.status = async () => { f.calls.push("status"); return f.status(state); };
+    const terminal = ["succeeded", "cancelled"].includes(state);
+    await assert.rejects(
+      configureProvider({ ...f.configuration, key_value: "replacement-key" }, f.ports),
+      terminal ? /変更後の入力は保存していません/ : /前のProvider設定が未確認/,
+    );
+    assert.deepEqual(f.calls, ["prepare", "resume", "status"]);
+    assert.equal(f.values.size, terminal ? 0 : 1);
+    assert.doesNotMatch(JSON.stringify([...f.values]), /replacement-key|fixture-private-key/);
+  }
+});
+
+test("changed provider input retains its receipt on foreign status or transport failure", async () => {
+  for (const failure of ["foreign", "transport"]) {
+    const f = providerConfigurationFixture();
+    f.ports.resume = async () => { throw new Error("lost ACK"); };
+    await assert.rejects(configureProvider(f.configuration, f.ports));
+    const before = [...f.values];
+    f.ports.status = async () => {
+      f.calls.push("status");
+      if (failure === "transport") throw new Error("private transport details");
+      return { ...f.status("succeeded"), effect_id: "foreign" };
+    };
+    await assert.rejects(
+      configureProvider({ ...f.configuration, key_value: "replacement-key" }, f.ports),
+      (error: Error) => {
+        assert.doesNotMatch(error.message, /private transport details|replacement-key/);
+        return true;
+      },
+    );
+    assert.deepEqual([...f.values], before);
+    assert.deepEqual(f.calls, ["prepare", "status"]);
+  }
+});
+
+test("provider configuration does not resume denied or mismatched approval", async () => {
+  for (const approval of [
+    { request_id: "approval-1", state: "denied" },
+    { request_id: "foreign", state: "approved" },
+  ]) {
+    const f = providerConfigurationFixture();
+    f.ports.approval = async () => approval;
+    await assert.rejects(configureProvider(f.configuration, f.ports));
+    assert.deepEqual(f.calls, approval.state === "denied" ? ["prepare", "cancel"] : ["prepare"]);
+    assert.equal(f.values.size, approval.state === "denied" ? 0 : 1);
+  }
 });
 
 test("renameProviderApiKey serializes rename action", async () => {
@@ -1521,7 +2544,7 @@ test("streamMessage serializes auto tool selection without tools", async () => {
     const body = [
       'data: {"type":"message","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"ok"}],"created_at":1,"conversation_id":"c1"}}\n\n',
     ].join("");
-    return new Response(body, {
+    return new Response(bindChatStream(body, init), {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
@@ -1579,14 +2602,14 @@ test("streamMessage parses SSE deltas and final message", async () => {
   const originalFetch = globalThis.fetch;
   const events: string[] = [];
   let finalId = "";
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = [
       'data: {"type":"delta","delta":"he"}\n\n',
       'data: {"type":"delta","delta":"llo"}\n\n',
       'data: {"type":"message","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"hello"}],"created_at":1,"conversation_id":"c1"}}\n\n',
       'data: {"type":"done","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"hello"}],"created_at":1,"conversation_id":"c1"}}\n\n',
     ].join("");
-    return new Response(body, {
+    return new Response(bindChatStream(body, init), {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
@@ -1614,7 +2637,7 @@ test("streamMessage accepts canonical defaultspack stream events", async () => {
   const originalFetch = globalThis.fetch;
   const events: string[] = [];
   let finalId = "";
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const finalMessage = {
       id: "m2",
       role: "assistant",
@@ -1629,7 +2652,7 @@ test("streamMessage accepts canonical defaultspack stream events", async () => {
       `data: ${JSON.stringify({ type: "assistant_message_completed", data: { message: finalMessage } })}\n\n`,
       `data: ${JSON.stringify({ type: "done", data: { message: finalMessage } })}\n\n`,
     ].join("");
-    return new Response(body, {
+    return new Response(bindChatStream(body, init), {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
@@ -1656,10 +2679,18 @@ test("streamMessage accepts canonical defaultspack stream events", async () => {
 test("normalizeChatStreamEvent lifts canonical activity data", () => {
   assert.deepEqual(normalizeChatStreamEvent({
     type: "tool_call_started",
+    run_id: "run-1",
+    conversation_id: "c1",
+    chat_operation_id: "op-1",
+    seq: 1,
     data: {
       tool_name: "browser_use",
       tool_call_id: "call-1",
       message: "browser_use を使用中",
+      run_id: "foreign-run",
+      conversation_id: "foreign-conversation",
+      chat_operation_id: "foreign-operation",
+      seq: 99,
     },
     message: "tool started",
   }), {
@@ -1667,20 +2698,24 @@ test("normalizeChatStreamEvent lifts canonical activity data", () => {
     tool_name: "browser_use",
     tool_call_id: "call-1",
     message: "browser_use を使用中",
+    run_id: "run-1",
+    conversation_id: "c1",
+    chat_operation_id: "op-1",
+    seq: 1,
   });
 });
 
 test("streamMessage forwards thinking deltas", async () => {
   const originalFetch = globalThis.fetch;
   const thinkingEvents: string[] = [];
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = [
       'data: {"type":"thinking_delta","delta":"private "}\n\n',
       'data: {"type":"thinking_delta","delta":"plan"}\n\n',
       'data: {"type":"delta","delta":"done"}\n\n',
       'data: {"type":"message","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"done"}],"created_at":1,"conversation_id":"c1"}}\n\n',
     ].join("");
-    return new Response(body, {
+    return new Response(bindChatStream(body, init), {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
@@ -1702,13 +2737,13 @@ test("streamMessage forwards thinking deltas", async () => {
 test("streamMessage forwards realtime tool activity events", async () => {
   const originalFetch = globalThis.fetch;
   const activityEvents: string[] = [];
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = [
       'data: {"type":"status","message":"toolを接続しました","phase":"tools_attached"}\n\n',
       'data: {"type":"tool_call_started","tool_name":"browser_computer","tool_call_id":"call_1","arguments":{"action":"computer.screenshot"},"message":"browser_computer を使用中"}\n\n',
       'data: {"type":"message","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"done"}],"created_at":1,"conversation_id":"c1"}}\n\n',
     ].join("");
-    return new Response(body, {
+    return new Response(bindChatStream(body, init), {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
@@ -1730,12 +2765,12 @@ test("streamMessage forwards realtime tool activity events", async () => {
 test("streamMessage forwards explicit browser screenshot events", async () => {
   const originalFetch = globalThis.fetch;
   const activityEvents: string[] = [];
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = [
       'data: {"type":"browser_screenshot","tool_name":"browser_computer","tool_call_id":"call_1","data_url":"data:image/png;base64,abc"}\n\n',
       'data: {"type":"message","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"done"}],"created_at":1,"conversation_id":"c1"}}\n\n',
     ].join("");
-    return new Response(body, {
+    return new Response(bindChatStream(body, init), {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
@@ -1757,12 +2792,12 @@ test("streamMessage forwards explicit browser screenshot events", async () => {
 test("streamMessage forwards browser state snapshot events", async () => {
   const originalFetch = globalThis.fetch;
   const activityEvents: string[] = [];
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = [
       'data: {"type":"browser_state_snapshot","tool_name":"browser_computer","tool_call_id":"call_1","state_revision":7,"snapshot":{"active_window":{"title":"Example"}}}\n\n',
       'data: {"type":"message","message":{"id":"m2","role":"assistant","content":[{"type":"text","text":"done"}],"created_at":1,"conversation_id":"c1"}}\n\n',
     ].join("");
-    return new Response(body, {
+    return new Response(bindChatStream(body, init), {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
@@ -1783,8 +2818,8 @@ test("streamMessage forwards browser state snapshot events", async () => {
 
 test("streamMessage surfaces structured stream errors", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => {
-    return new Response('data: {"type":"error","error":{"code":"STREAM_FAILED","message":"thinking-only stream"}}\n\n', {
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    return new Response(bindChatStream('data: {"type":"error","error":{"code":"STREAM_FAILED","message":"thinking-only stream"}}\n\n', init), {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
@@ -1802,8 +2837,8 @@ test("streamMessage surfaces structured stream errors", async () => {
 
 test("streamMessage rejects streams without a final message", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => {
-    return new Response('data: {"type":"delta","delta":"partial"}\n\n', {
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    return new Response(bindChatStream('data: {"type":"delta","delta":"partial"}\n\n', init), {
       status: 200,
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     });
@@ -1819,16 +2854,66 @@ test("streamMessage rejects streams without a final message", async () => {
   }
 });
 
+test("streamMessage rejects foreign conversation, operation, and run events", async () => {
+  const originalFetch = globalThis.fetch;
+  const observed: string[] = [];
+  const cases = [
+    { conversation_id: "c2", chat_operation_id: "op-1", run_id: "run-1" },
+    { conversation_id: "c1", chat_operation_id: "op-2", run_id: "run-1" },
+  ];
+  try {
+    for (const identity of cases) {
+      globalThis.fetch = (async () => new Response(
+        `data: ${JSON.stringify({ type: "delta", delta: "foreign", seq: 1, ...identity })}\n\n`,
+        { status: 200, headers: { "Content-Type": "text/event-stream; charset=utf-8" } },
+      )) as typeof fetch;
+      await assert.rejects(
+        api.streamMessage("c1", "hello", { idempotency_key: "op-1" }, {
+          onDelta: (delta) => observed.push(delta),
+        }),
+        /different chat operation/,
+      );
+    }
+
+    globalThis.fetch = (async () => new Response([
+      'data: {"type":"delta","delta":"first","conversation_id":"c1","chat_operation_id":"op-1","run_id":"run-1","seq":1}\n\n',
+      'data: {"type":"delta","delta":"foreign","conversation_id":"c1","chat_operation_id":"op-1","run_id":"run-2","seq":2}\n\n',
+    ].join(""), {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+    })) as typeof fetch;
+    await assert.rejects(
+      api.streamMessage("c1", "hello", { idempotency_key: "op-1" }, {
+        onDelta: (delta) => observed.push(delta),
+      }),
+      /changed run identity/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.deepEqual(observed, ["first"]);
+});
+
 test("reportClientEvent posts diagnostics to the UI contract endpoint", async () => {
   const originalFetch = globalThis.fetch;
   let requestUrl = "";
   let requestBody = "";
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = String(init?.body ?? "");
+    if (requestUrl === routeKey("api/ui/recovery-diagnostics")) {
+      return new Response(JSON.stringify({
+        status: "ok",
+        data: { namespace: "sha256:test", revision: 3, record_count: 1 },
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    const submitted = JSON.parse(requestBody) as { mutation_id: string };
     return new Response(JSON.stringify({
       status: "ok",
-      data: { recorded: true, diagnostic_id: "diag-1" },
+      data: {
+        recorded: true, diagnostic_id: "diag-1", revision: 4,
+        mutation_id: submitted.mutation_id, receipt: `sha256:${"a".repeat(64)}`,
+      },
     }), { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
 
@@ -1837,8 +2922,9 @@ test("reportClientEvent posts diagnostics to the UI contract endpoint", async ()
       category: "window_error",
       message: "Renderer crashed",
     });
-    assert.equal(requestUrl, "/api/ui/client-events");
+    assert.equal(requestUrl, routeKey("api/ui/client-events"));
     assert.match(requestBody, /Renderer crashed/);
+    assert.match(requestBody, /"expected_revision":3/);
     assert.equal(result.recorded, true);
   } finally {
     globalThis.fetch = originalFetch;
@@ -1872,12 +2958,42 @@ test("streamMessage forwards abort signal to fetch", async () => {
   assert.equal(seenSignal, controller.signal);
 });
 
+test("saved stop distinguishes requested and confirmed receipts", async () => {
+  const originalFetch = globalThis.fetch;
+  let response = { status: "cancellation_requested", turn_id: "turn-1", stopped: false };
+  const calls: unknown[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(requestTarget(input), routeKey("api/chat/turn/stop"));
+    assert.equal(init?.method, "POST");
+    calls.push(JSON.parse(String(init?.body)));
+    return new Response(JSON.stringify({ status: "ok", data: response }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+  try {
+    assert.deepEqual(await api.stopSavedTurn("turn-1"), response);
+    response = { status: "stopped_confirmed", turn_id: "turn-1", stopped: true };
+    assert.deepEqual(await api.stopSavedTurn("turn-1"), response);
+    response = { ...response, status: "cancellation_requested" };
+    await assert.rejects(api.stopSavedTurn("turn-1"), /receipt/);
+    response = { ...response, stopped: false, turn_id: "other" };
+    await assert.rejects(api.stopSavedTurn("turn-1"), /receipt/);
+    await assert.rejects(api.stopSavedTurn("../invalid"), /stable turn ID/);
+    assert.deepEqual(calls, [
+      { turn_id: "turn-1" }, { turn_id: "turn-1" },
+      { turn_id: "turn-1" }, { turn_id: "turn-1" },
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("stopMessage calls backend stop endpoint", async () => {
   const originalFetch = globalThis.fetch;
   let requestUrl = "";
   let requestMethod = "";
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestMethod = String(init?.method ?? "");
     return new Response(JSON.stringify({
       status: "ok",
@@ -1887,7 +3003,7 @@ test("stopMessage calls backend stop endpoint", async () => {
 
   try {
     const result = await api.stopMessage("c1");
-    assert.equal(requestUrl, "/api/chat/conversations/c1/stop");
+    assert.equal(requestUrl, routeKey("api/chat/conversations/c1/stop"));
     assert.equal(requestMethod, "POST");
     assert.equal(result.cancelled, true);
   } finally {
@@ -2133,7 +3249,7 @@ test("browserComputer calls dedicated browser-computer endpoint", async () => {
   let requestBody: any = null;
   let requestHeaders: Headers | null = null;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     requestHeaders = new Headers(init?.headers);
     return new Response(JSON.stringify({
@@ -2144,7 +3260,7 @@ test("browserComputer calls dedicated browser-computer endpoint", async () => {
 
   try {
     const result = await api.browserComputer("computer.screenshot", { reason: "test" });
-    assert.equal(requestUrl, "/api/tools/browser-computer");
+    assert.equal(requestUrl, routeKey("api/tools/browser-computer"));
     assert.deepEqual(requestBody, {
       action: "computer.screenshot",
       payload: { reason: "test" },
@@ -2162,7 +3278,7 @@ test("invokeTool calls generic tool endpoint with tool name and arguments", asyn
   let requestUrl = "";
   let requestBody: any = null;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
@@ -2172,7 +3288,7 @@ test("invokeTool calls generic tool endpoint with tool name and arguments", asyn
 
   try {
     const result = await api.invokeTool("computer_use", { action: "computer.click", approval_token: "tok" });
-    assert.equal(requestUrl, "/api/tools/invoke");
+    assert.equal(requestUrl, routeKey("api/tools/invoke"));
     assert.deepEqual(requestBody, {
       tool_name: "computer_use",
       arguments: { action: "computer.click", approval_token: "tok" },
@@ -2188,7 +3304,7 @@ test("MCP connect sends the authority-bound workspace and token without requeste
   let requestUrl = "";
   let requestBody: Record<string, unknown> = {};
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
@@ -2202,7 +3318,7 @@ test("MCP connect sends the authority-bound workspace and token without requeste
       workspace_id: "ws-fixture",
       approval_token: "fake-single-use-token",
     });
-    assert.equal(requestUrl, "/api/tools/mcp/connect");
+    assert.equal(requestUrl, routeKey("api/tools/mcp/connect"));
     assert.deepEqual(requestBody, {
       server_id: "fixture-mcp",
       workspace_id: "ws-fixture",
@@ -2220,7 +3336,7 @@ test("browser computer approvals use the browser-computer endpoint for computer_
   let requestBody: any = null;
   let requestHeaders: Headers | null = null;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     requestHeaders = new Headers(init?.headers);
     return new Response(JSON.stringify({
@@ -2234,7 +3350,7 @@ test("browser computer approvals use the browser-computer endpoint for computer_
       app: "Google Chrome",
       approval_token: "tok",
     });
-    assert.equal(requestUrl, "/api/tools/browser-computer");
+    assert.equal(requestUrl, routeKey("api/tools/browser-computer"));
     assert.deepEqual(requestBody, {
       action: "computer.screenshot",
       payload: { app: "Google Chrome", approval_token: "tok" },
@@ -2264,7 +3380,7 @@ test("browser open aliases use the browser-computer approval endpoint", async ()
   let requestUrl = "";
   let requestBody: any = null;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
@@ -2277,7 +3393,7 @@ test("browser open aliases use the browser-computer approval endpoint", async ()
       url: "https://gemini.google.com",
       approval_token: "tok",
     });
-    assert.equal(requestUrl, "/api/tools/browser-computer");
+    assert.equal(requestUrl, routeKey("api/tools/browser-computer"));
     assert.deepEqual(requestBody, {
       action: "browser.open_url",
       payload: { url: "https://gemini.google.com", approval_token: "tok" },
@@ -2292,10 +3408,10 @@ test("authority request helpers use pending list and single request routes", asy
   const originalFetch = globalThis.fetch;
   const seen: string[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL) => {
-    seen.push(String(input));
+    seen.push(requestTarget(input));
     return new Response(JSON.stringify({
       status: "ok",
-      data: String(input).includes("/auth_1")
+      data: requestTarget(input).includes("/auth_1")
         ? {
           request_id: "auth_1",
           status: "pending",
@@ -2320,8 +3436,8 @@ test("authority request helpers use pending list and single request routes", asy
   }
 
   assert.deepEqual(seen, [
-    "/api/authority/requests?status=pending",
-    "/api/authority/requests/auth_1",
+    routeKey("api/authority/requests?status=pending"),
+    routeKey("api/authority/requests/auth_1"),
   ]);
 });
 
@@ -2342,13 +3458,13 @@ test("authority approval helpers send signed ui operator provenance", async () =
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
     seen.push({
-      input: String(input),
+      input: requestTarget(input),
       body: JSON.parse(String(init?.body ?? "{}")),
       csrf: headers.get("X-Rumi-CSRF"),
     });
     return new Response(JSON.stringify({
       status: "ok",
-      data: String(input).endsWith("/deny")
+      data: requestTarget(input).endsWith("/deny")
         ? { request_id: "auth_1", denied: true }
         : { request_id: "auth_1", approved: true, scope: "conversation" },
     }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -2383,16 +3499,220 @@ test("authority approval helpers send signed ui operator provenance", async () =
   assert.ok(seen[1].csrf);
 });
 
+test("interactive approval helpers use fixed tokenless routes and exact bodies", async () => {
+  const originalFetch = globalThis.fetch;
+  const seen: Array<{ input: string; method: string; body?: unknown }> = [];
+  const uiOperator = {
+    version: 1,
+    kind: "ui_operator" as const,
+    origin: "tauri_webview_window",
+    window_label: "authority-approval",
+    request_id: "interactive-1",
+    issued_at: 1700000000,
+    expires_at: 1700000180,
+    nonce: "nonce",
+    signature: "sig",
+  };
+  const redacted = {
+    request_id: "interactive-1",
+    request_snapshot_digest: "a".repeat(64),
+    state: "pending",
+    expires_at: 1700000300,
+    typed_confirmation_required: true,
+    typed_confirmation_digest: "b".repeat(64),
+    redacted_metadata: { summary: "Run the prepared effect" },
+  };
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    seen.push({
+      input: requestTarget(input),
+      method: init?.method ?? "GET",
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+    });
+    return new Response(JSON.stringify({
+      status: "ok",
+      data: requestTarget(input).includes("/list") ? { approvals: [redacted] } : redacted,
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    await api.listInteractiveApprovals();
+    await api.getInteractiveApproval("interactive-1");
+    await api.approveInteractiveApproval("interactive-1", {
+      confirmation_text: "APPROVE",
+      ui_operator: uiOperator,
+    });
+    await api.denyInteractiveApproval("interactive-1", { ui_operator: uiOperator });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(seen, [
+    { input: routeKey("api/interactive-approval/v1/list"), method: "GET", body: undefined },
+    {
+      input: routeKey("api/interactive-approval/v1/get"),
+      method: "POST",
+      body: { request_id: "interactive-1" },
+    },
+    {
+      input: routeKey("api/interactive-approval/v1/approve"),
+      method: "POST",
+      body: {
+        request_id: "interactive-1",
+        confirmation_text: "APPROVE",
+        ui_operator: uiOperator,
+      },
+    },
+    {
+      input: routeKey("api/interactive-approval/v1/deny"),
+      method: "POST",
+      body: { request_id: "interactive-1", ui_operator: uiOperator },
+    },
+  ]);
+});
+
+test("chat approval continuation sends only server-owned resume identities", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalTauri = (globalThis as typeof globalThis & { __TAURI__?: unknown }).__TAURI__;
+  const seen: Array<{ input: string; body?: unknown }> = [];
+  (globalThis as typeof globalThis & { __TAURI__?: unknown }).__TAURI__ = {
+    core: { invoke: async () => ({ signed: true }) },
+  };
+  const identity = {
+    turn_id: "turn-1",
+    conversation_id: "conversation-1",
+    operation_id: "turn-1",
+    request_id: "apr-1",
+  };
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const target = requestTarget(input);
+    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    seen.push({ input: target, body });
+    const data = target.includes("/approve")
+      ? {
+          status: "approved",
+          approved: true,
+          resume_id: "native_resume_1",
+          ...identity,
+          terminal: null,
+        }
+      : {
+          resumed: true,
+          terminal_event: "tool_call_completed",
+          tool: "computer_use",
+          ...identity,
+          terminal: {
+            ...identity,
+            status: "completed",
+            result_reference: { tool: "computer_use" },
+            error: null,
+          },
+        };
+    return new Response(JSON.stringify({ status: "ok", data }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const decision = await api.approveCodingApprovalForContinuation(
+      "apr-1",
+      "conversation-1",
+      "a".repeat(64),
+      "turn-1",
+    );
+    assert.equal(decision.resume_id, "native_resume_1");
+    await api.resumeCodingApproval(
+      "apr-1",
+      decision.resume_id!,
+      "conversation-1",
+      "turn-1",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalTauri === undefined) {
+      delete (globalThis as typeof globalThis & { __TAURI__?: unknown }).__TAURI__;
+    } else {
+      (globalThis as typeof globalThis & { __TAURI__?: unknown }).__TAURI__ = originalTauri;
+    }
+  }
+
+  assert.equal(seen.length, 2);
+  assert.equal(seen[0].input, routeKey("api/chat/approval/approve"));
+  assert.equal((seen[0].body as Record<string, unknown>).conversation_id, "conversation-1");
+  assert.equal((seen[0].body as Record<string, unknown>).turn_id, "turn-1");
+  assert.equal(seen[1].input, routeKey("api/chat/approval/resume"));
+  assert.deepEqual(seen[1].body, {
+    request_id: "apr-1",
+    resume_id: "native_resume_1",
+    conversation_id: "conversation-1",
+    turn_id: "turn-1",
+  });
+  assert.doesNotMatch(JSON.stringify(seen), /approval_token|payload|tool_name/);
+});
+
+test("chat approval continuation rejects packets from a foreign turn", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalTauri = (globalThis as typeof globalThis & { __TAURI__?: unknown }).__TAURI__;
+  const identity = {
+    turn_id: "foreign-turn",
+    conversation_id: "conversation-1",
+    operation_id: "foreign-turn",
+    request_id: "apr-1",
+  };
+  (globalThis as typeof globalThis & { __TAURI__?: unknown }).__TAURI__ = {
+    core: { invoke: async () => ({ signed: true }) },
+  };
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const target = requestTarget(input);
+    const data = target.includes("/approve")
+      ? {
+          status: "approved",
+          approved: true,
+          resume_id: "native_resume_1",
+          ...identity,
+          terminal: null,
+        }
+      : { resumed: true, ...identity, terminal: { ...identity, status: "completed" } };
+    return new Response(JSON.stringify({ status: "ok", data }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      api.approveCodingApprovalForContinuation(
+        "apr-1",
+        "conversation-1",
+        "a".repeat(64),
+        "turn-1",
+      ),
+      /saved turn/,
+    );
+    await assert.rejects(
+      api.resumeCodingApproval("apr-1", "native_resume_1", "conversation-1", "turn-1"),
+      /saved turn/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalTauri === undefined) {
+      delete (globalThis as typeof globalThis & { __TAURI__?: unknown }).__TAURI__;
+    } else {
+      (globalThis as typeof globalThis & { __TAURI__?: unknown }).__TAURI__ = originalTauri;
+    }
+  }
+});
+
 test("coding context, branch, and workspace read helpers use existing API routes", async () => {
   const seen: Array<{ input: string; body?: unknown }> = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    seen.push({ input: String(input), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    seen.push({ input: requestTarget(input), body: init?.body ? JSON.parse(String(init.body)) : undefined });
     return new Response(JSON.stringify({
       status: "ok",
-      data: String(input).includes("/api/coding/context")
+      data: requestTarget(input).includes(routeKey("api/coding/context"))
         ? { branch: "main", root_folder: "/repo", directory: "src", files: [], entries: [], git: null }
-        : String(input).includes("/api/coding/files/read")
+        : requestTarget(input).includes(routeKey("api/coding/files/read"))
           ? { path: "README.md", content: "hello", size: 5, encoding: "utf-8" }
           : { branch: "feature", branches: ["main", "feature"], switched: true, created: true },
     }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -2406,13 +3726,13 @@ test("coding context, branch, and workspace read helpers use existing API routes
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(seen[0].input, "/api/coding/context?directory=src");
+  assert.equal(seen[0].input, routeKey("api/coding/context?directory=src"));
   assert.deepEqual(seen[1], {
-    input: "/api/coding/git/branch",
+    input: routeKey("api/coding/git/branch"),
     body: { action: "switch", branch: "feature", create: true },
   });
   assert.deepEqual(seen[2], {
-    input: "/api/coding/files/read",
+    input: routeKey("api/coding/files/read"),
     body: { path: "README.md" },
   });
 });
@@ -2422,7 +3742,7 @@ test("rumi log helpers target local coding history routes", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     seen.push({
-      input: String(input),
+      input: requestTarget(input),
       method: init?.method ?? "GET",
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
@@ -2444,15 +3764,15 @@ test("rumi log helpers target local coding history routes", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(seen[0].input, "/api/coding/rumi-log?workspace_id=ws1&limit=10&kind=git.commit");
+  assert.equal(seen[0].input, routeKey("api/coding/rumi-log?workspace_id=ws1&limit=10&kind=git.commit"));
   assert.equal(seen[0].method, "GET");
   assert.deepEqual(seen[1], {
-    input: "/api/coding/rumi-log",
+    input: routeKey("api/coding/rumi-log"),
     method: "POST",
     body: { action: "seed_local_plan", workspace_id: "ws1" },
   });
   assert.deepEqual(seen[2], {
-    input: "/api/coding/rumi-log",
+    input: routeKey("api/coding/rumi-log"),
     method: "POST",
     body: { action: "append", workspace_id: "ws1", kind: "agent.note", message: "watch commit pair" },
   });
@@ -2462,7 +3782,7 @@ test("listConversations serializes metadata filters", async () => {
   let requestUrl = "";
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     return new Response(JSON.stringify({
       status: "ok",
       data: { conversations: [], total: 0 },
@@ -2483,7 +3803,7 @@ test("listConversations serializes metadata filters", async () => {
 
   assert.equal(
     requestUrl,
-    "/api/chat/conversations?tags=coding%2Cfrontend&is_pinned=true&company_id=operations-company&workspace_id=ws1&conversation_kind=coding",
+    routeKey("api/chat/conversations?tags=coding%2Cfrontend&is_pinned=true&company_id=operations-company&workspace_id=ws1&conversation_kind=coding"),
   );
 });
 
@@ -2491,7 +3811,7 @@ test("company and p2p helpers target frontend workspace routes", async () => {
   const seen: Array<{ input: string; method: string; body?: unknown }> = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const path = String(input);
+    const path = requestTarget(input);
     seen.push({
       input: path,
       method: init?.method ?? "GET",
@@ -2536,20 +3856,20 @@ test("company and p2p helpers target frontend workspace routes", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(seen[0].input, "/api/company?limit=10");
-  assert.equal(seen[1].input, "/api/company/status?conversation_id=c1&bootstrap=true");
+  assert.equal(seen[0].input, routeKey("api/company?limit=10"));
+  assert.equal(seen[1].input, routeKey("api/company/status?conversation_id=c1&bootstrap=true"));
   assert.deepEqual(seen[2], {
-    input: "/api/company/bootstrap",
+    input: routeKey("api/company/bootstrap"),
     method: "POST",
     body: { metadata: { conversation_id: "c1", source: "webapp" }, conversation_id: "c1", scope: "conversation" },
   });
   assert.deepEqual(seen[3], {
-    input: "/api/research/web-search",
+    input: routeKey("api/research/web-search"),
     method: "POST",
     body: { query: "deep research", allow_network: true, limit: 5 },
   });
   assert.deepEqual(seen[4], {
-    input: "/api/company/operations-company/agents",
+    input: routeKey("api/company/operations-company/agents"),
     method: "POST",
     body: {
       company_id: "operations-company",
@@ -2561,7 +3881,7 @@ test("company and p2p helpers target frontend workspace routes", async () => {
     },
   });
   assert.deepEqual(seen[5], {
-    input: "/api/company/operations-company/tasks",
+    input: routeKey("api/company/operations-company/tasks"),
     method: "POST",
     body: {
       company_id: "operations-company",
@@ -2571,14 +3891,14 @@ test("company and p2p helpers target frontend workspace routes", async () => {
     },
   });
   assert.deepEqual(seen[6], {
-    input: "/api/company/operations-company/dispatch",
+    input: routeKey("api/company/operations-company/dispatch"),
     method: "POST",
     body: { company_id: "operations-company", task_id: "task-1" },
   });
-  assert.equal(seen[7].input, "/api/company/operations-company/runs?company_id=operations-company&task_id=task-1&limit=5");
-  assert.equal(seen[8].input, "/api/company/operations-company/agents/reviewer/inbox?company_id=operations-company&agent_id=reviewer&limit=5");
+  assert.equal(seen[7].input, routeKey("api/company/operations-company/runs?company_id=operations-company&task_id=task-1&limit=5"));
+  assert.equal(seen[8].input, routeKey("api/company/operations-company/agents/reviewer/inbox?company_id=operations-company&agent_id=reviewer&limit=5"));
   assert.deepEqual(seen[9], {
-    input: "/api/subagent-team/creator/settings",
+    input: routeKey("api/subagent-team/creator/settings"),
     method: "PATCH",
     body: {
       company_id: "operations-company",
@@ -2589,9 +3909,9 @@ test("company and p2p helpers target frontend workspace routes", async () => {
       },
     },
   });
-  assert.equal(seen[10].input, "/api/p2p/status");
+  assert.equal(seen[10].input, routeKey("api/p2p/status"));
   assert.deepEqual(seen[11], {
-    input: "/api/p2p/messages/send",
+    input: routeKey("api/p2p/messages/send"),
     method: "POST",
     body: { peer_id: "peer-a", text: "hello" },
   });
@@ -2632,12 +3952,12 @@ test("mobile pairing review and approve helpers use admin review contract", asyn
 
   assert.deepEqual(seen, [
     {
-      input: "/api/mobile/v1/pairings/pair-1/review",
+      input: `/api/contracts/defaultspack/${encodeURIComponent("GET /api/mobile/v1/pairings/pair-1/review")}`,
       method: "GET",
       body: undefined,
     },
     {
-      input: "/api/mobile/v1/pairings/pair-1/approve",
+      input: `/api/contracts/defaultspack/${encodeURIComponent("POST /api/mobile/v1/pairings/pair-1/approve")}`,
       method: "POST",
       body: { claim_hash: "sha256:abc", scopes: ["chat.read"] },
     },
@@ -2649,19 +3969,21 @@ test("coding workspace and compact helpers serialize request bodies", async () =
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     seen.push({
-      input: String(input),
+      input: requestTarget(input),
       method: init?.method ?? "GET",
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
     return new Response(JSON.stringify({
       status: "ok",
-      data: String(input).includes("/workspaces")
+      data: requestTarget(input).includes("/workspaces")
         ? { workspace: { workspace_id: "ws1", label: "Repo", root_path: "/repo" }, selected_workspace_id: "ws1", workspaces: [] }
         : { deleted_count: 2, summary_message: null },
     }), { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
 
   try {
+    await api.listCodingWorkspaces();
+    await api.getCodingWorkspace("ws1");
     await api.selectCodingWorkspace("ws1");
     await api.trustCodingWorkspace("ws1");
     await api.compactConversation("c1", { protect_last_messages: 4 });
@@ -2671,22 +3993,32 @@ test("coding workspace and compact helpers serialize request bodies", async () =
   }
 
   assert.deepEqual(seen[0], {
-    input: "/api/coding/workspaces/select",
-    method: "POST",
-    body: { workspace_id: "ws1" },
+    input: routeKey("api/coding/workspaces"),
+    method: "GET",
+    body: undefined,
   });
   assert.deepEqual(seen[1], {
-    input: "/api/coding/workspaces/trust",
+    input: `${routeKey("api/coding/workspaces/get")}?workspace_id=ws1`,
+    method: "GET",
+    body: undefined,
+  });
+  assert.deepEqual(seen[2], {
+    input: routeKey("api/coding/workspaces/select"),
     method: "POST",
     body: { workspace_id: "ws1" },
   });
-  assert.deepEqual(seen[2], {
-    input: "/api/chat/conversations/c1/compact",
+  assert.deepEqual(seen[3], {
+    input: routeKey("api/coding/workspaces/trust"),
+    method: "POST",
+    body: { workspace_id: "ws1" },
+  });
+  assert.deepEqual(seen[4], {
+    input: routeKey("api/chat/conversations/c1/compact"),
     method: "POST",
     body: { conversation_id: "c1", protect_last_messages: 4 },
   });
-  assert.deepEqual(seen[3], {
-    input: "/api/chat/conversations/c1/auto-compact",
+  assert.deepEqual(seen[5], {
+    input: routeKey("api/chat/conversations/c1/auto-compact"),
     method: "POST",
     body: { conversation_id: "c1", mode: "apply", approved: true },
   });
@@ -2697,13 +4029,13 @@ test("directory and group storage helpers target native selection routes", async
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     seen.push({
-      input: String(input),
+      input: requestTarget(input),
       method: init?.method ?? "GET",
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
     return new Response(JSON.stringify({
       status: "ok",
-      data: String(input).includes("/select-directory")
+      data: requestTarget(input).includes("/select-directory")
         ? { path: "/repo", cancelled: false }
         : { root_path: "/repo", rumi_data_path: "/repo/.rumiDP", chat_store_path: "/repo/.rumiDP/chat/conversations.json" },
     }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -2717,12 +4049,12 @@ test("directory and group storage helpers target native selection routes", async
   }
 
   assert.deepEqual(seen[0], {
-    input: "/api/ui/select-directory",
+    input: routeKey("api/ui/select-directory"),
     method: "POST",
     body: { prompt: "保存先" },
   });
   assert.deepEqual(seen[1], {
-    input: "/api/chat/group-storage",
+    input: routeKey("api/chat/group-storage"),
     method: "POST",
     body: { root_path: "/repo" },
   });
@@ -2769,7 +4101,7 @@ test("company task deletion uses the scoped DELETE route", async () => {
   const originalFetch = globalThis.fetch;
   let seen: { input: string; method: string } | null = null;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    seen = { input: String(input), method: init?.method ?? "GET" };
+    seen = { input: requestTarget(input), method: init?.method ?? "GET" };
     return new Response(
       JSON.stringify({ status: "ok", data: { deleted: true, task_id: "task/one" } }),
       { status: 200, headers: { "Content-Type": "application/json" } },
@@ -2784,7 +4116,7 @@ test("company task deletion uses the scoped DELETE route", async () => {
   }
 
   assert.deepEqual(seen, {
-    input: "/api/company/operations%2Fcompany/tasks/task%2Fone",
+    input: routeKey("api/company/operations%2Fcompany/tasks/task%2Fone"),
     method: "DELETE",
   });
 });

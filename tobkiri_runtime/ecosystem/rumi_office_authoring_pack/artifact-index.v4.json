@@ -1,0 +1,32 @@
+{
+  "artifact_set_digest": "sha256:8998dc289dccf150d6ada0bb124019dbf33b0ddb1192563e2d474e9d0c355e18",
+  "artifacts": [
+    {
+      "digest": "sha256:27dee004eb82f27f4e95a57d6625e717c95ad640bec9c1dfe145130395b3ec47",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:352fd91adc7ff864406300b0cf923d90e34cc53bc28dabe969c1a951151e9735",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:74dc86809cb8f6212614ce270a420865d1eec2d6dd5c82a5b106c5019755c7c1",
+      "path": "frontend/contributions/office-authoring.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:ffd395716958c7099f48e9e46bfc33bbf229f2e843974db8da3c35a7d30feb2c",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:e487c2e00813ef333c7254a6073f26b3f620c88a52eed8ac5ba8d042d72b1f5e"
+  },
+  "pack_id": "rumi_office_authoring_pack",
+  "source_identity": "sha256:e489b6f68de7fc0f729929d1212c89ee0e4c6902d3b43f6bd7346d28f4affbfd"
+}

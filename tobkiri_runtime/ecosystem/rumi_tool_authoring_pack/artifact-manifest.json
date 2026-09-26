@@ -1,0 +1,10 @@
+{
+  "artifacts": [
+    {
+      "path": "runtime/authoring.py",
+      "role": "runtime",
+      "sha256": "sha256:e2fbf8c21fdd892a500e9ffa5bf27835da0590103a517bdc92b14b60d7b3f860"
+    }
+  ],
+  "schema_version": "rumi.artifact-manifest.v1"
+}

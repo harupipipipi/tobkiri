@@ -1,0 +1,80 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:ee27eb049f66ce9bdcb6c64b7d9b433300e27b8bc6666e4e031e8f6060200158",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:e8f6c5315bd2285240a9d293cddbdbb060e3da1ed41d8cc462eb586c470fe9c0",
+      "kind": "sidecar",
+      "path": "frontend/contributions/research.json"
+    }
+  ],
+  "contracts": [],
+  "functions": [],
+  "integrity": {
+    "source_identity": "sha256:58d7392f7168ebd64ad686517c56bdf7ae2f81b0dbc9471f30815960f8ac0ee0",
+    "artifact_set_digest": "sha256:9756846dc19e101ffd17292a18ffd8ccfb1d7cdd9e4b00a4b07a0940ef809440",
+    "contract_catalog_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi:ecosystem/rumi_research_pack",
+      "rumi_research_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [],
+  "pack": {
+    "artifact_digest": "sha256:91d06a5215a4c108246bf7723728c0801f5ccc0835a9ee3d8daaa1b149e1ccd3",
+    "display_name": "Rumi Research Content",
+    "id": "rumi_research_pack",
+    "kind": "application",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_research_pack/pack.v4.json",
+    "source_digest": "sha256:58d7392f7168ebd64ad686517c56bdf7ae2f81b0dbc9471f30815960f8ac0ee0",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:a5220b0c20a335f8f42a1f36e6052a92df3c8ec7ca037258e1c1d1678689e4d7",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
+    "input_inventory_digest": "sha256:86aba9c5119b7d59c3af2d033671285a6189e93913d728734fe4a0c2ab38c763",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
+      },
+      {
+        "path": "ecosystem/rumi_research_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:58d7392f7168ebd64ad686517c56bdf7ae2f81b0dbc9471f30815960f8ac0ee0"
+      }
+    ]
+  },
+  "provider_catalog": [],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [],
+    "contract_dependencies": [],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

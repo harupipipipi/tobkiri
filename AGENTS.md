@@ -32,6 +32,8 @@ These notes are for coding agents working in this repository.
 
 ## Coding Workflow
 
+- Use subagents aggressively for verification and audit work. For any multi-step review, hardening, or merge-readiness task, launch parallel subagents (one per independent question: lifecycle, sandbox, CI, tests, security, coverage). Do not serialize investigation through the main agent when independent workstreams exist. Dozens of subagents are expected for large audits.
+- PERIODIC REMINDER: after every investigation milestone, re-read the todo list and fan out background subagents again for each still-open audit item. Keep 10+ subagents running whenever the todo list has independent items. If the active subagent count is 0 while audits remain, you are under-parallelizing — launch more immediately.
 - Open pull requests against the `soon` branch. Do not target `master` unless the user explicitly requests an exception.
 - Use `rg` / `rg --files` first for source and file discovery.
 - Keep changes tightly scoped to the requested runtime, pack, viewer, or mobile surface.

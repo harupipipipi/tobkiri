@@ -1,16 +1,173 @@
 {
+  "components": {
+    "eval_capabilities": {
+      "connectivity": {
+        "provides": [
+          "rumi.model_evals.capability_catalog"
+        ],
+        "requires": [
+          "rumi.resource.ai.model.catalog.v1",
+          "rumi.local_agent.profiles"
+        ]
+      },
+      "id": "model_eval_capabilities",
+      "path": "catalog/capabilities.yaml",
+      "type": "capability_catalog"
+    },
+    "eval_examples": {
+      "connectivity": {
+        "provides": [
+          "rumi.model_evals.examples"
+        ]
+      },
+      "id": "model_eval_examples",
+      "path": "examples",
+      "type": "example"
+    },
+    "eval_presets": {
+      "connectivity": {
+        "provides": [
+          "rumi.model_evals.presets"
+        ]
+      },
+      "id": "model_eval_presets",
+      "path": "presets",
+      "type": "eval_preset"
+    },
+    "eval_profiles": {
+      "connectivity": {
+        "provides": [
+          "rumi.model_evals.profiles"
+        ],
+        "requires": [
+          "rumi.local_agent.profiles"
+        ]
+      },
+      "id": "model_eval_profiles",
+      "path": "profiles",
+      "type": "eval_profile"
+    },
+    "eval_prompts": {
+      "connectivity": {
+        "provides": [
+          "rumi.model_evals.prompts"
+        ]
+      },
+      "id": "model_eval_prompts",
+      "path": "prompts",
+      "type": "eval_prompt"
+    },
+    "eval_recipes": {
+      "connectivity": {
+        "provides": [
+          "rumi.model_evals.provider_smoke_recipes",
+          "rumi.model_evals.routing_recipes"
+        ]
+      },
+      "id": "model_eval_recipes",
+      "path": "recipes",
+      "type": "eval_recipe"
+    },
+    "eval_specs": {
+      "connectivity": {
+        "provides": [
+          "rumi.model_evals.layered_eval_contract",
+          "rumi.model_evals.metrics_schema",
+          "rumi.model_evals.fit_matrix_schema",
+          "rumi.model_evals.promotion_gate_schema"
+        ]
+      },
+      "id": "model_eval_specs",
+      "path": "specs",
+      "type": "eval_spec"
+    },
+    "provider_catalog_overlay": {
+      "connectivity": {
+        "provides": [
+          "rumi.model_evals.provider_eval_catalog"
+        ],
+        "requires": [
+          "rumi.resource.ai.model.catalog.v1"
+        ]
+      },
+      "id": "model_eval_provider_catalog_overlay",
+      "path": "catalog/provider_eval_catalog.json",
+      "type": "provider_catalog_overlay"
+    }
+  },
+  "connectivity": {
+    "provides": [
+      "rumi.action.ai.eval.plan.v1",
+      "rumi.resource.ai.eval.catalog.v1",
+      "rumi.service.ai.eval.score.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Local-first evaluation catalog, approved execution plans, and deterministic scoring.",
+  "display_name": "Rumi Model Evals",
+  "host_execution": true,
+  "load_order": [
+    "capability_catalog:model_eval_capabilities",
+    "provider_catalog_overlay:model_eval_provider_catalog_overlay",
+    "eval_spec:model_eval_specs",
+    "eval_recipe:model_eval_recipes",
+    "eval_profile:model_eval_profiles",
+    "eval_prompt:model_eval_prompts",
+    "eval_preset:model_eval_presets",
+    "example:model_eval_examples"
+  ],
+  "metadata": {
+    "author": "Rumi AI Team",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:3c95192605c14a05852b406713d03220a6ee7d26d465b83169d940a511ac8c07",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:48a947d62f69a656709a55e268e7aa13c967b6cbca3e4e7fc50b7cafadecd3b4"
+    },
+    "description": "Declarative, local-first model evaluation and routing evidence pack for provider smoke tests, pass@k, flakiness, fit matrices, and promotion gates.",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:48a947d62f69a656709a55e268e7aa13c967b6cbca3e4e7fc50b7cafadecd3b4"
+    },
+    "legacy_annotations": {
+      "runtime": {
+        "artifact_manifest": "artifact-manifest.json",
+        "type": "verified_hybrid_pack"
+      }
+    },
+    "license": "MIT",
+    "manifest_authority": "v4-authoritative",
+    "name": "Rumi Model Evals Pack",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
   "pack_id": "rumi_model_evals_pack",
   "pack_identity": "rumi:ecosystem/rumi_model_evals_pack",
-  "version": "1.0.0",
-  "metadata": {
-    "name": "Rumi Model Evals Pack",
-    "description": "Declarative, local-first model evaluation and routing evidence pack for provider smoke tests, pass@k, flakiness, fit matrices, and promotion gates.",
-    "author": "Rumi AI Team",
-    "license": "MIT"
+  "provenance": {
+    "build_identity": "rumi_model_evals_pack:2.0.0",
+    "content_hash": "sha256:73cee4d7024199cbcc312fedc7012ac3614528bcbce79522a29c59861c38df4a",
+    "signature": null,
+    "trust_class": "local"
   },
-  "runtime": {
-    "type": "declarative_pack"
+  "required_capabilities": [
+    "ai.eval.catalog.read",
+    "ai.eval.plan",
+    "ai.eval.score"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
   },
+  "required_secrets": [],
+  "resources": [
+    "catalog/provider_eval_catalog.json"
+  ],
+  "version": "2.0.0",
   "vocabulary": {
     "types": [
       "eval_profile",
@@ -21,111 +178,5 @@
       "model_fit_matrix",
       "promotion_gate"
     ]
-  },
-  "components": {
-    "eval_capabilities": {
-      "type": "capability_catalog",
-      "id": "model_eval_capabilities",
-      "path": "catalog/capabilities.yaml",
-      "connectivity": {
-        "requires": [
-          "rumi.defaultspack.provider_catalog",
-          "rumi.local_agent.profiles"
-        ],
-        "provides": [
-          "rumi.model_evals.capability_catalog"
-        ]
-      }
-    },
-    "provider_catalog_overlay": {
-      "type": "provider_catalog_overlay",
-      "id": "model_eval_provider_catalog_overlay",
-      "path": "catalog/provider_eval_catalog.json",
-      "connectivity": {
-        "requires": [
-          "rumi.defaultspack.provider_catalog"
-        ],
-        "provides": [
-          "rumi.model_evals.provider_eval_catalog"
-        ]
-      }
-    },
-    "eval_specs": {
-      "type": "eval_spec",
-      "id": "model_eval_specs",
-      "path": "specs",
-      "connectivity": {
-        "provides": [
-          "rumi.model_evals.layered_eval_contract",
-          "rumi.model_evals.metrics_schema",
-          "rumi.model_evals.fit_matrix_schema",
-          "rumi.model_evals.promotion_gate_schema"
-        ]
-      }
-    },
-    "eval_recipes": {
-      "type": "eval_recipe",
-      "id": "model_eval_recipes",
-      "path": "recipes",
-      "connectivity": {
-        "provides": [
-          "rumi.model_evals.provider_smoke_recipes",
-          "rumi.model_evals.routing_recipes"
-        ]
-      }
-    },
-    "eval_profiles": {
-      "type": "eval_profile",
-      "id": "model_eval_profiles",
-      "path": "profiles",
-      "connectivity": {
-        "requires": [
-          "rumi.local_agent.profiles"
-        ],
-        "provides": [
-          "rumi.model_evals.profiles"
-        ]
-      }
-    },
-    "eval_prompts": {
-      "type": "eval_prompt",
-      "id": "model_eval_prompts",
-      "path": "prompts",
-      "connectivity": {
-        "provides": [
-          "rumi.model_evals.prompts"
-        ]
-      }
-    },
-    "eval_presets": {
-      "type": "eval_preset",
-      "id": "model_eval_presets",
-      "path": "presets",
-      "connectivity": {
-        "provides": [
-          "rumi.model_evals.presets"
-        ]
-      }
-    },
-    "eval_examples": {
-      "type": "example",
-      "id": "model_eval_examples",
-      "path": "examples",
-      "connectivity": {
-        "provides": [
-          "rumi.model_evals.examples"
-        ]
-      }
-    }
-  },
-  "load_order": [
-    "capability_catalog:model_eval_capabilities",
-    "provider_catalog_overlay:model_eval_provider_catalog_overlay",
-    "eval_spec:model_eval_specs",
-    "eval_recipe:model_eval_recipes",
-    "eval_profile:model_eval_profiles",
-    "eval_prompt:model_eval_prompts",
-    "eval_preset:model_eval_presets",
-    "example:model_eval_examples"
-  ]
+  }
 }

@@ -9,7 +9,7 @@ from .._helpers import _log_internal_error, _SAFE_ERROR_MSG
 class UnitHandlersMixin:
     """Unit 管理 (list / publish / execute) のハンドラ"""
 
-    def _units_list(self, store_id: str = None) -> dict:
+    def _units_list(self, store_id: str | None = None) -> dict:
         try:
             from ...store_registry import get_store_registry
             from ...unit_registry import get_unit_registry

@@ -990,7 +990,7 @@ Wave 15 で追加された 4 つのモジュールにより、構造化ログ・
 
 ### ヘルスチェック（health.py）
 
-`backend_core/health.py` はプローブベースのヘルスチェック機構を提供します。`app.py --health` から利用されます。
+`backend_core/health.py` はプローブベースのヘルスチェック機構を提供します。CLI の `app.py --health` は起動中の Host の `/health` endpoint を HTTP で probe します（listen socket は取りません）。
 
 | クラス / 関数 | 説明 |
 |--------------|------|

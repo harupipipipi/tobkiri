@@ -4,20 +4,10 @@ import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-
-class _Approval:
-    def __init__(self, approved: bool, reason: str = "not_found"):
-        self.approved = approved
-        self.reason = reason
-
-    def is_pack_approved_and_verified(self, pack_id: str):
-        return self.approved, None if self.approved else self.reason
 
 
 def _write_staging_meta(tmp_path, staging_id, detected_pack_ids, changed_paths=None):
@@ -33,198 +23,73 @@ def _write_staging_meta(tmp_path, staging_id, detected_pack_ids, changed_paths=N
     return meta
 
 
-def test_api_routes_skip_unapproved_pack():
+def test_dynamic_api_route_loader_is_physically_absent():
     from core_runtime.pack_api_server import PackAPIHandler
 
-    pack_info = SimpleNamespace(
-        ecosystem={
-            "api_routes": [
-                {"method": "GET", "path": "/api/evil", "function_id": "run"},
-            ],
-        },
-    )
-    registry = SimpleNamespace(packs={"evil_pack": pack_info})
-    old_manager = PackAPIHandler.approval_manager
-    PackAPIHandler.approval_manager = _Approval(False)
-    try:
-        count = PackAPIHandler.load_api_routes(registry)
-    finally:
-        PackAPIHandler.approval_manager = old_manager
-
-    assert count == 0
-    assert ("GET", "/api/evil") not in PackAPIHandler._api_route_exact
+    assert not hasattr(PackAPIHandler, "load_api_routes")
+    assert not hasattr(PackAPIHandler, "_api_route_exact")
 
 
-def test_api_route_dispatch_rechecks_pack_approval():
+def test_dynamic_api_route_dispatch_is_physically_absent():
     from core_runtime.pack_api_server import PackAPIHandler
 
-    PackAPIHandler._api_route_exact = {
-        ("POST", "/api/evil"): {
-            "pack_id": "evil_pack",
-            "handler": "",
-            "function_id": "run",
-            "pass_body": True,
-            "response_mode": "result",
-            "args": {},
-            "path_param_map": {},
-        }
-    }
-    PackAPIHandler._api_route_patterns = []
-    handler = PackAPIHandler.__new__(PackAPIHandler)
-    sent = []
-    handler._send_response = lambda response, status=200: sent.append((response, status))
-
-    with patch.object(
-        PackAPIHandler,
-        "_is_pack_approved_for_runtime_routes",
-        return_value=False,
-    ):
-        assert handler._dispatch_api_route("POST", "/api/evil", {"x": 1}) is True
-
-    assert sent[0][1] == 403
+    assert not hasattr(PackAPIHandler, "_dispatch_api_route")
+    assert not hasattr(PackAPIHandler, "_is_pack_approved_for_runtime_routes")
 
 
-def test_stale_web_mount_stops_matching_after_pack_revoked():
+def test_dynamic_web_mount_state_is_physically_absent():
     from core_runtime.pack_api_server import PackAPIHandler
 
-    approval = _Approval(True)
-    old_manager = PackAPIHandler.approval_manager
-    old_mounts = list(PackAPIHandler._web_mounts)
-    PackAPIHandler.approval_manager = approval
-    PackAPIHandler._web_mounts = [
-        {
-            "path_prefix": "/stale",
-            "web_root": Path("/tmp/stale-pack/web"),
-            "spa_fallback": False,
-            "auth_required": False,
-            "pack_id": "stale_pack",
-        }
-    ]
-    try:
-        handler = object.__new__(PackAPIHandler)
-        assert handler._match_web_mount("/stale/index.html") is not None
-
-        approval.approved = False
-        approval.reason = "not_approved"
-
-        assert handler._match_web_mount("/stale/index.html") is None
-    finally:
-        PackAPIHandler.approval_manager = old_manager
-        PackAPIHandler._web_mounts = old_mounts
+    assert not hasattr(PackAPIHandler, "_web_mounts")
+    assert not hasattr(PackAPIHandler, "load_web_mounts")
 
 
-def test_stale_web_mount_direct_serve_rechecks_hash_state():
+def test_static_mounts_are_finite_first_party_roots():
     from core_runtime.pack_api_server import PackAPIHandler
 
-    approval = _Approval(False, reason="hash_mismatch")
-    old_manager = PackAPIHandler.approval_manager
-    PackAPIHandler.approval_manager = approval
-    try:
-        handler = object.__new__(PackAPIHandler)
-        sent = []
-        handler._send_response = lambda response, status=200: sent.append((status, response))
-
-        handler._serve_static_file(
-            "/stale/index.html",
-            {
-                "path_prefix": "/stale",
-                "web_root": Path("/tmp/stale-pack/web"),
-                "spa_fallback": False,
-                "auth_required": False,
-                "pack_id": "stale_pack",
-            },
-        )
-
-        assert sent[0][0] == 403
-    finally:
-        PackAPIHandler.approval_manager = old_manager
+    handler = object.__new__(PackAPIHandler)
+    assert handler._match_web_mount("/stale/index.html") is None
+    assert {
+        mount["path_prefix"] for mount in handler._fixed_web_mounts()
+    } == {"/panel", "/setup"}
 
 
-def test_stale_pre_auth_entry_stops_skipping_auth_after_revoke():
+def test_dynamic_pre_auth_table_is_physically_absent():
     from core_runtime.pack_api_server import PackAPIHandler
 
-    approval = _Approval(True)
-    old_manager = PackAPIHandler.approval_manager
-    old_table = list(PackAPIHandler._pre_auth_table)
-    PackAPIHandler.approval_manager = approval
-    PackAPIHandler._pre_auth_table = [
-        {
-            "method": "GET",
-            "path_prefix": "/api/stale",
-            "pack_id": "stale_pack",
-        }
-    ]
-    try:
-        handler = object.__new__(PackAPIHandler)
-        assert handler._is_pre_auth_route("GET", "/api/stale/status") is True
-
-        approval.approved = False
-        approval.reason = "not_approved"
-
-        assert handler._is_pre_auth_route("GET", "/api/stale/status") is False
-    finally:
-        PackAPIHandler.approval_manager = old_manager
-        PackAPIHandler._pre_auth_table = old_table
+    assert not hasattr(PackAPIHandler, "_pre_auth_table")
+    assert not hasattr(PackAPIHandler, "load_pre_auth_routes")
 
 
-def test_stale_pre_auth_entry_stops_skipping_auth_after_hash_change():
+def test_legacy_pre_auth_matcher_is_physically_absent():
     from core_runtime.pack_api_server import PackAPIHandler
 
-    approval = _Approval(False, reason="hash_mismatch")
-    old_manager = PackAPIHandler.approval_manager
-    old_table = list(PackAPIHandler._pre_auth_table)
-    PackAPIHandler.approval_manager = approval
-    PackAPIHandler._pre_auth_table = [
-        {
-            "method": "POST",
-            "path": "/api/stale/complete",
-            "pack_id": "stale_pack",
-        }
-    ]
-    try:
-        handler = object.__new__(PackAPIHandler)
-
-        assert handler._is_pre_auth_route("POST", "/api/stale/complete") is False
-    finally:
-        PackAPIHandler.approval_manager = old_manager
-        PackAPIHandler._pre_auth_table = old_table
+    assert not hasattr(PackAPIHandler, "_is_pre_auth_route")
+    assert PackAPIHandler._retired_api_path("/api/packs/scan") is True
 
 
 def test_function_registry_trusts_manifest_entrypoint_file(tmp_path):
-    from core_runtime.function_registry import FunctionRegistry
-
-    func_dir = tmp_path / "func"
-    func_dir.mkdir()
-    (func_dir / "main.py").write_text("def run(ctx, args): return {'wrong': True}\n", encoding="utf-8")
-    trusted = func_dir / "trusted.py"
-    trusted.write_text("def run(ctx, args): return {'ok': True}\n", encoding="utf-8")
-
-    registry = FunctionRegistry()
-    assert registry.register(
-        pack_id="pack",
-        function_id="fn",
-        manifest={"entrypoint": "trusted.py:run"},
-        function_dir=func_dir,
+    from tests.legacy_authority_contracts import (
+        assert_profile_resolver_requires_authority_snapshot,
+        assert_retired_module_absent,
     )
-    entry = registry.get("pack:fn")
-    assert entry is not None
-    assert Path(entry.main_py_path).resolve() == trusted.resolve()
+    from tests.v4_batch_support import assert_payload_mutations_denied, harness
+
+    assert_retired_module_absent("core_runtime.function_registry")
+    assert_profile_resolver_requires_authority_snapshot()
+    assert_payload_mutations_denied(harness(tmp_path))
 
 
 def test_function_registry_rejects_escaping_entrypoint(tmp_path):
-    from core_runtime.function_registry import FunctionRegistry
+    from tests.legacy_authority_contracts import (
+        assert_profile_resolver_requires_authority_snapshot,
+        assert_retired_module_absent,
+    )
+    from tests.v4_batch_support import assert_payload_mutations_denied, harness
 
-    func_dir = tmp_path / "func"
-    func_dir.mkdir()
-    (tmp_path / "evil.py").write_text("def run(ctx, args): return {}\n", encoding="utf-8")
-
-    with pytest.raises(ValueError):
-        FunctionRegistry().register(
-            pack_id="pack",
-            function_id="fn",
-            manifest={"entrypoint": "../evil.py:run"},
-            function_dir=func_dir,
-        )
+    assert_retired_module_absent("core_runtime.function_registry")
+    assert_profile_resolver_requires_authority_snapshot()
+    assert_payload_mutations_denied(harness(tmp_path))
 
 
 def test_staging_helpers_reject_path_like_ids(tmp_path):
@@ -501,9 +366,112 @@ def test_create_pack_request_rejects_target_pack_mismatch(tmp_path):
     assert "target_pack_id" in result["error"]
 
 
-def test_approve_request_rechecks_staging_meta_before_apply(monkeypatch, tmp_path):
+def _signed_pack_at(
+    source: Path,
+    tmp_path: Path,
+    pack_id: str,
+    *,
+    write_record: bool = True,
+) -> Path:
+    """Place a signed v4 Pack at ``source`` and return its trust store path."""
+    import shutil
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+        Ed25519PrivateKey,
+    )
+    from core_runtime.pack_artifact_integrity import write_host_install_record
+    from core_runtime.pack_signature import build_signed_manifest, sign_manifest
+    from tests.test_external_pack_catalog_v4 import (
+        CONTRACT_ID,
+        FIXTURE,
+        _refresh_fixture_artifacts,
+        _write_json,
+    )
+
+    shutil.copytree(FIXTURE, source)
+    for sidecar in (
+        "pack.v4.json",
+        "executables.v4.json",
+        "contracts.v4.json",
+        "artifact-index.v4.json",
+    ):
+        path = source / sidecar
+        path.write_text(
+            path.read_text(encoding="utf-8").replace(
+                "conformance.minimal.echo", pack_id
+            ),
+            encoding="utf-8",
+        )
+    _refresh_fixture_artifacts(source)
+    private_key = Ed25519PrivateKey.generate()
+    manifest = build_signed_manifest(
+        source,
+        pack_id=pack_id,
+        version="1.0.0",
+        publisher_id="publisher.conformance",
+        core_compatibility=">=0",
+        contract_versions={CONTRACT_ID: "1.0.0"},
+        requested_capabilities=[],
+    )
+    signed = sign_manifest(manifest, private_key)
+    signed_path = source / ".tobkiri" / "signed-pack.json"
+    signed_path.parent.mkdir(mode=0o700)
+    _write_json(signed_path, signed)
+    public_pem = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode("utf-8")
+    trust_dir = tmp_path / "host-policy"
+    trust_dir.mkdir(mode=0o700, exist_ok=True)
+    trust_store = trust_dir / "publisher-trust.json"
+    _write_json(
+        trust_store,
+        {
+            "publishers": {
+                "publisher.conformance": {
+                    "public_key_pem": public_pem,
+                    "allowed_pack_namespaces": [pack_id],
+                    "revoked_key_ids": [],
+                }
+            },
+        },
+    )
+    trust_store.chmod(0o600)
+    if write_record:
+        write_host_install_record(
+            trust_store,
+            pack_id=pack_id,
+            install_path=source,
+            record={
+                "signature_required": True,
+                "publisher_id": "publisher.conformance",
+                "key_id": signed["signature"]["key_id"],
+                "installed_version": "1.0.0",
+                "signed_manifest_path": ".tobkiri/signed-pack.json",
+                "contract_versions": {CONTRACT_ID: "1.0.0"},
+                "requested_capabilities": [],
+            },
+        )
+    return trust_store
+
+
+def _extension_manager(tmp_path: Path):
+    """Build an ExtensionManager rooted entirely under ``tmp_path``."""
     from ecosystem.defaultspack.backend.pack_extension.extension_manager import (
         ExtensionManager,
+    )
+
+    return ExtensionManager(
+        requests_root=tmp_path / "requests",
+        ecosystem_dir=tmp_path / "ecosystem",
+        backup_root=tmp_path / "backups",
+        staging_root=tmp_path / "staging",
+    )
+
+
+def test_approve_request_rechecks_staging_meta_before_apply(monkeypatch, tmp_path):
+    from ecosystem.defaultspack.backend.pack_extension.extension_manager import (
         PatchMode,
     )
 
@@ -511,21 +479,17 @@ def test_approve_request_rechecks_staging_meta_before_apply(monkeypatch, tmp_pat
     _write_staging_meta(tmp_path, staging_id, ["nice_pack"])
     calls = []
 
-    class _Applier:
-        def __init__(self, **kwargs):
-            calls.append(("init", kwargs))
+    def _forbidden_admission(source_root, *, trust_store_path, fault_injector=None):
+        calls.append(source_root)
+        raise AssertionError(
+            "admission should not run after staging metadata changes"
+        )
 
-        def apply(self, staging_id, *, mode="replace", actor="api_user"):
-            calls.append(("apply", staging_id, mode, actor))
-            raise AssertionError("apply should not run after staging metadata changes")
-
-    monkeypatch.setattr("core_runtime.pack_applier.PackApplier", _Applier)
-    manager = ExtensionManager(
-        requests_root=tmp_path / "requests",
-        ecosystem_dir=tmp_path / "ecosystem",
-        backup_root=tmp_path / "backups",
-        staging_root=tmp_path / "staging",
+    monkeypatch.setattr(
+        "core_runtime.external_pack_catalog_v4.admit_signed_external_pack",
+        _forbidden_admission,
     )
+    manager = _extension_manager(tmp_path)
     created = manager.create_pack_request(
         mode=PatchMode.REQUEST_EXTENSION.value,
         staging_id=staging_id,
@@ -541,9 +505,8 @@ def test_approve_request_rechecks_staging_meta_before_apply(monkeypatch, tmp_pat
     assert calls == []
 
 
-def test_extension_approval_applies_staging(monkeypatch, tmp_path):
+def test_extension_approval_applies_builtin_staging(monkeypatch, tmp_path):
     from ecosystem.defaultspack.backend.pack_extension.extension_manager import (
-        ExtensionManager,
         PatchMode,
     )
 
@@ -551,7 +514,7 @@ def test_extension_approval_applies_staging(monkeypatch, tmp_path):
 
     class _ApplyResult:
         success = True
-        applied_pack_ids = ["new_pack"]
+        applied_pack_ids = ["defaultspack"]
         backup_paths = {"old_pack": str(tmp_path / "backups" / "old_pack")}
 
         def to_dict(self):
@@ -570,24 +533,19 @@ def test_extension_approval_applies_staging(monkeypatch, tmp_path):
             return _ApplyResult()
 
     monkeypatch.setattr("core_runtime.pack_applier.PackApplier", _Applier)
-    _write_staging_meta(tmp_path, "a" * 16, ["new_pack"])
-    manager = ExtensionManager(
-        requests_root=tmp_path / "requests",
-        ecosystem_dir=tmp_path / "ecosystem",
-        backup_root=tmp_path / "backups",
-        staging_root=tmp_path / "staging",
-    )
+    _write_staging_meta(tmp_path, "a" * 16, ["defaultspack"])
+    manager = _extension_manager(tmp_path)
     created = manager.create_pack_request(
         mode=PatchMode.REQUEST_EXTENSION.value,
         staging_id="a" * 16,
         actor="tester",
-        target_pack_id="new_pack",
+        target_pack_id="defaultspack",
     )
 
     result = manager.approve_request(created["request_id"], reviewer="reviewer")
 
     assert result["status"] == "applied"
-    assert result["applied_pack_ids"] == ["new_pack"]
+    assert result["applied_pack_ids"] == ["defaultspack"]
     assert calls[0] == (
         "init",
         str(tmp_path / "ecosystem"),
@@ -597,17 +555,173 @@ def test_extension_approval_applies_staging(monkeypatch, tmp_path):
     assert calls[-1] == ("apply", "a" * 16, "replace", "reviewer")
 
 
-def test_defaultspack_management_routes_are_fallback_http_routes():
-    from ecosystem.defaultspack.transport.registry import canonical_http_route_specs
+def test_extension_approval_denies_unsigned_external_pack(monkeypatch, tmp_path):
+    from ecosystem.defaultspack.backend.pack_extension.extension_manager import (
+        PatchMode,
+    )
+    from core_runtime.pack_artifact_integrity import write_host_install_record
 
-    routes = {
-        (spec.method, spec.pattern): spec.function_name
-        for spec in canonical_http_route_specs(include_always_available=False)
-    }
+    staging_id = "a" * 16
+    staged_pack = tmp_path / "staging" / staging_id / "payload" / "evil_pack"
+    staged_pack.mkdir(parents=True)
+    (staged_pack / "ecosystem.json").write_text(
+        json.dumps({"pack_id": "evil_pack", "version": "1.0"}),
+        encoding="utf-8",
+    )
+    other_root = tmp_path / "other-pack-root"
+    other_root.mkdir()
+    trust_store = tmp_path / "host-policy" / "publisher-trust.json"
+    trust_store.parent.mkdir(mode=0o700)
+    write_host_install_record(
+        trust_store,
+        pack_id="other_pack",
+        install_path=other_root,
+        record={
+            "signature_required": False,
+            "developer_mode": True,
+            "publisher_id": "",
+            "key_id": "",
+            "installed_version": "1.0",
+            "signed_manifest_path": "",
+            "contract_versions": {},
+            "requested_capabilities": [],
+        },
+    )
+    _write_staging_meta(tmp_path, staging_id, ["evil_pack"])
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user-data"))
+    monkeypatch.setenv("RUMI_PACK_PUBLISHER_TRUST_STORE", str(trust_store))
+    manager = _extension_manager(tmp_path)
+    created = manager.create_pack_request(
+        mode=PatchMode.REQUEST_EXTENSION.value,
+        staging_id=staging_id,
+        actor="tester",
+        target_pack_id="evil_pack",
+    )
 
-    assert routes[("GET", "/api/defaultspack/modules")] == "defaultspack:management_list_modules"
-    assert routes[("GET", "/api/defaultspack/pack-requests")] == "defaultspack:pack_request_list"
-    assert (
-        routes[("GET", "/api/defaultspack/migration/status")]
-        == "defaultspack:management_get_migration_status"
+    result = manager.approve_request(created["request_id"], reviewer="reviewer")
+
+    assert result["status_code"] == 403
+    assert result["error"] == "external pack admission denied"
+    assert not (tmp_path / "ecosystem" / "evil_pack").exists()
+
+
+def test_extension_approval_denies_external_without_trust_store(
+    monkeypatch, tmp_path
+):
+    from ecosystem.defaultspack.backend.pack_extension.extension_manager import (
+        PatchMode,
+    )
+
+    staging_id = "a" * 16
+    _write_staging_meta(tmp_path, staging_id, ["evil_pack"])
+    monkeypatch.delenv("RUMI_PACK_PUBLISHER_TRUST_STORE", raising=False)
+    manager = _extension_manager(tmp_path)
+    created = manager.create_pack_request(
+        mode=PatchMode.REQUEST_EXTENSION.value,
+        staging_id=staging_id,
+        actor="tester",
+        target_pack_id="evil_pack",
+    )
+
+    result = manager.approve_request(created["request_id"], reviewer="reviewer")
+
+    assert result["status_code"] == 403
+    assert "publisher trust store" in result["detail"]
+    assert not (tmp_path / "ecosystem" / "evil_pack").exists()
+
+
+def test_extension_approval_denies_missing_host_install_record(
+    monkeypatch, tmp_path
+):
+    from ecosystem.defaultspack.backend.pack_extension.extension_manager import (
+        PatchMode,
+    )
+    from core_runtime.pack_artifact_integrity import write_host_install_record
+
+    staging_id = "a" * 16
+    payload_root = tmp_path / "staging" / staging_id / "payload"
+    pack_id = "a2signedpack"
+    source = payload_root / pack_id
+    payload_root.mkdir(parents=True)
+    trust_store = _signed_pack_at(
+        source, tmp_path, pack_id, write_record=False
+    )
+    other_root = tmp_path / "other-pack-root"
+    other_root.mkdir()
+    write_host_install_record(
+        trust_store,
+        pack_id="other_pack",
+        install_path=other_root,
+        record={
+            "signature_required": False,
+            "developer_mode": True,
+            "publisher_id": "",
+            "key_id": "",
+            "installed_version": "1.0",
+            "signed_manifest_path": "",
+            "contract_versions": {},
+            "requested_capabilities": [],
+        },
+    )
+    _write_staging_meta(tmp_path, staging_id, [pack_id])
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user-data"))
+    monkeypatch.setenv("RUMI_PACK_PUBLISHER_TRUST_STORE", str(trust_store))
+    manager = _extension_manager(tmp_path)
+    created = manager.create_pack_request(
+        mode=PatchMode.REQUEST_EXTENSION.value,
+        staging_id=staging_id,
+        actor="tester",
+        target_pack_id=pack_id,
+    )
+
+    result = manager.approve_request(created["request_id"], reviewer="reviewer")
+
+    assert result["status_code"] == 403
+    assert "Host install" in result["detail"]
+    assert not (tmp_path / "ecosystem" / pack_id).exists()
+
+
+def test_extension_approval_admits_signed_external_pack(monkeypatch, tmp_path):
+    from ecosystem.defaultspack.backend.pack_extension.extension_manager import (
+        PatchMode,
+    )
+    from core_runtime.external_pack_catalog_v4 import (
+        load_external_pack_catalog,
+    )
+
+    staging_id = "a" * 16
+    payload_root = tmp_path / "staging" / staging_id / "payload"
+    pack_id = "a2signedpack"
+    source = payload_root / pack_id
+    payload_root.mkdir(parents=True)
+    trust_store = _signed_pack_at(source, tmp_path, pack_id)
+    _write_staging_meta(tmp_path, staging_id, [pack_id])
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user-data"))
+    monkeypatch.setenv("RUMI_PACK_PUBLISHER_TRUST_STORE", str(trust_store))
+    manager = _extension_manager(tmp_path)
+    created = manager.create_pack_request(
+        mode=PatchMode.REQUEST_EXTENSION.value,
+        staging_id=staging_id,
+        actor="tester",
+        target_pack_id=pack_id,
+    )
+
+    result = manager.approve_request(created["request_id"], reviewer="reviewer")
+
+    assert result["status"] == "applied"
+    assert result["applied_pack_ids"] == [pack_id]
+    catalog = load_external_pack_catalog()
+    assert pack_id in catalog.records
+    assert pack_id in catalog.roots
+    assert not (tmp_path / "ecosystem" / pack_id).exists()
+
+
+def test_defaultspack_management_requires_captured_operation():
+    from tests.v4_batch_support import assert_route_cutover
+
+    assert_route_cutover(
+        "GET",
+        "/api/defaultspack/modules",
+        "tobkiri.pack-management.v1",
+        "defaultspack.pack-management.list-modules",
     )

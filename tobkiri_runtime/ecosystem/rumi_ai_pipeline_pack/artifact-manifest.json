@@ -1,0 +1,15 @@
+{
+  "artifacts": [
+    {
+      "path": "runtime/__init__.py",
+      "role": "runtime",
+      "sha256": "sha256:3b90542d6c8242fc8a73d34fc9b5a7a683f5a724e2eb7c6099f6fe6f2d4df3b4"
+    },
+    {
+      "path": "runtime/pipeline.py",
+      "role": "runtime",
+      "sha256": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91"
+    }
+  ],
+  "schema_version": "rumi.artifact-manifest.v1"
+}

@@ -1,0 +1,42 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:5610ba6939c837bf25108b908ba1284f05f8e3255210ae4fac312a019b1a7c64",
+  "pack_id": "rumi_shell_policy_pack",
+  "source_identity": "sha256:d4e626379d593a61cc28f1dde73b1707cbd7ece2aec92b253e1da5b8dfbba5ed",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_shell_policy_pack.shell-policy.inspect",
+      "implementation_digest": "sha256:4474513154ced3474da4db2d6bf90ece67c0da9406ee3ac392660d7bd9ddcf51",
+      "implementation_path": "runtime/policy.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.shell.inspect.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_shell_policy_pack.shell-inspect",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:186479de12112205be50ff0f0cc3a9e6ffb80e5b225bf84ebd30d539a12efe7b",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_shell_policy_pack.shell-policy.inspect.python"
+    }
+  ]
+}

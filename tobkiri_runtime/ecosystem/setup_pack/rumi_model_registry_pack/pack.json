@@ -1,0 +1,18 @@
+{
+  "pack_id": "rumi_model_registry_pack",
+  "display_name": "Rumi Model Registry Pack",
+  "description": "Authoritative saved model profiles, aliases, migration, and rollback.",
+  "target_pack_id": "rumi_model_registry_pack",
+  "version": "1.0.0",
+  "recommended": true,
+  "risk_level": "medium",
+  "supports_all_ok": false,
+  "depends_on": ["rumi_model_catalog_pack"],
+  "required_permissions": ["ai.model.profile.read", "ai.model.profile.manage", "ai.model.profile.migrate"],
+  "conflicts_with": [],
+  "compatibility": {"python": ">=3.10", "platforms": ["macos", "linux", "windows"]},
+  "marketplace": {"id": "rumi.model_registry", "registry": "bundled", "publisher": "rumi-ai", "status": "verified", "category": "ai-runtime", "channel": "experimental"},
+  "signing": {"mode": "repository_reviewed", "verified": true},
+  "security_notes": ["Saved profiles contain opaque credential handles only.", "Writes are revision guarded and atomic."]
+}
+

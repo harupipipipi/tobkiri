@@ -8,9 +8,7 @@ PackAPIHandler の /health エンドポイントをテストする。
 import json
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 # core_setup のパスを追加
 _CORE_SETUP_DIR = (
@@ -26,16 +24,63 @@ if str(_CORE_SETUP_DIR) not in sys.path:
 class TestAppLifecycleManagerHealth:
     """AppLifecycleManager.get_health() のテスト"""
 
+    def test_health_during_activation_does_not_recapture_profile(self, tmp_path, monkeypatch):
+        from core_runtime import app_lifecycle_manager as lifecycle_module
+
+        alm = lifecycle_module.AppLifecycleManager(base_dir=tmp_path)
+        monkeypatch.setattr(
+            alm,
+            "check_setup_status",
+            lambda: (_ for _ in ()).throw(AssertionError("profile recaptured")),
+        )
+        monkeypatch.setattr(
+            lifecycle_module,
+            "get_runtime_readiness",
+            lambda: {"panel_ready": True},
+        )
+
+        with alm._activation_lock:
+            result = alm.get_health()
+
+        assert result["status"] == "ok"
+        assert result["needs_setup"] is True
+        assert result["panel_ready"] is True
+        assert result["runtime_ready"] is False
+        assert result["runtime_status"] == "panel_ready"
+        assert result["launch_ready"] is False
+
+    def test_parallel_health_does_not_recapture_profile(self, tmp_path, monkeypatch):
+        from core_runtime import app_lifecycle_manager as lifecycle_module
+
+        alm = lifecycle_module.AppLifecycleManager(base_dir=tmp_path)
+        monkeypatch.setattr(
+            alm,
+            "check_setup_status",
+            lambda: (_ for _ in ()).throw(AssertionError("profile recaptured")),
+        )
+        monkeypatch.setattr(
+            lifecycle_module,
+            "get_runtime_readiness",
+            lambda: {"panel_ready": True},
+        )
+
+        with alm._health_capture_lock:
+            result = alm.get_health()
+
+        assert result["needs_setup"] is True
+        assert result["runtime_ready"] is False
+        assert result["launch_ready"] is False
+
     def test_health_needs_setup_true(self, tmp_path):
-        """profile.json が存在しない場合 -> needs_setup: True"""
+        """A fresh home requires explicit canonical Defaults v4 confirmation."""
         from core_runtime.app_lifecycle_manager import AppLifecycleManager
         alm = AppLifecycleManager(base_dir=tmp_path)
         result = alm.get_health()
         assert result["status"] == "ok"
         assert result["needs_setup"] is True
 
-    def test_health_needs_setup_false(self, tmp_path):
-        """profile.json が有効な場合 -> needs_setup: False"""
+    def test_health_ignores_legacy_profile_json(self, tmp_path):
+        """A legacy profile.json cannot activate Defaults v4."""
         from core_runtime.app_lifecycle_manager import AppLifecycleManager
 
         settings_dir = tmp_path / "user_data" / "settings"
@@ -56,10 +101,10 @@ class TestAppLifecycleManagerHealth:
         alm = AppLifecycleManager(base_dir=tmp_path)
         result = alm.get_health()
         assert result["status"] == "ok"
-        assert result["needs_setup"] is False
+        assert result["needs_setup"] is True
 
-    def test_health_needs_setup_false_after_setup_pack_selection(self, tmp_path):
-        """setup-pack install 済みの場合 -> needs_setup: False"""
+    def test_health_ignores_legacy_setup_pack_selection(self, tmp_path):
+        """A legacy setup selection cannot activate Defaults v4."""
         from core_runtime.app_lifecycle_manager import AppLifecycleManager
 
         setup_pack_dir = tmp_path / "ecosystem" / "setup_pack" / "defaultspack"
@@ -103,10 +148,10 @@ class TestAppLifecycleManagerHealth:
         result = alm.get_health()
 
         assert result["status"] == "ok"
-        assert result["needs_setup"] is False
+        assert result["needs_setup"] is True
 
     def test_health_does_not_accept_stale_setup_pack_selection(self, tmp_path):
-        """壊れた setup-pack selection では setup gate を閉じない"""
+        """Stale legacy selection cannot override canonical Defaults v4 state."""
         from core_runtime.app_lifecycle_manager import AppLifecycleManager
 
         settings_dir = tmp_path / "user_data" / "settings"

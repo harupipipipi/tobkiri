@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
+import pytest
 from pathlib import Path
 
 
@@ -10,6 +10,8 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+
+pytestmark = pytest.mark.usefixtures("defaultspack_conversation_owner")
 
 from domain.chat.store import ChatStore  # noqa: E402
 from domain.chat.run_request import prepare_chat_run  # noqa: E402
@@ -27,6 +29,64 @@ from domain.ai_client.model_pack import ModelPack  # noqa: E402
 from domain.ai_client.rumi_process import default_rumi_model_pack  # noqa: E402
 
 
+_V4_DIRECT_PROVIDER_TEST_REASON = (
+    "Retired: Pack v4 routes provider calls through ContractLLMGateway; "
+    "legacy direct AIClient model-pack execution is no longer a runtime contract."
+)
+
+
+def _owner_bound_model_call(root: Path, payload):
+    """Keep model unit test settings separate from ambient application state."""
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    return call_model(payload, settings_owner=FrontendSettingsStore(root / "settings.json"))
+
+
+def _owner_bound_webhook(root: Path, webhook_id, payload, context):
+    """Select a test-local owner independently of webhook-controlled input."""
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    return handle_inbound_webhook(
+        webhook_id, payload, context,
+        settings_owner=FrontendSettingsStore(root / "frontend_settings.json"),
+    )
+
+
+@pytest.fixture
+def steer_runtime(monkeypatch):
+    """Provide an explicit canonical turn owner for instruction delivery tests."""
+    from domain.chat import steer as steer_module
+    from ecosystem.rumi_turn_runtime_pack.runtime.turns import TurnRuntime
+
+    runtime = TurnRuntime()
+
+    def invoke(contract_id, operation, payload):
+        if contract_id == steer_module.CONVERSATION_RESOURCE:
+            assert operation == "get"
+            return {
+                "id": payload["conversation_id"],
+                "conversation_revision": 1,
+            }
+        if contract_id == steer_module.TURN_RESOURCE:
+            if operation == "get":
+                return runtime.get(payload["turn_id"])
+            assert operation == "list"
+            return {"turns": runtime.list(conversation_id=payload.get("conversation_id"))}
+        if contract_id == steer_module.TURN_ACTION:
+            if operation == "begin":
+                return runtime.begin(payload)
+            if operation == "steer":
+                return runtime.steer(
+                    payload["turn_id"],
+                    payload["guidance"],
+                    expected_revision=payload["expected_revision"],
+                )
+        raise AssertionError(f"unexpected turn contract call: {contract_id}/{operation}")
+
+    monkeypatch.setattr(steer_module, "_invoke", invoke)
+    return runtime
+
+
 def _configure_paths(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(tmp_path / "chat" / "conversations.json"))
     monkeypatch.setenv("RUMI_DEFAULTSPACK_INTEGRATIONS_STORE_PATH", str(tmp_path / "integrations" / "conversations.json"))
@@ -40,6 +100,27 @@ def _configure_paths(monkeypatch, tmp_path: Path) -> None:
 def _conversation(tmp_path: Path) -> dict:
     ChatStore._instance = None
     return ChatStore().create_conversation(model="stub/default")
+
+
+def test_chat_owner_module_identity_survives_domain_import_probe(
+    monkeypatch, tmp_path
+):
+    """Keep the collected ChatStore bound to the selected owner after a probe."""
+    from tests.test_browser_companion import _defaultspack_domain_module
+
+    import domain.chat.store as chat_store_module
+
+    collected_chat_store = ChatStore
+    original_path = tuple(sys.path)
+    _defaultspack_domain_module("domain.tool.executor")
+
+    assert sys.modules["domain.chat.store"] is chat_store_module
+    assert collected_chat_store is chat_store_module.ChatStore
+    assert tuple(sys.path) == original_path
+
+    _configure_paths(monkeypatch, tmp_path)
+    conversation = collected_chat_store().create_conversation(model="stub/default")
+    assert conversation["model"] == "stub/default"
 
 
 def _fake_route_decision(model: str) -> ModelRoutingDecision:
@@ -87,7 +168,7 @@ def test_submit_input_defaults_to_chat_message(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         "blocks.chat.send.run",
-        lambda request, context: {
+        lambda request, context, *, settings_owner=None: {
             "status": "ok",
             "data": {"id": "assistant-1", "content": [{"type": "text", "text": "hi"}]},
         },
@@ -126,13 +207,13 @@ def test_generic_webhook_delivery_chat_message(monkeypatch, tmp_path):
     set_external_token("generic", "secret", token_id="generic-chat", kind="webhook_shared_secret")
     monkeypatch.setattr(
         "blocks.chat.send.run",
-        lambda request, context: {
+        lambda request, context, *, settings_owner=None: {
             "status": "ok",
             "data": {"id": "assistant-2", "content": [{"type": "text", "text": "sent"}]},
         },
     )
 
-    result = handle_inbound_webhook(
+    result = _owner_bound_webhook(tmp_path,
         "generic-chat",
         {"text": "hello", "_headers": {"x-rumi-webhook-token": "secret"}, "action_id": "chat.message"},
         {},
@@ -143,7 +224,8 @@ def test_generic_webhook_delivery_chat_message(monkeypatch, tmp_path):
     assert result["result"]["conversation_id"] == conversation["id"]
 
 
-def test_generic_webhook_delivery_run_instruction(monkeypatch, tmp_path):
+def test_generic_webhook_delivery_run_instruction(monkeypatch, tmp_path, steer_runtime):
+    del steer_runtime
     _configure_paths(monkeypatch, tmp_path)
     conversation = _conversation(tmp_path)
     WebhookEndpointStore().upsert(
@@ -158,7 +240,7 @@ def test_generic_webhook_delivery_run_instruction(monkeypatch, tmp_path):
     )
     set_external_token("generic", "secret", token_id="generic-steer", kind="webhook_shared_secret")
 
-    result = handle_inbound_webhook(
+    result = _owner_bound_webhook(tmp_path,
         "generic-steer",
         {"text": "please continue", "_headers": {"x-rumi-webhook-token": "secret"}},
         {},
@@ -183,7 +265,7 @@ def test_generic_webhook_rejects_disallowed_delivery_action(monkeypatch, tmp_pat
     )
     set_external_token("generic", "secret", token_id="generic-locked", kind="webhook_shared_secret")
 
-    result = handle_inbound_webhook(
+    result = _owner_bound_webhook(tmp_path,
         "generic-locked",
         {"text": "nope", "_headers": {"x-rumi-webhook-token": "secret"}, "action_id": "run.instruction"},
         {},
@@ -232,7 +314,7 @@ def test_input_endpoint_rejects_agent_delegate_override_when_not_allowed(monkeyp
         {},
     )
 
-    result = handle_inbound_webhook(
+    result = _owner_bound_webhook(tmp_path,
         created["data"]["endpoint_id"],
         {"text": "delegate this", "_headers": {"x-rumi-webhook-token": "secret"}, "action_id": "agent.delegate"},
         {},
@@ -247,7 +329,7 @@ def test_input_endpoint_non_generic_kind_secret_verifies(monkeypatch, tmp_path):
     conversation = _conversation(tmp_path)
     monkeypatch.setattr(
         "blocks.chat.send.run",
-        lambda request, context: {
+        lambda request, context, *, settings_owner=None: {
             "status": "ok",
             "data": {"id": "assistant-kind", "content": [{"type": "text", "text": "sent"}]},
         },
@@ -267,7 +349,7 @@ def test_input_endpoint_non_generic_kind_secret_verifies(monkeypatch, tmp_path):
     assert read_external_token("local_agent_input", token_id=endpoint_id, kind="webhook_shared_secret") == "kind-secret"
     assert read_external_token("generic", token_id=endpoint_id, kind="webhook_shared_secret") == ""
 
-    result = handle_inbound_webhook(
+    result = _owner_bound_webhook(tmp_path,
         endpoint_id,
         {"text": "hello", "_headers": {"x-rumi-webhook-token": "kind-secret"}},
         {},
@@ -305,7 +387,7 @@ def test_input_endpoint_ttl_expired_rejected(monkeypatch, tmp_path):
     )
     set_external_token("generic", "secret", token_id="expired-webhook", kind="webhook_shared_secret")
 
-    result = handle_inbound_webhook(
+    result = _owner_bound_webhook(tmp_path,
         "expired-webhook",
         {"text": "expired", "_headers": {"x-rumi-webhook-token": "secret"}},
         {},
@@ -392,6 +474,7 @@ def test_agent_delegate_provider_error_returns_visible_safe_failure(monkeypatch,
 
 
 def test_agent_delegate_real_execute_receives_required_capabilities_and_context(monkeypatch, tmp_path):
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
     _configure_paths(monkeypatch, tmp_path)
 
     def fake_ai(self, messages, model, context, tools=None):
@@ -414,6 +497,7 @@ def test_agent_delegate_real_execute_receives_required_capabilities_and_context(
             },
         },
         {"conversation_workspace_dir": str(tmp_path)},
+        settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
     )
 
     context = result["result"]["result"]["context"]
@@ -516,6 +600,7 @@ def test_model_pack_explicit_image_condition_allows_unknown_capability_member():
     assert [member["model"] for member in result.ordered_members] == ["vision/omni"]
 
 
+@pytest.mark.skip(reason=_V4_DIRECT_PROVIDER_TEST_REASON)
 def test_model_pack_fallback_chain(monkeypatch, tmp_path):
     settings_path = tmp_path / "frontend_settings.json"
     settings_path.write_text(
@@ -561,6 +646,7 @@ def test_model_pack_fallback_chain(monkeypatch, tmp_path):
     assert response["metadata"]["model_pack"]["pack_id"] == "fallback-pack"
 
 
+@pytest.mark.skip(reason=_V4_DIRECT_PROVIDER_TEST_REASON)
 def test_model_pack_review_chain_uses_isolated_reviewer(monkeypatch, tmp_path):
     settings_path = tmp_path / "frontend_settings.json"
     settings_path.write_text(
@@ -622,6 +708,7 @@ def test_model_pack_review_chain_uses_isolated_reviewer(monkeypatch, tmp_path):
     assert provider.calls[1]["tools"] == []
 
 
+@pytest.mark.skip(reason=_V4_DIRECT_PROVIDER_TEST_REASON)
 def test_model_pack_review_chain_quarantines_unmarked_generator_scratch(monkeypatch, tmp_path):
     settings_path = tmp_path / "frontend_settings.json"
     settings_path.write_text(
@@ -683,6 +770,7 @@ def test_model_pack_review_chain_quarantines_unmarked_generator_scratch(monkeypa
     assert [call["model"] for call in provider.calls] == ["generator"]
 
 
+@pytest.mark.skip(reason=_V4_DIRECT_PROVIDER_TEST_REASON)
 def test_model_pack_deepthink_chain_selects_harness_tools_separate_from_model_tools(monkeypatch, tmp_path):
     settings_path = tmp_path / "frontend_settings.json"
     settings_path.write_text(
@@ -745,7 +833,7 @@ def test_model_pack_deepthink_chain_selects_harness_tools_separate_from_model_to
 
     monkeypatch.setattr(
         "domain.ai_client.model_pack_router.get_model_capabilities",
-        lambda model, profiles=None: {"supports_tool_calling": True, "supports_thinking": True} if str(model).startswith("demo/") else {},
+        lambda model, **kwargs: {"supports_tool_calling": True, "supports_thinking": True} if str(model).startswith("demo/") else {},
     )
     monkeypatch.setattr(AIClient, "resolve_provider", fake_resolve)
 
@@ -858,6 +946,7 @@ def _run_deepthink_json_repair_case(monkeypatch, tmp_path, malformed_phase: str)
     return response, provider
 
 
+@pytest.mark.skip(reason=_V4_DIRECT_PROVIDER_TEST_REASON)
 def test_deepthink_repairs_malformed_planner_json(monkeypatch, tmp_path):
     response, provider = _run_deepthink_json_repair_case(monkeypatch, tmp_path, "planner")
     process = response["metadata"]["rumi_process"]
@@ -868,6 +957,7 @@ def test_deepthink_repairs_malformed_planner_json(monkeypatch, tmp_path):
     assert provider.plan_broken is True
 
 
+@pytest.mark.skip(reason=_V4_DIRECT_PROVIDER_TEST_REASON)
 def test_deepthink_repairs_malformed_public_note_json(monkeypatch, tmp_path):
     response, provider = _run_deepthink_json_repair_case(monkeypatch, tmp_path, "note")
     process = response["metadata"]["rumi_process"]
@@ -878,6 +968,7 @@ def test_deepthink_repairs_malformed_public_note_json(monkeypatch, tmp_path):
     assert provider.note_broken is True
 
 
+@pytest.mark.skip(reason=_V4_DIRECT_PROVIDER_TEST_REASON)
 def test_deepthink_repairs_malformed_reviewer_json(monkeypatch, tmp_path):
     response, provider = _run_deepthink_json_repair_case(monkeypatch, tmp_path, "reviewer")
     process = response["metadata"]["rumi_process"]
@@ -886,6 +977,97 @@ def test_deepthink_repairs_malformed_reviewer_json(monkeypatch, tmp_path):
     assert process["review"]["approved"] is True
     assert any(event["phase"] == "json_repair" and "reviewer JSON repair" in event["metadata"]["label"] for event in process["events"])
     assert provider.review_broken is True
+
+
+def test_deepthink_user_background_agent_carries_sensitive_attribute_constraint():
+    """The user-background agent must not guess sensitive personal attributes."""
+    from domain.ai_client import rumi_process
+    from domain.ai_client.rumi_process_runner import RumiProcessRunner
+
+    calls = []
+
+    def fake_complete(model, messages, tools, params):
+        calls.append({"model": model, "messages": messages})
+        system = messages[0]["content"]
+        if model == "reviewer-model":
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {"pass": True, "score": 95, "issues": [], "required_changes": []}
+                        ),
+                    }
+                ]
+            }
+        if "Plan the response before writing it" in system:
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {"structure": ["A"], "key_points": ["k"], "risks": []}
+                        ),
+                    }
+                ]
+            }
+        if "Write one visible pseudo DeepThinking step" in system:
+            return {
+                "content": [
+                    {"type": "text", "text": json.dumps({"thinking": "t", "output": "o"})}
+                ]
+            }
+        return {"content": [{"type": "text", "text": "draft ok"}]}
+
+    def fake_response_text(response):
+        return response["content"][0]["text"]
+
+    runner = RumiProcessRunner(
+        complete=fake_complete,
+        response_text=fake_response_text,
+        error_kind=lambda exc: "error",
+    )
+    process = {
+        "deepthink_enabled": True,
+        "events": [],
+        "watchdog": {},
+        "deepthink": {},
+    }
+    response = runner.run_review_chain(
+        composite={"id": "review-pack", "budget": {}},
+        generator_member={"model": "generator-model"},
+        reviewer_member={"model": "reviewer-model"},
+        generator_model="generator-model",
+        reviewer_model="reviewer-model",
+        messages=[{"role": "user", "content": "design a migration plan"}],
+        tools=[],
+        params={
+            "deepthink_max_review_iterations": 1,
+            "deepthink_user_rejection_review_cycles": 0,
+            "deepthink_max_sections": 1,
+        },
+        context={"mode": "deepthink"},
+        process=process,
+        max_reviews=1,
+    )
+
+    assert response["finish_reason"] == "stop"
+    planner_call = next(
+        call
+        for call in calls
+        if "Plan the response before writing it" in call["messages"][0]["content"]
+    )
+    assert rumi_process.RUMI_USER_BACKGROUND_CONSTRAINT in planner_call["messages"][-1]["content"]
+    background_call = next(
+        call
+        for call in calls
+        if "ユーザー背景agent" in call["messages"][-1]["content"]
+    )
+    assert (
+        rumi_process.RUMI_USER_BACKGROUND_CONSTRAINT
+        in background_call["messages"][-1]["content"]
+    )
+    assert "sensitive personal attributes" in rumi_process.RUMI_USER_BACKGROUND_CONSTRAINT
 
 
 def test_rumi_harness_tool_selection_only_adds_vision_tools_for_model_visible_images():
@@ -902,6 +1084,7 @@ def test_rumi_harness_tool_selection_only_adds_vision_tools_for_model_visible_im
     assert with_images["separate_from_model_tools"] is True
 
 
+@pytest.mark.skip(reason=_V4_DIRECT_PROVIDER_TEST_REASON)
 def test_builtin_rumi_model_pack_uses_available_runtime_model(monkeypatch, tmp_path):
     settings_path = tmp_path / "frontend_settings.json"
     settings_path.write_text(json.dumps({"models": {}}), encoding="utf-8")
@@ -943,7 +1126,9 @@ def test_builtin_rumi_model_pack_uses_available_runtime_model(monkeypatch, tmp_p
     assert [call["model"] for call in provider.calls] == ["gemini-2.5-flash"]
 
 
-def test_builtin_rumi_explicit_override_wins_for_review_chain_and_deepthink(monkeypatch):
+def test_builtin_rumi_explicit_override_wins_for_review_chain_and_deepthink(monkeypatch, tmp_path):
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
     client = AIClient()
     captured = []
 
@@ -968,6 +1153,7 @@ def test_builtin_rumi_explicit_override_wins_for_review_chain_and_deepthink(monk
                 "deepthink_enabled": deepthink_enabled,
                 "rumi_base_model_override": "anthropic/explicit-override",
             },
+            settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
         )
         assert response["content"][0]["text"] == "ok"
 
@@ -1050,7 +1236,7 @@ def test_rumi_provider_mimo_requires_intended_base_model():
     assert seen["params"]["rumi_require_intended_base_model"] is True
 
 
-def test_model_call_uses_required_capabilities(monkeypatch):
+def test_model_call_uses_required_capabilities(monkeypatch, tmp_path):
     seen: dict[str, object] = {}
 
     def fake_route(request, profiles=None):
@@ -1059,17 +1245,17 @@ def test_model_call_uses_required_capabilities(monkeypatch):
         return _fake_route_decision("demo/tool")
 
     monkeypatch.setattr("domain.ai_client.model_call.route_model_request", fake_route)
-    monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model: {"supports_tool_calling": True})
+    monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model, **kwargs: {"supports_tool_calling": True})
     monkeypatch.setattr("domain.ai_client.model_call.LLMGateway.complete", lambda self, request: {"content": [{"type": "text", "text": "ok"}]})
 
-    result = call_model({"question": "hello", "required_capabilities": ["model.tool_calling"]})
+    result = _owner_bound_model_call(tmp_path, {"question": "hello", "required_capabilities": ["model.tool_calling"]})
 
     assert result["status"] == "ok"
     assert result["model"] == "demo/tool"
     assert seen["requires_tool_calling"] is True
 
 
-def test_model_call_requires_image_input_routes_to_vision_model(monkeypatch):
+def test_model_call_requires_image_input_routes_to_vision_model(monkeypatch, tmp_path):
     seen: dict[str, object] = {}
 
     def fake_route(request, profiles=None):
@@ -1078,17 +1264,17 @@ def test_model_call_requires_image_input_routes_to_vision_model(monkeypatch):
         return _fake_route_decision("demo/vision")
 
     monkeypatch.setattr("domain.ai_client.model_call.route_model_request", fake_route)
-    monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model: {"supports_vision": True, "supports_image_input": True})
+    monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model, **kwargs: {"supports_vision": True, "supports_image_input": True})
     monkeypatch.setattr("domain.ai_client.model_call.LLMGateway.complete", lambda self, request: {"content": [{"type": "text", "text": "ok"}]})
 
-    result = call_model({"question": "hello", "required_capabilities": ["model.image_input"]})
+    result = _owner_bound_model_call(tmp_path, {"question": "hello", "required_capabilities": ["model.image_input"]})
 
     assert result["status"] == "ok"
     assert result["model"] == "demo/vision"
     assert seen["has_images"] is True
 
 
-def test_model_call_uses_fast_required_capability(monkeypatch):
+def test_model_call_uses_fast_required_capability(monkeypatch, tmp_path):
     seen: dict[str, object] = {}
 
     def fake_route(request, profiles=None):
@@ -1097,16 +1283,16 @@ def test_model_call_uses_fast_required_capability(monkeypatch):
         return _fake_route_decision("demo/fast")
 
     monkeypatch.setattr("domain.ai_client.model_call.route_model_request", fake_route)
-    monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model: {"supports_fast": True})
+    monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model, **kwargs: {"supports_fast": True})
     monkeypatch.setattr("domain.ai_client.model_call.LLMGateway.complete", lambda self, request: {"content": [{"type": "text", "text": "ok"}]})
 
-    result = call_model({"question": "hello", "required_capabilities": ["model.fast"]})
+    result = _owner_bound_model_call(tmp_path, {"question": "hello", "required_capabilities": ["model.fast"]})
 
     assert result["status"] == "ok"
     assert seen["requires_fast"] is True
 
 
-def test_model_call_errors_when_required_capability_unavailable(monkeypatch):
+def test_model_call_errors_when_required_capability_unavailable(monkeypatch, tmp_path):
     def fake_route(request, profiles=None):
         del request, profiles
         return _fake_route_decision("demo/text")
@@ -1115,17 +1301,17 @@ def test_model_call_errors_when_required_capability_unavailable(monkeypatch):
         raise AssertionError("LLM should not be called when capabilities are unsatisfied")
 
     monkeypatch.setattr("domain.ai_client.model_call.route_model_request", fake_route)
-    monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model: {"supports_vision": False, "supports_image_input": False})
+    monkeypatch.setattr("domain.ai_client.model_call.get_model_capabilities", lambda model, **kwargs: {"supports_vision": False, "supports_image_input": False})
     monkeypatch.setattr("domain.ai_client.model_call.LLMGateway.complete", fail_complete)
 
-    result = call_model({"question": "hello", "required_capabilities": ["model.image_input"]})
+    result = _owner_bound_model_call(tmp_path, {"question": "hello", "required_capabilities": ["model.image_input"]})
 
     assert result["status"] == "error"
     assert result["code"] == "MODEL_CAPABILITY_UNSATISFIED"
     assert result["missing_capabilities"] == ["model.image_input"]
 
 
-def test_model_call_does_not_forward_secrets(monkeypatch):
+def test_model_call_does_not_forward_secrets(monkeypatch, tmp_path):
     seen: dict[str, object] = {}
 
     def fake_complete(self, request):
@@ -1134,7 +1320,7 @@ def test_model_call_does_not_forward_secrets(monkeypatch):
 
     monkeypatch.setattr("domain.ai_client.model_call.LLMGateway.complete", fake_complete)
 
-    result = call_model(
+    result = _owner_bound_model_call(tmp_path,
         {
             "messages": [
                 {
@@ -1167,7 +1353,31 @@ def test_model_switch_updates_conversation_default(monkeypatch, tmp_path):
     assert ChatStore().get_conversation(conversation["id"])["model"] == "demo/next"
 
 
+def test_model_switch_updates_default_through_captured_settings_owner(
+    monkeypatch, tmp_path,
+):
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    _configure_paths(monkeypatch, tmp_path)
+    owner = FrontendSettingsStore(tmp_path / "captured_settings.json")
+
+    result = dispatch_input(
+        {
+            "delivery": {"action_id": "model.switch"},
+            "params": {"model": "demo/captured"},
+        },
+        {},
+        settings_owner=owner,
+    )
+
+    assert result["status"] == "ok"
+    assert result["model"] == "demo/captured"
+    assert owner.read()["models"]["preferred_model"] == "demo/captured"
+
+
 def test_model_route_is_turn_scoped(monkeypatch, tmp_path):
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
     _configure_paths(monkeypatch, tmp_path)
     conversation = _conversation(tmp_path)
     dispatch_input(
@@ -1180,11 +1390,12 @@ def test_model_route_is_turn_scoped(monkeypatch, tmp_path):
     )
 
     monkeypatch.setattr("domain.chat.run_request.route_model_request", lambda request: _fake_route_decision(request.preferred_model))
-    monkeypatch.setattr("domain.chat.run_request.get_model_capabilities", lambda model: {"supports_thinking": True, "supports_tool_calling": False})
+    monkeypatch.setattr("domain.chat.run_request.get_model_capabilities", lambda model, **kwargs: {"supports_thinking": True, "supports_tool_calling": False})
 
     prepared = prepare_chat_run(
         {"conversation_id": conversation["id"], "message": {"role": "user", "content": "hello"}},
         {},
+        settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
     )
 
     assert prepared.model == "demo/route-once"
@@ -1198,3 +1409,978 @@ def test_composite_models_compat_with_model_pack():
 
     assert pack is not None
     assert pack.source == "composite_compat"
+
+
+def _run_deepthink_runner_case(reviewer_complete, *, max_iterations: int = 1):
+    """Drive the DeepThink chain through the canonical RumiProcessRunner.
+
+    Production reaches this orchestration via the captured Pack v4 AI gateway;
+    the retired direct-AIClient tests for these outcomes are skipped, so the
+    runner contract is exercised directly here.
+    """
+    from domain.ai_client.rumi_process_runner import RumiProcessRunner
+
+    calls = []
+
+    def fake_complete(model, messages, tools, params):
+        calls.append({"model": model, "messages": messages, "params": dict(params or {})})
+        if model == "reviewer-model":
+            return reviewer_complete()
+        system = messages[0]["content"]
+        if "Plan the response before writing it" in system:
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {"structure": ["A"], "key_points": ["k"], "risks": []}
+                        ),
+                    }
+                ]
+            }
+        if "Write one visible pseudo DeepThinking step" in system:
+            return {
+                "content": [
+                    {"type": "text", "text": json.dumps({"thinking": "t", "output": "o"})}
+                ]
+            }
+        return {"content": [{"type": "text", "text": "draft ok"}]}
+
+    runner = RumiProcessRunner(
+        complete=fake_complete,
+        response_text=lambda response: response["content"][0]["text"],
+        error_kind=lambda exc: "error",
+    )
+    process = {
+        "deepthink_enabled": True,
+        "events": [],
+        "watchdog": {},
+        "deepthink": {},
+    }
+    response = runner.run_review_chain(
+        composite={"id": "review-pack", "budget": {}},
+        generator_member={"model": "generator-model"},
+        reviewer_member={"model": "reviewer-model"},
+        generator_model="generator-model",
+        reviewer_model="reviewer-model",
+        messages=[{"role": "user", "content": "design a migration plan"}],
+        tools=[],
+        params={
+            "deepthink_max_review_iterations": max_iterations,
+            "deepthink_user_rejection_review_cycles": 0,
+            "deepthink_max_sections": 1,
+        },
+        context={"mode": "deepthink"},
+        process=process,
+        max_reviews=max_iterations,
+    )
+    return response, process, calls
+
+
+def test_deepthink_runner_quarantines_reviewer_failure():
+    """A reviewer exception must quarantine instead of publishing a draft."""
+
+    def reviewer():
+        raise RuntimeError("reviewer unavailable")
+
+    response, process, _calls = _run_deepthink_runner_case(reviewer)
+
+    assert response["finish_reason"] == "review_quarantine"
+    assert process["review"]["approved"] is False
+    assert process["review"]["quarantined"] is True
+    assert process["review"]["reason"] == "reviewer_failed"
+    assert any(
+        event["phase"] == "reviewer_error" for event in process["events"]
+    )
+
+
+def test_deepthink_runner_breaks_on_repeated_reviewer_feedback():
+    """Identical reviewer required_changes twice must trigger the loop breaker."""
+
+    def reviewer():
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps(
+                        {
+                            "pass": False,
+                            "score": 10,
+                            "issues": ["not good enough"],
+                            "required_changes": ["same fix"],
+                        }
+                    ),
+                }
+            ]
+        }
+
+    response, process, calls = _run_deepthink_runner_case(reviewer, max_iterations=2)
+
+    assert response["finish_reason"] == "loop_broken"
+    assert process["review"]["approved"] is False
+    assert process["review"]["loop_broken"] is True
+    assert process["review"]["reason"] == "reviewer_feedback_loop_detected"
+    assert any(call["params"].get("deepthink_loop_breaker") for call in calls)
+
+
+def test_deepthink_runner_repairs_malformed_reviewer_json():
+    """A malformed reviewer payload is repaired once instead of quarantining."""
+    counter = {"count": 0}
+
+    def reviewer():
+        counter["count"] += 1
+        if counter["count"] == 1:
+            return {"content": [{"type": "text", "text": "not json at all"}]}
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps(
+                        {"pass": True, "score": 90, "issues": [], "required_changes": []}
+                    ),
+                }
+            ]
+        }
+
+    response, process, _calls = _run_deepthink_runner_case(reviewer)
+
+    assert response["finish_reason"] == "stop"
+    assert process["review"]["approved"] is True
+    assert counter["count"] == 2
+    review_events = [
+        event for event in process["events"] if event["phase"] == "reviewer"
+    ]
+    assert review_events[-1]["metadata"]["json_repaired"] is True
+
+
+def test_deepthink_runner_watchdog_stops_at_max_review_iterations():
+    """Fresh feedback each round still stops at the bounded iteration cap."""
+    counter = {"count": 0}
+
+    def reviewer():
+        counter["count"] += 1
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps(
+                        {
+                            "pass": False,
+                            "score": 10,
+                            "issues": ["not good enough"],
+                            "required_changes": [f"fix {counter['count']}"],
+                        }
+                    ),
+                }
+            ]
+        }
+
+    response, process, _calls = _run_deepthink_runner_case(reviewer, max_iterations=1)
+
+    assert response["finish_reason"] == "review_quarantine"
+    assert process["review"]["approved"] is False
+    assert process["review"]["quarantined"] is True
+    assert process["review"]["reason"] == "deepthink_watchdog_max_review_iterations"
+
+
+def _deepthink_preflight_owner(tmp_path: Path, models: dict | None = None):
+    """Settings owner carrying a custom ``models`` subtree for preflight tests."""
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    settings_path = tmp_path / "deepthink_preflight_settings.json"
+    settings_path.write_text(
+        json.dumps({"models": dict(models or {})}, indent=2),
+        encoding="utf-8",
+    )
+    return FrontendSettingsStore(settings_path)
+
+
+def _prepare_for_model(
+    monkeypatch,
+    tmp_path: Path,
+    *,
+    model: str,
+    params: dict,
+    models: dict | None = None,
+    member_capabilities: dict | None = None,
+):
+    """Drive ``prepare_chat_run`` with routing pinned to *model*.
+
+    ``member_capabilities`` pins the catalog answer ``select_model_pack``
+    sees for pack members; the global default ``thinking_level`` is
+    ``"medium"``, so members need declared capabilities to survive the same
+    hard-requirement filter production applies.
+    """
+    _configure_paths(monkeypatch, tmp_path)
+    conversation = _conversation(tmp_path)
+    monkeypatch.setattr(
+        "domain.chat.run_request.route_model_request",
+        lambda request: _fake_route_decision(model),
+    )
+    monkeypatch.setattr(
+        "domain.chat.run_request.get_model_capabilities",
+        lambda model, **kwargs: {
+            "supports_thinking": True,
+            "supports_tool_calling": False,
+        },
+    )
+    member_caps = (
+        {"supports_thinking": True, "supports_tool_calling": False}
+        if member_capabilities is None
+        else member_capabilities
+    )
+    monkeypatch.setattr(
+        "domain.ai_client.model_pack_router.get_model_capabilities",
+        lambda *args, **kwargs: dict(member_caps),
+    )
+    return prepare_chat_run(
+        {
+            "conversation_id": conversation["id"],
+            "message": {"role": "user", "content": "hello"},
+            "params": dict(params),
+        },
+        {},
+        settings_owner=_deepthink_preflight_owner(tmp_path, models),
+    )
+
+
+def _configure_provider_key(provider_id: str, value: str = "sk-test") -> None:
+    """Persist a broker-backed API key into the isolated secrets dir."""
+    from domain.ai_client.api_key_store import set_provider_api_key
+
+    result = set_provider_api_key(provider_id, value)
+    assert result.get("success") is True, result
+
+
+def test_prepare_chat_run_deepthink_preflight_rejects_plain_provider_model(
+    monkeypatch, tmp_path
+):
+    """A51: deepthink on a non-review_chain model must fail loudly, not silently."""
+    from domain.chat.run_request import DeepThinkPreflightError
+
+    with pytest.raises(DeepThinkPreflightError) as excinfo:
+        _prepare_for_model(
+            monkeypatch,
+            tmp_path,
+            model="openai/gpt-4o",
+            params={"deepthink_enabled": True, "model": "openai/gpt-4o"},
+        )
+
+    exc = excinfo.value
+    assert exc.code == "DEEPTHINK_REQUIRES_REVIEW_CHAIN"
+    assert exc.model == "openai/gpt-4o"
+    assert "not chain-capable" in exc.cause
+    assert "modelpack/rumi" in exc.fix
+    assert "review_chain" in str(exc)
+    assert exc.to_dict()["code"] == exc.code
+    assert exc.to_dict()["model"] == "openai/gpt-4o"
+
+
+def test_prepare_chat_run_deepthink_preflight_rejects_non_chain_pack(
+    monkeypatch, tmp_path
+):
+    """A model pack in a non-review_chain mode cannot host DeepThink either."""
+    from domain.chat.run_request import DeepThinkPreflightError
+
+    with pytest.raises(DeepThinkPreflightError) as excinfo:
+        _prepare_for_model(
+            monkeypatch,
+            tmp_path,
+            model="modelpack/fallback-pack",
+            params={"deepthink_enabled": True, "model": "modelpack/fallback-pack"},
+            models={
+                "model_packs": [
+                    {
+                        "id": "fallback-pack",
+                        "mode": "fallback_chain",
+                        "members": [{"model": "demo/text"}],
+                    }
+                ]
+            },
+        )
+
+    exc = excinfo.value
+    assert exc.code == "DEEPTHINK_REQUIRES_REVIEW_CHAIN"
+    assert "fallback-pack" in exc.cause
+    assert "fallback_chain" in exc.cause
+
+
+def test_prepare_chat_run_deepthink_preflight_allows_review_chain_pack(
+    monkeypatch, tmp_path
+):
+    _configure_paths(monkeypatch, tmp_path)
+    _configure_provider_key("openai")
+    prepared = _prepare_for_model(
+        monkeypatch,
+        tmp_path,
+        model="modelpack/review-pack",
+        params={"deepthink_enabled": True, "model": "modelpack/review-pack"},
+        models={
+            "model_packs": [
+                {
+                    "id": "review-pack",
+                    "mode": "review_chain",
+                    "budget": {"max_review_rounds": 2},
+                    "members": [
+                        {"model": "openai/draft-model"},
+                        {"model": "openai/review-model"},
+                    ],
+                }
+            ]
+        },
+    )
+
+    assert prepared.model == "modelpack/review-pack"
+    assert prepared.input_data["params"]["deepthink_enabled"] is True
+    report = prepared.request_context["deepthink_preflight"]["deepthink"]
+    assert report["ok"] is True
+    assert report["chain_id"] == "review-pack"
+    assert report["member_models"] == ["openai/draft-model", "openai/review-model"]
+
+
+def test_prepare_chat_run_deepthink_preflight_allows_builtin_rumi_pack(
+    monkeypatch, tmp_path
+):
+    """The builtin ``modelpack/rumi`` pack is always chain-capable."""
+    _configure_paths(monkeypatch, tmp_path)
+    _configure_provider_key("openai")
+    prepared = _prepare_for_model(
+        monkeypatch,
+        tmp_path,
+        model="modelpack/rumi",
+        params={"deepthink_enabled": True, "model": "modelpack/rumi"},
+    )
+
+    assert prepared.model == "modelpack/rumi"
+    report = prepared.request_context["deepthink_preflight"]["deepthink"]
+    assert report["ok"] is True
+    assert report["member_models"] == ["openai/gpt-4o"]
+
+
+def test_prepare_chat_run_deepthink_preflight_allows_rumi_process_model(
+    monkeypatch, tmp_path
+):
+    """``rumi/*`` process models route into the review_chain rumi pack."""
+    _configure_paths(monkeypatch, tmp_path)
+    _configure_provider_key("openai")
+    prepared = _prepare_for_model(
+        monkeypatch,
+        tmp_path,
+        model="rumi/rumi",
+        params={"deepthink_enabled": True, "model": "rumi/rumi"},
+    )
+
+    assert prepared.model == "rumi/rumi"
+
+
+def test_prepare_chat_run_deepthink_preflight_allows_review_chain_composite(
+    monkeypatch, tmp_path
+):
+    """Legacy ``composite_models`` entries in review_chain mode are chain-capable."""
+    _configure_paths(monkeypatch, tmp_path)
+    _configure_provider_key("openai")
+    prepared = _prepare_for_model(
+        monkeypatch,
+        tmp_path,
+        model="demo/review-comp",
+        params={"deepthink_enabled": True, "model": "demo/review-comp"},
+        models={
+            "composite_models": [
+                {
+                    "id": "review-comp",
+                    "mode": "review_chain",
+                    "members": [{"model": "openai/gen"}, {"model": "openai/rev"}],
+                }
+            ]
+        },
+    )
+
+    assert prepared.model == "demo/review-comp"
+
+
+def test_prepare_chat_run_deepthink_preflight_reports_routed_member_model(
+    monkeypatch, tmp_path
+):
+    """Routing that demotes a pack ref to a member model still fails loudly."""
+    from domain.ai_client.model_router import ModelRoutingDecision
+    from domain.chat.run_request import DeepThinkPreflightError
+
+    _configure_paths(monkeypatch, tmp_path)
+    conversation = _conversation(tmp_path)
+    monkeypatch.setattr(
+        "domain.chat.run_request.route_model_request",
+        lambda request: ModelRoutingDecision(
+            selected_model="openai/gpt-4o",
+            original_model="modelpack/rumi",
+            selected_group="default",
+            reason_codes=["model_pack_selected"],
+        ),
+    )
+    monkeypatch.setattr(
+        "domain.chat.run_request.get_model_capabilities",
+        lambda model, **kwargs: {"supports_thinking": True},
+    )
+
+    with pytest.raises(DeepThinkPreflightError) as excinfo:
+        prepare_chat_run(
+            {
+                "conversation_id": conversation["id"],
+                "message": {"role": "user", "content": "hello"},
+                "params": {"deepthink_enabled": True},
+            },
+            {},
+            settings_owner=_deepthink_preflight_owner(tmp_path),
+        )
+
+    exc = excinfo.value
+    assert exc.model == "openai/gpt-4o"
+    assert exc.original_model == "modelpack/rumi"
+    assert "modelpack/rumi" in str(exc)
+
+
+def test_prepare_chat_run_deepthink_settings_toggle_rejects_non_chain_model(
+    monkeypatch, tmp_path
+):
+    """The global DeepThink toggle must fail loudly on non-chain selections."""
+    from domain.chat.run_request import DeepThinkPreflightError
+
+    with pytest.raises(DeepThinkPreflightError) as excinfo:
+        _prepare_for_model(
+            monkeypatch,
+            tmp_path,
+            model="demo/plain",
+            params={"model": "demo/plain"},
+            models={"deepthink_enabled": True},
+        )
+
+    assert excinfo.value.model == "demo/plain"
+
+
+def test_prepare_chat_run_deepthink_off_path_unaffected(monkeypatch, tmp_path):
+    """With DeepThink off, ordinary provider models still prepare normally."""
+    prepared = _prepare_for_model(
+        monkeypatch,
+        tmp_path,
+        model="demo/plain",
+        params={"model": "demo/plain"},
+    )
+
+    assert prepared.model == "demo/plain"
+    assert prepared.input_data["params"]["deepthink_enabled"] is False
+
+
+def _review_pack_models(*members: dict, **extra) -> dict:
+    pack = {
+        "id": "review-pack",
+        "mode": "review_chain",
+        "members": list(members),
+    }
+    pack.update(extra)
+    return {"model_packs": [pack]}
+
+
+def test_prepare_chat_run_deepthink_readiness_rejects_unconfigured_member_provider(
+    monkeypatch, tmp_path
+):
+    """A51: a chain member on a provider with no credentials fails closed."""
+    from domain.chat.run_request import DeepThinkReadinessError
+
+    with pytest.raises(DeepThinkReadinessError) as excinfo:
+        _prepare_for_model(
+            monkeypatch,
+            tmp_path,
+            model="modelpack/review-pack",
+            params={"deepthink_enabled": True, "model": "modelpack/review-pack"},
+            models=_review_pack_models(
+                {"model": "openai/draft-model"},
+                {"model": "openai/review-model"},
+            ),
+        )
+
+    exc = excinfo.value
+    assert exc.code == "DEEPTHINK_MEMBER_PROVIDER_UNCONFIGURED"
+    assert "openai" in exc.cause
+    assert exc.member_models
+    assert exc.to_dict()["details"]["problems"]
+
+
+def test_prepare_chat_run_deepthink_readiness_rejects_unqualified_member(
+    monkeypatch, tmp_path
+):
+    """A member model with no provider qualifier cannot be verified."""
+    from domain.chat.run_request import DeepThinkReadinessError
+
+    with pytest.raises(DeepThinkReadinessError) as excinfo:
+        _prepare_for_model(
+            monkeypatch,
+            tmp_path,
+            model="modelpack/review-pack",
+            params={"deepthink_enabled": True, "model": "modelpack/review-pack"},
+            models=_review_pack_models(
+                {"model": "plain-model"},
+                {"model": "plain-model"},
+            ),
+        )
+
+    exc = excinfo.value
+    assert exc.code == "DEEPTHINK_MEMBER_PROVIDER_UNCONFIGURED"
+    assert "not provider-qualified" in exc.cause
+
+
+def test_prepare_chat_run_deepthink_readiness_rejects_reviewer_without_credentials(
+    monkeypatch, tmp_path
+):
+    """Only the generator being credentialed is not enough."""
+    from domain.chat.run_request import DeepThinkReadinessError
+
+    _configure_paths(monkeypatch, tmp_path)
+    _configure_provider_key("openai")
+    with pytest.raises(DeepThinkReadinessError) as excinfo:
+        _prepare_for_model(
+            monkeypatch,
+            tmp_path,
+            model="modelpack/review-pack",
+            params={"deepthink_enabled": True, "model": "modelpack/review-pack"},
+            models=_review_pack_models(
+                {"model": "openai/draft-model"},
+                {"model": "anthropic/review-model"},
+            ),
+        )
+
+    exc = excinfo.value
+    assert exc.code == "DEEPTHINK_MEMBER_PROVIDER_UNCONFIGURED"
+    assert "anthropic" in exc.cause
+    assert "openai" not in exc.cause
+
+
+def test_prepare_chat_run_deepthink_readiness_rejects_malformed_budget(
+    monkeypatch, tmp_path
+):
+    """A non-integer budget knob must fail before send, not clamp silently."""
+    from domain.chat.run_request import DeepThinkReadinessError
+
+    _configure_paths(monkeypatch, tmp_path)
+    _configure_provider_key("openai")
+    with pytest.raises(DeepThinkReadinessError) as excinfo:
+        _prepare_for_model(
+            monkeypatch,
+            tmp_path,
+            model="modelpack/review-pack",
+            params={"deepthink_enabled": True, "model": "modelpack/review-pack"},
+            models=_review_pack_models(
+                {"model": "openai/draft-model"},
+                {"model": "openai/review-model"},
+                budget={"deepthink_max_review_iterations": "unbounded"},
+            ),
+        )
+
+    exc = excinfo.value
+    assert exc.code == "DEEPTHINK_BUDGET_INVALID"
+    assert "deepthink_max_review_iterations" in exc.cause
+
+
+def test_prepare_chat_run_deepthink_readiness_rejects_budget_above_cap(
+    monkeypatch, tmp_path
+):
+    """Declared knobs above the runner-enforced ceiling fail closed."""
+    from domain.chat.run_request import DeepThinkReadinessError
+
+    _configure_paths(monkeypatch, tmp_path)
+    _configure_provider_key("openai")
+    with pytest.raises(DeepThinkReadinessError) as excinfo:
+        _prepare_for_model(
+            monkeypatch,
+            tmp_path,
+            model="modelpack/review-pack",
+            params={"deepthink_enabled": True, "model": "modelpack/review-pack"},
+            models=_review_pack_models(
+                {"model": "openai/draft-model"},
+                {"model": "openai/review-model"},
+                budget={"max_review_rounds": 99},
+            ),
+        )
+
+    exc = excinfo.value
+    assert exc.code == "DEEPTHINK_BUDGET_INVALID"
+    assert "max_review_rounds" in exc.cause
+    assert "99" in exc.cause
+
+
+def test_prepare_chat_run_deepthink_readiness_rejects_empty_runnable_members(
+    monkeypatch, tmp_path
+):
+    """Members gated by unsatisfied conditions leave no runnable chain."""
+    from domain.chat.run_request import DeepThinkReadinessError
+
+    _configure_paths(monkeypatch, tmp_path)
+    _configure_provider_key("openai")
+    with pytest.raises(DeepThinkReadinessError) as excinfo:
+        _prepare_for_model(
+            monkeypatch,
+            tmp_path,
+            model="modelpack/review-pack",
+            params={"deepthink_enabled": True, "model": "modelpack/review-pack"},
+            models=_review_pack_models(
+                {"model": "openai/draft-model", "conditions": {"has_images": True}},
+            ),
+        )
+
+    exc = excinfo.value
+    assert exc.code == "DEEPTHINK_CHAIN_MEMBERS_EMPTY"
+    assert "no runnable members" in exc.cause
+
+
+def test_prepare_chat_run_deepthink_readiness_allows_no_auth_loopback_provider(
+    monkeypatch, tmp_path
+):
+    """A credential_mode=none loopback connection satisfies readiness."""
+    from domain.ai_client.api_key_store import set_provider_api_key
+
+    _configure_paths(monkeypatch, tmp_path)
+    result = set_provider_api_key(
+        "mylocal",
+        "",
+        api_id="local",
+        base_url="http://127.0.0.1:8080/v1",
+        credential_mode="none",
+    )
+    assert result.get("success") is True, result
+    prepared = _prepare_for_model(
+        monkeypatch,
+        tmp_path,
+        model="modelpack/review-pack",
+        params={"deepthink_enabled": True, "model": "modelpack/review-pack"},
+        models=_review_pack_models(
+            {"model": "mylocal/draft-model"},
+            {"model": "mylocal/review-model"},
+        ),
+    )
+
+    assert prepared.model == "modelpack/review-pack"
+    assert prepared.request_context["deepthink_preflight"]["deepthink"]["ok"] is True
+
+
+def test_prepare_chat_run_deepthink_readiness_allows_manifest_local_provider(
+    monkeypatch, tmp_path
+):
+    """Builtin keyless runtimes (e.g. Ollama) are ready with no credential."""
+    prepared = _prepare_for_model(
+        monkeypatch,
+        tmp_path,
+        model="modelpack/review-pack",
+        params={"deepthink_enabled": True, "model": "modelpack/review-pack"},
+        models=_review_pack_models(
+            {"model": "ollama/llama3.1"},
+            {"model": "ollama/llama3.1"},
+        ),
+    )
+
+    assert prepared.model == "modelpack/review-pack"
+    report = prepared.request_context["deepthink_preflight"]["deepthink"]
+    assert report["ok"] is True
+    assert report["member_models"] == ["ollama/llama3.1"]
+
+
+def test_prepare_chat_run_deepthink_readiness_allows_model_api_routes(
+    monkeypatch, tmp_path
+):
+    """An unqualified member model can verify via model_api_routes mapping."""
+    _configure_paths(monkeypatch, tmp_path)
+    _configure_provider_key("openai")
+    prepared = _prepare_for_model(
+        monkeypatch,
+        tmp_path,
+        model="modelpack/review-pack",
+        params={"deepthink_enabled": True, "model": "modelpack/review-pack"},
+        models={
+            "model_packs": [
+                {
+                    "id": "review-pack",
+                    "mode": "review_chain",
+                    "members": [
+                        {"model": "custom/draft-model"},
+                        {"model": "custom/review-model"},
+                    ],
+                }
+            ],
+            "model_api_routes": (
+                "custom/draft-model: openai/main\n"
+                "custom/review-model: openai/main"
+            ),
+        },
+    )
+
+    assert prepared.model == "modelpack/review-pack"
+    assert prepared.request_context["deepthink_preflight"]["deepthink"]["ok"] is True
+
+
+def test_prepare_chat_run_deepthink_readiness_rejects_builtin_rumi_without_credentials(
+    monkeypatch, tmp_path
+):
+    """With no usable provider the builtin rumi pack resolves to the intended
+    base model whose provider is unconfigured — failing closed."""
+    from domain.chat.run_request import DeepThinkReadinessError
+
+    with pytest.raises(DeepThinkReadinessError) as excinfo:
+        _prepare_for_model(
+            monkeypatch,
+            tmp_path,
+            model="rumi/rumi",
+            params={"deepthink_enabled": True, "model": "rumi/rumi"},
+        )
+
+    exc = excinfo.value
+    assert exc.code == "DEEPTHINK_MEMBER_PROVIDER_UNCONFIGURED"
+    assert exc.member_models
+
+
+def test_prepare_chat_run_deepthink_readiness_checks_pack_fallback_member(
+    monkeypatch, tmp_path
+):
+    """D1: ``pack.fallback`` members share the same credential gate."""
+    from domain.chat.run_request import DeepThinkReadinessError
+
+    _configure_paths(monkeypatch, tmp_path)
+    _configure_provider_key("openai")
+    with pytest.raises(DeepThinkReadinessError) as excinfo:
+        _prepare_for_model(
+            monkeypatch,
+            tmp_path,
+            model="modelpack/review-pack",
+            params={"deepthink_enabled": True, "model": "modelpack/review-pack"},
+            models=_review_pack_models(
+                {"model": "openai/draft-model", "metadata": {"role": "generator"}},
+                fallback=["anthropic/review-model"],
+            ),
+        )
+
+    exc = excinfo.value
+    assert exc.code == "DEEPTHINK_MEMBER_PROVIDER_UNCONFIGURED"
+    assert "anthropic/review-model" in exc.member_models
+    assert "anthropic" in exc.cause
+
+
+def test_prepare_chat_run_deepthink_members_match_production_selection(
+    monkeypatch, tmp_path
+):
+    """Parity: preflight members equal ``select_model_pack`` output verbatim."""
+    from domain.ai_client.model_pack_router import select_model_pack
+    from domain.ai_client.model_pack_store import ModelPackStore
+
+    models = _review_pack_models(
+        {"model": "openai/draft-model", "metadata": {"role": "generator"}},
+        {"model": "openai/review-model", "metadata": {"role": "reviewer"}},
+        fallback=["openai/fallback-model"],
+    )
+    _configure_paths(monkeypatch, tmp_path)
+    _configure_provider_key("openai")
+    captured: dict = {}
+    real_select = select_model_pack
+
+    def spy(pack, request, *, settings=None, profiles=None):
+        selection = real_select(
+            pack, request, settings=settings, profiles=profiles
+        )
+        captured["request"] = dict(request or {})
+        captured["ordered"] = [
+            member.get("model") if isinstance(member, dict) else member
+            for member in (selection.ordered_members if selection else [])
+        ]
+        return selection
+
+    monkeypatch.setattr("domain.chat.deepthink_preflight.select_model_pack", spy)
+    prepared = _prepare_for_model(
+        monkeypatch,
+        tmp_path,
+        model="modelpack/review-pack",
+        params={"deepthink_enabled": True, "model": "modelpack/review-pack"},
+        models=models,
+    )
+
+    pack = ModelPackStore(models).get("modelpack/review-pack")
+    expected = real_select(pack, captured["request"], settings=models)
+    assert captured["ordered"] == [
+        member.get("model") for member in expected.ordered_members
+    ]
+    assert "openai/fallback-model" in captured["ordered"]
+    report = prepared.request_context["deepthink_preflight"]["deepthink"]
+    assert report["ok"] is True
+    assert report["member_models"] == [
+        "openai/draft-model",
+        "openai/review-model",
+    ]
+
+
+def test_prepare_chat_run_deepthink_readiness_rejects_capability_filtered_pack(
+    monkeypatch, tmp_path
+):
+    """D2: a hard ``thinking_level`` requirement filters every member."""
+    from domain.chat.run_request import DeepThinkReadinessError
+
+    _configure_paths(monkeypatch, tmp_path)
+    _configure_provider_key("openai")
+    with pytest.raises(DeepThinkReadinessError) as excinfo:
+        _prepare_for_model(
+            monkeypatch,
+            tmp_path,
+            model="modelpack/review-pack",
+            params={
+                "deepthink_enabled": True,
+                "thinking_level": "high",
+                "model": "modelpack/review-pack",
+            },
+            models=_review_pack_models(
+                {"model": "openai/draft-model"},
+                {"model": "openai/review-model"},
+            ),
+            member_capabilities={},
+        )
+
+    exc = excinfo.value
+    assert exc.code == "DEEPTHINK_CHAIN_MEMBERS_EMPTY"
+    assert "no runnable members" in exc.cause
+
+
+def test_prepare_chat_run_deepthink_mimo_process_model_pins_intended_base(
+    monkeypatch, tmp_path
+):
+    """D4: ``rumi/mimo`` forces the intended MiMo base — an openai key must
+    not satisfy the member check."""
+    from domain.chat.run_request import DeepThinkReadinessError
+
+    _configure_paths(monkeypatch, tmp_path)
+    _configure_provider_key("openai")
+    with pytest.raises(DeepThinkReadinessError) as excinfo:
+        _prepare_for_model(
+            monkeypatch,
+            tmp_path,
+            model="rumi/mimo",
+            params={"deepthink_enabled": True, "model": "rumi/mimo"},
+        )
+
+    exc = excinfo.value
+    assert exc.code == "DEEPTHINK_MEMBER_PROVIDER_UNCONFIGURED"
+    assert exc.member_models == ["xiaomi-token-plan-sgp/mimo-v2.5-pro"]
+
+
+def test_prepare_chat_run_deepthink_mimo_process_model_allows_configured_base(
+    monkeypatch, tmp_path
+):
+    """D4: with the intended provider keyed, ``rumi/mimo`` reports that base."""
+    _configure_paths(monkeypatch, tmp_path)
+    _configure_provider_key("xiaomi-token-plan-sgp")
+    prepared = _prepare_for_model(
+        monkeypatch,
+        tmp_path,
+        model="rumi/mimo",
+        params={"deepthink_enabled": True, "model": "rumi/mimo"},
+    )
+
+    report = prepared.request_context["deepthink_preflight"]["deepthink"]
+    assert report["ok"] is True
+    assert report["member_models"] == ["xiaomi-token-plan-sgp/mimo-v2.5-pro"]
+
+
+def test_prepare_chat_run_deepthink_readiness_rejects_unregistered_keyed_provider(
+    monkeypatch, tmp_path
+):
+    """D5: a configured key is not enough when dispatch lacks the provider.
+
+    The credential gate must follow ``resolve_provider``/detection — not a
+    bare ``provider_has_api_key`` — so a keyed provider that failed to
+    register (StubProvider at runtime) still fails closed.
+    """
+    from domain.chat.run_request import DeepThinkReadinessError
+
+    _configure_paths(monkeypatch, tmp_path)
+    _configure_provider_key("openai")
+
+    from domain.ai_client import providers as providers_module
+
+    real_detect = providers_module.detect_available_providers
+
+    def _without_openai():
+        detected = dict(real_detect())
+        detected.pop("openai", None)
+        return detected
+
+    monkeypatch.setattr(
+        providers_module, "detect_available_providers", _without_openai
+    )
+    monkeypatch.setattr(
+        "domain.ai_client.client.detect_available_providers", _without_openai
+    )
+    with pytest.raises(DeepThinkReadinessError) as excinfo:
+        _prepare_for_model(
+            monkeypatch,
+            tmp_path,
+            model="modelpack/review-pack",
+            params={"deepthink_enabled": True, "model": "modelpack/review-pack"},
+            models=_review_pack_models(
+                {"model": "openai/draft-model"},
+                {"model": "openai/review-model"},
+            ),
+        )
+
+    exc = excinfo.value
+    assert exc.code == "DEEPTHINK_MEMBER_PROVIDER_UNCONFIGURED"
+    assert "openai" in exc.cause
+
+
+def test_prepare_chat_run_deepthink_readiness_allows_api_bound_member(
+    monkeypatch, tmp_path
+):
+    """D6: ``provider/api/model`` members verify via the named connection."""
+    from domain.ai_client.api_key_store import set_provider_api_key
+
+    _configure_paths(monkeypatch, tmp_path)
+    _configure_provider_key("openai")
+    result = set_provider_api_key("openai", "sk-bound", api_id="acct-a")
+    assert result.get("success") is True, result
+    prepared = _prepare_for_model(
+        monkeypatch,
+        tmp_path,
+        model="modelpack/review-pack",
+        params={"deepthink_enabled": True, "model": "modelpack/review-pack"},
+        models=_review_pack_models(
+            {"model": "openai/acct-a/draft-model"},
+            {"model": "openai/acct-a/review-model"},
+        ),
+    )
+
+    report = prepared.request_context["deepthink_preflight"]["deepthink"]
+    assert report["ok"] is True
+    assert report["member_models"] == [
+        "openai/acct-a/draft-model",
+        "openai/acct-a/review-model",
+    ]
+
+
+def test_prepare_chat_run_deepthink_readiness_allows_composite_chain_string(
+    monkeypatch, tmp_path
+):
+    """D7: composite ``chain`` strings resolve like production members."""
+    _configure_paths(monkeypatch, tmp_path)
+    _configure_provider_key("openai")
+    prepared = _prepare_for_model(
+        monkeypatch,
+        tmp_path,
+        model="demo/review-comp",
+        params={"deepthink_enabled": True, "model": "demo/review-comp"},
+        models={
+            "composite_models": [
+                {
+                    "id": "review-comp",
+                    "mode": "review_chain",
+                    "chain": "openai/gen-model, openai/rev-model",
+                }
+            ]
+        },
+    )
+
+    report = prepared.request_context["deepthink_preflight"]["deepthink"]
+    assert report["ok"] is True
+    assert report["member_models"] == [
+        "openai/gen-model",
+        "openai/rev-model",
+    ]

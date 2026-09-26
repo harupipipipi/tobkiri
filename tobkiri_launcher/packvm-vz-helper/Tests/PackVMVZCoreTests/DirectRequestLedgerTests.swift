@@ -1,0 +1,150 @@
+import Foundation
+import Testing
+@testable import PackVMVZCore
+
+struct DirectRequestLedgerTests {
+    @Test
+    func savedTurnRetainsExactlyFourBridgesAndOneDeadline() throws {
+        let ledger = DirectRequestLedger()
+        var ticket = try ledger.begin("saved", maximumBridges: 4, now: 100)
+        for hop in 0..<4 {
+            try ledger.settle(ticket, pending: true, now: 101 + Double(hop))
+            ticket = try ledger.resume("saved", now: 102 + Double(hop))
+            #expect(ticket.deadline == 160)
+        }
+        try ledger.settle(ticket, pending: false, now: 110)
+        #expect(throws: HelperError.self) { try ledger.resume("saved", now: 111) }
+    }
+
+    @Test(arguments: [1, 4])
+    func excessHopRetiresBothLegacyAndSavedRequests(limit: Int) throws {
+        let ledger = DirectRequestLedger()
+        var ticket = try ledger.begin("turn", maximumBridges: limit, now: 0)
+        for _ in 0..<limit {
+            try ledger.settle(ticket, pending: true, now: 1)
+            ticket = try ledger.resume("turn", now: 2)
+        }
+        #expect(throws: HelperError.self) { try ledger.settle(ticket, pending: true, now: 3) }
+        #expect(throws: HelperError.self) { try ledger.resume("turn", now: 4) }
+    }
+
+    @Test
+    func concurrentExchangeAndStaleTicketCannotConsumeCurrentExchange() throws {
+        let ledger = DirectRequestLedger()
+        let initial = try ledger.begin("turn", maximumBridges: 4, now: 0)
+        #expect(throws: HelperError.self) { try ledger.resume("turn", now: 1) }
+        #expect(throws: HelperError.self) { try ledger.begin("turn", maximumBridges: 4, now: 1) }
+        try ledger.settle(initial, pending: true, now: 1)
+        let resumed = try ledger.resume("turn", now: 2)
+        #expect(throws: HelperError.self) { try ledger.resume("turn", now: 2) }
+        #expect(throws: HelperError.self) { try ledger.settle(initial, pending: true, now: 2) }
+        ledger.abandon(initial)
+        try ledger.settle(resumed, pending: false, now: 3)
+    }
+
+    @Test
+    func cancelPreventsLateResultResurrectionAndOldCleanupCannotRemoveNewRequest() throws {
+        let ledger = DirectRequestLedger()
+        let initial = try ledger.begin("turn", maximumBridges: 4, now: 0)
+        ledger.cancel("turn")
+        #expect(throws: HelperError.self) { try ledger.settle(initial, pending: true, now: 1) }
+        let replacement = try ledger.begin("turn", maximumBridges: 4, now: 2)
+        ledger.abandon(initial)
+        #expect(throws: HelperError.self) { try ledger.settle(initial, pending: false, now: 3) }
+        try ledger.settle(replacement, pending: false, now: 3)
+    }
+
+    @Test
+    func originalExpiryRejectsBothResumeAndLateCompletion() throws {
+        let ledger = DirectRequestLedger()
+        let ticket = try ledger.begin("turn", maximumBridges: 4, now: 100)
+        try ledger.settle(ticket, pending: true, now: 159)
+        #expect(throws: HelperError.self) { try ledger.resume("turn", now: 160) }
+        let next = try ledger.begin("next", maximumBridges: 4, now: 200)
+        #expect(throws: HelperError.self) { try ledger.settle(next, pending: false, now: 260) }
+        #expect(throws: HelperError.self) { try ledger.resume("next", now: 260) }
+    }
+
+    @Test
+    func abandonedTransportCannotResume() throws {
+        let ledger = DirectRequestLedger()
+        let ticket = try ledger.begin("turn", maximumBridges: 4, now: 0)
+        ledger.abandon(ticket)
+        #expect(throws: HelperError.self) { try ledger.resume("turn", now: 1) }
+    }
+
+    @Test
+    func cancelBeforeBeginTombstonesTheIdentity() throws {
+        let ledger = DirectRequestLedger()
+        // A cancel dispatched concurrently with invoke may arrive before the
+        // request registers; the tombstone must still win the later begin.
+        ledger.cancel("racing", now: 0)
+        #expect(throws: HelperError.self) {
+            try ledger.begin("racing", maximumBridges: 1, now: 0)
+        }
+        // The tombstone expires so unrelated future identities are unaffected.
+        let ticket = try ledger.begin("racing", maximumBridges: 1, now: 61)
+        try ledger.settle(ticket, pending: false, now: 62)
+    }
+
+    @Test
+    func cancelAfterAbandonStillRecordsATombstone() throws {
+        let ledger = DirectRequestLedger()
+        let ticket = try ledger.begin("turn", maximumBridges: 1, now: 0)
+        ledger.abandon(ticket)
+        // A deadline/cancel arriving after the exchange was abandoned must
+        // still succeed so its guest cancellation can proceed.
+        ledger.cancel("turn", now: 1)
+        #expect(throws: HelperError.self) {
+            try ledger.begin("turn", maximumBridges: 1, now: 2)
+        }
+    }
+
+    @Test
+    func requestDeadlineExtendsTheTicket() throws {
+        let ledger = DirectRequestLedger()
+        let ticket = try ledger.begin(
+            "long", maximumBridges: 1, deadline: 1000, now: 0
+        )
+        #expect(ticket.deadline == 1000)
+        #expect(throws: HelperError.self) { try ledger.resume("long", now: 59) }
+        try ledger.settle(ticket, pending: true, now: 900)
+        #expect(throws: HelperError.self) { try ledger.resume("long", now: 1001) }
+    }
+
+    @Test
+    func saturatedTombstonesRefuseNewBeginsAndOverflowedCancelStillWins() throws {
+        let ledger = DirectRequestLedger()
+        for index in 0..<128 {
+            ledger.cancel("early-\(index)", now: 0)
+        }
+        // While the tombstone set is full a new identity cannot be made
+        // cancellable, so begin fails closed instead of registering it.
+        #expect(throws: HelperError.invalidState("CANCEL_TOMBSTONE_LIMIT")) {
+            try ledger.begin("fresh", maximumBridges: 1, now: 1)
+        }
+        // The 129th tombstone cannot be stored; its window is still
+        // enforced fail-closed even after the recorded tombstones expire.
+        ledger.cancel("overflow", now: 30)
+        #expect(throws: HelperError.invalidState("CANCEL_TOMBSTONE_LIMIT")) {
+            try ledger.begin("overflow", maximumBridges: 1, now: 61)
+        }
+        #expect(throws: HelperError.invalidState("CANCEL_TOMBSTONE_LIMIT")) {
+            try ledger.begin("other", maximumBridges: 1, now: 89)
+        }
+        // Once the dropped cancellation's window lapses, begins proceed.
+        let ticket = try ledger.begin("overflow", maximumBridges: 1, now: 90)
+        try ledger.settle(ticket, pending: false, now: 91)
+    }
+
+    @Test
+    func capacityIsBoundedAndExpiredEntriesAreReclaimed() throws {
+        let ledger = DirectRequestLedger()
+        for index in 0..<128 {
+            _ = try ledger.begin("turn-\(index)", maximumBridges: 1, now: 0)
+        }
+        #expect(throws: HelperError.self) { try ledger.begin("extra", maximumBridges: 1, now: 1) }
+        _ = try ledger.begin("extra", maximumBridges: 1, now: 60)
+        #expect(throws: HelperError.self) { try ledger.begin("bad", maximumBridges: 5, now: 60) }
+    }
+}

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 from domain.adaptive.lease_guard import AdaptiveLeaseConflict, enforce_adaptive_lease
+from domain.coding import contract_adapter
 from domain.coding.workspace_policy import (
     WorkspaceTrustRequired,
     require_registered_trusted_workspace,
@@ -34,6 +35,61 @@ def resolve_workspace(
         require_trusted_workspace(resolution, operation=operation)
         enforce_adaptive_lease(resolution, input_data, context, operation=operation)
     return resolution
+
+
+def canonical_mutation_guard(
+    selected_workspace_id: str,
+    input_data: Mapping[str, Any],
+    context: Mapping[str, Any] | None,
+    operation: str,
+) -> Mapping[str, Any] | None:
+    """Apply the canonical adaptive lease before approval consume and receipt mint."""
+
+    # A new mount has no existing workspace binding to lease.  The mount
+    # action remains authority-gated below; only the pre-existing-workspace
+    # adaptive lease is inapplicable for this one operation.
+    if operation == "workspace.create":
+        return None
+
+    request = dict(input_data)
+    ctx = dict(context) if isinstance(context, Mapping) else {}
+    try:
+        mount = contract_adapter.invoke_coding_contract(
+            contract_adapter.WORKSPACE_RESOURCE,
+            "get",
+            {"workspace_id": selected_workspace_id},
+        )
+        root_path = str(mount.get("root_path") or "").strip()
+        if not root_path:
+            raise RuntimeError("workspace mount is unavailable")
+        resolution = WorkspaceResolution(
+            root_path=root_path,
+            workspace_id=selected_workspace_id,
+            trusted=True,
+            record=dict(mount),
+            source="global_contract",
+        )
+    except RuntimeError:
+        resolution = WorkspaceResolver().resolve(
+            {"workspace_id": selected_workspace_id},
+            ctx,
+            allow_cwd_fallback=False,
+        )
+    try:
+        enforce_adaptive_lease(
+            resolution,
+            request,
+            ctx,
+            operation=operation,
+        )
+    except AdaptiveLeaseConflict as exc:
+        return {
+            "reason": "adaptive_lease_held",
+            "code": exc.code,
+            "message": str(exc),
+            "details": dict(exc.details),
+        }
+    return None
 
 
 def resolve_registered_workspace(

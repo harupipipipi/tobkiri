@@ -1,7 +1,4 @@
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import ok
 
@@ -41,13 +38,16 @@ def run(input_data, context):
         messages.append(message)
     else:
         messages.append({"role": "user", "content": str(message or "")})
+    params = data.get("params")
     request = {
         "conversation_id": data.get("conversation_id"),
         "model": _selected_model(data.get("route_model")),
         "messages": messages,
         "tools": tools,
-        "params": {},
+        "params": dict(params) if isinstance(params, dict) else {},
     }
+    if data.get("deepthink_enabled") is True:
+        request["params"]["deepthink_enabled"] = True
     if data.get("vision_bridge_result"):
         request["vision_bridge_result"] = data["vision_bridge_result"]
     return ok(request)

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from functools import partial
 from typing import Any, Callable
+
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from domain.input.dispatcher import dispatch_input
 from domain.input.envelope import RumiInputEnvelope
@@ -26,14 +29,21 @@ class CompanyMessageRouter:
         runtime_store: CompanyRuntimeStore | None = None,
         run_dispatcher: CompanyRunDispatcher | None = None,
         input_dispatcher: Callable[[RumiInputEnvelope, dict[str, Any] | None], dict[str, Any]] | None = None,
+        settings_owner: SettingsOwnerPort | None = None,
     ) -> None:
         self.company_store = company_store or CompanyStore()
         self.runtime_store = runtime_store or CompanyRuntimeStore()
+        self.settings_owner = settings_owner
         self.run_dispatcher = run_dispatcher or CompanyRunDispatcher(
             company_store=self.company_store,
             runtime_store=self.runtime_store,
+            settings_owner=settings_owner,
         )
-        self.input_dispatcher = input_dispatcher or dispatch_input
+        self.input_dispatcher = input_dispatcher or (
+            partial(dispatch_input, settings_owner=settings_owner)
+            if settings_owner is not None
+            else dispatch_input
+        )
 
     def post_message(
         self,
@@ -51,7 +61,10 @@ class CompanyMessageRouter:
         if company is None:
             return None
         fallback_mentions = extract_mentions(content)
-        resolution = CompanyMentionService(self.company_store).resolve(
+        resolution = CompanyMentionService(
+            self.company_store,
+            settings_owner=self.settings_owner,
+        ).resolve(
             company_id,
             content,
         ) or {

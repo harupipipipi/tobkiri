@@ -4,11 +4,15 @@ import sys
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+
+pytestmark = pytest.mark.usefixtures("defaultspack_owner_bindings")
 
 
 def test_artifact_file_serves_tool_created_workspace_files(tmp_path, monkeypatch):

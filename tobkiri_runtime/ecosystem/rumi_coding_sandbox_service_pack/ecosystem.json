@@ -1,0 +1,76 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.coding.sandbox.v1",
+      "rumi.resource.coding.sandbox.v1"
+    ],
+    "requires": [
+      "rumi.resource.workspace.v1",
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+    "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Copy-on-write coding workspaces with no-downgrade Docker execution.",
+  "display_name": "Rumi Coding Sandbox Service",
+  "host_execution": true,
+  "metadata": {
+    "authority_split": [
+      "observe",
+      "control"
+    ],
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:69b5e64e9d88a843fe57c8dea829fcba8498aa43f554fffa3795b77b0e9a18bb",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:6d4a480cc879d085ca5b7ee5d05cd5ff87490e95884c9897f62612aab2752545"
+    },
+    "docker": {
+      "digest_pinned": true,
+      "host_downgrade": false,
+      "local_image_only": true,
+      "network": "none"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:6d4a480cc879d085ca5b7ee5d05cd5ff87490e95884c9897f62612aab2752545"
+    },
+    "host_apply": false,
+    "manifest_authority": "v4-authoritative",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "tool_or_ui_registry_imports": false
+  },
+  "pack_id": "rumi_coding_sandbox_service_pack",
+  "pack_identity": "rumi:ecosystem/rumi_coding_sandbox_service_pack",
+  "provenance": {
+    "build_identity": "rumi_coding_sandbox_service_pack:1.0.0",
+    "content_hash": "sha256:8fab76d8f3a830cb634c186ffa32c4ffc3d067c9bbdd671baa2f55e256725f2f",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "coding.sandbox.control",
+    "coding.sandbox.observe",
+    "host.authority.consume",
+    "workspace.metadata.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

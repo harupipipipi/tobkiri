@@ -66,11 +66,22 @@ def build_file_tree(input_data: dict[str, Any] | None = None, context: dict[str,
     return payload
 
 
-def open_file_tree_node(input_data: dict[str, Any] | None = None, context: dict[str, Any] | None = None) -> dict[str, Any]:
+def open_file_tree_node(
+    input_data: dict[str, Any] | None = None,
+    context: dict[str, Any] | None = None,
+    *,
+    settings_owner: Any = None,
+) -> dict[str, Any]:
     data = input_data if isinstance(input_data, dict) else {}
     node_kind, node_id = _node_kind_and_id(data)
     if node_kind in {"history", "channel"}:
-        return _open_history_node(data, context or {}, node_kind=node_kind, node_id=node_id)
+        return _open_history_node(
+            data,
+            context or {},
+            node_kind=node_kind,
+            node_id=node_id,
+            settings_owner=settings_owner,
+        )
     return _open_file_node(data, context or {}, node_id=node_id)
 
 
@@ -123,7 +134,14 @@ def _open_file_node(data: dict[str, Any], context: dict[str, Any], *, node_id: s
     }
 
 
-def _open_history_node(data: dict[str, Any], context: dict[str, Any], *, node_kind: str, node_id: str) -> dict[str, Any]:
+def _open_history_node(
+    data: dict[str, Any],
+    context: dict[str, Any],
+    *,
+    node_kind: str,
+    node_id: str,
+    settings_owner: Any = None,
+) -> dict[str, Any]:
     company_id = str(data.get("company_id") or "").strip()
     if not company_id:
         raise ValueError("company_id is required for history/channel nodes")
@@ -134,7 +152,11 @@ def _open_history_node(data: dict[str, Any], context: dict[str, Any], *, node_ki
         channel_id = channel_id.split(":", 1)[1]
     if channel_id.startswith("history:"):
         channel_id = channel_id.split(":", 1)[1] or DEFAULT_CHANNEL_ID
-    access = SubagentTeamService().authorize_channel_read(company_id, channel_id, context=context)
+    access = SubagentTeamService(settings_owner=settings_owner).authorize_channel_read(
+        company_id,
+        channel_id,
+        context=context,
+    )
     if is_denial(access):
         raise ChannelHistoryAccessError(str(access.get("message") or "channel history access denied"))
     limit = data.get("limit", 50)
