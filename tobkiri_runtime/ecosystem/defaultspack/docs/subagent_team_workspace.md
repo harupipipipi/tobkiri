@@ -17,6 +17,10 @@ of subagents working in channels.
 - User-facing routes live under `/api/subagent-team/*`; existing
   `/api/company/*` and `/api/agent/companies/*` routes remain compatibility
   aliases.
+- Compatibility company list, detail, and status records expose `task_count`
+  and `message_count` from the same selected Company state snapshot used by
+  the task and message list routes. Counts never consult the retired runtime
+  SQLite store or another fallback authority.
 
 ## Creator
 
