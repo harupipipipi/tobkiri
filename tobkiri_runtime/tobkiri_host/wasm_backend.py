@@ -36,6 +36,10 @@ from .wasm_worker import ComponentWorker, MemoryGuardConfig
 WASMTIME_PULLEY_BACKEND = "tobkiri.wasmtime-pulley-v1"
 
 
+def _is_wasmtime_native_library(name: str) -> bool:
+    return name.startswith("_libwasmtime.") or name == "_wasmtime.dll"
+
+
 @dataclass
 class _ReservationWorker:
     binding: ResolvedOperationBinding
@@ -428,7 +432,7 @@ def production_wasm_backend() -> WasmComponentBackend:
         and item.suffix != ".pyc"
     )
     if not wasmtime_files or not any(
-        item.name.startswith("_libwasmtime.") for item in wasmtime_files
+        _is_wasmtime_native_library(item.name) for item in wasmtime_files
     ):
         raise BackendUnavailableError("the pinned Wasmtime native engine is incomplete")
     for relative in sorted(wasmtime_files, key=str):
