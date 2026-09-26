@@ -4,6 +4,8 @@ import {act} from 'react';
 import {createRoot, type Root} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
 import {MemoryRouter} from 'react-router';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
   copyTextToClipboard,
