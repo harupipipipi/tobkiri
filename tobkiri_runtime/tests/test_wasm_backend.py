@@ -37,6 +37,22 @@ from tobkiri_host.wasm_backend import WasmComponentBackend, production_wasm_back
 from tobkiri_protocol.canonical import canonical_digest
 
 
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [
+        ("_libwasmtime.dylib", True),
+        ("_libwasmtime.so", True),
+        ("_wasmtime.dll", True),
+        ("wasmtime.dll", False),
+        ("_wasmtime.dll.bak", False),
+    ],
+)
+def test_pinned_wasmtime_native_library_names(
+    filename: str, expected: bool
+) -> None:
+    assert wasm_backend._is_wasmtime_native_library(filename) is expected
+
+
 class _TestControllerLease:
     def child_setup(self) -> None:
         return None
