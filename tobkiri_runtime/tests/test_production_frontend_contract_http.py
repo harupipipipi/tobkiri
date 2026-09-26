@@ -1734,10 +1734,9 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
                     "role": "system",
                     "content": "Answer in Japanese.",
                 }
-            if completion == "calculator":
-                assert payload["tool_calling"] is True
-            else:
-                assert "tool_calling" not in payload
+            # Auto tool selection offers tools without making tool_calling a
+            # hard routing requirement; only manual/must_use selections do.
+            assert "tool_calling" not in payload
             return {"ready": True, "model_profile_id": "model-profile-1"}
         if (contract_id, operation_id) == TARGETS[2]:
             ai_calls.append(payload)
