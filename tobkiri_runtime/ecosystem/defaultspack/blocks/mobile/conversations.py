@@ -15,9 +15,89 @@ PC上の会話をスマホから操作するための安定したAPI。
 
 from __future__ import annotations
 
+import os
+import re
+import sys
+from collections.abc import Mapping
+from typing import Any
 
 
 from blocks._common import error, ok
+
+
+# The mobile drawer only needs a short, human-readable hint.  Keep this
+# boundary in the mobile facade rather than teaching the canonical owner about
+# one consumer's display policy.
+MAX_PREVIEW_LENGTH = 160
+
+_WHITESPACE_RE = re.compile(r"\s+")
+_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_SECRET_FIELD_NAME_RE = (
+    r"(?:[a-z][a-z0-9_-]*[_-])?"
+    r"(?:api[_-]?key|x-api[_-]?key|access[_-]?token|"
+    r"refresh[_-]?token|authorization|proxy-authorization|bearer|"
+    r"credential|password|secret|private[_-]?key|encryption[_-]?key|"
+    r"token|key)"
+)
+_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?ix)"
+    rf"(?P<prefix>['\"]?\b{_SECRET_FIELD_NAME_RE}\b['\"]?\s*[:=]\s*)"
+    r"(?P<value>[^\s,;}\]\[\)\(\"'`]+)"
+)
+_SECRET_QUOTED_ASSIGNMENT_RE = re.compile(
+    r"(?ix)"
+    rf"(?P<prefix>['\"]?\b{_SECRET_FIELD_NAME_RE}\b['\"]?\s*[:=]\s*)"
+    r"(?P<quote>['\"])(?P<value>.*?)(?P=quote)"
+)
+_AUTH_SCHEME_RE = re.compile(
+    r"(?i)\b(?P<scheme>bearer|basic|token)\s+"
+    r"(?P<value>[A-Za-z0-9._~+/=-]{8,})\b"
+)
+_JWT_RE = re.compile(
+    r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\."
+    r"[A-Za-z0-9_-]{6,}\b"
+)
+_KNOWN_TOKEN_RE = re.compile(
+    r"\b(?:sk|sk_live|sk_test|ghp|gho|ghs|ghr|github_pat|xox[baprs]-|"
+    r"AIza|AKIA|ya29|hf|npm|pypi)[-_A-Za-z0-9]{8,}\b",
+    re.IGNORECASE,
+)
+_PRIVATE_MARKER_KEYS = {
+    "hidden",
+    "is_hidden",
+    "private",
+    "is_private",
+    "sensitive",
+    "is_sensitive",
+    "internal",
+    "is_internal",
+    "redact",
+    "redacted",
+    "exclude_from_preview",
+    "exclude_from_mobile",
+    "not_for_display",
+    "do_not_display",
+}
+_PRIVATE_MARKER_VALUES = {
+    "hidden",
+    "private",
+    "sensitive",
+    "secret",
+    "internal",
+    "system",
+    "tool",
+    "tool_call",
+    "tool_result",
+}
+_TEXT_BLOCK_TYPES = {"", "text", "plain_text", "markdown"}
+_TOOL_FIELDS = {
+    "tool_call",
+    "tool_call_id",
+    "tool_calls",
+    "tool_logs",
+    "tool_result",
+    "tool_results",
+}
 
 
 def _merged(input_data: dict) -> dict:
@@ -40,25 +120,198 @@ def _store():
     return ChatStore()
 
 
-def _summary(convo: dict) -> dict:
-    messages = convo.get("messages", [])
+def _summary(convo: Mapping[str, Any]) -> dict[str, Any]:
+    """Build the deliberately small, privacy-safe mobile conversation row."""
+    messages = convo.get("messages")
+    messages = messages if isinstance(messages, list) else []
+    message_count = convo.get("message_count")
+    if message_count is None:
+        message_count = len(messages)
+
     return {
-        "id": convo.get("id", ""),
-        "title": convo.get("title", ""),
-        "message_count": len(messages),
-        "updated_at": convo.get("updated_at", ""),
-        "created_at": convo.get("created_at", ""),
-        "pinned": convo.get("pinned", False),
-        "revision": convo.get("revision", 0),
-        "preview": convo.get("preview", ""),
+        "id": str(convo.get("id") or ""),
+        "title": str(convo.get("title") or ""),
+        # This is the canonical count, not the number of displayable messages.
+        "message_count": _non_negative_int(message_count),
+        "updated_at": _timestamp(convo.get("updated_at")),
+        "created_at": _timestamp(convo.get("created_at")),
+        "pinned": bool(convo.get("pinned", convo.get("is_pinned", False))),
+        "revision": _non_negative_int(
+            convo.get("revision", convo.get("conversation_revision", 0))
+        ),
+        "preview": _latest_safe_preview(messages),
     }
 
 
-def list_conversations(input_data, context=None):
+def _non_negative_int(value: Any) -> int:
+    """Return a stable non-negative integer for mobile scalar fields."""
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
+def _timestamp(value: Any) -> int:
+    """Normalize owner timestamps without changing their canonical meaning."""
+    return _non_negative_int(value)
+
+
+def _latest_safe_preview(messages: list[Any]) -> str:
+    """Return the newest ordinary user/assistant text, or an empty string."""
+    for message in reversed(messages):
+        if not isinstance(message, Mapping) or _message_is_private(message):
+            continue
+        text = _ordinary_message_text(message)
+        if not text:
+            continue
+        return _redact_preview(text)
+    return ""
+
+
+def _message_is_private(message: Mapping[str, Any]) -> bool:
+    """Reject internal, hidden, sensitive, and tool-bearing message records."""
+    role = str(message.get("role") or "").strip().casefold()
+    if role not in {"user", "assistant"}:
+        return True
+
+    if any(message.get(field) for field in _TOOL_FIELDS):
+        return True
+
+    if _contains_private_marker(message):
+        return True
+    metadata = message.get("metadata")
+    return isinstance(metadata, Mapping) and _contains_private_marker(metadata)
+
+
+def _contains_private_marker(value: Mapping[str, Any]) -> bool:
+    """Recognize common privacy markers without inspecting arbitrary text."""
+    for key, marker in value.items():
+        normalized_key = str(key).strip().casefold().replace("-", "_")
+        if normalized_key in _PRIVATE_MARKER_KEYS and _is_true_marker(marker):
+            return True
+        if normalized_key in {
+            "visibility",
+            "classification",
+            "security",
+            "message_type",
+            "content_type",
+            "kind",
+            "type",
+            "source",
+            "audience",
+        } and str(marker or "").strip().casefold().replace("-", "_") in _PRIVATE_MARKER_VALUES:
+            return True
+        if normalized_key in {"metadata", "privacy", "policy"} and isinstance(
+            marker, Mapping
+        ) and _contains_private_marker(marker):
+            return True
+    return False
+
+
+def _is_true_marker(value: Any) -> bool:
+    """Interpret only affirmative privacy marker values as enabled."""
+    if value is True:
+        return True
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value != 0
+    return str(value or "").strip().casefold() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+        "enabled",
+        "hidden",
+        "private",
+        "sensitive",
+        "secret",
+        "internal",
+    }
+
+
+def _ordinary_message_text(message: Mapping[str, Any]) -> str:
+    """Extract text only from ordinary text content blocks."""
+    if "content" in message:
+        content = message.get("content")
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            text_parts: list[str] = []
+            for block in content:
+                if isinstance(block, str):
+                    text_parts.append(block)
+                    continue
+                if not isinstance(block, Mapping):
+                    return ""
+                block_type = str(block.get("type") or "").strip().casefold()
+                if block_type not in _TEXT_BLOCK_TYPES:
+                    return ""
+                if _contains_private_marker(block):
+                    return ""
+                block_text = block.get("text", block.get("content", ""))
+                if not isinstance(block_text, str):
+                    return ""
+                text_parts.append(block_text)
+            text = " ".join(text_parts)
+        elif content in (None, ""):
+            text = str(message.get("raw_text") or "")
+        else:
+            return ""
+    else:
+        text = str(message.get("raw_text") or "")
+
+    text = _normalize_preview_text(text)
+    return text
+
+
+def _normalize_preview_text(value: str) -> str:
+    """Collapse whitespace and remove non-printing control characters."""
+    cleaned = _CONTROL_RE.sub(" ", str(value or ""))
+    # Zero-width characters can otherwise join a secret to a harmless-looking
+    # prefix and defeat the boundary-aware redaction patterns below.
+    cleaned = cleaned.replace("\u200b", " ").replace("\ufeff", " ")
+    return _WHITESPACE_RE.sub(" ", cleaned).strip()
+
+
+def _redact_preview(value: str) -> str:
+    """Redact obvious credentials before applying the display-size cap."""
+    text = _normalize_preview_text(value)
+    text = _SECRET_QUOTED_ASSIGNMENT_RE.sub(
+        lambda match: f"{match.group('prefix')}[redacted]", text
+    )
+    text = _SECRET_ASSIGNMENT_RE.sub(
+        lambda match: f"{match.group('prefix')}[redacted]", text
+    )
+    text = _AUTH_SCHEME_RE.sub(
+        lambda match: f"{match.group('scheme')} [redacted]", text
+    )
+    text = _JWT_RE.sub("[redacted]", text)
+    text = _KNOWN_TOKEN_RE.sub("[redacted]", text)
+    text = _normalize_preview_text(text)
+    if len(text) > MAX_PREVIEW_LENGTH:
+        return text[: MAX_PREVIEW_LENGTH - 1].rstrip() + "…"
+    return text
+
+
+def list_conversations(input_data: Any, context: Any = None) -> dict[str, Any]:
+    """List mobile-safe summaries from the canonical conversation owner."""
     del input_data, context
-    store = _store()
-    page, total = store.list_conversations(include_messages=False)
-    return ok({"conversations": page, "count": total})
+    try:
+        store = _store()
+        # Full messages are read only inside this Pack v4 boundary so the
+        # privacy filter can choose the latest *ordinary* message.  _summary
+        # emits an allowlisted row and never returns the message list.
+        page, total = store.list_conversations(include_messages=True)
+        if not isinstance(page, list):
+            raise TypeError("conversation owner returned an invalid list")
+        summaries = [
+            _summary(conversation)
+            for conversation in page
+            if isinstance(conversation, Mapping)
+        ]
+        return ok({"conversations": summaries, "count": _non_negative_int(total)})
+    except Exception:
+        # Do not fall back to legacy storage or expose owner exception details.
+        return error("conversation list unavailable", "CONVERSATION_LIST_FAILED")
 
 
 def create_conversation(input_data, context=None):

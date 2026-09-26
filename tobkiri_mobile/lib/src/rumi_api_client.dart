@@ -12,11 +12,7 @@ enum ModuleAction {
   reload('reload', 'Reload', destructive: true),
   rollback('rollback', 'Rollback', destructive: true);
 
-  const ModuleAction(
-    this.pathSegment,
-    this.label, {
-    required this.destructive,
-  });
+  const ModuleAction(this.pathSegment, this.label, {required this.destructive});
 
   final String pathSegment;
   final String label;
@@ -61,6 +57,16 @@ class RumiApiClient {
     return ModuleCatalog.fromJson(data);
   }
 
+  /// Lists PC conversations through the scoped mobile read contract.
+  ///
+  /// This intentionally has one authority and one route.  The mobile drawer
+  /// must not fall back to the legacy chat or UI routes when this request
+  /// fails; callers can retain their last successful projection instead.
+  Future<PcConversationCatalog> listPcConversations() async {
+    final data = await _request('GET', '/api/mobile/v1/conversations');
+    return PcConversationCatalog.fromJson(data);
+  }
+
   Future<RumiModule> getModule(String moduleId) async {
     final data = await _request(
       'GET',
@@ -69,10 +75,7 @@ class RumiApiClient {
     return RumiModule.fromJson(data);
   }
 
-  Future<RumiModule> moduleAction(
-    String moduleId,
-    ModuleAction action,
-  ) async {
+  Future<RumiModule> moduleAction(String moduleId, ModuleAction action) async {
     final data = await _request(
       'POST',
       '/api/defaultspack/modules/'
@@ -120,11 +123,13 @@ class RumiApiClient {
       idempotencyKey: idempotencyKey,
       clientSequence: clientSequence,
     );
-    return asMap(await _request(
-      'POST',
-      '/api/command-protocol/v1/invoke',
-      body: request.toJson(),
-    ));
+    return asMap(
+      await _request(
+        'POST',
+        '/api/command-protocol/v1/invoke',
+        body: request.toJson(),
+      ),
+    );
   }
 
   Future<Map<String, dynamic>> resumeCommand(
@@ -154,11 +159,13 @@ class RumiApiClient {
       clientSequence: clientSequence,
       approvalToken: approvalToken,
     );
-    return asMap(await _request(
-      'POST',
-      '/api/command-protocol/v1/resume',
-      body: request.toJson(),
-    ));
+    return asMap(
+      await _request(
+        'POST',
+        '/api/command-protocol/v1/resume',
+        body: request.toJson(),
+      ),
+    );
   }
 
   Future<Map<String, dynamic>> commandInvocationEvents(
@@ -168,17 +175,19 @@ class RumiApiClient {
     String? profileId,
     String? conversationId,
   }) async {
-    return asMap(await _request(
-      'POST',
-      '/api/command-protocol/v1/invocations/events/query',
-      body: <String, Object?>{
-        'invocation_id': invocationId,
-        'after_sequence': afterSequence,
-        'limit': limit,
-        if (profileId != null) 'profile_id': profileId,
-        if (conversationId != null) 'conversation_id': conversationId,
-      },
-    ));
+    return asMap(
+      await _request(
+        'POST',
+        '/api/command-protocol/v1/invocations/events/query',
+        body: <String, Object?>{
+          'invocation_id': invocationId,
+          'after_sequence': afterSequence,
+          'limit': limit,
+          if (profileId != null) 'profile_id': profileId,
+          if (conversationId != null) 'conversation_id': conversationId,
+        },
+      ),
+    );
   }
 
   Future<Map<String, dynamic>> commandOfflineQueue(
@@ -189,24 +198,28 @@ class RumiApiClient {
     int? expectedRevision,
     int? limit,
   }) async {
-    return asMap(await _request(
-      'POST',
-      '/api/command-protocol/v1/offline',
-      body: <String, Object?>{
-        'action': action,
-        if (commandRef != null) 'command_ref': commandRef,
-        if (args.isNotEmpty) 'args': args,
-        if (idempotencyKey != null) 'idempotency_key': idempotencyKey,
-        if (expectedRevision != null) 'expected_revision': expectedRevision,
-        if (limit != null) 'limit': limit,
-      },
-    ));
+    return asMap(
+      await _request(
+        'POST',
+        '/api/command-protocol/v1/offline',
+        body: <String, Object?>{
+          'action': action,
+          if (commandRef != null) 'command_ref': commandRef,
+          if (args.isNotEmpty) 'args': args,
+          if (idempotencyKey != null) 'idempotency_key': idempotencyKey,
+          if (expectedRevision != null) 'expected_revision': expectedRevision,
+          if (limit != null) 'limit': limit,
+        },
+      ),
+    );
   }
 
   Future<List<PackRequest>> listPackRequests() async {
     final data = await _request('GET', '/api/defaultspack/pack-requests');
-    final items =
-        _listPayload(data, keys: const ['requests', 'items', 'pack_requests']);
+    final items = _listPayload(
+      data,
+      keys: const ['requests', 'items', 'pack_requests'],
+    );
     return items.map(PackRequest.fromJson).toList(growable: false);
   }
 
@@ -222,8 +235,9 @@ class RumiApiClient {
       throw const RumiApiException('Bearer token is required');
     }
     final request = http.Request(method, _uri(path));
-    request.headers
-        .addAll(_headers(hasBody: body != null, requireAuth: requireAuth));
+    request.headers.addAll(
+      _headers(hasBody: body != null, requireAuth: requireAuth),
+    );
     if (body != null) {
       request.body = jsonEncode(body);
     }
