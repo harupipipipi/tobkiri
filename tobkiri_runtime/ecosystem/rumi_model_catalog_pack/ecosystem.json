@@ -13,9 +13,9 @@
     "authoritative_owner": true,
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:91db3c4ea077e715caa205be38377663336515bd2810598e723cba82911c69f0",
+      "artifact_digest": "sha256:820de090f3f7ff88f5b53f556dbf0b0724e03d1fef3984d4c9ab1361a944a702",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:a96b0d251c326566174d53e4ca27313b2270fc5a2dafe96ecb0e10d687b618f8"
+      "source_identity": "sha256:7025513b7735bb5ce6eeee43ffb754e9f16044622ff9fe68e35b7de80eadedcf"
     },
     "catalog_revision": "sha256:23cd323554cef32f891827a9a6ddd9c75b7fd3c898d0b501c7e62b091a5001cd",
     "format": "rumi.ecosystem.v1",
@@ -24,7 +24,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "rumi.pack.v3.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:a96b0d251c326566174d53e4ca27313b2270fc5a2dafe96ecb0e10d687b618f8"
+      "source_content_hash": "sha256:7025513b7735bb5ce6eeee43ffb754e9f16044622ff9fe68e35b7de80eadedcf"
     },
     "integrity": {
       "artifact_manifest": "artifact-manifest.json"
@@ -44,7 +44,7 @@
       "live_inventory": {
         "credential_forwarding": false,
         "endpoint": "https://openrouter.ai/api/v1/models",
-        "fallback": "last_known_good_then_static",
+        "fallback": "last_known_good_then_empty",
         "provider": "openrouter",
         "timeout_seconds_max": 5
       }
@@ -54,7 +54,7 @@
   "pack_identity": "rumi:ecosystem/rumi_model_catalog_pack",
   "provenance": {
     "build_identity": "rumi_model_catalog_pack:2.0.0",
-    "content_hash": "sha256:5f86434a5519b279388fed73c42074176eca87a19e873969d9719291a252cc65",
+    "content_hash": "sha256:64d6c2e936ecb570b7f9ab65e513f7dcaf69f5e85b8d326119b9ce90d2eac339",
     "signature": null,
     "trust_class": "local"
   },

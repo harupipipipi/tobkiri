@@ -67,7 +67,7 @@ def test_expired_openrouter_free_variants_are_not_exposed_without_live_inventory
 
     assert models == {}
     inventory = result["inventory"]["openrouter"]
-    assert inventory["source"] == "static"
+    assert inventory["source"] == "unavailable"
     assert inventory["stale"] is False
     assert inventory["model_count"] == 0
     assert inventory["static_models_ignored"] > 0
@@ -188,6 +188,86 @@ def test_runtime_catalog_keeps_live_openrouter_inventory_authoritative(monkeypat
         "openrouter/acme/atlas-reasoner"
     ]
     assert [model["model_id"] for model in models] == ["acme/atlas-reasoner"]
+
+
+@pytest.mark.parametrize("provider", ["", "openrouter"])
+@pytest.mark.parametrize("owner_result", ["unavailable", "empty", "unapproved", "live"])
+def test_selected_catalog_fallback_never_restores_static_openrouter_models(
+    monkeypatch, provider: str, owner_result: str
+) -> None:
+    """A missing owner inventory must not revive an expired free model."""
+    static_models = [
+        {
+            "id": "stub/kept",
+            "qualified_model_id": "stub/kept",
+            "provider_id": "stub",
+            "model_id": "kept",
+        },
+        {
+            "id": "openrouter/obsolete:free",
+            "qualified_model_id": "openrouter/obsolete:free",
+            "provider_id": "openrouter",
+            "model_id": "obsolete:free",
+        },
+    ]
+    live_model = catalog._normalize_openrouter_model(_live_openrouter_model())
+    assert live_model is not None
+
+    class EmptyRuntimeClient:
+        _providers = {}
+
+        @staticmethod
+        def list_models(provider=None):
+            return []
+
+    class ApprovalManager:
+        @staticmethod
+        def is_pack_approved_and_verified(pack_id):
+            assert pack_id == "rumi_model_catalog_pack"
+            return owner_result != "unapproved", "test"
+
+    calls = 0
+
+    def invoke(contract_id, name, payload):
+        nonlocal calls
+        calls += 1
+        assert contract_id == provider_catalog._MODEL_CATALOG_CONTRACT
+        assert name == "list"
+        if owner_result == "unavailable":
+            raise provider_catalog.GlobalContractUnavailable("test")
+        if owner_result == "live" and calls == 2:
+            assert payload == {"provider_id": "openrouter"}
+            return {"models": [live_model]}
+        return {"models": []}
+
+    monkeypatch.setattr(provider_catalog, "_invoke", invoke)
+    monkeypatch.setattr(provider_catalog, "_runtime_client", EmptyRuntimeClient)
+    monkeypatch.setattr(
+        provider_catalog,
+        "get_all_known_models",
+        lambda provider_id=None: [
+            model
+            for model in static_models
+            if provider_id is None or model["provider_id"] == provider_id
+        ],
+    )
+    monkeypatch.setattr(
+        "core_runtime.resolved_profile_scope.effective_pack_ids",
+        lambda: frozenset({"rumi_model_catalog_pack"}),
+    )
+    monkeypatch.setattr(
+        "core_runtime.approval_manager.get_approval_manager",
+        lambda: ApprovalManager(),
+    )
+    provider_catalog._clear_runtime_inventory_cache()
+
+    models = provider_catalog.list_model_catalog(provider)
+    observed_ids = {model["qualified_model_id"] for model in models}
+    expected_ids = set() if provider else {"stub/kept"}
+    if owner_result == "live":
+        expected_ids.add("openrouter/acme/atlas-reasoner")
+    assert observed_ids == expected_ids
+    assert "openrouter/obsolete:free" not in observed_ids
 
 
 def test_unfiltered_live_catalog_models_reach_profile_picker(monkeypatch) -> None:

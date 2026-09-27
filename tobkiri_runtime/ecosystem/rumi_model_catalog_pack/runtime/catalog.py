@@ -265,7 +265,7 @@ def _model_key(item: Mapping[str, Any]) -> tuple[str, str] | None:
 
 
 def _openrouter_inventory() -> tuple[list[dict[str, Any]], str, bool]:
-    """Return fresh inventory, then stale last-known-good, then static fallback.
+    """Return fresh inventory, then stale last-known-good, then no models.
 
     The official public endpoint is used with no credential or user-configured
     URL. A caller never waits on an in-progress refresh, and a refresh itself
@@ -303,7 +303,7 @@ def _openrouter_inventory() -> tuple[list[dict[str, Any]], str, bool]:
     fallback = memory or persisted
     if fallback is not None:
         return list(fallback["models"]), "last_known_good", True
-    return [], "static", False
+    return [], "unavailable", False
 
 
 def _set_memory_inventory(snapshot: Mapping[str, Any]) -> None:

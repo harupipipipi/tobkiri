@@ -5473,38 +5473,46 @@
     },
     "rumi_model_catalog_pack": {
       "pack_id": "rumi_model_catalog_pack",
-      "review_attestation_digest": "sha256:c63b405344f8ec428dd2a66d102011cde732ea81bec8cec4d8e2ff24e6d55e0c",
+      "review_attestation_digest": "sha256:95e5cb02ac7c8b33be4293c23439d9d4bd5cd416c98e69aee904902d7144ae63",
       "review_basis": {
         "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/runtime/catalog.py",
+          "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/ecosystem.json",
           "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/rumi.pack.v3.json",
           "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/artifact-manifest.json",
           "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/pack.v4.json",
           "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/contracts.v4.json",
           "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/executables.v4.json",
-          "tobkiri_runtime/schemas/executable_sources.v1.json"
+          "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/artifact-index.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json",
+          "tobkiri_runtime/ecosystem/defaultspack/backend/ai_client/provider_catalog.py",
+          "tobkiri_runtime/tests/test_model_catalog_contract.py"
         ],
         "excluded_claims": [
           "runtime admission",
           "installation",
           "isolated conformance",
+          "provider account availability",
+          "successful model completion",
+          "Windows PackVM availability",
           "release readiness"
         ],
         "method": "independent-file-by-file-review.v1",
         "verified_claims": [
-          "one-to-one operation identity",
-          "canonical input/output schema equality",
-          "runtime artifact path/digest equality",
-          "target owner equality",
-          "authority field equality",
-          "Pack-qualified provider identity"
+          "three legacy catalog operations map one-to-one to the same v4 runtime artifact and object input/output schemas",
+          "legacy runtime artifact and v4 executable bind the exact runtime/catalog.py digest",
+          "provider cardinality, failure, isolation, lifecycle, security, and required capability fields are preserved",
+          "unfiltered catalog listing retains other providers while merging the bounded OpenRouter public inventory",
+          "OpenRouter inventory requests all output modalities without forwarding a credential",
+          "without live or last-known-good inventory, OpenRouter has no selectable models, including the Defaults fallback"
         ]
       },
-      "reviewed_at": "2026-09-26T11:30:00+09:00",
+      "reviewed_at": "2026-09-28T04:09:02+09:00",
       "reviewer_id": "codex:independent-semantic-review:v1",
       "semantic_record_digest": "sha256:fc3fbd3730136ba5318b695f094b42b82c54fa10c5296a499d91953fff2450f1",
-      "source_digest": "sha256:987c51ee6639dab8a5a78ad524c0179c8d9d55942f76babd0c1a5801f0a8c98e",
+      "source_digest": "sha256:9bf174c58b348c1b94767fb728623c6fd83564922366ef4340c745ef4f6b9395",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:7c581f2f1ebf39c7f8d5d88994aed967250fb244ab1bb78f3a9ff31e8c534439"
+      "target_digest": "sha256:820de090f3f7ff88f5b53f556dbf0b0724e03d1fef3984d4c9ab1361a944a702"
     },
     "rumi_model_evals_pack": {
       "pack_id": "rumi_model_evals_pack",

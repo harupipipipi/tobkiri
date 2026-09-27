@@ -313,21 +313,27 @@ def _merge_selected_openrouter_inventory(
     models: List[Dict[str, Any]],
     provider: str,
 ) -> List[Dict[str, Any]]:
-    """Use the selected catalog owner's bounded OpenRouter inventory fallback.
+    """Use only the selected catalog owner's verified OpenRouter inventory.
 
     Global contracts can be temporarily unavailable while the desktop surface
     restores its active profile.  The ordinary fallback already reads the
     selected model-catalog Pack directly; for OpenRouter it must use that
-    Pack's live/LKG/static operation as well, otherwise the UI silently falls
-    back to the small bundled allowlist for the lifetime of the process.
+    Pack's live or last-known-good operation as well.  Static OpenRouter
+    descriptors are never selectable when that inventory is unavailable.
 
     This path remains fail-closed: the Pack must still be hash-verified and
     approved, and the catalog operation itself owns the fixed endpoint,
-    timeout, response-size cap, cache, and static fallback.
+    timeout, response-size cap, and cache.
     """
     normalized_provider = str(provider or "").strip()
     if normalized_provider and normalized_provider != "openrouter":
         return models
+    other_models = [
+        dict(model)
+        for model in models
+        if isinstance(model, dict) and model.get("provider_id") != "openrouter"
+    ]
+    safe_fallback = [] if normalized_provider == "openrouter" else other_models
     try:
         from core_runtime.approval_manager import get_approval_manager
 
@@ -335,7 +341,7 @@ def _merge_selected_openrouter_inventory(
             "rumi_model_catalog_pack"
         )
         if not approved:
-            return models
+            return safe_fallback
 
         result = _invoke(
             _MODEL_CATALOG_CONTRACT,
@@ -344,23 +350,19 @@ def _merge_selected_openrouter_inventory(
         )
         openrouter_models = result.get("models") if isinstance(result, dict) else None
         if not isinstance(openrouter_models, list) or not openrouter_models:
-            return models
+            return safe_fallback
         verified_openrouter = [
             dict(model)
             for model in openrouter_models
             if isinstance(model, dict) and model.get("provider_id") == "openrouter"
         ]
         if not verified_openrouter:
-            return models
+            return safe_fallback
         if normalized_provider == "openrouter":
             return verified_openrouter
-        return [
-            model
-            for model in models
-            if isinstance(model, dict) and model.get("provider_id") != "openrouter"
-        ] + verified_openrouter
+        return other_models + verified_openrouter
     except Exception:
-        return models
+        return safe_fallback
 
 
 def list_profile_catalog() -> List[Dict[str, Any]]:
