@@ -418,6 +418,8 @@ enum CleanupAuthority {
 /// remain alive until the process exits.
 pub struct PythonChild {
     pid: u32,
+    #[cfg(unix)]
+    start_marker: Option<u64>,
     state: PythonChildState,
     operation_failures: ChildOperationFailures,
 }
@@ -559,6 +561,8 @@ impl PythonChild {
         let pid = child.id();
         Self {
             pid,
+            #[cfg(unix)]
+            start_marker: crate::process_utils::process_start_marker(pid),
             state: PythonChildState::Running {
                 child,
                 environment: None,
@@ -572,6 +576,8 @@ impl PythonChild {
         let pid = child.id();
         Self {
             pid,
+            #[cfg(unix)]
+            start_marker: crate::process_utils::process_start_marker(pid),
             state: PythonChildState::Running {
                 child,
                 environment: Some(Box::new(environment)),
@@ -582,6 +588,11 @@ impl PythonChild {
 
     pub fn id(&self) -> u32 {
         self.pid
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn start_marker(&self) -> Option<u64> {
+        self.start_marker
     }
 
     fn child_ref(&self) -> &Child {

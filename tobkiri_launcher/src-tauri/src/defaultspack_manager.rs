@@ -135,6 +135,14 @@ impl OwnedProcessGroup {
             leader_marker: crate::process_utils::process_start_marker(pgid),
         }
     }
+
+    #[cfg(unix)]
+    fn leader_is_current(&self) -> bool {
+        matches!(
+            (self.leader_marker, crate::process_utils::process_start_marker(self.pgid)),
+            (Some(recorded), Some(current)) if recorded == current
+        )
+    }
 }
 
 #[derive(Default)]
@@ -1118,40 +1126,65 @@ pub(crate) fn stop_unix_process_group(
     label: &str,
 ) -> Result<()> {
     let pid = child.id();
-    let _ = child
-        .try_wait()
-        .with_context(|| format!("failed to inspect {label} process before stopping"))?;
+    let owned_group = OwnedProcessGroup {
+        pgid: pid,
+        leader_marker: child.start_marker(),
+    };
 
     // The pack-shell wrapper can exit before the desktop app it spawned. Wait
     // for the entire group, not only the direct child, so its listener cannot
-    // survive Launcher shutdown.
-    let group_leader = process_group_exists(pid);
+    // survive Launcher shutdown. A reaped leader no longer proves ownership;
+    // its numeric PGID may have been assigned to an unrelated process.
+    let group_leader = owned_group.leader_is_current() && process_group_exists(pid);
     if group_leader {
         let _ = send_process_group_signal(pid, "-TERM");
-    } else {
+    } else if child
+        .try_wait()
+        .with_context(|| format!("failed to inspect {label} process before stopping"))?
+        .is_none()
+    {
         let _ = send_unix_process_signal(pid, "-TERM");
     }
 
     let deadline = Instant::now() + DEFAULTSPACK_STOP_TIMEOUT;
     while Instant::now() < deadline {
-        let child_status = child
-            .try_wait()
-            .with_context(|| format!("failed to wait for {label} after SIGTERM"))?;
         let exited = if group_leader {
+            if !owned_group.leader_is_current() {
+                warn!("Skipping {label} process group {pid}: its leader identity was lost after SIGTERM");
+                let _ = child.try_wait();
+                return Ok(());
+            }
             !process_group_exists(pid)
         } else {
-            child_status.is_some()
+            child
+                .try_wait()
+                .with_context(|| format!("failed to wait for {label} after SIGTERM"))?
+                .is_some()
         };
         if exited {
+            if group_leader {
+                let _ = child.try_wait();
+            }
             return Ok(());
         }
         thread::sleep(Duration::from_millis(100));
     }
 
     let sent_kill = if group_leader {
+        if !owned_group.leader_is_current() {
+            warn!(
+                "Skipping {label} process group {pid}: its leader identity was lost before SIGKILL"
+            );
+            let _ = child.try_wait();
+            return Ok(());
+        }
         send_process_group_signal(pid, "-KILL")
     } else {
-        send_unix_process_signal(pid, "-KILL")
+        child
+            .try_wait()
+            .with_context(|| format!("failed to inspect {label} before SIGKILL"))?
+            .is_some()
+            || send_unix_process_signal(pid, "-KILL")
     };
     if child
         .try_wait()
@@ -1179,7 +1212,10 @@ pub(crate) fn stop_unix_process_group(
             .wait()
             .with_context(|| format!("failed to wait for killed {label} process group"))?;
     }
-    if group_leader && !wait_for_process_group_exit(pid, DEFAULTSPACK_FORCE_KILL_TIMEOUT) {
+    if group_leader
+        && owned_group.leader_is_current()
+        && !wait_for_process_group_exit(pid, DEFAULTSPACK_FORCE_KILL_TIMEOUT)
+    {
         return Err(anyhow!(
             "{label} process group {pid} remained live after SIGKILL"
         ));
@@ -1198,11 +1234,7 @@ fn stop_unix_process_group_id(group: OwnedProcessGroup) -> Result<()> {
     // exited, its former group can disappear and the number can be reused by
     // an unrelated process. A matching port or ESRCH for the old leader does
     // not prove that the current group is the one this Launcher recorded.
-    let leader_verified = matches!(
-        (group.leader_marker, crate::process_utils::process_start_marker(process_group)),
-        (Some(recorded), Some(current)) if recorded == current
-    );
-    if !leader_verified {
+    if !group.leader_is_current() {
         warn!(
             "Skipping owned Defaultspack process group {process_group}: its leader identity could not be re-verified"
         );
@@ -1212,12 +1244,20 @@ fn stop_unix_process_group_id(group: OwnedProcessGroup) -> Result<()> {
     let _ = send_process_group_signal(process_group, "-TERM");
     let deadline = Instant::now() + DEFAULTSPACK_STOP_TIMEOUT;
     while Instant::now() < deadline {
+        if !group.leader_is_current() {
+            warn!("Skipping owned Defaultspack process group {process_group}: its leader identity was lost after SIGTERM");
+            return Ok(());
+        }
         if !process_group_exists(process_group) {
             return Ok(());
         }
         thread::sleep(Duration::from_millis(100));
     }
 
+    if !group.leader_is_current() {
+        warn!("Skipping owned Defaultspack process group {process_group}: its leader identity was lost before SIGKILL");
+        return Ok(());
+    }
     let sent_kill = send_process_group_signal(process_group, "-KILL");
     if !sent_kill && process_group_exists(process_group) {
         return Err(anyhow!(
@@ -1725,7 +1765,7 @@ mod tests {
                 .as_nanos()
         ));
         let script = format!(
-            "sleep 30 & child=$!; printf '%s' \"$child\" > {}; exit 0",
+            "sleep 30 & child=$!; printf '%s' \"$child\" > {}; wait",
             pid_file.display()
         );
         let mut command = process_utils::command(SYSTEM_SHELL);
@@ -1753,23 +1793,6 @@ mod tests {
             })
             .expect("shell did not record its Defaultspack descendant pid");
 
-        let shell_exited = (0..20).any(|_| {
-            let exited = manager
-                .lock_state()
-                .unwrap()
-                .child
-                .as_mut()
-                .unwrap()
-                .try_wait()
-                .unwrap()
-                .is_some();
-            if !exited {
-                thread::sleep(Duration::from_millis(25));
-            }
-            exited
-        });
-        assert!(shell_exited, "pack-shell wrapper did not exit before stop");
-
         let started = Instant::now();
         manager.stop().unwrap();
         assert!(
@@ -1789,6 +1812,47 @@ mod tests {
         assert!(
             !descendant_alive,
             "Defaultspack descendant {descendant_pid} survived process-group shutdown"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn direct_stop_does_not_signal_group_after_its_leader_was_reaped() {
+        let pid_file = std::env::temp_dir().join(format!(
+            "defaultspack-direct-stop-orphan-{}-{}.pid",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let script = format!(
+            "sleep 30 & child=$!; printf '%s' \"$child\" > {}; sleep 0.2",
+            pid_file.display()
+        );
+        let mut command = process_utils::command(SYSTEM_SHELL);
+        command.args(["-c", &script]);
+        crate::dock_registration::configure_defaultspack_process_group(&mut command);
+        let mut child = crate::python_env::PythonChild::development(command.spawn().unwrap());
+        assert!(
+            child.start_marker().is_some(),
+            "spawned leader marker was unavailable"
+        );
+        child.wait().unwrap();
+        let descendant_pid = fs::read_to_string(&pid_file)
+            .unwrap()
+            .trim()
+            .parse::<u32>()
+            .unwrap();
+        assert!(process_id_is_live(descendant_pid));
+
+        stop_unix_process_group(&mut child, "Defaultspack").unwrap();
+        let descendant_alive = process_id_is_live(descendant_pid);
+        let _ = send_unix_process_signal(descendant_pid, "-KILL");
+        fs::remove_file(pid_file).ok();
+        assert!(
+            descendant_alive,
+            "reaped leader's former group was signalled"
         );
     }
 
