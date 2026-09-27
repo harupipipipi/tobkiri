@@ -4,7 +4,6 @@ import base64
 import hashlib
 import hmac
 import json
-import os
 import threading
 import time
 import uuid
@@ -635,51 +634,42 @@ def approve_with_extended_expiry(
     scope.
     """
     with _LOCK:
-        request = _REQUESTS.get(str(request_id)) or _request_from_mapping(
-            get_approval_store().get_request(str(request_id))
-        )
         now = _now()
+        try:
+            extension_seconds = int(expires_in or _DEFAULT_EXPIRES_IN_SECONDS)
+        except Exception:
+            extension_seconds = _DEFAULT_EXPIRES_IN_SECONDS
+        extended, current = get_approval_store().extend_request_approval(
+            str(request_id),
+            expires_at=now + max(1, extension_seconds),
+            decision_at=now,
+        )
+        request = _request_from_mapping(current)
         if request is None:
             return asdict(
                 ApprovalDecision(
                     str(request_id), "missing", False, reason="approval request not found"
                 )
             )
-        if request.status == "consumed":
-            return asdict(
-                ApprovalDecision(
-                    request.request_id,
-                    request.status,
-                    False,
-                    reason="approval request already consumed",
-                )
-            )
-        if request.status == "denied":
-            return asdict(
-                ApprovalDecision(
-                    request.request_id, request.status, False, reason="approval request denied"
-                )
-            )
-        if request.status not in {"pending", "approved", "expired"}:
-            return asdict(
-                ApprovalDecision(
-                    request.request_id,
-                    request.status,
-                    False,
-                    reason="approval request cannot be extended from status '{}'".format(
-                        request.status
-                    ),
-                )
-            )
-        try:
-            extension_seconds = int(expires_in or _DEFAULT_EXPIRES_IN_SECONDS)
-        except Exception:
-            extension_seconds = _DEFAULT_EXPIRES_IN_SECONDS
-        request.status = "approved"
-        request.decision_at = now
-        request.expires_at = max(int(request.expires_at or 0), now + max(1, extension_seconds))
         _REQUESTS[request.request_id] = request
-        get_approval_store().save_request(request)
+        if not extended:
+            reason = {
+                "consumed": "approval request already consumed",
+                "denied": "approval request denied",
+            }.get(
+                request.status,
+                "approval request cannot be extended from status '{}'".format(
+                    request.status
+                ),
+            )
+            return asdict(
+                ApprovalDecision(
+                    request.request_id,
+                    request.status,
+                    False,
+                    reason=reason,
+                )
+            )
         _refresh_approval_state_mirrors_from_store()
         details = request.details if isinstance(request.details, dict) else {}
         token = issue_execution_token(

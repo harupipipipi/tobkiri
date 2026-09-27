@@ -205,6 +205,51 @@ def test_one_shot_token_replay_is_rejected_after_restart(tmp_path, monkeypatch):
     assert replay.code == "APPROVAL_TOKEN_USED"
 
 
+def test_scheduled_extension_cannot_revive_request_consumed_by_another_process(
+    tmp_path, monkeypatch
+):
+    approval = _fresh_approval_module(monkeypatch, tmp_path / "approval.sqlite3")
+    approval.reset_approval_state_for_tests()
+    request = approval.create_approval_request(
+        "terminal.exec", "high", {"command": "echo once"}
+    )
+    request_id = request["request_id"]
+    assert approval.approve(request_id)["approved"] is True
+
+    # The other process settles SQLite while this process keeps an approved
+    # request in its local cache.
+    store = approval.get_approval_store()
+    assert store.mark_token_used(
+        "other-process-jti", request_id, request["operation"], request["args_hash"]
+    )
+    decision = approval.approve_with_extended_expiry(request_id)
+
+    assert decision["approved"] is False
+    assert decision["status"] == "consumed"
+    assert decision["token"] == ""
+    assert store.get_request(request_id)["status"] == "consumed"
+    store.save_request({**request, "status": "approved"})
+    assert store.get_request(request_id)["status"] == "consumed"
+
+
+def test_scheduled_extension_cannot_revive_denied_or_obsolete_request(
+    tmp_path, monkeypatch
+):
+    approval = _fresh_approval_module(monkeypatch, tmp_path / "approval.sqlite3")
+    approval.reset_approval_state_for_tests()
+    store = approval.get_approval_store()
+    for terminal in ("denied", "obsolete"):
+        request = approval.create_approval_request("terminal.exec", "high", {})
+        request_id = request["request_id"]
+        assert store.settle_request(request_id, terminal)[0]
+        decision = approval.approve_with_extended_expiry(request_id)
+        assert decision["approved"] is False
+        assert decision["status"] == terminal
+        assert store.get_request(request_id)["status"] == terminal
+        store.save_request({**request, "status": "approved"})
+        assert store.get_request(request_id)["status"] == terminal
+
+
 def test_empty_approval_args_hash_empty_payload_not_details(tmp_path, monkeypatch):
     approval = _fresh_approval_module(monkeypatch, tmp_path / "approval.sqlite3")
     approval.reset_approval_state_for_tests()

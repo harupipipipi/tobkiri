@@ -160,6 +160,11 @@ class ApprovalStore:
                     expires_at=excluded.expires_at,
                     status=excluded.status,
                     decision_at=excluded.decision_at
+                WHERE approval_requests.status NOT IN ('consumed', 'denied', 'obsolete')
+                  AND NOT (
+                    approval_requests.status IN ('approved', 'expired')
+                    AND excluded.status = 'pending'
+                  )
                 """,
                 (
                     data["request_id"],
@@ -295,6 +300,46 @@ class ApprovalStore:
                 return False, self._row_to_request(latest) if latest else None
             current["status"] = str(status)
             current["decision_at"] = settled_at
+            return True, current
+
+    def extend_request_approval(
+        self, request_id: str, *, expires_at: int, decision_at: int
+    ) -> tuple[bool, dict[str, Any] | None]:
+        """Extend an eligible request without reviving a terminal decision.
+
+        The database row, rather than a process-local cached request, decides
+        whether this transition is allowed. Token consumption and denial use
+        the same SQLite write lock.
+        """
+        self._ensure_schema()
+        with self._lock, self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT * FROM approval_requests WHERE request_id = ?",
+                (str(request_id),),
+            ).fetchone()
+            if row is None:
+                return False, None
+            current = self._row_to_request(row)
+            status = str(current.get("status") or "")
+            if status not in {"pending", "approved", "expired"}:
+                return False, current
+            next_expiry = max(int(current["expires_at"]), int(expires_at))
+            cursor = conn.execute(
+                """
+                UPDATE approval_requests
+                SET status = 'approved', decision_at = ?, expires_at = ?
+                WHERE request_id = ? AND status = ?
+                """,
+                (int(decision_at), next_expiry, str(request_id), status),
+            )
+            if cursor.rowcount != 1:
+                raise sqlite3.DatabaseError(
+                    "approval request changed during atomic expiry extension"
+                )
+            current["status"] = "approved"
+            current["decision_at"] = int(decision_at)
+            current["expires_at"] = next_expiry
             return True, current
 
     def list_requests(
