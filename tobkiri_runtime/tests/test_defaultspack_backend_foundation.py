@@ -485,7 +485,18 @@ def test_openrouter_inventory_caches_all_pages_only_after_complete_discovery(tmp
     def fake_urlopen(request, **_kwargs):
         seen_urls.append(request.full_url)
         if len(seen_urls) == 1:
-            return Response({"data": [{"id": "vendor/first"}], "next": "page-2"})
+            return Response(
+                {
+                    "data": [
+                        {"id": "vendor/first"},
+                        {
+                            "id": "vendor/image",
+                            "architecture": {"output_modalities": ["image"]},
+                        },
+                    ],
+                    "next": "page-2",
+                }
+            )
         return Response({"data": [{"id": "vendor/second"}]})
 
     monkeypatch.setattr(
@@ -495,13 +506,19 @@ def test_openrouter_inventory_caches_all_pages_only_after_complete_discovery(tmp
 
     models = provider.list_models()
 
-    assert [model["model_id"] for model in models] == ["vendor/first", "vendor/second"]
+    assert [model["model_id"] for model in models] == [
+        "vendor/first",
+        "vendor/image",
+        "vendor/second",
+    ]
+    assert models[1]["type"] == "image_gen"
     assert seen_urls == [
-        "https://openrouter.ai/api/v1/models",
-        "https://openrouter.ai/api/v1/models?after=page-2",
+        "https://openrouter.ai/api/v1/models?output_modalities=all",
+        "https://openrouter.ai/api/v1/models?output_modalities=all&after=page-2",
     ]
     assert [model["model_id"] for model in provider._load_remote_model_cache()["models"]] == [
         "vendor/first",
+        "vendor/image",
         "vendor/second",
     ]
 
@@ -539,7 +556,9 @@ def test_openrouter_partial_inventory_never_replaces_complete_cache(
         provider._remote_model_pagination = {"max_pages": 1}
     stale_cache_path = tmp_path / "stale.json"
     monkeypatch.setattr(provider, "_remote_model_cache_path", lambda: stale_cache_path)
-    provider._save_remote_model_cache([{"id": "openrouter/vendor/known", "model_id": "vendor/known"}], now=100)
+    provider._save_remote_model_cache(
+        provider._normalize_remote_models([{"id": "vendor/known"}]), now=100
+    )
     stale_cache_bytes = stale_cache_path.read_bytes()
     calls = []
 

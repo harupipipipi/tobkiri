@@ -313,7 +313,7 @@ def test_openrouter_live_ids_survive_listing_cache_and_invocation(tmp_path, monk
     assert captured == ["openrouter/auto", "openrouter/auto", "openai/gpt-4o-mini"]
 
     legacy_cache = json.loads(cache_path.read_text(encoding="utf-8"))
-    legacy_cache["model_id_format_version"] = 1
+    legacy_cache["model_id_format_version"] = 2
     cache_path.write_text(json.dumps(legacy_cache), encoding="utf-8")
     assert provider._load_remote_model_cache() is None
 

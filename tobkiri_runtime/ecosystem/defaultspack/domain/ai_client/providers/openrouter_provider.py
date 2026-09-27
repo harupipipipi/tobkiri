@@ -32,7 +32,7 @@ class OpenRouterProvider(OpenAICompatibleProvider):
     KNOWN_MODELS: List[Dict[str, Any]] = []
     # Older cache entries stripped the `openrouter/` portion of genuine API
     # ids such as `openrouter/auto`.  Rediscover them with the corrected ids.
-    REMOTE_MODEL_CACHE_FORMAT_VERSION = 2
+    REMOTE_MODEL_CACHE_FORMAT_VERSION = 3
 
     def __init__(self, known_models: List[Dict[str, Any]] | None = None) -> None:
         models = self._catalog_models() if known_models is None else known_models
@@ -55,7 +55,7 @@ class OpenRouterProvider(OpenAICompatibleProvider):
                 ),
             },
             remote_model_discovery=True,
-            remote_model_list_path="/models",
+            remote_model_list_path="/models?output_modalities=all",
             remote_model_cache_ttl_seconds=3600,
         )
 
@@ -238,7 +238,7 @@ class OpenRouterProvider(OpenAICompatibleProvider):
         metadata.update(
             {
                 "source": "openrouter_models_api",
-                "source_endpoint": "/models",
+                "source_endpoint": "/models?output_modalities=all",
                 "visibility_scope": "account",
                 "capability_source": "openrouter_models_api",
                 "capability_confidence": "provider_reported",
