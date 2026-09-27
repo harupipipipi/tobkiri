@@ -11,9 +11,12 @@ import {
   fetchPresentationState,
   isDesktopShellAvailable,
   launchSelectedPresentation,
+  openExternalUrl,
 } from '@/src/lib/desktopHost';
 import type {ApiPresentationState} from '@/src/lib/apiTypes';
+import {packVmLaunchBlockedReason, WINDOWS_PACKVM_ISSUE_URL} from '@/src/lib/packVmLaunchReadiness';
 import {launchDisabledReason} from '@/src/lib/presentation';
+import {panelRoutes} from '@/src/lib/routes';
 import {useAppStore} from '@/src/store';
 
 function formatError(error: unknown): string {
@@ -39,6 +42,8 @@ export function ShellLaunchCard({
   onChooseShell?: () => void;
 }) {
   const addToast = useAppStore((state) => state.addToast);
+  const packVmDoctor = useAppStore((state) => state.packVmDoctor);
+  const refreshPackVMDoctor = useAppStore((state) => state.refreshPackVMDoctor);
   const [presentation, setPresentation] = useState<ApiPresentationState | null>(null);
   const [loading, setLoading] = useState(false);
   const [launching, setLaunching] = useState(false);
@@ -66,6 +71,12 @@ export function ShellLaunchCard({
     }
   }, [active, desktopShell, runtimeReady, loadSurfaceState]);
 
+  useEffect(() => {
+    if (active && desktopShell && runtimeReady && !packVmDoctor) {
+      void refreshPackVMDoctor({reconcile: false});
+    }
+  }, [active, desktopShell, runtimeReady, packVmDoctor, refreshPackVMDoctor]);
+
   const selectedShell = presentation?.selection
     ? presentation.catalog.shell_providers.find(
       (provider) => provider.provider_id === presentation.selection?.shell_provider_id,
@@ -73,6 +84,11 @@ export function ShellLaunchCard({
     : null;
   const materialization = presentation?.materialization ?? null;
   const needsSelection = Boolean(presentation && !presentation.selection);
+  const packVmBlockedReason = packVmLaunchBlockedReason(packVmDoctor);
+  const windowsPackVmUnavailable = Boolean(packVmBlockedReason) && packVmDoctor?.ready === false
+    && packVmDoctor.platform.startsWith('windows-');
+  const macPackVmNeedsProvision = packVmDoctor?.ready === false
+    && packVmDoctor.platform === 'macos-arm64';
   const blockedReason = !active
     ? 'Activate this Profile before launching its Shell.'
     : !desktopShell
@@ -81,6 +97,8 @@ export function ShellLaunchCard({
     ? 'The selected Shell becomes available after Tobkiri runtime readiness.'
     : !presentation?.selection
       ? 'No verified Shell selection is active.'
+      : packVmBlockedReason
+        ? packVmBlockedReason
       : materialization
         ? launchDisabledReason(materialization)
         : 'The selected Shell materialization is unavailable.';
@@ -110,7 +128,7 @@ export function ShellLaunchCard({
             <CardTitle id={`shell-launch-title-${profileId ?? 'default'}`}>{profileDisplayName ?? 'Defaults Profile'} launch</CardTitle>
           </div>
           <Badge variant={blockedReason ? 'warning' : 'success'}>
-            {blockedReason ? 'Unavailable' : 'Ready'}
+            {blockedReason ? 'Unavailable' : 'Shell verified'}
           </Badge>
         </div>
         <p className="text-sm leading-relaxed text-text-muted">
@@ -143,8 +161,25 @@ export function ShellLaunchCard({
               </p>
               <p className="flex items-center gap-2 text-xs text-text-muted">
                 <Route className="h-3.5 w-3.5 shrink-0" />
-                <span>{blockedReason ?? 'Verified Profile handoff is ready.'}</span>
+                <span>{blockedReason ?? 'The selected Shell binding is verified.'}</span>
               </p>
+              {macPackVmNeedsProvision && (
+                <p className="text-xs text-text-muted">PackVM is not attested yet. Launch may prepare it; use Packs if preparation cannot complete.</p>
+              )}
+              {(packVmBlockedReason || macPackVmNeedsProvision) && presentation?.selection && (
+                <p className="flex flex-wrap gap-2 text-xs">
+                  <Link className="underline" to={panelRoutes.packs}>Open Packs</Link>
+                  {windowsPackVmUnavailable && (
+                    <button
+                      className="underline"
+                      onClick={() => void openExternalUrl(WINDOWS_PACKVM_ISSUE_URL).catch(() => {
+                        addToast('The Windows support issue could not be opened.', 'error');
+                      })}
+                      type="button"
+                    >Windows support issue #1494</button>
+                  )}
+                </p>
+              )}
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-2">
               <Button

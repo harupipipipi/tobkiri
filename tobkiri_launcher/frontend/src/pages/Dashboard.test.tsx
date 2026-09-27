@@ -137,6 +137,19 @@ function createDashboardDom(): {dom: JSDOM; container: HTMLElement; root: Root} 
     sessionStorage: {value: dom.window.sessionStorage, configurable: true},
   });
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  const doctor = {
+    ready: true,
+    backend_id: 'macos-vz',
+    platform: 'macos-arm64',
+    instance: 'tobkiri-packvm-v4',
+    reason: null,
+    attestation_digest: 'a'.repeat(64),
+  };
+  useAppStore.setState({
+    packVmDoctor: doctor,
+    packVmDoctorLoading: false,
+    refreshPackVMDoctor: async () => doctor,
+  });
   const container = dom.window.document.querySelector<HTMLElement>('#root');
   assert.ok(container);
   return {dom, container, root: createRoot(container)};
@@ -295,6 +308,69 @@ test('Home keeps a failed Shell launch visible with phase-specific recovery acti
       dom.window.close();
     }
   } finally {
+    globalThis.fetch = previousFetch;
+    Object.defineProperties(globalThis, {
+      window: {value: previousWindow, configurable: true},
+      document: {value: previousDocument, configurable: true},
+      navigator: {value: previousNavigator, configurable: true},
+      localStorage: {value: previousLocalStorage, configurable: true},
+      sessionStorage: {value: previousSessionStorage, configurable: true},
+    });
+    useAppStore.setState(previousState, true);
+  }
+});
+
+test('Home does not advertise launch on an unsupported Windows PackVM host', async () => {
+  const previousState = useAppStore.getState();
+  const previousFetch = globalThis.fetch;
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const previousLocalStorage = (globalThis as typeof globalThis & {localStorage?: unknown}).localStorage;
+  const previousSessionStorage = (globalThis as typeof globalThis & {sessionStorage?: unknown}).sessionStorage;
+  globalThis.fetch = (async () => jsonResponse(profileRegistry())) as typeof fetch;
+  useAppStore.setState({
+    runtimeReady: true,
+    runtimeStatus: 'runtime_ready',
+    hostCatalogVerified: true,
+    profileCeremonyAvailable: true,
+    defaultsBootstrapRequired: false,
+    activeProfileReady: true,
+    launchReady: true,
+  });
+  const {dom, container, root} = createDashboardDom();
+  let launches = 0;
+  (dom.window as unknown as Window & {__TAURI__?: unknown}).__TAURI__ = {
+    core: {invoke: async (command: string) => {
+      if (command === 'launch_selected_presentation') launches += 1;
+      return {};
+    }},
+  };
+  useAppStore.setState({
+    packVmDoctor: {
+      ready: false,
+      backend_id: 'macos-vz',
+      platform: 'windows-amd64',
+      instance: 'tobkiri-packvm-v4',
+      reason: 'This build can provision PackVM only on macOS on Apple Silicon.',
+      attestation_digest: null,
+    },
+  });
+  try {
+    await act(async () => root.render(<MemoryRouter><Dashboard /></MemoryRouter>));
+    await settle();
+    const launch = buttonByLabel(container, 'Launch Defaults Profile');
+    assert.equal(launch.disabled, true);
+    assert.match(container.textContent ?? '', /Windows WHPX.*Docker/);
+    assert.match(container.textContent ?? '', /Profile verified/);
+    assert.ok([...container.querySelectorAll('button')].some(
+      (button) => button.textContent?.includes('Windows support issue #1494'),
+    ));
+    await act(async () => launch.click());
+    assert.equal(launches, 0);
+  } finally {
+    await act(async () => root.unmount());
+    dom.window.close();
     globalThis.fetch = previousFetch;
     Object.defineProperties(globalThis, {
       window: {value: previousWindow, configurable: true},

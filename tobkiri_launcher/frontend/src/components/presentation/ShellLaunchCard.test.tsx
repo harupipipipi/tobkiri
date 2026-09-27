@@ -3,6 +3,7 @@ import test from 'node:test';
 import {act} from 'react';
 import {createRoot, type Root} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
+import {MemoryRouter} from 'react-router';
 
 import type {ApiPresentationState} from '@/src/lib/apiTypes';
 import {useAppStore} from '@/src/store';
@@ -96,6 +97,19 @@ function createSurface(): {dom: JSDOM; container: HTMLElement; root: Root} {
   const container = dom.window.document.querySelector<HTMLElement>('#root');
   assert.ok(container);
   const root = createRoot(container);
+  const doctor = {
+    ready: true,
+    backend_id: 'macos-vz',
+    platform: 'macos-arm64',
+    instance: 'tobkiri-packvm-v4',
+    reason: null,
+    attestation_digest: 'a'.repeat(64),
+  };
+  useAppStore.setState({
+    packVmDoctor: doctor,
+    packVmDoctorLoading: false,
+    refreshPackVMDoctor: async () => doctor,
+  });
   (dom.window as unknown as {__invokeCalls?: string[]}).__invokeCalls = invokeCalls;
   return {dom, container, root};
 }
@@ -103,11 +117,13 @@ function createSurface(): {dom: JSDOM; container: HTMLElement; root: Root} {
 async function renderCard(root: Root): Promise<void> {
   await act(async () => {
     root.render(
-      <ShellLaunchCard
-        profileDisplayName="Research A"
-        profileId="work-a"
-        runtimeReady
-      />,
+      <MemoryRouter>
+        <ShellLaunchCard
+          profileDisplayName="Research A"
+          profileId="work-a"
+          runtimeReady
+        />
+      </MemoryRouter>,
     );
     await Promise.resolve();
   });
@@ -236,6 +252,95 @@ test('Profile launch does not require an optional Conversation contribution', as
     act(() => root.unmount());
     useAppStore.setState(previousState, true);
     globalThis.fetch = originalFetch;
+    dom.window.close();
+  }
+});
+
+test('unsupported Windows PackVM doctor disables Shell launch and links the issue', async () => {
+  const previousState = useAppStore.getState();
+  const {dom, container, root} = createSurface();
+  useAppStore.setState({
+    packVmDoctor: {
+      ready: false,
+      backend_id: 'macos-vz',
+      platform: 'windows-amd64',
+      instance: 'tobkiri-packvm-v4',
+      reason: 'This build can provision PackVM only on macOS on Apple Silicon.',
+      attestation_digest: null,
+    },
+  });
+  try {
+    await renderCard(root);
+    const launch = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+      (candidate) => candidate.textContent?.includes('Launch Research A'),
+    );
+    assert.ok(launch?.disabled);
+    assert.match(container.textContent ?? '', /Windows WHPX.*Docker/);
+    const issue = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+      (candidate) => candidate.textContent?.includes('Windows support issue #1494'),
+    );
+    assert.ok(issue);
+    await act(async () => issue.click());
+    assert.deepEqual((dom.window as unknown as {__invokeCalls?: string[]}).__invokeCalls, [
+      'get_presentation_catalog', 'open_external_url',
+    ]);
+  } finally {
+    act(() => root.unmount());
+    useAppStore.setState(previousState, true);
+    dom.window.close();
+  }
+});
+
+test('unknown PackVM doctor leaves launch preparation to the Host', async () => {
+  const previousState = useAppStore.getState();
+  const {dom, container, root} = createSurface();
+  useAppStore.setState({
+    packVmDoctor: null,
+    refreshPackVMDoctor: async () => null,
+  });
+  try {
+    await renderCard(root);
+    const launch = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+      (candidate) => candidate.textContent?.includes('Launch Research A'),
+    );
+    assert.equal(launch?.disabled, false);
+    assert.match(container.textContent ?? '', /Shell verified/);
+    assert.deepEqual((dom.window as unknown as {__invokeCalls?: string[]}).__invokeCalls, [
+      'get_presentation_catalog',
+    ]);
+  } finally {
+    act(() => root.unmount());
+    useAppStore.setState(previousState, true);
+    dom.window.close();
+  }
+});
+
+test('recoverable macOS PackVM state guides the user without blocking launch', async () => {
+  const previousState = useAppStore.getState();
+  const {dom, container, root} = createSurface();
+  useAppStore.setState({
+    packVmDoctor: {
+      ready: false,
+      backend_id: 'macos-vz',
+      platform: 'macos-arm64',
+      instance: 'tobkiri-packvm-v4',
+      reason: 'PackVM is not provisioned',
+      attestation_digest: null,
+    },
+  });
+  try {
+    await renderCard(root);
+    const launch = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+      (candidate) => candidate.textContent?.includes('Launch Research A'),
+    );
+    assert.equal(launch?.disabled, false);
+    assert.match(container.textContent ?? '', /Launch may prepare it/);
+    assert.deepEqual((dom.window as unknown as {__invokeCalls?: string[]}).__invokeCalls, [
+      'get_presentation_catalog',
+    ]);
+  } finally {
+    act(() => root.unmount());
+    useAppStore.setState(previousState, true);
     dom.window.close();
   }
 });

@@ -36,6 +36,7 @@ export interface ProfileCardProps {
   profileCeremonyAvailable: boolean;
   activeProfileReady: boolean;
   launchReady: boolean;
+  packVmBlockedReason?: string | null;
   desktopShellAvailable: boolean;
   actionType?: string | null;
   onCancelEdit: () => void;
@@ -66,6 +67,7 @@ export function ProfileCard({
   profileCeremonyAvailable,
   activeProfileReady,
   launchReady,
+  packVmBlockedReason = null,
   desktopShellAvailable,
   actionType,
   onCancelEdit,
@@ -85,6 +87,8 @@ export function ProfileCard({
         ? 'The active execution Profile is not ready.'
         : !launchReady
           ? 'Launch is unavailable until runtime readiness is confirmed.'
+          : packVmBlockedReason
+            ? packVmBlockedReason
           : !desktopShellAvailable
             ? 'Launch is available in Tobkiri Launcher.'
             : null;
@@ -277,7 +281,7 @@ export function ProfileCard({
             </Link>
           </div>
           <div className="flex min-w-0 items-center justify-between gap-2 border-t border-border pt-3">
-            {profileView.status === 'ready' ? <Badge variant="success">Ready</Badge> : <span className="text-xs text-text-muted">Needs review</span>}
+            {profileView.status === 'ready' ? <Badge variant="success">Profile verified</Badge> : <span className="text-xs text-text-muted">Needs review</span>}
             <Button
               aria-label={`Launch ${displayName}`}
               disabled={launchDisabled}

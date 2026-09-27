@@ -28,7 +28,8 @@ import {
   type NamedProfileRegistry,
 } from '@/src/lib/hostClient';
 import {fetchDashboard} from '@/src/lib/defaultspackClient';
-import {isDesktopShellAvailable, launchSelectedPresentation} from '@/src/lib/desktopHost';
+import {isDesktopShellAvailable, launchSelectedPresentation, openExternalUrl} from '@/src/lib/desktopHost';
+import {packVmLaunchBlockedReason, WINDOWS_PACKVM_ISSUE_URL} from '@/src/lib/packVmLaunchReadiness';
 import {panelRoutes} from '@/src/lib/routes';
 import {
   buildNamedProfileView,
@@ -144,7 +145,14 @@ export function Dashboard() {
   const defaultsBootstrapRequired = useAppStore((state) => state.defaultsBootstrapRequired);
   const activeProfileReady = useAppStore((state) => state.activeProfileReady);
   const launchReady = useAppStore((state) => state.launchReady);
+  const packVmDoctor = useAppStore((state) => state.packVmDoctor);
+  const refreshPackVMDoctor = useAppStore((state) => state.refreshPackVMDoctor);
   const desktopShellAvailable = isDesktopShellAvailable();
+  const packVmBlockedReason = packVmLaunchBlockedReason(packVmDoctor);
+  const windowsPackVmUnavailable = Boolean(packVmBlockedReason) && packVmDoctor?.ready === false
+    && packVmDoctor.platform.startsWith('windows-');
+  const macPackVmNeedsProvision = packVmDoctor?.ready === false
+    && packVmDoctor.platform === 'macos-arm64';
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [dashboard, setDashboard] = useState<DashboardData>(defaultDashboard);
@@ -212,6 +220,12 @@ export function Dashboard() {
   useEffect(() => {
     void refreshProfiles();
   }, []);
+
+  useEffect(() => {
+    if (desktopShellAvailable && runtimeReady && !packVmDoctor) {
+      void refreshPackVMDoctor({reconcile: false});
+    }
+  }, [desktopShellAvailable, runtimeReady, packVmDoctor, refreshPackVMDoctor]);
 
   const visibleProfiles = useMemo(() => filterAndSortNamedProfiles(
     registry?.profiles ?? [],
@@ -395,6 +409,7 @@ export function Dashboard() {
     if (
       !activeProfileReady
       || !launchReady
+      || packVmBlockedReason !== null
       || !desktopShellAvailable
       || profileView.status !== 'ready'
     ) return;
@@ -471,6 +486,26 @@ export function Dashboard() {
           <div className="flex items-center gap-3 rounded-lg border border-warning/35 bg-warning/8 px-4 py-3 text-sm text-warning" role="status">
             <TobkiriLoadingMark />
             <span className="flex-1">Runtime is still preparing. Profiles and Add remain available; launch and activation wait for readiness.</span>
+          </div>
+        )}
+
+        {desktopShellAvailable && (packVmBlockedReason || macPackVmNeedsProvision) && (
+          <div className="rounded-lg border border-warning/35 bg-warning/8 px-4 py-3 text-sm text-warning" role="status">
+            <p>{packVmBlockedReason ?? 'PackVM is not attested yet. Launch may prepare the runtime; use Packs if preparation cannot complete.'}</p>
+            <div className="mt-2 flex flex-wrap gap-3">
+              <Link className="underline" to={panelRoutes.packs}>Open Packs</Link>
+              {windowsPackVmUnavailable && (
+                <button
+                  className="underline"
+                  onClick={() => void openExternalUrl(WINDOWS_PACKVM_ISSUE_URL).catch(() => {
+                    addToast('The Windows support issue could not be opened.', 'error');
+                  })}
+                  type="button"
+                >
+                  Windows support issue #1494
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -698,6 +733,7 @@ export function Dashboard() {
                       profileCeremonyAvailable={profileActivationAvailable}
                       activeProfileReady={activeProfileReady}
                       launchReady={launchReady}
+                      packVmBlockedReason={packVmBlockedReason}
                     />
                   );
                 })}
