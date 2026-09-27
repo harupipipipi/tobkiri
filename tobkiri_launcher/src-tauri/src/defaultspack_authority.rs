@@ -826,24 +826,39 @@ fn development_defaults_roots(config: &AppConfig) -> Result<Option<(PathBuf, Pat
     if !config.is_dev_workspace() {
         return Ok(None);
     }
-    let mut candidates = vec![(
-        config.app_dir.join("bundled/dev-defaults"),
-        config.app_dir.clone(),
-    )];
-    if let Some(workspace_root) = config.dev_workspace_root.as_ref() {
-        let target_root = workspace_root.join("tobkiri_launcher/src-tauri/target");
-        candidates.push((
-            target_root.join("dev-defaults"),
-            development_staged_runtime_root(config, &target_root)?,
-        ));
-    }
+    let local_stage = bound_local_development_authority_stage(config)?;
+    let candidates = if let Some(root) = local_stage.as_ref() {
+        // The local debug build captures both halves of authority together.
+        // Never combine a build-bound Pack with mutable target/dev-defaults.
+        vec![(root.join("bundled/dev-defaults"), root.clone())]
+    } else {
+        let mut candidates = vec![(
+            config.app_dir.join("bundled/dev-defaults"),
+            config.app_dir.clone(),
+        )];
+        if let Some(workspace_root) = config.dev_workspace_root.as_ref() {
+            let target_root = workspace_root.join("tobkiri_launcher/src-tauri/target");
+            candidates.push((
+                target_root.join("dev-defaults"),
+                development_staged_runtime_root(config, &target_root)?,
+            ));
+        }
+        candidates
+    };
     for (candidate, runtime_candidate) in candidates {
         match fs::symlink_metadata(&candidate) {
             Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound && local_stage.is_none() => {
+                continue;
+            }
             Err(error) => return Err(error).context("failed to inspect development Defaults root"),
         }
         let root = canonical_directory(&candidate, "development Defaults root")?;
+        if let Some(stage_root) = local_stage.as_ref() {
+            if !root.starts_with(stage_root) {
+                bail!("build-bound development Defaults root escapes its sealed stage");
+            }
+        }
         let bundle = canonical_child_directory(&root, Path::new("v4"), "development Pack v4 root")?;
         canonical_child_directory(
             &root,
@@ -863,6 +878,78 @@ fn development_defaults_roots(config: &AppConfig) -> Result<Option<(PathBuf, Pat
         return Ok(Some((root, bundle, materialized_pack_root)));
     }
     Ok(None)
+}
+
+/// The unbundled local Launcher embeds the exact sealed authority snapshot
+/// prepared by its build script. The path alone is insufficient: another
+/// build or a planted link must not substitute a self-consistent old manifest.
+#[cfg(debug_assertions)]
+fn bound_local_development_authority_stage(config: &AppConfig) -> Result<Option<PathBuf>> {
+    if option_env!("TOBKIRI_LOCAL_DEV_WORKSPACE") != Some("1") {
+        return Ok(None);
+    }
+    let stage = option_env!("TOBKIRI_LOCAL_DEV_AUTHORITY_STAGE")
+        .context("local development authority stage is missing from the build")?;
+    let expected_manifest = option_env!("TOBKIRI_LOCAL_DEV_AUTHORITY_MANIFEST_SHA256")
+        .context("local development authority manifest identity is missing from the build")?;
+    let workspace_root = config
+        .dev_workspace_root
+        .as_ref()
+        .context("local development authority has no workspace root")?;
+    let target_root = canonical_directory(
+        &workspace_root.join("tobkiri_launcher/src-tauri/target"),
+        "development target root",
+    )?;
+    Ok(Some(verify_bound_local_development_authority_stage(
+        Path::new(stage),
+        expected_manifest,
+        &target_root,
+    )?))
+}
+
+#[cfg(debug_assertions)]
+fn verify_bound_local_development_authority_stage(
+    stage_path: &Path,
+    expected_manifest: &str,
+    target_root: &Path,
+) -> Result<PathBuf> {
+    if !stage_path.is_absolute() || expected_manifest.len() != 64 {
+        bail!("build-bound development authority identity is invalid");
+    }
+    let stage_root = canonical_directory(stage_path, "build-bound development authority root")?;
+    if !stage_root.starts_with(target_root)
+        || stage_root.file_name() != stage_path.file_name()
+        || !stage_root
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("local-authority-"))
+        || stage_root
+            .parent()
+            .and_then(Path::file_name)
+            .and_then(|name| name.to_str())
+            != Some("out")
+        || !stage_root
+            .parent()
+            .and_then(Path::parent)
+            .and_then(Path::file_name)
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("tobkiri-launcher-"))
+    {
+        bail!("build-bound development authority root is outside this target tree");
+    }
+    let manifest_path = stage_root.join(crate::runtime_resource_integrity::MANIFEST_NAME);
+    let metadata = fs::symlink_metadata(&manifest_path)
+        .context("build-bound development authority manifest is missing")?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        bail!("build-bound development authority manifest is not a regular file");
+    }
+    let manifest = fs::read(&manifest_path)?;
+    if format!("{:x}", Sha256::digest(manifest)) != expected_manifest {
+        bail!("build-bound development authority manifest does not match this executable");
+    }
+    crate::runtime_resource_integrity::verify_subtree(&stage_root, "bundled/dev-defaults")
+        .context("build-bound development Defaults bundle seal is invalid")?;
+    Ok(stage_root)
 }
 
 #[cfg(debug_assertions)]
@@ -2763,6 +2850,60 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn local_authority_requires_the_embedded_seal_and_both_subtrees() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir()
+            .canonicalize()
+            .unwrap()
+            .join(format!("tobkiri-bound-local-authority-{unique}"));
+        let target = root.join("target");
+        let stage = target.join("debug/build/tobkiri-launcher-fixture/out/local-authority-fixture");
+        let defaults = stage.join("bundled/dev-defaults/v4/bundle.lock.json");
+        let pack = stage.join("ecosystem/defaultspack/pack.v4.json");
+        fs::create_dir_all(defaults.parent().unwrap()).unwrap();
+        fs::create_dir_all(pack.parent().unwrap()).unwrap();
+        fs::write(&defaults, b"defaults").unwrap();
+        fs::write(&pack, b"pack").unwrap();
+        let manifest = serde_json::to_vec(&serde_json::json!({
+            "schema": "io.tobkiri.runtime-resource-manifest.v1",
+            "entries": [
+                {"path": "bundled/dev-defaults/v4/bundle.lock.json", "size": 8,
+                 "sha256": format!("{:x}", Sha256::digest(b"defaults"))},
+                {"path": "ecosystem/defaultspack/pack.v4.json", "size": 4,
+                 "sha256": format!("{:x}", Sha256::digest(b"pack"))},
+            ],
+        }))
+        .unwrap();
+        fs::write(
+            stage.join(crate::runtime_resource_integrity::MANIFEST_NAME),
+            &manifest,
+        )
+        .unwrap();
+        let digest = format!("{:x}", Sha256::digest(&manifest));
+        let target = target.canonicalize().unwrap();
+        assert_eq!(
+            verify_bound_local_development_authority_stage(&stage, &digest, &target).unwrap(),
+            stage.canonicalize().unwrap(),
+        );
+        fs::write(&defaults, b"tampered").unwrap();
+        assert!(
+            verify_bound_local_development_authority_stage(&stage, &digest, &target).is_err(),
+            "a changed Defaults bundle must fail before authority resolution"
+        );
+        fs::write(&defaults, b"defaults").unwrap();
+        assert!(
+            verify_bound_local_development_authority_stage(&stage, &"0".repeat(64), &target)
+                .is_err(),
+            "a different executable's stage manifest must not be accepted"
+        );
+        fs::remove_dir_all(root).ok();
     }
 
     #[cfg(unix)]

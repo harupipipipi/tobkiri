@@ -221,8 +221,9 @@ fn main() {
     if unbundled_local_development {
         println!("cargo:rustc-env=TOBKIRI_LOCAL_DEV_WORKSPACE=1");
         println!(
-            "cargo:warning=using the local development workspace runtime; sealed runtime staging is release-only"
+            "cargo:warning=using the local development workspace runtime with a build-bound sealed authority stage"
         );
+        stage_local_development_authority().expect("failed to stage local development authority");
     } else {
         println!("cargo:rustc-env=TOBKIRI_LOCAL_DEV_WORKSPACE=0");
         stage_runtime_bundle().expect("failed to stage runtime bundle");
@@ -264,6 +265,89 @@ fn main() {
         ]),
     ))
     .expect("failed to build Tauri application manifest")
+}
+
+/// An unbundled Launcher executes the checkout Python runtime, but active
+/// Profile authority still needs an immutable, sealed copy of the exact
+/// Defaults bundle and materialized Pack captured by this build.  Keep it
+/// beneath this Cargo build's OUT_DIR rather than the mutable global gen/app
+/// tree, which an intermediate Shell build may replace at any time.
+fn stage_local_development_authority() -> io::Result<()> {
+    let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = project_dir
+        .parent()
+        .and_then(Path::parent)
+        .ok_or_else(|| invalid_release("Launcher project has no repository root"))?;
+    let output_root = PathBuf::from(
+        std::env::var_os("OUT_DIR").ok_or_else(|| invalid_release("Cargo OUT_DIR is missing"))?,
+    )
+    .canonicalize()?;
+    let (staged_root, manifest_sha256) =
+        capture_local_development_authority(&project_dir, repo_root, &output_root)?;
+    println!(
+        "cargo:rustc-env=TOBKIRI_LOCAL_DEV_AUTHORITY_STAGE={}",
+        staged_root.display()
+    );
+    println!("cargo:rustc-env=TOBKIRI_LOCAL_DEV_AUTHORITY_MANIFEST_SHA256={manifest_sha256}");
+    Ok(())
+}
+
+fn capture_local_development_authority(
+    project_dir: &Path,
+    repo_root: &Path,
+    output_root: &Path,
+) -> io::Result<(PathBuf, String)> {
+    let mut nonce = [0_u8; 16];
+    rand::rngs::OsRng.fill_bytes(&mut nonce);
+    let staged_root = output_root.join(format!("local-authority-{}", hex_bytes(&nonce)));
+    let source_defaults = project_dir.join("target/dev-defaults");
+    if !source_defaults.join("v4/bundle.lock.json").is_file()
+        || !source_defaults.join("platform-artifacts").is_dir()
+    {
+        return Err(invalid_release(
+            "prepared local development Defaults bundle is missing",
+        ));
+    }
+    let prepared_shell: serde_json::Value = serde_json::from_slice(&fs::read(
+        source_defaults.join("v4/shell.tauri.default.shell.v1.json"),
+    )?)
+    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    let variants = prepared_shell["launch"]["variants"].as_array();
+    if prepared_shell["availability"] != "verified"
+        || !variants.is_some_and(|variants| !variants.is_empty())
+    {
+        return Err(invalid_release(
+            "local development Defaults Shell has not been prepared",
+        ));
+    }
+    for variant in variants.unwrap() {
+        let relative_path = variant["relative_path"]
+            .as_str()
+            .ok_or_else(|| invalid_release("prepared Shell artifact path is missing"))?;
+        let expected_digest = variant["artifact_digest"]
+            .as_str()
+            .ok_or_else(|| invalid_release("prepared Shell artifact digest is missing"))?;
+        let artifact = require_release_path(
+            &source_defaults.join("platform-artifacts"),
+            relative_path,
+            "prepared Shell artifact",
+        )?;
+        if release_artifact_digest(&artifact)?.0 != expected_digest {
+            return Err(invalid_release(
+                "prepared local development Shell artifact digest is invalid",
+            ));
+        }
+    }
+    copy_dir_recursive(&source_defaults, &staged_root.join("bundled/dev-defaults"))?;
+    let runtime_root = repo_root.join(APP_SOURCE_DIR);
+    copy_dir_recursive_filtered(
+        &runtime_root.join("ecosystem/defaultspack"),
+        &staged_root.join("ecosystem/defaultspack"),
+        &runtime_root,
+    )?;
+    write_runtime_resource_manifest(&staged_root)?;
+    let manifest = fs::read(staged_root.join(RUNTIME_RESOURCE_MANIFEST))?;
+    Ok((staged_root, format!("{:x}", Sha256::digest(manifest))))
 }
 
 /// Tauri preserves the sealed source modes while copying the packaged Python
@@ -6055,6 +6139,66 @@ mod tests {
             tree.path()
                 .canonicalize()
                 .expect("fixture path should remain canonical")
+        );
+    }
+
+    #[test]
+    fn local_authority_stage_captures_defaults_and_pack_in_one_seal() {
+        let tree = TestTree::new("local-authority-stage");
+        let repo_root = tree.path();
+        let project_dir = repo_root.join("tobkiri_launcher/src-tauri");
+        let defaults = project_dir.join("target/dev-defaults");
+        let pack = repo_root.join("tobkiri_runtime/ecosystem/defaultspack");
+        let output = tree.path().join("out");
+        fs::create_dir_all(defaults.join("v4")).unwrap();
+        fs::create_dir_all(defaults.join("platform-artifacts")).unwrap();
+        fs::create_dir_all(&pack).unwrap();
+        fs::create_dir_all(&output).unwrap();
+        fs::write(defaults.join("v4/bundle.lock.json"), b"defaults-lock").unwrap();
+        let artifact = defaults.join("platform-artifacts/shell.exe");
+        fs::write(&artifact, b"shell").unwrap();
+        let prepared_shell = serde_json::json!({
+            "availability": "verified",
+            "launch": {"variants": [{
+                "relative_path": "shell.exe",
+                "artifact_digest": release_artifact_digest(&artifact).unwrap().0,
+            }]},
+        });
+        fs::write(
+            defaults.join("v4/shell.tauri.default.shell.v1.json"),
+            serde_json::to_vec(&prepared_shell).unwrap(),
+        )
+        .unwrap();
+        fs::write(pack.join("pack.v4.json"), b"materialized-pack").unwrap();
+
+        let (stage, digest) =
+            capture_local_development_authority(&project_dir, repo_root, &output).unwrap();
+        assert!(stage.starts_with(&output));
+        assert_eq!(digest.len(), 64);
+        assert_eq!(
+            fs::read(stage.join("bundled/dev-defaults/v4/bundle.lock.json")).unwrap(),
+            b"defaults-lock"
+        );
+        assert_eq!(
+            fs::read(stage.join("ecosystem/defaultspack/pack.v4.json")).unwrap(),
+            b"materialized-pack"
+        );
+        let manifest = fs::read(stage.join(RUNTIME_RESOURCE_MANIFEST)).unwrap();
+        assert_eq!(digest, format!("{:x}", Sha256::digest(&manifest)));
+        let entries = serde_json::from_slice::<serde_json::Value>(&manifest).unwrap();
+        let paths = entries["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|entry| entry["path"].as_str())
+            .collect::<Vec<_>>();
+        assert!(paths.contains(&"bundled/dev-defaults/v4/bundle.lock.json"));
+        assert!(paths.contains(&"ecosystem/defaultspack/pack.v4.json"));
+
+        fs::write(defaults.join("v4/bundle.lock.json"), b"changed").unwrap();
+        assert_eq!(
+            fs::read(stage.join("bundled/dev-defaults/v4/bundle.lock.json")).unwrap(),
+            b"defaults-lock"
         );
     }
 

@@ -78,17 +78,11 @@ impl AppConfig {
         let generated_development_runtime = detected_workspace_root
             .as_ref()
             .map(|workspace_root| workspace_root.join("tobkiri_launcher/src-tauri/gen/app"));
-        // The explicit marker covers a debug configuration whose resource
-        // map intentionally omits `gen/app`; the target-path check covers
-        // Cargo's direct and app-bundle resource layouts in tests and local
-        // builds. A staged app remains the runtime boundary for an app bundle.
+        // The explicit local configuration runs the checkout runtime even if
+        // a prior build left Resources/app or global gen/app behind. Other
+        // builds keep their bundled Resources/app runtime boundary.
         let prefer_dev_runtime = (is_debug_artifact && !is_app_bundle)
-            || (is_explicit_local_development_workspace_build()
-                && !staged_app_dir.exists()
-                && (development_bundle.is_none()
-                    || !generated_development_runtime
-                        .as_ref()
-                        .is_some_and(|runtime| runtime.join("app.py").is_file())));
+            || is_explicit_local_development_workspace_build();
         let dev_workspace_root = if is_debug_artifact {
             detected_workspace_root.clone()
         } else if staged_app_dir.exists() {
@@ -868,7 +862,7 @@ mod tests {
     }
 
     #[test]
-    fn debug_app_without_resource_map_uses_checkout_stage_and_isolated_state() {
+    fn debug_app_without_resource_map_keeps_local_runtime_isolated() {
         use std::fs;
         use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -888,8 +882,13 @@ mod tests {
         fs::write(root.join("tobkiri_runtime/app.py"), "print('repo')\n").unwrap();
 
         let config = AppConfig::detect_for_tauri(resource, root.join("installed-state")).unwrap();
-        assert_eq!(config.app_dir, staged);
-        assert_eq!(config.venv_dir, staged.join("dev-venv"));
+        if is_explicit_local_development_workspace_build() {
+            assert_eq!(config.app_dir, root.join("tobkiri_runtime"));
+            assert_eq!(config.venv_dir, root.join(".venv"));
+        } else {
+            assert_eq!(config.app_dir, staged);
+            assert_eq!(config.venv_dir, staged.join("dev-venv"));
+        }
         assert!(config
             .user_data_dir
             .starts_with(root.join("tobkiri_launcher/src-tauri/target/dev-state")));
@@ -897,6 +896,36 @@ mod tests {
             .user_data_dir
             .starts_with(root.join("installed-state")));
         fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn explicit_local_debug_app_does_not_consume_stale_resource_runtime() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("tobkiri_local_stale_resource_{unique}"));
+        let resources = root.join(
+            "tobkiri_launcher/src-tauri/target/debug/bundle/macos/Tobkiri Launcher Developer.app/Contents/Resources",
+        );
+        fs::create_dir_all(resources.join("app")).unwrap();
+        fs::create_dir_all(root.join("tobkiri_runtime")).unwrap();
+        fs::write(resources.join("app/app.py"), "print('stale')\n").unwrap();
+        fs::write(root.join("tobkiri_runtime/app.py"), "print('checkout')\n").unwrap();
+
+        let config =
+            AppConfig::detect_for_tauri(resources.clone(), root.join("installed-state")).unwrap();
+        if is_explicit_local_development_workspace_build() {
+            assert_eq!(config.app_dir, root.join("tobkiri_runtime"));
+            assert_eq!(config.venv_dir, root.join(".venv"));
+        } else {
+            assert_eq!(config.app_dir, resources.join("app"));
+            assert_eq!(config.venv_dir, resources.join("app/dev-venv"));
+        }
+        fs::remove_dir_all(root).ok();
     }
 
     #[test]
