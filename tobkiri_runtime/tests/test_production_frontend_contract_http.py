@@ -5088,6 +5088,18 @@ def test_pack_enable_defers_capture_until_launcher_contract_renewal(
     assert refresh_attempts == 0
     assert dispatch_calls == 1
 
+    # The next authenticated Launcher bootstrap owns recapture. A failed
+    # attempt cannot rewrite the already committed Pack result.
+    bootstrap_status, _bootstrap, _headers = _request(
+        server,
+        "POST",
+        "/api/panel/auth/bootstrap",
+        body={},
+        headers={"X-Rumi-Desktop-Bootstrap": "desktop-bootstrap"},
+    )
+    assert bootstrap_status == 401
+    assert refresh_attempts == 1
+
     journal = server._operation_journal
     assert journal is not None
     operation = journal.operation_status(
