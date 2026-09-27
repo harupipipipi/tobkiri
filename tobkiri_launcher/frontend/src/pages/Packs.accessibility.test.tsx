@@ -268,6 +268,14 @@ test('Packs locks Profile-scoped state when the catalog binding does not match a
     assert.match(container.textContent ?? '', /Profile-scoped requirement unavailable/);
     assert.equal(container.querySelector('[role="switch"]'), null);
     assert.equal(container.querySelector('[aria-label^="Revoke approval"]'), null);
+
+    await act(async () => {
+      useAppStore.setState({packTogglePending: {[samplePack.id]: true}});
+    });
+    assert.match(container.textContent ?? '', /Updating Profile/);
+    assert.doesNotMatch(container.textContent ?? '', /Profile state unavailable/);
+    assert.equal(container.querySelector('[role="switch"]'), null);
+    assert.equal(container.querySelector('[aria-label^="Revoke approval"]'), null);
   } finally {
     await act(async () => root.unmount());
     useAppStore.setState(previousState, true);

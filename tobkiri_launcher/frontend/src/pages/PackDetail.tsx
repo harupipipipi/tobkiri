@@ -132,6 +132,7 @@ export function PackDetail() {
   }
 
   const packScopeAuthoritative = isPackInCatalogScope(pack, packCatalogBinding);
+  const profileTransitionPending = Object.values(packTogglePending).some(Boolean);
   const scopedProfileId = packCatalogBinding?.profile_id ?? 'unavailable';
 
   const handleToggle = async () => {
@@ -224,10 +225,10 @@ export function PackDetail() {
                 <Badge variant={pack.installed ? 'success' : 'outline'}>
                   {pack.installed ? 'Installed' : 'Available'}
                 </Badge>
-                <Badge variant={packScopeAuthoritative ? (pack.approved ? 'success' : approvalRevoked ? 'destructive' : 'warning') : 'warning'}>
+                <Badge variant={packScopeAuthoritative ? (pack.approved ? 'success' : approvalRevoked ? 'destructive' : 'warning') : profileTransitionPending ? 'secondary' : 'warning'}>
                   {packScopeAuthoritative
                     ? (pack.approved ? 'Approved' : approvalRevoked ? 'Approval revoked' : 'Needs approval')
-                    : 'Profile state unavailable'}
+                    : profileTransitionPending ? 'Updating Profile' : 'Profile state unavailable'}
                 </Badge>
               </div>
               <p className="mt-0.5 text-sm text-text-muted">{pack.description}</p>
@@ -261,7 +262,9 @@ export function PackDetail() {
                   : 'Profile-scoped requirement unavailable'}
               </Badge>
             ) : !packScopeAuthoritative ? (
-              <Badge variant="warning">Profile-scoped Pack actions unavailable</Badge>
+              <Badge variant={profileTransitionPending ? 'secondary' : 'warning'}>
+                {profileTransitionPending ? 'Updating Profile' : 'Profile-scoped Pack actions unavailable'}
+              </Badge>
             ) : (
               <>
                 <Button
@@ -297,7 +300,7 @@ export function PackDetail() {
             )}
           </div>
         </div>
-        <PackScopeSummary binding={packCatalogBinding} pack={pack} stale={Boolean(packsError)} />
+        <PackScopeSummary binding={packCatalogBinding} pack={pack} stale={Boolean(packsError)} transitioning={profileTransitionPending} />
         {mutationResultUnknown ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300/70 bg-amber-50/70 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-200" role="alert">
             <CircleHelp className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" data-error-icon="pack-mutation-unknown" />

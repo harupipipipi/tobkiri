@@ -91,6 +91,7 @@ export function Packs() {
   }, [loadPacks]);
 
   const filteredPacks = packs.filter(pack => pack.name.toLowerCase().includes(search.toLowerCase()));
+  const profileTransitionPending = Object.values(packTogglePending).some(Boolean);
 
   const handleApprove = async (packId: string) => {
     setApprovingPackId(packId);
@@ -157,6 +158,7 @@ export function Packs() {
           binding={packCatalogBinding}
           packRows={packs}
           stale={Boolean(packsError && packs.length > 0)}
+          transitioning={profileTransitionPending}
         />
 
         {packsError ? (
@@ -266,12 +268,12 @@ export function Packs() {
                         {pack.installed ? 'Installed' : 'Available'}
                       </Badge>
                       {pack.installed ? (
-                        <Badge variant={packScopeAuthoritative ? (pack.enabled ? 'success' : 'secondary') : 'warning'}>
-                          {packScopeAuthoritative ? (pack.enabled ? 'Enabled' : 'Disabled') : 'Profile state unavailable'}
+                        <Badge variant={packScopeAuthoritative ? (pack.enabled ? 'success' : 'secondary') : profileTransitionPending ? 'secondary' : 'warning'}>
+                          {packScopeAuthoritative ? (pack.enabled ? 'Enabled' : 'Disabled') : profileTransitionPending ? 'Updating Profile' : 'Profile state unavailable'}
                         </Badge>
                       ) : null}
                       <Badge
-                        variant={packScopeAuthoritative ? approvalBadgeVariant(pack) : 'warning'}
+                        variant={packScopeAuthoritative ? approvalBadgeVariant(pack) : profileTransitionPending ? 'secondary' : 'warning'}
                         className="inline-flex items-center gap-1"
                       >
                         {packScopeAuthoritative && pack.installed && pack.approved ? (
@@ -279,7 +281,7 @@ export function Packs() {
                         ) : (
                           <AlertTriangle className="h-3 w-3" />
                         )}
-                        {packScopeAuthoritative ? approvalBadgeLabel(pack) : 'Profile state unavailable'}
+                        {packScopeAuthoritative ? approvalBadgeLabel(pack) : profileTransitionPending ? 'Updating Profile' : 'Profile state unavailable'}
                       </Badge>
                     </div>
                     <p className="text-sm text-text-muted truncate">{pack.description}</p>
@@ -317,7 +319,9 @@ export function Packs() {
                           : 'Profile-scoped requirement unavailable'}
                       </Badge>
                     ) : pack.installed && pack.approved && !packScopeAuthoritative ? (
-                      <Badge variant="warning">Profile-scoped Pack actions unavailable</Badge>
+                      <Badge variant={profileTransitionPending ? 'secondary' : 'warning'}>
+                        {profileTransitionPending ? 'Updating Profile' : 'Profile-scoped Pack actions unavailable'}
+                      </Badge>
                     ) : pack.installed && pack.approved ? (
                       <>
                         <Button

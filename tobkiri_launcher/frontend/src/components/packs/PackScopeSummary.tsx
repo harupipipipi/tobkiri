@@ -8,10 +8,11 @@ interface PackScopeSummaryProps {
   pack?: Pick<Pack, 'profileId' | 'workspaceId' | 'profileRevision' | 'planDigest' | 'catalogRevision'>;
   packRows?: Array<Pick<Pack, 'profileId' | 'workspaceId' | 'profileRevision' | 'planDigest' | 'catalogRevision'>>;
   stale?: boolean;
+  transitioning?: boolean;
 }
 
 /** Explain the Host-global inventory and Profile-scoped Pack state boundary. */
-export function PackScopeSummary({binding, pack, packRows, stale = false}: PackScopeSummaryProps) {
+export function PackScopeSummary({binding, pack, packRows, stale = false, transitioning = false}: PackScopeSummaryProps) {
   const rowMatchesScope = pack
     ? isPackInCatalogScope(pack, binding)
     : !packRows || packRows.every((row) => isPackInCatalogScope(row, binding));
@@ -30,8 +31,8 @@ export function PackScopeSummary({binding, pack, packRows, stale = false}: PackS
             Host-global artifact inventory and install state. Required, membership, enablement, and approval are evaluated for the active execution Profile only.
           </p>
         </div>
-        <Badge variant={authoritative ? 'secondary' : 'warning'}>
-          {authoritative ? 'Active execution Profile' : 'Profile scope unavailable'}
+        <Badge variant={authoritative || transitioning ? 'secondary' : 'warning'}>
+          {authoritative ? 'Active execution Profile' : transitioning ? 'Updating Profile' : 'Profile scope unavailable'}
         </Badge>
       </div>
       {authoritative && binding ? (
@@ -49,6 +50,10 @@ export function PackScopeSummary({binding, pack, packRows, stale = false}: PackS
             <dd className="mt-1 break-all font-mono">{binding.plan_digest}</dd>
           </div>
         </dl>
+      ) : transitioning ? (
+        <p className="mt-3 text-sm text-text-muted" role="status">
+          The Pack change is being applied. Profile-scoped actions will resume after the authoritative catalog is refreshed.
+        </p>
       ) : (
         <p className="mt-3 text-sm text-amber-700 dark:text-amber-300" role="status">
           The active execution Profile scope is unavailable or does not match {rowLabel}; Profile-scoped Pack actions are locked until the authoritative catalog is refreshed.
