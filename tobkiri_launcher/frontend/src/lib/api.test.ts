@@ -576,6 +576,31 @@ test('dashboard read allows an authenticated Profile recapture beyond ten second
   assert.equal((await dashboard).packs.enabled, 36);
 });
 
+test('named Profile list allows a verified active Profile read beyond ten seconds', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  fetchHandler = async (_input, init) => new Promise<Response>((resolve, reject) => {
+    const timer = setTimeout(() => resolve(new Response(JSON.stringify({
+      success: true,
+      data: {
+        profile_registry_api_version: 'io.tobkiri.profile-registry.v4',
+        generation: 1,
+        active_profile_id: null,
+        active_profile_revision: null,
+        profiles: [],
+      },
+    }))), 12_000);
+    init?.signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(init.signal?.reason ?? new Error('request aborted'));
+    }, {once: true});
+  });
+
+  const profiles = fetchNamedProfiles();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(12_000);
+  assert.equal((await profiles).generation, 1);
+});
+
 test('unrelated foreground contract GETs keep their original bounded deadline', async (context) => {
   context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
   let reads = 0;

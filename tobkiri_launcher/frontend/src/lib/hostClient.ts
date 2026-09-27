@@ -204,7 +204,13 @@ export const hostApiFetch = createApiClient((path, method) => {
 });
 
 export function fetchNamedProfiles(): Promise<NamedProfileRegistry> {
-  return hostApiFetch<unknown>('/api/v4/profiles', {cache: 'no-store'}).then(parseNamedProfileRegistry);
+  // A live active Profile is recaptured and verified before the Host returns
+  // this registry. Allow the same bounded read budget as the Home projection.
+  return hostApiFetch<unknown>(
+    '/api/v4/profiles',
+    {cache: 'no-store'},
+    {timeoutMs: 30_000},
+  ).then(parseNamedProfileRegistry);
 }
 
 function mutateNamedProfile(
