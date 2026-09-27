@@ -557,6 +557,25 @@ test('operation status reads stop at their bounded status-read deadline', async 
   assert.equal(reads, 1);
 });
 
+test('dashboard read allows an authenticated Profile recapture beyond ten seconds', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  fetchHandler = async (_input, init) => new Promise<Response>((resolve, reject) => {
+    const timer = setTimeout(() => resolve(new Response(JSON.stringify({
+      success: true,
+      data: {packs: {total: 141, enabled: 36, disabled: 105}},
+    }))), 12_000);
+    init?.signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(init.signal?.reason ?? new Error('request aborted'));
+    }, {once: true});
+  });
+
+  const dashboard = fetchDashboard();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(12_000);
+  assert.equal((await dashboard).packs.enabled, 36);
+});
+
 test('unrelated foreground contract GETs keep their original bounded deadline', async (context) => {
   context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
   let reads = 0;
@@ -570,7 +589,7 @@ test('unrelated foreground contract GETs keep their original bounded deadline', 
   };
 
   const bounded = assert.rejects(
-    fetchDashboard(),
+    fetchFrontendContractOperation('GET', '/api/home/dashboard'),
     /GET request timed out after 10000ms/,
   );
   await new Promise<void>((resolve) => setImmediate(resolve));

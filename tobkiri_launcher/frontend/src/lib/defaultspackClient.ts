@@ -166,7 +166,14 @@ export function fetchRuntimeOperationStatus(requestId: string): Promise<unknown>
 }
 
 export function fetchDashboard(): Promise<ApiDashboard> {
-  return defaultspackApiFetch<ApiDashboard>(frontendContractPath('GET', '/api/home/dashboard'));
+  // The Host recaptures the active Profile before this projection. An enabled
+  // optional Pack adds approval and artifact verification to that read, so the
+  // generic 10-second GET budget can expire before the authenticated result.
+  return defaultspackApiFetch<ApiDashboard>(
+    frontendContractPath('GET', '/api/home/dashboard'),
+    {},
+    {timeoutMs: 30_000},
+  );
 }
 
 export async function fetchFrontendCatalog(): Promise<ApiDynamicFrontendCatalog> {
