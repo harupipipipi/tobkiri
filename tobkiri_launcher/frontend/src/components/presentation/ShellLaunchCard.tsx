@@ -17,6 +17,7 @@ import {launchDisabledReason} from '@/src/lib/presentation';
 import {useAppStore} from '@/src/store';
 
 function formatError(error: unknown): string {
+  if (typeof error === 'string' && error.trim()) return error;
   return error instanceof Error && error.message.trim()
     ? error.message
     : 'Tobkiri could not verify the selected Profile launch surface.';

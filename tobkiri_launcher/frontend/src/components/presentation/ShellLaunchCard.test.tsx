@@ -147,6 +147,37 @@ test('selected Shell exposes the Profile launch action', async () => {
   }
 });
 
+test('selected Shell shows a sanitized native launch rejection', async () => {
+  const previousState = useAppStore.getState();
+  const {dom, container, root} = createSurface();
+  Object.defineProperty(dom.window, '__TAURI__', {
+    configurable: true,
+    value: {
+      core: {
+        invoke: async (command: string) => {
+          if (command === 'get_presentation_catalog') return state('materialized');
+          throw 'selected presentation could not be launched';
+        },
+      },
+    },
+  });
+
+  try {
+    await renderCard(root);
+    const button = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+      (candidate) => candidate.textContent?.includes('Launch Research A'),
+    );
+    assert.ok(button);
+    await act(async () => button.click());
+    assert.match(container.textContent ?? '', /selected presentation could not be launched/);
+    assert.doesNotMatch(container.textContent ?? '', /could not verify the selected Profile launch surface/);
+  } finally {
+    act(() => root.unmount());
+    useAppStore.setState(previousState, true);
+    dom.window.close();
+  }
+});
+
 test('disabled selected Shell keeps Profile launch unavailable', async () => {
   const previousState = useAppStore.getState();
   const {dom, container, root} = createSurface();

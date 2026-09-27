@@ -356,7 +356,11 @@ export function Dashboard() {
       const result = await launchSelectedPresentation();
       addToast(result.message || `${namedProfileDisplayName(entry)} launched.`, 'success');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Profile launch was rejected.';
+      const message = typeof error === 'string' && error.trim()
+        ? error
+        : error instanceof Error && error.message.trim()
+          ? error.message
+          : 'Profile launch was rejected.';
       addToast(message, 'error');
     } finally {
       finishProfileOperation(key);
