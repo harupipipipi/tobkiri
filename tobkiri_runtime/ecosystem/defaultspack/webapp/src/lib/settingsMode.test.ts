@@ -9,6 +9,7 @@ import {
   normalizeComposerHomeTitle,
   resolveComposerHomeMode,
   resolveComposerHomeTitle,
+  withSettingsAssistantSkill,
 } from "./settingsMode";
 
 test("settings mode draft uses the ordinary composer skill mention contract", () => {
@@ -28,6 +29,26 @@ test("settings mode ends as soon as the Settings mention is removed", () => {
   assert.equal(isSettingsModeInput("設定を相談したい", FALLBACK_SETTINGS_ASSISTANT_SKILL), false);
   assert.equal(isSettingsModeInput("@Settings 設定を相談したい", FALLBACK_SETTINGS_ASSISTANT_SKILL), true);
   assert.equal(isSettingsModeInput("Settings 設定を相談したい", FALLBACK_SETTINGS_ASSISTANT_SKILL), false);
+});
+
+test("ordinary Composer skills always include the Settings aliases", () => {
+  const skills = withSettingsAssistantSkill([]);
+
+  assert.deepEqual(skills, [FALLBACK_SETTINGS_ASSISTANT_SKILL]);
+  assert.equal(resolveComposerHomeTitle("@setting 設定を相談したい", skills), "Settings Mode");
+  assert.equal(isSettingsModeInput("@setting 設定を相談したい", skills[0]), true);
+});
+
+test("configured Settings skill retains the fallback mention aliases", () => {
+  const skills = withSettingsAssistantSkill([{
+    id: SETTINGS_ASSISTANT_SKILL_ID,
+    label: "Configure",
+    aliases: ["configure"],
+  }]);
+
+  assert.equal(skills[0]?.label, "Configure");
+  assert.deepEqual(skills[0]?.aliases, ["setting", "settings", "setting_mode", "settings_mode", "configure"]);
+  assert.equal(resolveComposerHomeTitle("@setting help", skills), "Settings Mode");
 });
 
 test("home title resolution deduplicates repeated mentions and falls back cleanly", () => {

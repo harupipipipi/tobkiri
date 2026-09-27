@@ -138,8 +138,8 @@ const SECTION_META: Array<Omit<ControlCenterSection, "fields" | "sourceSections"
   {
     id: "quick_setup",
     label: "AI Assistant",
-    description: "Understand, compare, and safely change settings through a guided conversation.",
-    help: "The assistant can prepare changes, while you keep final control over every value that is applied.",
+    description: "Set response guidance, then understand, compare, and change settings through a guided conversation.",
+    help: "Edit response guidance here. The assistant can prepare changes, while you keep final control over every value that is applied.",
     order: 0,
   },
   {
@@ -222,7 +222,7 @@ const SECTION_META: Array<Omit<ControlCenterSection, "fields" | "sourceSections"
 ];
 
 const JA_SECTION_COPY: Record<ControlCenterSectionId, Pick<ControlCenterSection, "label" | "description" | "help">> = {
-  quick_setup: { label: "AIアシスタント", description: "AIと対話しながら、設定を探す・比較する・安全に変更するための画面です。", help: "AIは変更案を準備し、実際に適用する値はユーザーが確認できます。" },
+  quick_setup: { label: "AIアシスタント", description: "応答の方針を決め、AIと対話しながら設定を探す・比較・変更できます。", help: "応答の方針はここで編集でき、AIは変更案を準備します。実際に適用する値はユーザーが確認できます。" },
   models_api: { label: "モデル", description: "会話で使うモデル、用途別の割り当て、自動選択とフォールバックを設定します。", help: "接続や認証情報は「接続」で管理します。" },
   workspace_ui: { label: "表示と入力", description: "表示言語、入力方法、ショートカット、回答とプレビューの見え方を設定します。", help: "日常的に変更する表示・入力項目だけをまとめています。" },
   accounts_connections: { label: "接続", description: "AIプロバイダー、アカウント、外部サービス、Webhook、デバイスの接続を管理します。", help: "認証情報は専用の安全な保存経路を使用します。" },
@@ -232,7 +232,7 @@ const JA_SECTION_COPY: Record<ControlCenterSectionId, Pick<ControlCenterSection,
   privacy_security: { label: "安全とデータ", description: "外部へ送るデータ、保持、ログ、認証情報、管理者ポリシーを管理します。", help: "件数ではなく、原因・影響・解決操作のある問題だけを表示します。" },
   profiles: { label: "プロファイル", description: "モデル、ツール、接続、承認ルールの上書きを比較・適用します。", help: "継承値と上書き値、適用範囲を確認できます。" },
   packs_extensions: { label: "Pack・拡張機能", description: "Packの提供元、信頼、権限、更新、Pack固有設定を管理します。", help: "Pack由来の項目を通常設定から隔離し、所有元とリセット範囲を示します。" },
-  advanced: { label: "詳細設定", description: "カスタムモデル、詳細ルーティング、互換性、内部チューニングを表示します。", help: "通常は変更不要な上級者・開発者向け項目です。" },
+  advanced: { label: "詳細設定", description: "カスタムモデル、詳細ルーティング、互換性、内部チューニングを表示します。", help: "通常は変更不要な上級者向け項目です。" },
   diagnostics: { label: "診断・サポート", description: "解決可能な問題、接続テスト、ログ、サポート情報を表示します。", help: "問題の原因、影響、修復操作を一つの場所で確認します。" },
 };
 
@@ -250,6 +250,10 @@ const JA_FIELD_COPY: Record<string, LocalizedFieldCopy> = {
   "general.spotlight_shortcut": { label: "会話検索のキー", help: "会話検索を開くキーの組み合わせを指定します。" },
   "general.spotlight_shortcut_text_input": { label: "入力中も会話検索を開く", help: "入力欄にカーソルがあるときも会話検索のショートカットを使えます。" },
   "general.language": { label: "表示言語", help: "Tobkiriの画面で使う言語を選びます。拡張機能に翻訳がない場合は元の文言を表示します。", options: { auto: "端末に合わせる" } },
+  "general.workspace_tabs_enabled": { label: "タブを使う", help: "会話・カレンダー等を上部タブで切り替えます。OFFでは現在の画面を直接切り替えます。" },
+  "automation.subagent_teams_enabled": { label: "サブエージェントを使う", help: "会話を分担するチーム画面と委任を使います。" },
+  "personalization.default_system_prompt_id": { label: "応答の方針", help: "新しい会話で使うシステムプロンプトを選び、内容を編集します。" },
+  "tools.mcp_servers": { label: "MCPサーバー管理", help: "MCPサーバーの接続設定を登録します。接続やツール実行の前には実行内容を確認します。" },
   "preview.default_mode": { label: "プレビューの表示方法" },
   "chat_rendering.unknown_block_strategy": { label: "未対応の内容の表示", help: "未対応形式は安全な案内だけを表示します。開発者向け情報にも値や秘密は含まれません。", options: { placeholder: "安全な案内", debug: "開発者向け情報（制限済み）" } },
   "models.preferred_model": { label: "普段使うモデル", help: "新しい会話で最初に使うモデルを選びます。" },
@@ -371,6 +375,8 @@ const JA_SOURCE_SECTION_COPY: Record<string, string> = {
   computer_use_haze: "コンピュータ操作中の表示",
   calendar: "カレンダー",
   ambient: "指で録音",
+  automation: "自動化",
+  personalization: "パーソナライズ",
   operations_company: "業務エージェント",
   mimo_coding_company: "MiMo Coding",
   mobile: "モバイル連携",
@@ -437,13 +443,14 @@ const SECTION_ID_ALIASES: Record<string, ControlCenterSectionId> = {
   calendar: "features",
   commands: "features",
   ambient: "features",
+  automation: "computer_automation",
+  personalization: "quick_setup",
   tools: "tools_mcp",
   tool: "tools_mcp",
   mcp: "tools_mcp",
   computer: "computer_automation",
   computer_use: "computer_automation",
   browser: "computer_automation",
-  automation: "computer_automation",
   triggers: "computer_automation",
   continuity: "computer_automation",
   system_info: "computer_automation",
@@ -679,9 +686,9 @@ export function buildControlCenterSections(settingsSections: SettingsSection[], 
       models.sourceSections.push(apiSource);
     }
     const modelFieldRank = (field: ControlCenterField): number => {
-      if (["main_model", "lightweight_model", "preferred_model", "preferred_model_group", "auto_route_within_group"].includes(field.id)) {
-        return 100;
-      }
+      if (["main_model", "lightweight_model", "preferred_model"].includes(field.id)) return 100;
+      if (field.id === "deepthink_enabled") return 110;
+      if (["preferred_model_group", "auto_route_within_group"].includes(field.id)) return 150;
       if (field.sourceSectionId === "apis" && field.id === "api_keys") return 200;
       if (field.id === "model_api_routes") return 900;
       return 400;
@@ -694,9 +701,40 @@ export function buildControlCenterSections(settingsSections: SettingsSection[], 
       ))
       .map(({ field }) => field);
   }
-  const quickSetup = byId.get("quick_setup");
-  if (quickSetup) {
-    quickSetup.fields = [];
+  const workspace = byId.get("workspace_ui");
+  if (workspace) {
+    const workspaceFieldRank = (field: ControlCenterField): number => {
+      if (field.sourceSectionId === "general" && field.id === "language") return 0;
+      if (field.sourceSectionId === "preview") return 300;
+      return 100;
+    };
+    workspace.fields = workspace.fields
+      .map((field, index) => ({ field, index }))
+      .sort((left, right) => workspaceFieldRank(left.field) - workspaceFieldRank(right.field) || left.index - right.index)
+      .map(({ field }) => field);
+  }
+  const computerAutomation = byId.get("computer_automation");
+  if (computerAutomation) {
+    const computerAutomationFieldRank = (field: ControlCenterField): number => (
+      field.sourceSectionId === "automation" && field.id === "subagent_teams_enabled" ? 0 : 100
+    );
+    computerAutomation.fields = computerAutomation.fields
+      .map((field, index) => ({ field, index }))
+      .sort((left, right) => (
+        computerAutomationFieldRank(left.field) - computerAutomationFieldRank(right.field)
+        || left.index - right.index
+      ))
+      .map(({ field }) => field);
+  }
+  const tools = byId.get("tools_mcp");
+  if (tools) {
+    const toolFieldRank = (field: ControlCenterField): number => (
+      field.sourceSectionId === "tools" && field.id === "mcp_servers" ? 0 : 100
+    );
+    tools.fields = tools.fields
+      .map((field, index) => ({ field, index }))
+      .sort((left, right) => toolFieldRank(left.field) - toolFieldRank(right.field) || left.index - right.index)
+      .map(({ field }) => field);
   }
   return sections;
 }

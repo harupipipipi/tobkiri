@@ -121,17 +121,18 @@ test("profile workspace exposes active/default roles and the model-provider-cred
   assert.equal(fallback?.readiness, "local");
 });
 
-test("profile workspace merges catalog/model records without making runtime records editable", () => {
+test("profile workspace includes saved model routes without making them editable", () => {
   const modelProfiles: ModelProfile[] = [
     {
       profile_id: "anthropic/claude-sonnet",
       display_name: "Claude Sonnet",
       provider_id: "anthropic",
       qualified_model_id: "anthropic/claude-sonnet",
+      route_configured: true,
       supports_thinking: true,
       supports_tool_calling: true,
       recommended_roles: ["coding", "analysis"],
-      availability: { configured: true },
+      availability: { status: "unavailable", reason: "The saved route is disabled by policy." },
     },
   ];
   const workspace = buildSettingsProfileWorkspace({
@@ -139,48 +140,99 @@ test("profile workspace merges catalog/model records without making runtime reco
     settingsValues: {
       models: { preferred_model: "anthropic/claude-sonnet" },
     },
-    catalog: {
-      agent_service: {
-        default_profile: "runtime/balanced",
-        profiles: [
-          {
-            profile_id: "runtime/balanced",
-            display_name: "Balanced",
-            preferred_model: "local/qwen",
-            role: "Daily work",
-          },
-        ],
-      },
-    } as never,
+    catalog: null,
     modelProfiles,
     activeModelProfileId: "anthropic/claude-sonnet",
   });
 
   assert.equal(workspace.editableCollection, null);
-  assert.equal(workspace.profiles.length, 2);
+  assert.equal(workspace.profiles.length, 1);
   const active = workspace.profiles[0];
   assert.equal(active.id, "anthropic/claude-sonnet");
   assert.equal(active.active, true);
   assert.equal(active.editable, false);
   assert.deepEqual(active.capabilityTags.sort(), ["thinking", "tools"]);
-  assert.equal(workspace.profiles.find((profile) => profile.id === "runtime/balanced")?.source, "catalog");
+  assert.equal(active.readiness, "blocked");
+  assert.equal(active.readinessReason, "The saved route is disabled by policy.");
+});
+
+test("profile workspace omits provider catalog examples until a model is saved or selected", () => {
+  const workspace = buildSettingsProfileWorkspace({
+    settingsSections: [],
+    settingsValues: {
+      models: {
+        preferred_model: "stub/default",
+        lightweight_model: "google/gemini-2.5-flash",
+        model_api_routes: "openai/gpt-4.1: openai/primary\n",
+      },
+    },
+    catalog: {
+      agent_service: {
+        profiles: [{
+          profile_id: "runtime/catalog-example",
+          display_name: "Catalog example",
+          preferred_model: "google/gemini-2.5-pro",
+        }],
+      },
+    } as never,
+    modelProfiles: [
+      {
+        profile_id: "stub/default",
+        display_name: "Stub Default",
+        provider_id: "stub",
+        qualified_model_id: "stub/default",
+        model_id: "default",
+        local: true,
+        availability: { configured: true },
+      },
+      {
+        profile_id: "google/gemini-2.5-flash",
+        display_name: "Gemini Flash",
+        provider_id: "google",
+        qualified_model_id: "google/gemini-2.5-flash",
+        model_id: "gemini-2.5-flash",
+        availability: { configured: true },
+      },
+      {
+        profile_id: "openai/gpt-4.1",
+        display_name: "GPT-4.1",
+        provider_id: "openai",
+        qualified_model_id: "openai/gpt-4.1",
+        model_id: "gpt-4.1",
+        availability: { configured: true },
+      },
+      {
+        profile_id: "anthropic/catalog-only",
+        display_name: "Catalog only",
+        provider_id: "anthropic",
+        qualified_model_id: "anthropic/catalog-only",
+        model_id: "catalog-only",
+        availability: { configured: true },
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    workspace.profiles.map((profile) => profile.id).sort(),
+    ["google/gemini-2.5-flash", "openai/gpt-4.1", "stub/default"],
+  );
+  assert.equal(workspace.profiles.some((profile) => profile.id === "anthropic/catalog-only"), false);
+  assert.equal(workspace.profiles.some((profile) => profile.id === "runtime/catalog-example"), false);
 });
 
 test("profile workspace renders localized object labels without coercing them to object text", () => {
   const workspace = buildSettingsProfileWorkspace({
-    settingsSections: [],
-    settingsValues: {},
-    catalog: {
-      agent_service: {
-        default_profile: "defaultspack.local_agent",
-        profiles: [
-          {
-            profile_id: "defaultspack.local_agent",
-            display_name: { ja: "既定エージェント", en: "Default Agent" },
-          },
-        ],
+    settingsSections: editableSections,
+    settingsValues: {
+      profiles: {
+        profiles: [{
+          profile_id: "defaultspack.local_agent",
+          display_name: { ja: "既定エージェント", en: "Default Agent" },
+        }],
+        active_profile: "defaultspack.local_agent",
       },
-    } as never,
+    },
+    catalog: null,
     modelProfiles: [],
     activeModelProfileId: "defaultspack.local_agent",
   });
@@ -281,6 +333,7 @@ test("model availability reasons are not treated as blocks without an unavailabl
         display_name: "Discovered",
         provider_id: "openai",
         qualified_model_id: "openai/discovered",
+        route_configured: true,
         availability: { status: "available", reason: "Discovered from the provider catalog." },
       } as ModelProfile,
       {
@@ -288,6 +341,7 @@ test("model availability reasons are not treated as blocks without an unavailabl
         display_name: "Denied",
         provider_id: "openai",
         qualified_model_id: "openai/denied",
+        route_configured: true,
         availability: { status: "unavailable", reason: "Organization policy denied this model." },
       } as ModelProfile,
       {
@@ -295,6 +349,7 @@ test("model availability reasons are not treated as blocks without an unavailabl
         display_name: "Local vLLM",
         provider_id: "vllm",
         qualified_model_id: "vllm/local",
+        route_configured: true,
       } as ModelProfile,
     ],
   });

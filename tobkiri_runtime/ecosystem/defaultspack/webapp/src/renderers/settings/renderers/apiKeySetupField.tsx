@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { ModelRouteSetup } from "../../../features/models/ModelRouteSetup";
 
 import { CredentialTransferModal } from "../../../components/CredentialTransferModal";
 import { ErrorNotice } from "../../../components/ErrorNotice";
@@ -15,6 +14,10 @@ import {
   requiresExplicitApiProviderProtocol,
   type ApiProviderProtocol,
 } from "../../../features/apiKeys/apiKeySetup";
+import {
+  providerSetupLabel,
+  supportsSimpleProviderSetup,
+} from "../../../lib/providerPresets";
 import { settingsApiResources } from "../../../features/settings/resources/settingsApiResources";
 import { availabilityCopy, type ModelAvailabilityAfterKeySave } from "../../../features/settings/resources/useModelAvailability";
 import type { SettingsFieldRendererProps } from "../fieldRendererRegistry";
@@ -37,7 +40,12 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
     ...providers,
   ]), [field, providers]);
   const providerOptions = useMemo(
-    () => filterApiProviderOptionsByScope(allProviderOptions, providerScope),
+    () => filterApiProviderOptionsByScope(allProviderOptions, providerScope)
+      .filter((option) => option.kind !== "llm" || !option.builtin || supportsSimpleProviderSetup(option.provider_id))
+      .map((option) => ({
+        ...option,
+        label: providerSetupLabel(option.provider_id, option.label),
+      })),
     [allProviderOptions, providerScope],
   );
   const registeredApis = filterRegisteredApiRowsByScope(
@@ -49,12 +57,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
   const [apiName, setApiName] = useState("main");
   const [secret, setSecret] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
-  const [allowedModels, setAllowedModels] = useState("");
-  const [defaultModel, setDefaultModel] = useState("");
-  const [quotaLabel, setQuotaLabel] = useState("");
-  const [notes, setNotes] = useState("");
   const [protocol, setProtocol] = useState<ApiProviderProtocol>("openai-compatible");
-  const [credentialMode, setCredentialMode] = useState<"api_key" | "none">("api_key");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [saveError, setSaveError] = useState("");
   const [availability, setAvailability] = useState<ModelAvailabilityAfterKeySave | null>(null);
@@ -67,7 +70,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
   const selectedKind = selectedProviderKind(providerId, providerOptions);
   const saveResource = apiKeySaveResource(selectedKind);
   const savesExternalToken = saveResource === "external_token";
-  const customLlmProtocolRequired = requiresExplicitApiProviderProtocol(
+  const customLlmProtocolRequired = Boolean(providerId) && requiresExplicitApiProviderProtocol(
     providerId,
     selectedKind,
   );
@@ -93,12 +96,8 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
       value: secret,
       kind: selectedKind,
       protocol: customLlmProtocolRequired ? protocol : undefined,
-      base_url: baseUrl,
-      allowed_models: allowedModels,
-      default_model: defaultModel,
-      quota_label: quotaLabel,
-      notes,
-      credential_mode: savesExternalToken ? "api_key" : credentialMode,
+      base_url: customLlmProtocolRequired ? baseUrl : undefined,
+      credential_mode: "api_key",
     });
     if (!payload) return;
     setSaveState("saving");
@@ -125,7 +124,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
           reason: "Saved, but the backend did not confirm model availability. Choose a model route before using this key.",
         });
       }
-      if (!savesExternalToken && credentialMode === "api_key" && credentialTransferEnabled) {
+      if (!savesExternalToken && credentialTransferEnabled) {
         setCredentialTransfer({
           providerId: payload.provider_id,
           providerLabel: selectedProviderOption?.label,
@@ -134,10 +133,6 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
       }
       setSecret("");
       setBaseUrl("");
-      setAllowedModels("");
-      setDefaultModel("");
-      setQuotaLabel("");
-      setNotes("");
       setSaveState("saved");
       window.dispatchEvent(new Event("tobkiri-provider-connections-changed"));
     } catch (saveErrorValue) {
@@ -170,7 +165,9 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
           <p className="text-xs leading-5 text-zinc-500">
             {savesExternalToken
               ? "外部サービスを選び、識別用の名前とトークンを入力します。"
-              : "使いたいAIプロバイダーを選び、識別用の名前とAPIキーを入力します。"}
+              : customLlmProtocolRequired
+                ? "Customの接続先とプロトコルを指定して、識別用の名前とAPIキーを入力します。"
+                : "使いたいAIプロバイダーを選び、識別用の名前とAPIキーを入力します。接続先は自動で設定されます。"}
           </p>
           <div className="grid gap-2 md:grid-cols-[180px_minmax(120px,1fr)_minmax(180px,2fr)_auto]">
               <SearchableProviderField
@@ -203,17 +200,10 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
                 className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none"
               />
               <div className="flex rounded-lg border border-zinc-800 bg-zinc-900 focus-within:border-zinc-600">
-                {!savesExternalToken && (
-                  <select value={credentialMode} onChange={(event) => { setCredentialMode(event.target.value === "none" ? "none" : "api_key"); resetFeedback(); }} className="max-w-20 bg-transparent px-2 text-[10px] text-zinc-400 outline-none">
-                    <option value="api_key">Key</option>
-                    <option value="none">Local</option>
-                  </select>
-                )}
                 <input
                   type="password"
                   autoComplete="off"
                   value={secret}
-                  disabled={!savesExternalToken && credentialMode === "none"}
                   onChange={(event) => {
                     setSecret(event.target.value);
                     resetFeedback();
@@ -225,17 +215,17 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
                   }}
                   placeholder={savesExternalToken
                     ? `${providerId || "provider"} token`
-                    : credentialMode === "none" ? "loopback endpoint only" : `${providerId || "provider"} API key`}
-                  className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm text-zinc-200 outline-none disabled:cursor-not-allowed disabled:text-zinc-600"
+                    : `${providerId || "provider"} API key`}
+                  className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-zinc-200 outline-none"
                 />
               </div>
               <button
                 type="button"
-                disabled={saveState === "saving" || !providerId.trim() || !apiName.trim() || (savesExternalToken || credentialMode === "api_key" ? !secret.trim() : !baseUrl.trim())}
+                disabled={saveState === "saving" || !providerId.trim() || !apiName.trim() || !secret.trim() || (customLlmProtocolRequired && !baseUrl.trim())}
                 onClick={() => void handleSubmit()}
                 className={cn(
                   "rounded-lg border px-3 py-2 text-xs transition-colors",
-                  saveState !== "saving" && providerId.trim() && apiName.trim() && (savesExternalToken || credentialMode === "api_key" ? secret.trim() : baseUrl.trim())
+                  saveState !== "saving" && providerId.trim() && apiName.trim() && secret.trim() && (!customLlmProtocolRequired || baseUrl.trim())
                     ? "border-zinc-100 bg-zinc-100 text-zinc-950"
                     : "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-600",
                 )}
@@ -251,38 +241,35 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
             </p>
           ) : (
             <>
-              <details open className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-xs">
-                <summary className="cursor-pointer select-none text-zinc-400 hover:text-zinc-200">接続先HTTPS URL（必須）・モデル設定（別途）</summary>
-                <div className="mt-3 grid gap-2 md:grid-cols-2">
-                  {customLlmProtocolRequired && (
-                    <label className="space-y-1 text-[11px] text-zinc-500">
-                      <span>Custom LLM protocol</span>
-                      <select
-                        aria-label="Custom LLM protocol"
-                        value={protocol}
-                        onChange={(event) => {
-                          setProtocol(
-                            event.target.value === "anthropic"
-                              ? "anthropic"
-                              : "openai-compatible",
-                          );
-                          resetFeedback();
-                        }}
-                        className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none"
-                      >
-                        <option value="openai-compatible">OpenAI-compatible</option>
-                        <option value="anthropic">Anthropic Messages</option>
-                      </select>
-                    </label>
-                  )}
-                  <input value={baseUrl} onChange={(event) => { setBaseUrl(event.target.value); resetFeedback(); }} placeholder="HTTPS base URL (required)" aria-label="Provider HTTPS base URL" className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none" />
-                  <input value={defaultModel} onChange={(event) => { setDefaultModel(event.target.value); resetFeedback(); }} placeholder="default model for this API" className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none" />
-                  <input value={allowedModels} onChange={(event) => { setAllowedModels(event.target.value); resetFeedback(); }} placeholder="allowed models, comma separated" className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none" />
-                  <input value={quotaLabel} onChange={(event) => { setQuotaLabel(event.target.value); resetFeedback(); }} placeholder="quota label" className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none" />
-                  <textarea value={notes} onChange={(event) => { setNotes(event.target.value); resetFeedback(); }} placeholder="notes for routing" className="min-h-20 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none md:col-span-2" />
+              {customLlmProtocolRequired && (
+                <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 text-xs md:grid-cols-2">
+                  <label className="space-y-1 text-[11px] text-zinc-500">
+                    <span>接続プロトコル</span>
+                    <select
+                      aria-label="Custom LLM protocol"
+                      value={protocol}
+                      onChange={(event) => {
+                        setProtocol(event.target.value === "anthropic" ? "anthropic" : "openai-compatible");
+                        resetFeedback();
+                      }}
+                      className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none"
+                    >
+                      <option value="openai-compatible">OpenAI-compatible</option>
+                      <option value="anthropic">Anthropic Messages</option>
+                    </select>
+                  </label>
+                  <label className="space-y-1 text-[11px] text-zinc-500">
+                    <span>HTTPS 接続先 URL</span>
+                    <input
+                      value={baseUrl}
+                      onChange={(event) => { setBaseUrl(event.target.value); resetFeedback(); }}
+                      placeholder="https://api.example.com/v1"
+                      aria-label="Provider HTTPS base URL"
+                      className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none"
+                    />
+                  </label>
                 </div>
-              </details>
-              <ModelRouteSetup />
+              )}
             </>
           )}
         </div>
