@@ -1,27 +1,27 @@
 Tobkiri Pack Architecture 再設計・実装計画
 ============================================
 
-文書状態: Normative / Accepted architecture baseline（Phase 0実装済み、semantic migration未完了）
+文書状態: Normative / Accepted architecture baseline（Phase 0実装済み、現行semantic migration証跡はGREEN）
 文書owner: Tobkiri Runtime / Pack Architecture
 対象リポジトリ: harupipipipi/tobkiri
 対象ブランチ: codex/pack-architecture-program-soon
-確認コミット: b04ca0bff0220d83a03625acd5e53afe60bf7d9a
+設計基準コミット: b04ca0bff0220d83a03625acd5e53afe60bf7d9a
 作成日: 2026-08-03
-実装状態更新: 2026-08-10
+実装状態更新: 2026-09-28
 Supersedes: 既存のnamespace/runtime/fallback文書のうち本計画と矛盾する部分
 Must be read with:
   - ADR-014_BOUNDARY_CAPABILITY_GRANTS.txt
   - ADR-015_RUNTIME_SECURITY_LIFECYCLE.txt
   - ADR-016_BASE_SHELL_APPLICATION_MODEL.txt
 
-実装結果（Phase 0）:
+実装結果（現行scan。Phase 0の基準日は2026-08-10）:
 
-  - bundled production inventoryは140 Packである。
+  - bundled production inventoryは141 Packである。
   - 各Packはpack.v4.json、contracts.v4.json、artifact-index.v4.json、
     executables.v4.jsonの4 artifactを持つ。
-  - semantic migrationの現在分類は41 Packがsemantically-reviewed、
-    99 Packがgenerated-draftである。完全移行を示すrelease proofは未整備のため、
-    semantic evidenceはREDであり、Phase 0 CIではreport-onlyとする。
+  - 現行のrelease proofでは141 Packすべてがrelease-verifiedに分類され、
+    complete-v4 semantic gateはGREENである。CIは証跡のfreshnessを強制し、
+    semantic statusを報告する。Launcher/PackVMのplatform別実機動作は別途検証する。
   - defaults Profileは明示Base、shell.tauri.default、Application、Authority
     snapshot、ProfileLock、ResolvedPlan、ActivationRecordだけから構成される。
   - 到達可能なlegacy Registry/installed lookup、implicit fallback、二重authority、

@@ -5,27 +5,27 @@ Inventory baseline: repository commit
 
 This document records the pre-cutover difference between the normative Protocol
 v4/Authority Kernel model and the bundled defaults implementation, together with
-the current Phase 0 result. It is not a compatibility promise.
+the current migration scan result. It is not a compatibility promise.
 
-## Phase 0 result
+## Current migration scan
 
-The artifact and Authority-path foundation is implemented, but semantic Pack
-migration is not complete. The tracked complete-v4 scanner currently inventories
-140 bundled production Packs and requires four canonical v4 artifacts per Pack.
-It classifies 41 Packs as `semantically-reviewed` and 99 as `generated-draft`;
-the semantic migration evidence is therefore `RED`. During Phase 0, CI blocks
-evidence freshness drift while reporting this semantic status without treating
-it as a completed cutover. The scanner reports zero findings for artifact
-contracts, Authority/ResolvedPlan scope, reachable legacy lookup/fallback,
+The tracked complete-v4 scanner inventories 141 bundled production Packs and
+requires four canonical v4 artifacts per Pack. Its current release proof
+classifies all 141 as `release-verified`, and the semantic migration gate is
+`GREEN`. CI blocks evidence freshness drift and reports the semantic status.
+The scanner reports zero findings for artifact contracts,
+Authority/ResolvedPlan scope, reachable legacy lookup/fallback,
 double authority, Launcher safety, and offline projection identity. The exact
-counts and source commit are generated in:
+counts and informational source commit are generated in:
 
 - `generated/architecture/architecture_inventory.json`
 - `scripts/quality/evidence/complete_v4_migration_red_64b2240e.json`
 - `tests/test_complete_v4_migration_gate.py`
 
-The baseline tables below are retained as historical removal evidence. They do
-not describe a live production fallback.
+The evidence filename retains its original RED baseline name, while its contents
+track the current scan. Release-proof status does not establish platform-specific
+Launcher or PackVM end-to-end operation. The baseline tables below are retained
+as historical removal evidence. They do not describe a live production fallback.
 
 ## Normative authority
 

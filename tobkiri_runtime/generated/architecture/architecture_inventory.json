@@ -8169,7 +8169,7 @@
     ],
     "normative_documents": [
       {
-        "digest": "sha256:25232f1516943aaebcca897a482429708a3d68573191fea6913596363a699915",
+        "digest": "sha256:3e85aa944e83fed5163e9b9a305a7dcd2594fe571813b20c67c5113e3b1c0d57",
         "normative": true,
         "path": "tobkiri_runtime/docs/TOBKIRI_PACK_ARCHITECTURE_IMPLEMENTATION_PLAN.txt"
       },
@@ -18602,8 +18602,8 @@
     ]
   },
   "repository": {
-    "commit": "570b991b33d935bb8f22a5c56a81a0ef72cc0d68",
-    "tree_digest": "48fb1fa6ef6bba4c77fb4e56bc2c8694ea203c4539fda7ab9b35850a647f92df"
+    "commit": "6c3f417408466370f965110d73b532395601b282",
+    "tree_digest": "f26ac62e086f6a430e368647f92ec08f993d8658b612edfcdebecb026b5456ce"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",
   "schema": "io.tobkiri.architecture.inventory.v1"
