@@ -19,6 +19,8 @@ mod host_contract_contributions;
 mod kernel_manager;
 #[cfg(all(unix, any(debug_assertions, tobkiri_ci_e2e_artifact)))]
 mod packvm_acceptance;
+#[cfg(any(test, all(unix, any(debug_assertions, tobkiri_ci_e2e_artifact))))]
+mod packvm_acceptance_path;
 mod presentation;
 mod process_utils;
 mod python_env;

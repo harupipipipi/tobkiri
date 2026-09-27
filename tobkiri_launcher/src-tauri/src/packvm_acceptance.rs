@@ -19,6 +19,10 @@ use std::thread;
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::packvm_acceptance_path::{
+    validate_socket_path_for_limit, MACOS_UNIX_SOCKET_PATH_CAPACITY,
+};
+
 const REQUEST_KIND: &str = "tobkiri.packvm.sandbox-acceptance.request.v1";
 const MAX_REQUEST_BYTES: usize = 4096;
 const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
@@ -84,8 +88,11 @@ pub(crate) type AcceptanceHandler =
 /// Start a private adapter socket below the isolated CI/E2E user-data root.
 pub(crate) fn start(user_data_root: &Path, handler: Arc<AcceptanceHandler>) -> Result<PathBuf> {
     let root = user_data_root.join("packvm-acceptance");
-    prepare_private_root(user_data_root, &root)?;
     let socket_path = root.join("adapter.sock");
+    // Preflight before creating files so an overly long CI/E2E root reports
+    // the actual problem instead of a platform-specific bind failure.
+    validate_socket_path_for_limit(&socket_path, MACOS_UNIX_SOCKET_PATH_CAPACITY)?;
+    prepare_private_root(user_data_root, &root)?;
     reclaim_stale_socket(&socket_path)?;
     let listener = UnixListener::bind(&socket_path)
         .context("failed to bind PackVM acceptance adapter socket")?;

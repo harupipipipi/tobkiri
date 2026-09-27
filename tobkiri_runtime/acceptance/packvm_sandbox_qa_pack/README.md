@@ -23,6 +23,11 @@ invokes the fixture through the canonical Broker and returns authenticated
 guest observations. The runner rejects mock, direct-child, Host-pipe, and
 unsigned observations.
 
+The native adapter socket is under the isolated CI/E2E app's
+`user_data/packvm-acceptance/adapter.sock`. On macOS, choose a short, private
+CI/E2E app-data root: the full UTF-8 socket pathname must fit in 103 bytes.
+The Launcher checks this before binding and reports a short-root diagnostic.
+
 Before admission, sign the exact fixture with an acceptance-only Ed25519 key
 held outside this directory. Signature verification proves publisher and byte
 identity but deliberately grants no authority:
