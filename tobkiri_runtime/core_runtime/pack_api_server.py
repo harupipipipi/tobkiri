@@ -1861,9 +1861,13 @@ class PackAPIHandler(
             result.get("state") != "active" or not result.get("activation_id")
         ):
             return
+        if operation_id in {"pack.enable", "pack.disable"}:
+            # These operations commit a new execution identity. Only the
+            # Launcher can publish its matching Host contract. Answer the
+            # durable operation first; the authenticated panel bootstrap
+            # recaptures after Launcher renewal publishes that contract.
+            return
         if refresh is not None and operation_id in {
-            "pack.enable",
-            "pack.disable",
             "approval.revoke",
             "profile.change.activate",
             "runtime.restart",

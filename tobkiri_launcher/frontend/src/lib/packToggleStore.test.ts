@@ -254,6 +254,53 @@ test('disable waits for the typed response, refreshes state, and survives a late
   ].sort());
 });
 
+test('toggle renews the Launcher Host contract before reading the activated Profile', async () => {
+  const events: string[] = [];
+  Object.defineProperty(dom!.window, '__TAURI__', {
+    configurable: true,
+    value: {core: {invoke: async (command: string) => {
+      assert.equal(command, 'reauthorize_panel_session');
+      events.push('Launcher renewal');
+      return 'new-profile-code';
+    }}},
+  });
+  installFetch(async (route) => {
+    events.push(route);
+    if (route === 'POST /api/pack-control/disable') {
+      return new Response(JSON.stringify({
+        success: true,
+        data: {...binding(), pack_id: samplePack.id, enabled: false},
+      }), {headers: {'Content-Type': 'application/json'}});
+    }
+    if (route === '/api/panel/auth/exchange') {
+      return new Response(JSON.stringify({
+        success: true,
+        data: {csrf_token: 'new-csrf', journal_scope: 'new-profile-scope'},
+      }), {headers: {'Content-Type': 'application/json'}});
+    }
+    if (route === 'GET /api/pack-control/catalog') {
+      return new Response(JSON.stringify({
+        success: true,
+        data: {...binding(), packs: [catalogPack(false)], count: 1},
+      }), {headers: {'Content-Type': 'application/json'}});
+    }
+    assert.equal(route, 'GET /api/ui/catalog');
+    return new Response(JSON.stringify({success: true, data: {dynamic_host: dynamicCatalog()}}), {
+      headers: {'Content-Type': 'application/json'},
+    });
+  });
+  const errors: string[] = [];
+  setStore(errors);
+
+  assert.equal(await useAppStore.getState().togglePack(samplePack.id), true, JSON.stringify({events, errors}));
+  assert.deepEqual(events.slice(0, 3), [
+    'POST /api/pack-control/disable',
+    'Launcher renewal',
+    '/api/panel/auth/exchange',
+  ]);
+  assert.ok(events.indexOf('GET /api/pack-control/catalog') > 2);
+});
+
 test('install confirms the exact Pack response and reconciles every affected surface', async () => {
   const availablePack: Pack = {
     ...samplePack,

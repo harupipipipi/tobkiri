@@ -598,6 +598,17 @@ def test_profile_activation_refresh_requires_durable_success_result() -> None:
     assert refreshes == [None]
 
 
+def test_pack_toggle_waits_for_launcher_host_contract_renewal() -> None:
+    handler = object.__new__(PackAPIHandler)
+    refreshes: list[object] = []
+    handler._runtime_refresh = refreshes.append
+
+    handler._refresh_after_operation("pack.enable", {"enabled": True})
+    handler._refresh_after_operation("pack.disable", {"enabled": False})
+
+    assert refreshes == []
+
+
 @pytest.mark.parametrize(
     ("code", "status"),
     [

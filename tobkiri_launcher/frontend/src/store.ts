@@ -32,6 +32,7 @@ import {
 import type {ColorMode, Theme} from './lib/appearance';
 import {AVATAR_OPTIONS, DEFAULT_AVATAR} from './lib/avatar';
 import {refreshMountedRuntimeSurfaces} from './lib/runtimeSurfaceRefresh';
+import {recoverExpiredPanelSession} from './lib/apiTransport';
 import {PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST} from './lib/generatedFrontendContractMap';
 import {formatPackVMRecoveryError} from './lib/packvmLifecycle';
 import {
@@ -1602,6 +1603,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           )),
         }));
       }
+      // A Pack toggle activates a new Profile identity. The Launcher must
+      // publish the matching Host contract before the panel can read the new
+      // runtime capture, even if the old panel cookie has not expired yet.
+      await recoverExpiredPanelSession();
       await invalidatePackMutationSurfaces(get);
       completeMutation(mutationKey, mutation.requestId);
       return true;

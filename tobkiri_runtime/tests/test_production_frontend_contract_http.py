@@ -4998,12 +4998,12 @@ def test_workroom_pack_lifecycle_persists_through_production_http(
 
 
 @pytest.mark.parametrize("refresh_error", [RuntimeError, TypeError])
-def test_pack_enable_keeps_journal_success_when_runtime_refresh_fails(
+def test_pack_enable_defers_capture_until_launcher_contract_renewal(
     production_server,
     monkeypatch: pytest.MonkeyPatch,
     refresh_error: type[Exception],
 ) -> None:
-    """A committed Pack enable is not rewritten by a failed runtime refresh."""
+    """A Pack enable answers before the Launcher publishes its new contract."""
 
     server, session, _authority = production_server
     cookie, csrf, origin = _authenticate(server)
@@ -5085,7 +5085,7 @@ def test_pack_enable_keeps_journal_success_when_runtime_refresh_fails(
     )
     assert status == 200, enabled
     assert enabled["data"]["enabled"] is True
-    assert refresh_attempts == 1
+    assert refresh_attempts == 0
     assert dispatch_calls == 1
 
     journal = server._operation_journal
