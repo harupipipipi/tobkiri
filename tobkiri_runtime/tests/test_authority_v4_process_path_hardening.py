@@ -17,6 +17,7 @@ import pytest
 import core_runtime.process_identity as process_identity
 import core_runtime.secure_sqlite_path as secure_paths
 from core_runtime.authority.v4_store import AuthorityStore, AuthorityStoreError
+from core_runtime.authority.v4_models import authority_digest
 from core_runtime.process_identity import ProcessIdentityEvidence
 
 
@@ -319,6 +320,64 @@ def test_authority_files_reject_hardlinks_without_mutating_victim(
     assert victim.read_bytes() == before
 
 
+def test_record_batch_rechecks_key_identity_without_per_record_path_walk(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = AuthorityStore(tmp_path / "authority" / "v4.sqlite3")
+    payload = {"fixture": "batch"}
+    encrypted = store._encrypt(payload)
+    with store._connection() as connection:
+        for index in range(65):
+            connection.execute(
+                "INSERT INTO authority_records"
+                " (record_type, record_id, record_digest, encrypted_payload, created_at)"
+                " VALUES (?, ?, ?, ?, ?)",
+                ("qa_batch", str(index), authority_digest(payload), encrypted, 0.0)
+            )
+
+    checks = 0
+    original_check = store._assert_crypto_material
+
+    def counted_check() -> None:
+        nonlocal checks
+        checks += 1
+        original_check()
+
+    monkeypatch.setattr(store, "_assert_crypto_material", counted_check)
+    assert store._list_records("qa_batch") == [payload] * 65
+    assert 3 <= checks < 10
+    store.close()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX key replacement race fixture")
+def test_record_batch_rejects_key_replacement_during_decryption(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = AuthorityStore(tmp_path / "authority" / "v4.sqlite3")
+    payload = {"fixture": "batch"}
+    with store._connection() as connection:
+        connection.execute(
+            "INSERT INTO authority_records"
+            " (record_type, record_id, record_digest, encrypted_payload, created_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            ("qa_batch", "one", authority_digest(payload), store._encrypt(payload), 0.0),
+        )
+    original_decrypt = store._decrypt_payload
+
+    def swap_key(ciphertext: bytes, fernet: Any) -> dict[str, Any]:
+        replacement = store.key_path.with_name("replacement.key")
+        replacement.write_bytes(store.key_path.read_bytes())
+        os.replace(replacement, store.key_path)
+        return original_decrypt(ciphertext, fernet)
+
+    monkeypatch.setattr(store, "_decrypt_payload", swap_key)
+    with pytest.raises(AuthorityStoreError, match="key path is unsafe"):
+        store._list_records("qa_batch")
+    store.close()
+
+
 def test_authority_rejects_non_regular_and_symlink_ancestor_paths(
     tmp_path: Path,
 ) -> None:
@@ -330,7 +389,12 @@ def test_authority_rejects_non_regular_and_symlink_ancestor_paths(
     real_parent = tmp_path / "real"
     real_parent.mkdir()
     alias = tmp_path / "alias"
-    alias.symlink_to(real_parent, target_is_directory=True)
+    try:
+        alias.symlink_to(real_parent, target_is_directory=True)
+    except OSError as exc:
+        if os.name == "nt" and getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows symlink creation requires developer mode or privilege")
+        raise
     with pytest.raises(AuthorityStoreError, match="unsafe"):
         AuthorityStore(alias / "authority.sqlite3")
 

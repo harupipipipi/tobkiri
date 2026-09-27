@@ -1311,6 +1311,10 @@ class AuthorityStore:
         self._assert_crypto_material()
         fernet = self._fernet
         assert fernet is not None
+        return self._decrypt_payload(payload, fernet)
+
+    @staticmethod
+    def _decrypt_payload(payload: bytes, fernet: Fernet) -> dict[str, Any]:
         try:
             value = json.loads(fernet.decrypt(payload).decode("utf-8"))
         except (InvalidToken, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -1978,14 +1982,24 @@ class AuthorityStore:
                 ).fetchall()
         except sqlite3.Error as exc:
             raise AuthorityStoreError("authority record listing failed") from exc
+        # The Fernet key is already resident in this Store. Check its pinned
+        # path at both ends of the batch and periodically within large scans;
+        # reopening the same Windows key path for every Grant made ordinary
+        # Broker authorization exceed the panel read deadline.
+        self._assert_crypto_material()
+        fernet = self._fernet
+        assert fernet is not None
         output: list[dict[str, Any]] = []
-        for row in rows:
-            value = self._decrypt(row["encrypted_payload"])
+        for index, row in enumerate(rows):
+            if index and index % 32 == 0:
+                self._assert_crypto_material()
+            value = self._decrypt_payload(row["encrypted_payload"], fernet)
             if not hmac.compare_digest(
                 str(row["record_digest"]), authority_digest(value)
             ):
                 raise AuthorityStoreError("authority record digest mismatch")
             output.append(value)
+        self._assert_crypto_material()
         return output
 
     @property
