@@ -496,15 +496,17 @@ class SavedBridgeCallbacks:
                 requirements = dict(payload["requirements"])
                 if _requires_tool_calling(request):
                     requirements["tool_calling"] = True
+                parameters = dict(arguments.get("parameters") or {})
+                parameters["tool_choice"] = (
+                    "required"
+                    if request["tool_selection"].get("must_use") and not trace
+                    else "auto"
+                )
                 arguments.update(
                     {
                         "tools": selected["tools"],
                         "requirements": requirements,
-                        "parameters": {
-                            "tool_choice": "required"
-                            if request["tool_selection"].get("must_use") and not trace
-                            else "auto"
-                        },
+                        "parameters": parameters,
                     }
                 )
             deepthink_report: dict[str, Any] | None = None

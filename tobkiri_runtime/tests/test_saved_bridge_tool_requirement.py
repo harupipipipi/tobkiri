@@ -323,6 +323,24 @@ def test_auto_tool_selection_resolves_connection_bound_saved_profile(
     assert [message["role"] for message in messages] == ["user", "assistant"]
 
 
+def test_saved_tool_offer_keeps_selected_thinking_level(tmp_path: Path) -> None:
+    _store, outer, calls, callbacks, session = _bridge_setup(
+        tmp_path, {"mode": "auto"}
+    )
+    outer.payload["request"]["thinking_level"] = "high"
+
+    callbacks.preflight(outer)
+    result = _drive_turn(outer, callbacks)
+
+    assert result["status"] == "ok"
+    ai = [payload for target, payload in calls if target == saved.TARGETS[2]]
+    assert ai[0]["parameters"] == {
+        "thinking_level": "high",
+        "tool_choice": "auto",
+    }
+    assert session.provider_requests[0]["parameters"]["thinking_level"] == "high"
+
+
 @pytest.mark.parametrize(
     "selection",
     [
