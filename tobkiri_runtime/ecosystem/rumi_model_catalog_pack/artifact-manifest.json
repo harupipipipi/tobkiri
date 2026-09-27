@@ -8,7 +8,7 @@
     {
       "path": "runtime/catalog.py",
       "role": "runtime",
-      "sha256": "sha256:cecf0c777ea99bd87408428af029cc39a97cc700a8fbe3aeebbe9c7773c1caf5"
+      "sha256": "sha256:58f0f71adb5feea02b7cacc59d75652ee0953074fbe1cd11912eef1eae61588d"
     }
   ],
   "schema_version": "rumi.artifact-manifest.v1"
