@@ -5633,11 +5633,48 @@ fn copy_development_venv_tree(src: &Path, dst: &Path) -> io::Result<()> {
 }
 
 fn write_development_runtime_path(venv_root: &Path) -> io::Result<()> {
-    let unix_site_packages = venv_root.join("lib/python3.13/site-packages");
+    let mut unix_site_packages = Vec::new();
+    let unix_lib = venv_root.join("lib");
+    if unix_lib.is_dir() {
+        for entry in fs::read_dir(&unix_lib)? {
+            let entry = entry?;
+            if !entry.file_name().to_string_lossy().starts_with("python") {
+                continue;
+            }
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            let candidate = entry.path().join("site-packages");
+            if candidate.is_dir() {
+                if fs::symlink_metadata(&candidate)?.file_type().is_symlink() {
+                    return Err(invalid_release(format!(
+                        "development venv site-packages is a symlink: {}",
+                        candidate.display()
+                    )));
+                }
+                unix_site_packages.push(candidate);
+            }
+        }
+    }
+    unix_site_packages.sort();
     let windows_site_packages = venv_root.join("Lib/site-packages");
-    let site_packages = if unix_site_packages.is_dir() {
-        unix_site_packages
+    let site_packages = if unix_site_packages.len() == 1 {
+        unix_site_packages.remove(0)
+    } else if unix_site_packages.len() > 1 {
+        return Err(invalid_release(format!(
+            "development venv has multiple lib/python*/site-packages directories below {}",
+            venv_root.display()
+        )));
     } else if windows_site_packages.is_dir() {
+        if fs::symlink_metadata(&windows_site_packages)?
+            .file_type()
+            .is_symlink()
+        {
+            return Err(invalid_release(format!(
+                "development venv site-packages is a symlink: {}",
+                windows_site_packages.display()
+            )));
+        }
         windows_site_packages
     } else {
         return Err(io::Error::new(
@@ -6019,6 +6056,49 @@ mod tests {
                 .canonicalize()
                 .expect("fixture path should remain canonical")
         );
+    }
+
+    #[test]
+    fn development_runtime_path_discovers_python_314_site_packages() {
+        let tree = TestTree::new("development-python-314");
+        let site_packages = tree.path().join("lib/python3.14/site-packages");
+        fs::create_dir_all(&site_packages).unwrap();
+        let editable = site_packages.join("__editable__.tobkiri_runtime-1.0.pth");
+        fs::write(&editable, "stale editable import\n").unwrap();
+
+        write_development_runtime_path(tree.path()).unwrap();
+
+        assert!(!editable.exists());
+        assert_eq!(
+            fs::read_to_string(site_packages.join("tobkiri_staged_runtime.pth")).unwrap(),
+            "import os,sys; sys.path.insert(0, os.path.dirname(sys.prefix))\n"
+        );
+    }
+
+    #[test]
+    fn development_runtime_path_keeps_windows_site_packages_fallback() {
+        let tree = TestTree::new("development-windows-path");
+        let site_packages = tree.path().join("Lib/site-packages");
+        fs::create_dir_all(&site_packages).unwrap();
+
+        write_development_runtime_path(tree.path()).unwrap();
+
+        assert!(site_packages.join("tobkiri_staged_runtime.pth").is_file());
+    }
+
+    #[test]
+    fn development_runtime_path_rejects_ambiguous_python_versions() {
+        let tree = TestTree::new("development-ambiguous-python");
+        let python_313 = tree.path().join("lib/python3.13/site-packages");
+        let python_314 = tree.path().join("lib/python3.14/site-packages");
+        fs::create_dir_all(&python_313).unwrap();
+        fs::create_dir_all(&python_314).unwrap();
+
+        let error = write_development_runtime_path(tree.path()).unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert!(!python_313.join("tobkiri_staged_runtime.pth").exists());
+        assert!(!python_314.join("tobkiri_staged_runtime.pth").exists());
     }
 
     #[test]

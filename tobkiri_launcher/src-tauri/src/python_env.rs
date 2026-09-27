@@ -346,6 +346,7 @@ where
         return crate::sealed_python::spawn_packaged_role(config, role, role_arguments, configure);
     }
     let mut command = process_utils::isolated_python(config.venv_python());
+    command.env_remove(DEVELOPMENT_PACKVM_BUNDLE_ROOT_ENV);
     if let Some(bundle_root) = development_packvm_bundle_root(config) {
         // Debug .app bundles may carry the same ad-hoc-signed VZ helper used
         // by macOS CI. Pass only the enclosing bundle selected by Tauri;

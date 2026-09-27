@@ -756,6 +756,11 @@ class MacOSVZProvisioner:
         requested_state_dir = state_dir or _default_state_dir()
         self._requested_state_dir = Path(requested_state_dir)
         self._state_dir = self._requested_state_dir.resolve()
+        if (
+            not self._requested_state_dir.is_absolute()
+            or self._requested_state_dir != self._state_dir
+        ):
+            raise ValueError("PackVM VZ state root must be absolute and contain no symlinks")
         self._bundle_root: Path | None
         self._asset_manifest_path: Path | None
         self._bundle_binding_error: str | None = None
@@ -2960,12 +2965,19 @@ def default_packvm_provisioner() -> MacOSVZProvisioner:
     """Return direct VZ on supported macOS and no Lima default elsewhere."""
 
     if os.environ.get("RUMI_ENVIRONMENT") == "development":
+        user_data_root = Path(os.environ.get("RUMI_USER_DATA", "").strip())
+        if not user_data_root.is_absolute():
+            raise ValueError(
+                "development PackVM requires an absolute Launcher user-data root"
+            )
+        development_state = user_data_root / "packvm-vz"
         development_bundle = os.environ.get(
             "TOBKIRI_DEVELOPMENT_PACKVM_BUNDLE_ROOT", ""
         ).strip()
         if development_bundle:
             bundle_root = Path(development_bundle)
             return MacOSVZProvisioner(
+                state_dir=development_state,
                 bundle_root=bundle_root,
                 asset_manifest_path=(
                     bundle_root
@@ -2975,6 +2987,7 @@ def default_packvm_provisioner() -> MacOSVZProvisioner:
                 ),
                 allow_ad_hoc_helper_identity=True,
             )
+        return MacOSVZProvisioner(state_dir=development_state)
     return MacOSVZProvisioner()
 
 

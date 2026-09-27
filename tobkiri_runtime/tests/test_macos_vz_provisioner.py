@@ -2221,6 +2221,8 @@ def test_development_default_accepts_only_the_launcher_selected_app_bundle(
     manifest.write_text("{}\n", encoding="utf-8")
     monkeypatch.setenv("RUMI_ENVIRONMENT", "development")
     monkeypatch.setenv("TOBKIRI_DEVELOPMENT_PACKVM_BUNDLE_ROOT", str(bundle))
+    user_data_root = tmp_path / "launcher-user-data"
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data_root))
 
     lifecycle = PackVMLifecycleV4(
         provisioner=macos_vz_provisioner.default_packvm_provisioner()
@@ -2228,8 +2230,61 @@ def test_development_default_accepts_only_the_launcher_selected_app_bundle(
 
     assert lifecycle._provisioner._bundle_root == bundle.resolve()
     assert lifecycle._provisioner._asset_manifest_path == manifest.resolve()
-    assert lifecycle._provisioner.state_path.parent == isolated_default_vz_state
-    assert (isolated_default_vz_state / "packvm-operations.lock").is_file()
+    development_state = user_data_root / "packvm-vz"
+    assert lifecycle._provisioner.state_path.parent == development_state
+    assert not (isolated_default_vz_state / "packvm-operations.lock").exists()
+
+
+def test_development_default_without_bundle_uses_launcher_user_data(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, isolated_default_vz_state: Path,
+) -> None:
+    user_data_root = tmp_path / "checkout-user-data"
+    monkeypatch.setenv("RUMI_ENVIRONMENT", "development")
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data_root))
+    monkeypatch.delenv("TOBKIRI_DEVELOPMENT_PACKVM_BUNDLE_ROOT", raising=False)
+
+    lifecycle = PackVMLifecycleV4(macos_vz_provisioner.default_packvm_provisioner())
+
+    assert lifecycle._provisioner._bundle_root is None
+    assert lifecycle._provisioner.state_path.parent == user_data_root / "packvm-vz"
+    assert not (isolated_default_vz_state / "packvm-operations.lock").exists()
+
+
+@pytest.mark.parametrize("user_data", [None, "relative-user-data"])
+def test_development_default_requires_isolated_absolute_launcher_user_data(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, user_data: str | None,
+) -> None:
+    monkeypatch.setenv("RUMI_ENVIRONMENT", "development")
+    monkeypatch.setenv(
+        "TOBKIRI_DEVELOPMENT_PACKVM_BUNDLE_ROOT", str(tmp_path / "Developer.app")
+    )
+    if user_data is None:
+        monkeypatch.delenv("RUMI_USER_DATA", raising=False)
+    else:
+        monkeypatch.setenv("RUMI_USER_DATA", user_data)
+
+    with pytest.raises(ValueError, match="absolute Launcher user-data root"):
+        macos_vz_provisioner.default_packvm_provisioner()
+
+
+def test_development_default_rejects_symlinked_user_data_before_journal_access(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    installed_state = tmp_path / "installed-state"
+    installed_state.mkdir()
+    symlinked_user_data = tmp_path / "developer-user-data"
+    try:
+        symlinked_user_data.symlink_to(installed_state, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks are unavailable on this host")
+    monkeypatch.setenv("RUMI_ENVIRONMENT", "development")
+    monkeypatch.setenv("RUMI_USER_DATA", str(symlinked_user_data))
+    monkeypatch.delenv("TOBKIRI_DEVELOPMENT_PACKVM_BUNDLE_ROOT", raising=False)
+
+    with pytest.raises(ValueError, match="contain no symlinks"):
+        PackVMLifecycleV4(macos_vz_provisioner.default_packvm_provisioner())
+
+    assert not (installed_state / "packvm-vz" / "packvm-operations.lock").exists()
 
 
 def test_production_ignores_development_packvm_bundle_override(
@@ -2240,6 +2295,7 @@ def test_production_ignores_development_packvm_bundle_override(
         "TOBKIRI_DEVELOPMENT_PACKVM_BUNDLE_ROOT",
         str(tmp_path / "Untrusted.app"),
     )
+    monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path / "launcher-user-data"))
 
     lifecycle = PackVMLifecycleV4(
         provisioner=macos_vz_provisioner.default_packvm_provisioner()
