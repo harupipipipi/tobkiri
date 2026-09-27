@@ -502,11 +502,17 @@ class ControlReconciliationStore:
                     timeout=30.0,
                     isolation_level=None,
                 )
-                connection.row_factory = sqlite3.Row
-                connection.execute("PRAGMA query_only=ON")
-                connection.execute("PRAGMA trusted_schema=OFF")
-                connection.execute("PRAGMA foreign_keys=ON")
-                yield connection
+                try:
+                    connection.row_factory = sqlite3.Row
+                    connection.execute("PRAGMA query_only=ON")
+                    connection.execute("PRAGMA trusted_schema=OFF")
+                    connection.execute("PRAGMA foreign_keys=ON")
+                    yield connection
+                finally:
+                    # Windows does not permit TemporaryDirectory to delete a
+                    # SQLite snapshot while its connection still owns the file.
+                    connection.close()
+                    connection = None
         except ControlReconciliationError:
             raise
         except OSError as error:

@@ -69,6 +69,19 @@ def test_native_windows_extended_path_operation_readback(tmp_path: Path) -> None
         store.close()
 
 
+def test_native_windows_profile_catalog_read_closes_private_snapshot(tmp_path: Path) -> None:
+    """A session read must release the copied SQLite file before cleanup."""
+
+    path = Path("\\\\?\\" + str(tmp_path / "control" / "reconciliation-v4.sqlite3"))
+    store = ControlReconciliationStore(path)
+    try:
+        store.prepare_for_operation()
+        assert store.profile_candidates(session_id="catalog-session") == ()
+        assert store.profile_candidates(session_id="catalog-session") == ()
+    finally:
+        store.close()
+
+
 class _Dispatch:
     """Small complete captured-session double for real HTTP journal tests."""
 
