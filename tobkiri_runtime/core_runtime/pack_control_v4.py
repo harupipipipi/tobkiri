@@ -1058,14 +1058,30 @@ class CapturedPackControlSession:
     ) -> dict[str, Any]:
         """Return the finite Home projection from the captured Pack state."""
 
-        catalog = self._catalog_payload(active_snapshot=active_snapshot)
-        packs = catalog["packs"]
-        enabled = sum(1 for item in packs if item["enabled"] is True)
+        records = load_pack_catalog()
+        installed = _read_control_state(self._binding.profile_id)
+        _state, active_profile = _active_profile(active_snapshot)
+        active = set(active_profile.get("packs") or [])
+        required = _required_profile_pack_ids(
+            self._binding.profile_id,
+            active_snapshot=active_snapshot,
+        )
+        # Keep the catalog's fail-closed install check, including for inactive
+        # Packs, without building operation and Authority grant projections that
+        # the Home counts never return.
+        for pack_id, entry in installed.items():
+            _require_install_binding(pack_id, records[pack_id], entry, self._binding)
+        enabled = sum(
+            pack_id in required
+            or _approval_status(pack_id, records[pack_id], self._binding)[0]
+            for pack_id in active & records.keys()
+        )
+        total = len(records)
         return {
             "packs": {
-                "total": len(packs),
+                "total": total,
                 "enabled": enabled,
-                "disabled": len(packs) - enabled,
+                "disabled": total - enabled,
             },
             "flows": {"total": 0},
             "kernel": {"status": "running", "uptime": None},

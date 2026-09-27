@@ -114,6 +114,53 @@ def test_catalog_separates_admission_and_active_pack_digests(captured_session) -
     assert _catalog_pack(catalog, TARGET_PACK)["pack_artifact_digest"] is None
 
 
+def test_dashboard_counts_only_active_approved_packs_without_catalog_projection(
+    captured_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session, _state_path, _user_data = captured_session
+    initial = _invoke(session, "catalog.read")
+    initial_enabled = sum(item["enabled"] is True for item in initial["packs"])
+    assert _invoke(session, "dashboard.read")["packs"] == {
+        "total": initial["count"],
+        "enabled": initial_enabled,
+        "disabled": initial["count"] - initial_enabled,
+    }
+
+    _approve_target(session)
+    _invoke(session, "pack.enable", {"pack_id": TARGET_PACK})
+    enabled_catalog = _invoke(session, "catalog.read")
+    expected_enabled = sum(item["enabled"] is True for item in enabled_catalog["packs"])
+    assert expected_enabled == initial_enabled + 1
+
+    def unexpected_projection(*_args, **_kwargs):
+        raise AssertionError("Home counts must not project the full Pack catalog")
+
+    monkeypatch.setattr(pack_control, "_catalog_payload", unexpected_projection)
+    monkeypatch.setattr(pack_control, "_active_grant_bindings", unexpected_projection)
+    assert _invoke(session, "dashboard.read")["packs"] == {
+        "total": enabled_catalog["count"],
+        "enabled": expected_enabled,
+        "disabled": enabled_catalog["count"] - expected_enabled,
+    }
+
+
+def test_dashboard_rejects_stale_inactive_install_binding(
+    captured_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session, _state_path, _user_data = captured_session
+    _invoke(session, "pack.install", {"pack_id": TARGET_PACK})
+    original = pack_control._require_install_binding
+
+    def reject_target(pack_id, record, entry, binding):
+        if pack_id == TARGET_PACK:
+            raise pack_control.PackControlDigestMismatch("stale inactive install")
+        return original(pack_id, record, entry, binding)
+
+    monkeypatch.setattr(pack_control, "_require_install_binding", reject_target)
+    with pytest.raises(pack_control.PackControlDigestMismatch, match="stale inactive install"):
+        _invoke(session, "dashboard.read")
+
+
 def test_reconfirmation_excludes_optional_packs_with_stale_approvals(
     captured_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
