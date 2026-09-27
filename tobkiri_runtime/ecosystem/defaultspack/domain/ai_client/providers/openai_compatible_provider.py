@@ -5,7 +5,6 @@ import hashlib
 import hmac
 import os
 import time
-import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -732,28 +731,50 @@ class OpenAICompatibleProvider(OpenAIProvider):
         for _ in range(self._remote_model_max_pages()):
             request_url = self._remote_model_page_url(url, cursor)
             if not request_url:
-                break
+                raise ValueError("Remote model inventory continuation left the configured origin")
             req = urllib.request.Request(
                 request_url, headers=self._headers(content_type=""), method="GET"
             )
-            try:
-                with urllib.request.urlopen(
-                    req, context=self._ssl_ctx, timeout=timeout_seconds
-                ) as resp:
-                    raw_bytes = resp.read().decode("utf-8")
-            except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
-                break
-            try:
-                payload = json.loads(raw_bytes)
-            except (json.JSONDecodeError, ValueError):
-                break
+            with urllib.request.urlopen(
+                req, context=self._ssl_ctx, timeout=timeout_seconds
+            ) as resp:
+                raw_bytes = resp.read().decode("utf-8")
+            payload = json.loads(raw_bytes)
+            if not self._is_remote_model_inventory_payload(payload):
+                raise ValueError("Remote model inventory response has no model list")
             page_models, next_cursor = self._remote_models_page(payload)
             raw_models.extend(page_models)
-            if not next_cursor or next_cursor in seen_cursors:
-                break
+            if not next_cursor:
+                return self._normalize_remote_models(raw_models)
+            if next_cursor in seen_cursors:
+                raise ValueError("Remote model inventory continuation repeated")
             seen_cursors.add(next_cursor)
             cursor = next_cursor
-        return self._normalize_remote_models(raw_models)
+        raise ValueError("Remote model inventory exceeded the page limit")
+
+    @staticmethod
+    def _is_remote_model_inventory_payload(payload: Any) -> bool:
+        if isinstance(payload, list):
+            return True
+        if not isinstance(payload, dict):
+            return False
+        containers = [payload]
+        containers.extend(
+            payload[name]
+            for name in ("result", "response")
+            if isinstance(payload.get(name), dict)
+        )
+        for container in containers:
+            for name in ("data", "models", "results", "items", "model_list", "modelList"):
+                value = container.get(name)
+                if isinstance(value, list):
+                    return True
+                if isinstance(value, dict) and any(
+                    isinstance(value.get(nested), list)
+                    for nested in ("data", "models", "results", "items")
+                ):
+                    return True
+        return False
 
     def _remote_model_max_pages(self) -> int:
         try:

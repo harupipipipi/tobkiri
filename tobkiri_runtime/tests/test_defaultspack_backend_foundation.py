@@ -459,6 +459,122 @@ def test_openai_compatible_inventory_supports_cursor_pagination_without_model_js
     )
 
 
+def test_openrouter_inventory_caches_all_pages_only_after_complete_discovery(tmp_path, monkeypatch):
+    import json
+
+    from domain.ai_client.providers.openrouter_provider import OpenRouterProvider
+
+    class Response:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps(self.payload).encode("utf-8")
+
+    provider = OpenRouterProvider()
+    provider._api_key = "test-key"
+    monkeypatch.setattr(provider, "_remote_model_cache_path", lambda: tmp_path / "models.json")
+    seen_urls = []
+
+    def fake_urlopen(request, **_kwargs):
+        seen_urls.append(request.full_url)
+        if len(seen_urls) == 1:
+            return Response({"data": [{"id": "vendor/first"}], "next": "page-2"})
+        return Response({"data": [{"id": "vendor/second"}]})
+
+    monkeypatch.setattr(
+        "domain.ai_client.providers.openai_compatible_provider.urllib.request.urlopen",
+        fake_urlopen,
+    )
+
+    models = provider.list_models()
+
+    assert [model["model_id"] for model in models] == ["vendor/first", "vendor/second"]
+    assert seen_urls == [
+        "https://openrouter.ai/api/v1/models",
+        "https://openrouter.ai/api/v1/models?after=page-2",
+    ]
+    assert [model["model_id"] for model in provider._load_remote_model_cache()["models"]] == [
+        "vendor/first",
+        "vendor/second",
+    ]
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ["network", "invalid_json", "error_envelope", "repeated_cursor", "page_limit", "cross_origin"],
+)
+def test_openrouter_partial_inventory_never_replaces_complete_cache(
+    failure, tmp_path, monkeypatch
+):
+    import json
+    from urllib.error import URLError
+
+    from domain.ai_client.providers.openrouter_provider import OpenRouterProvider
+
+    class Response:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            if isinstance(self.payload, bytes):
+                return self.payload
+            return json.dumps(self.payload).encode("utf-8")
+
+    provider = OpenRouterProvider()
+    provider._api_key = "test-key"
+    if failure == "page_limit":
+        provider._remote_model_pagination = {"max_pages": 1}
+    stale_cache_path = tmp_path / "stale.json"
+    monkeypatch.setattr(provider, "_remote_model_cache_path", lambda: stale_cache_path)
+    provider._save_remote_model_cache([{"id": "openrouter/vendor/known", "model_id": "vendor/known"}], now=100)
+    stale_cache_bytes = stale_cache_path.read_bytes()
+    calls = []
+
+    def fake_urlopen(request, **_kwargs):
+        calls.append(request.full_url)
+        if len(calls) % 2 == 1 or failure in {"page_limit", "cross_origin"}:
+            next_page = "https://other.example/models" if failure == "cross_origin" else "page-2"
+            return Response({"data": [{"id": "vendor/partial"}], "next": next_page})
+        if failure == "network":
+            raise URLError("test network failure")
+        if failure == "invalid_json":
+            return Response(b"{invalid json")
+        if failure == "error_envelope":
+            return Response({"error": "test provider failure"})
+        return Response({"data": [{"id": "vendor/second"}], "next": "page-2"})
+
+    monkeypatch.setattr(
+        "domain.ai_client.providers.openai_compatible_provider.urllib.request.urlopen",
+        fake_urlopen,
+    )
+
+    assert [model["model_id"] for model in provider.list_models()] == ["vendor/known"]
+    assert stale_cache_path.read_bytes() == stale_cache_bytes
+
+    fresh_provider = OpenRouterProvider()
+    fresh_provider._api_key = "test-key"
+    fresh_provider._remote_model_pagination = dict(provider._remote_model_pagination)
+    fresh_cache_path = tmp_path / "fresh.json"
+    monkeypatch.setattr(fresh_provider, "_remote_model_cache_path", lambda: fresh_cache_path)
+    calls.clear()
+
+    assert fresh_provider.list_models() == []
+    assert not fresh_cache_path.exists()
+
+
 def test_provider_program_registers_every_required_identity_without_static_models():
     from ecosystem.defaultspack.domain.ai_client.provider_program import provider_program_manifests
 
