@@ -88,10 +88,45 @@ test('a valid receipt keeps retrying stale review state through the restart dead
     wait: async (milliseconds) => { now += milliseconds; },
   });
 
-  assert.equal(reads, 4);
+  assert.equal(reads, 3);
   assert.equal(result.state?.state, 'review_required');
   assert.equal(result.activationCommitted, true);
   assert.match(String(result.error), /restart has not published/);
+});
+
+test('restart verification passes one shared remaining budget to each Host read', async () => {
+  let now = 0;
+  const readBudgets: number[] = [];
+  const result = await recoverDefaultsActivation({
+    fetchAuthoritativeSetup: async (remainingMs) => {
+      readBudgets.push(remainingMs ?? -1);
+      now += 1;
+      return setupState('review_required');
+    },
+    reconcileActiveRuntime: async () => undefined,
+  }, {
+    committedActivation: true,
+    restartDeadlineMs: 5,
+    retryDelayMs: 1,
+    now: () => now,
+    wait: async (milliseconds) => { now += milliseconds; },
+  });
+
+  assert.deepEqual(readBudgets, [5, 3, 1]);
+  assert.equal(result.activationCommitted, true);
+  assert.match(String(result.error), /restart has not published/);
+});
+
+test('active Setup state advances the phase before runtime reconciliation', async () => {
+  const phases: string[] = [];
+  const result = await recoverDefaultsActivation({
+    fetchAuthoritativeSetup: async () => setupState('active'),
+    onActiveStateVerified: () => { phases.push('active'); },
+    reconcileActiveRuntime: async () => { phases.push('runtime'); },
+  }, {committedActivation: true});
+
+  assert.deepEqual(phases, ['active', 'runtime']);
+  assert.equal(result.error, null);
 });
 
 test('an explicit POST refusal remains uncommitted even if a later read is active', async () => {
@@ -234,12 +269,15 @@ test('an uncommitted read-only recovery does not manufacture a committed state o
 
 test('an indeterminate POST stays locked when its recovery GET fails', async () => {
   let submitCount = 0;
+  const phases: string[] = [];
   const result = await activateDefaultsWithRecovery({
     submitActivation: async () => {
       submitCount += 1;
       throw new Error('connection closed before activation response');
     },
+    onVerificationStarted: () => { phases.push('verifying'); },
     fetchAuthoritativeSetup: async () => {
+      assert.deepEqual(phases, ['verifying']);
       throw new Error('setup refresh failed');
     },
     reconcileActiveRuntime: async () => undefined,

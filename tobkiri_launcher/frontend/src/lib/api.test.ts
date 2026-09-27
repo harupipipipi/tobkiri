@@ -1007,6 +1007,22 @@ test('Setup reconnects after Kernel connection resets without replaying activati
   assert.equal(reads, 3);
 });
 
+test('Setup verification read honors the remaining shared recovery budget', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  fetchHandler = async () => new Promise<Response>((resolve) => {
+    setTimeout(() => resolve(new Response(JSON.stringify({success: true, data: {}}))), 50);
+  });
+  const bounded = assert.rejects(
+    fetchDefaultsSetupState({waitForRestart: true, timeoutMs: 20}),
+    /timed out after 20ms/,
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(20);
+  await bounded;
+  context.mock.timers.tick(30);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+});
+
 test('Setup connection recovery remains bounded and does not retry integrity errors', async (context) => {
   context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
   let reads = 0;

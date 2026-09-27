@@ -53,6 +53,7 @@ export function Setup() {
   const [reviewLoading, setReviewLoading] = useState(false);
   const reviewGeneration = useRef(0);
   const [activating, setActivating] = useState(false);
+  const [activationPhase, setActivationPhase] = useState<'idle' | 'submitting' | 'verifying' | 'reconciling'>('idle');
   const [activationCommitted, setActivationCommitted] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [reconciliationError, setReconciliationError] = useState<string | null>(null);
@@ -217,16 +218,19 @@ export function Setup() {
     if (activationInFlightRef.current) return;
     activationInFlightRef.current = true;
     setActivating(true);
+    setActivationPhase('verifying');
     setSetupError(null);
     try {
       const result = await recoverDefaultsActivation({
-        fetchAuthoritativeSetup: () => fetchDefaultsSetupState({waitForRestart: true}),
+        fetchAuthoritativeSetup: (remainingMs) => fetchDefaultsSetupState({waitForRestart: true, timeoutMs: remainingMs}),
         reconcileActiveRuntime,
+        onActiveStateVerified: () => setActivationPhase('reconciling'),
       }, {committedActivation: activationCommitted});
       await applyRecoveryResult(result);
     } finally {
       activationInFlightRef.current = false;
       setActivating(false);
+      setActivationPhase('idle');
     }
   }, [activationCommitted, applyRecoveryResult, reconcileActiveRuntime]);
 
@@ -235,20 +239,26 @@ export function Setup() {
     if (activationInFlightRef.current) return;
     activationInFlightRef.current = true;
     setActivating(true);
+    setActivationPhase('submitting');
     setSetupError(null);
     try {
       const result = await activateDefaultsWithRecovery({
         submitActivation: () => activateDefaultsProfile(
           setup.recommended_default_profile.confirmation, {includeSourceAdditions},
         ),
-        onActivationCommitted: () => setActivationCommitted(true),
-        fetchAuthoritativeSetup: () => fetchDefaultsSetupState({waitForRestart: true}),
+        onActivationCommitted: () => {
+          setActivationCommitted(true);
+        },
+        onVerificationStarted: () => setActivationPhase('verifying'),
+        fetchAuthoritativeSetup: (remainingMs) => fetchDefaultsSetupState({waitForRestart: true, timeoutMs: remainingMs}),
         reconcileActiveRuntime,
+        onActiveStateVerified: () => setActivationPhase('reconciling'),
       });
       await applyRecoveryResult(result);
     } finally {
       activationInFlightRef.current = false;
       setActivating(false);
+      setActivationPhase('idle');
     }
   };
 
@@ -329,6 +339,13 @@ export function Setup() {
 
   return <div className="min-h-screen bg-bg-main px-6 py-10"><div className="mx-auto max-w-3xl">
     <Header />
+    {activating && <p role="status" className="mb-4 rounded-lg border border-border bg-bg-card p-4 text-sm text-text-muted">
+      {activationPhase === 'reconciling'
+        ? 'Activated Profile verified. Checking runtime health and Pack surfaces…'
+        : activationPhase === 'verifying'
+          ? 'Checking the Host-owned Setup state. This can take up to five minutes after a cold restart…'
+          : 'Submitting the reviewed Defaults Profile…'}
+    </p>}
     {profileReconfirmationRequired && !activationCommitted && <label className="mb-6 flex items-start gap-3 rounded-xl border border-border p-4 text-sm text-text-main">
       <input type="checkbox" checked={includeSourceAdditions} disabled={activating || reviewLoading}
         onChange={(event) => void changeSourceAdditions(event.target.checked)} />

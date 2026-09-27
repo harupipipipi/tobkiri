@@ -367,13 +367,13 @@ export function parseDefaultsSetupState(value: unknown): DefaultsSetupState {
 }
 
 export async function fetchDefaultsSetupState(
-  options: {waitForRestart?: boolean; includeSourceAdditions?: boolean} = {},
+  options: {waitForRestart?: boolean; includeSourceAdditions?: boolean; timeoutMs?: number} = {},
 ): Promise<DefaultsSetupState> {
   // Restart may close the connection before a response arrives. Retry only
   // transport failures of this read; integrity/auth errors and POSTs are final.
   // A committed Profile can require a full cold Host capture on Windows.
   // Keep this read bounded without racing a still-running activation.
-  const deadline = Date.now() + 300_000;
+  const deadline = Date.now() + (options.timeoutMs ?? 300_000);
   const needsExtendedRead = options.waitForRestart || options.includeSourceAdditions;
   while (true) {
     try {

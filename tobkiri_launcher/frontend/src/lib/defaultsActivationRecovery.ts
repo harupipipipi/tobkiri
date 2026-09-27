@@ -12,8 +12,10 @@ export type DefaultsActivationRecoveryResult = {
 };
 
 export type DefaultsActivationRecoveryDependencies = {
-  readonly fetchAuthoritativeSetup: () => Promise<DefaultsSetupState>;
+  /** The read must finish within the remaining restart-verification budget. */
+  readonly fetchAuthoritativeSetup: (remainingMs?: number) => Promise<DefaultsSetupState>;
   readonly reconcileActiveRuntime: () => Promise<void>;
+  readonly onActiveStateVerified?: () => void;
 };
 
 type DefaultsActivationRecoveryOptions = {
@@ -69,12 +71,21 @@ export async function recoverDefaultsActivation(
   const wait = options.wait ?? waitForRestart;
   const retryDelayMs = options.retryDelayMs ?? ACTIVATION_RESTART_RETRY_DELAY_MS;
   const deadline = now() + (options.restartDeadlineMs ?? ACTIVATION_RESTART_DEADLINE_MS);
+  let attemptedRead = false;
+  let lastState: DefaultsSetupState | null = null;
 
   while (true) {
+    const remaining = deadline - now();
+    if (attemptedRead && committedActivation && remaining <= 0) {
+      return {state: lastState, activationCommitted: true, error: restartVerificationPendingError()};
+    }
     try {
-      const state = await dependencies.fetchAuthoritativeSetup();
+      attemptedRead = true;
+      const state = await dependencies.fetchAuthoritativeSetup(Math.max(1, remaining));
+      lastState = state;
       if (state.state === 'active') {
         try {
+          dependencies.onActiveStateVerified?.();
           await dependencies.reconcileActiveRuntime();
           return {state, activationCommitted: true, error: null};
         } catch (error) {
@@ -87,11 +98,11 @@ export async function recoverDefaultsActivation(
       if (state.state !== 'review_required') {
         return {state, activationCommitted: true, error: unexpectedRestartStateError(state)};
       }
-      const remaining = deadline - now();
-      if (remaining <= 0) {
+      const remainingAfterRead = deadline - now();
+      if (remainingAfterRead <= 0) {
         return {state, activationCommitted: true, error: restartVerificationPendingError()};
       }
-      await wait(Math.min(retryDelayMs, remaining));
+      await wait(Math.min(retryDelayMs, remainingAfterRead));
     } catch (error) {
       // A read-only recovery that has not followed an activation submission
       // must not manufacture a committed state from its own GET failure.
@@ -129,16 +140,20 @@ export async function activateDefaultsWithRecovery(
     readonly submitActivation: () => Promise<unknown>;
     /** Surface the trusted receipt before cold-restart verification begins. */
     readonly onActivationCommitted?: () => void;
+    /** A read-only check also follows an indeterminate submission response. */
+    readonly onVerificationStarted?: () => void;
   },
 ): Promise<DefaultsActivationRecoveryResult> {
   try {
     await dependencies.submitActivation();
     dependencies.onActivationCommitted?.();
+    dependencies.onVerificationStarted?.();
     return recoverDefaultsActivation(dependencies, {committedActivation: true});
   } catch (error) {
     if (error instanceof ApiContractError) {
       if (isCommittedActivationHandoff(error)) {
         dependencies.onActivationCommitted?.();
+        dependencies.onVerificationStarted?.();
         return recoverDefaultsActivation(dependencies, {committedActivation: true});
       }
       return recoverExplicitActivationFailure(dependencies, error);
@@ -148,6 +163,7 @@ export async function activateDefaultsWithRecovery(
     // An indeterminate POST result may have crossed the durable boundary.
     // Keep that confirmation locked even if the immediate authoritative GET
     // also fails; a later recovery performs reads only.
+    dependencies.onVerificationStarted?.();
     const recovered = await recoverDefaultsActivation(dependencies, {
       committedActivation: true,
     });
