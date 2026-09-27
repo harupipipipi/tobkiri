@@ -114,6 +114,7 @@ class HTTPRuntimeErrorCode(str, Enum):
     OPERATION_NOT_FOUND = "OPERATION_NOT_FOUND"
     UNAPPROVED = "UNAPPROVED"
     TIMEOUT = "TIMEOUT"
+    UNSUPPORTED_PLATFORM = "UNSUPPORTED_PLATFORM"
     INVALID_REQUEST = "INVALID_REQUEST"
     API_FAILURE = "API_FAILURE"
 
@@ -128,6 +129,9 @@ _PUBLIC_ERROR_MESSAGES: Mapping[str, str] = {
     ),
     HTTPRuntimeErrorCode.UNAPPROVED.value: "Host approval is required",
     HTTPRuntimeErrorCode.TIMEOUT.value: "The runtime operation timed out",
+    HTTPRuntimeErrorCode.UNSUPPORTED_PLATFORM.value: (
+        "PackVM provisioning is available only on macOS on Apple Silicon in this build."
+    ),
     HTTPRuntimeErrorCode.API_FAILURE.value: "The runtime operation is unavailable",
 }
 
@@ -139,6 +143,7 @@ _PUBLIC_ERROR_STATUS: Mapping[str, int] = {
     HTTPRuntimeErrorCode.OPERATION_NOT_FOUND.value: 404,
     HTTPRuntimeErrorCode.UNAPPROVED.value: 403,
     HTTPRuntimeErrorCode.TIMEOUT.value: 504,
+    HTTPRuntimeErrorCode.UNSUPPORTED_PLATFORM.value: 422,
     HTTPRuntimeErrorCode.API_FAILURE.value: 503,
 }
 

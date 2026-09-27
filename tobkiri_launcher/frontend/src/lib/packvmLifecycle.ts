@@ -38,6 +38,7 @@ export const PACKVM_RECOVERY_CODES = [
   'DIGEST_MISMATCH',
   'UNAPPROVED',
   'TIMEOUT',
+  'UNSUPPORTED_PLATFORM',
   'API_FAILURE',
 ] as const;
 
@@ -49,6 +50,7 @@ const PACKVM_RECOVERY_MESSAGES: Record<PackVMRecoveryCode, string> = {
   DIGEST_MISMATCH: 'Integrity verification failed: the Profile, Pack v4 lock, and presentation catalog do not agree.',
   UNAPPROVED: 'Host approval is required; no PackVM operation was replayed.',
   TIMEOUT: 'PackVM reconciliation timed out; no PackVM operation was replayed.',
+  UNSUPPORTED_PLATFORM: 'This build can provision PackVM only on macOS on Apple Silicon. Use a supported macOS host.',
   API_FAILURE: 'PackVM reconciliation could not be verified; retry only after the Host is healthy.',
 };
 
@@ -67,6 +69,9 @@ function recoveryCodeFromString(value: string): PackVMRecoveryCode | null {
   }
   if (candidate === 'UNAPPROVED' || candidate.endsWith('UNAPPROVED')) return 'UNAPPROVED';
   if (candidate === 'TIMEOUT' || candidate.endsWith('TIMEOUT')) return 'TIMEOUT';
+  if (candidate === 'UNSUPPORTED_PLATFORM' || candidate.endsWith('UNSUPPORTED_PLATFORM')) {
+    return 'UNSUPPORTED_PLATFORM';
+  }
   if (candidate === 'API_FAILURE' || candidate.endsWith('API_FAILURE')) return 'API_FAILURE';
   return null;
 }
@@ -109,6 +114,9 @@ export function classifyPackVMRecoveryCode(error: unknown): PackVMRecoveryCode {
   }
   if (text.includes('timeout') || text.includes('timed out') || text.includes('aborted')) {
     return 'TIMEOUT';
+  }
+  if (text.includes('this build can provision packvm only on macos on apple silicon')) {
+    return 'UNSUPPORTED_PLATFORM';
   }
   return 'API_FAILURE';
 }

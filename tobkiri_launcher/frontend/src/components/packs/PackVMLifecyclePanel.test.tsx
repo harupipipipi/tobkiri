@@ -20,7 +20,7 @@ const operationId = '11111111-1111-4111-8111-111111111111';
 const notReadyDoctor: ApiPackVMDoctor = {
   ready: false,
   backend_id: 'tobkiri.python-pack-v4',
-  platform: 'macos',
+  platform: 'macos-arm64',
   instance: 'tobkiri-packvm-v4',
   reason: 'PackVM has not completed explicit provisioning.',
   attestation_digest: null,
@@ -29,7 +29,7 @@ const notReadyDoctor: ApiPackVMDoctor = {
 const healthyDoctor: ApiPackVMDoctor = {
   ready: true,
   backend_id: 'tobkiri.python-pack-v4',
-  platform: 'macos',
+  platform: 'macos-arm64',
   instance: 'tobkiri-packvm-v4',
   reason: null,
   attestation_digest: digest('f'),
@@ -250,6 +250,24 @@ test('PackVM GUI completes prepare, consent, provision, doctor, and hides host p
   });
   assert.equal(bodies[2].consent_id, consent.consent_id);
   assert.match(String(bodies[2].operation_id), /^[0-9a-f-]{36}$/i);
+});
+
+test('PackVM GUI explains the unsupported Windows host without offering VZ actions', {concurrency: false}, async () => {
+  configureStore({
+    ...notReadyDoctor,
+    platform: 'windows-amd64',
+    reason: 'This build can provision PackVM only on macOS on Apple Silicon. Use a supported macOS host.',
+  });
+  const {routes} = installFetch(async (route) => {
+    throw new Error(`unexpected route ${route}`);
+  });
+  assert.ok(surface);
+  await renderPanel(surface.root);
+  assert.equal(surface.container.textContent?.includes('Prepare plan'), false);
+  assert.match(surface.container.textContent ?? '', /UNSUPPORTED_PLATFORM:.*macOS on Apple Silicon/);
+  assert.equal(surface.container.textContent?.includes('Stop PackVM'), false);
+  assert.equal(surface.container.textContent?.includes('Clean up PackVM'), false);
+  assert.deepEqual(routes, []);
 });
 
 for (const validAck of [true, false]) {

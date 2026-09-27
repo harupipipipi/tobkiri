@@ -411,8 +411,10 @@ export function PackVMLifecyclePanel() {
     : null;
   const cleanupConfirmation = doctor ? cleanupConfirmationForInstance(doctor.instance) : '';
   const hasActiveOperation = Boolean(operation && operationIsPolling(operation.state));
+  const hostSupportsPackVM = doctor?.platform === 'macos-arm64';
   const canPrepareNewPlan = Boolean(
-    !doctor?.ready
+    hostSupportsPackVM
+    && !doctor?.ready
     && !hasActiveOperation
     && (
       !operation
@@ -421,7 +423,7 @@ export function PackVMLifecyclePanel() {
       || operation.state === 'succeeded'
     ),
   );
-  const canPrepare = !doctor?.ready && !hasActiveOperation && !pendingAction;
+  const canPrepare = hostSupportsPackVM && !doctor?.ready && !hasActiveOperation && !pendingAction;
   const planIsAvailable = plan?.runtime_path_status === 'ready'
     && plan.launcher_reason === null
     && plan.image_source !== 'unavailable';
@@ -735,7 +737,7 @@ export function PackVMLifecyclePanel() {
             </div>
           ) : null}
 
-          {doctor ? (
+          {doctor && hostSupportsPackVM ? (
             <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
               <Button
                 variant="outline"
@@ -757,7 +759,7 @@ export function PackVMLifecyclePanel() {
             </div>
           ) : null}
 
-          {cleanupRequested && doctor ? (
+          {cleanupRequested && doctor && hostSupportsPackVM ? (
             <div className="rounded-lg border border-red-300 bg-red-50 p-4 dark:border-red-900/40 dark:bg-red-950/20" role="group" aria-labelledby="packvm-cleanup-title">
               <p id="packvm-cleanup-title" className="text-sm font-medium text-red-800 dark:text-red-200">
                 Confirm PackVM cleanup

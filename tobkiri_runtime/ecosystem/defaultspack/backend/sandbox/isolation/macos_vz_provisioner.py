@@ -89,6 +89,10 @@ VZ_BUNDLE_MANIFEST_SCHEMA = "io.tobkiri.packvm-vz-bundle-manifest.v1"
 VZ_STATE_VERSION = 1
 VZ_INSTANCE = "tobkiri-packvm-v4"
 VZ_PLATFORM = "macos-arm64"
+UNSUPPORTED_PACKVM_HOST_REASON = (
+    "This build can provision PackVM only on macOS on Apple Silicon. "
+    "Use a supported macOS host."
+)
 VZ_RAW_EFI_IMAGE_DECLARED_BYTES = 3 * 1024 * 1024 * 1024
 # ``clonefile`` creates a same-sized raw COW image and no Direct VZ path
 # resizes it. Reserve its exact, pinned raw size rather than an invented
@@ -151,6 +155,15 @@ class PackVMGateBusyError(ValueError):
     bounded mutation and releases the claim — so callers must treat this
     as retryable rather than an integrity failure.
     """
+
+
+class PackVMUnsupportedPlatformError(RuntimeError):
+    """This Host has no authenticated PackVM provisioning substrate in this build."""
+
+    code = "UNSUPPORTED_PLATFORM"
+
+    def __init__(self) -> None:
+        super().__init__(UNSUPPORTED_PACKVM_HOST_REASON)
 
 
 class MacOSVZTransportFactory(Protocol):
@@ -813,6 +826,14 @@ class MacOSVZProvisioner:
         self._claimed_transport_roots: set[str] = set()
         self._lock = threading.RLock()
 
+    def _require_supported_host(self) -> None:
+        if self._platform_system != "darwin" or self._machine != "arm64":
+            raise PackVMUnsupportedPlatformError()
+
+    def _host_platform_id(self) -> str:
+        system = "macos" if self._platform_system == "darwin" else self._platform_system
+        return f"{system}-{self._machine}"
+
     @property
     def state_path(self) -> Path:
         """Return the sole authenticated state record for this provisioner."""
@@ -946,6 +967,7 @@ class MacOSVZProvisioner:
     ) -> Iterator[None]:
         """Serialize a mutation and retain an exact owner claim durably."""
 
+        self._require_supported_host()
         self._ensure_state_root()
         claim = {
             "version": 1,
@@ -1095,6 +1117,7 @@ class MacOSVZProvisioner:
     def prepare(self) -> PackVMProvisioningPlan:
         """Display exact VZ image and helper facts before any mutation occurs."""
 
+        self._require_supported_host()
         with self._lock:
             manifest, issue = self._load_manifest_for_plan()
             nonce = secrets.token_hex(16)
@@ -1251,6 +1274,14 @@ class MacOSVZProvisioner:
     def doctor(self) -> PackVMDoctor:
         """Return ready only for a complete, authenticated direct VZ setup."""
 
+        if self._platform_system != "darwin" or self._machine != "arm64":
+            return PackVMDoctor(
+                False,
+                PACKVM_BACKEND_ID,
+                self._host_platform_id(),
+                VZ_INSTANCE,
+                reason=UNSUPPORTED_PACKVM_HOST_REASON,
+            )
         try:
             state = self._load_state()
             manifest = self._require_manifest()

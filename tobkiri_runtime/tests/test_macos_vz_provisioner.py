@@ -5,7 +5,6 @@ from __future__ import annotations
 import ast
 import hashlib
 import hmac
-import importlib.util
 import io
 import json
 import os
@@ -16,7 +15,6 @@ from contextlib import contextmanager
 from pathlib import Path
 import shutil
 import threading
-import sys
 import textwrap
 import time
 from types import SimpleNamespace
@@ -1823,6 +1821,39 @@ def test_doctor_reports_bounded_reason_before_provisioning(tmp_path: Path) -> No
     assert str(tmp_path) not in str(doctor.reason)
 
 
+def test_windows_packvm_reports_unsupported_before_vz_files_are_created(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Windows Host must never enter the macOS VZ lock or advertise VZ readiness."""
+
+    from core_runtime.pack_api_server import _exception_error_code, _public_error_result
+
+    state_dir = tmp_path / "packvm-vz"
+    provisioner = MacOSVZProvisioner(
+        state_dir=state_dir,
+        platform_system="Windows",
+        machine="AMD64",
+    )
+    lifecycle = PackVMLifecycleV4(provisioner)
+
+    doctor = lifecycle.doctor()
+    assert doctor["ready"] is False
+    assert doctor["platform"] == "windows-amd64"
+    assert doctor["attestation_digest"] is None
+    assert doctor["reason"] == macos_vz_provisioner.UNSUPPORTED_PACKVM_HOST_REASON
+
+    def unexpected_private_file(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("Windows must not open a VZ private file")
+
+    monkeypatch.setattr(macos_vz_provisioner, "_open_private_file", unexpected_private_file)
+    with pytest.raises(macos_vz_provisioner.PackVMUnsupportedPlatformError) as error:
+        lifecycle.prepare(session_id="windows-session")
+    assert _exception_error_code(error.value) == "UNSUPPORTED_PLATFORM"
+    assert _public_error_result(_exception_error_code(error.value))["retryable"] is False
+    assert not state_dir.exists()
+
+
 def test_seed_and_template_tampering_are_rejected_separately(
     provisioner_fixture: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
 ) -> None:
@@ -2129,13 +2160,21 @@ def test_lifecycle_ignores_ambient_limactl_and_reports_direct_vz_failure(
 
     assert shutil.which("limactl") == str(limactl)
     assert isinstance(lifecycle._provisioner, MacOSVZProvisioner)
-    plan = lifecycle.prepare()
-    assert plan["limactl"] is None
-    assert plan["launcher_reason"] == expected_reason
+    if system == "Darwin":
+        plan = lifecycle.prepare()
+        assert plan["limactl"] is None
+        assert plan["launcher_reason"] == expected_reason
+    else:
+        with pytest.raises(macos_vz_provisioner.PackVMUnsupportedPlatformError):
+            lifecycle.prepare()
     readiness = lifecycle.readiness_snapshot()
     assert readiness["ready"] is False
-    assert readiness["platform"] == "macos-arm64"
-    assert "PackVM VZ" in str(readiness["reason"])
+    assert readiness["platform"] == ("macos-arm64" if system == "Darwin" else "linux-x86_64")
+    assert readiness["reason"] == (
+        "PackVM VZ has not completed authenticated provisioning"
+        if system == "Darwin"
+        else macos_vz_provisioner.UNSUPPORTED_PACKVM_HOST_REASON
+    )
     assert _authenticated_packvm_backend(lifecycle) is None
 
 
