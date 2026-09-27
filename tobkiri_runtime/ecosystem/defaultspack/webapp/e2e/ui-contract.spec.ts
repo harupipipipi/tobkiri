@@ -1562,6 +1562,34 @@ test("approval window reports an authoritative stale request without an ID misma
   expect(decisions).toEqual([]);
 });
 
+test("approval window reports expiry discovered by its decision preflight", async ({ page }) => {
+  const decisions: string[] = [];
+  const requestId = "apr-renderer-expired-during-decision";
+  let expired = false;
+  await installDefaultspackApiMocks(page, {
+    interactiveApproval: {
+      request_id: requestId,
+      request_snapshot_digest: "8".repeat(64),
+      state: "pending",
+      expires_at: Math.ceil(Date.now() / 1_000) + 300,
+      typed_confirmation_required: false,
+      typed_confirmation_digest: null,
+      redacted_metadata: { action: "Expiring operation" },
+    },
+    onInteractiveApprovalRead: () => expired ? { state: "expired" } : {},
+    onInteractiveApprovalDecision: (decision) => decisions.push(decision),
+  });
+
+  await page.goto(`/approval?request_id=${requestId}`);
+  await expect(page.getByRole("button", { name: "承認", exact: true })).toBeEnabled();
+  expired = true;
+  await page.getByRole("button", { name: "承認", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("このリクエストは期限切れです");
+  await expect(page.getByRole("alert")).not.toContainText("一致しません");
+  await expect(page.getByRole("button", { name: "承認", exact: true })).toHaveCount(0);
+  expect(decisions).toEqual([]);
+});
+
 test("manual runtime mode control is hidden by default and available after explicit opt-in", async ({ page }) => {
   await openDefaultspack(page, "/chat");
   await expect(page.getByRole("status", { name: "現在の実行オプション" })).toHaveCount(0);
