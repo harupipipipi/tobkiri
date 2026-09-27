@@ -1020,13 +1020,31 @@ def test_catalog_artifact_mismatch_fails_closed(active_runtime) -> None:
 
 
 def test_read_timeout_is_a_typed_fail_closed_error(active_runtime) -> None:
-    ticks = iter((0.0, 6.0))
+    ticks = iter((0.0, 16.0))
     service = _service(active_runtime, clock=lambda: next(ticks))
 
     with pytest.raises(RuntimeSurfaceError) as error:
         service.read_profile()
     assert error.value.code is RuntimeSurfaceErrorCode.TIMEOUT
     assert error.value.as_dict()["write_set"] == []
+
+
+def test_default_read_deadline_covers_slow_authority_projection() -> None:
+    calls = 0
+
+    def clock() -> float:
+        nonlocal calls
+        calls += 1
+        return 0.0 if calls == 1 else 6.0
+
+    service = RuntimeSurfaceService(clock=clock)
+    try:
+        assert service._run_read(
+            "read timed out",
+            lambda deadline: (deadline.checkpoint(), "ready")[1],
+        ) == "ready"
+    finally:
+        service.close()
 
 
 def test_blocked_loader_times_out_and_late_snapshot_is_not_adopted(active_runtime) -> None:

@@ -365,6 +365,10 @@ export interface RuntimeSurfaceTransport {
   }): Promise<T>;
 }
 
+// Canonical reads recapture the active Profile and its approval authority on
+// the Host. That verification can exceed the generic foreground GET deadline.
+export const RUNTIME_SURFACE_READ_TIMEOUT_MS = 30_000;
+
 const canonicalTransport: RuntimeSurfaceTransport = {
   read: <T>(target: RuntimeSurfaceTarget, input: {
     expected_profile_revision?: string;
@@ -372,7 +376,9 @@ const canonicalTransport: RuntimeSurfaceTransport = {
   }) => (
     assertVerifiedRuntimeTarget(target),
     assertTargetPayload(target, input),
-    fetchFrontendContractOperation<T>(target.method, target.logical_target, input)
+    fetchFrontendContractOperation<T>(target.method, target.logical_target, input, {
+      timeoutMs: RUNTIME_SURFACE_READ_TIMEOUT_MS,
+    })
   ),
 };
 

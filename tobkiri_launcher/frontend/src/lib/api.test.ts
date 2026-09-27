@@ -32,9 +32,11 @@ import {
   updateNamedProfile,
 } from './api.ts';
 import {
+  defaultRuntimeSurfaceClient,
   extractExactOperationDescriptors,
   invokeRuntimeOperation,
   RUNTIME_SURFACE_API_VERSION,
+  RuntimeSurfaceError,
 } from './runtimeSurface.ts';
 import {GENERATED_FRONTEND_CONTRACT_MAP} from './generatedFrontendContractMap.ts';
 import {activateDefaultsProfile, fetchDefaultsSetupState} from './defaultsSetup.ts';
@@ -599,6 +601,30 @@ test('named Profile list allows a verified active Profile read beyond ten second
   await new Promise<void>((resolve) => setImmediate(resolve));
   context.mock.timers.tick(12_000);
   assert.equal((await profiles).generation, 1);
+});
+
+test('canonical Profile surface reads allow Host authority capture beyond ten seconds', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  fetchHandler = async (_input, init) => new Promise<Response>((resolve, reject) => {
+    const timer = setTimeout(() => resolve(new Response(JSON.stringify({
+      success: true,
+      data: {},
+    }))), 12_000);
+    init?.signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(init.signal?.reason ?? new Error('request aborted'));
+    }, {once: true});
+  });
+
+  // The deliberately malformed envelope must reach validation after 12s;
+  // a 10s client deadline would reject it as a transport timeout instead.
+  const read = assert.rejects(
+    defaultRuntimeSurfaceClient.read('profile'),
+    (error) => error instanceof RuntimeSurfaceError && error.code === 'INVALID',
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(12_000);
+  await read;
 });
 
 test('unrelated foreground contract GETs keep their original bounded deadline', async (context) => {

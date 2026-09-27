@@ -876,7 +876,7 @@ class RuntimeSurfaceService:
         packvm_readiness_reader: PackVMReadinessReader | None = None,
         capability_binding_reader: CapabilityBindingReader | None = None,
         frontend_contract_bindings: tuple[object, ...] | None = None,
-        read_timeout_seconds: float = 5.0,
+        read_timeout_seconds: float = 15.0,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if read_timeout_seconds <= 0:
