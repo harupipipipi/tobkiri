@@ -76,6 +76,23 @@ def _active_runtime_inventory_providers() -> set[str]:
     return active
 
 
+def _selected_model_catalog_approved() -> bool:
+    """Require the selected, verified catalog owner before exposing OpenRouter."""
+    try:
+        from core_runtime.approval_manager import get_approval_manager
+        from core_runtime.resolved_profile_scope import effective_pack_ids
+
+        selected_pack_ids = set(effective_pack_ids())
+        if "rumi_model_catalog_pack" not in selected_pack_ids:
+            return False
+        approved, _reason = get_approval_manager().is_pack_approved_and_verified(
+            "rumi_model_catalog_pack"
+        )
+        return bool(approved)
+    except Exception:
+        return False
+
+
 def _runtime_client():
     """Return the live provider client without coupling module import to startup."""
     from ecosystem.defaultspack.domain.ai_client.client import AIClient
@@ -246,6 +263,19 @@ def _merge_runtime_inventory(
         finally:
             active_providers.discard(normalized_provider)
     runtime_models = [dict(model) for model in runtime_models if isinstance(model, dict)]
+    # Runtime discovery can outlive the selected catalog owner's approval or
+    # contract.  Do not let it restore OpenRouter rows rejected by that owner.
+    if any(
+        str(model.get("provider_id") or model.get("provider") or "").strip()
+        == "openrouter"
+        for model in runtime_models
+    ) and not _selected_model_catalog_approved():
+        runtime_models = [
+            model
+            for model in runtime_models
+            if str(model.get("provider_id") or model.get("provider") or "").strip()
+            != "openrouter"
+        ]
 
     providers_with_live_inventory = {
         str(model.get("provider_id") or model.get("provider") or "").strip()
@@ -335,12 +365,7 @@ def _merge_selected_openrouter_inventory(
     ]
     safe_fallback = [] if normalized_provider == "openrouter" else other_models
     try:
-        from core_runtime.approval_manager import get_approval_manager
-
-        approved, _reason = get_approval_manager().is_pack_approved_and_verified(
-            "rumi_model_catalog_pack"
-        )
-        if not approved:
+        if not _selected_model_catalog_approved():
             return safe_fallback
 
         result = _invoke(

@@ -181,6 +181,19 @@ def test_runtime_catalog_keeps_live_openrouter_inventory_authoritative(monkeypat
         ],
     )
     monkeypatch.setattr(provider_catalog, "_runtime_client", lambda: Client())
+    monkeypatch.setattr(
+        "core_runtime.resolved_profile_scope.effective_pack_ids",
+        lambda: frozenset({"rumi_model_catalog_pack"}),
+    )
+    monkeypatch.setattr(
+        "core_runtime.approval_manager.get_approval_manager",
+        lambda: type(
+            "ApprovedCatalog",
+            (),
+            {"is_pack_approved_and_verified": lambda self, pack_id: (True, "test")},
+        )(),
+    )
+    provider_catalog._clear_runtime_inventory_cache()
 
     models = provider_catalog.list_model_catalog("openrouter")
 
@@ -188,6 +201,100 @@ def test_runtime_catalog_keeps_live_openrouter_inventory_authoritative(monkeypat
         "openrouter/acme/atlas-reasoner"
     ]
     assert [model["model_id"] for model in models] == ["acme/atlas-reasoner"]
+
+
+@pytest.mark.parametrize("provider", ["", "openrouter"])
+@pytest.mark.parametrize(
+    "inventory_source", ["openrouter_models_api", "last_known_good_inventory"]
+)
+@pytest.mark.parametrize(
+    "owner_state",
+    [
+        "unapproved",
+        "approval_unavailable",
+        "not_selected",
+        "no_selection",
+        "approved_unavailable",
+    ],
+)
+def test_runtime_inventory_respects_selected_catalog_owner(
+    monkeypatch, provider: str, inventory_source: str, owner_state: str
+) -> None:
+    """Runtime discovery cannot revive an unapproved owner's OpenRouter rows."""
+    runtime_model = {
+        "provider_id": "openrouter",
+        "model_id": "runtime/available",
+        "qualified_model_id": "openrouter/runtime/available",
+        "metadata": {"source": inventory_source},
+    }
+
+    class RuntimeClient:
+        _providers = {}
+
+        @staticmethod
+        def list_models(provider=None):
+            return [runtime_model]
+
+    class ApprovalManager:
+        @staticmethod
+        def is_pack_approved_and_verified(pack_id):
+            assert pack_id == "rumi_model_catalog_pack"
+            if owner_state == "approval_unavailable":
+                raise RuntimeError("approval unavailable")
+            return owner_state != "unapproved", "test"
+
+    def unavailable(*_args, **_kwargs):
+        raise provider_catalog.GlobalContractUnavailable("test")
+
+    selected = (
+        set()
+        if owner_state == "no_selection"
+        else {"other_pack"}
+        if owner_state == "not_selected"
+        else {"rumi_model_catalog_pack"}
+    )
+    monkeypatch.setattr(provider_catalog, "_invoke", unavailable)
+    monkeypatch.setattr(provider_catalog, "_runtime_client", RuntimeClient)
+    monkeypatch.setattr(
+        provider_catalog,
+        "get_all_known_models",
+        lambda provider_id=None: [
+            model
+            for model in [
+                {
+                    "provider_id": "stub",
+                    "model_id": "kept",
+                    "qualified_model_id": "stub/kept",
+                },
+                {
+                    "provider_id": "openrouter",
+                    "model_id": "obsolete:free",
+                    "qualified_model_id": "openrouter/obsolete:free",
+                },
+            ]
+            if provider_id is None or model["provider_id"] == provider_id
+        ],
+    )
+    monkeypatch.setattr(
+        "core_runtime.resolved_profile_scope.effective_pack_ids",
+        lambda: frozenset(selected),
+    )
+    monkeypatch.setattr(
+        "core_runtime.approval_manager.get_approval_manager",
+        lambda: ApprovalManager(),
+    )
+    provider_catalog._clear_runtime_inventory_cache()
+
+    observed_ids = {
+        model["qualified_model_id"]
+        for model in provider_catalog.list_model_catalog(provider)
+    }
+    expected_ids = (
+        {"stub/kept"} if not provider and owner_state != "not_selected" else set()
+    )
+    if owner_state == "approved_unavailable":
+        expected_ids.add("openrouter/runtime/available")
+    assert observed_ids == expected_ids
 
 
 @pytest.mark.parametrize("provider", ["", "openrouter"])
