@@ -28,6 +28,7 @@ struct ApiEnvelope<T> {
 struct HealthPayload {
     panel_ready: Option<bool>,
     runtime_ready: Option<bool>,
+    runtime_status: Option<String>,
     desktop_challenge_response: Option<String>,
     profile_id: Option<String>,
     profile_revision: Option<String>,
@@ -424,6 +425,35 @@ pub fn check_authenticated_runtime_ready(port: u16, bootstrap_secret: &str) -> R
         .unwrap_or(false))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AuthenticatedRuntimeReadiness {
+    Pending,
+    Ready,
+    Failed,
+}
+
+fn runtime_readiness_from_health(payload: Option<HealthPayload>) -> AuthenticatedRuntimeReadiness {
+    let Some(payload) = payload else {
+        return AuthenticatedRuntimeReadiness::Pending;
+    };
+    match payload.runtime_status.as_deref() {
+        Some("error" | "profile_reconfirmation_required") => AuthenticatedRuntimeReadiness::Failed,
+        _ if payload.runtime_ready == Some(true) => AuthenticatedRuntimeReadiness::Ready,
+        _ => AuthenticatedRuntimeReadiness::Pending,
+    }
+}
+
+/// Inspect authenticated runtime readiness separately from panel availability.
+pub(crate) fn check_authenticated_runtime_readiness(
+    port: u16,
+    bootstrap_secret: &str,
+) -> Result<AuthenticatedRuntimeReadiness> {
+    Ok(runtime_readiness_from_health(fetch_authenticated_health(
+        port,
+        bootstrap_secret,
+    )?))
+}
+
 /// Send a single health-check request.
 ///
 /// Returns `Ok(true)` if the Kernel responded with HTTP 200,
@@ -572,6 +602,7 @@ mod tests {
         let payload = HealthPayload {
             panel_ready: Some(true),
             runtime_ready: Some(true),
+            runtime_status: Some("runtime_ready".into()),
             desktop_challenge_response: None,
             profile_id: Some("profile-a".into()),
             profile_revision: Some(format!("sha256:{}", "a".repeat(64))),
@@ -588,6 +619,7 @@ mod tests {
         let payload = HealthPayload {
             panel_ready: Some(true),
             runtime_ready: Some(true),
+            runtime_status: Some("runtime_ready".into()),
             desktop_challenge_response: None,
             profile_id: Some("profile-a".into()),
             profile_revision: Some(format!("sha256:{}", "a".repeat(64))),
@@ -595,6 +627,42 @@ mod tests {
             plan_digest: Some(format!("sha256:{}", "b".repeat(64))),
         };
         assert!(identity_from_health(&payload).is_err());
+    }
+
+    #[test]
+    fn shell_runtime_readiness_rejects_panel_only_and_failed_runtime() {
+        let mut payload: HealthPayload = serde_json::from_value(serde_json::json!({
+            "panel_ready": true,
+            "runtime_ready": false,
+            "runtime_status": "panel_ready"
+        }))
+        .unwrap();
+        assert_eq!(
+            runtime_readiness_from_health(Some(payload)),
+            AuthenticatedRuntimeReadiness::Pending
+        );
+
+        payload = serde_json::from_value(serde_json::json!({
+            "panel_ready": true,
+            "runtime_ready": false,
+            "runtime_status": "error"
+        }))
+        .unwrap();
+        assert_eq!(
+            runtime_readiness_from_health(Some(payload)),
+            AuthenticatedRuntimeReadiness::Failed
+        );
+
+        payload = serde_json::from_value(serde_json::json!({
+            "panel_ready": true,
+            "runtime_ready": true,
+            "runtime_status": "runtime_ready"
+        }))
+        .unwrap();
+        assert_eq!(
+            runtime_readiness_from_health(Some(payload)),
+            AuthenticatedRuntimeReadiness::Ready
+        );
     }
 
     #[test]

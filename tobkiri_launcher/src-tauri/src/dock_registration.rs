@@ -28,6 +28,7 @@ const DEFAULTSPACK_DEFAULT_PORT: u16 = 8766;
 // the Launcher does not terminate a healthy child just as it starts serving.
 const DEFAULTSPACK_READY_TIMEOUT: Duration = Duration::from_secs(120);
 const DEFAULTSPACK_READY_POLL_INTERVAL: Duration = Duration::from_millis(250);
+const SHELL_RUNTIME_READY_TIMEOUT: Duration = Duration::from_secs(30);
 static DEFAULTSPACK_LAUNCH_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn with_defaultspack_launch_coordination<T>(
@@ -311,6 +312,40 @@ fn wait_for_defaultspack_http_ready(
     }
 }
 
+fn wait_for_shell_runtime_ready_with(
+    timeout: Duration,
+    mut probe: impl FnMut() -> AnyResult<crate::health_check::AuthenticatedRuntimeReadiness>,
+) -> AnyResult<()> {
+    use crate::health_check::AuthenticatedRuntimeReadiness;
+
+    let deadline = Instant::now() + timeout;
+    loop {
+        match probe()? {
+            AuthenticatedRuntimeReadiness::Ready => return Ok(()),
+            AuthenticatedRuntimeReadiness::Failed => {
+                bail!("Defaultspack runtime backend is unavailable; open Tobkiri Launcher > Packs to prepare PackVM")
+            }
+            AuthenticatedRuntimeReadiness::Pending => {}
+        }
+        if Instant::now() >= deadline {
+            bail!(
+                "Defaultspack runtime did not become ready within {} seconds",
+                timeout.as_secs()
+            );
+        }
+        thread::sleep(
+            DEFAULTSPACK_READY_POLL_INTERVAL
+                .min(deadline.saturating_duration_since(Instant::now())),
+        );
+    }
+}
+
+fn wait_for_shell_runtime_ready(port: u16, bootstrap_secret: &str) -> AnyResult<()> {
+    wait_for_shell_runtime_ready_with(SHELL_RUNTIME_READY_TIMEOUT, || {
+        crate::health_check::check_authenticated_runtime_readiness(port, bootstrap_secret)
+    })
+}
+
 fn append_path_prefix(prefix: &Path, current_path: Option<OsString>) -> AnyResult<OsString> {
     let mut paths = vec![prefix.to_path_buf()];
     if let Some(current_path) = current_path {
@@ -373,6 +408,9 @@ pub(crate) fn prepare_defaultspack_shell_runtime_url(
     crate::health_check::validate_application_route(launch_route)?;
     with_defaultspack_launch_coordination(|| {
         let (metadata, bootstrap_secret) = ensure_defaultspack_desktop_ready(app, config)?;
+        // A panel-ready listener can still have a failed conversation backend.
+        // Shell admission requires the authenticated runtime-ready transition.
+        wait_for_shell_runtime_ready(metadata.port, &bootstrap_secret)?;
         if metadata.frontend_entry != *frontend_entry {
             bail!("active Application frontend entry changed during launch");
         }
@@ -1721,6 +1759,22 @@ mod tests {
 
         assert!(is_defaultspack_http_ready(port, "bootstrap-secret"));
         server.join().unwrap();
+    }
+
+    #[test]
+    fn shell_launch_waits_for_runtime_ready_and_rejects_failed_backend() {
+        use crate::health_check::AuthenticatedRuntimeReadiness::{Failed, Pending, Ready};
+
+        let mut probes = [Pending, Ready].into_iter();
+        wait_for_shell_runtime_ready_with(Duration::from_secs(1), || Ok(probes.next().unwrap()))
+            .unwrap();
+
+        let error =
+            wait_for_shell_runtime_ready_with(Duration::from_secs(1), || Ok(Failed)).unwrap_err();
+        assert!(error.to_string().contains("prepare PackVM"));
+
+        let error = wait_for_shell_runtime_ready_with(Duration::ZERO, || Ok(Pending)).unwrap_err();
+        assert!(error.to_string().contains("did not become ready"));
     }
 
     #[test]
