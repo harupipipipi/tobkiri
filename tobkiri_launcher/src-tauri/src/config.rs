@@ -3,7 +3,10 @@
 //! All paths are derived from Tauri's `resource_dir` and `app_data_dir`
 //! so that the application works correctly when bundled.
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
+use sha2::{Digest, Sha256};
+use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 const UV_PATH_ENV: &str = "RUMI_UV_PATH";
@@ -113,22 +116,16 @@ impl AppConfig {
         }
         let rumi_home = app_dir.clone();
 
-        // An unsigned checkout must never consume or mutate the installed
-        // application's persisted activation. Keep each debug run below its
-        // own ignored state root so a newly rebuilt macOS app does not reopen
-        // MACL-bound files from an earlier run.
-        let writable_root = dev_workspace_root
-            .as_ref()
-            .map(|workspace_root| {
-                workspace_root
-                    .join("tobkiri_launcher")
-                    .join("src-tauri")
-                    .join("target")
-                    .join("dev-state")
-                    .join("runs")
-                    .join(std::process::id().to_string())
-            })
-            .unwrap_or(app_data_dir);
+        // An unsigned checkout must never consume the installed application's
+        // activation. Reuse development data across restarts of the same
+        // executable, but keep changed executables away from earlier macOS
+        // MACL-bound files.
+        let writable_root = match dev_workspace_root.as_ref() {
+            Some(workspace_root) => {
+                development_writable_root(workspace_root, &std::env::current_exe()?)?
+            }
+            None => app_data_dir,
+        };
 
         let python_dir = writable_root.join("python");
         let uv_path = if cfg!(target_os = "windows") {
@@ -396,6 +393,101 @@ fn development_venv_dir(app_dir: &Path, workspace_root: &Path, is_app_bundle: bo
     }
 }
 
+/// Keep development state stable for one executable while isolating changed binaries.
+/// The target tree is ignored by Git and never overlaps the installed app data.
+fn development_writable_root(workspace_root: &Path, executable: &Path) -> Result<PathBuf> {
+    let metadata = fs::symlink_metadata(executable).with_context(|| {
+        format!(
+            "failed to inspect development executable {}",
+            executable.display()
+        )
+    })?;
+    if !metadata.is_file() || redirected_path(&metadata) {
+        bail!(
+            "development executable is not a regular, unredirected file: {}",
+            executable.display()
+        );
+    }
+    let mut executable_file = fs::File::open(executable).with_context(|| {
+        format!(
+            "failed to open development executable {}",
+            executable.display()
+        )
+    })?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let count = executable_file.read(&mut buffer).with_context(|| {
+            format!(
+                "failed to hash development executable {}",
+                executable.display()
+            )
+        })?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+
+    let launcher_root = workspace_root.join("tobkiri_launcher");
+    let cargo_root = launcher_root.join("src-tauri");
+    let target_root = cargo_root.join("target");
+    let state_root = target_root.join("dev-state");
+    let builds_root = state_root.join("builds");
+    let writable_root = builds_root.join(format!("{:x}", hasher.finalize()));
+    // A planted link in a persistent development path must not redirect reads
+    // or writes outside the ignored checkout state tree. Check children used
+    // immediately by setup as well as the parent directories.
+    for path in [
+        &launcher_root,
+        &cargo_root,
+        &target_root,
+        &state_root,
+        &builds_root,
+        &writable_root,
+        &writable_root.join("python"),
+        &writable_root.join("user_data"),
+        &writable_root.join("user_data/host_broker"),
+        &writable_root.join("user_data/profiles"),
+        &writable_root.join("user_data/packvm-vz"),
+        &writable_root.join("logs"),
+    ] {
+        match fs::symlink_metadata(path) {
+            Ok(metadata) if metadata.is_dir() && !redirected_path(&metadata) => {}
+            Ok(_) => bail!(
+                "development state path is not an unredirected directory: {}",
+                path.display()
+            ),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!(
+                        "failed to inspect development state path {}",
+                        path.display()
+                    )
+                })
+            }
+        }
+    }
+    Ok(writable_root)
+}
+
+fn redirected_path(metadata: &fs::Metadata) -> bool {
+    if metadata.file_type().is_symlink() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
+        if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return true;
+        }
+    }
+    false
+}
+
 fn configured_uv_path() -> Option<PathBuf> {
     std::env::var_os(UV_PATH_ENV)
         .filter(|value| !value.is_empty())
@@ -555,12 +647,100 @@ mod tests {
         assert_eq!(config.venv_dir, root.join(".venv"));
         assert_eq!(
             config.user_data_dir,
-            root.join("tobkiri_launcher/src-tauri/target/dev-state/runs")
-                .join(std::process::id().to_string())
+            development_writable_root(&root, &std::env::current_exe().unwrap())
+                .unwrap()
                 .join("user_data")
         );
         assert!(config.is_dev_workspace());
 
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn development_writable_root_reuses_one_executable_and_isolates_a_rebuild() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("tobkiri_dev_build_state_{unique}"));
+        let executable = root.join("launcher-binary");
+        let installed_state = root.join("installed-state");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&executable, b"first build").unwrap();
+
+        let first = development_writable_root(&root, &executable).unwrap();
+        assert!(first.starts_with(root.join("tobkiri_launcher/src-tauri/target/dev-state/builds")));
+        assert!(!first.starts_with(&installed_state));
+        fs::create_dir_all(first.join("user_data/profiles")).unwrap();
+        fs::write(
+            first.join("user_data/profiles/active.json"),
+            b"saved activation",
+        )
+        .unwrap();
+
+        let restarted = development_writable_root(&root, &executable).unwrap();
+        assert_eq!(restarted, first);
+        assert_eq!(
+            fs::read(restarted.join("user_data/profiles/active.json")).unwrap(),
+            b"saved activation"
+        );
+
+        fs::write(&executable, b"rebuilt binary").unwrap();
+        let rebuilt = development_writable_root(&root, &executable).unwrap();
+        assert_ne!(rebuilt, first);
+        assert!(!rebuilt.join("user_data/profiles/active.json").exists());
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn development_writable_root_rejects_redirected_executable() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("tobkiri_dev_executable_link_{unique}"));
+        fs::create_dir_all(&root).unwrap();
+        let executable = root.join("launcher-binary");
+        let link = root.join("launcher-link");
+        fs::write(&executable, b"build").unwrap();
+        #[cfg(unix)]
+        let linked = std::os::unix::fs::symlink(&executable, &link);
+        #[cfg(windows)]
+        let linked = std::os::windows::fs::symlink_file(&executable, &link);
+        if linked.is_ok() {
+            assert!(development_writable_root(&root, &link).is_err());
+        }
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn development_writable_root_rejects_preplanted_state_link() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("tobkiri_dev_state_link_{unique}"));
+        let target = root.join("tobkiri_launcher/src-tauri/target");
+        let installed_state = root.join("installed-state");
+        let executable = root.join("launcher-binary");
+        fs::create_dir_all(&target).unwrap();
+        fs::create_dir_all(&installed_state).unwrap();
+        fs::write(&executable, b"build").unwrap();
+        #[cfg(unix)]
+        let linked = std::os::unix::fs::symlink(&installed_state, target.join("dev-state"));
+        #[cfg(windows)]
+        let linked = std::os::windows::fs::symlink_dir(&installed_state, target.join("dev-state"));
+        if linked.is_ok() {
+            assert!(development_writable_root(&root, &executable).is_err());
+            assert!(fs::read_dir(&installed_state).unwrap().next().is_none());
+        }
         fs::remove_dir_all(&root).ok();
     }
 
@@ -679,9 +859,8 @@ mod tests {
         assert_eq!(config.venv_dir, resource.join("app/dev-venv"));
         assert_eq!(
             config.user_data_dir,
-            root.join("tobkiri_launcher/src-tauri/target/dev-state")
-                .join("runs")
-                .join(std::process::id().to_string())
+            development_writable_root(&root, &std::env::current_exe().unwrap())
+                .unwrap()
                 .join("user_data")
         );
         assert!(config.is_dev_workspace());
