@@ -857,11 +857,19 @@ fn normalize_for_match(value: &str) -> String {
 
 /// Signal the listener's whole process group when it leads one so sealed
 /// descendants cannot keep the port; signal the process directly otherwise.
-/// The group-existence check keeps the common non-leader case quiet instead
-/// of logging a failed group signal first.
+/// A group with the same numeric ID may exist after an earlier leader exits
+/// and its PID is reused by this listener. Existence of that group does not
+/// prove that the listener leads or owns it.
+#[cfg(unix)]
+fn listener_leads_process_group(pid: u32) -> bool {
+    i32::try_from(pid)
+        .ok()
+        .is_some_and(|pid| unsafe { libc::getpgid(pid) } == pid)
+}
+
 #[cfg(unix)]
 fn signal_listener_process_tree(pid: u32, signal: &str) {
-    if crate::defaultspack_manager::process_group_exists(pid) {
+    if listener_leads_process_group(pid) {
         let _ = crate::defaultspack_manager::send_process_group_signal(pid, signal);
     } else {
         let _ = crate::defaultspack_manager::send_unix_process_signal(pid, signal);
@@ -1001,6 +1009,39 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[cfg(unix)]
+    #[test]
+    fn external_listener_group_signal_requires_listener_to_be_leader() {
+        let mut nonleader = crate::process_utils::command("/bin/sh");
+        nonleader.args(["-c", "exec sleep 30"]);
+        let mut nonleader = nonleader.spawn().unwrap();
+        let nonleader_pid = nonleader.id();
+        assert_ne!(
+            unsafe { libc::getpgid(nonleader_pid as i32) },
+            nonleader_pid as i32
+        );
+
+        let mut leader = crate::process_utils::command("/bin/sh");
+        leader.args(["-c", "exec sleep 30"]);
+        crate::dock_registration::configure_defaultspack_process_group(&mut leader);
+        let mut leader = leader.spawn().unwrap();
+        let leader_pid = leader.id();
+        assert_eq!(
+            unsafe { libc::getpgid(leader_pid as i32) },
+            leader_pid as i32
+        );
+
+        // The same check decides the path used by signal_listener_process_tree.
+        // A matching numeric PGID elsewhere must not make nonleader eligible.
+        assert!(!listener_leads_process_group(nonleader_pid));
+        assert!(listener_leads_process_group(leader_pid));
+
+        let _ = nonleader.kill();
+        let _ = nonleader.wait();
+        let _ = leader.kill();
+        let _ = leader.wait();
+    }
 
     fn test_config() -> AppConfig {
         AppConfig::detect_for_tauri(

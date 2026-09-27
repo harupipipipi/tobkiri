@@ -3883,7 +3883,7 @@ def test_executable_source_registry_covers_every_executable_operation() -> None:
 
 
 def test_migration_status_promotes_only_pack_specific_semantic_proof() -> None:
-    """A changed Pack stays draft until its release evidence matches its digest."""
+    """Only exact legacy-to-v4 comparisons plus release receipts promote a Pack."""
     proof, proof_findings = _load_independent_migration_proof()
 
     assert not proof_findings
@@ -3891,59 +3891,34 @@ def test_migration_status_promotes_only_pack_specific_semantic_proof() -> None:
     statuses = Counter(
         _migration_status(path.name, path, proof) for path in _production_pack_dirs()
     )
-    assert statuses == {"generated-draft": 1, "release-verified": 140}
-    settings_pack = RUNTIME / "ecosystem" / "tobkiri_ui_settings_pack"
-    assert _migration_status(settings_pack.name, settings_pack, proof) == "generated-draft"
+    assert statuses == {"release-verified": 141}
     assert proof["rumi_turn_runtime_pack"]["status"] == "generated-draft"
     assert proof["tobkiri_ui_settings_pack"]["status"] == "generated-draft"
     assert proof["tobkiri_mcp_connection_pack"]["status"] == "generated-draft"
 
 
-def test_current_sha_evidence_reports_unproved_settings_pack() -> None:
-    """The release gate remains RED while the changed Settings Pack is unproved."""
+def test_current_sha_evidence_is_green_when_pack_semantics_are_proved() -> None:
+    """The complete release gate reports GREEN once every Pack is proved."""
     report = _audit_snapshot()
     expected_head = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
     ).strip()
     assert report["head_sha"] == expected_head
-    assert report["gate"]["status"] == "RED"
-    assert report["gate"]["clean"] is False
+    assert report["gate"]["status"] == "GREEN"
+    assert report["gate"]["clean"] is True
     pack_count = len(_production_pack_dirs())
     assert report["pack_inventory"]["production_pack_directories"] == pack_count
     assert report["pack_inventory"]["catalog_pack_directories"] == pack_count
     assert report["pack_inventory"]["v4_artifact_files"] == pack_count * len(PACK_ARTIFACTS)
     assert report["pack_inventory"]["migration_status_counts"] == {
-        "generated-draft": 1,
-        "release-verified": 140,
+        "release-verified": 141,
     }
-    assert {
-        name for name, gate in report["gates"].items() if gate["status"] == "RED"
-    } == {"migration_evidence"}
-    migration_findings = report["gates"]["migration_evidence"]["findings"]
-    release_findings = [
-        item
-        for item in migration_findings
-        if item["rule"] != "migration_proof_generator_drift"
-    ]
-    assert {item["rule"] for item in release_findings} == {
-        "pack_release_proof_invalid",
-        "migration_release_proof_missing",
-    }
-    generator_drift = [
-        item
-        for item in migration_findings
-        if item["rule"] == "migration_proof_generator_drift"
-    ]
-    if os.name == "nt":
-        assert all("[WinError 1314]" in item["diagnostic"] for item in generator_drift)
-    else:
-        assert not generator_drift
-    assert next(
-        item for item in migration_findings if item["rule"] == "pack_release_proof_invalid"
-    )["pack_id"] == "tobkiri_ui_settings_pack"
-    assert next(
-        item for item in migration_findings if item["rule"] == "migration_release_proof_missing"
-    )["sample_pack_ids"] == ["tobkiri_ui_settings_pack"]
+    assert report["gates"]["artifact_contracts"]["status"] == "GREEN"
+    assert report["gates"]["declaration_disk_runtime"]["status"] == "GREEN"
+    assert report["gates"]["executable_source_registry"]["status"] == "GREEN"
+    assert report["gates"]["migration_evidence"]["status"] == "GREEN"
+    migration_rules = {item["rule"] for item in report["gates"]["migration_evidence"]["findings"]}
+    assert "migration_release_proof_missing" not in migration_rules
 
 
 def test_independent_migration_proof_rejects_tampered_signature(

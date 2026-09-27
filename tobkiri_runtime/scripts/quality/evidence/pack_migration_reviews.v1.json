@@ -10751,7 +10751,7 @@
     },
     "tobkiri_ui_settings_pack": {
       "pack_id": "tobkiri_ui_settings_pack",
-      "review_attestation_digest": "sha256:02ee151358aeee0a5ad666f8c18273215364acf730bc8cdb6e817bdd41c37437",
+      "review_attestation_digest": "sha256:513d31f87aa30db15838044e987f5f34f8e2bcc4a7a97856444060bf29dc43c6",
       "review_basis": {
         "evidence_paths": [
           "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/pack.v4.json",
@@ -10759,7 +10759,10 @@
           "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/executables.v4.json",
           "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/artifact-index.v4.json",
           "tobkiri_runtime/schemas/executable_sources.v1.json",
-          "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+          "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json",
+          "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/runtime/state_changes.py",
+          "tobkiri_runtime/tobkiri_protocol/settings_state.py",
+          "tobkiri_runtime/tests/test_ui_state_change_owner.py"
         ],
         "excluded_claims": [
           "runtime admission",
@@ -10773,11 +10776,12 @@
           "v4 contract and provider identity recorded per operation",
           "legacy source record bound by exact digest",
           "target artifact bound by exact digest",
-          "canonical input/output schema equality where declared"
+          "canonical input/output schema equality where declared",
+          "ten legacy-to-v4 operation, contract, and schema mappings remain intact; model and recovery reads use the shared state revision after writes"
         ]
       },
-      "reviewed_at": "2026-09-26T15:40:00+09:00",
-      "reviewer_id": "devin:independent-semantic-review:v1",
+      "reviewed_at": "2026-09-27T19:18:53+09:00",
+      "reviewer_id": "codex:independent-settings-pack-review:2026-09-27",
       "semantic_record": {
         "accepted_divergences": [
           "pack_specific_authority_source_missing"
@@ -11218,7 +11222,7 @@
       "semantic_record_digest": "sha256:444665839a9588793cead6b05b98e31562563304f960f631dfc81b37ec4b2867",
       "source_digest": "sha256:d8c47d5c6fdf876694b704d32b9b33fb9b8d496a9f27a67e76151260dde08251",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:b4ab88878aa68a6a5fb1c5ee3ed9d29035d97081fa651aedc281bc88b3d4a3a2"
+      "target_digest": "sha256:6f75a898561ace85c32076311261eb3b5efa45b09e0508f5d056f88cb94910a3"
     },
     "tobkiri_workflow_pack": {
       "pack_id": "tobkiri_workflow_pack",
