@@ -18603,7 +18603,7 @@
   },
   "repository": {
     "commit": "working-tree",
-    "tree_digest": "ceaaeafea7f35faaf6a3e3ce2828c57f07944aa81ad029e5a20834d04328ad43"
+    "tree_digest": "03c1107e63f35ab76dc0510002ad1f0762427ecde9a072bef276d07b750e9ec7"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",
   "schema": "io.tobkiri.architecture.inventory.v1"
