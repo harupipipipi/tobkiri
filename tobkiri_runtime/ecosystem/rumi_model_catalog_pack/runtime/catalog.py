@@ -25,7 +25,7 @@ CATALOG_REVISION = "sha256:23cd323554cef32f891827a9a6ddd9c75b7fd3c898d0b501c7e62
 _ROOT = Path(__file__).resolve().parents[1] / "catalog" / "providers"
 _EXTENSION_ROOT = Path(__file__).resolve().parents[1] / "extensions" / "llm" / "providers"
 _OPENROUTER_PROVIDER_ID = "openrouter"
-_OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+_OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models?output_modalities=all"
 _OPENROUTER_INVENTORY_TTL_SECONDS = 3600
 _OPENROUTER_FETCH_TIMEOUT_SECONDS = 3
 _OPENROUTER_MAX_RESPONSE_BYTES = 8 * 1024 * 1024
@@ -51,7 +51,7 @@ def create_model_catalog_operation(client: Any):
         provider_id = str(payload.get("provider_id") or "").strip()
         model_id = str(payload.get("model_id") or "").strip()
         inventory: dict[str, Any] = {}
-        if provider_id == _OPENROUTER_PROVIDER_ID:
+        if not provider_id or provider_id == _OPENROUTER_PROVIDER_ID:
             models, inventory = _merge_openrouter_inventory(models)
         if provider_id:
             providers = [item for item in providers if item["provider_id"] == provider_id]
@@ -227,7 +227,11 @@ def _merge_openrouter_inventory(
         key = _model_key(item)
         if key is not None:
             by_key[key] = dict(item)
-    merged = list(by_key.values())
+    merged = [
+        dict(item)
+        for item in models
+        if str(item.get("provider_id") or "") != _OPENROUTER_PROVIDER_ID
+    ] + list(by_key.values())
     merged.sort(
         key=lambda item: (
             _integer(item.get("priority"), default=1000),
@@ -240,7 +244,14 @@ def _merge_openrouter_inventory(
             "source": source,
             "stale": stale,
             "model_count": len(inventory_models),
-            "static_models_ignored": len([item for item in models if _model_key(item) is not None]),
+            "static_models_ignored": len(
+                [
+                    item
+                    for item in models
+                    if str(item.get("provider_id") or "") == _OPENROUTER_PROVIDER_ID
+                    and _model_key(item) is not None
+                ]
+            ),
         }
     }
 
@@ -482,7 +493,7 @@ def _normalize_openrouter_model(raw: Any) -> dict[str, Any] | None:
             "inventory_source": "openrouter_models_api",
             "output_modalities": output_modalities,
             "source": "openrouter_models_api",
-            "source_endpoint": "/models",
+            "source_endpoint": "/models?output_modalities=all",
         },
     }
 

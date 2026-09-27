@@ -1547,7 +1547,7 @@ def generate(*, check: bool) -> dict[str, int]:
                 if not path.is_file() or path.read_text(encoding="utf-8") != text:
                     raise PackV4MigrationError(f"generated Pack v4 artifact drift: {path}")
             else:
-                path.write_text(text, encoding="utf-8")
+                path.write_bytes(text.encode("utf-8"))
     forbidden_alias_artifacts = {
         "artifact-index.v4.json",
         "contracts.v4.json",
@@ -1586,7 +1586,7 @@ def generate(*, check: bool) -> dict[str, int]:
                 )
         else:
             pack_root.mkdir(parents=True, exist_ok=True)
-            alias_path.write_text(alias_text, encoding="utf-8")
+            alias_path.write_bytes(alias_text.encode("utf-8"))
     return {
         "packs": len(rendered),
         "valid": len(rendered),

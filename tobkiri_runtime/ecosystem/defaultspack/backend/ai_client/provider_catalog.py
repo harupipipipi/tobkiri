@@ -272,6 +272,21 @@ def _merge_runtime_inventory(
                 continue
             if not is_runtime and provider_id in providers_with_live_inventory:
                 continue
+            # The catalog resource uses a qualified `model_id` and a separate
+            # provider-local `provider_model_id`. Legacy picker/profile records
+            # require the qualified ID in `id`/`qualified_model_id` instead.
+            provider_model_id = str(item.get("provider_model_id") or "").strip()
+            if (
+                provider_id
+                and provider_model_id
+                and str(item.get("model_id") or "").strip()
+                == f"{provider_id}/{provider_model_id}"
+                and not item.get("id")
+                and not item.get("qualified_model_id")
+            ):
+                item["id"] = item["model_id"]
+                item["qualified_model_id"] = item["model_id"]
+                item["model_id"] = provider_model_id
             model_id = str(item.get("model_id") or item.get("model_name") or "").strip()
             qualified_id = str(item.get("qualified_model_id") or item.get("id") or "").strip()
             if not qualified_id and provider_id and model_id:

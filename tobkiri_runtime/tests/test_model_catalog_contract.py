@@ -72,6 +72,10 @@ def test_expired_openrouter_free_variants_are_not_exposed_without_live_inventory
     assert inventory["model_count"] == 0
     assert inventory["static_models_ignored"] > 0
 
+    all_models = operation("list", {})["models"]
+    assert all(item["provider_id"] != "openrouter" for item in all_models)
+    assert any(item["provider_id"] != "openrouter" for item in all_models)
+
 
 def test_openrouter_live_inventory_replaces_static_catalog(monkeypatch) -> None:
     captured = {}
@@ -102,9 +106,14 @@ def test_openrouter_live_inventory_replaces_static_catalog(monkeypatch) -> None:
         _FETCH_OPENROUTER_INVENTORY,
     )
 
-    result = create_model_catalog_operation(None)(
-        "list", {"provider_id": "openrouter"}
-    )
+    operation = create_model_catalog_operation(None)
+    all_models = operation("list", {})["models"]
+    assert any(item["provider_id"] != "openrouter" for item in all_models)
+    assert {
+        item["model_id"] for item in all_models if item["provider_id"] == "openrouter"
+    } == {"openrouter/acme/atlas-reasoner"}
+
+    result = operation("list", {"provider_id": "openrouter"})
     models = {item["model_id"]: item for item in result["models"]}
 
     assert "openrouter/acme/atlas-reasoner" in models
@@ -116,7 +125,9 @@ def test_openrouter_live_inventory_replaces_static_catalog(monkeypatch) -> None:
     assert inventory["stale"] is False
     assert inventory["model_count"] == 1
     assert inventory["static_models_ignored"] > 0
-    assert captured["request"].full_url == "https://openrouter.ai/api/v1/models"
+    assert captured["request"].full_url == (
+        "https://openrouter.ai/api/v1/models?output_modalities=all"
+    )
     assert captured["request"].get_header("Authorization") is None
     assert 1 <= captured["timeout"] <= 5
 
@@ -173,6 +184,52 @@ def test_runtime_catalog_keeps_live_openrouter_inventory_authoritative(monkeypat
 
     models = provider_catalog.list_model_catalog("openrouter")
 
-    assert [model["model_id"] for model in models] == [
+    assert [model["qualified_model_id"] for model in models] == [
         "openrouter/acme/atlas-reasoner"
     ]
+    assert [model["model_id"] for model in models] == ["acme/atlas-reasoner"]
+
+
+def test_unfiltered_live_catalog_models_reach_profile_picker(monkeypatch) -> None:
+    live_model = catalog._normalize_openrouter_model(_live_openrouter_model())
+    assert live_model is not None
+    monkeypatch.setattr(catalog, "_fetch_openrouter_inventory", lambda: [live_model])
+    operation = create_model_catalog_operation(None)
+
+    def invoke(contract_id, name, payload):
+        if contract_id == provider_catalog._MODEL_CATALOG_CONTRACT:
+            return operation(name, payload)
+        if contract_id == provider_catalog._MODEL_PROFILE_CONTRACT:
+            return {
+                "profiles": [
+                    {
+                        "profile_id": "stub/default",
+                        "qualified_model_id": "stub/default",
+                        "provider_id": "stub",
+                        "model_id": "default",
+                    }
+                ]
+            }
+        raise AssertionError(contract_id)
+
+    class EmptyRuntimeClient:
+        _providers = {}
+
+        @staticmethod
+        def list_models(provider=None):
+            return []
+
+    monkeypatch.setattr(provider_catalog, "_invoke", invoke)
+    monkeypatch.setattr(provider_catalog, "_runtime_client", EmptyRuntimeClient)
+    provider_catalog._clear_runtime_inventory_cache()
+
+    models = provider_catalog.list_model_catalog()
+    profiles = provider_catalog.list_profile_catalog()
+    openrouter_id = "openrouter/acme/atlas-reasoner"
+
+    assert any(model["qualified_model_id"] == openrouter_id for model in models)
+    assert any(
+        profile["profile_id"] == openrouter_id
+        and profile["model_id"] == "acme/atlas-reasoner"
+        for profile in profiles
+    )
