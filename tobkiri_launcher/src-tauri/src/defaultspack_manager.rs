@@ -444,6 +444,17 @@ impl ApplicationProcessManager {
     }
 
     fn monitor_once(&self) -> Result<()> {
+        self.monitor_once_with(
+            || self.pending_restart_port_gate(),
+            stop_adopted_defaultspack_listener,
+        )
+    }
+
+    fn monitor_once_with(
+        &self,
+        port_gate: impl FnOnce() -> Result<PendingRestartPort>,
+        retire_listener: impl FnOnce(u32, u16) -> Result<()>,
+    ) -> Result<()> {
         let restart_needed = {
             let mut state = self.lock_state()?;
             if state.stop_requested || self.shutdown_requested.load(Ordering::SeqCst) {
@@ -496,7 +507,7 @@ impl ApplicationProcessManager {
         // adopted Launcher-owned listener still serves it, and bound the
         // churn while an unowned process squats on it. An inspection failure
         // takes the standard backoff so `restart_in_progress` never wedges.
-        let port_gate = match self.pending_restart_port_gate() {
+        let port_gate = match port_gate() {
             Ok(gate) => gate,
             Err(error) => {
                 let delay = self.record_spawn_failure()?;
@@ -540,7 +551,7 @@ impl ApplicationProcessManager {
                 let Some(port) = retire_port else {
                     return Ok(());
                 };
-                match stop_adopted_defaultspack_listener(pid, port) {
+                match retire_listener(pid, port) {
                     Ok(()) => {
                         info!(
                             "Retired unguarded adopted Defaultspack listener {pid}; restart can proceed"
@@ -2067,12 +2078,128 @@ mod tests {
     }
 
     fn pending_restart_metadata() -> DefaultspackDesktopMetadata {
-        DefaultspackDesktopMetadata::test_metadata(test_execution_identity(
-            "profile-a",
-            &"a".repeat(64),
-            "profile-a-active",
-            &"b".repeat(64),
-        ))
+        let reservation = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = reservation.local_addr().unwrap().port();
+        drop(reservation);
+        DefaultspackDesktopMetadata::test_metadata_at_port(
+            test_execution_identity(
+                "profile-a",
+                &"a".repeat(64),
+                "profile-a-active",
+                &"b".repeat(64),
+            ),
+            port,
+        )
+    }
+
+    #[test]
+    fn monitor_once_retires_listener_after_wrapper_exit_removes_guardian() {
+        let manager = test_manager();
+        let listener =
+            std::cell::RefCell::new(Some(std::net::TcpListener::bind("127.0.0.1:0").unwrap()));
+        let port = listener
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let listener_pid = std::process::id();
+        let run_id = "wrapper-exit-run-12345678";
+        let token_file = std::env::temp_dir().join(format!(
+            "tobkiri-wrapper-exit-token-{}-{}",
+            listener_pid,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::write(&token_file, "test-token").unwrap();
+        let metadata = crate::dock_registration::DefaultspackDesktopMetadata::test_metadata_at_port(
+            test_execution_identity(
+                "profile-a",
+                &"a".repeat(64),
+                "profile-a-active",
+                &"b".repeat(64),
+            ),
+            port,
+        );
+        manager
+            .debug_approval
+            .register_guardian(
+                run_id.into(),
+                listener_pid,
+                "test-defaultspack".into(),
+                std::env::temp_dir(),
+                port,
+                token_file.clone(),
+                metadata.execution_identity().clone(),
+            )
+            .unwrap();
+        assert!(manager.debug_approval.current_guardian().is_ok());
+
+        // A separate test-harness process stands in for the pack-shell
+        // wrapper. The TCP listener remains open in this process after it
+        // exits, as the desktop application's child listener can in practice.
+        let mut wrapper = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "__defaultspack_wrapper_fixture_no_test__"])
+            .spawn()
+            .unwrap();
+        assert!(wrapper.wait().unwrap().success());
+        {
+            let mut state = manager.lock_state().unwrap();
+            state.child = Some(crate::python_env::PythonChild::development(wrapper));
+            state.launch_metadata = Some(metadata);
+            state.active_run_id = Some(run_id.into());
+            state.remember_adopted_listener(listener_pid, port);
+        }
+
+        manager.monitor_once().unwrap();
+        assert!(listener.borrow().is_some());
+        assert!(manager.debug_approval.current_guardian().is_err());
+        {
+            let mut state = manager.lock_state().unwrap();
+            assert!(state.child.is_none());
+            assert!(state.active_run_id.is_none());
+            assert_eq!(state.active_guardian_pid, Some(listener_pid));
+            state.next_restart_at = Some(Instant::now());
+        }
+
+        let retired = std::cell::Cell::new(false);
+        manager
+            .monitor_once_with(
+                || {
+                    assert!(listener.borrow().is_some());
+                    Ok(PendingRestartPort::AdoptedListener(listener_pid))
+                },
+                |pid, observed_port| {
+                    assert_eq!((pid, observed_port), (listener_pid, port));
+                    listener.borrow_mut().take();
+                    retired.set(true);
+                    Ok(())
+                },
+            )
+            .unwrap();
+        assert!(retired.get());
+        {
+            let state = manager.lock_state().unwrap();
+            assert!(!state.restart_in_progress);
+            assert!(state.active_guardian_pid.is_none());
+            assert!(state.adopted_listener_port.is_none());
+            assert!(state
+                .next_restart_at
+                .is_some_and(|deadline| deadline <= Instant::now()));
+        }
+
+        // The next pass proceeds to authority resolution instead of being
+        // deferred by the same orphan forever. This fixture has no signed
+        // catalog, so resolution must enter its bounded failure path.
+        manager.monitor_once().unwrap();
+        let state = manager.lock_state().unwrap();
+        assert_eq!(state.consecutive_resolve_failures, 1);
+        assert!(state.next_restart_at.is_some());
+        drop(state);
+        fs::remove_file(token_file).unwrap();
     }
 
     #[test]

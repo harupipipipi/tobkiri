@@ -134,6 +134,15 @@ impl DefaultspackDesktopMetadata {
                 },
         }
     }
+
+    pub(crate) fn test_metadata_at_port(
+        execution_identity: crate::host_contract::ExecutionProfileIdentity,
+        port: u16,
+    ) -> Self {
+        let mut metadata = Self::test_metadata(execution_identity);
+        metadata.port = port;
+        metadata
+    }
 }
 
 #[derive(Debug, Clone)]
