@@ -25,6 +25,7 @@ class OpenAICompatibleProvider(OpenAIProvider):
     """OpenAI-compatible provider with both legacy and manifest constructors."""
 
     provider_name = ""
+    REMOTE_MODEL_CACHE_FORMAT_VERSION = 1
     KNOWN_MODELS: List[Dict[str, Any]] = []
     curated_models: List[Dict[str, Any]] = []
     DISPLAY_NAME = "OpenAI Compatible"
@@ -691,6 +692,8 @@ class OpenAICompatibleProvider(OpenAIProvider):
         # contract.  The next successful discovery transparently replaces them.
         if payload.get("inventory_scope") != self._inventory_scope_hash():
             return None
+        if payload.get("model_id_format_version", 1) != self.REMOTE_MODEL_CACHE_FORMAT_VERSION:
+            return None
         return payload
 
     def _save_remote_model_cache(
@@ -701,6 +704,7 @@ class OpenAICompatibleProvider(OpenAIProvider):
         payload = {
             "provider_id": self.provider_id,
             "inventory_scope": self._inventory_scope_hash(),
+            "model_id_format_version": self.REMOTE_MODEL_CACHE_FORMAT_VERSION,
             "saved_at": timestamp,
             "expires_at": timestamp + self._remote_model_cache_ttl_seconds,
             "models": models,
@@ -938,12 +942,7 @@ class OpenAICompatibleProvider(OpenAIProvider):
         ).strip()
         if not model_id:
             return None
-        provider_prefix = f"{self.provider_id}/"
-        # Some gateways already qualify ids in their /models response.  The
-        # public model id is the provider-local portion; retaining the prefix
-        # here would make invocation send it twice.
-        if model_id.startswith(provider_prefix):
-            model_id = model_id[len(provider_prefix) :]
+        model_id = self._remote_catalog_model_id(raw, model_id)
         qualified_model_id = f"{self.provider_id}/{model_id}"
         model_type = self._remote_model_type(model_id, raw)
         capability_map = self._remote_model_capabilities(model_id, model_type, raw)
@@ -993,6 +992,15 @@ class OpenAICompatibleProvider(OpenAIProvider):
                 metadata["max_output_tokens"] = max_output
                 break
         return model
+
+    def _remote_catalog_model_id(self, raw: Dict[str, Any], model_id: str) -> str:
+        provider_prefix = f"{self.provider_id}/"
+        # Some gateways already qualify ids in their /models response.  The
+        # public model id is the provider-local portion; retaining the prefix
+        # here would make invocation send it twice.
+        if model_id.startswith(provider_prefix):
+            return model_id[len(provider_prefix) :]
+        return model_id
 
     @staticmethod
     def _remote_model_type(model_id: str, raw: Optional[Dict[str, Any]] = None) -> str:

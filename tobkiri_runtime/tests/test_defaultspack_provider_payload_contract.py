@@ -268,6 +268,48 @@ def test_openrouter_chat_body_preserves_curated_gateway_params(monkeypatch):
     assert body["tools"] == tools
 
 
+def test_openrouter_live_ids_survive_listing_cache_and_invocation(tmp_path, monkeypatch):
+    import json
+
+    from domain.ai_client.providers.openrouter_provider import OpenRouterProvider
+
+    provider = OpenRouterProvider()
+    provider._api_key = "test-key"
+    cache_path = tmp_path / "openrouter.models.json"
+    monkeypatch.setattr(provider, "_remote_model_cache_path", lambda: cache_path)
+    api_ids = ["openrouter/auto", "openrouter/free", "openai/gpt-4o-mini"]
+    discovered = provider._normalize_remote_models([{"id": model_id} for model_id in api_ids])
+    monkeypatch.setattr(provider, "_fetch_remote_models", lambda: discovered)
+
+    listed = provider.list_models()
+
+    assert [model["model_id"] for model in listed] == api_ids
+    assert [model["id"] for model in listed] == [f"openrouter/{model_id}" for model_id in api_ids]
+    assert [model["model_id"] for model in provider.list_models()] == api_ids
+    assert [model["model_id"] for model in provider._load_remote_model_cache()["models"]] == api_ids
+
+    captured = []
+
+    def fake_request_json(_path, body, **_kwargs):
+        captured.append(body["model"])
+        return {"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]}
+
+    monkeypatch.setattr(provider, "_request_json", fake_request_json)
+    for model_ref in (
+        "openrouter/openrouter/auto",  # qualified id from the picker
+        "openrouter/auto",  # provider-local id from AIClient.resolve_provider
+        "openrouter/openai/gpt-4o-mini",
+    ):
+        provider.complete(model_ref, [{"role": "user", "content": "hi"}], [], {})
+
+    assert captured == ["openrouter/auto", "openrouter/auto", "openai/gpt-4o-mini"]
+
+    legacy_cache = json.loads(cache_path.read_text(encoding="utf-8"))
+    legacy_cache["model_id_format_version"] = 1
+    cache_path.write_text(json.dumps(legacy_cache), encoding="utf-8")
+    assert provider._load_remote_model_cache() is None
+
+
 def test_groq_tool_messages_omit_name_in_chat_body(monkeypatch):
     from domain.ai_client.providers.provider_catalog import GroqProvider
 

@@ -30,6 +30,9 @@ class OpenRouterProvider(OpenAICompatibleProvider):
     # Kept empty deliberately: availability must come from /models for the
     # configured OpenRouter account, never from a bundled model snapshot.
     KNOWN_MODELS: List[Dict[str, Any]] = []
+    # Older cache entries stripped the `openrouter/` portion of genuine API
+    # ids such as `openrouter/auto`.  Rediscover them with the corrected ids.
+    REMOTE_MODEL_CACHE_FORMAT_VERSION = 2
 
     def __init__(self, known_models: List[Dict[str, Any]] | None = None) -> None:
         models = self._catalog_models() if known_models is None else known_models
@@ -63,12 +66,41 @@ class OpenRouterProvider(OpenAICompatibleProvider):
         return []
 
     @classmethod
-    def _provider_model_id(cls, model: str) -> str:
+    def _provider_model_id(
+        cls, model: str, known_models: List[Dict[str, Any]] | None = None
+    ) -> str:
         model_ref = str(model or "").strip()
+        models = known_models or []
+        local_ids = {
+            str(item.get("model_id") or "").strip()
+            for item in models
+            if isinstance(item, dict)
+        }
+        # `openrouter/auto` is itself an OpenRouter model id.  Prefer an exact
+        # provider-local match before interpreting the same text as a qualified
+        # id for a model named `auto`.
+        if model_ref in local_ids:
+            return model_ref
+        for item in models:
+            if isinstance(item, dict) and model_ref == str(item.get("id") or "").strip():
+                return str(item.get("model_id") or "").strip()
         prefix = "openrouter/"
         if model_ref.startswith(prefix):
             return model_ref[len(prefix) :]
         return model_ref
+
+    def _remote_catalog_model_id(self, raw: Dict[str, Any], model_id: str) -> str:
+        metadata = raw.get("metadata")
+        if (
+            raw.get("provider_id") == self.provider_id
+            and isinstance(metadata, dict)
+            and metadata.get("source") == "openrouter_models_api"
+            and model_id == f"{self.provider_id}/{raw.get('model_id')}"
+        ):
+            # Re-normalizing a current cache record must not add the provider
+            # qualifier to its already preserved API id a second time.
+            return str(raw["model_id"])
+        return model_id
 
     @staticmethod
     def _string_list(value: Any) -> List[str]:
@@ -254,10 +286,8 @@ class OpenRouterProvider(OpenAICompatibleProvider):
     def list_models(self) -> List[Dict[str, Any]]:
         return self._merge_remote_models([])
 
-    def _assert_supported_model(self, model: str) -> None:
+    def _assert_supported_model(self, model: str) -> str:
         model_ref = str(model or "").strip()
-        provider_model_id = self._provider_model_id(model_ref)
-        supported: set[str] = set()
         invocation_models: List[Dict[str, Any]] = []
         # Explicit inventories are used by callers that already performed
         # their own catalog selection. The default provider inventory remains
@@ -268,32 +298,34 @@ class OpenRouterProvider(OpenAICompatibleProvider):
             invocation_models.extend(self._normalize_remote_models(cache.get("models")))
         if not invocation_models:
             invocation_models.extend(self._remote_discovered_models())
+        provider_model_id = self._provider_model_id(model_ref, invocation_models)
+        supported: set[str] = set()
         for item in invocation_models:
             if not isinstance(item, dict):
                 continue
-            for key in ("id", "model_id", "qualified_model_id"):
-                value = str(item.get(key) or "").strip()
-                if value:
-                    supported.add(value)
-        if model_ref not in supported and provider_model_id not in supported:
+            value = str(item.get("model_id") or "").strip()
+            if value:
+                supported.add(value)
+        if provider_model_id not in supported:
             raise RuntimeError(
                 "openrouter: model is not present in the live or last-known-good catalog: "
                 f"{provider_model_id}"
             )
+        return provider_model_id
 
     def complete(self, model, messages, tools, params):
-        self._assert_supported_model(model)
+        provider_model_id = self._assert_supported_model(model)
         return super().complete(
-            self._provider_model_id(model),
+            provider_model_id,
             messages,
             tools,
             self._with_gateway_routing(params),
         )
 
     def stream(self, model, messages, tools, params):
-        self._assert_supported_model(model)
+        provider_model_id = self._assert_supported_model(model)
         return super().stream(
-            self._provider_model_id(model),
+            provider_model_id,
             messages,
             tools,
             self._with_gateway_routing(params),
