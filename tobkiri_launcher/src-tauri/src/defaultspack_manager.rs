@@ -383,14 +383,9 @@ impl ApplicationProcessManager {
         let had_live_child = child.is_some();
         let child_pid = child.as_ref().map(crate::python_env::PythonChild::id);
 
-        // The adopted-listener reap must run even when the group stop fails,
-        // so the group result is accumulated and propagated afterwards. On
-        // Unix it runs through the pid+port-verified path BEFORE the
-        // process-group pass: the check re-proves port ownership immediately
-        // before each signal, so a recycled pid can never redirect a group
-        // signal onto a foreign process. The group pass then only meets the
-        // adopted entry through its stricter identity fence when reaping
-        // leaderless orphans.
+        // Reap an adopted listener through its pid+port-verified path before
+        // stopping the process groups created by this Launcher. An adopted
+        // listener is never itself evidence of process-group ownership.
         #[cfg(unix)]
         let group_stop_result = {
             if let Some((pid, port)) = adopted_listener {
@@ -415,8 +410,7 @@ impl ApplicationProcessManager {
             }
         };
 
-        // A guardian adopted outside the managed child is only covered by the
-        // owned groups when it happens to lead one; reap it by pid otherwise.
+        // A guardian adopted outside the managed child is not an owned group.
         #[cfg(not(unix))]
         if let Some((pid, port)) = adopted_listener {
             if Some(pid) != child_pid {
@@ -864,20 +858,7 @@ impl ApplicationProcessManager {
             })?;
         let mut state = self.lock_state()?;
         state.active_run_id = Some(run_id);
-        state.active_guardian_pid = Some(process_id);
-        state.adopted_listener_port = Some(metadata.port());
-        if !state
-            .owned_process_groups
-            .iter()
-            .any(|entry| entry.pgid == process_id)
-        {
-            // A listener adopted outside the managed child may still lead its
-            // own process group. Its start marker must remain verifiable at
-            // shutdown before any group signal is sent.
-            state
-                .owned_process_groups
-                .push(OwnedProcessGroup::record(process_id));
-        }
+        state.remember_adopted_listener(process_id, metadata.port());
         state.launch_metadata = Some(metadata.clone());
         state.stop_requested = false;
         Ok(())
@@ -1088,6 +1069,13 @@ fn managed_defaultspack_run_id() -> String {
 }
 
 impl ApplicationProcessState {
+    fn remember_adopted_listener(&mut self, pid: u32, port: u16) {
+        self.active_guardian_pid = Some(pid);
+        self.adopted_listener_port = Some(port);
+        // The authenticated listener can share the managed child's group or
+        // lead an unrelated group. Neither fact grants ownership of its PGID.
+    }
+
     fn record_unexpected_exit(&mut self, _status: ExitStatus) -> Duration {
         if self
             .started_at
@@ -1986,6 +1974,42 @@ mod tests {
         );
         assert!(!process_group_exists(group_a));
         assert!(!process_group_exists(group_b));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn adopted_listener_and_stale_group_identity_do_not_signal_reused_id() {
+        let manager = test_manager();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        // This live group stands in for a foreign group that acquired the
+        // numeric PID/PGID of an earlier, now-dead adopted guardian. It does
+        // not own the listener port, so quit must leave it running.
+        let mut command = process_utils::command(SYSTEM_SHELL);
+        command.args(["-c", "exec sleep 30"]);
+        crate::dock_registration::configure_defaultspack_process_group(&mut command);
+        let mut foreign_group = command.spawn().unwrap();
+        let reused_id = foreign_group.id();
+        assert_eq!(unsafe { libc::getpgid(reused_id as i32) }, reused_id as i32);
+        let foreign_marker = crate::process_utils::process_start_marker(reused_id).unwrap();
+        {
+            let mut state = manager.lock_state().unwrap();
+            state.remember_adopted_listener(reused_id, port);
+            assert!(state.owned_process_groups.is_empty());
+            // An older managed group once had this numeric PGID. Its saved
+            // leader marker must not authorize a signal to the new group.
+            state.owned_process_groups.push(OwnedProcessGroup {
+                pgid: reused_id,
+                leader_marker: Some(foreign_marker.wrapping_add(1)),
+            });
+        }
+
+        manager.stop().unwrap();
+        let survived = foreign_group.try_wait().unwrap().is_none();
+        let _ = foreign_group.kill();
+        let _ = foreign_group.wait();
+        assert!(survived, "quit signalled a foreign process group");
     }
 
     #[cfg(unix)]
