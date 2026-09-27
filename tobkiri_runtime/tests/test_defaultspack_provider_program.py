@@ -2550,21 +2550,38 @@ def test_saved_litellm_connection_endpoint_overrides_the_builtin_default(monkeyp
 def test_live_inventory_removes_stale_bundled_models_from_the_ui_catalog(monkeypatch):
     import ecosystem.defaultspack.backend.ai_client.provider_catalog as catalog
 
+    live_model = {
+        "id": "openrouter/account-visible-model",
+        "qualified_model_id": "openrouter/account-visible-model",
+        "provider_id": "openrouter",
+        "model_id": "account-visible-model",
+        "metadata": {"source": "openrouter_models_api"},
+    }
+
+    # The first request reaches the UI during contract restoration. The
+    # fallback must then obtain the approved owner's verified inventory.
+    monkeypatch.setattr(catalog, "_selected_model_catalog_approved", lambda: True)
+    calls = 0
+
+    def invoke(contract_id, operation, payload):
+        nonlocal calls
+        assert contract_id == catalog._MODEL_CATALOG_CONTRACT
+        assert operation == "list"
+        assert payload == {"provider_id": "openrouter"}
+        calls += 1
+        if calls == 1:
+            raise catalog.GlobalContractUnavailable("catalog is restoring")
+        return {"models": [dict(live_model)]}
+
+    monkeypatch.setattr(catalog, "_invoke", invoke)
+
     class Client:
         def list_providers(self):
             return [{"provider_id": "openrouter"}]
 
         def list_models(self, provider=None):
             assert provider in {None, "openrouter"}
-            return [
-                {
-                    "id": "openrouter/account-visible-model",
-                    "qualified_model_id": "openrouter/account-visible-model",
-                    "provider_id": "openrouter",
-                    "model_id": "account-visible-model",
-                    "metadata": {"source": "openrouter_models_api"},
-                }
-            ]
+            return [dict(live_model)]
 
     monkeypatch.setattr(catalog, "_runtime_client", lambda: Client())
     monkeypatch.setattr(
@@ -2583,6 +2600,7 @@ def test_live_inventory_removes_stale_bundled_models_from_the_ui_catalog(monkeyp
 
     models = catalog.list_model_catalog("openrouter")
 
+    assert calls == 2
     assert [model["model_id"] for model in models] == ["account-visible-model"]
 
 
