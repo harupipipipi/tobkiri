@@ -271,6 +271,7 @@ def test_openrouter_chat_body_preserves_curated_gateway_params(monkeypatch):
 def test_openrouter_live_ids_survive_listing_cache_and_invocation(tmp_path, monkeypatch):
     import json
 
+    from domain.ai_client.client import AIClient
     from domain.ai_client.providers.openrouter_provider import OpenRouterProvider
 
     provider = OpenRouterProvider()
@@ -287,6 +288,13 @@ def test_openrouter_live_ids_survive_listing_cache_and_invocation(tmp_path, monk
     assert [model["id"] for model in listed] == [f"openrouter/{model_id}" for model_id in api_ids]
     assert [model["model_id"] for model in provider.list_models()] == api_ids
     assert [model["model_id"] for model in provider._load_remote_model_cache()["models"]] == api_ids
+    runtime_model = AIClient._normalize_runtime_model(
+        "openrouter",
+        {"display_name": "OpenRouter", "availability": {"supports_invoke": True}},
+        listed[0],
+    )
+    assert runtime_model["qualified_model_id"] == "openrouter/openrouter/auto"
+    assert runtime_model["model_id"] == "openrouter/auto"
 
     captured = []
 
