@@ -17,8 +17,8 @@ pub const INSPECTION_COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 const INSPECTION_COMMAND_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 /// Retention cap for a single inspection stream. Larger outputs keep
-/// draining (so the child never wedges on a full pipe) but are truncated —
-/// `netstat -ano` on a busy machine can exceed the pipe buffer.
+/// draining (so the child never wedges on a full pipe), then fail the
+/// inspection because a listener may be present in the omitted records.
 const INSPECTION_OUTPUT_CAP: usize = 4 * 1024 * 1024;
 
 pub fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
@@ -95,8 +95,8 @@ pub fn bounded_output(command: &mut Command, timeout: Duration) -> io::Result<Ou
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut child = command.spawn()?;
-    let stdout_handle = child.stdout.take().map(drain_capped);
-    let stderr_handle = child.stderr.take().map(drain_capped);
+    let stdout_handle = child.stdout.take().map(drain_inspection_stream);
+    let stderr_handle = child.stderr.take().map(drain_inspection_stream);
     let deadline = Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
@@ -126,11 +126,18 @@ pub fn bounded_output(command: &mut Command, timeout: Duration) -> io::Result<Ou
     let stdout = join_drain_until(stdout_handle, deadline);
     let stderr = join_drain_until(stderr_handle, deadline);
     match (stdout, stderr) {
-        (Some(stdout), Some(stderr)) => Ok(Output {
-            status,
-            stdout,
-            stderr,
-        }),
+        (Some(Ok(stdout)), Some(Ok(stderr))) if !stdout.truncated && !stderr.truncated => {
+            Ok(Output {
+                status,
+                stdout: stdout.bytes,
+                stderr: stderr.bytes,
+            })
+        }
+        (Some(Err(error)), _) | (_, Some(Err(error))) => Err(error),
+        (Some(Ok(_)), Some(Ok(_))) => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "inspection output exceeded its retention cap",
+        )),
         _ => Err(io::Error::new(
             io::ErrorKind::TimedOut,
             "inspection output pipe remained open beyond its deadline",
@@ -141,7 +148,42 @@ pub fn bounded_output(command: &mut Command, timeout: Duration) -> io::Result<Ou
 /// Drain a pipe to EOF retaining at most [`INSPECTION_OUTPUT_CAP`] bytes.
 ///
 /// The stream keeps draining past the cap so the child never wedges on a
-/// full pipe; only the retained buffer is bounded.
+/// full pipe. Callers must reject the incomplete output instead of treating
+/// an omitted listener or process record as absent.
+struct InspectionStream {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
+fn drain_inspection_stream<R>(mut pipe: R) -> std::thread::JoinHandle<io::Result<InspectionStream>>
+where
+    R: Read + Send + 'static,
+{
+    std::thread::spawn(move || {
+        let mut retained = Vec::new();
+        let mut truncated = false;
+        let mut buffer = [0u8; 8192];
+        loop {
+            match pipe.read(&mut buffer) {
+                Ok(0) => {
+                    return Ok(InspectionStream {
+                        bytes: retained,
+                        truncated,
+                    });
+                }
+                Err(error) => return Err(error),
+                Ok(count) => {
+                    let keep = (INSPECTION_OUTPUT_CAP - retained.len()).min(count);
+                    retained.extend_from_slice(&buffer[..keep]);
+                    truncated |= keep < count;
+                }
+            }
+        }
+    })
+}
+
+/// Drain helper output for bounded diagnostics. The caller retains only a
+/// preview and does not use these bytes to decide whether a listener exists.
 pub(crate) fn drain_capped<R>(mut pipe: R) -> std::thread::JoinHandle<Vec<u8>>
 where
     R: Read + Send + 'static,
@@ -504,11 +546,14 @@ fn redact_keyed_values(text: &str) -> String {
 }
 
 fn join_drain_until(
-    handle: Option<std::thread::JoinHandle<Vec<u8>>>,
+    handle: Option<std::thread::JoinHandle<io::Result<InspectionStream>>>,
     deadline: Instant,
-) -> Option<Vec<u8>> {
+) -> Option<io::Result<InspectionStream>> {
     let Some(handle) = handle else {
-        return Some(Vec::new());
+        return Some(Ok(InspectionStream {
+            bytes: Vec::new(),
+            truncated: false,
+        }));
     };
     while !handle.is_finished() {
         let remaining = deadline.saturating_duration_since(Instant::now());
@@ -572,6 +617,27 @@ pub fn process_start_marker(_pid: u32) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn oversized_inspection_output_is_rejected() {
+        let mut command = command(std::env::current_exe().unwrap());
+        command
+            .args(["emit_oversized_inspection_output", "--nocapture"])
+            .env("TOBKIRI_TEST_INSPECTION_OVERFLOW", "1");
+
+        let error = bounded_output(&mut command, Duration::from_secs(10)).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn emit_oversized_inspection_output() {
+        if std::env::var_os("TOBKIRI_TEST_INSPECTION_OVERFLOW").is_none() {
+            return;
+        }
+        std::io::stdout()
+            .write_all(&vec![b'x'; INSPECTION_OUTPUT_CAP + 1])
+            .unwrap();
+    }
 
     #[cfg(unix)]
     #[test]
