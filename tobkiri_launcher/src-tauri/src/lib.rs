@@ -68,6 +68,9 @@ pub struct ShutdownState(pub Arc<AtomicBool>, pub Arc<(Mutex<bool>, Condvar)>);
 pub struct AllowedNavigationPorts(pub Arc<Mutex<Vec<u16>>>);
 
 const PRIMARY_WINDOW_LABELS: [&str; 2] = ["panel", "main"];
+/// A cold, verified Defaults Profile can take longer than one minute to
+/// materialize its Host catalog, especially on Windows development builds.
+const KERNEL_HEALTH_STARTUP_TIMEOUT_SECS: u64 = 180;
 const DEFAULTSPACK_RESERVED_PORT: u16 = 8766;
 const DEFAULTSPACK_MAIN_WINDOW_LABEL: &str = "defaultspack-main";
 const AUTHORITY_APPROVAL_WINDOW_LABEL: &str = "authority-approval";
@@ -3075,7 +3078,11 @@ fn spawn_kernel_exit_monitor(
             }
 
             if restarted {
-                match health_check::wait_for_healthy(config.kernel_port, 60).and_then(|_| {
+                match health_check::wait_for_healthy(
+                    config.kernel_port,
+                    KERNEL_HEALTH_STARTUP_TIMEOUT_SECS,
+                )
+                .and_then(|_| {
                     request_panel_bootstrap_code_with_retry(
                         config.kernel_port,
                         &panel_bootstrap_secret,
@@ -3347,7 +3354,7 @@ fn start_kernel_and_bootstrap(
             Ok(())
         },
         || {
-            health_check::wait_for_healthy(port, 60)?;
+            health_check::wait_for_healthy(port, KERNEL_HEALTH_STARTUP_TIMEOUT_SECS)?;
             Ok(())
         },
         || request_panel_bootstrap_code_with_retry(port, bootstrap_secret),

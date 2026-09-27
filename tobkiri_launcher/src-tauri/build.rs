@@ -350,10 +350,10 @@ fn capture_local_development_authority(
     Ok((staged_root, format!("{:x}", Sha256::digest(manifest))))
 }
 
-/// Tauri preserves the sealed source modes while copying the packaged Python
-/// tree into `target/debug/app`. Restore owner write access on that generated
-/// destination before the next debug copy so iterative builds can overwrite
-/// it. The sealed source tree and every non-debug build remain untouched.
+/// Tauri copies `gen/app` into `target/[<triple>/]debug/app` without removing
+/// files from an earlier copy. Reset only that owned debug destination before
+/// the next copy so an obsolete file cannot invalidate the runtime manifest.
+/// The sealed source tree and every non-debug build remain untouched.
 fn prepare_debug_tauri_resource_destination() -> io::Result<()> {
     if std::env::var("PROFILE").as_deref() != Ok("debug") {
         return Ok(());
@@ -361,15 +361,134 @@ fn prepare_debug_tauri_resource_destination() -> io::Result<()> {
     let out_dir = PathBuf::from(
         std::env::var_os("OUT_DIR").ok_or_else(|| invalid_release("Cargo OUT_DIR is missing"))?,
     );
-    let profile_dir = out_dir
-        .ancestors()
-        .nth(3)
-        .ok_or_else(|| invalid_release("Cargo OUT_DIR has no profile directory"))?;
-    let resource_root = profile_dir.join("app");
-    if resource_root.exists() {
-        make_generated_tree_owner_writable(&resource_root)?;
+    #[cfg(target_os = "windows")]
+    {
+        let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let target_root = resolve_tauri_shell_target_dir(&project_dir)?;
+        let target = required_cargo_target()?;
+        reset_windows_debug_tauri_resource_copy_at(&out_dir, &target_root, &target)?;
+        return Ok(());
     }
-    Ok(())
+    #[cfg(not(target_os = "windows"))]
+    {
+        let profile_dir = out_dir
+            .ancestors()
+            .nth(3)
+            .ok_or_else(|| invalid_release("Cargo OUT_DIR has no profile directory"))?;
+        let resource_root = profile_dir.join("app");
+        if resource_root.exists() {
+            make_generated_tree_owner_writable(&resource_root)?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn reset_windows_debug_tauri_resource_copy_at(
+    out_dir: &Path,
+    target_root: &Path,
+    target: &str,
+) -> io::Result<PathBuf> {
+    use std::os::windows::fs::MetadataExt;
+
+    const REPARSE_POINT: u32 = 0x400;
+    fn regular_directory_ancestors(path: &Path) -> io::Result<()> {
+        if !path.is_absolute() {
+            return Err(invalid_release(
+                "debug Tauri resource path must be absolute",
+            ));
+        }
+        for ancestor in path.ancestors() {
+            let metadata = fs::symlink_metadata(ancestor)?;
+            if !metadata.is_dir() || metadata.file_attributes() & REPARSE_POINT != 0 {
+                return Err(invalid_release(format!(
+                    "debug Tauri resource path has an unsafe component: {}",
+                    ancestor.display()
+                )));
+            }
+        }
+        Ok(())
+    }
+    fn regular_tree(path: &Path) -> io::Result<()> {
+        use std::mem::MaybeUninit;
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::Storage::FileSystem::{
+            GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION,
+        };
+
+        let metadata = fs::symlink_metadata(path)?;
+        if metadata.file_attributes() & REPARSE_POINT != 0
+            || (!metadata.is_dir() && !metadata.is_file())
+        {
+            return Err(invalid_release(format!(
+                "debug Tauri resource destination contains an unsafe entry: {}",
+                path.display()
+            )));
+        }
+        if metadata.is_dir() {
+            for entry in fs::read_dir(path)? {
+                regular_tree(&entry?.path())?;
+            }
+        } else {
+            // Changing a hardlinked file's read-only flag would also change
+            // the unrelated link outside this generated resource directory.
+            let file = File::open(path)?;
+            let mut information = MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
+            if unsafe { GetFileInformationByHandle(file.as_raw_handle(), information.as_mut_ptr()) }
+                == 0
+            {
+                return Err(io::Error::last_os_error());
+            }
+            if unsafe { information.assume_init() }.nNumberOfLinks != 1 {
+                return Err(invalid_release(format!(
+                    "debug Tauri resource destination contains a hardlinked file: {}",
+                    path.display()
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    validate_path_component(target, "Rust target")?;
+    regular_directory_ancestors(target_root)?;
+    regular_directory_ancestors(out_dir)?;
+    // Cargo and std::fs::canonicalize can spell the same Windows directory
+    // with or without the extended-length prefix. Compare their resolved
+    // paths only after rejecting reparse points in the original paths.
+    let target_root = target_root.canonicalize()?;
+    let out_dir = out_dir.canonicalize()?;
+    let profile_roots = [
+        target_root.join("debug"),
+        target_root.join(target).join("debug"),
+    ];
+    for profile_root in profile_roots {
+        let Ok(relative) = out_dir.strip_prefix(profile_root.join("build")) else {
+            continue;
+        };
+        let components = relative.components().collect::<Vec<_>>();
+        if components.len() != 2
+            || !matches!(components[0], Component::Normal(name) if name.to_string_lossy().starts_with("tobkiri-launcher-"))
+            || components[1].as_os_str() != "out"
+        {
+            return Err(invalid_release(
+                "Cargo OUT_DIR has an unexpected debug target shape",
+            ));
+        }
+        let resource_root = profile_root.join("app");
+        match fs::symlink_metadata(&resource_root) {
+            Ok(_) => {
+                regular_tree(&resource_root)?;
+                make_generated_tree_owner_writable(&resource_root)?;
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+        reset_staged_runtime(&resource_root)?;
+        return Ok(resource_root);
+    }
+    Err(invalid_release(
+        "Cargo OUT_DIR escaped the owned debug target profile",
+    ))
 }
 
 fn make_generated_tree_owner_writable(path: &Path) -> io::Result<()> {
@@ -6140,6 +6259,80 @@ mod tests {
                 .canonicalize()
                 .expect("fixture path should remain canonical")
         );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_debug_resource_reset_removes_only_the_selected_tauri_copy() {
+        let tree = TestTree::new("windows-debug-resource-reset");
+        let target_root = tree.path().join("target");
+        let triple = "x86_64-pc-windows-msvc";
+        let profile_root = target_root.join(triple).join("debug");
+        let out_dir = profile_root.join("build/tobkiri-launcher-fixture/out");
+        fs::create_dir_all(&out_dir).unwrap();
+        let resource_root = profile_root.join("app");
+        let stale = resource_root.join("ecosystem/defaultspack/webapp/test-results/video.webm");
+        fs::create_dir_all(stale.parent().unwrap()).unwrap();
+        fs::write(&stale, b"obsolete Playwright output").unwrap();
+        let mut permissions = fs::metadata(&stale).unwrap().permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(&stale, permissions).unwrap();
+        let unrelated = target_root.join("debug/app/untouched");
+        fs::create_dir_all(unrelated.parent().unwrap()).unwrap();
+        fs::write(&unrelated, b"another profile").unwrap();
+
+        let reset = reset_windows_debug_tauri_resource_copy_at(&out_dir, &target_root, triple)
+            .expect("owned debug resource copy should reset");
+        assert_eq!(reset, resource_root);
+        assert!(resource_root.is_dir());
+        assert!(fs::read_dir(&resource_root).unwrap().next().is_none());
+        assert_eq!(fs::read(&unrelated).unwrap(), b"another profile");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_debug_resource_reset_rejects_foreign_cargo_layout() {
+        let tree = TestTree::new("windows-debug-resource-foreign");
+        let target_root = tree.path().join("target");
+        let triple = "x86_64-pc-windows-msvc";
+        let resource_root = target_root.join(triple).join("debug/app");
+        fs::create_dir_all(&resource_root).unwrap();
+        let sentinel = resource_root.join("retained");
+        fs::write(&sentinel, b"retained").unwrap();
+        for out_dir in [
+            target_root
+                .join(triple)
+                .join("release/build/tobkiri-launcher-fixture/out"),
+            target_root.join(triple).join("debug/build/other-crate/out"),
+            target_root.join("other-triple/debug/build/tobkiri-launcher-fixture/out"),
+        ] {
+            fs::create_dir_all(&out_dir).unwrap();
+            reset_windows_debug_tauri_resource_copy_at(&out_dir, &target_root, triple)
+                .expect_err("foreign Cargo path must not reset the resource copy");
+            assert_eq!(fs::read(&sentinel).unwrap(), b"retained");
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_debug_resource_reset_rejects_hardlinked_output() {
+        let tree = TestTree::new("windows-debug-resource-hardlink");
+        let target_root = tree.path().join("target");
+        let triple = "x86_64-pc-windows-msvc";
+        let profile_root = target_root.join(triple).join("debug");
+        let out_dir = profile_root.join("build/tobkiri-launcher-fixture/out");
+        let resource_root = profile_root.join("app");
+        fs::create_dir_all(&out_dir).unwrap();
+        fs::create_dir_all(&resource_root).unwrap();
+        let outside = tree.path().join("outside");
+        fs::write(&outside, b"outside bytes").unwrap();
+        fs::hard_link(&outside, resource_root.join("linked")).unwrap();
+
+        let error = reset_windows_debug_tauri_resource_copy_at(&out_dir, &target_root, triple)
+            .expect_err("hardlinked output must fail before resetting the resource copy");
+        assert!(error.to_string().contains("hardlinked"));
+        assert_eq!(fs::read(&outside).unwrap(), b"outside bytes");
+        assert!(resource_root.join("linked").is_file());
     }
 
     #[test]
