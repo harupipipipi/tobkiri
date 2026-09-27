@@ -15766,6 +15766,51 @@
         "status": "artifact-integrity-verified"
       }
     },
+    "tobkiri_voice_agent_pack": {
+      "semantic_comparison": {
+        "equivalent": null,
+        "method": null,
+        "missing_categories": [
+          "non_executable_pack_semantics_unmodeled",
+          "pack_specific_legacy_source_missing"
+        ],
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "reason": "The committed legacy-shaped sources contain no executable operation model for this Pack's non-executable behavior",
+        "status": "unverified"
+      },
+      "source": {
+        "digest": null,
+        "files": [],
+        "format": null,
+        "pack_id": "tobkiri_voice_agent_pack",
+        "reason": "no Pack-specific legacy source record is present",
+        "status": "missing"
+      },
+      "status": "generated-draft",
+      "target": {
+        "artifact_verification": {
+          "artifact_count": 8,
+          "artifact_index_digest": "sha256:014f36ed41ffd9d8b4b6b1d443d6510d089bdcedc3ccd635dc48b34770b8d40a",
+          "artifact_set_digest": "sha256:dd1282cdb4fd8d26264715d4dccbf81939f998939d6907e9f5ebab49716aafb6",
+          "executable_catalog_digest": "sha256:57523bc1e369ba9336daf87a1a2c19e767aaf4f0ff450d833fd5693b135a15f4",
+          "pack_id": "tobkiri_voice_agent_pack",
+          "quartet": {
+            "artifact-index.v4.json": "sha256:014f36ed41ffd9d8b4b6b1d443d6510d089bdcedc3ccd635dc48b34770b8d40a",
+            "contracts.v4.json": "sha256:b82b99ba64bae870af5936df6fe117aa0e5deadd220c88bb6f445241d756beb8",
+            "executables.v4.json": "sha256:34b41f8c41912273472c496ebe63e599ab4b1068d1b04049b714b851d0a16990",
+            "pack.v4.json": "sha256:15bb0ed259edbf857d5bb675a42f92991d41e17adb242cd467a6c93bee32ed4f"
+          }
+        },
+        "digest": "sha256:dd1282cdb4fd8d26264715d4dccbf81939f998939d6907e9f5ebab49716aafb6",
+        "format": "tobkiri-pack-v4-quartet",
+        "pack_id": "tobkiri_voice_agent_pack",
+        "status": "artifact-integrity-verified"
+      }
+    },
     "tobkiri_workflow_pack": {
       "semantic_comparison": {
         "equivalent": null,
@@ -15825,7 +15870,7 @@
   "source": {
     "attestation": "none",
     "authority": "evidence-only",
-    "content_digest": "sha256:9ada75da04c071e16010540a76bd6ae5b2a69de9bb86d0563164b2a963995f8b",
+    "content_digest": "sha256:3a4c7938d4ad121daf7cf234f12d1d058e64e47cc722978d9a56c8c511c6173d",
     "feasibility_audit": {
       "semantically_reviewed": {
         "count": 75,
@@ -15950,7 +15995,7 @@
           ]
         },
         "non_executable_pack_semantics_unmodeled": {
-          "count": 48,
+          "count": 49,
           "pack_ids": [
             "rumi_agent_continuity_pack",
             "rumi_agent_workroom_pack",
@@ -15999,7 +16044,8 @@
             "rumi_voice_mobile_pack",
             "rumi_workflow_scheduler_pack",
             "rumi_workspace_pack",
-            "search_home_pack"
+            "search_home_pack",
+            "tobkiri_voice_agent_pack"
           ]
         },
         "pack_specific_authority_source_missing": {
@@ -16013,7 +16059,7 @@
           ]
         },
         "pack_specific_legacy_source_missing": {
-          "count": 39,
+          "count": 40,
           "pack_ids": [
             "rumi_agent_continuity_pack",
             "rumi_agent_workroom_pack",
@@ -16053,7 +16099,8 @@
             "rumi_voice_mobile_pack",
             "rumi_workflow_scheduler_pack",
             "rumi_workspace_pack",
-            "search_home_pack"
+            "search_home_pack",
+            "tobkiri_voice_agent_pack"
           ]
         },
         "parameter_schema_mapping_mismatch": {
@@ -16067,7 +16114,7 @@
     "freshness_basis": "exact-input-digests-and-deterministic-recomputation",
     "generator_id": "tobkiri.quality.migration-proof-generator",
     "generator_version": "2.1.0",
-    "input_digest": "sha256:267a09df814f49a81eaf5c9502485a0fe1d6d905ac625e60c4eb30e2dbfca7cd",
+    "input_digest": "sha256:4820bbeae44f3d4164f1d5999e0a1a80ed75d2b0fd4d1c1be25aacebb231c029",
     "input_paths": [
       "tobkiri_runtime/core_runtime/profile_definition_store_v4.py",
       "tobkiri_runtime/ecosystem/defaultspack/artifact-index.v4.json",
@@ -17192,6 +17239,15 @@
       "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/runtime/settings.py",
       "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/runtime/state_changes.py",
       "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/runtime/store.py",
+      "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/README.md",
+      "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/artifact-index.v4.json",
+      "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/contracts.v4.json",
+      "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/executables.v4.json",
+      "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/frontend_extensions/voice_agent.ui.json",
+      "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/pack.v4.json",
+      "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/prompts/voice_coordinator.system.md",
+      "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/voice/coordinator.json",
+      "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/voice/protocol.py",
       "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/artifact-index.v4.json",
       "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/backend-integrity.v4.json",
       "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/contracts.v4.json",
@@ -22833,6 +22889,51 @@
         "path": "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/runtime/store.py"
       },
       {
+        "digest": "sha256:4807d0a8ec7ccab5edc68df045742cf9b08d3ff46288b51cf856119230ec5f2f",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/README.md"
+      },
+      {
+        "digest": "sha256:014f36ed41ffd9d8b4b6b1d443d6510d089bdcedc3ccd635dc48b34770b8d40a",
+        "kind": "v4-artifact",
+        "path": "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/artifact-index.v4.json"
+      },
+      {
+        "digest": "sha256:b82b99ba64bae870af5936df6fe117aa0e5deadd220c88bb6f445241d756beb8",
+        "kind": "v4-artifact",
+        "path": "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/contracts.v4.json"
+      },
+      {
+        "digest": "sha256:34b41f8c41912273472c496ebe63e599ab4b1068d1b04049b714b851d0a16990",
+        "kind": "v4-artifact",
+        "path": "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/executables.v4.json"
+      },
+      {
+        "digest": "sha256:760993272878090ecb066f2575263c77e9f4f91dd3255bae9da705d28e907545",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/frontend_extensions/voice_agent.ui.json"
+      },
+      {
+        "digest": "sha256:15bb0ed259edbf857d5bb675a42f92991d41e17adb242cd467a6c93bee32ed4f",
+        "kind": "v4-artifact",
+        "path": "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/pack.v4.json"
+      },
+      {
+        "digest": "sha256:1080156a29f61420dff254aeb24535295afd4e3448a4fa7874c7cc33fd1975f4",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/prompts/voice_coordinator.system.md"
+      },
+      {
+        "digest": "sha256:5ea16a240931e2c3a85fd2d725a94d4816f17b40da6a045c3fc0602e3b4e1fbd",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/voice/coordinator.json"
+      },
+      {
+        "digest": "sha256:41734e31d360e2086eddef153e7570beb687188a53e27daf2c5fb9710d1b4b40",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/tobkiri_voice_agent_pack/voice/protocol.py"
+      },
+      {
         "digest": "sha256:8476c11cfd60298f4970e1017bef2db04c3861a18ad0029d98e6b42f7cf71578",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/artifact-index.v4.json"
@@ -22950,12 +23051,12 @@
     ],
     "kind": "repository-generated-evidence",
     "migration_status_counts": {
-      "generated-draft": 66,
+      "generated-draft": 67,
       "release-verified": 0,
       "semantically-reviewed": 75
     },
-    "observed_head_sha": "f0cd1b36f93e8937d0c677d6eb312fe6ffcf0269",
-    "pack_count": 141,
+    "observed_head_sha": "9dea6a84275630f83f788a5ced33450bf6035477",
+    "pack_count": 142,
     "profile_collection_proof": {
       "identity_proof": {
         "active_profile_id": "profile-bora",
@@ -23020,7 +23121,7 @@
         }
       }
     },
-    "semantic_unproved_pack_count": 66,
-    "unproved_pack_count": 141
+    "semantic_unproved_pack_count": 67,
+    "unproved_pack_count": 142
   }
 }

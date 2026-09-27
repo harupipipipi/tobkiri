@@ -159,6 +159,11 @@
       "artifact_digest": null,
       "pack_id": "rumi_prompt_studio_pack",
       "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "tobkiri_voice_agent_pack",
+      "role": "provider"
     }
   ],
   "profile_api_version": "io.tobkiri.profile.v5",
@@ -168,7 +173,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
-    "source_digest": "sha256:556568eb866ded37ba6d8304f19dde4aa779decd5cdd17b466ef3049fa95f176",
+    "source_digest": "sha256:f670e6c84875cccf15a22c8251e70aef19975d72d58e137ad84a0eae9e3aba2e",
     "repository_commit": "working-tree",
     "repository_tree": "c873994334bc031353714592c0fa391f71780b036e87a26e44d4f4a6b7f19ae6",
     "generator": "tobkiri-profile-artifacts",

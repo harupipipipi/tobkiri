@@ -148,6 +148,7 @@
     "tobkiri_host_pack_control",
     "tobkiri_mcp_connection_pack",
     "tobkiri_ui_settings_pack",
+    "tobkiri_voice_agent_pack",
     "tobkiri_workflow_pack"
   ],
   "packs": [
@@ -19775,6 +19776,72 @@
       },
       "version": "1.0.0",
       "workspace_boundary": "host_brokered"
+    },
+    {
+      "approval_policy": "capability_gated",
+      "authority": "v4-authoritative",
+      "capabilities": [
+        "host.microphone.capture"
+      ],
+      "dependencies": {},
+      "description": "Staged, model-neutral Tobkiri voice coordinator and UI entry.",
+      "display_name": "Tobkiri Voice Agent",
+      "execution_boundary": "declarative_only",
+      "kind": "normal_sandbox",
+      "legacy_ids": [],
+      "legacy_operations": [],
+      "migration": {
+        "removal_wave": 10,
+        "sunset_at": "2027-12-31"
+      },
+      "network": {
+        "allowed_domains": [],
+        "allowed_ports": []
+      },
+      "pack_id": "tobkiri_voice_agent_pack",
+      "provided_contracts": [],
+      "required_contracts": [],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:4807d0a8ec7ccab5edc68df045742cf9b08d3ff46288b51cf856119230ec5f2f",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "README.md"
+        },
+        {
+          "digest": "sha256:760993272878090ecb066f2575263c77e9f4f91dd3255bae9da705d28e907545",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "frontend_extensions/voice_agent.ui.json"
+        },
+        {
+          "digest": "sha256:1080156a29f61420dff254aeb24535295afd4e3448a4fa7874c7cc33fd1975f4",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "prompts/voice_coordinator.system.md"
+        },
+        {
+          "digest": "sha256:5ea16a240931e2c3a85fd2d725a94d4816f17b40da6a045c3fc0602e3b4e1fbd",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "voice/coordinator.json"
+        },
+        {
+          "digest": "sha256:41734e31d360e2086eddef153e7570beb687188a53e27daf2c5fb9710d1b4b40",
+          "index_role": "asset",
+          "kind": "asset",
+          "path": "voice/protocol.py"
+        }
+      ],
+      "secrets": [],
+      "source_evidence": [],
+      "source_provenance": {
+        "mode": "canonical-v4",
+        "owner": "tobkiri_voice_agent_pack",
+        "source_format": "pack-source-catalog.v1"
+      },
+      "version": "0.1.0",
+      "workspace_boundary": "pack_local"
     },
     {
       "approval_policy": "capability_gated",

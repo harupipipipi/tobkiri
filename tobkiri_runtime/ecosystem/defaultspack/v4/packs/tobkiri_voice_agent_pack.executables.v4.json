@@ -1,0 +1,8 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "tobkiri_voice_agent_pack",
+  "source_identity": "sha256:15bb0ed259edbf857d5bb675a42f92991d41e17adb242cd467a6c93bee32ed4f",
+  "variants": [],
+  "materialization_catalog_digest": "sha256:57523bc1e369ba9336daf87a1a2c19e767aaf4f0ff450d833fd5693b135a15f4",
+  "catalog_digest": "sha256:39d7a966a13f7236f68366a63df0bd829615cb1df114d089451b6266a2f0c59c"
+}
