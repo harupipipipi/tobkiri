@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Mapping
@@ -19,6 +20,30 @@ logger = logging.getLogger(__name__)
 
 _PROFILE_CAPTURE_ATTEMPTS = 3
 _PROFILE_CAPTURE_RETRY_DELAY_SECONDS = 0.05
+
+_PACK_PROFILE_TRANSITION_LOCK = threading.Lock()
+_PACK_PROFILE_TRANSITION_EPOCH = 0
+_PACK_PROFILE_TRANSITIONS = 0
+
+
+def _pack_profile_transition_state() -> tuple[int, bool]:
+    with _PACK_PROFILE_TRANSITION_LOCK:
+        return _PACK_PROFILE_TRANSITION_EPOCH, _PACK_PROFILE_TRANSITIONS > 0
+
+
+@contextmanager
+def pack_profile_transition():
+    """Keep health probes fail-closed while a Pack activation is being published."""
+    global _PACK_PROFILE_TRANSITION_EPOCH, _PACK_PROFILE_TRANSITIONS
+    with _PACK_PROFILE_TRANSITION_LOCK:
+        _PACK_PROFILE_TRANSITION_EPOCH += 1
+        _PACK_PROFILE_TRANSITIONS += 1
+    try:
+        yield
+    finally:
+        with _PACK_PROFILE_TRANSITION_LOCK:
+            _PACK_PROFILE_TRANSITIONS -= 1
+            _PACK_PROFILE_TRANSITION_EPOCH += 1
 
 
 _RUNTIME_READINESS_LOCK = threading.Lock()
@@ -175,6 +200,27 @@ class AppLifecycleManager:
         from .profile_runtime_port import require_profile_runtime
 
         profile_runtime = require_profile_runtime()
+        transition_epoch, transition_active = _pack_profile_transition_state()
+
+        def pending_profile_transition() -> Dict[str, Any]:
+            result = {
+                "needs_setup": True,
+                "reason": "pack_profile_transition_in_progress",
+                "setup_state": "profile_transition_in_progress",
+                "host_catalog_verified": False,
+                "profile_ceremony_available": False,
+                "active_profile_ready": False,
+                "launch_ready": False,
+                "defaults_bootstrap_required": False,
+            }
+            result.update(get_runtime_readiness())
+            result["runtime_ready"] = False
+            result["runtime_status"] = "panel_ready" if result.get("panel_ready") else "starting"
+            result["runtime_error"] = None
+            return result
+
+        if transition_active:
+            return pending_profile_transition()
         for attempt in range(_PROFILE_CAPTURE_ATTEMPTS):
             try:
                 active = capture_active_profile(base_dir=self.base_dir)
@@ -193,6 +239,8 @@ class AppLifecycleManager:
                 }
                 break
             except Exception as error:
+                if _pack_profile_transition_state()[0] != transition_epoch:
+                    return pending_profile_transition()
                 if (
                     profile_runtime.is_activation_lock_timeout(error)
                     and attempt + 1 < _PROFILE_CAPTURE_ATTEMPTS
@@ -366,16 +414,19 @@ class AppLifecycleManager:
                 "launch_ready": False,
                 "defaults_bootstrap_required": False,
             }
-        if self._activation_lock.locked():
+        transition_epoch, transition_active = _pack_profile_transition_state()
+        if self._activation_lock.locked() or transition_active:
             return pending_health()
         if not self._health_capture_lock.acquire(blocking=False):
             return pending_health()
         try:
-            if self._activation_lock.locked():
+            if self._activation_lock.locked() or _pack_profile_transition_state()[1]:
                 return pending_health()
             status = self.check_setup_status()
         finally:
             self._health_capture_lock.release()
+        if _pack_profile_transition_state()[0] != transition_epoch:
+            return pending_health()
         return {
             "status": "error" if status.get("runtime_status") == "error" else "ok",
             "needs_setup": status.get("needs_setup", True),

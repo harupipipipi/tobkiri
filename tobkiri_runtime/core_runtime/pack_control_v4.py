@@ -1984,18 +1984,21 @@ def _activate_pack_set(state: Mapping[str, Any], pack_ids: list[str]) -> None:
         raise PackControlConflict("active v4 Profile binding is unavailable")
     profile_id = str(profile.get("profile_id") or "")
     resolved = resolve_profile_pack_set(pack_ids)
-    activate_resolved_profile_pack_set(
-        resolved,
-        activation_id=(
-            f"activation:{profile_id}-"
-            + resolved.plan["plan_digest"].removeprefix("sha256:")[:16]
-            + "-"
-            + secrets.token_hex(8)
-        ),
-        expected_profile_revision=str(plan.get("profile_revision") or ""),
-        expected_plan_digest=str(plan.get("plan_digest") or ""),
-        expected_activation_id=str(state.get("activation", {}).get("activation_id") or ""),
-    )
+    from .app_lifecycle_manager import pack_profile_transition
+
+    with pack_profile_transition():
+        activate_resolved_profile_pack_set(
+            resolved,
+            activation_id=(
+                f"activation:{profile_id}-"
+                + resolved.plan["plan_digest"].removeprefix("sha256:")[:16]
+                + "-"
+                + secrets.token_hex(8)
+            ),
+            expected_profile_revision=str(plan.get("profile_revision") or ""),
+            expected_plan_digest=str(plan.get("plan_digest") or ""),
+            expected_activation_id=str(state.get("activation", {}).get("activation_id") or ""),
+        )
 
 
 def _control_state_path(profile_id: str) -> Path:

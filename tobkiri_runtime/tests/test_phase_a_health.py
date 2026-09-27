@@ -8,6 +8,7 @@ PackAPIHandler の /health エンドポイントをテストする。
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 # core_setup のパスを追加
@@ -23,6 +24,112 @@ if str(_CORE_SETUP_DIR) not in sys.path:
 
 class TestAppLifecycleManagerHealth:
     """AppLifecycleManager.get_health() のテスト"""
+
+    def test_pack_activation_health_stays_pending_until_host_pointer_is_published(
+        self, tmp_path, monkeypatch
+    ):
+        from core_runtime import app_lifecycle_manager as lifecycle_module
+        from core_runtime import pack_control_v4
+
+        alm = lifecycle_module.AppLifecycleManager(base_dir=tmp_path)
+        monkeypatch.setattr(
+            alm,
+            "check_setup_status",
+            lambda: (_ for _ in ()).throw(AssertionError("captured during Pack activation")),
+        )
+        monkeypatch.setattr(
+            lifecycle_module,
+            "get_runtime_readiness",
+            lambda: {"panel_ready": True},
+        )
+        monkeypatch.setattr(
+            pack_control_v4,
+            "resolve_profile_pack_set",
+            lambda _pack_ids: SimpleNamespace(plan={"plan_digest": "sha256:" + "a" * 64}),
+        )
+        observed = []
+        monkeypatch.setattr(
+            pack_control_v4,
+            "activate_resolved_profile_pack_set",
+            lambda *_args, **_kwargs: observed.append(alm.get_health()),
+        )
+
+        pack_control_v4._activate_pack_set(
+            {
+                "resolved_profile": {"profile_id": "defaults"},
+                "resolved_plan": {
+                    "profile_revision": "sha256:" + "b" * 64,
+                    "plan_digest": "sha256:" + "c" * 64,
+                },
+                "activation": {"activation_id": "activation:predecessor"},
+            },
+            ["example_pack"],
+        )
+
+        assert len(observed) == 1
+        assert observed[0]["status"] == "ok"
+        assert observed[0]["runtime_status"] == "panel_ready"
+        assert observed[0]["runtime_ready"] is False
+        assert observed[0]["launch_ready"] is False
+
+    def test_health_disregards_capture_that_overlapped_a_pack_transition(
+        self, tmp_path, monkeypatch
+    ):
+        from core_runtime import app_lifecycle_manager as lifecycle_module
+
+        alm = lifecycle_module.AppLifecycleManager(base_dir=tmp_path)
+        monkeypatch.setattr(
+            lifecycle_module,
+            "get_runtime_readiness",
+            lambda: {"panel_ready": True},
+        )
+
+        def overlapping_capture():
+            with lifecycle_module.pack_profile_transition():
+                pass
+            return {"runtime_status": "error", "runtime_error": "stale capture"}
+
+        monkeypatch.setattr(alm, "check_setup_status", overlapping_capture)
+        result = alm.get_health()
+
+        assert result["status"] == "ok"
+        assert result["runtime_status"] == "panel_ready"
+        assert result["runtime_error"] is None
+        assert result["launch_ready"] is False
+
+    def test_overlapping_pack_activation_does_not_log_a_false_setup_failure(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        from core_runtime import app_lifecycle_manager as lifecycle_module
+        from core_runtime import profile_runtime_port
+        from core_runtime.bootstrap import profile_capture
+
+        alm = lifecycle_module.AppLifecycleManager(base_dir=tmp_path)
+        monkeypatch.setattr(profile_capture, "active_profile_exists", lambda **_kwargs: True)
+        monkeypatch.setattr(
+            profile_runtime_port,
+            "require_profile_runtime",
+            lambda: SimpleNamespace(),
+        )
+
+        def overlapping_capture(**_kwargs):
+            with lifecycle_module.pack_profile_transition():
+                pass
+            raise RuntimeError("Host active pointer does not match the Profile activation")
+
+        monkeypatch.setattr(profile_capture, "capture_active_profile", overlapping_capture)
+        monkeypatch.setattr(
+            lifecycle_module,
+            "get_runtime_readiness",
+            lambda: {"panel_ready": True},
+        )
+
+        result = alm.check_setup_status()
+
+        assert result["reason"] == "pack_profile_transition_in_progress"
+        assert result["runtime_ready"] is False
+        assert result["launch_ready"] is False
+        assert "canonical v4 setup status failed" not in caplog.text
 
     def test_health_during_activation_does_not_recapture_profile(self, tmp_path, monkeypatch):
         from core_runtime import app_lifecycle_manager as lifecycle_module
