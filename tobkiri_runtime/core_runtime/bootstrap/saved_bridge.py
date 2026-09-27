@@ -486,6 +486,12 @@ class SavedBridgeCallbacks:
             arguments = {
                 key: value for key, value in payload.items() if key != "system_prompt_digest"
             }
+            if "thinking_level" in request:
+                # The selected level comes from the validated initial request,
+                # never from the guest's AI intent or a resumed frame.
+                arguments["parameters"] = {
+                    "thinking_level": request["thinking_level"]
+                }
             if selected["tools"]:
                 requirements = dict(payload["requirements"])
                 if _requires_tool_calling(request):

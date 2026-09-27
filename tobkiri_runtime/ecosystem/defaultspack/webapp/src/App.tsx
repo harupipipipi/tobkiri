@@ -6716,7 +6716,6 @@ export function ChatApp() {
       if (submittedAttachments.length || submittedSkillIds.length
         || submittedDroppedWidgets.some((widget) => widget.type !== "tool" || widget.widgetKind !== "tool_toggle") || isCodingWorkspaceSubmit
         || groupIdForSubmit || rumiDataPathForSubmit
-        || (activeProfile?.supports_thinking && selectedThinkingLevel)
         || Object.keys(templateAiInputParams).length || Object.keys(effectiveStructuredComposerValues).length
         || Object.keys(templatePolicyReferencePayload).length || composerInputMetadata?.id
         || toolSelectionRequest.mode === "review"
@@ -6796,6 +6795,9 @@ export function ChatApp() {
         content: userText,
         tool_selection: savedToolSelection,
         deepthink_enabled: deepthinkEnabled ? true : undefined,
+        thinking_level: activeProfile?.supports_thinking
+          ? selectedThinkingLevel as "none" | "low" | "medium" | "high" | "xhigh"
+          : undefined,
       });
       if (result.turn.status !== "completed" || !result.turn.result_reference) {
         const structured = result.turn.error;

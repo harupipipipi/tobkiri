@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:a81dbe02235dd8f1bab24b7fe4d2cce38e677ee8dc6e6da7bdb5690d225bc265",
+  "catalog_digest": "sha256:42496e530793ec3743aa47418e6b8482090a8f55506b8ca75ed3a09e6479ee51",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:66e83882a23fab2ccdafa5928e7e482f830767eb424eb4a8ba4377df8c28e5e2",
+  "source_identity": "sha256:331e8e84684f66e12cbd53c1af45ee5950d7c2961c6703a405fb81e6246fedea",
   "variants": [
     {
       "architecture": "any",
@@ -180,7 +180,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "defaultspack.conversation.saved",
-      "implementation_digest": "sha256:5b3792f20c9113c6ec5090d6c77cd0cad806115122f50789a1e6fda89d9eee45",
+      "implementation_digest": "sha256:837c0e811afeeab8d4ad29a2d25aa6e2611d20d5898548adbca5e2db4130c029",
       "implementation_path": "runtime/saved_conversation.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -241,6 +241,16 @@
                   "deepthink_enabled": {
                     "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check.",
                     "type": "boolean"
+                  },
+                  "thinking_level": {
+                    "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call.",
+                    "enum": [
+                      "none",
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh"
+                    ]
                   },
                   "tool_selection": {
                     "additionalProperties": false,
@@ -395,7 +405,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:40607acd7e523936184b8f149d939e7788ecd5f24d35c8379b7191c7be0a5ad0",
+          "revision_digest": "sha256:2afde5f6be659714ca787db25b43fc454b9a5b82afc165dc85bb8931cdbada7c",
           "timeout_default_ms": 120000,
           "timeout_hard_max_ms": 300000
         }

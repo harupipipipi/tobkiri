@@ -183,15 +183,32 @@ test("saved turn uses exact canonical transport and never retries an uncertain o
   assert.equal(calls, 2);
 });
 
+test("saved turn sends the selected thinking level with DeepThink", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const input = {
+    turn_id: "turn-1", conversation_id: "conversation-1",
+    conversation_revision: 7, content: "hello",
+    deepthink_enabled: true, thinking_level: "high" as const,
+  };
+  globalThis.fetch = async (_url, init) => {
+    assert.deepEqual(JSON.parse(String(init?.body)), { request: input });
+    return new Response(JSON.stringify({ success: true, data: {
+      status: "completed", turn: { id: input.turn_id, conversation_id: input.conversation_id },
+    } }));
+  };
+  await api.startSavedTurn(input);
+});
+
 test("saved turn rejects unsupported fields and invalid revisions before sending", async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });
   let calls = 0;
   globalThis.fetch = async () => { calls += 1; throw new Error("must not send"); };
   const input = { turn_id: "turn-1", conversation_id: "conversation-1", conversation_revision: 7, content: "hello" };
-  for (const patch of [{ approved: true }, { state: {} }, { attachments: [] }, { conversation_revision: 0 },
+  for (const patch of [{ approved: true }, { state: {} }, { attachments: [] }, { thinking_level: "ultra" }, { thinking_level: true }, { conversation_revision: 0 },
     { conversation_revision: Number.MAX_SAFE_INTEGER + 1 }, { turn_id: "../escape" }, { content: " " }, { content: "あ".repeat(22000) }]) {
-    await assert.rejects(api.startSavedTurn({ ...input, ...patch }), /invalid|unsupported/);
+    await assert.rejects(api.startSavedTurn({ ...input, ...patch } as Parameters<typeof api.startSavedTurn>[0]), /invalid|unsupported/);
   }
   assert.equal(calls, 0);
 });

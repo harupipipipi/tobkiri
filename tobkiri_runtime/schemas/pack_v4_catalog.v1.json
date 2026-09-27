@@ -186,7 +186,7 @@
             {
               "entrypoint_id": "saved_complete",
               "id": "saved_complete",
-              "implementation_digest": "sha256:5b3792f20c9113c6ec5090d6c77cd0cad806115122f50789a1e6fda89d9eee45"
+              "implementation_digest": "sha256:837c0e811afeeab8d4ad29a2d25aa6e2611d20d5898548adbca5e2db4130c029"
             }
           ],
           "owner": "defaultspack",
@@ -210,44 +210,164 @@
               "type": "object"
             },
             "input": {
-              "$defs": {
-                "identifier": {
-                  "maxLength": 256,
-                  "minLength": 1,
-                  "not": {
-                    "pattern": "[^A-Za-z0-9._:-]"
-                  },
-                  "pattern": "^[A-Za-z0-9]",
-                  "type": "string"
-                }
-              },
-              "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
               "$schema": "https://json-schema.org/draft/2020-12/schema",
-              "additionalProperties": false,
+              "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+              "title": "Saved conversation initial input",
               "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "request"
+              ],
               "properties": {
                 "request": {
+                  "type": "object",
                   "additionalProperties": false,
+                  "required": [
+                    "turn_id",
+                    "conversation_id",
+                    "conversation_revision",
+                    "content"
+                  ],
                   "properties": {
-                    "content": {
-                      "minLength": 1,
-                      "pattern": "\\S",
-                      "type": "string"
+                    "turn_id": {
+                      "$ref": "#/$defs/identifier"
                     },
                     "conversation_id": {
                       "$ref": "#/$defs/identifier"
                     },
                     "conversation_revision": {
-                      "maximum": 9007199254740991,
+                      "type": "integer",
                       "minimum": 1,
-                      "type": "integer"
+                      "maximum": 9007199254740991
+                    },
+                    "content": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
                     },
                     "deepthink_enabled": {
-                      "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check.",
-                      "type": "boolean"
+                      "type": "boolean",
+                      "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check."
+                    },
+                    "thinking_level": {
+                      "enum": [
+                        "none",
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh"
+                      ],
+                      "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call."
                     },
                     "tool_selection": {
+                      "type": "object",
                       "additionalProperties": false,
+                      "required": [
+                        "mode"
+                      ],
+                      "properties": {
+                        "mode": {
+                          "enum": [
+                            "auto",
+                            "manual",
+                            "none"
+                          ]
+                        },
+                        "scope": {
+                          "enum": [
+                            "turn",
+                            "conversation"
+                          ]
+                        },
+                        "must_use": {
+                          "type": "boolean"
+                        },
+                        "include": {
+                          "type": "array",
+                          "maxItems": 256,
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9]",
+                                "not": {
+                                  "pattern": "[^A-Za-z0-9._:/-]"
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "kind",
+                                  "id"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "tool",
+                                      "service"
+                                    ]
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 256,
+                                    "pattern": "^[A-Za-z0-9]",
+                                    "not": {
+                                      "pattern": "[^A-Za-z0-9._:/-]"
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "exclude": {
+                          "type": "array",
+                          "maxItems": 256,
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9]",
+                                "not": {
+                                  "pattern": "[^A-Za-z0-9._:/-]"
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "kind",
+                                  "id"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "tool",
+                                      "service"
+                                    ]
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 256,
+                                    "pattern": "^[A-Za-z0-9]",
+                                    "not": {
+                                      "pattern": "[^A-Za-z0-9._:/-]"
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
                       "allOf": [
                         {
                           "if": {
@@ -268,132 +388,22 @@
                             }
                           }
                         }
-                      ],
-                      "properties": {
-                        "exclude": {
-                          "items": {
-                            "oneOf": [
-                              {
-                                "maxLength": 256,
-                                "minLength": 1,
-                                "not": {
-                                  "pattern": "[^A-Za-z0-9._:/-]"
-                                },
-                                "pattern": "^[A-Za-z0-9]",
-                                "type": "string"
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "id": {
-                                    "maxLength": 256,
-                                    "minLength": 1,
-                                    "not": {
-                                      "pattern": "[^A-Za-z0-9._:/-]"
-                                    },
-                                    "pattern": "^[A-Za-z0-9]",
-                                    "type": "string"
-                                  },
-                                  "kind": {
-                                    "enum": [
-                                      "tool",
-                                      "service"
-                                    ]
-                                  }
-                                },
-                                "required": [
-                                  "kind",
-                                  "id"
-                                ],
-                                "type": "object"
-                              }
-                            ]
-                          },
-                          "maxItems": 256,
-                          "type": "array"
-                        },
-                        "include": {
-                          "items": {
-                            "oneOf": [
-                              {
-                                "maxLength": 256,
-                                "minLength": 1,
-                                "not": {
-                                  "pattern": "[^A-Za-z0-9._:/-]"
-                                },
-                                "pattern": "^[A-Za-z0-9]",
-                                "type": "string"
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "id": {
-                                    "maxLength": 256,
-                                    "minLength": 1,
-                                    "not": {
-                                      "pattern": "[^A-Za-z0-9._:/-]"
-                                    },
-                                    "pattern": "^[A-Za-z0-9]",
-                                    "type": "string"
-                                  },
-                                  "kind": {
-                                    "enum": [
-                                      "tool",
-                                      "service"
-                                    ]
-                                  }
-                                },
-                                "required": [
-                                  "kind",
-                                  "id"
-                                ],
-                                "type": "object"
-                              }
-                            ]
-                          },
-                          "maxItems": 256,
-                          "type": "array"
-                        },
-                        "mode": {
-                          "enum": [
-                            "auto",
-                            "manual",
-                            "none"
-                          ]
-                        },
-                        "must_use": {
-                          "type": "boolean"
-                        },
-                        "scope": {
-                          "enum": [
-                            "turn",
-                            "conversation"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "mode"
-                      ],
-                      "type": "object"
-                    },
-                    "turn_id": {
-                      "$ref": "#/$defs/identifier"
+                      ]
                     }
-                  },
-                  "required": [
-                    "turn_id",
-                    "conversation_id",
-                    "conversation_revision",
-                    "content"
-                  ],
-                  "type": "object"
+                  }
                 }
               },
-              "required": [
-                "request"
-              ],
-              "title": "Saved conversation initial input",
-              "type": "object"
+              "$defs": {
+                "identifier": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9]",
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  }
+                }
+              }
             },
             "output": {
               "type": "object"
@@ -603,7 +613,7 @@
           "path": "runtime/application_presentation.py"
         },
         {
-          "digest": "sha256:5b3792f20c9113c6ec5090d6c77cd0cad806115122f50789a1e6fda89d9eee45",
+          "digest": "sha256:837c0e811afeeab8d4ad29a2d25aa6e2611d20d5898548adbca5e2db4130c029",
           "kind": "executable",
           "path": "runtime/saved_conversation.py"
         },
@@ -4106,8 +4116,14 @@
                   "additionalProperties": false,
                   "maxProperties": 1,
                   "properties": {
-                    "query": {"maxLength": 200, "type": "string"},
-                    "section": {"maxLength": 200, "type": "string"}
+                    "query": {
+                      "maxLength": 200,
+                      "type": "string"
+                    },
+                    "section": {
+                      "maxLength": 200,
+                      "type": "string"
+                    }
                   },
                   "type": "object"
                 },
@@ -4121,13 +4137,25 @@
                 },
                 "command_ref": {
                   "enum": [
-                    "defaultspack:help", "defaultspack:new", "defaultspack:clear",
-                    "defaultspack:tools", "defaultspack:status", "defaultspack:settings",
-                    "defaultspack:history", "defaultspack:context",
-                    "defaultspack:permissions", "defaultspack:approvals",
-                    "defaultspack:usage", "defaultspack:theme", "defaultspack:keymap",
-                    "defaultspack:plugins", "defaultspack:mcp", "defaultspack:skills",
-                    "defaultspack:hooks", "defaultspack:diff", "defaultspack:files"
+                    "defaultspack:help",
+                    "defaultspack:new",
+                    "defaultspack:clear",
+                    "defaultspack:tools",
+                    "defaultspack:status",
+                    "defaultspack:settings",
+                    "defaultspack:history",
+                    "defaultspack:context",
+                    "defaultspack:permissions",
+                    "defaultspack:approvals",
+                    "defaultspack:usage",
+                    "defaultspack:theme",
+                    "defaultspack:keymap",
+                    "defaultspack:plugins",
+                    "defaultspack:mcp",
+                    "defaultspack:skills",
+                    "defaultspack:hooks",
+                    "defaultspack:diff",
+                    "defaultspack:files"
                   ]
                 },
                 "conversation_id": {
@@ -4179,32 +4207,52 @@
           "contract_id": "tobkiri.resource.command.state.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
-          "lifecycle": {"deprecated": false, "introduced": "1.0.0"},
-          "operations": [{
-            "entrypoint_id": "command.state.query",
-            "id": "command.state.query",
-            "implementation_digest": "sha256:9171d03ffe8847830e788dc7edfd99c508ead810f71019bd680fd2d5ddd7c5f4"
-          }],
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "command.state.query",
+              "id": "command.state.query",
+              "implementation_digest": "sha256:9171d03ffe8847830e788dc7edfd99c508ead810f71019bd680fd2d5ddd7c5f4"
+            }
+          ],
           "owner": "rumi_command_protocol_pack",
           "provider_id": "rumi_command_protocol_pack.command.state",
-          "required_capabilities": ["command.catalog.read"],
+          "required_capabilities": [
+            "command.catalog.read"
+          ],
           "schemas": {
-            "error": {"type": "object"},
+            "error": {
+              "type": "object"
+            },
             "input": {
               "additionalProperties": false,
               "properties": {
-                "profile_id": {"maxLength": 128, "minLength": 1, "type": "string"},
+                "profile_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
                 "state_refs": {
-                  "items": {"const": "defaultspack:models.deepthink_enabled"},
+                  "items": {
+                    "const": "defaultspack:models.deepthink_enabled"
+                  },
                   "maxItems": 16,
                   "type": "array",
                   "uniqueItems": true
                 }
               },
-              "required": ["profile_id", "state_refs"],
+              "required": [
+                "profile_id",
+                "state_refs"
+              ],
               "type": "object"
             },
-            "output": {"type": "object"}
+            "output": {
+              "type": "object"
+            }
           },
           "security": "sensitive",
           "version": "1.0.0"
@@ -4214,36 +4262,78 @@
           "contract_id": "tobkiri.resource.command.datasource.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
-          "lifecycle": {"deprecated": false, "introduced": "1.0.0"},
-          "operations": [{
-            "entrypoint_id": "command.datasource.query",
-            "id": "command.datasource.query",
-            "implementation_digest": "sha256:77b83ccd9223b51aa89c8e0203693cc6d76eb7dd6d0189ca6d570d585c1129c7"
-          }],
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "command.datasource.query",
+              "id": "command.datasource.query",
+              "implementation_digest": "sha256:77b83ccd9223b51aa89c8e0203693cc6d76eb7dd6d0189ca6d570d585c1129c7"
+            }
+          ],
           "owner": "rumi_command_protocol_pack",
           "provider_id": "rumi_command_protocol_pack.command.datasource",
-          "required_capabilities": ["command.catalog.read"],
+          "required_capabilities": [
+            "command.catalog.read"
+          ],
           "schemas": {
-            "error": {"type": "object"},
+            "error": {
+              "type": "object"
+            },
             "input": {
               "additionalProperties": false,
               "properties": {
-                "profile_id": {"maxLength": 128, "minLength": 1, "type": "string"},
-                "datasource_ref": {"enum": ["tobkiri:model_catalog", "tobkiri:provider_catalog"]},
-                "query": {"maxLength": 200, "type": "string"},
-                "cursor": {"maxLength": 8, "pattern": "^[0-9]+$", "type": "string"},
-                "limit": {"maximum": 100, "minimum": 1, "type": "integer"},
+                "profile_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "datasource_ref": {
+                  "enum": [
+                    "tobkiri:model_catalog",
+                    "tobkiri:provider_catalog"
+                  ]
+                },
+                "query": {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                "cursor": {
+                  "maxLength": 8,
+                  "pattern": "^[0-9]+$",
+                  "type": "string"
+                },
+                "limit": {
+                  "maximum": 100,
+                  "minimum": 1,
+                  "type": "integer"
+                },
                 "selected_values": {
-                  "items": {"maxLength": 256, "minLength": 1, "type": "string"},
+                  "items": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "maxItems": 100,
                   "type": "array"
                 },
-                "request_id": {"maxLength": 160, "minLength": 1, "type": "string"}
+                "request_id": {
+                  "maxLength": 160,
+                  "minLength": 1,
+                  "type": "string"
+                }
               },
-              "required": ["profile_id", "datasource_ref"],
+              "required": [
+                "profile_id",
+                "datasource_ref"
+              ],
               "type": "object"
             },
-            "output": {"type": "object"}
+            "output": {
+              "type": "object"
+            }
           },
           "security": "sensitive",
           "version": "1.0.0"
@@ -8946,31 +9036,31 @@
             "interactive_approval.deny"
           ]
         },
-    {
-      "contract_id": "tobkiri.service.interactive-effect.v1",
+        {
+          "contract_id": "tobkiri.service.interactive-effect.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
           "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
           "operation_ids": [
             "interactive_effect.manage"
-      ]
-    },
-    {
-      "contract_id": "tobkiri.action.chat.approval-continuation.v1",
-      "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
-      "operation_ids": [
-        "chat_approval.approve",
-        "chat_approval.resume"
-      ]
-    },
-    {
-      "contract_id": "tobkiri.action.authority.approval-window.v1",
-      "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
-      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
-      "operation_ids": [
-        "authority_approval.open"
-      ]
-    }
+          ]
+        },
+        {
+          "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "operation_ids": [
+            "chat_approval.approve",
+            "chat_approval.resume"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.action.authority.approval-window.v1",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
+          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+          "operation_ids": [
+            "authority_approval.open"
+          ]
+        }
       ],
       "kind": "host_extension",
       "legacy_ids": [
@@ -9126,9 +9216,9 @@
           "security": "restricted",
           "version": "1.0.0"
         },
-    {
-      "cardinality": "one",
-      "contract_id": "tobkiri.service.interactive-effect.v1",
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.interactive-effect.v1",
           "failure": "fail_closed",
           "isolation": "process",
           "lifecycle": {
@@ -9197,102 +9287,134 @@
               "type": "object"
             }
           },
-      "security": "restricted",
-      "version": "1.0.0"
-    },
-    {
-      "cardinality": "one",
-      "contract_id": "tobkiri.action.chat.approval-continuation.v1",
-      "failure": "fail_closed",
-      "isolation": "process",
-      "lifecycle": {
-        "deprecated": false,
-        "introduced": "1.0.0"
-      },
-      "operations": [
-        {
-          "effect_ceiling": [
-            "host:brokered-execution",
-            "capability:host.authority.consume"
-          ],
-          "entrypoint_id": "approve",
-          "id": "chat_approval.approve",
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+          "security": "restricted",
+          "version": "1.0.0"
         },
         {
-          "effect_ceiling": [
-            "host:brokered-execution",
-            "capability:host.authority.consume"
-          ],
-          "entrypoint_id": "resume",
-          "id": "chat_approval.resume",
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
-        }
-      ],
-      "owner": "rumi_host_authority_bridge_pack",
-      "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
-      "required_capabilities": [
-        "host.authority.consume"
-      ],
-      "schemas": {
-        "error": {"type": "object"},
-        "input": {
-          "additionalProperties": false,
-          "properties": {
-            "conversation_id": {"maxLength": 255, "type": "string"},
-            "request_id": {"maxLength": 255, "type": "string"},
-            "resume_id": {"maxLength": 255, "type": "string"},
-            "turn_id": {"maxLength": 255, "type": "string"},
-            "ui_operator": {"type": "object"}
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+          "failure": "fail_closed",
+          "isolation": "process",
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
           },
-          "required": ["request_id", "conversation_id", "turn_id"],
-          "type": "object"
-        },
-        "output": {"type": "object"}
-      },
-      "security": "restricted",
-      "version": "1.0.0"
-    },
-    {
-      "cardinality": "one",
-      "contract_id": "tobkiri.action.authority.approval-window.v1",
-      "failure": "fail_closed",
-      "isolation": "process",
-      "lifecycle": {
-        "deprecated": false,
-        "introduced": "1.0.0"
-      },
-      "operations": [
-        {
-          "effect_ceiling": [
-            "host:brokered-execution",
-            "capability:host.authority.consume"
+          "operations": [
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:host.authority.consume"
+              ],
+              "entrypoint_id": "approve",
+              "id": "chat_approval.approve",
+              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+            },
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:host.authority.consume"
+              ],
+              "entrypoint_id": "resume",
+              "id": "chat_approval.resume",
+              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+            }
           ],
-          "entrypoint_id": "open",
-          "id": "authority_approval.open",
-          "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
-        }
-      ],
-      "owner": "rumi_host_authority_bridge_pack",
-      "provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
-      "required_capabilities": [
-        "host.authority.consume"
-      ],
-      "schemas": {
-        "error": {"type": "object"},
-        "input": {
-          "additionalProperties": false,
-          "properties": {
-            "request_id": {"maxLength": 160, "pattern": "^[A-Za-z0-9_-]{1,160}$", "type": "string"}
+          "owner": "rumi_host_authority_bridge_pack",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+          "required_capabilities": [
+            "host.authority.consume"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "conversation_id": {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                "request_id": {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                "resume_id": {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                "turn_id": {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                "ui_operator": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "request_id",
+                "conversation_id",
+                "turn_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
           },
-          "required": ["request_id"],
-          "type": "object"
+          "security": "restricted",
+          "version": "1.0.0"
         },
-        "output": {"type": "object"}
-      },
-      "security": "restricted",
-      "version": "1.0.0"
-    }
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.authority.approval-window.v1",
+          "failure": "fail_closed",
+          "isolation": "process",
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:host.authority.consume"
+              ],
+              "entrypoint_id": "open",
+              "id": "authority_approval.open",
+              "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1"
+            }
+          ],
+          "owner": "rumi_host_authority_bridge_pack",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
+          "required_capabilities": [
+            "host.authority.consume"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "request_id": {
+                  "maxLength": 160,
+                  "pattern": "^[A-Za-z0-9_-]{1,160}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "request_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
+        }
       ],
       "required_contracts": [
         {
@@ -13145,7 +13267,7 @@
             {
               "entrypoint_id": "provider-registry-manage",
               "id": "rumi_provider_registry_pack.provider-registry-manage",
-          "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd"
+              "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd"
             },
             {
               "entrypoint_id": "provider-configure-prepare",
@@ -17539,44 +17661,164 @@
               "type": "object"
             },
             "input": {
-              "$defs": {
-                "identifier": {
-                  "maxLength": 256,
-                  "minLength": 1,
-                  "not": {
-                    "pattern": "[^A-Za-z0-9._:-]"
-                  },
-                  "pattern": "^[A-Za-z0-9]",
-                  "type": "string"
-                }
-              },
-              "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
               "$schema": "https://json-schema.org/draft/2020-12/schema",
-              "additionalProperties": false,
+              "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+              "title": "Saved conversation initial input",
               "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "request"
+              ],
               "properties": {
                 "request": {
+                  "type": "object",
                   "additionalProperties": false,
+                  "required": [
+                    "turn_id",
+                    "conversation_id",
+                    "conversation_revision",
+                    "content"
+                  ],
                   "properties": {
-                    "content": {
-                      "minLength": 1,
-                      "pattern": "\\S",
-                      "type": "string"
+                    "turn_id": {
+                      "$ref": "#/$defs/identifier"
                     },
                     "conversation_id": {
                       "$ref": "#/$defs/identifier"
                     },
                     "conversation_revision": {
-                      "maximum": 9007199254740991,
+                      "type": "integer",
                       "minimum": 1,
-                      "type": "integer"
+                      "maximum": 9007199254740991
+                    },
+                    "content": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
                     },
                     "deepthink_enabled": {
-                      "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check.",
-                      "type": "boolean"
+                      "type": "boolean",
+                      "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check."
+                    },
+                    "thinking_level": {
+                      "enum": [
+                        "none",
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh"
+                      ],
+                      "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call."
                     },
                     "tool_selection": {
+                      "type": "object",
                       "additionalProperties": false,
+                      "required": [
+                        "mode"
+                      ],
+                      "properties": {
+                        "mode": {
+                          "enum": [
+                            "auto",
+                            "manual",
+                            "none"
+                          ]
+                        },
+                        "scope": {
+                          "enum": [
+                            "turn",
+                            "conversation"
+                          ]
+                        },
+                        "must_use": {
+                          "type": "boolean"
+                        },
+                        "include": {
+                          "type": "array",
+                          "maxItems": 256,
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9]",
+                                "not": {
+                                  "pattern": "[^A-Za-z0-9._:/-]"
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "kind",
+                                  "id"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "tool",
+                                      "service"
+                                    ]
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 256,
+                                    "pattern": "^[A-Za-z0-9]",
+                                    "not": {
+                                      "pattern": "[^A-Za-z0-9._:/-]"
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "exclude": {
+                          "type": "array",
+                          "maxItems": 256,
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 256,
+                                "pattern": "^[A-Za-z0-9]",
+                                "not": {
+                                  "pattern": "[^A-Za-z0-9._:/-]"
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "kind",
+                                  "id"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "tool",
+                                      "service"
+                                    ]
+                                  },
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 256,
+                                    "pattern": "^[A-Za-z0-9]",
+                                    "not": {
+                                      "pattern": "[^A-Za-z0-9._:/-]"
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
                       "allOf": [
                         {
                           "if": {
@@ -17597,132 +17839,22 @@
                             }
                           }
                         }
-                      ],
-                      "properties": {
-                        "exclude": {
-                          "items": {
-                            "oneOf": [
-                              {
-                                "maxLength": 256,
-                                "minLength": 1,
-                                "not": {
-                                  "pattern": "[^A-Za-z0-9._:/-]"
-                                },
-                                "pattern": "^[A-Za-z0-9]",
-                                "type": "string"
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "id": {
-                                    "maxLength": 256,
-                                    "minLength": 1,
-                                    "not": {
-                                      "pattern": "[^A-Za-z0-9._:/-]"
-                                    },
-                                    "pattern": "^[A-Za-z0-9]",
-                                    "type": "string"
-                                  },
-                                  "kind": {
-                                    "enum": [
-                                      "tool",
-                                      "service"
-                                    ]
-                                  }
-                                },
-                                "required": [
-                                  "kind",
-                                  "id"
-                                ],
-                                "type": "object"
-                              }
-                            ]
-                          },
-                          "maxItems": 256,
-                          "type": "array"
-                        },
-                        "include": {
-                          "items": {
-                            "oneOf": [
-                              {
-                                "maxLength": 256,
-                                "minLength": 1,
-                                "not": {
-                                  "pattern": "[^A-Za-z0-9._:/-]"
-                                },
-                                "pattern": "^[A-Za-z0-9]",
-                                "type": "string"
-                              },
-                              {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "id": {
-                                    "maxLength": 256,
-                                    "minLength": 1,
-                                    "not": {
-                                      "pattern": "[^A-Za-z0-9._:/-]"
-                                    },
-                                    "pattern": "^[A-Za-z0-9]",
-                                    "type": "string"
-                                  },
-                                  "kind": {
-                                    "enum": [
-                                      "tool",
-                                      "service"
-                                    ]
-                                  }
-                                },
-                                "required": [
-                                  "kind",
-                                  "id"
-                                ],
-                                "type": "object"
-                              }
-                            ]
-                          },
-                          "maxItems": 256,
-                          "type": "array"
-                        },
-                        "mode": {
-                          "enum": [
-                            "auto",
-                            "manual",
-                            "none"
-                          ]
-                        },
-                        "must_use": {
-                          "type": "boolean"
-                        },
-                        "scope": {
-                          "enum": [
-                            "turn",
-                            "conversation"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "mode"
-                      ],
-                      "type": "object"
-                    },
-                    "turn_id": {
-                      "$ref": "#/$defs/identifier"
+                      ]
                     }
-                  },
-                  "required": [
-                    "turn_id",
-                    "conversation_id",
-                    "conversation_revision",
-                    "content"
-                  ],
-                  "type": "object"
+                  }
                 }
               },
-              "required": [
-                "request"
-              ],
-              "title": "Saved conversation initial input",
-              "type": "object"
+              "$defs": {
+                "identifier": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9]",
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  }
+                }
+              }
             },
             "output": {
               "type": "object"
@@ -19221,31 +19353,41 @@
           "contract_id": "tobkiri.resource.ui.model-state.v1",
           "function_id": "tobkiri.ui.model-state.read",
           "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
-          "operation_ids": ["tobkiri_ui_settings_pack.model-state-read"]
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.model-state-read"
+          ]
         },
         {
           "contract_id": "tobkiri.action.ui.model-state.v1",
           "function_id": "tobkiri.ui.model-state.write",
           "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
-          "operation_ids": ["tobkiri_ui_settings_pack.model-state-write"]
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.model-state-write"
+          ]
         },
         {
           "contract_id": "tobkiri.resource.ui.recovery-diagnostic.v1",
           "function_id": "tobkiri.ui.recovery-diagnostic.read",
           "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
-          "operation_ids": ["tobkiri_ui_settings_pack.recovery-diagnostic-read"]
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.recovery-diagnostic-read"
+          ]
         },
         {
           "contract_id": "tobkiri.action.ui.recovery-diagnostic.v1",
           "function_id": "tobkiri.ui.recovery-diagnostic.write",
           "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
-          "operation_ids": ["tobkiri_ui_settings_pack.recovery-diagnostic-write"]
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.recovery-diagnostic-write"
+          ]
         },
         {
           "contract_id": "tobkiri.resource.ui.model-search.v1",
           "function_id": "tobkiri.ui.model-search.read",
-      "implementation_digest": "sha256:4f3bd4ae8b82c5e6190a243610bfb897eab50d6d730d4d1f5c9e246c487e93aa",
-          "operation_ids": ["tobkiri_ui_settings_pack.model-search"]
+          "implementation_digest": "sha256:4f3bd4ae8b82c5e6190a243610bfb897eab50d6d730d4d1f5c9e246c487e93aa",
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.model-search"
+          ]
         }
       ],
       "kind": "host_extension",
@@ -19474,22 +19616,35 @@
             "deprecated": false,
             "introduced": "1.0.0"
           },
-          "operations": [{
-            "entrypoint_id": "tobkiri_ui_settings_pack.projects-read",
-            "id": "tobkiri_ui_settings_pack.projects-read",
-            "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea"
-          }],
+          "operations": [
+            {
+              "entrypoint_id": "tobkiri_ui_settings_pack.projects-read",
+              "id": "tobkiri_ui_settings_pack.projects-read",
+              "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea"
+            }
+          ],
           "owner": "tobkiri_ui_settings_pack",
           "provider_id": "tobkiri.project.state.read",
-          "required_capabilities": ["ui.projects.read"],
+          "required_capabilities": [
+            "ui.projects.read"
+          ],
           "schemas": {
             "input": {
               "additionalProperties": false,
-              "properties": {"profile_id": {"minLength": 1, "type": "string"}},
-              "required": ["profile_id"],
+              "properties": {
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id"
+              ],
               "type": "object"
             },
-            "output": {"type": "object"}
+            "output": {
+              "type": "object"
+            }
           },
           "security": "sensitive",
           "version": "1.0.0"
@@ -19503,29 +19658,61 @@
             "deprecated": false,
             "introduced": "1.0.0"
           },
-          "operations": [{
-            "entrypoint_id": "tobkiri_ui_settings_pack.projects-replace",
-            "id": "tobkiri_ui_settings_pack.projects-replace",
-            "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea"
-          }],
+          "operations": [
+            {
+              "entrypoint_id": "tobkiri_ui_settings_pack.projects-replace",
+              "id": "tobkiri_ui_settings_pack.projects-replace",
+              "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea"
+            }
+          ],
           "owner": "tobkiri_ui_settings_pack",
           "provider_id": "tobkiri.project.state.replace",
-          "required_capabilities": ["ui.projects.write"],
+          "required_capabilities": [
+            "ui.projects.write"
+          ],
           "schemas": {
-            "error": {"type": "object"},
+            "error": {
+              "type": "object"
+            },
             "input": {
               "additionalProperties": false,
               "properties": {
-                "expected_revision": {"minimum": 0, "type": "integer"},
-                "migration_digest": {"pattern": "^sha256:[0-9a-f]{64}$", "type": "string"},
-                "mutation_id": {"maxLength": 256, "minLength": 1, "type": "string"},
-                "profile_id": {"minLength": 1, "type": "string"},
-                "projects": {"items": {"type": "object"}, "maxItems": 256, "type": "array"}
+                "expected_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "migration_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "mutation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "projects": {
+                  "items": {
+                    "type": "object"
+                  },
+                  "maxItems": 256,
+                  "type": "array"
+                }
               },
-              "required": ["profile_id", "projects", "expected_revision", "mutation_id"],
+              "required": [
+                "profile_id",
+                "projects",
+                "expected_revision",
+                "mutation_id"
+              ],
               "type": "object"
             },
-            "output": {"type": "object"}
+            "output": {
+              "type": "object"
+            }
           },
           "security": "sensitive",
           "version": "1.0.0"
@@ -19535,14 +19722,39 @@
           "contract_id": "tobkiri.resource.ui.model-state.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
-          "lifecycle": {"deprecated": false, "introduced": "1.0.0"},
-          "operations": [{"entrypoint_id": "tobkiri_ui_settings_pack.model-state-read", "id": "tobkiri_ui_settings_pack.model-state-read", "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7"}],
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "tobkiri_ui_settings_pack.model-state-read",
+              "id": "tobkiri_ui_settings_pack.model-state-read",
+              "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7"
+            }
+          ],
           "owner": "tobkiri_ui_settings_pack",
           "provider_id": "tobkiri.ui.model-state.read",
-          "required_capabilities": ["ui.model_state.read"],
+          "required_capabilities": [
+            "ui.model_state.read"
+          ],
           "schemas": {
-            "input": {"additionalProperties": false, "properties": {"profile_id": {"minLength": 1, "type": "string"}}, "required": ["profile_id"], "type": "object"},
-            "output": {"type": "object"}
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
           },
           "security": "sensitive",
           "version": "1.0.0"
@@ -19552,26 +19764,64 @@
           "contract_id": "tobkiri.action.ui.model-state.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
-          "lifecycle": {"deprecated": false, "introduced": "1.0.0"},
-          "operations": [{"entrypoint_id": "tobkiri_ui_settings_pack.model-state-write", "id": "tobkiri_ui_settings_pack.model-state-write", "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7"}],
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "tobkiri_ui_settings_pack.model-state-write",
+              "id": "tobkiri_ui_settings_pack.model-state-write",
+              "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7"
+            }
+          ],
           "owner": "tobkiri_ui_settings_pack",
           "provider_id": "tobkiri.ui.model-state.write",
-          "required_capabilities": ["ui.model_state.write"],
+          "required_capabilities": [
+            "ui.model_state.write"
+          ],
           "schemas": {
-            "error": {"type": "object"},
+            "error": {
+              "type": "object"
+            },
             "input": {
               "additionalProperties": false,
               "properties": {
-                "expected_revision": {"minimum": 0, "type": "integer"},
-                "kind": {"enum": ["preferred_model", "thinking_level", "deepthink_enabled"], "type": "string"},
-                "mutation_id": {"maxLength": 256, "minLength": 8, "type": "string"},
-                "profile_id": {"minLength": 1, "type": "string"},
+                "expected_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "kind": {
+                  "enum": [
+                    "preferred_model",
+                    "thinking_level",
+                    "deepthink_enabled"
+                  ],
+                  "type": "string"
+                },
+                "mutation_id": {
+                  "maxLength": 256,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
                 "value": {}
               },
-              "required": ["profile_id", "kind", "value", "expected_revision", "mutation_id"],
+              "required": [
+                "profile_id",
+                "kind",
+                "value",
+                "expected_revision",
+                "mutation_id"
+              ],
               "type": "object"
             },
-            "output": {"type": "object"}
+            "output": {
+              "type": "object"
+            }
           },
           "security": "sensitive",
           "version": "1.0.0"
@@ -19581,14 +19831,39 @@
           "contract_id": "tobkiri.resource.ui.recovery-diagnostic.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
-          "lifecycle": {"deprecated": false, "introduced": "1.0.0"},
-          "operations": [{"entrypoint_id": "tobkiri_ui_settings_pack.recovery-diagnostic-read", "id": "tobkiri_ui_settings_pack.recovery-diagnostic-read", "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7"}],
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "tobkiri_ui_settings_pack.recovery-diagnostic-read",
+              "id": "tobkiri_ui_settings_pack.recovery-diagnostic-read",
+              "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7"
+            }
+          ],
           "owner": "tobkiri_ui_settings_pack",
           "provider_id": "tobkiri.ui.recovery-diagnostic.read",
-          "required_capabilities": ["ui.recovery_diagnostic.read"],
+          "required_capabilities": [
+            "ui.recovery_diagnostic.read"
+          ],
           "schemas": {
-            "input": {"additionalProperties": false, "properties": {"profile_id": {"minLength": 1, "type": "string"}}, "required": ["profile_id"], "type": "object"},
-            "output": {"type": "object"}
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
           },
           "security": "sensitive",
           "version": "1.0.0"
@@ -19598,13 +19873,26 @@
           "contract_id": "tobkiri.action.ui.recovery-diagnostic.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
-          "lifecycle": {"deprecated": false, "introduced": "1.0.0"},
-          "operations": [{"entrypoint_id": "tobkiri_ui_settings_pack.recovery-diagnostic-write", "id": "tobkiri_ui_settings_pack.recovery-diagnostic-write", "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7"}],
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "tobkiri_ui_settings_pack.recovery-diagnostic-write",
+              "id": "tobkiri_ui_settings_pack.recovery-diagnostic-write",
+              "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7"
+            }
+          ],
           "owner": "tobkiri_ui_settings_pack",
           "provider_id": "tobkiri.ui.recovery-diagnostic.write",
-          "required_capabilities": ["ui.recovery_diagnostic.write"],
+          "required_capabilities": [
+            "ui.recovery_diagnostic.write"
+          ],
           "schemas": {
-            "error": {"type": "object"},
+            "error": {
+              "type": "object"
+            },
             "input": {
               "additionalProperties": false,
               "properties": {
@@ -19612,45 +19900,133 @@
                   "additionalProperties": false,
                   "maxProperties": 12,
                   "properties": {
-                    "category": {"maxLength": 80, "type": "string"},
-                    "context_id": {"maxLength": 256, "type": "string"},
+                    "category": {
+                      "maxLength": 80,
+                      "type": "string"
+                    },
+                    "context_id": {
+                      "maxLength": 256,
+                      "type": "string"
+                    },
                     "detail": {
                       "additionalProperties": false,
                       "maxProperties": 10,
                       "properties": {
-                        "column": {"minimum": 0, "type": "integer"},
-                        "component_stack": {"maxLength": 4096, "type": "string"},
-                        "error_code": {"maxLength": 240, "type": "string"},
-                        "error_name": {"maxLength": 240, "type": "string"},
-                        "frame_count": {"minimum": 0, "type": "integer"},
-                        "http_status": {"minimum": 0, "type": "integer"},
-                        "line": {"minimum": 0, "type": "integer"},
-                        "reason_type": {"maxLength": 240, "type": "string"},
-                        "route": {"maxLength": 1024, "type": "string"},
-                        "stack": {"maxLength": 8192, "type": "string"}
+                        "column": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "component_stack": {
+                          "maxLength": 4096,
+                          "type": "string"
+                        },
+                        "error_code": {
+                          "maxLength": 240,
+                          "type": "string"
+                        },
+                        "error_name": {
+                          "maxLength": 240,
+                          "type": "string"
+                        },
+                        "frame_count": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "http_status": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "line": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "reason_type": {
+                          "maxLength": 240,
+                          "type": "string"
+                        },
+                        "route": {
+                          "maxLength": 1024,
+                          "type": "string"
+                        },
+                        "stack": {
+                          "maxLength": 8192,
+                          "type": "string"
+                        }
                       },
                       "type": "object"
                     },
-                    "event_id": {"maxLength": 256, "minLength": 1, "type": "string"},
-                    "fingerprint": {"maxLength": 256, "minLength": 1, "type": "string"},
-                    "level": {"maxLength": 24, "type": "string"},
-                    "message": {"maxLength": 2048, "minLength": 1, "type": "string"},
-                    "privacy_mode": {"const": "standard", "type": "string"},
-                    "schema_version": {"const": "rumi.client_diagnostic.v2", "type": "string"},
-                    "session_id": {"maxLength": 256, "minLength": 1, "type": "string"},
-                    "source": {"maxLength": 80, "type": "string"}
+                    "event_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "fingerprint": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "level": {
+                      "maxLength": 24,
+                      "type": "string"
+                    },
+                    "message": {
+                      "maxLength": 2048,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "privacy_mode": {
+                      "const": "standard",
+                      "type": "string"
+                    },
+                    "schema_version": {
+                      "const": "rumi.client_diagnostic.v2",
+                      "type": "string"
+                    },
+                    "session_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "source": {
+                      "maxLength": 80,
+                      "type": "string"
+                    }
                   },
-                  "required": ["schema_version", "event_id", "session_id", "fingerprint", "privacy_mode", "message"],
+                  "required": [
+                    "schema_version",
+                    "event_id",
+                    "session_id",
+                    "fingerprint",
+                    "privacy_mode",
+                    "message"
+                  ],
                   "type": "object"
                 },
-                "expected_revision": {"minimum": 0, "type": "integer"},
-                "mutation_id": {"maxLength": 256, "minLength": 8, "type": "string"},
-                "profile_id": {"minLength": 1, "type": "string"}
+                "expected_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "mutation_id": {
+                  "maxLength": 256,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                }
               },
-              "required": ["profile_id", "diagnostic", "expected_revision", "mutation_id"],
+              "required": [
+                "profile_id",
+                "diagnostic",
+                "expected_revision",
+                "mutation_id"
+              ],
               "type": "object"
             },
-            "output": {"type": "object"}
+            "output": {
+              "type": "object"
+            }
           },
           "security": "sensitive",
           "version": "1.0.0"
@@ -19660,7 +20036,10 @@
           "contract_id": "tobkiri.resource.ui.model-search.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
-          "lifecycle": {"deprecated": false, "introduced": "1.0.0"},
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
           "operations": [
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.model-search",
@@ -19670,30 +20049,67 @@
           ],
           "owner": "tobkiri_ui_settings_pack",
           "provider_id": "tobkiri.ui.model-search.read",
-          "required_capabilities": ["ui.model_search.read"],
+          "required_capabilities": [
+            "ui.model_search.read"
+          ],
           "schemas": {
             "input": {
               "additionalProperties": false,
               "properties": {
-                "configured_only": {"type": "boolean"},
-                "local_only": {"type": "boolean"},
-                "max_results": {"maximum": 1000, "minimum": 1, "type": "integer"},
-                "min_knowledge_level": {"maximum": 1000, "minimum": 0, "type": "integer"},
-                "model_type": {"maxLength": 64, "type": "string"},
-                "profile_id": {"minLength": 1, "type": "string"},
-                "provider": {"maxLength": 256, "type": "string"},
-                "provider_id": {"maxLength": 256, "type": "string"},
-                "query": {"maxLength": 512, "type": "string"},
+                "configured_only": {
+                  "type": "boolean"
+                },
+                "local_only": {
+                  "type": "boolean"
+                },
+                "max_results": {
+                  "maximum": 1000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "min_knowledge_level": {
+                  "maximum": 1000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "model_type": {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "provider": {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                "provider_id": {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                "query": {
+                  "maxLength": 512,
+                  "type": "string"
+                },
                 "requires": {
-                  "additionalProperties": {"type": "boolean"},
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
                   "maxProperties": 64,
                   "type": "object"
                 },
                 "speed_tier": {
                   "anyOf": [
-                    {"maxLength": 64, "type": "string"},
                     {
-                      "items": {"maxLength": 64, "type": "string"},
+                      "maxLength": 64,
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "maxLength": 64,
+                        "type": "string"
+                      },
                       "maxItems": 16,
                       "type": "array"
                     }
@@ -19701,19 +20117,29 @@
                 },
                 "type": {
                   "anyOf": [
-                    {"maxLength": 64, "type": "string"},
                     {
-                      "items": {"maxLength": 64, "type": "string"},
+                      "maxLength": 64,
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "maxLength": 64,
+                        "type": "string"
+                      },
                       "maxItems": 16,
                       "type": "array"
                     }
                   ]
                 }
               },
-              "required": ["profile_id"],
+              "required": [
+                "profile_id"
+              ],
               "type": "object"
             },
-            "output": {"type": "object"}
+            "output": {
+              "type": "object"
+            }
           },
           "security": "sensitive",
           "version": "1.0.0"

@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:79cb337aa784773aef95077890487a1b6f86d5a4a6456a8bd59dd6a49f685e9b",
+  "catalog_digest": "sha256:f3523fc2f7f4f38cf1ea3fc0960761622aa71f14419a7108b7510380d58b0df7",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:820157e717ca1af12b8c9cd61156248ffb61d2322d66db8ba37d8dff388c5445",
+  "source_identity": "sha256:4eea69b262c490b344371e6bb078d76cb8bc7b32136e720f02e46a22c141587c",
   "variants": [
     {
       "architecture": "any",
@@ -236,6 +236,16 @@
                     "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check.",
                     "type": "boolean"
                   },
+                  "thinking_level": {
+                    "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call.",
+                    "enum": [
+                      "none",
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh"
+                    ]
+                  },
                   "tool_selection": {
                     "additionalProperties": false,
                     "allOf": [
@@ -389,7 +399,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:972040d4c22bc6a3f91f3a04466b6aef94b7a124dbcd0a4c5ac573b00d2dc64e",
+          "revision_digest": "sha256:e90855f7023a3797b0df880ddcc1c4403482d11b155af6a33e142b6469d56285",
           "timeout_default_ms": 120000,
           "timeout_hard_max_ms": 300000
         }

@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:14a98311a650cc245b2205ade04142f02fe3422c7110202335e0034340bb45a8",
+  "source_identity": "sha256:851d567d34c50289f76d81d484647cd244f85160df301ecd4d27f8c096612ce3",
   "variants": [
     {
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.events.python",
@@ -183,7 +183,7 @@
         {
           "contract_id": "tobkiri.action.turn.saved.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:972040d4c22bc6a3f91f3a04466b6aef94b7a124dbcd0a4c5ac573b00d2dc64e",
+          "revision_digest": "sha256:e90855f7023a3797b0df880ddcc1c4403482d11b155af6a33e142b6469d56285",
           "operation_id": "rumi_turn_runtime_pack.turn-saved",
           "input_schema": {
             "$defs": {
@@ -221,6 +221,16 @@
                   "deepthink_enabled": {
                     "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check.",
                     "type": "boolean"
+                  },
+                  "thinking_level": {
+                    "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call.",
+                    "enum": [
+                      "none",
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh"
+                    ]
                   },
                   "tool_selection": {
                     "additionalProperties": false,
@@ -502,6 +512,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:79cb337aa784773aef95077890487a1b6f86d5a4a6456a8bd59dd6a49f685e9b",
-  "catalog_digest": "sha256:95716d64ce8df2d13f49a2c6cc8a3d2ad49ccad9902e7436afd80e63c63b6f79"
+  "materialization_catalog_digest": "sha256:f3523fc2f7f4f38cf1ea3fc0960761622aa71f14419a7108b7510380d58b0df7",
+  "catalog_digest": "sha256:8bdadc0f98c28834a597eaf6c40057bb7ede740e89fe067fd0bf552aec22e2ca"
 }

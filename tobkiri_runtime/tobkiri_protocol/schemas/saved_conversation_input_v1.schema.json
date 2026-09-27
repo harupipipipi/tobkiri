@@ -39,6 +39,10 @@
           "type": "boolean",
           "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check."
         },
+        "thinking_level": {
+          "enum": ["none", "low", "medium", "high", "xhigh"],
+          "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call."
+        },
         "tool_selection": {
           "type": "object",
           "additionalProperties": false,

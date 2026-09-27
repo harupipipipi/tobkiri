@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:160a2db3f5852bada2ba5cef92893a6045ac60c283b85be734dba938d19aa6c8",
+  "source_identity": "sha256:f7730f415b6feaa6c06788d030a75030611ae72a3644645fb21c9e7863621b70",
   "variants": [
     {
       "variant_id": "defaultspack.application-presentation.python",
@@ -177,7 +177,7 @@
       "variant_id": "defaultspack.conversation.saved.python",
       "function_id": "defaultspack.conversation.saved",
       "implementation_path": "runtime/saved_conversation.py",
-      "implementation_digest": "sha256:5b3792f20c9113c6ec5090d6c77cd0cad806115122f50789a1e6fda89d9eee45",
+      "implementation_digest": "sha256:837c0e811afeeab8d4ad29a2d25aa6e2611d20d5898548adbca5e2db4130c029",
       "execution_kind": "pack_vm",
       "platform": "any",
       "architecture": "any",
@@ -189,7 +189,7 @@
         {
           "contract_id": "conversation.saved-turn.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:40607acd7e523936184b8f149d939e7788ecd5f24d35c8379b7191c7be0a5ad0",
+          "revision_digest": "sha256:2afde5f6be659714ca787db25b43fc454b9a5b82afc165dc85bb8931cdbada7c",
           "operation_id": "saved_complete",
           "input_schema": {
             "$defs": {
@@ -227,6 +227,16 @@
                   "deepthink_enabled": {
                     "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check.",
                     "type": "boolean"
+                  },
+                  "thinking_level": {
+                    "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call.",
+                    "enum": [
+                      "none",
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh"
+                    ]
                   },
                   "tool_selection": {
                     "additionalProperties": false,
@@ -404,6 +414,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:a81dbe02235dd8f1bab24b7fe4d2cce38e677ee8dc6e6da7bdb5690d225bc265",
-  "catalog_digest": "sha256:8a3a15ffc5516b1ead596060c405b248ee5d8a590f6aeedcd222f437770fe88d"
+  "materialization_catalog_digest": "sha256:42496e530793ec3743aa47418e6b8482090a8f55506b8ca75ed3a09e6479ee51",
+  "catalog_digest": "sha256:85fdaa7d54ccf9d2d20598c63a404bd900ee753936aad7df7343edd03cb1e3ba"
 }

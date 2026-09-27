@@ -90,10 +90,18 @@ def _request(value: Any) -> dict[str, Any]:
     if type(value) is not dict or set(value) - {
         "tool_selection",
         "deepthink_enabled",
+        "thinking_level",
     } != _REQUEST_FIELDS:
         raise ValueError("saved conversation request fields are invalid")
     if type(value.get("deepthink_enabled", False)) is not bool:
         raise ValueError("saved conversation deepthink flag is invalid")
+    if "thinking_level" in value and (
+        not isinstance(value["thinking_level"], str)
+        or value["thinking_level"] not in {
+            "none", "low", "medium", "high", "xhigh"
+        }
+    ):
+        raise ValueError("saved conversation thinking level is invalid")
     _identifier(value["turn_id"])
     _identifier(value["conversation_id"])
     _revision(value["conversation_revision"])

@@ -110,6 +110,27 @@ def test_preflight_is_read_only_and_four_stages_use_real_owner(tmp_path: Path) -
     ]
 
 
+def test_saved_thinking_level_is_bound_by_host_before_ai_dispatch(
+    tmp_path: Path,
+) -> None:
+    _store, outer, calls, callbacks = _setup(tmp_path)
+    outer.payload["request"]["thinking_level"] = "high"
+    callbacks.preflight(outer)
+    intent = saved.start(outer.payload["request"])
+    for _ in range(2):
+        intent = saved.resume(intent["state"], callbacks(outer, _frame(intent)))
+    frame = _frame(intent)
+    callbacks(outer, frame)
+    ai_calls = [payload for target, payload in calls if target == saved.TARGETS[2]]
+    assert len(ai_calls) == 1
+    assert ai_calls[0]["parameters"] == {"thinking_level": "high"}
+
+    # A guest cannot replace or add parameters that differ from the request.
+    frame["payload"]["parameters"] = {"thinking_level": "none"}
+    with pytest.raises(AuthorityDenied, match="AI input differs"):
+        callbacks(outer, frame)
+
+
 @pytest.mark.parametrize(
     "patch",
     [

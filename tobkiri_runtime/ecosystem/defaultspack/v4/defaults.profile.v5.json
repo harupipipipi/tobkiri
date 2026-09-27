@@ -168,7 +168,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
-    "source_digest": "sha256:556568eb866ded37ba6d8304f19dde4aa779decd5cdd17b466ef3049fa95f176",
+    "source_digest": "sha256:74628bb047760bc3bd2ef8e7f4de0a5e364fd09dfe7d054ee918389a1c29a67b",
     "repository_commit": "working-tree",
     "repository_tree": "c873994334bc031353714592c0fa391f71780b036e87a26e44d4f4a6b7f19ae6",
     "generator": "tobkiri-profile-artifacts",
@@ -506,7 +506,7 @@
       "operation_id": "rumi_turn_runtime_pack.turn-saved",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:972040d4c22bc6a3f91f3a04466b6aef94b7a124dbcd0a4c5ac573b00d2dc64e",
+        "semantics_digest": "sha256:e90855f7023a3797b0df880ddcc1c4403482d11b155af6a33e142b6469d56285",
         "dimensions": {
           "contract": [
             "tobkiri.action.turn.saved.v1"
@@ -611,7 +611,7 @@
       "operation_id": "saved_complete",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:40607acd7e523936184b8f149d939e7788ecd5f24d35c8379b7191c7be0a5ad0",
+        "semantics_digest": "sha256:2afde5f6be659714ca787db25b43fc454b9a5b82afc165dc85bb8931cdbada7c",
         "dimensions": {
           "contract": [
             "conversation.saved-turn.v1"

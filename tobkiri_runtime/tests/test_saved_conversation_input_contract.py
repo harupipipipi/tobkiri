@@ -97,6 +97,27 @@ def test_internal_resume_shape_is_not_an_external_input_contract() -> None:
     assert saved.tobkiri_packvm_invoke("saved_complete", resume)["status"] == "error"
 
 
+@pytest.mark.parametrize("level", ["none", "low", "medium", "high", "xhigh"])
+def test_saved_turn_accepts_finite_thinking_level(level: str) -> None:
+    payload = _input()
+    payload["request"]["thinking_level"] = level
+    assert validate_document(payload, "saved_conversation_input") == payload
+    assert validate_saved_conversation_input(payload) == payload
+    assert saved.start(payload["request"])["state"]["request"] == payload["request"]
+
+
+@pytest.mark.parametrize("level", ["ultra", "", None, True, 1, [], {}])
+def test_saved_turn_rejects_unbounded_thinking_level(level: object) -> None:
+    payload = _input()
+    payload["request"]["thinking_level"] = level
+    with pytest.raises(SchemaValidationError):
+        validate_document(payload, "saved_conversation_input")
+    with pytest.raises(ValueError, match="thinking level is invalid"):
+        validate_saved_conversation_input(payload)
+    with pytest.raises(ValueError, match="thinking level is invalid"):
+        saved.start(payload["request"])
+
+
 def test_saved_function_is_sealed_with_only_the_initial_input_schema() -> None:
     """Registration pins the pure ABI, not guest resume or execution authority."""
     root = Path(__file__).resolve().parents[1]

@@ -89,6 +89,7 @@ def validate_saved_conversation_input(payload: Mapping[str, Any]) -> dict[str, A
     if not isinstance(request, dict) or set(request) - {
         "tool_selection",
         "deepthink_enabled",
+        "thinking_level",
     } != {
         "turn_id",
         "conversation_id",
@@ -100,6 +101,13 @@ def validate_saved_conversation_input(payload: Mapping[str, Any]) -> dict[str, A
         validate_tool_selection(request["tool_selection"])
     if type(request.get("deepthink_enabled", False)) is not bool:
         raise ValueError("saved turn deepthink flag is invalid")
+    if "thinking_level" in request and (
+        not isinstance(request["thinking_level"], str)
+        or request["thinking_level"] not in {
+            "none", "low", "medium", "high", "xhigh"
+        }
+    ):
+        raise ValueError("saved turn thinking level is invalid")
     for field in ("turn_id", "conversation_id"):
         if not isinstance(request[field], str) or _ID.fullmatch(request[field]) is None:
             raise ValueError("saved turn identity is invalid")

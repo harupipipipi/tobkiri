@@ -74,6 +74,7 @@ export type SavedTurnRequest = {
   content: string;
   tool_selection?: SavedToolSelection;
   deepthink_enabled?: boolean;
+  thinking_level?: "none" | "low" | "medium" | "high" | "xhigh";
 };
 
 export type DeepThinkReadinessReport = {
@@ -4087,12 +4088,13 @@ export const api = {
   async startSavedTurn(value: SavedTurnRequest): Promise<SavedTurnResult> {
     const input = { ...value };
     const fields = ["turn_id", "conversation_id", "conversation_revision", "content"];
-    if (Object.keys(input).some((key) => ![...fields, "tool_selection", "deepthink_enabled"].includes(key)) || fields.some((key) => !(key in input))
+    if (Object.keys(input).some((key) => ![...fields, "tool_selection", "deepthink_enabled", "thinking_level"].includes(key)) || fields.some((key) => !(key in input))
       || typeof input.turn_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(input.turn_id)
       || typeof input.conversation_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(input.conversation_id)
       || !Number.isSafeInteger(input.conversation_revision) || input.conversation_revision < 1
       || (input.tool_selection !== undefined && !validSavedToolSelection(input.tool_selection))
       || (input.deepthink_enabled !== undefined && typeof input.deepthink_enabled !== "boolean")
+      || (input.thinking_level !== undefined && !["none", "low", "medium", "high", "xhigh"].includes(input.thinking_level))
       || typeof input.content !== "string" || !input.content.trim()
       || new TextEncoder().encode(JSON.stringify(input)).length > 60 * 1024) {
       throw new Error("Saved conversation request is invalid or requires unsupported context.");
