@@ -114,7 +114,7 @@ import { toolGroupFor } from "./lib/toolUi";
 import type { ComposerEntityReference } from "./lib/composerReferences";
 import { conversationMatchesSpotlightFilter, conversationToSearchResult, type SpotlightFilter } from "./lib/conversationSpotlight";
 import { boundedDurationLabel } from "./lib/duration";
-import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/desktopApproval";
+import { openAuthorityApprovalWindow, openFingerRecordingWindow, openHostPermissionsPageWindow } from "./lib/desktopApproval";
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
@@ -6452,6 +6452,12 @@ export function ChatApp() {
   const handlePanelAction = async (item: SidebarItem, action: SidebarAction) => {
     setError(null);
     try {
+      if (item.id === "tobkiri-voice-agent" && action.id === "voice.microphone.permissions") {
+        if (!await openHostPermissionsPageWindow()) {
+          throw new Error("マイク権限の確認には Tobkiri Launcher が必要です。");
+        }
+        return;
+      }
       let result: unknown;
       if (action.id === "conversation.export") {
         if (!activeConversationId) throw new Error("エクスポートする会話がありません。");

@@ -49,3 +49,20 @@ def test_voice_coordinator_reuses_active_model_and_existing_subagent_tool() -> N
             "authority": "existing_tobkiri_tool_policy",
         }
     ]
+
+
+def test_voice_pack_declares_microphone_approval_without_starting_capture() -> None:
+    pack_dir = MODULE.parent.parent
+    catalog = json.loads((pack_dir.parent.parent / "schemas/pack_v4_catalog.v1.json").read_text())
+    record = next(
+        pack for pack in catalog["packs"] if pack["pack_id"] == "tobkiri_voice_agent_pack"
+    )
+    extension = json.loads((pack_dir / "frontend_extensions/voice_agent.ui.json").read_text())
+
+    assert record["capabilities"] == ["host.microphone.capture"]
+    assert record["approval_policy"] == "capability_gated"
+    assert record["execution_boundary"] == "declarative_only"
+    assert record["provided_contracts"] == []
+    assert (
+        extension["sidebar_items"][0]["panel"]["actions"][0]["id"] == "voice.microphone.permissions"
+    )

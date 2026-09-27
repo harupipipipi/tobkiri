@@ -325,6 +325,7 @@ const ACTION_ICONS: Record<string, ReactElement> = {
   browser: <Monitor size={13} />,
   channels: <MessageSquareText size={13} />,
   export: <Download size={13} />,
+  permissions: <ShieldCheck size={13} />,
   play: <Play size={13} />,
   reddit: <Search size={13} />,
   schedules: <CalendarClock size={13} />,

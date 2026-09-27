@@ -16,5 +16,12 @@ session lifecycle, coordinator/tool dispatch, and settings bindings are pending.
 outside this repository and must not be started as a second HTTP server or given
 its own model configuration inside Defaults.
 
+The Pack declares `host.microphone.capture` behind `capability_gated` approval.
+The rail links to Tobkiri's Host Permissions window, where the user can check
+Tobkiri approval and open OS microphone settings. These are separate grants;
+neither the Pack declaration nor the rail action starts recording or grants
+either permission. A future capture operation must request Tobkiri authority
+and trigger the OS microphone prompt through the host before audio is read.
+
 The protocol code contains no network calls or secret handling. Voice transport
 will use Tobkiri's approved microphone and AI routes when wired later.

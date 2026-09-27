@@ -93,6 +93,35 @@ test("risky tool detail keeps a prominent needs approval affordance", () => {
   assert.match(html, />risk:high</);
 });
 
+test("voice pack panel exposes the microphone permission check", () => {
+  const html = renderToStaticMarkup(
+    createElement(RightSidebar, {
+      activeItemId: "tobkiri-voice-agent",
+      items: [{
+        id: "tobkiri-voice-agent",
+        label: "Tobkiri Voice",
+        category: "capability",
+        panel: {
+          kind: "info",
+          actions: [{ id: "voice.microphone.permissions", label: "マイク権限を確認" }],
+          notes: ["録音には Tobkiri と OS の許可が必要です。"],
+        },
+      }],
+      settingsValues: {
+        sidebar: { pinned_item_ids: [], starred_item_ids: [], custom_tool_tags: {}, ui_placements: [] },
+        tools: { disabled_tool_ids: [], hidden_tool_ids: [] },
+      },
+      settingsSections: [],
+      selectedToolIds: [],
+      onSettingChange: noop,
+      onOpenSettings: noop,
+    }),
+  );
+
+  assert.match(html, />マイク権限を確認</);
+  assert.match(html, /録音には Tobkiri と OS の許可が必要です。/);
+});
+
 test("right sidebar initially focuses the rail on activities", () => {
   const html = renderToStaticMarkup(
     createElement(RightSidebar, {

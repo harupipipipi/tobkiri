@@ -19778,9 +19778,11 @@
       "workspace_boundary": "host_brokered"
     },
     {
-      "approval_policy": "none",
+      "approval_policy": "capability_gated",
       "authority": "v4-authoritative",
-      "capabilities": [],
+      "capabilities": [
+        "host.microphone.capture"
+      ],
       "dependencies": {},
       "description": "Staged, model-neutral Tobkiri voice coordinator and UI entry.",
       "display_name": "Tobkiri Voice Agent",
@@ -19801,13 +19803,13 @@
       "required_contracts": [],
       "runtime_artifacts": [
         {
-          "digest": "sha256:aa0ec3233f9288dd178011300f27719736c6bc43b34483a9d68f8008465e3bcd",
+          "digest": "sha256:4807d0a8ec7ccab5edc68df045742cf9b08d3ff46288b51cf856119230ec5f2f",
           "index_role": "asset",
           "kind": "asset",
           "path": "README.md"
         },
         {
-          "digest": "sha256:6af0cab5f6fdd0d78f7d16e4876dc859a8abcebd43321dfd6995d70f0a207cdf",
+          "digest": "sha256:760993272878090ecb066f2575263c77e9f4f91dd3255bae9da705d28e907545",
           "index_role": "asset",
           "kind": "asset",
           "path": "frontend_extensions/voice_agent.ui.json"

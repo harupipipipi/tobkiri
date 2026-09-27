@@ -1429,12 +1429,12 @@
     {
       "path": "packs/tobkiri_voice_agent_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:d477918c87f844770c0c9efbc0e582d35cab708e21c4405dfcddf03e795f1a5f"
+      "digest": "sha256:e1052f0e32ab30ffb5820e8d1e7345a25ec04fc6188ea24daa99f5efaefeae4e"
     },
     {
       "path": "packs/tobkiri_voice_agent_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:eaf5e09bbeb49a27775e4252aed8e1dbb1df4dba755f4ecdd43186765fe4b5ee"
+      "digest": "sha256:9780ad577f597af99f2b0eefd4f818821195a351e4a390f79f55beecce81416c"
     },
     {
       "path": "packs/tobkiri_workflow_pack.executables.v4.json",
