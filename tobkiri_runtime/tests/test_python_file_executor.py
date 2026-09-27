@@ -295,6 +295,24 @@ def _fork_available() -> bool:
         return False
 
 
+def test_host_execution_rejects_nonkillable_worker_without_running_pack() -> None:
+    import core_runtime.python_file_executor as pfe
+
+    executed = False
+
+    def pack_function():
+        nonlocal executed
+        executed = True
+        return {"unexpected": True}
+
+    with patch("multiprocessing.get_context", side_effect=ValueError):
+        with unittest.TestCase().assertRaisesRegex(
+            RuntimeError, "killable host worker process is unavailable"
+        ):
+            pfe._run_in_worker_process(pack_function, 0.01, lambda value: value)
+    assert not executed
+
+
 class _NonBuiltinError(Exception):
     """whitelist 外（非 builtins）の例外型の格下げ確認用。"""
 

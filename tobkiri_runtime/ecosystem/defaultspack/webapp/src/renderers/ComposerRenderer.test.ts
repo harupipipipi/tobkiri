@@ -1464,7 +1464,10 @@ test("composer without a registered steer route shows no steer affordance while 
   assert.doesNotMatch(html, /追加の指示を入力/);
   assert.doesNotMatch(html, /Enterで追加指示を送信/);
   assert.doesNotMatch(html, /追加指示を送る/);
-  assert.match(html, /aria-label="応答の完了を待っています"/);
+  assert.match(html, /aria-label="生成を停止"/);
+  assert.match(html, /title="停止"/);
+  const stopButton = html.match(/<button[^>]*aria-label="生成を停止"[^>]*>/)?.[0] ?? "";
+  assert.doesNotMatch(stopButton, /\sdisabled(?:=|\s|>)/);
 });
 
 test("composer without a registered steer route still exposes stop while generating", () => {

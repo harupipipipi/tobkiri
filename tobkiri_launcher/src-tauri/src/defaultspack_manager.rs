@@ -126,12 +126,6 @@ pub(crate) struct ApplicationProcessManager {
 struct OwnedProcessGroup {
     pgid: u32,
     leader_marker: Option<u64>,
-    /// Port the leader was serving when this group was recorded for an
-    /// adopted listener (`None` for groups led by a spawned child). An
-    /// adopted leader was never spawned by this Launcher, so a group
-    /// recorded for one needs a positive identity proof before it may be
-    /// signalled — see `stop_unix_process_group_id`.
-    adopted_port: Option<u16>,
 }
 
 impl OwnedProcessGroup {
@@ -139,17 +133,6 @@ impl OwnedProcessGroup {
         Self {
             pgid,
             leader_marker: crate::process_utils::process_start_marker(pgid),
-            adopted_port: None,
-        }
-    }
-
-    /// Record the group an adopted listener leads. `port` stays with the
-    /// entry so the pid+port identity proof from the reclaim path can be
-    /// re-checked before any group signal is sent.
-    fn record_adopted(pgid: u32, port: u16) -> Self {
-        Self {
-            adopted_port: Some(port),
-            ..Self::record(pgid)
         }
     }
 }
@@ -873,14 +856,11 @@ impl ApplicationProcessManager {
             .any(|entry| entry.pgid == process_id)
         {
             // A listener adopted outside the managed child may still lead its
-            // own process group; recording it with its verified port lets
-            // stop() reap that group without trusting a recycled pid.
+            // own process group. Its start marker must remain verifiable at
+            // shutdown before any group signal is sent.
             state
                 .owned_process_groups
-                .push(OwnedProcessGroup::record_adopted(
-                    process_id,
-                    metadata.port(),
-                ));
+                .push(OwnedProcessGroup::record(process_id));
         }
         state.launch_metadata = Some(metadata.clone());
         state.stop_requested = false;
@@ -1077,18 +1057,6 @@ fn adopted_listener_owns_port(pid: u32, port: u16) -> bool {
         .is_some_and(|listener| listener.pid == pid)
 }
 
-/// Whether `pid` is verifiably dead. EPERM counts as alive: a process that
-/// cannot be probed cannot be proven gone, so its group must never receive
-/// our signal on this evidence alone.
-#[cfg(unix)]
-fn unix_process_verifiably_dead(pid: u32) -> bool {
-    if pid == 0 || pid > i32::MAX as u32 {
-        return false;
-    }
-    (unsafe { libc::kill(pid as i32, 0) }) != 0
-        && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
-}
-
 fn managed_defaultspack_run_id() -> String {
     std::env::var("RUMI_DEFAULTSPACK_DEBUG_RUN_ID")
         .ok()
@@ -1226,43 +1194,19 @@ fn stop_unix_process_group_id(group: OwnedProcessGroup) -> Result<()> {
         return Ok(());
     }
 
-    // Fence pid reuse: a recorded leader that still lives under its pid must
-    // be the same kernel process — a recycled pid heading a foreign group
-    // must never receive our signals. A leader that is verifiably gone
-    // leaves a leaderless group that can only hold our orphans, and on
-    // platforms without start markers the recorded value is None.
-    let leader_verified = match group.leader_marker {
-        Some(recorded) => match crate::process_utils::process_start_marker(process_group) {
-            Some(current) if current != recorded => {
-                warn!(
-                    "Skipping owned process group {process_group}: its pid was recycled by an unrelated process"
-                );
-                return Ok(());
-            }
-            Some(_) => true,
-            None => false,
-        },
-        None => false,
-    };
-
-    // A group recorded for an adopted listener needs a positive identity
-    // proof before it may be signalled: its leader was never spawned by
-    // this Launcher, so when the start marker cannot verify it, the
-    // pid+port proof from the reclaim path or a verifiably dead leader —
-    // whose group can then only hold our orphans — must attest it
-    // instead. Signalling an unverifiable group could hit a foreign
-    // process that recycled the pid, so it is left alone.
+    // A numeric PGID alone is never ownership evidence. Once the leader has
+    // exited, its former group can disappear and the number can be reused by
+    // an unrelated process. A matching port or ESRCH for the old leader does
+    // not prove that the current group is the one this Launcher recorded.
+    let leader_verified = matches!(
+        (group.leader_marker, crate::process_utils::process_start_marker(process_group)),
+        (Some(recorded), Some(current)) if recorded == current
+    );
     if !leader_verified {
-        if let Some(port) = group.adopted_port {
-            let still_ours = adopted_listener_owns_port(process_group, port)
-                || unix_process_verifiably_dead(process_group);
-            if !still_ours {
-                warn!(
-                    "Skipping adopted Defaultspack process group {process_group}: its leader could not be re-verified"
-                );
-                return Ok(());
-            }
-        }
+        warn!(
+            "Skipping owned Defaultspack process group {process_group}: its leader identity could not be re-verified"
+        );
+        return Ok(());
     }
 
     let _ = send_process_group_signal(process_group, "-TERM");
@@ -1958,7 +1902,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn explicit_stop_terminates_an_orphaned_owned_process_group() {
+    fn explicit_stop_does_not_signal_group_after_leader_identity_is_lost() {
         let manager = test_manager();
         let pid_file = std::env::temp_dir().join(format!(
             "defaultspack-manager-orphan-{}-{}.pid",
@@ -2000,10 +1944,13 @@ mod tests {
         manager.stop().unwrap();
 
         let descendant_alive = process_id_is_live(descendant_pid);
+        // The test knows this exact descendant pid; production has no such
+        // evidence after the leader exits and must leave its PGID alone.
+        let _ = send_unix_process_signal(descendant_pid, "-KILL");
         fs::remove_file(pid_file).ok();
         assert!(
-            !descendant_alive,
-            "orphaned Defaultspack descendant {descendant_pid} survived shutdown"
+            descendant_alive,
+            "unverified process group {process_group} was signalled"
         );
     }
 

@@ -107,8 +107,8 @@ pub fn bounded_output(command: &mut Command, timeout: Duration) -> io::Result<Ou
             Ok(None) => {
                 let _ = child.kill();
                 let _ = child.wait();
-                join_drain(stdout_handle);
-                join_drain(stderr_handle);
+                join_drain_until(stdout_handle, deadline);
+                join_drain_until(stderr_handle, deadline);
                 return Err(io::Error::new(
                     io::ErrorKind::TimedOut,
                     "inspection command exceeded its deadline",
@@ -117,17 +117,25 @@ pub fn bounded_output(command: &mut Command, timeout: Duration) -> io::Result<Ou
             Err(error) => {
                 let _ = child.kill();
                 let _ = child.wait();
-                join_drain(stdout_handle);
-                join_drain(stderr_handle);
+                join_drain_until(stdout_handle, deadline);
+                join_drain_until(stderr_handle, deadline);
                 return Err(error);
             }
         }
     };
-    Ok(Output {
-        status,
-        stdout: join_drain(stdout_handle),
-        stderr: join_drain(stderr_handle),
-    })
+    let stdout = join_drain_until(stdout_handle, deadline);
+    let stderr = join_drain_until(stderr_handle, deadline);
+    match (stdout, stderr) {
+        (Some(stdout), Some(stderr)) => Ok(Output {
+            status,
+            stdout,
+            stderr,
+        }),
+        _ => Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "inspection output pipe remained open beyond its deadline",
+        )),
+    }
 }
 
 /// Drain a pipe to EOF retaining at most [`INSPECTION_OUTPUT_CAP`] bytes.
@@ -495,10 +503,23 @@ fn redact_keyed_values(text: &str) -> String {
     out
 }
 
-fn join_drain(handle: Option<std::thread::JoinHandle<Vec<u8>>>) -> Vec<u8> {
-    handle
-        .and_then(|handle| handle.join().ok())
-        .unwrap_or_default()
+fn join_drain_until(
+    handle: Option<std::thread::JoinHandle<Vec<u8>>>,
+    deadline: Instant,
+) -> Option<Vec<u8>> {
+    let Some(handle) = handle else {
+        return Some(Vec::new());
+    };
+    while !handle.is_finished() {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            // A descendant may still hold the pipe after the inspected child
+            // exits. Detach its drain instead of blocking lifecycle locks.
+            return None;
+        }
+        std::thread::sleep(remaining.min(INSPECTION_COMMAND_POLL_INTERVAL));
+    }
+    handle.join().ok()
 }
 
 /// Kernel start-time token for `pid`, used to detect pid recycling.
@@ -551,6 +572,20 @@ pub fn process_start_marker(_pid: u32) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn inspection_deadline_includes_pipes_held_by_descendants() {
+        let mut command = command("/bin/sh");
+        command.args(["-c", "sleep 2 & exit 0"]);
+        let started = Instant::now();
+        let result = bounded_output(&mut command, Duration::from_millis(100));
+        assert_eq!(result.unwrap_err().kind(), io::ErrorKind::TimedOut);
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "inspection waited for a descendant's inherited pipe"
+        );
+    }
 
     #[test]
     fn isolated_python_policy_is_explicit_and_environment_independent() {

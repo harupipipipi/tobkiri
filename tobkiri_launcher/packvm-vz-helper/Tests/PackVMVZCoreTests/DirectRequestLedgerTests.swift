@@ -82,6 +82,9 @@ struct DirectRequestLedgerTests {
         #expect(throws: HelperError.self) {
             try ledger.begin("racing", maximumBridges: 1, now: 0)
         }
+        #expect(throws: HelperError.invalidState("REQUEST_CANCELLED")) {
+            try ledger.begin("racing", maximumBridges: 1, now: 1)
+        }
         // The tombstone expires so unrelated future identities are unaffected.
         let ticket = try ledger.begin("racing", maximumBridges: 1, now: 61)
         try ledger.settle(ticket, pending: false, now: 62)

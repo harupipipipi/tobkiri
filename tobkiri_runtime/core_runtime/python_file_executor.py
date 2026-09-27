@@ -579,8 +579,9 @@ def _run_in_worker_process(
     The ``fork`` start method is required so the worker inherits the injected
     ``rumi_capability`` module / env and the non-picklable exec_context
     callables (permission_proxy, network_check, http_request).  Platforms
-    without ``fork`` (e.g. Windows) fall back to the thread deadline, which
-    keeps the previous abandonment semantics.
+    without ``fork`` (e.g. Windows) reject host execution until a killable
+    worker implementation is available. A thread deadline only abandons the
+    caller and leaves the Pack function running with ambient capabilities.
 
     Isolation hardening (review round 2):
 
@@ -679,9 +680,9 @@ def _run_in_worker_process(
     try:
         ctx = _mp.get_context("fork")
     except ValueError:
-        # fork 非対応プラットフォームでは従来のスレッド方式にフォールバック
-        # （ワーカーは kill できないため capability 剥奪は従来どおり不完全）
-        return _run_with_deadline(target, timeout_seconds)
+        raise RuntimeError(
+            "killable host worker process is unavailable on this platform"
+        ) from None
 
     conn_r, conn_w = ctx.Pipe(duplex=False)
     proc = ctx.Process(

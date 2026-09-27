@@ -3470,7 +3470,7 @@ export function ComposerRenderer({
         const prompt = input.trim();
         if (prompt && !steerBusy && steerEnabled) {
           onSteerSubmit?.(prompt);
-        } else if (!prompt) {
+        } else if (!prompt || !steerEnabled) {
           onStopGenerating?.();
         }
         return;
@@ -4178,20 +4178,16 @@ export function ComposerRenderer({
           onClick={handleSendButtonClick}
           tabIndex={chromeButtonTabIndex}
           aria-label={isGenerating
-            ? (input.trim()
-              ? (steerEnabled ? "追加指示を送る" : "応答の完了を待っています")
-              : "生成を停止")
+            ? (input.trim() && steerEnabled ? "追加指示を送る" : "生成を停止")
             : pendingMentionAttachmentPaths.length > 0
               ? "ファイルを読み込み中"
               : "メッセージを送信"}
           disabled={isGenerating
-            ? Boolean(input.trim()) && !steerEnabled
+            ? false
             : pendingMentionAttachmentPaths.length > 0
               || (!input.trim() && attachedFiles.length === 0)}
           title={isGenerating
-            ? (input.trim()
-              ? (steerEnabled ? "追加指示を送る" : "応答の完了後に送信できます")
-              : "停止")
+            ? (input.trim() && steerEnabled ? "追加指示を送る" : "停止")
             : pendingMentionAttachmentPaths.length > 0
               ? "ファイルを読み込み中"
               : "送信"}
@@ -4207,7 +4203,7 @@ export function ComposerRenderer({
                 : "bg-zinc-100 text-zinc-950 shadow-[0_6px_18px_rgba(0,0,0,0.28)] hover:bg-white"
           }`}
         >
-          {isGenerating && !input.trim() ? (
+          {isGenerating && (!input.trim() || !steerEnabled) ? (
             <Square size={11} strokeWidth={2.4} fill="currentColor" aria-hidden="true" />
           ) : isGenerating && steerEnabled ? (
             <CornerDownRight size={15} strokeWidth={2.4} />

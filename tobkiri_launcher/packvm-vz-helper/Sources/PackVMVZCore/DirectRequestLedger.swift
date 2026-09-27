@@ -39,7 +39,7 @@ final class DirectRequestLedger {
         // A cancellation delivered before this request registered must still
         // win: concurrent dispatch means ordering between invoke and cancel is
         // not guaranteed, and a tombstoned identity can never become active.
-        if cancelled.removeValue(forKey: requestID) != nil {
+        if cancelled[requestID] != nil {
             throw HelperError.invalidState("REQUEST_CANCELLED")
         }
         guard entries[requestID] == nil else {
