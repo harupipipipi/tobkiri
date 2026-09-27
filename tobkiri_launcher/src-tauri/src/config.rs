@@ -56,8 +56,7 @@ impl AppConfig {
         let staged_app_dir = resource_dir.join("app");
         let detected_workspace_root = find_dev_workspace_root(&resource_dir);
         // A direct Cargo executable uses the checkout runtime. A debug `.app`
-        // uses its staged Resources/app tree so Python children do not need
-        // protected Desktop-folder access to import the checkout.
+        // uses its staged Resources/app tree or checkout-local gen/app stage.
         let is_debug_artifact = cfg!(debug_assertions)
             && detected_workspace_root.is_some()
             && (is_cargo_debug_resource_dir(&resource_dir)
@@ -67,12 +66,26 @@ impl AppConfig {
         let is_app_bundle = resource_dir
             .ancestors()
             .any(|ancestor| ancestor.extension().and_then(|value| value.to_str()) == Some("app"));
+        let development_bundle = detected_workspace_root.as_ref().and_then(|workspace_root| {
+            debug_macos_bundle_for_resources(
+                &workspace_root.join("tobkiri_launcher/src-tauri/target"),
+                &resource_dir,
+            )
+        });
+        let generated_development_runtime = detected_workspace_root
+            .as_ref()
+            .map(|workspace_root| workspace_root.join("tobkiri_launcher/src-tauri/gen/app"));
         // The explicit marker covers a debug configuration whose resource
         // map intentionally omits `gen/app`; the target-path check covers
         // Cargo's direct and app-bundle resource layouts in tests and local
         // builds. A staged app remains the runtime boundary for an app bundle.
         let prefer_dev_runtime = (is_debug_artifact && !is_app_bundle)
-            || (is_explicit_local_development_workspace_build() && !staged_app_dir.exists());
+            || (is_explicit_local_development_workspace_build()
+                && !staged_app_dir.exists()
+                && (development_bundle.is_none()
+                    || !generated_development_runtime
+                        .as_ref()
+                        .is_some_and(|runtime| runtime.join("app.py").is_file())));
         let dev_workspace_root = if is_debug_artifact {
             detected_workspace_root.clone()
         } else if staged_app_dir.exists() {
@@ -82,6 +95,13 @@ impl AppConfig {
         };
 
         let mut app_dir = staged_app_dir;
+        if is_debug_artifact && development_bundle.is_some() && !app_dir.exists() {
+            if let Some(staged_development_runtime) = generated_development_runtime {
+                if staged_development_runtime.join("app.py").is_file() {
+                    app_dir = staged_development_runtime;
+                }
+            }
+        }
         if prefer_dev_runtime {
             let workspace_root = dev_workspace_root
                 .as_ref()
@@ -94,31 +114,21 @@ impl AppConfig {
         let rumi_home = app_dir.clone();
 
         // An unsigned checkout must never consume or mutate the installed
-        // application's persisted activation. macOS also binds writable files
-        // to the creating code identity; that identity changes on every local
-        // rebuild. Keep each debug run below its own ignored state root so a
-        // new build never blocks while opening MACL-bound state from an older
-        // build.
-        let writable_root = if dev_workspace_root.is_some() && is_app_bundle {
-            std::env::temp_dir()
-                .join("tobkiri-launcher-dev")
-                .join("runs")
-                .join(std::process::id().to_string())
-                .join("state")
-        } else {
-            dev_workspace_root
-                .as_ref()
-                .map(|workspace_root| {
-                    workspace_root
-                        .join("tobkiri_launcher")
-                        .join("src-tauri")
-                        .join("target")
-                        .join("dev-state")
-                        .join("runs")
-                        .join(std::process::id().to_string())
-                })
-                .unwrap_or(app_data_dir)
-        };
+        // application's persisted activation. Keep each debug run below its
+        // own ignored state root so a newly rebuilt macOS app does not reopen
+        // MACL-bound files from an earlier run.
+        let writable_root = dev_workspace_root
+            .as_ref()
+            .map(|workspace_root| {
+                workspace_root
+                    .join("tobkiri_launcher")
+                    .join("src-tauri")
+                    .join("target")
+                    .join("dev-state")
+                    .join("runs")
+                    .join(std::process::id().to_string())
+            })
+            .unwrap_or(app_data_dir);
 
         let python_dir = writable_root.join("python");
         let uv_path = if cfg!(target_os = "windows") {
@@ -336,6 +346,34 @@ fn is_cargo_debug_resource_dir(resource_dir: &Path) -> bool {
         ),
         (Some("debug"), Some("target"))
     )
+}
+
+/// Match only a debug macOS bundle produced inside this checkout's Cargo target.
+/// The same layout gate is used for runtime and PackVM helper discovery.
+pub(crate) fn debug_macos_bundle_for_resources(
+    target_root: &Path,
+    resource_dir: &Path,
+) -> Option<PathBuf> {
+    let relative = resource_dir.strip_prefix(target_root).ok()?;
+    let parts = relative
+        .components()
+        .map(|part| part.as_os_str())
+        .collect::<Vec<_>>();
+    let offset = match parts.len() {
+        6 if parts[0] == "debug" => 0,
+        7 if parts[1] == "debug" => 1,
+        _ => return None,
+    };
+    if parts[offset + 1] != "bundle"
+        || parts[offset + 2] != "macos"
+        || parts[offset + 4] != "Contents"
+        || parts[offset + 5] != "Resources"
+    {
+        return None;
+    }
+    let bundle = resource_dir.parent()?.parent()?;
+    (bundle.extension().and_then(|value| value.to_str()) == Some("app"))
+        .then(|| bundle.to_path_buf())
 }
 
 fn is_explicit_local_development_workspace_build() -> bool {
@@ -641,13 +679,44 @@ mod tests {
         assert_eq!(config.venv_dir, resource.join("app/dev-venv"));
         assert_eq!(
             config.user_data_dir,
-            std::env::temp_dir()
-                .join("tobkiri-launcher-dev")
+            root.join("tobkiri_launcher/src-tauri/target/dev-state")
                 .join("runs")
                 .join(std::process::id().to_string())
-                .join("state/user_data")
+                .join("user_data")
         );
         assert!(config.is_dev_workspace());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn debug_app_without_resource_map_uses_checkout_stage_and_isolated_state() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("tobkiri_debug_unbundled_{unique}"));
+        let resource = root.join(
+            "tobkiri_launcher/src-tauri/target/debug/bundle/macos/Tobkiri Launcher Developer.app/Contents/Resources",
+        );
+        let staged = root.join("tobkiri_launcher/src-tauri/gen/app");
+        fs::create_dir_all(&resource).unwrap();
+        fs::create_dir_all(&staged).unwrap();
+        fs::create_dir_all(root.join("tobkiri_runtime")).unwrap();
+        fs::write(staged.join("app.py"), "print('staged')\n").unwrap();
+        fs::write(root.join("tobkiri_runtime/app.py"), "print('repo')\n").unwrap();
+
+        let config = AppConfig::detect_for_tauri(resource, root.join("installed-state")).unwrap();
+        assert_eq!(config.app_dir, staged);
+        assert_eq!(config.venv_dir, staged.join("dev-venv"));
+        assert!(config
+            .user_data_dir
+            .starts_with(root.join("tobkiri_launcher/src-tauri/target/dev-state")));
+        assert!(!config
+            .user_data_dir
+            .starts_with(root.join("installed-state")));
         fs::remove_dir_all(&root).ok();
     }
 

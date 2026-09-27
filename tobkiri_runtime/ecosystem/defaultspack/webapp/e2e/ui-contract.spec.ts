@@ -114,6 +114,7 @@ type ApiMockOptions = {
   codingApprovalAfterRestore?: boolean;
   structuredComposer?: boolean;
   interactiveApproval?: InteractiveApprovalFixture;
+  onInteractiveApprovalRead?: (readCount: number) => Partial<InteractiveApprovalFixture> | void;
   onInteractiveApprovalDecision?: (decision: "approve" | "deny", payload: Record<string, unknown>) => void;
 };
 
@@ -730,6 +731,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       redacted_metadata: { ...options.interactiveApproval.redacted_metadata },
     }
     : null;
+  let interactiveApprovalReadCount = 0;
   const settledApprovalRequestIds = new Set<string>();
   const codingCheckpoints: Record<string, unknown>[] = options.codingApprovalAfterRestore
     ? [{ snapshot_id: "checkpoint-1", path: "/repo/.rumi/checkpoints/checkpoint-1" }]
@@ -996,6 +998,11 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
     if (path === routeKey("api/interactive-approval/v1/get") && method === "POST") {
       const payload = request.postDataJSON() as Record<string, unknown>;
       if (!interactiveApprovalRequest) return fulfill(route, {});
+      interactiveApprovalReadCount += 1;
+      interactiveApprovalRequest = {
+        ...interactiveApprovalRequest,
+        ...(options.onInteractiveApprovalRead?.(interactiveApprovalReadCount) ?? {}),
+      };
       if (payload.request_id !== interactiveApprovalRequest.request_id) {
         return fulfill(route, { ...interactiveApprovalRequest, request_id: String(payload.request_id ?? "") });
       }
@@ -1368,7 +1375,7 @@ test("approval window renderer contract binds typed approval to the current requ
       request_id: requestId,
       request_snapshot_digest: "1".repeat(64),
       state: "pending",
-      expires_at: Math.floor(now / 1_000) + 300,
+      expires_at: Math.floor(Date.now() / 1_000) + 300,
       typed_confirmation_required: true,
       typed_confirmation_digest: "2".repeat(64),
       redacted_metadata: {
@@ -1436,7 +1443,7 @@ test("approval window renderer contract denies once and renders its settled stat
       request_id: requestId,
       request_snapshot_digest: "3".repeat(64),
       state: "pending",
-      expires_at: Math.floor(now / 1_000) + 300,
+      expires_at: Math.floor(Date.now() / 1_000) + 300,
       typed_confirmation_required: false,
       typed_confirmation_digest: null,
       redacted_metadata: { action: "Discard the prepared update" },
@@ -1484,7 +1491,7 @@ test("approval window renderer contract fails closed when typed confirmation met
       request_id: "apr-renderer-missing-confirmation",
       request_snapshot_digest: "4".repeat(64),
       state: "pending",
-      expires_at: Math.floor(now / 1_000) + 300,
+      expires_at: Math.floor(Date.now() / 1_000) + 300,
       typed_confirmation_required: true,
       typed_confirmation_digest: "5".repeat(64),
       redacted_metadata: { action: "Apply the protected change" },
@@ -1500,6 +1507,58 @@ test("approval window renderer contract fails closed when typed confirmation met
   await expect(page.getByPlaceholder("確認文を入力")).toBeDisabled();
   await expect(page.getByRole("button", { name: "承認", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "拒否", exact: true })).toHaveCount(0);
+  expect(decisions).toEqual([]);
+});
+
+test("approval window disables actions when the displayed request expires", async ({ page }) => {
+  const decisions: string[] = [];
+  const requestId = "apr-renderer-near-expiry";
+  await installDefaultspackApiMocks(page, {
+    interactiveApproval: {
+      request_id: requestId,
+      request_snapshot_digest: "6".repeat(64),
+      state: "pending",
+      expires_at: Math.ceil(Date.now() / 1_000) + 2,
+      typed_confirmation_required: false,
+      typed_confirmation_digest: null,
+      redacted_metadata: { action: "Time-sensitive operation" },
+    },
+    onInteractiveApprovalDecision: (decision) => decisions.push(decision),
+  });
+
+  await page.goto(`/approval?request_id=${requestId}`);
+  await expect(page.getByRole("button", { name: "承認", exact: true })).toBeEnabled();
+  await expect(page.getByText("期限切れ", { exact: true })).toHaveCount(2, { timeout: 5_000 });
+  await expect(page.getByRole("button", { name: "承認", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "拒否", exact: true })).toHaveCount(0);
+  expect(decisions).toEqual([]);
+});
+
+test("approval window reports an authoritative stale request without an ID mismatch", async ({ page }) => {
+  const decisions: string[] = [];
+  const requestId = "apr-renderer-stale";
+  let isStale = false;
+  await installDefaultspackApiMocks(page, {
+    interactiveApproval: {
+      request_id: requestId,
+      request_snapshot_digest: "7".repeat(64),
+      state: "pending",
+      expires_at: Math.ceil(Date.now() / 1_000) + 300,
+      typed_confirmation_required: false,
+      typed_confirmation_digest: null,
+      redacted_metadata: { action: "Changed operation" },
+    },
+    onInteractiveApprovalRead: () => isStale ? { state: "stale" } : {},
+    onInteractiveApprovalDecision: (decision) => decisions.push(decision),
+  });
+
+  await page.goto(`/approval?request_id=${requestId}`);
+  await expect(page.getByRole("button", { name: "承認", exact: true })).toBeEnabled();
+  isStale = true;
+  await page.getByRole("button", { name: "承認", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("このリクエストは古くなりました");
+  await expect(page.getByRole("button", { name: "承認", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("alert")).not.toContainText("一致しません");
   expect(decisions).toEqual([]);
 });
 

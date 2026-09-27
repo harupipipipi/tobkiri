@@ -26,6 +26,7 @@ import {
 } from "../features/chat/resources/authorityApprovalResources";
 import { broadcastAuthorityApprovalSettlement } from "../lib/authorityApprovalEvents";
 import { approvalAuthorityDetails } from "../lib/authorityApprovalPresentation";
+import { approvalRequestExpired, approvalUnavailableMessage } from "../lib/approvalRequestState";
 import { profileScreenUrlFromLocation } from "../lib/profileRoute";
 import { closeCurrentWindow, getAuthorityApprovalContext, openFingerRecordingWindow } from "../lib/desktopApproval";
 import { cn } from "../lib/cn";
@@ -173,6 +174,7 @@ export function AuthorityApprovalWindow() {
   const [decision, setDecision] = useState<DecisionState>("idle");
   const [confirmationText, setConfirmationText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const nativeApprovalAvailable = hasNativeApprovalContext();
 
   const readAuthoritativeRequest = useCallback(async (): Promise<InteractiveApprovalRequest> => {
@@ -192,8 +194,15 @@ export function AuthorityApprovalWindow() {
     try {
       const latest = await readAuthoritativeRequest();
       setRequest(latest);
+      setNowMs(Date.now());
       if (latest.state === "approved") setDecision("approved");
       if (latest.state === "denied") setDecision("denied");
+      if (latest.state === "expired" || latest.state === "stale"
+        || (isPending(latest) && approvalRequestExpired(latest.expires_at, Date.now()))) {
+        setError(approvalUnavailableMessage(
+          isPending(latest) ? "expired" : latest.state,
+        ));
+      }
     } catch (refreshError) {
       setRequest(null);
       setError(approvalErrorMessage(refreshError));
@@ -207,6 +216,16 @@ export function AuthorityApprovalWindow() {
     document.title = "Tobkiriの許可";
     void refresh();
   }, [isAmbientPackApproval, refresh]);
+
+  useEffect(() => {
+    if (!request || !isPending(request) || approvalRequestExpired(request.expires_at, nowMs)) return;
+    const delay = Math.max(0, request.expires_at * 1000 - Date.now());
+    const timer = window.setTimeout(() => {
+      setNowMs(Date.now());
+      void refresh();
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [request, nowMs, refresh]);
 
   const metadataRows = useMemo(() => {
     if (!request) return [];
@@ -230,16 +249,22 @@ export function AuthorityApprovalWindow() {
 
   const settleAndClose = useCallback(async (expectedState: DecisionState) => {
     const latest = await readAuthoritativeRequest();
-    if (latest.state !== expectedState) {
-      throw new Error("APPROVAL_REQUEST_MISMATCH");
-    }
     setRequest(latest);
+    if (latest.state !== expectedState) {
+      throw new Error(approvalUnavailableMessage(latest.state));
+    }
     setDecision(expectedState);
     window.setTimeout(() => void closeApprovalWindow(), 650);
   }, [readAuthoritativeRequest]);
 
   const approve = async () => {
     if (!request || !isPending(request)) return;
+    if (approvalRequestExpired(request.expires_at, Date.now())) {
+      setNowMs(Date.now());
+      setError(approvalUnavailableMessage("expired"));
+      void refresh();
+      return;
+    }
     if (
       request.typed_confirmation_required
       && (!confirmationPhrase || confirmationText.trim() !== confirmationPhrase)
@@ -251,7 +276,8 @@ export function AuthorityApprovalWindow() {
     setError(null);
     try {
       const current = await readAuthoritativeRequest();
-      if (!isPending(current)) throw new Error("APPROVAL_REQUEST_MISMATCH");
+      setRequest(current);
+      if (!isPending(current)) throw new Error(approvalUnavailableMessage(current.state));
       const context = await getAuthorityApprovalContext(requestId, {
         decision: "approve",
         requestSnapshotDigest: current.request_snapshot_digest,
@@ -272,11 +298,18 @@ export function AuthorityApprovalWindow() {
 
   const deny = async () => {
     if (!request || !isPending(request)) return;
+    if (approvalRequestExpired(request.expires_at, Date.now())) {
+      setNowMs(Date.now());
+      setError(approvalUnavailableMessage("expired"));
+      void refresh();
+      return;
+    }
     setAction("deny");
     setError(null);
     try {
       const current = await readAuthoritativeRequest();
-      if (!isPending(current)) throw new Error("APPROVAL_REQUEST_MISMATCH");
+      setRequest(current);
+      if (!isPending(current)) throw new Error(approvalUnavailableMessage(current.state));
       const context = await getAuthorityApprovalContext(requestId, {
         decision: "deny",
         requestSnapshotDigest: current.request_snapshot_digest,
@@ -299,10 +332,12 @@ export function AuthorityApprovalWindow() {
   const controlsDisabled = loading || action !== null
     || !nativeApprovalAvailable
     || !isPending(request)
+    || Boolean(request && approvalRequestExpired(request.expires_at, nowMs))
     || confirmationUnavailable;
   const confirmationSatisfied = !request?.typed_confirmation_required
     || confirmationText.trim() === confirmationPhrase;
-  const settled = decision !== "idle" || !isPending(request);
+  const locallyExpired = Boolean(request && approvalRequestExpired(request.expires_at, nowMs));
+  const settled = decision !== "idle" || !isPending(request) || locallyExpired;
 
   return (
     <main className="min-h-screen bg-[#09090b] text-zinc-100">
@@ -345,7 +380,7 @@ export function AuthorityApprovalWindow() {
               <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400">
-                    {statusLabel(request.state)}
+                    {locallyExpired && isPending(request) ? statusLabel("expired") : statusLabel(request.state)}
                   </span>
                   <span className="rounded border border-zinc-800 px-2 py-1 text-[11px] text-zinc-500">
                     有効期限: {formattedExpiry(request.expires_at)}
@@ -427,7 +462,7 @@ export function AuthorityApprovalWindow() {
                 )}>
                   <div className="flex items-center gap-2 font-medium">
                     {request.state === "approved" ? <ShieldCheck size={16} /> : <ShieldX size={16} />}
-                    {statusLabel(request.state)}
+                    {locallyExpired && isPending(request) ? statusLabel("expired") : statusLabel(request.state)}
                   </div>
                 </div>
               ) : confirmationUnavailable ? null : !nativeApprovalAvailable ? (

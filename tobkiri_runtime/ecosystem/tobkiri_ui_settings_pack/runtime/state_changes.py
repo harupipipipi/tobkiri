@@ -6,7 +6,6 @@ import hashlib
 import json
 import re
 from copy import deepcopy
-from pathlib import Path
 from typing import Any, Mapping
 
 from core_runtime.host_provider_backend_v4 import (
@@ -17,6 +16,7 @@ from core_runtime.host_provider_backend_v4 import (
 )
 from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
 from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.settings_state import settings_state_revision
 
 PACK_ID = "tobkiri_ui_settings_pack"
 MODEL_READ_FUNCTION = "tobkiri.ui.model-state.read"
@@ -166,8 +166,7 @@ class StateChangesHostFactoryV4:
                 if set(payload) - {"profile_id", "_session_id"}:
                     raise PermissionError("state read request is invalid")
                 snapshot = store.read_snapshot()
-                revisions = snapshot.get("_settings_state_revisions", {})
-                revision = revisions.get(state_ref, 0) if isinstance(revisions, dict) else 0
+                revision = settings_state_revision(snapshot, state_ref)
                 result: dict[str, Any] = {"namespace": namespace, "revision": revision}
                 if operation_id == MODEL_READ_OPERATION:
                     models = snapshot.get("models", {})

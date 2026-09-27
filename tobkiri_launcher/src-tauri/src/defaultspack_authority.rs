@@ -895,6 +895,20 @@ fn development_staged_runtime_for_executable(
     executable: &Path,
 ) -> Option<PathBuf> {
     let executable_dir = executable.parent()?;
+    if executable_dir.file_name().and_then(|name| name.to_str()) == Some("MacOS")
+        && executable.file_name().and_then(|name| name.to_str()) == Some("tobkiri-launcher")
+    {
+        let resources = executable_dir.parent()?.join("Resources");
+        if crate::config::debug_macos_bundle_for_resources(target_root, &resources).is_some() {
+            return Some(target_root.parent()?.join("gen/app"));
+        }
+    }
+    if executable
+        .ancestors()
+        .any(|ancestor| ancestor.extension().and_then(|value| value.to_str()) == Some("app"))
+    {
+        return None;
+    }
     let build_dir = if executable_dir.file_name().and_then(|name| name.to_str()) == Some("deps") {
         executable_dir.parent()?
     } else {
@@ -2732,6 +2746,20 @@ mod tests {
             development_staged_runtime_for_executable(
                 target,
                 Path::new("other/target/debug/tobkiri-launcher.exe")
+            ),
+            None
+        );
+        assert_eq!(
+            development_staged_runtime_for_executable(
+                target,
+                Path::new("checkout/target/debug/bundle/macos/Tobkiri Launcher Developer.app/Contents/MacOS/tobkiri-launcher")
+            ),
+            Some(PathBuf::from("checkout/gen/app"))
+        );
+        assert_eq!(
+            development_staged_runtime_for_executable(
+                target,
+                Path::new("checkout/target/release/bundle/macos/Tobkiri Launcher.app/Contents/MacOS/tobkiri-launcher")
             ),
             None
         );

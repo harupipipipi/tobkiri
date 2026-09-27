@@ -418,14 +418,38 @@ fn development_packvm_bundle_root(config: &AppConfig) -> Option<PathBuf> {
     if !cfg!(debug_assertions) || !config.is_dev_workspace() {
         return None;
     }
+    let executable = std::env::current_exe().ok()?.canonicalize().ok()?;
+    development_packvm_bundle_root_for_executable(config, &executable)
+}
+
+fn development_packvm_bundle_root_for_executable(
+    config: &AppConfig,
+    executable: &Path,
+) -> Option<PathBuf> {
+    if !cfg!(debug_assertions) || !config.is_dev_workspace() {
+        return None;
+    }
+    let target_root = config
+        .dev_workspace_root
+        .as_ref()?
+        .join("tobkiri_launcher/src-tauri/target");
+    let executable_dir = executable.parent()?;
+    if executable.file_name()? != "tobkiri-launcher" || executable_dir.file_name()? != "MacOS" {
+        return None;
+    }
+    let resources = executable_dir.parent()?.join("Resources");
+    let bundle = crate::config::debug_macos_bundle_for_resources(&target_root, &resources)?;
     let app_dir = config.app_dir.canonicalize().ok()?;
-    let resources = app_dir.parent()?;
-    let contents = resources.parent()?;
-    let bundle = contents.parent()?;
-    if app_dir.file_name()? != "app"
-        || resources.file_name()? != "Resources"
-        || contents.file_name()? != "Contents"
-        || bundle.extension()? != "app"
+    let staged_app = resources.join("app");
+    let generated_app = target_root.parent()?.join("gen/app");
+    if staged_app.canonicalize().ok().as_deref() != Some(app_dir.as_path())
+        && generated_app.canonicalize().ok().as_deref() != Some(app_dir.as_path())
+    {
+        return None;
+    }
+    if !app_dir
+        .join(crate::runtime_resource_integrity::MANIFEST_NAME)
+        .is_file()
         || !bundle
             .join("Contents/MacOS/tobkiri-packvm-vz-helper")
             .is_file()
@@ -438,7 +462,7 @@ fn development_packvm_bundle_root(config: &AppConfig) -> Option<PathBuf> {
     {
         return None;
     }
-    Some(bundle.to_path_buf())
+    Some(bundle)
 }
 
 // ---------------------------------------------------------------------------
@@ -3165,6 +3189,59 @@ mod tests {
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn debug_app_packvm_bundle_binding_requires_checkout_stage_and_helper_manifests() {
+        let root = std::env::temp_dir().join(format!(
+            "tobkiri-packvm-debug-bundle-{}",
+            unix_timestamp_nanos()
+        ));
+        let bundle = root.join(
+            "tobkiri_launcher/src-tauri/target/debug/bundle/macos/Tobkiri Launcher Developer.app",
+        );
+        let executable = bundle.join("Contents/MacOS/tobkiri-launcher");
+        let resources = bundle.join("Contents/Resources");
+        let stage = root.join("tobkiri_launcher/src-tauri/gen/app");
+        fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        fs::create_dir_all(&resources).unwrap();
+        fs::create_dir_all(&stage).unwrap();
+        fs::create_dir_all(root.join("tobkiri_runtime")).unwrap();
+        fs::write(root.join("tobkiri_runtime/app.py"), b"staged").unwrap();
+        fs::write(stage.join("app.py"), b"staged").unwrap();
+        fs::write(
+            stage.join(crate::runtime_resource_integrity::MANIFEST_NAME),
+            b"seal",
+        )
+        .unwrap();
+        fs::write(&executable, b"launcher").unwrap();
+        let config =
+            AppConfig::detect_for_tauri(resources.clone(), root.join("installed")).unwrap();
+        assert_eq!(config.app_dir, stage);
+        assert_eq!(
+            development_packvm_bundle_root_for_executable(&config, &executable),
+            None
+        );
+
+        fs::write(
+            bundle.join("Contents/MacOS/tobkiri-packvm-vz-helper"),
+            b"helper",
+        )
+        .unwrap();
+        fs::write(resources.join("packvm-vz-provisioning.v1.json"), b"{}").unwrap();
+        fs::write(resources.join("packvm-vz-helper.manifest.v1.json"), b"{}").unwrap();
+        assert_eq!(
+            development_packvm_bundle_root_for_executable(&config, &executable),
+            Some(bundle.clone())
+        );
+        assert_eq!(
+            development_packvm_bundle_root_for_executable(
+                &config,
+                &root.join("other/Tobkiri Launcher.app/Contents/MacOS/tobkiri-launcher")
+            ),
+            None
+        );
+        fs::remove_dir_all(root).ok();
+    }
 
     #[cfg(unix)]
     fn test_options(timeout: Duration, notice: Duration) -> ProvisionOptions {
