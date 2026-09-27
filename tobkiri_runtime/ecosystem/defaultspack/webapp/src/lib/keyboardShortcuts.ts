@@ -79,7 +79,8 @@ export function normalizeShortcutSpec(value: unknown): ShortcutSpec | null {
     spec.key = normalizeShortcutKey(part);
   }
   if (!spec.key || isModifierKey(spec.key)) return null;
-  if (!spec.ctrl && !spec.alt && !spec.meta && !spec.shift) return null;
+  if (!spec.ctrl && !spec.alt && !spec.meta && !spec.shift
+    && !/^f(?:[1-9]|1[0-2])$/.test(spec.key)) return null;
   return spec;
 }
 

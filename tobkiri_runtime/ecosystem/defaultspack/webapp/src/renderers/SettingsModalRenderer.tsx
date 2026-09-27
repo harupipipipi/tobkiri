@@ -24,6 +24,7 @@ import {
   parseModelSelectorSchema,
   type ModelSelectorSchema,
 } from "../features/models";
+import { ModelRouteSetup } from "../features/models/ModelRouteSetup";
 import type { SettingsModalRendererProps, SettingsSaveState } from "./types";
 import type { DesktopPermissionStatus, DesktopSystemInfo } from "../lib/desktopSystemInfo";
 import {
