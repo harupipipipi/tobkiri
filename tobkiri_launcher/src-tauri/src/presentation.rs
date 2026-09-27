@@ -51,6 +51,22 @@ static SHELL_PREPARATION_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 const PRESENTATION_CALLER_DENIED: &str =
     "presentation access is unavailable from this Launcher window";
 
+#[derive(Debug)]
+struct ShellRuntimePreparationFailed;
+
+impl std::fmt::Display for ShellRuntimePreparationFailed {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Defaultspack Shell runtime preparation failed")
+    }
+}
+
+impl std::error::Error for ShellRuntimePreparationFailed {}
+
+impl ShellRuntimePreparationFailed {
+    const CODE: &'static str = "RUNTIME_PREPARATION_FAILED";
+    const ACTION: &'static str = "review_packs_and_retry";
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PresentationCallerDenial {
     WindowLabel,
@@ -471,12 +487,32 @@ pub async fn launch_selected_presentation(
 
 fn presentation_launch_error_wire(error: &anyhow::Error) -> String {
     if error
+        .downcast_ref::<crate::dock_registration::ShellRuntimeBackendUnavailable>()
+        .is_some()
+    {
+        return serde_json::json!({
+            "code": crate::dock_registration::ShellRuntimeBackendUnavailable::CODE,
+            "action": crate::dock_registration::ShellRuntimeBackendUnavailable::ACTION,
+        })
+        .to_string();
+    }
+    if error
         .downcast_ref::<crate::defaultspack_authority::ProfileReresolutionRequired>()
         .is_some()
     {
         return serde_json::json!({
             "code": crate::defaultspack_authority::ProfileReresolutionRequired::CODE,
             "action": crate::defaultspack_authority::ProfileReresolutionRequired::ACTION,
+        })
+        .to_string();
+    }
+    if error
+        .downcast_ref::<ShellRuntimePreparationFailed>()
+        .is_some()
+    {
+        return serde_json::json!({
+            "code": ShellRuntimePreparationFailed::CODE,
+            "action": ShellRuntimePreparationFailed::ACTION,
         })
         .to_string();
     }
@@ -689,7 +725,8 @@ fn launch_verified_target_once(
     // URL never crosses argv or the environment; only an owner-only one-shot
     // handoff path is passed to the presentation process.
     let prepared_runtime =
-        prepare_defaultspack_shell_runtime_with_deadline(app, config, &target.frontend_entry)?;
+        prepare_defaultspack_shell_runtime_with_deadline(app, config, &target.frontend_entry)
+            .context(ShellRuntimePreparationFailed)?;
     if !target
         .execution_identity
         .matches(&prepared_runtime.identity)
@@ -3836,7 +3873,36 @@ mod tests {
     }
 
     #[test]
-    fn presentation_launch_preserves_reresolution_code_and_action() {
+    fn presentation_launch_preserves_recovery_codes_and_actions() {
+        let backend = Err::<(), _>(crate::dock_registration::ShellRuntimeBackendUnavailable)
+            .context("Defaultspack Shell preparation failed")
+            .context(ShellRuntimePreparationFailed)
+            .unwrap_err();
+        let backend_wire: serde_json::Value =
+            serde_json::from_str(&presentation_launch_error_wire(&backend)).unwrap();
+        assert_eq!(
+            backend_wire["code"],
+            crate::dock_registration::ShellRuntimeBackendUnavailable::CODE
+        );
+        assert_eq!(
+            backend_wire["action"],
+            crate::dock_registration::ShellRuntimeBackendUnavailable::ACTION
+        );
+
+        let preparation = Err::<(), _>(anyhow!("authenticated guardian did not become ready"))
+            .context(ShellRuntimePreparationFailed)
+            .unwrap_err();
+        let preparation_wire: serde_json::Value =
+            serde_json::from_str(&presentation_launch_error_wire(&preparation)).unwrap();
+        assert_eq!(
+            preparation_wire["code"],
+            ShellRuntimePreparationFailed::CODE
+        );
+        assert_eq!(
+            preparation_wire["action"],
+            ShellRuntimePreparationFailed::ACTION
+        );
+
         let error = Err::<(), _>(crate::defaultspack_authority::ProfileReresolutionRequired)
             .context("active Application authority could not be resolved")
             .unwrap_err();

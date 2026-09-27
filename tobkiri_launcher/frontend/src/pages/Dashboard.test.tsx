@@ -208,6 +208,105 @@ test('duplicate Profile IDs are deterministic and never privilege Defaults', () 
   );
 });
 
+test('Home keeps a failed Shell launch visible with phase-specific recovery actions', async () => {
+  const previousState = useAppStore.getState();
+  const previousFetch = globalThis.fetch;
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const previousLocalStorage = (globalThis as typeof globalThis & {localStorage?: unknown}).localStorage;
+  const previousSessionStorage = (globalThis as typeof globalThis & {sessionStorage?: unknown}).sessionStorage;
+
+  try {
+    globalThis.fetch = (async () => jsonResponse(profileRegistry())) as typeof fetch;
+    useAppStore.setState({
+      isSetupDone: true,
+      runtimeReady: false,
+      runtimeStatus: 'starting',
+      runtimeDisconnected: false,
+      hostCatalogVerified: true,
+      profileCeremonyAvailable: true,
+      defaultsBootstrapRequired: false,
+      activeProfileReady: true,
+      launchReady: true,
+    });
+    const {dom, container, root} = createDashboardDom();
+    let attempts = 0;
+    (dom.window as unknown as Window & {__TAURI__?: unknown}).__TAURI__ = {
+      core: {
+        invoke: async (command: string) => {
+          assert.equal(command, 'launch_selected_presentation');
+          attempts += 1;
+          if (attempts === 1) {
+            throw JSON.stringify({
+              code: 'RUNTIME_BACKEND_UNAVAILABLE',
+              action: 'open_packs_to_prepare_packvm',
+            });
+          }
+          if (attempts === 2) {
+            throw JSON.stringify({
+              code: 'RUNTIME_PREPARATION_FAILED',
+              action: 'review_packs_and_retry',
+            });
+          }
+          if (attempts === 3) throw 'private launch diagnostic';
+          return {message: 'Shell launched.'};
+        },
+      },
+    };
+
+    try {
+      await act(async () => root.render(<MemoryRouter><Dashboard /></MemoryRouter>));
+      await settle();
+      const launch = buttonByLabel(container, 'Launch Defaults Profile');
+      assert.equal(launch.disabled, false);
+
+      await act(async () => launch.click());
+      assert.equal(launch.disabled, false);
+      let alert = [...container.querySelectorAll('[role="alert"]')]
+        .find((element) => element.textContent?.includes('Shell launch failed.'));
+      assert.ok(alert);
+      assert.match(alert.textContent ?? '', /runtime backend is unavailable/);
+      assert.equal(alert.querySelector<HTMLAnchorElement>('a')?.getAttribute('href'), '/packs');
+
+      await act(async () => launch.click());
+      alert = [...container.querySelectorAll('[role="alert"]')]
+        .find((element) => element.textContent?.includes('Shell launch failed.'));
+      assert.ok(alert);
+      assert.match(alert.textContent ?? '', /could not prepare the Defaultspack runtime/);
+      assert.equal(alert.querySelector<HTMLAnchorElement>('a')?.getAttribute('href'), '/packs');
+
+      await act(async () => launch.click());
+      alert = [...container.querySelectorAll('[role="alert"]')]
+        .find((element) => element.textContent?.includes('Shell launch failed.'));
+      assert.ok(alert);
+      assert.doesNotMatch(alert.textContent ?? '', /private launch diagnostic/);
+      assert.equal(alert.querySelector('a'), null);
+
+      await act(async () => launch.click());
+      assert.equal(attempts, 4);
+      assert.equal(
+        [...container.querySelectorAll('[role="alert"]')]
+          .some((element) => element.textContent?.includes('Shell launch failed.')),
+        false,
+      );
+    } finally {
+      await act(async () => root.unmount());
+      dom.window.close();
+    }
+  } finally {
+    globalThis.fetch = previousFetch;
+    Object.defineProperties(globalThis, {
+      window: {value: previousWindow, configurable: true},
+      document: {value: previousDocument, configurable: true},
+      navigator: {value: previousNavigator, configurable: true},
+      localStorage: {value: previousLocalStorage, configurable: true},
+      sessionStorage: {value: previousSessionStorage, configurable: true},
+    });
+    useAppStore.setState(previousState, true);
+  }
+});
+
 test('Home keeps the Profile catalog visible while gating ceremony in unresolved states', async () => {
   const previousState = useAppStore.getState();
   const previousFetch = globalThis.fetch;

@@ -31,6 +31,27 @@ const DEFAULTSPACK_READY_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const SHELL_RUNTIME_READY_TIMEOUT: Duration = Duration::from_secs(30);
 static DEFAULTSPACK_LAUNCH_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
+/// The authenticated Defaultspack listener explicitly reported that its
+/// required runtime backend is unavailable. Keep this distinct from timeouts
+/// and artifact failures so the Launcher can offer the correct recovery path.
+#[derive(Debug)]
+pub(crate) struct ShellRuntimeBackendUnavailable;
+
+impl std::fmt::Display for ShellRuntimeBackendUnavailable {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(
+            "Defaultspack runtime backend is unavailable; open Tobkiri Launcher > Packs to prepare PackVM",
+        )
+    }
+}
+
+impl std::error::Error for ShellRuntimeBackendUnavailable {}
+
+impl ShellRuntimeBackendUnavailable {
+    pub(crate) const CODE: &'static str = "RUNTIME_BACKEND_UNAVAILABLE";
+    pub(crate) const ACTION: &'static str = "open_packs_to_prepare_packvm";
+}
+
 fn with_defaultspack_launch_coordination<T>(
     operation: impl FnOnce() -> AnyResult<T>,
 ) -> AnyResult<T> {
@@ -332,7 +353,7 @@ fn wait_for_shell_runtime_ready_with(
         match probe()? {
             AuthenticatedRuntimeReadiness::Ready => return Ok(()),
             AuthenticatedRuntimeReadiness::Failed => {
-                bail!("Defaultspack runtime backend is unavailable; open Tobkiri Launcher > Packs to prepare PackVM")
+                return Err(ShellRuntimeBackendUnavailable.into());
             }
             AuthenticatedRuntimeReadiness::Pending => {}
         }

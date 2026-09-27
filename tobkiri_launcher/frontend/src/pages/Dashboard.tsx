@@ -85,6 +85,54 @@ function sortModeFromParam(value: string | null): NamedProfileSortMode {
   return value === 'recent' || value === 'name' ? value : 'recommended';
 }
 
+interface ProfileLaunchFailure {
+  message: string;
+  recovery: 'packs' | 'profile' | null;
+}
+
+function profileLaunchFailure(error: unknown): ProfileLaunchFailure {
+  const raw = typeof error === 'string' ? error : error instanceof Error ? error.message : '';
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const result = parsed as Record<string, unknown>;
+      if (
+        result.code === 'RUNTIME_BACKEND_UNAVAILABLE'
+        && result.action === 'open_packs_to_prepare_packvm'
+      ) {
+        return {
+          message: 'The required runtime backend is unavailable. Open Packs to check PackVM readiness, then try launching again.',
+          recovery: 'packs',
+        };
+      }
+      if (
+        result.code === 'RUNTIME_PREPARATION_FAILED'
+        && result.action === 'review_packs_and_retry'
+      ) {
+        return {
+          message: 'The Launcher could not prepare the Defaultspack runtime. Open Packs to review its status, then retry Launch. If this continues, restart the Launcher.',
+          recovery: 'packs',
+        };
+      }
+      if (
+        result.code === 'PROFILE_RERESOLUTION_REQUIRED'
+        && result.action === 'reactivate_or_reresolve_profile'
+      ) {
+        return {
+          message: 'The active Profile no longer authorizes its selected Shell. Review and reactivate this Profile before launching again.',
+          recovery: 'profile',
+        };
+      }
+    }
+  } catch {
+    // The Launcher deliberately redacts other launch failures.
+  }
+  return {
+    message: 'The selected Shell could not be launched. Retry from this Profile card; if it fails again, review the Profile and Pack status.',
+    recovery: null,
+  };
+}
+
 export function Dashboard() {
   const verificationBanner = useOutletContext<LayoutOutletContext | undefined>()?.verificationBanner;
   const addToast = useAppStore((state) => state.addToast);
@@ -106,6 +154,7 @@ export function Dashboard() {
   const [registry, setRegistry] = useState<NamedProfileRegistry | null>(null);
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const [profileActionError, setProfileActionError] = useState<string | null>(null);
+  const [launchFailure, setLaunchFailure] = useState<ProfileLaunchFailure | null>(null);
   const [profileBusy, setProfileBusy] = useState<string | null>(null);
   const profileOperationKeyRef = useRef<string | null>(null);
   const [newProfileId, setNewProfileId] = useState('');
@@ -352,16 +401,14 @@ export function Dashboard() {
 
     const key = `launch:${entry.profile_id}`;
     if (!beginProfileOperation(key)) return;
+    setLaunchFailure(null);
     try {
       const result = await launchSelectedPresentation();
       addToast(result.message || `${namedProfileDisplayName(entry)} launched.`, 'success');
     } catch (error) {
-      const message = typeof error === 'string' && error.trim()
-        ? error
-        : error instanceof Error && error.message.trim()
-          ? error.message
-          : 'Profile launch was rejected.';
-      addToast(message, 'error');
+      const failure = profileLaunchFailure(error);
+      setLaunchFailure(failure);
+      addToast(failure.message, 'error');
     } finally {
       finishProfileOperation(key);
     }
@@ -546,6 +593,19 @@ export function Dashboard() {
                 </Button>
               </div>
             </form>
+          )}
+
+          {launchFailure && (
+            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-destructive/35 bg-destructive/8 px-4 py-3 text-sm text-destructive" role="alert">
+              <AlertCircle aria-hidden="true" className="h-4 w-4 shrink-0" />
+              <span className="min-w-0 flex-1">Shell launch failed. {launchFailure.message}</span>
+              <CopyErrorButton text={launchFailure.message} label="Copy Shell launch error" />
+              {launchFailure.recovery === 'packs' && <Link className="underline underline-offset-2" to={panelRoutes.packs}>Open Packs</Link>}
+              {launchFailure.recovery === 'profile' && activeProfile && (
+                <Link className="underline underline-offset-2" to={profileHref(activeProfile.profile_id, 'profile-ceremony')}>Review Profile</Link>
+              )}
+              <Button onClick={() => setLaunchFailure(null)} size="sm" type="button" variant="ghost">Dismiss</Button>
+            </div>
           )}
 
           {profileError && (

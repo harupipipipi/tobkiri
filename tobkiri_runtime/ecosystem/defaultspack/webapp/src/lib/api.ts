@@ -2704,6 +2704,62 @@ export type ToolCatalogResponse = {
   count: number;
 };
 
+export function isToolCatalogResponse(value: unknown): value is ToolCatalogResponse {
+  const catalog = objectRecord(value);
+  return Boolean(
+    catalog
+    && Array.isArray(catalog.services)
+    && Array.isArray(catalog.tools)
+    && typeof catalog.count === "number"
+    && Number.isSafeInteger(catalog.count)
+    && catalog.count === catalog.tools.length
+    && catalog.tools.every((item) => {
+      const tool = objectRecord(item);
+      return tool
+        && hasNonEmptyString(tool, "tool_id")
+        && hasNonEmptyString(tool, "name")
+        && hasNonEmptyString(tool, "service_id")
+        && hasNonEmptyString(tool, "service_label");
+    }),
+  );
+}
+
+export function uiCatalogWithSelectedTools(catalog: UICatalog, tools: ToolCatalogResponse): UICatalog {
+  const existingIds = new Set(catalog.sidebar.items.map((item) => item.id));
+  const toolItems: SidebarItem[] = [];
+  for (const tool of tools.tools) {
+    if (existingIds.has(tool.tool_id)) continue;
+    existingIds.add(tool.tool_id);
+    toolItems.push({
+      id: tool.tool_id,
+      label: tool.name,
+      category: "tool",
+      description: tool.summary,
+      tags: tool.tags ?? [],
+      risk: tool.risk,
+      badge: tool.connection_status === "connected" ? null : "Unavailable",
+      ui: {
+        group_id: tool.service_id,
+        group_label: tool.service_label,
+        composer_label: tool.name,
+        composer_description: tool.summary,
+      },
+      tool_info: {
+        setup_state: { status: tool.connection_status === "connected" ? "ok" : "missing" },
+      },
+      origin: { kind: "profile_tool_catalog" },
+      panel: { kind: "tool_settings", title: tool.name, fields: [] },
+    });
+  }
+  return {
+    ...catalog,
+    sidebar: {
+      ...catalog.sidebar,
+      items: [...catalog.sidebar.items, ...toolItems],
+    },
+  };
+}
+
 export type ToolSelectionPreviewResponse = {
   preview_id: string;
   expires_at: string;
@@ -4200,12 +4256,21 @@ export const api = {
     return request<RuntimeHealth>("/health", { cache: "no-store" });
   },
 
-  uiCatalog() {
-    return request<UICatalog>(
+  async uiCatalog() {
+    const catalog = await request<UICatalog>(
       defaultspackContractRoute("api/ui/full-catalog"),
       undefined,
       isUICatalog,
     );
+    // The full UI catalog is owned by Settings and only contains built-in
+    // entries. Tool definitions have a separate authenticated Profile-scoped
+    // owner; compose their display projection before exposing @ candidates.
+    const tools = await request<ToolCatalogResponse>(
+      defaultspackContractRoute("api/tools/catalog"),
+      { cache: "no-store" },
+      isToolCatalogResponse,
+    );
+    return uiCatalogWithSelectedTools(catalog, tools);
   },
 
   uiSettings(options: { full?: boolean } = {}) {

@@ -2232,9 +2232,13 @@ function contextUsageFor(conversation: Conversation | null, profile: ModelProfil
   return { usedTokens, maxContext, ratio, label: `${Math.round(ratio * 100)}%` };
 }
 
-function composerExtensionItems(items: SidebarItem[]): ComposerExtensionItem[] {
+export function composerExtensionItems(items: SidebarItem[]): ComposerExtensionItem[] {
   return items
     .filter((item) => item.category === "tool" || item.category === "capability")
+    // The selected Registry exposes descriptors before their exact executor
+    // route is ready. Keep them visible in Tools, but never offer an @ mention
+    // that would imply the unavailable operation can run.
+    .filter((item) => item.origin?.kind !== "profile_tool_catalog" || item.tool_info?.setup_state?.status === "ok")
     .map((item) => ({
       id: item.id,
       label: item.label,
@@ -4838,10 +4842,6 @@ export function ChatApp() {
   }, [setUltraYoloMode, setUltraYoloRestoreYoloMode, setYoloMode, ultraYoloMode, ultraYoloRestoreYoloMode, yoloMode]);
 
   const handleActionApprovalModeChange = useCallback((nextMode: ActionApprovalMode) => {
-    if (nextMode === "custom") {
-      openSettingsSection("tools");
-      return;
-    }
     if (nextMode === "full") {
       setFullAccessEnabled(true);
       return;
@@ -4849,7 +4849,7 @@ export function ChatApp() {
     setUltraYoloMode(false);
     setUltraYoloRestoreYoloMode(false);
     setYoloMode(nextMode === "agent");
-  }, [openSettingsSection, setFullAccessEnabled, setUltraYoloMode, setUltraYoloRestoreYoloMode, setYoloMode]);
+  }, [setFullAccessEnabled, setUltraYoloMode, setUltraYoloRestoreYoloMode, setYoloMode]);
 
   const handleSwitchToVisionModel = useCallback(() => {
     if (preferredVisionCandidate) {

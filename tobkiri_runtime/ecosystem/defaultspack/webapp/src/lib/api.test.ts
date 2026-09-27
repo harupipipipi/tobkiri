@@ -14,6 +14,7 @@ import {
   MIMO_CODING_DEFAULT_MODEL,
   MIMO_CODING_DEFAULT_VISION_MODEL,
   commandSupportsMode,
+  composerExtensionItems,
   frontendCommandArgs,
   keepSelectedToolsAfterSend,
   parseCommandBoolean,
@@ -1538,6 +1539,30 @@ const validUiCatalogFixture = {
   extension_points: [],
 };
 
+const selectedToolCatalogFixture = {
+  services: [{ service_id: "web", label: "Web検索" }],
+  tools: [{
+    tool_id: "web_search",
+    service_id: "web",
+    service_label: "Web検索",
+    name: "Web Search",
+    summary: "Search the web",
+    action_class: "search",
+    connection_status: "unavailable",
+    tags: ["web"],
+  }, {
+    tool_id: "calculator",
+    service_id: "other",
+    service_label: "Other",
+    name: "Calculator",
+    summary: "Basic arithmetic helper.",
+    action_class: "read",
+    connection_status: "connected",
+    tags: ["math"],
+  }],
+  count: 2,
+};
+
 async function assertUiCatalogResponseRejected(payload: unknown): Promise<void> {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => new Response(JSON.stringify(payload), {
@@ -1553,14 +1578,40 @@ async function assertUiCatalogResponseRejected(payload: unknown): Promise<void> 
 
 test("uiCatalog accepts the canonical Pack v4 response envelope", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => new Response(JSON.stringify({
-    status: "ok",
-    data: validUiCatalogFixture,
-  }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+  const paths: string[] = [];
+  globalThis.fetch = (async (input) => {
+    const path = requestTarget(input);
+    paths.push(path);
+    return new Response(JSON.stringify({
+      status: "ok",
+      data: path === routeKey("api/ui/full-catalog")
+        ? validUiCatalogFixture
+        : selectedToolCatalogFixture,
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
   try {
     const catalog = await api.uiCatalog();
     assert.equal(catalog.app?.id, "defaultspack");
-    assert.deepEqual(catalog.sidebar.items, []);
+    assert.deepEqual(paths, [routeKey("api/ui/full-catalog"), routeKey("api/tools/catalog")]);
+    assert.deepEqual(catalog.sidebar.items.map((item) => item.id), ["web_search", "calculator"]);
+    assert.equal(catalog.sidebar.items[0]?.ui?.composer_label, "Web Search");
+    assert.equal(catalog.sidebar.items[0]?.badge, "Unavailable");
+    assert.deepEqual(composerExtensionItems(catalog.sidebar.items).map((item) => item.id), ["calculator"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("uiCatalog rejects a broken selected tool projection instead of showing an empty @ palette", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input) => new Response(JSON.stringify({
+    status: "ok",
+    data: requestTarget(input) === routeKey("api/ui/full-catalog")
+      ? validUiCatalogFixture
+      : { ...selectedToolCatalogFixture, count: 3 },
+  }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+  try {
+    await assert.rejects(api.uiCatalog(), /endpoint schema/);
   } finally {
     globalThis.fetch = originalFetch;
   }
