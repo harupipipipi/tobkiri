@@ -8098,6 +8098,7 @@
       "tobkiri_runtime/ecosystem/search_home_pack/ecosystem.json",
       "tobkiri_runtime/ecosystem/tobkiri_host_pack_control/ecosystem.json",
       "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/ecosystem.json",
+      "tobkiri_runtime/tobkiri_protocol/README.md",
       "tobkiri_runtime/tobkiri_protocol/__init__.py",
       "tobkiri_runtime/tobkiri_protocol/bundle_catalog.py",
       "tobkiri_runtime/tobkiri_protocol/canonical.py",
@@ -8122,7 +8123,6 @@
       "tobkiri_runtime/tobkiri_protocol/platform_paths.py",
       "tobkiri_runtime/tobkiri_protocol/profile_scope.py",
       "tobkiri_runtime/tobkiri_protocol/provenance.py",
-      "tobkiri_runtime/tobkiri_protocol/README.md",
       "tobkiri_runtime/tobkiri_protocol/saved_context.py",
       "tobkiri_runtime/tobkiri_protocol/saved_conversation.py",
       "tobkiri_runtime/tobkiri_protocol/saved_tools.py",
@@ -18602,8 +18602,8 @@
     ]
   },
   "repository": {
-    "commit": "c8c36d8610d22d1550d7d873680127175b940a6d",
-    "tree_digest": "508c080f491130550e465625de59504a4df6320e4613aa27198d82e6fbf2d311"
+    "commit": "570b991b33d935bb8f22a5c56a81a0ef72cc0d68",
+    "tree_digest": "48fb1fa6ef6bba4c77fb4e56bc2c8694ea203c4539fda7ab9b35850a647f92df"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",
   "schema": "io.tobkiri.architecture.inventory.v1"

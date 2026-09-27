@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from .canonical import strict_loads
-from .provenance import repository_commit, repository_tree_digest, sha256_file
+from .provenance import repository_commit, sha256_file
 from .scanners import (
     SCANNER_VERSION,
     scan_duplicate_ids,
@@ -44,7 +45,7 @@ def generate_inventory(root: Path) -> dict[str, Any]:
         "scanner_version": SCANNER_VERSION,
         "repository": {
             "commit": repository_commit(root),
-            "tree_digest": repository_tree_digest(root, included_paths),
+            "tree_digest": _inventory_tree_digest(root, included_paths),
         },
         "inputs": {
             "included_paths": [
@@ -89,7 +90,7 @@ def write_inventory(root: Path, output: Path | None = None) -> Path:
     payload = generate_inventory(root)
     text = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(text, encoding="utf-8")
+    target.write_bytes(text.encode("utf-8"))
     return target
 
 
@@ -156,7 +157,17 @@ def _included_paths(root: Path) -> list[Path]:
                 or path.suffix.lower() in {".profile.yaml", ".profile.yml"}
             )
         )
-    return sorted(candidates)
+    return sorted(candidates, key=lambda path: path.relative_to(root).as_posix())
+
+
+def _inventory_tree_digest(root: Path, paths: list[Path]) -> str:
+    """Hash inventory inputs in the same order on every host platform."""
+    lines = [
+        f"{path.relative_to(root).as_posix()}\0{sha256_file(path)}\n"
+        for path in sorted(paths, key=lambda item: item.relative_to(root).as_posix())
+        if path.is_file()
+    ]
+    return hashlib.sha256("".join(lines).encode("utf-8")).hexdigest()
 
 
 def _manifest_records(root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:

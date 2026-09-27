@@ -4,7 +4,7 @@
   "reviews": {
     "defaultspack": {
       "pack_id": "defaultspack",
-      "review_attestation_digest": "sha256:3364e45b0c40385f2e1e2c6d9ca1dc6bfcbce204079cf42ba66762449713af96",
+      "review_attestation_digest": "sha256:4c065e951508ae1b083d662994913cffb2f44c88d7dbb91ceccb13c97c96361f",
       "review_basis": {
         "evidence_paths": [
           "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
@@ -12,7 +12,9 @@
           "tobkiri_runtime/ecosystem/defaultspack/executables.v4.json",
           "tobkiri_runtime/ecosystem/defaultspack/artifact-index.v4.json",
           "tobkiri_runtime/schemas/executable_sources.v1.json",
-          "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+          "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json",
+          "tobkiri_runtime/ecosystem/defaultspack/runtime/saved_conversation.py",
+          "tobkiri_runtime/tobkiri_protocol/saved_conversation.py"
         ],
         "excluded_claims": [
           "runtime admission",
@@ -26,15 +28,13 @@
           "v4 contract and provider identity recorded per operation",
           "legacy source record bound by exact digest",
           "target artifact bound by exact digest",
-          "parameter schema divergence accepted for saved_complete (product-owner decision 2026-09-26)"
+          "input/output schema identity for all three operations, including optional saved thinking_level"
         ]
       },
-      "reviewed_at": "2026-09-26T15:40:00+09:00",
-      "reviewer_id": "devin:independent-semantic-review:v1",
+      "reviewed_at": "2026-09-28T04:47:14+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v2",
       "semantic_record": {
-        "accepted_divergences": [
-          "parameter_schema_mapping_mismatch"
-        ],
+        "accepted_divergences": [],
         "equivalent": true,
         "kind": "operation-mapping",
         "method": "curated-operation-mapping-review.v1",
@@ -150,28 +150,28 @@
             "legacy_operation_id": "saved_complete",
             "legacy_operation_kind": "legacy-explicit-entrypoint",
             "parameter_mapping": {
-              "legacy_schema_digest": "sha256:2dc3ce114ed4353940d2e7fbdcf11bcf537a812bd7be430ce59790109da15d08",
-              "method": "curated-parameter-mapping-review.v1",
+              "legacy_schema_digest": "sha256:5cbaba8b3f594fb71cc1848db57acb9271f2c1e0f468fcb3df1c8eb207f3306b",
+              "method": "canonical-json-schema-equality",
               "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
               "rules": [
-                "input:accepted-divergence:accepted as the intended v4 evolution by product-owner decision (user-decision 2026-09-26)",
+                "input:identity",
                 "output:identity"
               ],
               "status": "verified",
-              "v4_schema_digest": "sha256:3503a81a484e69aa50df3161d55b134ff8cfc0a66ba5bb65d6a6198078475a0a"
+              "v4_schema_digest": "sha256:5cbaba8b3f594fb71cc1848db57acb9271f2c1e0f468fcb3df1c8eb207f3306b"
             },
             "v4_contract_id": "conversation.saved-turn.v1",
             "v4_operation_id": "saved_complete"
           }
         ],
-        "rationale": "Independent file-by-file review confirmed a complete one-to-one operation inventory (3 operations). The deterministic comparator flagged parameter_schema_mapping_mismatch; each flagged difference was inspected and accepted as the intended v4 evolution by product-owner decision (user-decision 2026-09-26).",
-        "semantic_record_digest": "sha256:152ed18163a2ac7d1f100fab240d81f4418cbac3bac39e522c8b6919911e948f",
+        "rationale": "Independent file-by-file review confirmed a complete one-to-one operation inventory (3 operations), all three input/output schema pairs equal between the committed legacy source and v4 operations, and the recorded v4 Contract/provider/role mapping. The saved input now contains the same optional finite thinking_level in both legacy and v4 schemas. The deterministic comparator remains unverified because this Pack has no separate legacy authority manifest; the authority mapping was reviewed against the explicit legacy source record and current v4 Pack/Contract.",
+        "semantic_record_digest": "sha256:f794cff1307495dd855eefce1a1be335727d4d8fe0b315e822b5d6e426844996",
         "status": "verified"
       },
-      "semantic_record_digest": "sha256:152ed18163a2ac7d1f100fab240d81f4418cbac3bac39e522c8b6919911e948f",
-      "source_digest": "sha256:0f3fd7db64f357bc1c734eee5701c7402e1e41124336c5e5b76a057742f16cef",
+      "semantic_record_digest": "sha256:f794cff1307495dd855eefce1a1be335727d4d8fe0b315e822b5d6e426844996",
+      "source_digest": "sha256:e2c379c42acdb7398a8195b72bda1a0fbc70c9b135ae314f69b29cc0f271f5a8",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:f9d678319e9d677e0358059b87a7e1a880464823ceed0e8f4cb79f91b74d7569"
+      "target_digest": "sha256:423231c81510665964e5b31b01bd4945d33a3feafb37efca9065f313b40dca94"
     },
     "rumi_agent_continuity_pack": {
       "pack_id": "rumi_agent_continuity_pack",
@@ -8734,7 +8734,7 @@
     },
     "rumi_turn_runtime_pack": {
       "pack_id": "rumi_turn_runtime_pack",
-      "review_attestation_digest": "sha256:bcd5ed1f4426123d3bf01ec169ea33821fd13ce4683eb586eff991d5b3898fec",
+      "review_attestation_digest": "sha256:387b8dbcb99048d1e32cee290dd591fd3d73922e36794eba46984cecc26bc014",
       "review_basis": {
         "evidence_paths": [
           "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/pack.v4.json",
@@ -8745,7 +8745,9 @@
           "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json",
           "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json",
           "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/artifact-manifest.json",
-          "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/ecosystem.json"
+          "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/ecosystem.json",
+          "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/saved.py",
+          "tobkiri_runtime/tobkiri_protocol/saved_conversation.py"
         ],
         "excluded_claims": [
           "runtime admission",
@@ -8759,11 +8761,11 @@
           "v4 contract and provider identity recorded per operation",
           "legacy source record bound by exact digest",
           "target artifact bound by exact digest",
-          "parameter schema divergence accepted for rumi_turn_runtime_pack.turn-saved, rumi_turn_runtime_pack.turn-stop (product-owner decision 2026-09-26)"
+          "saved input/output schema identity and turn-stop output divergence accepted by product-owner decision 2026-09-26"
         ]
       },
-      "reviewed_at": "2026-09-26T21:36:00+09:00",
-      "reviewer_id": "devin:independent-semantic-review:v1",
+      "reviewed_at": "2026-09-28T04:47:14+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v2",
       "semantic_record": {
         "accepted_divergences": [
           "function_mapping",
@@ -9016,15 +9018,15 @@
             "legacy_operation_id": "rumi_turn_runtime_pack.turn-saved",
             "legacy_operation_kind": "legacy-explicit-entrypoint",
             "parameter_mapping": {
-              "legacy_schema_digest": "sha256:2dc3ce114ed4353940d2e7fbdcf11bcf537a812bd7be430ce59790109da15d08",
-              "method": "curated-parameter-mapping-review.v1",
+              "legacy_schema_digest": "sha256:5cbaba8b3f594fb71cc1848db57acb9271f2c1e0f468fcb3df1c8eb207f3306b",
+              "method": "canonical-json-schema-equality",
               "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
               "rules": [
-                "input:accepted-divergence:accepted as the intended v4 evolution by product-owner decision (user-decision 2026-09-26)",
+                "input:identity",
                 "output:identity"
               ],
               "status": "verified",
-              "v4_schema_digest": "sha256:3503a81a484e69aa50df3161d55b134ff8cfc0a66ba5bb65d6a6198078475a0a"
+              "v4_schema_digest": "sha256:5cbaba8b3f594fb71cc1848db57acb9271f2c1e0f468fcb3df1c8eb207f3306b"
             },
             "v4_contract_id": "tobkiri.action.turn.saved.v1",
             "v4_operation_id": "rumi_turn_runtime_pack.turn-saved"
@@ -9073,14 +9075,14 @@
             "v4_operation_id": "rumi_turn_runtime_pack.turn-stop"
           }
         ],
-        "rationale": "Independent file-by-file review confirmed a complete one-to-one operation inventory (6 operations). The deterministic comparator flagged function_mapping, legacy_artifact_record_missing, parameter_schema_mapping_mismatch; each flagged difference was inspected and accepted as the intended v4 evolution by product-owner decision (user-decision 2026-09-26).",
-        "semantic_record_digest": "sha256:3c12193aa310c2b6ffb2d08897157c84ee100f58663b86a503f3c58e96991bce",
+        "rationale": "Independent file-by-file review confirmed a complete one-to-one operation inventory (6 operations) and the recorded legacy/v4 Contract/provider/role mappings. All six legacy/v4 input schemas match, including the saved input with optional finite thinking_level. Five output schemas match; turn-stop output remains the reviewed v4 evolution accepted by product-owner decision (user-decision 2026-09-26). The deterministic comparator still flags function_mapping and legacy_artifact_record_missing for the same legacy record-shape gaps reviewed against committed v3 entrypoints, Contracts, artifact manifest and explicit legacy source records.",
+        "semantic_record_digest": "sha256:13323f19faf4bf590b6790d2641bf744c2a218ab01537a04954940b90b1179f6",
         "status": "verified"
       },
-      "semantic_record_digest": "sha256:3c12193aa310c2b6ffb2d08897157c84ee100f58663b86a503f3c58e96991bce",
-      "source_digest": "sha256:8adaacdcb63862bada782e6c8b5efe25bebad735dffc91db97a1fb6d6cb72f70",
+      "semantic_record_digest": "sha256:13323f19faf4bf590b6790d2641bf744c2a218ab01537a04954940b90b1179f6",
+      "source_digest": "sha256:c0fc8ef94110729fb8daefb20049a06a645bf7d783f86d171e53d9b13918c509",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:461ac13da19a155e6485774908c12b42422575f054bef4fb612abf31739db725"
+      "target_digest": "sha256:d0a3806a7243c9f15724096765fe4290080125316378c680cd385fab2bedb9d7"
     },
     "rumi_voice_mobile_pack": {
       "pack_id": "rumi_voice_mobile_pack",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from tobkiri_protocol.canonical import canonical_digest
 from tobkiri_protocol.errors import SchemaValidationError
 from tobkiri_protocol.inventory import (
     _included_paths,
+    _inventory_tree_digest,
     generate_inventory,
     inventory_drift,
 )
@@ -145,6 +147,26 @@ def test_generated_inventory_excludes_python_cache_artifacts() -> None:
 
     assert all("__pycache__" not in path.parts for path in included)
     assert all(path.suffix != ".pyc" for path in included)
+
+
+def test_inventory_mixed_case_paths_have_portable_order_and_digest(tmp_path: Path) -> None:
+    protocol = tmp_path / "tobkiri_runtime" / "tobkiri_protocol"
+    protocol.mkdir(parents=True)
+    readme = protocol / "README.md"
+    module = protocol / "__init__.py"
+    readme.write_bytes(b"docs\n")
+    module.write_bytes(b"module\n")
+
+    included = _included_paths(tmp_path)
+    assert included == [readme, module]
+    readme_digest = hashlib.sha256(b"docs\n").hexdigest()
+    module_digest = hashlib.sha256(b"module\n").hexdigest()
+    lines = (
+        f"tobkiri_runtime/tobkiri_protocol/README.md\0sha256:{readme_digest}\n"
+        f"tobkiri_runtime/tobkiri_protocol/__init__.py\0sha256:{module_digest}\n"
+    )
+    expected_digest = hashlib.sha256(lines.encode("utf-8")).hexdigest()
+    assert _inventory_tree_digest(tmp_path, list(reversed(included))) == expected_digest
 
 
 def _signed_distribution() -> dict[str, object]:
