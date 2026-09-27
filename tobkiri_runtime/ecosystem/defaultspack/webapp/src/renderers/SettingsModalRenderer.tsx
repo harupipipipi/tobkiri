@@ -2499,6 +2499,7 @@ function SettingsField({
             </div>
           )}
 
+          <ModelRouteSetup />
           <details className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
             <summary className="cursor-pointer text-xs text-zinc-500">Advanced: route text</summary>
             <textarea

@@ -927,6 +927,8 @@ test("Models places AI API registration before model API connections", () => {
   );
 
   assert.match(html, /data-provider-scope="llm"/);
+  assert.match(html, /モデルルート作成（キー保存とは別操作）/);
+  assert.match(html, /Provider connection ID/);
   assert.match(html, /openai:main:\*\*\*/);
   assert.doesNotMatch(html, /line:channel:\*\*\*/);
   assert.ok(

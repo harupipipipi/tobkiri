@@ -55,6 +55,7 @@ import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "./componen
 import type { ToolPreviewItem, ToolPreviewMode } from "./components/ToolPreview";
 import { buildToolPreviewDisplayItems, hasCanvasItems } from "./components/ToolPreview";
 import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, isDefaultspackContractOperationUnknownError, mergeComposerCommands, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
+import { modelStateWriteForSettingsField } from "./lib/modelSettingsWrite";
 import { applyCommandStateSnapshots, createCommandInvocationId } from "./lib/commandState";
 import type { ActionApprovalMode } from "./features/tools/ActionApprovalControl";
 import {
@@ -4545,10 +4546,11 @@ export function ChatApp() {
         ...(current[sectionId] ?? {}),
         [fieldId]: fieldType === "secret" || fieldType === "api_keys" || fieldType === "api_key_setup" || fieldType === "external_tokens" ? "" : value,
       };
-      if (sectionId === "models" && fieldId === "preferred_model") {
+      if (sectionId === "models" && (fieldId === "preferred_model" || fieldId === "main_model")) {
         const preferredModel = String(value ?? "").trim();
+        sectionPatch.preferred_model = preferredModel;
+        sectionPatch.main_model = preferredModel;
         if (preferredModel) {
-          sectionPatch.main_model = preferredModel;
           sectionPatch.model_slots = {
             ...((current.models?.model_slots as Record<string, unknown> | undefined) ?? {}),
             main: preferredModel,
@@ -4723,10 +4725,11 @@ export function ChatApp() {
         const changedPatches = Object.entries(sectionPatch)
           .filter(([field, nextValue]) => currentSection[field] !== nextValue)
           .map(([field, nextValue]) => ({ section: sectionId, field, value: nextValue }));
-        if (sectionId === "models" && ["preferred_model", "thinking_level", "deepthink_enabled"].includes(fieldId)) {
+        const modelStateWrite = modelStateWriteForSettingsField(sectionId, fieldId, value);
+        if (modelStateWrite) {
           void api.updateModelState(
-            fieldId as "preferred_model" | "thinking_level" | "deepthink_enabled",
-            sectionPatch[fieldId],
+            modelStateWrite.kind,
+            modelStateWrite.value,
           ).catch((modelError) => {
             setError(settingsErrorMessage(modelError, "Failed to save model state."));
           });
