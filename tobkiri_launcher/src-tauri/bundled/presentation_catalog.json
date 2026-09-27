@@ -50,7 +50,7 @@
     },
     {
       "contract_id": "conversation.saved-turn.v1",
-      "digest": "sha256:40607acd7e523936184b8f149d939e7788ecd5f24d35c8379b7191c7be0a5ad0",
+      "digest": "sha256:2afde5f6be659714ca787db25b43fc454b9a5b82afc165dc85bb8931cdbada7c",
       "revision": "1.0.0",
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/defaultspack.pack.v4.json"
     },
@@ -206,7 +206,7 @@
     },
     {
       "contract_id": "tobkiri.action.turn.saved.v1",
-      "digest": "sha256:972040d4c22bc6a3f91f3a04466b6aef94b7a124dbcd0a4c5ac573b00d2dc64e",
+      "digest": "sha256:e90855f7023a3797b0df880ddcc1c4403482d11b155af6a33e142b6469d56285",
       "revision": "1.0.0",
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi_turn_runtime_pack.pack.v4.json"
     },
@@ -583,7 +583,7 @@
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi_tool_result_pack.pack.v4.json"
     }
   ],
-  "default_profile_digest": "sha256:31cbce12e3edab2d769f1225062a682e6639d5ab1144324a94ebd445eec95786",
+  "default_profile_digest": "sha256:cbb5e014780423422594fa9f8b989b56d20eab882bb51574a1da68a164f4202a",
   "default_profile_id": "defaults",
   "default_profile_source": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json",
   "default_selection": {
@@ -770,7 +770,7 @@
   ],
   "source_manifest_digests": {
     "defaults-basepack": "sha256:0bba6dad19637b2dd8b2a149093715e8641f10894dd93c48b5b33fea588da0d7",
-    "defaultspack": "sha256:2ea4b531ee35679c9aa2ec528fc37e82bac09c9cb79293467b0311d70adebfdb",
+    "defaultspack": "sha256:222d1095f03f21c02aff20b615521727f4fc133c4c6bd5628e3184910e131767",
     "rumi_ai_gateway_pack": "sha256:86ebbd986969dec4b52ad755756601cf0e0b1aa6503267a2aa28c898620d7e81",
     "rumi_ai_pipeline_pack": "sha256:b0a1945602840f0d4200cee06615d6722a3126e5efcea86ff87b3da8c1c21593",
     "rumi_ai_routing_pack": "sha256:7c7b69cc6154ae74865d677f9adf666535a76b75e5c4f71b04af710aa21ef95c",
@@ -801,7 +801,7 @@
     "rumi_tool_registry_pack": "sha256:5579625082fe537dbb960df5372f2751b20ba3914211b42424a9764f81df6e36",
     "rumi_tool_result_pack": "sha256:27d51b3d47bbac23529b9edad421737a6adedc8781fe7b6a665981cf34a8ea86",
     "rumi_tool_validation_pack": "sha256:12ced20353b9342b71d34b5f321894abc4e128ce5d37fcf3d2f418cb3df36090",
-    "rumi_turn_runtime_pack": "sha256:351ecab0618e790b6f235329294c7f71724ed7fda35e8a38376e450e61f89926",
+    "rumi_turn_runtime_pack": "sha256:84622df1a30ebcba115ac42711b340e5ac2895004bdf99860e5d2f2e06033eca",
     "rumi_workspace_mount_pack": "sha256:677cd5139415bbe9580a6994f27c2136f2a72c85c4ef6120731d479f8b9a2b23",
     "runtime.tauri.application.default": "sha256:19cfa625d4700ec949b2d423ad47f21cc68562d4fabfd8237a0840c91197797e",
     "shell.tauri.default": "sha256:1abaf30122ccbc6d96aa209f05557aab9a0ce6c16baca3700e98a3a8292edf0f",
