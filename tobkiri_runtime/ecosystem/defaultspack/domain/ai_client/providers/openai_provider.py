@@ -517,6 +517,7 @@ class OpenAIProvider(BaseProvider):
             "/chat/completions", body, **self._request_timeout_kwargs(params)
         )
         tool_call_state: dict[str, dict[str, object]] = {}
+        pending_end: dict | None = None
         try:
             for payload in self._parse_sse_lines(resp):
                 try:
@@ -550,18 +551,26 @@ class OpenAIProvider(BaseProvider):
                                     "id": current.get("id", ""),
                                     "name": current.get("name", ""),
                                 }
-                        usage_raw = obj.get("usage") or {}
-                        yield {
-                            "type": "stream_end",
+                        # Defer the terminal event: some providers (e.g.
+                        # OpenRouter) repeat finish_reason on a trailing
+                        # usage-bearing chunk, so usage may arrive later.
+                        pending_end = {
                             "finish_reason": finish,
-                            "usage": {
-                                "input_tokens": usage_raw.get("prompt_tokens", 0),
-                                "output_tokens": usage_raw.get("completion_tokens", 0),
-                                "total_tokens": usage_raw.get("total_tokens", 0),
-                            },
+                            "usage_raw": obj.get("usage") or {},
                         }
-                elif obj.get("usage"):
-                    pass
+                elif obj.get("usage") and pending_end is not None:
+                    pending_end["usage_raw"] = obj["usage"]
+            if pending_end is not None:
+                usage_raw = pending_end["usage_raw"]
+                yield {
+                    "type": "stream_end",
+                    "finish_reason": pending_end["finish_reason"],
+                    "usage": {
+                        "input_tokens": usage_raw.get("prompt_tokens", 0),
+                        "output_tokens": usage_raw.get("completion_tokens", 0),
+                        "total_tokens": usage_raw.get("total_tokens", 0),
+                    },
+                }
         finally:
             resp.close()
 
