@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:feb39a36a9578124f0a623d2693236cb96e2fb7fc350575e293fa9f7e223a292",
+  "catalog_digest": "sha256:c3aa266a0940ded7d0e374f9918fe04898f44783825a7cc3d8e418bd2c5e63bb",
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:2f2e94a89e859d66c5bd247a82e9b1e856f2b5044a36cce4c0ca2af998bb50be",
+  "source_identity": "sha256:1a668079ac2edb2ae8bcf11dc88d89193c643d5f842a05f75e76eae8a735334d",
   "variants": [
     {
       "architecture": "any",
@@ -270,7 +270,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri.ui.model-state.read",
-      "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+      "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
       "implementation_path": "runtime/state_changes.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -314,7 +314,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri.ui.model-state.write",
-      "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+      "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
       "implementation_path": "runtime/state_changes.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -545,7 +545,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri.ui.recovery-diagnostic.read",
-      "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+      "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
       "implementation_path": "runtime/state_changes.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -589,7 +589,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri.ui.recovery-diagnostic.write",
-      "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+      "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
       "implementation_path": "runtime/state_changes.py",
       "materialization_mode": "on_demand",
       "operations": [

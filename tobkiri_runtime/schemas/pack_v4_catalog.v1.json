@@ -19220,25 +19220,25 @@
         {
           "contract_id": "tobkiri.resource.ui.model-state.v1",
           "function_id": "tobkiri.ui.model-state.read",
-          "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+          "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
           "operation_ids": ["tobkiri_ui_settings_pack.model-state-read"]
         },
         {
           "contract_id": "tobkiri.action.ui.model-state.v1",
           "function_id": "tobkiri.ui.model-state.write",
-          "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+          "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
           "operation_ids": ["tobkiri_ui_settings_pack.model-state-write"]
         },
         {
           "contract_id": "tobkiri.resource.ui.recovery-diagnostic.v1",
           "function_id": "tobkiri.ui.recovery-diagnostic.read",
-          "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+          "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
           "operation_ids": ["tobkiri_ui_settings_pack.recovery-diagnostic-read"]
         },
         {
           "contract_id": "tobkiri.action.ui.recovery-diagnostic.v1",
           "function_id": "tobkiri.ui.recovery-diagnostic.write",
-          "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+          "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
           "operation_ids": ["tobkiri_ui_settings_pack.recovery-diagnostic-write"]
         },
         {
@@ -19536,7 +19536,7 @@
           "failure": "fail_closed",
           "isolation": "in_process",
           "lifecycle": {"deprecated": false, "introduced": "1.0.0"},
-          "operations": [{"entrypoint_id": "tobkiri_ui_settings_pack.model-state-read", "id": "tobkiri_ui_settings_pack.model-state-read", "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af"}],
+          "operations": [{"entrypoint_id": "tobkiri_ui_settings_pack.model-state-read", "id": "tobkiri_ui_settings_pack.model-state-read", "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7"}],
           "owner": "tobkiri_ui_settings_pack",
           "provider_id": "tobkiri.ui.model-state.read",
           "required_capabilities": ["ui.model_state.read"],
@@ -19553,7 +19553,7 @@
           "failure": "fail_closed",
           "isolation": "in_process",
           "lifecycle": {"deprecated": false, "introduced": "1.0.0"},
-          "operations": [{"entrypoint_id": "tobkiri_ui_settings_pack.model-state-write", "id": "tobkiri_ui_settings_pack.model-state-write", "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af"}],
+          "operations": [{"entrypoint_id": "tobkiri_ui_settings_pack.model-state-write", "id": "tobkiri_ui_settings_pack.model-state-write", "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7"}],
           "owner": "tobkiri_ui_settings_pack",
           "provider_id": "tobkiri.ui.model-state.write",
           "required_capabilities": ["ui.model_state.write"],
@@ -19582,7 +19582,7 @@
           "failure": "fail_closed",
           "isolation": "in_process",
           "lifecycle": {"deprecated": false, "introduced": "1.0.0"},
-          "operations": [{"entrypoint_id": "tobkiri_ui_settings_pack.recovery-diagnostic-read", "id": "tobkiri_ui_settings_pack.recovery-diagnostic-read", "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af"}],
+          "operations": [{"entrypoint_id": "tobkiri_ui_settings_pack.recovery-diagnostic-read", "id": "tobkiri_ui_settings_pack.recovery-diagnostic-read", "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7"}],
           "owner": "tobkiri_ui_settings_pack",
           "provider_id": "tobkiri.ui.recovery-diagnostic.read",
           "required_capabilities": ["ui.recovery_diagnostic.read"],
@@ -19599,7 +19599,7 @@
           "failure": "fail_closed",
           "isolation": "in_process",
           "lifecycle": {"deprecated": false, "introduced": "1.0.0"},
-          "operations": [{"entrypoint_id": "tobkiri_ui_settings_pack.recovery-diagnostic-write", "id": "tobkiri_ui_settings_pack.recovery-diagnostic-write", "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af"}],
+          "operations": [{"entrypoint_id": "tobkiri_ui_settings_pack.recovery-diagnostic-write", "id": "tobkiri_ui_settings_pack.recovery-diagnostic-write", "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7"}],
           "owner": "tobkiri_ui_settings_pack",
           "provider_id": "tobkiri.ui.recovery-diagnostic.write",
           "required_capabilities": ["ui.recovery_diagnostic.write"],
@@ -19735,7 +19735,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+          "digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
           "kind": "executable",
           "path": "runtime/state_changes.py"
         },
