@@ -138,6 +138,14 @@ impl OwnedProcessGroup {
 
     #[cfg(unix)]
     fn leader_is_current(&self) -> bool {
+        let Ok(pid) = i32::try_from(self.pgid) else {
+            return false;
+        };
+        // A verified PID can still belong to a process in somebody else's
+        // group. Only a leader may authorize a signal to its numeric PGID.
+        if unsafe { libc::getpgid(pid) } != pid {
+            return false;
+        }
         matches!(
             (self.leader_marker, crate::process_utils::process_start_marker(self.pgid)),
             (Some(recorded), Some(current)) if recorded == current
@@ -1854,6 +1862,22 @@ mod tests {
             descendant_alive,
             "reaped leader's former group was signalled"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_child_that_does_not_lead_its_group_is_stopped_by_pid() {
+        let mut command = process_utils::command(SYSTEM_SHELL);
+        command.args(["-c", "sleep 30"]);
+        let mut child = crate::python_env::PythonChild::development(command.spawn().unwrap());
+        let pid = child.id();
+        let group = OwnedProcessGroup {
+            pgid: pid,
+            leader_marker: child.start_marker(),
+        };
+        assert!(!group.leader_is_current());
+        stop_unix_process_group(&mut child, "Defaultspack").unwrap();
+        assert!(child.try_wait().unwrap().is_some());
     }
 
     #[cfg(unix)]
