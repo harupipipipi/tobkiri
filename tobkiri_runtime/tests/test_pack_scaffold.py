@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from core_runtime.pack_scaffold import PackScaffold, VALID_TEMPLATES, main
+from tobkiri_host.artifact_compiler import compile_pack_root
 from tobkiri_protocol.validation import validate_document
 
 
@@ -28,8 +29,10 @@ def test_every_template_emits_complete_v4_without_legacy_files(
     validate_document((root / "contracts.v4.json").read_bytes(), "pack_contract_catalog")
     validate_document((root / "artifact-index.v4.json").read_bytes(), "pack_artifact_index")
     validate_document((root / "executables.v4.json").read_bytes(), "executable_catalog")
+    compiled = compile_pack_root(root)
 
     assert manifest["pack"]["id"] == "example.pack"
+    assert compiled.artifact.pack_id == "example.pack"
     assert manifest["requirements"]["execution_boundary"] == "declarative_only"
     assert manifest["requirements"]["capabilities"] == []
     assert manifest["functions"] == []
@@ -125,5 +128,6 @@ def test_integrity_documents_bind_exact_source_and_files(
     assert {item["path"] for item in index["artifacts"]} >= {
         "pack.v4.json",
         "contracts.v4.json",
+        "executables.v4.json",
         "scaffold-source.v1.json",
     }

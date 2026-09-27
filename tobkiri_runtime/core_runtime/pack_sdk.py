@@ -377,12 +377,12 @@ def scaffold_pack(
     with tempfile.TemporaryDirectory(prefix=".tobkiri-pack-", dir=target.parent) as value:
         staging = Path(value)
         (staging / "scaffold-source.v1.json").write_text(
-            _json_text(source), encoding="utf-8"
+            _json_text(source), encoding="utf-8", newline="\n"
         )
         for relative, content in sorted(template_files.items()):
             path = _scoped_scaffold_path(staging, relative)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding="utf-8")
+            path.write_text(content, encoding="utf-8", newline="\n")
         refresh_scaffold_artifacts(staging)
         if target.exists():
             target.rmdir()
@@ -435,6 +435,24 @@ def refresh_scaffold_artifacts(pack_root: Path) -> None:
         "contracts": [],
     }
     contract_text = _json_text(contracts)
+    unsigned_executables = {
+        "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+        "pack_id": pack_id,
+        "source_identity": source_identity,
+        "variants": [],
+    }
+    executables = {
+        **unsigned_executables,
+        "catalog_digest": canonical_digest(unsigned_executables),
+    }
+    artifacts.append(
+        {
+            "path": "executables.v4.json",
+            "digest": "sha256:"
+            + hashlib.sha256(_json_text(executables).encode("utf-8")).hexdigest(),
+            "kind": "sidecar",
+        }
+    )
     artifact_set_digest = canonical_digest(artifacts)
     provenance = {
         "schema": "io.tobkiri.provenance.v1",
@@ -524,16 +542,6 @@ def refresh_scaffold_artifacts(pack_root: Path) -> None:
             "signed_digest": canonical_digest(unsigned_index),
         },
     }
-    unsigned_executables = {
-        "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-        "pack_id": pack_id,
-        "source_identity": source_identity,
-        "variants": [],
-    }
-    executables = {
-        **unsigned_executables,
-        "catalog_digest": canonical_digest(unsigned_executables),
-    }
     validate_document(manifest, "pack")
     validate_document(contracts, "pack_contract_catalog")
     validate_document(index, "pack_artifact_index")
@@ -546,7 +554,7 @@ def refresh_scaffold_artifacts(pack_root: Path) -> None:
     ):
         path = root / name
         temporary = path.with_suffix(path.suffix + ".tmp")
-        temporary.write_text(_json_text(document), encoding="utf-8")
+        temporary.write_text(_json_text(document), encoding="utf-8", newline="\n")
         os.replace(temporary, path)
 
 

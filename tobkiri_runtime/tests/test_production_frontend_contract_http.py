@@ -354,21 +354,31 @@ def _request(
     return response.status, payload, response_headers
 
 
+def _bootstrap_code_after_refresh(server: PackAPIServer) -> str:
+    # A stale capture rejects the first authenticated bootstrap while it
+    # refreshes the Host contract. Launcher retries after that response.
+    for _ in range(2):
+        status, bootstrap, _headers = _request(
+            server,
+            "POST",
+            "/api/panel/auth/bootstrap",
+            body={},
+            headers={"X-Rumi-Desktop-Bootstrap": "desktop-bootstrap"},
+        )
+        if status == 200:
+            return str(bootstrap["data"]["code"])
+        assert status == 401 and bootstrap["error"] == "Unauthorized", bootstrap
+    raise AssertionError("Panel bootstrap remained unauthorized after Host refresh")
+
+
 def _authenticate(server: PackAPIServer) -> tuple[str, str, str]:
     origin = f"http://127.0.0.1:{server.port}"
-    status, bootstrap, _headers = _request(
-        server,
-        "POST",
-        "/api/panel/auth/bootstrap",
-        body={},
-        headers={"X-Rumi-Desktop-Bootstrap": "desktop-bootstrap"},
-    )
-    assert status == 200, bootstrap
+    code = _bootstrap_code_after_refresh(server)
     status, exchange, headers = _request(
         server,
         "POST",
         "/api/panel/auth/exchange",
-        body={"code": bootstrap["data"]["code"]},
+        body={"code": code},
         headers={"Origin": origin},
     )
     assert status == 200
@@ -4802,14 +4812,7 @@ def test_workroom_pack_lifecycle_persists_through_production_http(
 
     def authenticate() -> None:
         origin = f"http://127.0.0.1:{server.port}"
-        status, bootstrap, _ = _request(
-            server,
-            "POST",
-            "/api/panel/auth/bootstrap",
-            body={},
-            headers={"X-Rumi-Desktop-Bootstrap": "desktop-bootstrap"},
-        )
-        assert status == 200, bootstrap
+        code = _bootstrap_code_after_refresh(server)
         exchange_headers = {"Origin": origin}
         if cookie := auth.get("cookie"):
             exchange_headers["Cookie"] = cookie
@@ -4817,7 +4820,7 @@ def test_workroom_pack_lifecycle_persists_through_production_http(
             server,
             "POST",
             "/api/panel/auth/exchange",
-            body={"code": bootstrap["data"]["code"]},
+            body={"code": code},
             headers=exchange_headers,
         )
         assert status == 200, exchange
