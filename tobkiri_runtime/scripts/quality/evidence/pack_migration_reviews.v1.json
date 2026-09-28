@@ -413,7 +413,7 @@
     },
     "rumi_ai_gateway_pack": {
       "pack_id": "rumi_ai_gateway_pack",
-      "review_attestation_digest": "sha256:2a6198a3a42014e299088f850414d19c29bf5e88eeaed1e0c19b598f09a47d52",
+      "review_attestation_digest": "sha256:b49f038a17535436129a641f373123dea4733c66c55cfef7fce706b645ed55a4",
       "review_basis": {
         "evidence_paths": [
           "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/pack.v4.json",
@@ -427,7 +427,9 @@
           "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/ecosystem.json",
           "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
           "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/deepthink.py",
-          "tobkiri_runtime/tests/test_ai_gateway_host_provider_v4.py"
+          "tobkiri_runtime/tests/test_ai_gateway_host_provider_v4.py",
+          "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/preflight.py",
+          "tobkiri_runtime/tests/test_saved_bridge_tool_requirement.py"
         ],
         "excluded_claims": [
           "runtime admission",
@@ -443,11 +445,13 @@
           "target artifact bound by exact digest",
           "parameter schema divergence accepted for rumi_ai_gateway_pack.ai-gateway.preflight (product-owner decision 2026-09-26)",
           "four operation identities, input/output schemas, and fail-closed contract metadata remain unchanged after the Gateway runtime update",
-          "legacy v3 and v4 generation and stream entrypoints share the updated Gateway implementation; DeepThink runs only for non-stream generation and DeepThink stream requests fail closed before provider invocation"
+          "legacy v3 and v4 generation and stream entrypoints share the updated Gateway implementation; DeepThink runs only for non-stream generation and DeepThink stream requests fail closed before provider invocation",
+          "saved connection pricing uses an exact reviewed adapter, endpoint, model, and current catalog owner inventory; unmatched or stale evidence leaves the route unpriced",
+          "DeepThink preflight rejects unavailable pricing before provider execution with a bounded error; ordinary saved routes remain available without DeepThink pricing"
         ]
       },
-      "reviewed_at": "2026-09-28T17:00:19+09:00",
-      "reviewer_id": "codex:independent-semantic-review:v2",
+      "reviewed_at": "2026-09-28T18:08:42+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v3",
       "semantic_record": {
         "accepted_divergences": [
           "function_mapping",
@@ -679,9 +683,9 @@
         "status": "verified"
       },
       "semantic_record_digest": "sha256:5dbf3802ba8dad2b404c3d2f44e798f8bd76f027ed156ebdb8c6921a6100eee8",
-      "source_digest": "sha256:0d208720644ccc35a0211d46f497278b6b3750dae4aef8efbdf2dc2918139544",
+      "source_digest": "sha256:0839b04e688229f349af7facea13578f9f929d32e7a124adf89a7eec407f4c13",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:f655931f3dab46a343434137fa344c114e6714ea575e5baf83cb3e6a822165e4"
+      "target_digest": "sha256:dc8977652ecf4dee5fe14d7621b036db7f6e9d82d57fd39fbc7d6f0bd9b01ba8"
     },
     "rumi_ai_modality_pack": {
       "pack_id": "rumi_ai_modality_pack",
