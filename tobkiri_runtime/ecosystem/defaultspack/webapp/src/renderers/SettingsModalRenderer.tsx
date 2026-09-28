@@ -25,6 +25,7 @@ import {
   type ModelSelectorSchema,
 } from "../features/models";
 import { ModelRouteSetup } from "../features/models/ModelRouteSetup";
+import { useModelSearchPages } from "../features/models/useModelSearchPages";
 import type { SettingsModalRendererProps, SettingsSaveState } from "./types";
 import type { DesktopPermissionStatus, DesktopSystemInfo } from "../lib/desktopSystemInfo";
 import {
@@ -823,68 +824,19 @@ function SettingsModelSearchSelect({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [remoteResults, setRemoteResults] = useState<ModelSearchItem[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const searchRequestSeq = useRef(0);
-  const trimmedQuery = query.trim();
   const resolvedSelectorSchema = selectorSchema ?? parseModelSelectorSchema(undefined);
-  const providerState = parseModelProviderQuery(
-    query,
-    modelProviderOptions(options),
-    resolvedSelectorSchema.layout.provider_trigger,
+  const { models: remoteResults, loading: busy, error, hasMore, loadMore } = useModelSearchPages(
+    open, query, options, resolvedSelectorSchema.layout.provider_trigger,
   );
-
-  useEffect(() => {
-    if (!open) return;
-    searchRequestSeq.current += 1;
-    const requestSeq = searchRequestSeq.current;
-    let disposed = false;
-    setRemoteResults([]);
-    if (providerState.active) {
-      setBusy(false);
-      setError("");
-      return;
-    }
-    setBusy(Boolean(trimmedQuery));
-    setError("");
-    const timer = window.setTimeout(() => {
-      if (!trimmedQuery) return;
-      settingsApiResources.searchModels({
-        query: providerState.providerId ? providerState.modelQuery : trimmedQuery,
-        max_results: 30,
-        ...(providerState.providerId ? { provider_id: providerState.providerId } : {}),
-      })
-        .then((result) => {
-          if (disposed || requestSeq !== searchRequestSeq.current) return;
-          setRemoteResults(result.models ?? []);
-        })
-        .catch((searchError: unknown) => {
-          if (disposed || requestSeq !== searchRequestSeq.current) return;
-          setRemoteResults([]);
-          setError(searchError instanceof Error ? searchError.message : "モデル検索に失敗しました");
-        })
-        .finally(() => {
-          if (!disposed && requestSeq === searchRequestSeq.current) setBusy(false);
-        });
-    }, 160);
-    return () => {
-      disposed = true;
-      window.clearTimeout(timer);
-    };
-  }, [
-    open,
-    providerState.active,
-    providerState.modelQuery,
-    providerState.providerId,
-    trimmedQuery,
-  ]);
 
   return (
     <ModelSearchPicker
       value={value}
       options={options}
       remoteResults={remoteResults}
+      remoteBrowse
+      remoteHasMore={hasMore}
+      onLoadMore={loadMore}
       query={query}
       loading={busy}
       error={error}
@@ -912,10 +864,10 @@ function ModelAllowlistField({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [remoteResults, setRemoteResults] = useState<ModelSearchItem[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const searchRequestSeq = useRef(0);
+  const [page, setPage] = useState(0);
+  const { models: remoteResults, loading: busy, error, hasMore, loadMore } = useModelSearchPages(
+    open, query, options, "@",
+  );
   const selectedModels = parseModelAllowlist(value, fallback);
   const selectedSet = useMemo(() => new Set(selectedModels), [selectedModels]);
   const selectedOptions = useMemo(() => {
@@ -924,46 +876,26 @@ function ModelAllowlistField({
   }, [options, selectedModels]);
   const trimmedQuery = query.trim();
 
-  useEffect(() => {
-    if (!open) return;
-    searchRequestSeq.current += 1;
-    const requestSeq = searchRequestSeq.current;
-    let disposed = false;
-    setRemoteResults([]);
-    setBusy(true);
-    setError("");
-    const timer = window.setTimeout(() => {
-      settingsApiResources.searchModels({ query: trimmedQuery, max_results: 50 })
-        .then((result) => {
-          if (disposed || requestSeq !== searchRequestSeq.current) return;
-          setRemoteResults(result.models ?? []);
-        })
-        .catch((searchError: unknown) => {
-          if (disposed || requestSeq !== searchRequestSeq.current) return;
-          setRemoteResults([]);
-          setError(searchError instanceof Error ? searchError.message : "モデル検索に失敗しました");
-        })
-        .finally(() => {
-          if (!disposed && requestSeq === searchRequestSeq.current) setBusy(false);
-        });
-    }, trimmedQuery ? 160 : 0);
-    return () => {
-      disposed = true;
-      window.clearTimeout(timer);
-    };
-  }, [open, trimmedQuery]);
+  useEffect(() => setPage(0), [open, query]);
 
   const candidateOptions = useMemo(() => {
-    const localMatches = trimmedQuery
-      ? options.filter((option) => modelOptionMatchesSearch(option, trimmedQuery))
-      : options;
+    const localMatches = error
+      ? (trimmedQuery ? options.filter((option) => modelOptionMatchesSearch(option, trimmedQuery)) : options)
+      : [];
     return dedupeModelOptions([
       ...localMatches,
       ...remoteResults.map(modelSearchItemToOption),
-    ])
-      .filter((option) => !selectedSet.has(option.value))
-      .slice(0, 50);
-  }, [options, remoteResults, selectedSet, trimmedQuery]);
+    ]).filter((option) => !selectedSet.has(option.value));
+  }, [error, options, remoteResults, selectedSet, trimmedQuery]);
+  const visibleCandidates = candidateOptions.slice(page * 50, (page + 1) * 50);
+  const hasNextPage = candidateOptions.length > (page + 1) * 50 || hasMore;
+  const nextPage = async () => {
+    if (busy || !hasNextPage) return;
+    if (hasMore && candidateOptions.length < (page + 2) * 50) {
+      if (!(await loadMore())) return;
+    }
+    setPage((current) => current + 1);
+  };
 
   const commit = (items: string[]) => onChange(serializeModelAllowlist(items));
   const addModel = (modelId: string) => {
@@ -1059,7 +991,7 @@ function ModelAllowlistField({
                 />
               )}
               <div className="max-h-72 overflow-y-auto border-t border-zinc-800 p-1">
-                {candidateOptions.length > 0 ? candidateOptions.map((option) => {
+                {visibleCandidates.length > 0 ? visibleCandidates.map((option) => {
                   const badges = modelOptionBadges(option);
                   return (
                     <button
@@ -1088,6 +1020,13 @@ function ModelAllowlistField({
                   </div>
                 )}
               </div>
+              {(page > 0 || hasNextPage) && (
+                <div className="flex items-center justify-between border-t border-zinc-800 px-2 py-1 text-[11px] text-zinc-500">
+                  <button type="button" disabled={page === 0} onClick={() => setPage((current) => current - 1)} className="rounded px-2 py-1 hover:bg-zinc-800 disabled:opacity-40">前へ</button>
+                  <span>{page + 1}ページ</span>
+                  <button type="button" disabled={!hasNextPage || busy} onClick={nextPage} className="rounded px-2 py-1 hover:bg-zinc-800 disabled:opacity-40">次へ</button>
+                </div>
+              )}
             </div>
           </>
         )}

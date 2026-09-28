@@ -38,6 +38,7 @@ _FILTER_KEYS = frozenset(
         "local_only",
         "min_knowledge_level",
         "max_results",
+        "offset",
     }
 )
 

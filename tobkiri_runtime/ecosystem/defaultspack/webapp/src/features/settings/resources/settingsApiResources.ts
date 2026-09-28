@@ -17,7 +17,7 @@ export const settingsApiResources = {
     return defaultspackCanonicalRouteKey(apiPath);
   },
 
-  searchModels(payload: { query: string; max_results: number; provider_id?: string }) {
+  searchModels(payload: { query: string; max_results: number; offset?: number; provider_id?: string }) {
     return modelSearchResources.searchModels(payload) as Promise<ModelSearchResponse>;
   },
 

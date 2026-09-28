@@ -44,6 +44,30 @@ def test_search_models_filters_by_capabilities():
     assert result["filters_applied"]["requires"]["vision"] is True
 
 
+def test_search_models_pages_entire_catalog_and_finds_exact_id():
+    from domain.ai_client.model_search import search_models
+
+    profiles = [_profile(f"openrouter/acme/model-{index:03d}") for index in range(628)]
+    found = []
+    for offset in range(0, 628, 50):
+        page = search_models(
+            {"provider_id": "openrouter", "max_results": 50, "offset": offset},
+            profiles=profiles,
+        )
+        found.extend(item["profile_id"] for item in page["models"])
+        assert page["total"] == 628
+        assert page["has_more"] is (offset + 50 < 628)
+        assert page["filters_applied"]["offset"] == offset
+
+    assert len(found) == len(set(found)) == 628
+    assert set(found) == {profile["profile_id"] for profile in profiles}
+    exact = search_models(
+        {"query": "openrouter/acme/model-627", "max_results": 50},
+        profiles=profiles,
+    )
+    assert exact["models"][0]["profile_id"] == "openrouter/acme/model-627"
+
+
 def test_search_models_matches_multi_word_queries_across_model_separators():
     from domain.ai_client.model_search import search_models
 

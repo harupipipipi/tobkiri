@@ -19389,7 +19389,7 @@
         {
           "contract_id": "tobkiri.resource.ui.model-search.v1",
           "function_id": "tobkiri.ui.model-search.read",
-          "implementation_digest": "sha256:4f3bd4ae8b82c5e6190a243610bfb897eab50d6d730d4d1f5c9e246c487e93aa",
+          "implementation_digest": "sha256:df54e0daf4aba99b389d5b82392fdee5ff290d2b7eb3e287221d3bf4dca14bce",
           "operation_ids": [
             "tobkiri_ui_settings_pack.model-search"
           ]
@@ -20049,7 +20049,7 @@
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.model-search",
               "id": "tobkiri_ui_settings_pack.model-search",
-              "implementation_digest": "sha256:4f3bd4ae8b82c5e6190a243610bfb897eab50d6d730d4d1f5c9e246c487e93aa"
+              "implementation_digest": "sha256:df54e0daf4aba99b389d5b82392fdee5ff290d2b7eb3e287221d3bf4dca14bce"
             }
           ],
           "owner": "tobkiri_ui_settings_pack",
@@ -20080,6 +20080,11 @@
                 "model_type": {
                   "maxLength": 64,
                   "type": "string"
+                },
+                "offset": {
+                  "maximum": 10000,
+                  "minimum": 0,
+                  "type": "integer"
                 },
                 "profile_id": {
                   "minLength": 1,
@@ -20181,7 +20186,7 @@
           "path": "runtime/settings.py"
         },
         {
-          "digest": "sha256:4f3bd4ae8b82c5e6190a243610bfb897eab50d6d730d4d1f5c9e246c487e93aa",
+          "digest": "sha256:df54e0daf4aba99b389d5b82392fdee5ff290d2b7eb3e287221d3bf4dca14bce",
           "kind": "executable",
           "path": "runtime/model_search.py"
         },

@@ -34,6 +34,10 @@ def search_models(
         max_results = max(1, min(100, int(filters.get("max_results", 20) or 20)))
     except (TypeError, ValueError):
         max_results = 20
+    try:
+        offset = max(0, min(10000, int(filters.get("offset", 0) or 0)))
+    except (TypeError, ValueError):
+        offset = 0
 
     matches: list[dict[str, Any]] = []
     for profile in profiles:
@@ -61,7 +65,9 @@ def search_models(
         matches.append(item)
     matches.sort(key=lambda item: (-int(item.get("score") or 0), str(item.get("label") or item.get("profile_id") or "").casefold()))
     return {
-        "models": [deepcopy(item) for item in matches[:max_results]],
+        "models": [deepcopy(item) for item in matches[offset:offset + max_results]],
+        "total": len(matches),
+        "has_more": offset + max_results < len(matches),
         "filters_applied": {
             "query": filters.get("query", ""),
             "type": sorted(type_filter),
@@ -71,6 +77,7 @@ def search_models(
             "configured_only": configured_only,
             "provider_id": provider_id,
             "max_results": max_results,
+            "offset": offset,
         },
     }
 

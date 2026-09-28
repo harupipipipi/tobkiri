@@ -1621,6 +1621,8 @@ export type ModelSearchItem = ModelCommandCandidate & {
 
 export type ModelSearchResponse = {
   models: ModelSearchItem[];
+  total?: number;
+  has_more?: boolean;
   filters_applied: Record<string, unknown>;
 };
 

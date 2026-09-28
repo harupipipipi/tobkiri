@@ -53,6 +53,8 @@ class ModelSearchController:
         projected = {
             "models": result["models"],
             "filters_applied": dict(result["filters_applied"]),
+            "total": result.get("total"),
+            "has_more": result.get("has_more"),
         }
         # Durable operation journaling digests the result as canonical JSON;
         # fail closed here rather than surfacing an opaque journal rejection.
