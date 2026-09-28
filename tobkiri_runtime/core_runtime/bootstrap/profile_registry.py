@@ -144,7 +144,8 @@ def register_bootstrap_definition(
 ) -> None:
     """Register a source or append its explicitly confirmed predecessor's successor."""
     definitions = ProfileDefinitionStore(user_data)
-    generation = definitions.snapshot()["generation"]
+    snapshot = definitions.snapshot()
+    generation = snapshot["generation"]
     existing = definitions.get_profile(str(source["profile_id"]), include_tombstone=True)
     if existing is None:
         try:
@@ -154,6 +155,24 @@ def register_bootstrap_definition(
             existing = definitions.get_profile(str(source["profile_id"]), include_tombstone=True)
             if existing is None:
                 raise
+    if (
+        existing is not None
+        and not existing.tombstone
+        and dict(existing.profile) != dict(source)
+        and _is_unmodified_first_activation_template(
+            user_data=user_data,
+            snapshot=snapshot,
+            profile_id=existing.profile_id,
+            profile_revision=existing.profile_revision,
+        )
+    ):
+        definitions.update_profile(
+            existing.profile_id,
+            source,
+            expected_profile_revision=existing.profile_revision,
+            expected_store_generation=generation,
+        )
+        return
     if (
         existing is not None
         and not existing.tombstone
@@ -172,6 +191,53 @@ def register_bootstrap_definition(
         raise ProfileDefinitionStoreConflict(
             "bootstrap Profile conflicts with the existing definition"
         )
+
+
+def _is_unmodified_first_activation_template(
+    *,
+    user_data: Path,
+    snapshot: Mapping[str, Any],
+    profile_id: str,
+    profile_revision: str,
+) -> bool:
+    """Return whether a packaged template remains safe to supersede once.
+
+    The template is only staging data for the setup ceremony.  The exact source
+    selected by that ceremony may differ in build provenance and Shell artifact
+    digests, so the first activation may append it as the template's successor.
+    Any edit, tombstone, or active pointer makes the registry authoritative and
+    keeps the normal conflict behavior.
+    """
+    bootstrap = snapshot.get("bootstrap")
+    if not isinstance(bootstrap, Mapping) or bootstrap != {
+        "state": "template_available",
+        "template_profile_revision": profile_revision,
+    }:
+        return False
+    entries = [
+        entry
+        for entry in snapshot.get("profiles", ())
+        if isinstance(entry, Mapping) and entry.get("profile_id") == profile_id
+    ]
+    if len(entries) != 1:
+        return False
+    entry = entries[0]
+    revisions = entry.get("revisions")
+    if (
+        entry.get("tombstone") is not False
+        or entry.get("current_revision") != profile_revision
+        or not isinstance(revisions, list)
+        or len(revisions) != 1
+        or not isinstance(revisions[0], Mapping)
+        or revisions[0].get("profile_revision") != profile_revision
+        or revisions[0].get("tombstone") is not False
+    ):
+        return False
+    active_paths = (
+        user_data / "profiles" / "active.json",
+        user_data / "workspaces" / profile_id / "activation" / "active.json",
+    )
+    return not any(path.exists() or path.is_symlink() for path in active_paths)
 
 
 def recover_bootstrap_definition(
