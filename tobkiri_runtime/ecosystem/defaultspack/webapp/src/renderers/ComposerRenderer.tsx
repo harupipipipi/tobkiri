@@ -122,6 +122,7 @@ import {
 } from "../lib/composerReferences";
 import { HISTORY_CHAT_DROP_MIME, parseHistoryChatDrop } from "../lib/historyComposer";
 import { activeMentionAtCursor, isMentionStart, utf16OffsetToCodePointIndex } from "../lib/mentionContract";
+import { withSettingsAssistantSkill } from "../lib/settingsMode";
 import { sortedToolGroups, toolGroupFor } from "../lib/toolUi";
 import { startPinchAudioRecorder, type ActiveAudioRecorder, type AmbientAudioRecording } from "../ambient/ambientMedia";
 import composerPaletteTemplateJson from "../templates/composerPalette.template.json";
@@ -2175,6 +2176,11 @@ export type ComposerAtMentionCandidate =
   | { kind: "skill"; id: string; label: string; displayLabel?: string; description?: string; skill: ComposerSkillItem; section: ComposerMentionSection }
   | { kind: "file"; id: string; label: string; displayLabel?: string; description?: string; file: string; section: ComposerMentionSection };
 
+/** Ensure Settings Mode stays available when a host catalog omits skills. */
+export function composerMentionSkills(skills: ComposerSkillItem[]): ComposerSkillItem[] {
+  return withSettingsAssistantSkill(skills);
+}
+
 /** Keep palette section headings contiguous while preserving each section's source order. */
 export function orderComposerAtMentionCandidates(
   candidates: readonly ComposerAtMentionCandidate[],
@@ -2974,6 +2980,10 @@ export function ComposerRenderer({
   const templateAllowsAtMentions = templateFeatureFlags.at_mentions !== false
     && templateFeatureFlags.mentions !== false;
 	  const toolItems = useMemo(() => [...inlineExtensions, ...belowExtensions], [inlineExtensions, belowExtensions]);
+  const mentionSkills = useMemo(
+    () => composerMentionSkills(skillExtensions),
+    [skillExtensions],
+  );
   const resolvedModelSelectorSchema = useMemo(
     () => modelSelectorSchemaForSurface(modelSelectorSchema, "composer"),
     [modelSelectorSchema],
@@ -3104,10 +3114,10 @@ export function ComposerRenderer({
   const selectedCodingWorkspace = codingWorkspaces.find((workspace) => workspace.workspace_id === (selectedCodingWorkspaceId || codingContext?.workspaceId)) ?? codingWorkspaces[0] ?? null;
   const atMentionKnownValues = useMemo(() => [
     ...composerKnownMentionValues(toolItems),
-    ...composerKnownMentionValues(skillExtensions),
+    ...composerKnownMentionValues(mentionSkills),
     ...toolGroups.flatMap((service) => [service.id, service.label]),
     ...(mode === "coding" ? codingContext?.files ?? [] : []),
-  ], [codingContext?.files, mode, skillExtensions, toolGroups, toolItems]);
+  ], [codingContext?.files, mentionSkills, mode, toolGroups, toolItems]);
   const atMentionCandidates = useMemo<ComposerAtMentionCandidate[]>(() => {
     const toolCandidates = filterComposerToolMentions(toolItems, atMentionQuery, 32).map((item) => {
       const display = composerToolMentionDisplay(item);
@@ -3123,7 +3133,7 @@ export function ComposerRenderer({
     const toolsInSection = (sectionId: ComposerMentionSection["id"]) => toolCandidates
       .filter((candidate) => candidate.section.id === sectionId)
       .slice(0, atMentionQuery.trim() ? 8 : 6);
-    const skillCandidates = filterComposerSkillMentions(skillExtensions, atMentionQuery, 8).map((skill) => {
+    const skillCandidates = filterComposerSkillMentions(mentionSkills, atMentionQuery, 8).map((skill) => {
       const display = composerSkillMentionDisplay(skill);
       return {
         kind: "skill" as const,
@@ -3177,7 +3187,7 @@ export function ComposerRenderer({
       ...serviceCandidates,
       ...fileCandidates,
     ]);
-  }, [atMentionQuery, codingContext?.files, mode, skillExtensions, toolGroups, toolItems]);
+  }, [atMentionQuery, codingContext?.files, mentionSkills, mode, toolGroups, toolItems]);
 
   const atMentionPalette = useMemo(() => atMentionPalettePayload(atMentionCandidates), [atMentionCandidates]);
   const commandPalette = useMemo(() => commandPalettePayload(matchedCommands), [matchedCommands]);
@@ -3643,7 +3653,7 @@ export function ComposerRenderer({
     const raw = event.clipboardData.getData(COMPOSER_REFERENCE_MIME);
     const catalog = {
       tools: toolItems,
-      skills: skillExtensions,
+      skills: mentionSkills,
       files: mode === "coding" ? codingContext?.files ?? [] : [],
     };
     const restored = raw
@@ -3660,7 +3670,7 @@ export function ComposerRenderer({
         const item = toolItems.find((candidate) => candidate.id === reference.id);
         if (item) onDropWidget?.(composerToolMentionWidget(item, reference.syntax));
       } else if (reference.kind === "skill") {
-        const skill = skillExtensions.find((candidate) => candidate.id === reference.id);
+        const skill = mentionSkills.find((candidate) => candidate.id === reference.id);
         if (skill) onDropWidget?.(composerSkillMentionWidget(skill, reference.syntax));
       } else if (mode === "coding") {
         onDropWidget?.(composerFileMentionWidget(reference.id, reference.syntax));
@@ -3671,7 +3681,7 @@ export function ComposerRenderer({
       textarea.setSelectionRange(next.cursor, next.cursor);
       textarea.focus();
     }, 0);
-  }, [attachFiles, codingContext?.files, entityReferences, input, mode, onAtFileAttach, onDropWidget, onEntityReferencesChange, onInputChange, skillExtensions, toolItems]);
+  }, [attachFiles, codingContext?.files, entityReferences, input, mentionSkills, mode, onAtFileAttach, onDropWidget, onEntityReferencesChange, onInputChange, toolItems]);
 
   const requestAudioTranscript = useCallback(async (
     file: AttachedFile,

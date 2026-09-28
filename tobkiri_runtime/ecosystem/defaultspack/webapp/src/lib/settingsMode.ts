@@ -20,7 +20,7 @@ export const FALLBACK_SETTINGS_ASSISTANT_SKILL: ComposerSkillItem = {
   id: SETTINGS_ASSISTANT_SKILL_ID,
   label: "Settings",
   description: "Inspect, explain, and safely change Tobkiri settings through normal chat.",
-  aliases: ["settings", "setting_mode", "settings_mode"],
+  aliases: ["setting", "settings", "setting_mode", "settings_mode"],
 };
 
 export type SettingsModeDraft = {
@@ -46,8 +46,25 @@ const COMPOSER_HOME_MODES: ComposerHomeMode[] = [
 ];
 
 export function resolveSettingsAssistantSkill(skills: ComposerSkillItem[]): ComposerSkillItem {
-  return skills.find((skill) => skill.id === SETTINGS_ASSISTANT_SKILL_ID)
-    ?? FALLBACK_SETTINGS_ASSISTANT_SKILL;
+  const configured = skills.find((skill) => skill.id === SETTINGS_ASSISTANT_SKILL_ID);
+  if (!configured) return FALLBACK_SETTINGS_ASSISTANT_SKILL;
+  return {
+    ...configured,
+    aliases: [...new Set([
+      ...(FALLBACK_SETTINGS_ASSISTANT_SKILL.aliases ?? []),
+      ...(configured.aliases ?? []),
+    ])],
+  };
+}
+
+/** Include the Settings assistant in ordinary Composer mentions. */
+export function withSettingsAssistantSkill(skills: ComposerSkillItem[]): ComposerSkillItem[] {
+  const settingsAssistant = resolveSettingsAssistantSkill(skills);
+  const index = skills.findIndex((skill) => skill.id === SETTINGS_ASSISTANT_SKILL_ID);
+  if (index < 0) return [...skills, settingsAssistant];
+  return skills.map((skill, skillIndex) => (
+    skillIndex === index ? settingsAssistant : skill
+  ));
 }
 
 export function createSettingsModeDraft(skill: ComposerSkillItem): SettingsModeDraft {
