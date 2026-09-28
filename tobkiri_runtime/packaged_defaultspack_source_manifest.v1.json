@@ -119,8 +119,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/http_surface_presentation.py",
       "type": "regular-file",
-      "size": 31487,
-      "sha256": "91ba6ab1ec43c53b0d10ec208f84b3d7b741ed0ef074542d5695b6940458aa4b",
+      "size": 32966,
+      "sha256": "17ecd6a58a0c454becac6c5787c4d69ff337698f2f30ab50b70506db18addeb6",
       "executable": false
     },
     {
@@ -184,6 +184,13 @@
       "type": "regular-file",
       "size": 3591,
       "sha256": "4758163b4bf2226455d8531fec38f731697dab483a6e29d8c68245cc7c26eb4d",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/defaultspack/v4_frontend_contributions.py",
+      "type": "regular-file",
+      "size": 11078,
+      "sha256": "462850e7bf641ca98cd42bc7f69bcaa53f28b8c8c3ec95b75e7c2f304aaa539b",
       "executable": false
     },
     {
