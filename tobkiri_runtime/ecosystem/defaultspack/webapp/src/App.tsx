@@ -4215,12 +4215,21 @@ export function ChatApp() {
       setIsGenerating(false);
       return;
     }
-    if (streamingConversationIdRef.current === activeConversationId) return;
+    // A saved turn has a stable operation ID before its POST begins. Keep
+    // reading that turn's ledger even if the POST response remains in flight;
+    // the Host may have completed and saved the answer already.
+    if (streamingConversationIdRef.current === activeConversationId && !pendingRequest?.savedTurn) return;
     setIsGenerating(true);
     let disposed = false;
     let polling = false;
     const pollPendingConversation = () => {
       if (disposed || polling) return;
+      // Give the initial POST time to create its ledger entry. While that
+      // request is in flight, polling stays read-only and never reconciles a
+      // running turn against its active writer.
+      if (pendingRequest?.savedTurn
+        && streamingConversationIdRef.current === activeConversationId
+        && Date.now() - pendingRequest.startedAt < 3000) return;
       polling = true;
       void (async () => {
         if (disposed) return;
@@ -4233,7 +4242,8 @@ export function ChatApp() {
             )
           ).turn;
           if (disposed) return;
-          if (turn.status === "running" || turn.status === "waiting") {
+          if ((turn.status === "running" || turn.status === "waiting")
+            && streamingConversationIdRef.current !== activeConversationId) {
             turn = await api.reconcileSavedTurn(pendingRequest.operationId, activeConversationId);
             if (disposed) return;
           }
