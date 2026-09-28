@@ -1601,6 +1601,28 @@ export function isModelPickerToggleCommand(currentOpen: boolean, rawInput: strin
   return currentOpen && rawInput.trim().toLowerCase() === "/model";
 }
 
+export function modelPickerPage(
+  profiles: ModelProfile[],
+  remoteProfiles: ModelProfile[],
+  selectedProfile: ModelProfile | null,
+  selectedFirst: boolean,
+  limit: number,
+): { visible: ModelProfile[]; total: number } {
+  const byId = new Map<string, ModelProfile>();
+  for (const profile of [...profiles, ...remoteProfiles]) {
+    const key = profile.profile_id || profile.qualified_model_id || `${profile.provider_id ?? ""}/${profile.model_id ?? ""}`;
+    if (!key || byId.has(key)) continue;
+    byId.set(key, profile);
+  }
+  const values = [...byId.values()];
+  if (selectedFirst && selectedProfile) {
+    const selectedId = selectedProfile.profile_id || selectedProfile.qualified_model_id;
+    const selectedIndex = values.findIndex((profile) => (profile.profile_id || profile.qualified_model_id) === selectedId);
+    if (selectedIndex > 0) values.unshift(...values.splice(selectedIndex, 1));
+  }
+  return { visible: values.slice(0, limit), total: values.length };
+}
+
 function ModelDropdown({
   profiles,
   selectedProfile,
@@ -1620,6 +1642,11 @@ function ModelDropdown({
 }) {
   const [search, setSearch] = useState("");
   const [remoteProfiles, setRemoteProfiles] = useState<ModelProfile[]>([]);
+  const [remoteOffset, setRemoteOffset] = useState(0);
+  const [remoteHasMore, setRemoteHasMore] = useState(false);
+  const [remoteLoading, setRemoteLoading] = useState(false);
+  const [remoteError, setRemoteError] = useState(false);
+  const [visibleLimit, setVisibleLimit] = useState(60);
   const [activeProviderIndex, setActiveProviderIndex] = useState(0);
   const [activeModelIndex, setActiveModelIndex] = useState(0);
   const searchRequestSeqRef = useRef(0);
@@ -1634,6 +1661,11 @@ function ModelDropdown({
     () => modelProviderSearchState(search, providerTrigger),
     [providerTrigger, search],
   );
+  const pageSize = Math.min(100, Math.max(1, resolvedSelectorSchema.layout.max_visible_options));
+  const remoteProviderId = providerState.confirmedProviderId;
+  const remoteQuery = remoteProviderId
+    ? search.slice(providerState.highlightPrefix.length).trim()
+    : trimmedSearch;
   const eligibleProfiles = useMemo(
     () => filterModelProfilesBySelector(profiles, resolvedSelectorSchema, "composer"),
     [profiles, resolvedSelectorSchema],
@@ -1664,49 +1696,89 @@ function ModelDropdown({
     searchRequestSeqRef.current += 1;
     const requestSeq = searchRequestSeqRef.current;
     setRemoteProfiles([]);
-    if (!trimmedSearch || providerState.active) {
+    setRemoteOffset(0);
+    setRemoteHasMore(false);
+    setRemoteLoading(false);
+    setRemoteError(false);
+    setVisibleLimit(pageSize);
+    if (providerState.active) {
       return;
     }
     let disposed = false;
     const timer = window.setTimeout(() => {
+      setRemoteLoading(true);
       chatComposerResources.searchModels({
-        query: trimmedSearch,
-        max_results: resolvedSelectorSchema.layout.max_visible_options,
+        query: remoteQuery,
+        provider_id: remoteProviderId,
+        max_results: pageSize,
+        offset: 0,
       })
         .then((result) => {
           if (disposed || requestSeq !== searchRequestSeqRef.current) return;
+          const models = result.models ?? [];
           setRemoteProfiles(filterModelProfilesBySelector(
-            (result.models ?? []).map(modelSearchItemToProfile),
+            models.map(modelSearchItemToProfile),
             resolvedSelectorSchema,
             "composer",
           ));
+          setRemoteOffset(models.length);
+          setRemoteHasMore(result.has_more ?? models.length === pageSize);
+          setRemoteLoading(false);
         })
         .catch(() => {
           if (disposed || requestSeq !== searchRequestSeqRef.current) return;
           setRemoteProfiles([]);
+          setRemoteLoading(false);
+          setRemoteError(true);
         });
-    }, 160);
+    }, remoteQuery ? 160 : 0);
     return () => {
       disposed = true;
       window.clearTimeout(timer);
     };
-  }, [providerState.active, resolvedSelectorSchema, trimmedSearch]);
+  }, [pageSize, providerState.active, remoteProviderId, remoteQuery, resolvedSelectorSchema]);
 
-  const visibleProfiles = useMemo(() => {
-    const byId = new Map<string, ModelProfile>();
-    for (const profile of [...filtered, ...remoteProfiles]) {
-      const key = profile.profile_id || profile.qualified_model_id || `${profile.provider_id ?? ""}/${profile.model_id ?? ""}`;
-      if (!key || byId.has(key)) continue;
-      byId.set(key, profile);
+  const modelPage = useMemo(() => modelPickerPage(
+    filtered,
+    remoteProfiles,
+    selectedProfile,
+    !trimmedSearch && resolvedSelectorSchema.layout.selected_position === "first",
+    visibleLimit,
+  ), [filtered, remoteProfiles, resolvedSelectorSchema.layout.selected_position, selectedProfile, trimmedSearch, visibleLimit]);
+  const visibleProfiles = modelPage.visible;
+  const hasMoreProfiles = modelPage.total > visibleLimit || remoteHasMore || remoteError;
+  const showMoreProfiles = () => {
+    if (remoteLoading) return;
+    if (modelPage.total > visibleLimit) {
+      setVisibleLimit((limit) => limit + pageSize);
+      return;
     }
-    const values = [...byId.values()];
-    if (!trimmedSearch && selectedProfile && resolvedSelectorSchema.layout.selected_position === "first") {
-      const selectedId = selectedProfile.profile_id || selectedProfile.qualified_model_id;
-      const selectedIndex = values.findIndex((profile) => (profile.profile_id || profile.qualified_model_id) === selectedId);
-      if (selectedIndex > 0) values.unshift(...values.splice(selectedIndex, 1));
-    }
-    return values.slice(0, resolvedSelectorSchema.layout.max_visible_options);
-  }, [filtered, remoteProfiles, resolvedSelectorSchema.layout.max_visible_options, resolvedSelectorSchema.layout.selected_position, selectedProfile, trimmedSearch]);
+    const requestSeq = searchRequestSeqRef.current;
+    setRemoteLoading(true);
+    setRemoteError(false);
+    void chatComposerResources.searchModels({
+      query: remoteQuery,
+      provider_id: remoteProviderId,
+      max_results: pageSize,
+      offset: remoteOffset,
+    }).then((result) => {
+      if (requestSeq !== searchRequestSeqRef.current) return;
+      const models = result.models ?? [];
+      setRemoteProfiles((previous) => [...previous, ...filterModelProfilesBySelector(
+        models.map(modelSearchItemToProfile),
+        resolvedSelectorSchema,
+        "composer",
+      )]);
+      setRemoteOffset((offset) => offset + models.length);
+      setRemoteHasMore(models.length > 0 && (result.has_more ?? models.length === pageSize));
+      setVisibleLimit((limit) => limit + pageSize);
+      setRemoteLoading(false);
+    }).catch(() => {
+      if (requestSeq !== searchRequestSeqRef.current) return;
+      setRemoteLoading(false);
+      setRemoteError(true);
+    });
+  };
 
   useEffect(() => {
     setActiveProviderIndex(0);
@@ -1937,6 +2009,16 @@ function ModelDropdown({
           )}
           {!providerState.active && groupedByProvider.length === 0 && (
             <div className="px-3 py-4 text-center text-xs text-zinc-500">モデルが見つかりません</div>
+          )}
+          {!providerState.active && hasMoreProfiles && (
+            <button
+              type="button"
+              disabled={remoteLoading}
+              onClick={showMoreProfiles}
+              className="w-full border-t border-white/[0.06] px-3 py-2 text-center text-xs text-sky-300 hover:bg-white/[0.05] disabled:opacity-50"
+            >
+              {remoteLoading ? "読み込み中..." : remoteError ? "モデルを再読み込み" : "さらにモデルを表示"}
+            </button>
           )}
         </div>
       </div>

@@ -22,6 +22,7 @@ import {
   composerModelControlWidth,
   composerPlaceholderCopy,
   modelDropdownPlacementClassName,
+  modelPickerPage,
   nextModelPickerOpenState,
   isModelPickerToggleCommand,
   modelCandidateMenuKeyAction,
@@ -680,6 +681,20 @@ test("model picker width follows the compact model name only", () => {
     max: "12rem",
     shrink: 1,
   });
+});
+
+test("composer model picker can expose the final model beyond the first 60", () => {
+  const profiles = Array.from({ length: 628 }, (_, index) => ({
+    profile_id: `openrouter/model-${index}`,
+    display_name: `Model ${index}`,
+  }));
+  const firstPage = modelPickerPage(profiles, [], null, false, 60);
+  assert.equal(firstPage.visible.length, 60);
+  assert.equal(firstPage.total, 628);
+  const lastPage = modelPickerPage(profiles, [profiles[0]], null, false, 660);
+  assert.equal(lastPage.visible.length, 628);
+  assert.equal(lastPage.visible.at(-1)?.profile_id, "openrouter/model-627");
+  assert.equal(lastPage.total, 628);
 });
 
 test("model candidate popup anchors to the right edge of the model control", () => {

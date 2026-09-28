@@ -4,7 +4,7 @@ import { createModelSearchResources } from "../../models";
 const modelSearchResources = createModelSearchResources(api);
 
 export const chatComposerResources = {
-  searchModels(payload: { query: string; max_results: number }) {
+  searchModels(payload: { query: string; provider_id?: string; max_results: number; offset?: number }) {
     return modelSearchResources.searchModels(payload) as Promise<ModelSearchResponse>;
   },
 };
