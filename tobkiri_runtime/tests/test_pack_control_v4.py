@@ -446,13 +446,14 @@ def test_scheduler_enable_projects_signed_dependency_edges(captured_session) -> 
             "tobkiri.service.host.authorize.v1",
             "rumi_host_authority_bridge_pack.host-authority",
         ) in edge_keys
-    # The Shell still gains only the Pack's own contributed operations.
+    # The Shell reads definitions through the registry. This contribution is
+    # consumed by that signed dependency, so it grants no direct Shell edge.
     assert (
         "shell.tauri.default",
         "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
         "tobkiri.resource.tool.definition.contribution.v1",
         "rumi_scheduler_tool_adapter_pack.scheduler-tool-definitions",
-    ) in edge_keys
+    ) not in edge_keys
 
     from core_runtime.authority.v4 import AuthorityStore
     from core_runtime.bootstrap.production_v4 import capture_production_dispatch

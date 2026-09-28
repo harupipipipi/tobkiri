@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:64b96857d957e2332dbb3eed98960a84149ece8c45e907b39b0fd26807a15abb
+// Raw source digest: sha256:6d0667f33f55b57b698b9b1d6655884a4b7c69598e61887cebdfa67020123cbb
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,13 +28,13 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:64b96857d957e2332dbb3eed98960a84149ece8c45e907b39b0fd26807a15abb" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:6d0667f33f55b57b698b9b1d6655884a4b7c69598e61887cebdfa67020123cbb" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:64b96857d957e2332dbb3eed98960a84149ece8c45e907b39b0fd26807a15abb",
+  "artifact_digest": "sha256:6d0667f33f55b57b698b9b1d6655884a4b7c69598e61887cebdfa67020123cbb",
   "routes": [
     {
       "method": "GET",
@@ -945,6 +945,21 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
           "operation_id": "catalog.read",
           "provider_id": "tobkiri.host.pack-control",
           "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/ai/strategies",
+      "presentation": "ai_strategy_catalog",
+      "targets": [
+        {
+          "contribution_id": "defaults.ai.strategy.catalog.read",
+          "contract_id": "tobkiri.resource.ai.strategy.catalog.v1",
+          "operation_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+          "provider_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+          "function_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
           "allowed_payload_keys": []
         }
       ]
@@ -2042,6 +2057,19 @@ const EXPECTED_ROUTES = {
         "operation_id": "catalog.read",
         "provider_id": "tobkiri.host.pack-control",
         "function_id": "tobkiri.host.pack-control",
+        "allowed_payload_keys": []
+      }
+    ]
+  },
+  "GET /api/ai/strategies": {
+    "presentation": "ai_strategy_catalog",
+    "targets": [
+      {
+        "contribution_id": "defaults.ai.strategy.catalog.read",
+        "contract_id": "tobkiri.resource.ai.strategy.catalog.v1",
+        "operation_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+        "provider_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+        "function_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
         "allowed_payload_keys": []
       }
     ]
