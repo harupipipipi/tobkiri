@@ -443,14 +443,27 @@ fn development_packvm_bundle_root_for_executable(
     let app_dir = config.app_dir.canonicalize().ok()?;
     let staged_app = resources.join("app");
     let generated_app = target_root.parent()?.join("gen/app");
-    if staged_app.canonicalize().ok().as_deref() != Some(app_dir.as_path())
-        && generated_app.canonicalize().ok().as_deref() != Some(app_dir.as_path())
-    {
+    let selected_staged_runtime = staged_app.canonicalize().ok().as_deref()
+        == Some(app_dir.as_path())
+        || generated_app.canonicalize().ok().as_deref() == Some(app_dir.as_path());
+    // An explicit local development build runs the checkout runtime even
+    // when the debug .app contains no copied Resources/app tree. Keep that
+    // exact checkout root eligible for the bundled VZ helper; production
+    // roles never reach this development-only path.
+    let selected_checkout_runtime = config
+        .dev_workspace_root
+        .as_ref()
+        .and_then(|root| root.join("tobkiri_runtime").canonicalize().ok())
+        .as_deref()
+        == Some(app_dir.as_path());
+    if !selected_staged_runtime && !selected_checkout_runtime {
         return None;
     }
-    if !app_dir
-        .join(crate::runtime_resource_integrity::MANIFEST_NAME)
-        .is_file()
+    if (selected_staged_runtime
+        && !app_dir
+            .join(crate::runtime_resource_integrity::MANIFEST_NAME)
+            .is_file())
+        || (selected_checkout_runtime && !app_dir.join("app.py").is_file())
         || !bundle
             .join("Contents/MacOS/tobkiri-packvm-vz-helper")
             .is_file()
@@ -3192,7 +3205,7 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
-    fn debug_app_packvm_bundle_binding_requires_checkout_stage_and_helper_manifests() {
+    fn debug_app_packvm_bundle_binding_requires_selected_runtime_and_helper_manifests() {
         let root = std::env::temp_dir().join(format!(
             "tobkiri-packvm-debug-bundle-{}",
             unix_timestamp_nanos()
@@ -3222,6 +3235,12 @@ mod tests {
             development_packvm_bundle_root_for_executable(&config, &executable),
             None
         );
+        let mut checkout_config = config.clone();
+        checkout_config.app_dir = root.join("tobkiri_runtime");
+        assert_eq!(
+            development_packvm_bundle_root_for_executable(&checkout_config, &executable),
+            None
+        );
 
         fs::write(
             bundle.join("Contents/MacOS/tobkiri-packvm-vz-helper"),
@@ -3233,6 +3252,17 @@ mod tests {
         assert_eq!(
             development_packvm_bundle_root_for_executable(&config, &executable),
             Some(bundle.clone())
+        );
+        assert_eq!(
+            development_packvm_bundle_root_for_executable(&checkout_config, &executable),
+            Some(bundle.clone())
+        );
+        checkout_config.app_dir = root.join("other-runtime");
+        fs::create_dir_all(&checkout_config.app_dir).unwrap();
+        fs::write(checkout_config.app_dir.join("app.py"), b"other").unwrap();
+        assert_eq!(
+            development_packvm_bundle_root_for_executable(&checkout_config, &executable),
+            None
         );
         assert_eq!(
             development_packvm_bundle_root_for_executable(
