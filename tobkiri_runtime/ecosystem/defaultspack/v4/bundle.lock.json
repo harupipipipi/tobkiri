@@ -89,12 +89,12 @@
     {
       "path": "packs/rumi_ai_gateway_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:a4a032a1b4390ceb3d7a7b8968d715c396a0078c9161724f43ae746adf96f091"
+      "digest": "sha256:fff4d1c2ec5f99f687decb0127d1afb5f1101e965ae6bb62f83cfb3bcfb00bf5"
     },
     {
       "path": "packs/rumi_ai_gateway_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:86ebbd986969dec4b52ad755756601cf0e0b1aa6503267a2aa28c898620d7e81"
+      "digest": "sha256:58350ba485e688a1f9945cf0b0d12363b8279f9e2a2f00c56e6b2411b98a1971"
     },
     {
       "path": "packs/rumi_ai_modality_pack.executables.v4.json",

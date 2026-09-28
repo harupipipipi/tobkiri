@@ -148,7 +148,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:5ac67f2630e8c0dc6c989f7df4f28f33879df4cd291724210c78990a075192ab",
+      "artifact_hash": "sha256:04a0e6d4797a94b1dcb238c08f9eb1caef9c2aad48f522ad80464c04ea35d4dd",
       "contract_id": "rumi.service.ai.generate.v1",
       "id": "ai-gateway-generate",
       "loader": "python",
@@ -156,7 +156,7 @@
       "symbol": "create_generate_operation"
     },
     {
-      "artifact_hash": "sha256:5ac67f2630e8c0dc6c989f7df4f28f33879df4cd291724210c78990a075192ab",
+      "artifact_hash": "sha256:04a0e6d4797a94b1dcb238c08f9eb1caef9c2aad48f522ad80464c04ea35d4dd",
       "contract_id": "rumi.service.ai.stream.v1",
       "id": "ai-gateway-stream",
       "loader": "python",
@@ -164,7 +164,7 @@
       "symbol": "create_stream_operation"
     },
     {
-      "artifact_hash": "sha256:5ac67f2630e8c0dc6c989f7df4f28f33879df4cd291724210c78990a075192ab",
+      "artifact_hash": "sha256:04a0e6d4797a94b1dcb238c08f9eb1caef9c2aad48f522ad80464c04ea35d4dd",
       "contract_id": "rumi.resource.ai.routing.diagnostics.v1",
       "id": "ai-gateway-routing-diagnostics",
       "loader": "python",
@@ -211,9 +211,9 @@
           "authoritative_owner": true,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:9b2c98baeacac8b288387ac7c9d405f34bce7450aa5f228a7932da1960b139e4",
+            "artifact_digest": "sha256:f655931f3dab46a343434137fa344c114e6714ea575e5baf83cb3e6a822165e4",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:d4b26de25976c7b3ce2f797786631a2222a3cdca41ec1bf2a4f17e1af52c9a36"
+            "source_identity": "sha256:d98eb3f7e7e99cfd42a7c6806b6bf96c0eb5c94bddbafaf65bda907e848299b9"
           },
           "executable_code": true,
           "integrity": {
@@ -242,7 +242,7 @@
         "pack_identity": "rumi:ecosystem/rumi_ai_gateway_pack",
         "provenance": {
           "build_identity": "rumi_ai_gateway_pack:1.0.0",
-          "content_hash": "sha256:09c77441d392da705ea09bb0b005ba534933e06b20f1f8716e96c558fe3032b2",
+          "content_hash": "sha256:8e9616a5b50ef2a6b8e941642829b78ce27acaea77a46710dd0eed4c7ca32abb",
           "signature": null,
           "trust_class": "local"
         },
@@ -271,7 +271,7 @@
       "owner": "rumi_ai_gateway_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:d4b26de25976c7b3ce2f797786631a2222a3cdca41ec1bf2a4f17e1af52c9a36"
+      "source_identity": "sha256:d98eb3f7e7e99cfd42a7c6806b6bf96c0eb5c94bddbafaf65bda907e848299b9"
     }
   },
   "migration": {
@@ -311,7 +311,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_ai_gateway_pack:1.0.0",
-    "content_hash": "sha256:09c77441d392da705ea09bb0b005ba534933e06b20f1f8716e96c558fe3032b2",
+    "content_hash": "sha256:8e9616a5b50ef2a6b8e941642829b78ce27acaea77a46710dd0eed4c7ca32abb",
     "signature": null,
     "trust_class": "local"
   },
