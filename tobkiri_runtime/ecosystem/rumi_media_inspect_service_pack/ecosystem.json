@@ -16,9 +16,9 @@
   "metadata": {
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:945779951b78e8a0efacc486a28383a46d40afb575b915f7298014bb31587450",
+      "artifact_digest": "sha256:daaac6cbdbe53bb825227740f3e6c8f42152738529aeaa92fe2c48e70e15ca42",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:d62965b30ed62a68329fb611d1a2889700f81dd36852d31b7342dd64833e8d91"
+      "source_identity": "sha256:2db82a766bd7e95cbe92a1ecf99b40ce7b8323fe1868f30ed40002d98b2f53ce"
     },
     "capture": false,
     "file_access": "global_contract_only",
@@ -28,7 +28,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "rumi.pack.v3.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:d62965b30ed62a68329fb611d1a2889700f81dd36852d31b7342dd64833e8d91"
+      "source_content_hash": "sha256:2db82a766bd7e95cbe92a1ecf99b40ce7b8323fe1868f30ed40002d98b2f53ce"
     },
     "manifest_authority": "v4-authoritative",
     "projection_owner": "scripts/migrate_manifest_authority.py",

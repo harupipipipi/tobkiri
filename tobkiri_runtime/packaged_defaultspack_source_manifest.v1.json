@@ -245,8 +245,8 @@
     {
       "path": "ecosystem/defaultspack/domain/runtime_v4/service.py",
       "type": "regular-file",
-      "size": 133607,
-      "sha256": "74e3c5aff9d2d4301e89d1b2ea1165793389045d7f5fc0de22e0e8d8c48af3e1",
+      "size": 136684,
+      "sha256": "f5abf93a76dd67a3ca52807df056bf7c66f37bc9aef4d9fb26da2c8ec1576c96",
       "executable": false
     },
     {
@@ -3822,8 +3822,8 @@
     {
       "path": "tobkiri_protocol/schemas/pack_manifest_v4.schema.json",
       "type": "regular-file",
-      "size": 7841,
-      "sha256": "98e039485400b9cc8e5dbc8b163ce1b91929e87e42847e88529a4355b9f18606",
+      "size": 8137,
+      "sha256": "9c6851d40f5f034432acca0d7bc48a9d8489d0522c9b032cfb211749c670a760",
       "executable": false
     },
     {
