@@ -84,6 +84,9 @@ def _refresh_fixture_artifacts(root: Path) -> None:
     )
     _write_json(executable_path, executable)
 
+    manifest["integrity"]["contract_catalog_digest"] = _file_digest(
+        root / "contracts.v4.json"
+    )
     for artifact in manifest["artifacts"]:
         artifact["digest"] = _file_digest(root / artifact["path"])
     artifact_digest = canonical_digest(manifest["artifacts"])
@@ -305,6 +308,7 @@ def test_signed_declarative_input_pack_reaches_production_selected_closure(
     assert _invoke(control, "pack.enable", {"pack_id": PACK_ID})["enabled"]
 
     profile = _present(control, "profile.read")
+    assert profile["state"] == "ready", profile
     desired = [
         item["pack_id"] for item in profile["data"]["profile_document"]["packs"]
         if item.get("role") != "application"
