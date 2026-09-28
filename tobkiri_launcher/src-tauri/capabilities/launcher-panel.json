@@ -13,13 +13,16 @@
     ]
   },
   "permissions": [
+    "allow-admit-signed-pack-from-folder",
     "allow-get-background-control-status",
     "allow-get-desktop-system-info",
     "allow-check-launcher-update",
     "allow-launch-defaultspack-desktop",
     "allow-open-launcher-update-release",
     "allow-open-external-url",
+    "allow-onboard-signed-pack-from-folder",
     "allow-send-to-background",
+    "allow-signed-pack-admission-status",
     "allow-show-app-window"
   ]
 }
