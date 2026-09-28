@@ -343,7 +343,7 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
         "rumi_conversation_store_pack.conversation-store.resource",
         "rumi_conversation_store_pack.conversation-store.message-manage",
         "rumi_ai_gateway_pack.ai-gateway.generate",
-        "rumi_ai_gateway_pack.ai-gateway.preflight",
+        "rumi_ai_gateway_pack.ai-gateway.route-quote",
         "rumi_ai_pipeline_pack.ai-pipeline.prepare",
         "rumi_provider_registry_pack.provider-registry.health",
         "rumi_provider_registry_pack.provider-registry.resource",
@@ -466,6 +466,10 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
         "tobkiri.ui.model-state.read",
         "rumi_model_registry_pack.model-registry.profile",
         "rumi_provider_registry_pack.provider-registry.resource",
+        "rumi_ai_strategy_runtime_pack.ai-strategy.dispatch",
+        "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+        "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+        "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
     ]
     assert resolved.lock["plan_digest"] == resolved.plan["plan_digest"]
 
