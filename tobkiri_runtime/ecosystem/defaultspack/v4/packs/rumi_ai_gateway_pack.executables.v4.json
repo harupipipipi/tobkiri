@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:8a5bad1eb65073b8994b0dc6bf3318f8a54ce354735ea92749d61e6447634176",
+  "source_identity": "sha256:7cde8427de977b8e3761699b0afab8ba2ec46916545c0144c7dd52c38b88dc2d",
   "variants": [
     {
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.generate.python",
@@ -53,7 +53,7 @@
         {
           "contract_id": "tobkiri.resource.ai.readiness.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:d65985c982541f8747bfab1b5686d21b44bdf52393c6b732be0cfadac30df569",
+          "revision_digest": "sha256:9d1ebfdf436e137cf40d6515ae562c8efd3a95c7f9bae3f05c8e6896740dfd7b",
           "operation_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
           "input_schema": {
             "additionalProperties": false,
@@ -85,6 +85,12 @@
                 "maxItems": 2048,
                 "minItems": 1,
                 "type": "array"
+              },
+              "modalities": {
+                "const": [
+                  "image",
+                  "text"
+                ]
               },
               "model_profile_id": {
                 "maxLength": 256,
@@ -208,6 +214,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:498e9428c11020907a211e03fce697dba9920755121f5be9882b435677a12e1a",
-  "catalog_digest": "sha256:c75863620749978e6fa7861a657cf0775f4db9d67feff91f71755b967ed459ca"
+  "materialization_catalog_digest": "sha256:4255506e5370ca766d81b5d46fe78f92abbb7c38c099c21b45abe05b50fb2214",
+  "catalog_digest": "sha256:d2af6730d085cfc6c415a28e296349c5817ea376d1eb8b7d45b14385cb93df70"
 }

@@ -65,6 +65,31 @@ def test_bounded_inline_image_matches_external_and_guest_contracts() -> None:
     assert "content" not in intent["state"]["request"]
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        "あ" * 21000,
+        [{"type": "text", "text": "あ" * 21000}],
+    ],
+)
+def test_oversized_utf8_text_reports_byte_limit(content: object) -> None:
+    payload = _input()
+    payload["request"]["content"] = content
+
+    with pytest.raises(ValueError, match="byte limit"):
+        validate_saved_conversation_input(payload)
+
+
+def test_oversized_text_does_not_mask_malformed_content() -> None:
+    payload = _input()
+    payload["request"]["content"] = [
+        {"type": "text", "text": "あ" * 21000, "unexpected": True}
+    ]
+
+    with pytest.raises(ValueError, match="content is invalid"):
+        validate_saved_conversation_input(payload)
+
+
 @pytest.mark.parametrize("url", [
     "https://example.test/image.png",
     "data:image/svg+xml;base64,PHN2Zy8+",
@@ -191,7 +216,12 @@ def test_saved_turn_accepts_finite_thinking_level(level: str) -> None:
     payload["request"]["thinking_level"] = level
     assert validate_document(payload, "saved_conversation_input") == payload
     assert validate_saved_conversation_input(payload) == payload
-    assert saved.start(payload["request"])["state"]["request"] == payload["request"]
+    state = saved.start(payload["request"])["state"]
+    assert state["request"] == {
+        key: item for key, item in payload["request"].items() if key != "content"
+    }
+    assert state["user_content"] == payload["request"]["content"]
+    assert state["user_content_digest"] is None
 
 
 @pytest.mark.parametrize("level", ["ultra", "", None, True, 1, [], {}])

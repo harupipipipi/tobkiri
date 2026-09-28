@@ -15,7 +15,7 @@
     "inventory_v1.schema.json": "sha256:2cd124a405d451cd0858ee10a72e031cd34a5cfa5787ba93ed3b5e29123e1156",
     "pack_artifact_index_v4.schema.json": "sha256:f609b9755120df0a6928aec51d50c525cd4e1be614b1e044292afb6d8b610e0e",
     "pack_contract_catalog_v4.schema.json": "sha256:132c18aeb94952853a914a3bb962150898dd2f8f9d24ec245b7252012603eebf",
-    "pack_manifest_v4.schema.json": "sha256:98e039485400b9cc8e5dbc8b163ce1b91929e87e42847e88529a4355b9f18606",
+    "pack_manifest_v4.schema.json": "sha256:9c6851d40f5f034432acca0d7bc48a9d8489d0522c9b032cfb211749c670a760",
     "profile_artifact_lock_v1.schema.json": "sha256:b9ffec2d23ac0490466754a2c4b9978e82fc598818c90a7f84a9f084094711bc",
     "profile_content_projection_v1.schema.json": "sha256:420709af812c136ce5dff37d6449a3271c2a8f3d503fa979d33860e181027ca6",
     "profile_intent_v1.schema.json": "sha256:017014f39c09bb7fa6b38512806b2ece13bb59fca5de6aa13f3e3be5c9d26a94",

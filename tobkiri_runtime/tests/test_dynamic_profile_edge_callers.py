@@ -47,12 +47,8 @@ def _catalog(
         "shell": {
             "functions": [{"id": "shell.main", "role": "brokered"}],
         },
-        "a": _manifest(
-            "a", {"a.own": "a.op"}, required=("c.one",), dependencies=("d",)
-        ),
-        "b": _manifest(
-            "b", {"b.own": "b.op"}, required=(b_contract,), dependencies=("d",)
-        ),
+        "a": _manifest("a", {"a.own": "a.op"}, required=("c.one",), dependencies=("d",)),
+        "b": _manifest("b", {"b.own": "b.op"}, required=(b_contract,), dependencies=("d",)),
         "d": _manifest(
             "d",
             {"c.one": "d.one", "c.two": "d.two"},
@@ -116,14 +112,47 @@ def test_two_roots_can_share_one_exact_provider_and_contract() -> None:
 def test_shared_provider_does_not_cross_product_distinct_contracts() -> None:
     """Each root receives only the Contract it declared as required."""
 
-    keys = _keys(
-        dynamic_profile_edges(_catalog(b_contract="c.two"), "defaults", ("a", "b"))
-    )
+    keys = _keys(dynamic_profile_edges(_catalog(b_contract="c.two"), "defaults", ("a", "b")))
 
     assert ("a.a.own", "d.c.one", "c.one", "d.one") in keys
     assert ("b.b.own", "d.c.two", "c.two", "d.two") in keys
     assert ("a.a.own", "d.c.two", "c.two", "d.two") not in keys
     assert ("b.b.own", "d.c.one", "c.one", "d.one") not in keys
+
+
+def test_multi_operation_contract_grants_only_signed_named_operation() -> None:
+    """A direct dependency never expands one named operation to its sibling."""
+
+    catalog = _catalog()
+    catalog.packs["d"]["contracts"][0]["operations"].append("d.one.sibling")
+    catalog.packs["d"]["functions"][0]["operations"].append("d.one.sibling")
+    catalog.packs["a"]["requirements"]["contract_dependencies"][0]["operations"] = ["d.one"]
+
+    keys = _keys(dynamic_profile_edges(catalog, "defaults", ("a",)))
+
+    assert ("a.a.own", "d.c.one", "c.one", "d.one") in keys
+    assert ("a.a.own", "d.c.one", "c.one", "d.one.sibling") not in keys
+
+
+def test_multi_operation_contract_without_exact_binding_fails_closed() -> None:
+    """Contract-level dependency bytes cannot imply multiple operation grants."""
+
+    catalog = _catalog()
+    catalog.packs["d"]["contracts"][0]["operations"].append("d.one.sibling")
+    catalog.packs["d"]["functions"][0]["operations"].append("d.one.sibling")
+
+    with pytest.raises(ProfileResolutionDenied, match="must name exact operations"):
+        dynamic_profile_edges(catalog, "defaults", ("a",))
+
+
+def test_dependency_cannot_name_operation_outside_required_contract() -> None:
+    """An exact operation selector remains confined to its signed Contract."""
+
+    catalog = _catalog()
+    catalog.packs["a"]["requirements"]["contract_dependencies"][0]["operations"] = ["d.two"]
+
+    with pytest.raises(ProfileResolutionDenied, match="outside its required Contract"):
+        dynamic_profile_edges(catalog, "defaults", ("a",))
 
 
 def test_selected_root_can_also_serve_as_another_roots_direct_dependency() -> None:
@@ -143,9 +172,7 @@ def test_static_edge_does_not_suppress_consumer_link() -> None:
 
     static = _static("shell.main", "a.a.own", "a.own", "a.op")
     keys = _keys(
-        dynamic_profile_edges(
-            _catalog(static_edges=(static,), consumer=True), "defaults", ("a",)
-        )
+        dynamic_profile_edges(_catalog(static_edges=(static,), consumer=True), "defaults", ("a",))
     )
 
     assert ("d.c.one", "a.a.own", "a.own", "a.op") in keys

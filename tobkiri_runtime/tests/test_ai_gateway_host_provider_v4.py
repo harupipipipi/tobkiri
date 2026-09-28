@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Mapping
 
+from jsonschema import Draft202012Validator
 import pytest
 
 from core_runtime.authority.v4 import authority_digest
@@ -36,6 +38,22 @@ from tobkiri_host.models import OpaqueAuthorityRef
 _FUNCTION_ID = "rumi_ai_gateway_pack.ai-gateway.generate"
 _OPERATION_ID = _FUNCTION_ID
 _CONTRACT_ID = "tobkiri.service.ai.generate.v1"
+
+
+def _readiness_input_schema() -> Mapping[str, Any]:
+    root = Path(__file__).resolve().parents[1]
+    catalog = json.loads(
+        (root / "schemas" / "pack_v4_catalog.v1.json").read_text()
+    )
+    pack = next(
+        item for item in catalog["packs"]
+        if item["pack_id"] == "rumi_ai_gateway_pack"
+    )
+    contract = next(
+        item for item in pack["provided_contracts"]
+        if item["contract_id"] == "tobkiri.resource.ai.readiness.v1"
+    )
+    return contract["schemas"]["input"]
 
 
 class _CapturedDispatch:
@@ -359,6 +377,130 @@ def test_preflight_captured_operation_resolves_without_generation_or_billing() -
         REQUEST_PREPARE_CONTRACT, MODEL_PROFILE_CONTRACT, ROUTING_CONTRACT,
     ]
     assert "private-handle" not in repr(result)
+
+
+def test_preflight_contract_accepts_only_the_exact_image_text_modalities() -> None:
+    """The Broker contract matches the Host implementation's exact image flag."""
+    validator = Draft202012Validator(_readiness_input_schema())
+    payload = {
+        "model_profile_id": "model-profile",
+        "messages": [{"role": "user", "content": "Inspect the attached image"}],
+        "deepthink": True,
+        "modalities": ["image", "text"],
+    }
+    validator.validate(payload)
+
+    for invalid in (
+        ["text", "image"],
+        ["image"],
+        ["image", "text", "audio"],
+        ["image", "text", "text"],
+        "image,text",
+    ):
+        assert not validator.is_valid({**payload, "modalities": invalid})
+
+
+def test_preflight_runtime_accepts_exact_image_text_modalities() -> None:
+    """The read-only Host operation forwards the exact requirement to routing."""
+
+    class ImagePreflightDispatch(_PreflightDispatch):
+        def invoke(
+            self,
+            contract_id: str,
+            operation_id: str,
+            payload: Mapping[str, Any],
+            *,
+            version_range: str | None = None,
+        ) -> Mapping[str, Any]:
+            result = super().invoke(
+                contract_id,
+                operation_id,
+                payload,
+                version_range=version_range,
+            )
+            if contract_id == ROUTING_CONTRACT:
+                result = dict(result)
+                candidates = [dict(item) for item in result["candidates"]]
+                candidates[0]["modalities"] = ["text", "image"]
+                result["candidates"] = candidates
+            return result
+
+    from ecosystem.rumi_ai_gateway_pack.runtime.preflight import FUNCTION_ID
+
+    contribution, _ = _captured_provider(preflight=True)
+    dispatch = ImagePreflightDispatch(configured_provider=True)
+    result = contribution.invoke(FUNCTION_ID, {
+        "model_profile_id": "model-profile",
+        "messages": [{"role": "user", "content": "Inspect the image"}],
+        "modalities": ["image", "text"],
+    }, _Invocation(dispatch))
+
+    assert result["ready"] is True
+    prepared = next(
+        payload
+        for contract, _, payload in dispatch.calls
+        if contract == REQUEST_PREPARE_CONTRACT
+    )
+    assert prepared["requirements"]["modalities"] == ["image", "text"]
+
+
+@pytest.mark.parametrize("modalities", [
+    ["text", "image"],
+    ["image"],
+    ["image", "text", "audio"],
+    ["image", "text", "text"],
+    "image,text",
+])
+def test_preflight_runtime_rejects_noncanonical_modalities(
+    modalities: object,
+) -> None:
+    from ecosystem.rumi_ai_gateway_pack.runtime.preflight import FUNCTION_ID
+
+    contribution, _ = _captured_provider(preflight=True)
+    dispatch = _PreflightDispatch(configured_provider=True)
+    with pytest.raises(ValueError, match="modality requirement"):
+        contribution.invoke(FUNCTION_ID, {
+            "model_profile_id": "model-profile",
+            "messages": [{"role": "user", "content": "Inspect the image"}],
+            "modalities": modalities,
+        }, _Invocation(dispatch))
+    assert not dispatch.calls
+
+
+def test_preflight_rejects_payload_over_three_mib_before_dependency_reads() -> None:
+    """The preflight-only aggregate cap fails closed before model resolution."""
+    from ecosystem.rumi_ai_gateway_pack.runtime.preflight import FUNCTION_ID
+
+    contribution, _ = _captured_provider(preflight=True)
+    dispatch = _PreflightDispatch(configured_provider=True)
+    with pytest.raises(ValueError, match="AI preflight input is invalid"):
+        contribution.invoke(FUNCTION_ID, {
+            "model_profile_id": "model-profile",
+            "messages": [{
+                "role": "user",
+                "content": "x" * (3 * 1024 * 1024),
+            }],
+        }, _Invocation(dispatch))
+    assert not dispatch.calls
+
+
+def test_preflight_allows_payload_above_legacy_sixty_kib_limit() -> None:
+    """Readiness accepts bounded image-era context above the former text cap."""
+    from ecosystem.rumi_ai_gateway_pack.runtime.preflight import FUNCTION_ID
+
+    contribution, _ = _captured_provider(preflight=True)
+    dispatch = _PreflightDispatch(configured_provider=True)
+    result = contribution.invoke(FUNCTION_ID, {
+        "model_profile_id": "model-profile",
+        "messages": [{"role": "user", "content": "x" * (64 * 1024)}],
+    }, _Invocation(dispatch))
+
+    assert result["ready"] is True
+    assert [contract for contract, _, _ in dispatch.calls] == [
+        REQUEST_PREPARE_CONTRACT,
+        MODEL_PROFILE_CONTRACT,
+        ROUTING_CONTRACT,
+    ]
 
 
 def test_preflight_rechecks_the_exact_opaque_saved_connection() -> None:

@@ -442,10 +442,70 @@ def dynamic_profile_edges(
         (str(pack_id), 0) for pack_id in dict.fromkeys(additional_pack_ids)
     ]
     depth_for_pack: dict[str, int] = {}
-    # Keep the required Contracts attached to each caller. Unioning callers
-    # and Contracts separately would grant every caller their cross-product.
-    provider_caller_contracts: dict[str, dict[str, set[str]]] = {}
-    consumer_links: list[tuple[str, str, tuple[str, ...]]] = []
+    # Keep exact required operations attached to each caller. A Contract is a
+    # compatibility boundary, not an authority grant: expanding one signed
+    # dependency to every operation in that Contract would let a caller reach
+    # sibling operations it never named.
+    provider_caller_operations: dict[
+        str, dict[str, set[tuple[str, str]]]
+    ] = {}
+    consumer_links: list[tuple[str, str, tuple[tuple[str, str], ...]]] = []
+
+    def _required_operations(
+        consumer: Mapping[str, Any],
+        provider: Mapping[str, Any],
+        contract_ids: tuple[str, ...],
+    ) -> tuple[tuple[str, str], ...]:
+        """Return only operations explicitly bound by a signed dependency."""
+
+        provider_operations = {
+            str(contract["contract_id"]): tuple(
+                str(operation_id) for operation_id in contract["operations"]
+            )
+            for contract in provider["contracts"]
+        }
+        requirements = {
+            str(item["contract_id"]): item
+            for item in consumer["requirements"]["contract_dependencies"]
+            if not item["optional"]
+        }
+        selected: list[tuple[str, str]] = []
+        for contract_id in contract_ids:
+            provided = provider_operations[contract_id]
+            requested = requirements[contract_id].get("operations")
+            if requested is None:
+                if len(provided) != 1:
+                    raise ProfileResolutionDenied(
+                        "dynamic Pack dependency must name exact operations for "
+                        f"multi-operation Contract: {consumer['pack']['id']} -> "
+                        f"{provider['pack']['id']} ({contract_id})"
+                    )
+                requested_operations = provided
+            elif (
+                not isinstance(requested, list)
+                or not requested
+                or any(not isinstance(item, str) or not item for item in requested)
+                or len(requested) != len(set(requested))
+            ):
+                raise ProfileResolutionDenied(
+                    "dynamic Pack dependency operations are invalid: "
+                    f"{consumer['pack']['id']} -> {provider['pack']['id']} "
+                    f"({contract_id})"
+                )
+            else:
+                requested_operations = tuple(requested)
+            unknown = set(requested_operations) - set(provided)
+            if unknown:
+                raise ProfileResolutionDenied(
+                    "dynamic Pack dependency names an operation outside its "
+                    f"required Contract: {consumer['pack']['id']} -> "
+                    f"{provider['pack']['id']} ({contract_id})"
+                )
+            selected.extend(
+                (contract_id, operation_id)
+                for operation_id in requested_operations
+            )
+        return tuple(sorted(selected))
     closure: set[str] = set()
     while pending:
         pack_id, depth = pending.pop(0)
@@ -519,11 +579,24 @@ def dynamic_profile_edges(
                     raise ProfileResolutionDenied(
                         f"dynamic Pack dependency caller is ambiguous: {pack_id}"
                     )
-                caller_contracts = provider_caller_contracts.setdefault(dependency, {})
+                served_operations = _required_operations(
+                    manifest, dependency_manifest, served_contracts
+                )
+                caller_operations = provider_caller_operations.setdefault(dependency, {})
                 for caller_id in dependency_callers:
-                    caller_contracts.setdefault(caller_id, set()).update(served_contracts)
+                    caller_operations.setdefault(caller_id, set()).update(
+                        served_operations
+                    )
             if consumed_contracts:
-                consumer_links.append((pack_id, dependency, consumed_contracts))
+                consumer_links.append(
+                    (
+                        pack_id,
+                        dependency,
+                        _required_operations(
+                            dependency_manifest, manifest, consumed_contracts
+                        ),
+                    )
+                )
             pending.append((dependency, depth + 1))
 
     def _edge(
@@ -566,7 +639,7 @@ def dynamic_profile_edges(
         if depth_for_pack[pack_id] > 1:
             continue
         manifest = catalog.packs[pack_id]
-        caller_contracts = provider_caller_contracts.get(pack_id, {})
+        caller_operations = provider_caller_operations.get(pack_id, {})
         for function in sorted(manifest["functions"], key=lambda item: str(item["id"])):
             for operation_id in sorted(str(item) for item in function["operations"]):
                 contract_id = _operation_contract(manifest, operation_id)
@@ -577,8 +650,8 @@ def dynamic_profile_edges(
                     callers.add(caller_function_id)
                 callers.update(
                     caller_id
-                    for caller_id, required in caller_contracts.items()
-                    if contract_id in required
+                    for caller_id, required in caller_operations.items()
+                    if (contract_id, operation_id) in required
                 )
                 for caller_id in sorted(callers):
                     key = (caller_id, str(function["id"]), contract_id, operation_id)
@@ -591,7 +664,7 @@ def dynamic_profile_edges(
     # A declared Pack dependency may also be a signed consumer of the enabling
     # Pack's own Contracts: it receives caller edges into the exact operations
     # it depends on, while still never inheriting the Shell caller.
-    for provider_id, consumer_id, shared_contracts in sorted(set(consumer_links)):
+    for provider_id, consumer_id, shared_operations in sorted(set(consumer_links)):
         provider_manifest = catalog.packs[provider_id]
         consumer_manifest = catalog.packs[consumer_id]
         for consumer_function in consumer_manifest["functions"]:
@@ -602,7 +675,7 @@ def dynamic_profile_edges(
                     contract_id = _operation_contract(provider_manifest, operation_id)
                     if (
                         contract_id is None
-                        or contract_id not in shared_contracts
+                        or (contract_id, operation_id) not in shared_operations
                     ):
                         continue
                     key = (

@@ -339,20 +339,85 @@
             },
             "pattern": "^[A-Za-z0-9]",
             "type": "string"
+          },
+          "image_block": {
+            "additionalProperties": false,
+            "properties": {
+              "image_url": {
+                "additionalProperties": false,
+                "properties": {
+                  "url": {
+                    "maxLength": 1398127,
+                    "minLength": 1,
+                    "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url"
+                ],
+                "type": "object"
+              },
+              "type": {
+                "const": "image_url"
+              }
+            },
+            "required": [
+              "type",
+              "image_url"
+            ],
+            "type": "object"
+          },
+          "text_block": {
+            "additionalProperties": false,
+            "properties": {
+              "text": {
+                "maxLength": 61440,
+                "minLength": 1,
+                "pattern": "\\S",
+                "type": "string"
+              },
+              "type": {
+                "const": "text"
+              }
+            },
+            "required": [
+              "type",
+              "text"
+            ],
+            "type": "object"
           }
         },
         "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+        "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
         "properties": {
           "request": {
             "additionalProperties": false,
             "properties": {
               "content": {
-                "minLength": 1,
-                "pattern": "\\S",
-                "type": "string"
+                "oneOf": [
+                  {
+                    "maxLength": 61440,
+                    "minLength": 1,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "$ref": "#/$defs/image_block"
+                    },
+                    "maxItems": 3,
+                    "minItems": 1,
+                    "prefixItems": [
+                      {
+                        "$ref": "#/$defs/text_block"
+                      }
+                    ],
+                    "type": "array"
+                  }
+                ]
               },
               "conversation_id": {
                 "$ref": "#/$defs/identifier"
@@ -559,20 +624,85 @@
                 },
                 "pattern": "^[A-Za-z0-9]",
                 "type": "string"
+              },
+              "image_block": {
+                "additionalProperties": false,
+                "properties": {
+                  "image_url": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "url": {
+                        "maxLength": 1398127,
+                        "minLength": 1,
+                        "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
+                  },
+                  "type": {
+                    "const": "image_url"
+                  }
+                },
+                "required": [
+                  "type",
+                  "image_url"
+                ],
+                "type": "object"
+              },
+              "text_block": {
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "maxLength": 61440,
+                    "minLength": 1,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "text"
+                  }
+                },
+                "required": [
+                  "type",
+                  "text"
+                ],
+                "type": "object"
               }
             },
             "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "additionalProperties": false,
-            "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+            "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
             "properties": {
               "request": {
                 "additionalProperties": false,
                 "properties": {
                   "content": {
-                    "minLength": 1,
-                    "pattern": "\\S",
-                    "type": "string"
+                    "oneOf": [
+                      {
+                        "maxLength": 61440,
+                        "minLength": 1,
+                        "pattern": "\\S",
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "$ref": "#/$defs/image_block"
+                        },
+                        "maxItems": 3,
+                        "minItems": 1,
+                        "prefixItems": [
+                          {
+                            "$ref": "#/$defs/text_block"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ]
                   },
                   "conversation_id": {
                     "$ref": "#/$defs/identifier"
@@ -7260,7 +7390,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_file_inspect_pack.file-inspect.service",
-      "implementation_digest": "sha256:8fb786fa4c4339b5c6d9e94e66e1d4a5677b101df7f83a3a5f1694c3bbfd1c56",
+      "implementation_digest": "sha256:2af189c171fc6a37ff1c486f6ee234e06678121ae97396d559bdb38d3cff915d",
       "implementation_path": "runtime/inspect.py",
       "input_schema": {
         "type": "object"
@@ -7273,7 +7403,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:8fb786fa4c4339b5c6d9e94e66e1d4a5677b101df7f83a3a5f1694c3bbfd1c56",
+          "implementation_digest": "sha256:2af189c171fc6a37ff1c486f6ee234e06678121ae97396d559bdb38d3cff915d",
           "implementation_path": "runtime/inspect.py",
           "input_schema": {
             "type": "object"
@@ -7294,7 +7424,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:8fb786fa4c4339b5c6d9e94e66e1d4a5677b101df7f83a3a5f1694c3bbfd1c56",
+          "implementation_digest": "sha256:2af189c171fc6a37ff1c486f6ee234e06678121ae97396d559bdb38d3cff915d",
           "implementation_path": "runtime/inspect.py",
           "input_schema": {
             "type": "object"
@@ -13610,20 +13740,85 @@
             },
             "pattern": "^[A-Za-z0-9]",
             "type": "string"
+          },
+          "image_block": {
+            "additionalProperties": false,
+            "properties": {
+              "image_url": {
+                "additionalProperties": false,
+                "properties": {
+                  "url": {
+                    "maxLength": 1398127,
+                    "minLength": 1,
+                    "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url"
+                ],
+                "type": "object"
+              },
+              "type": {
+                "const": "image_url"
+              }
+            },
+            "required": [
+              "type",
+              "image_url"
+            ],
+            "type": "object"
+          },
+          "text_block": {
+            "additionalProperties": false,
+            "properties": {
+              "text": {
+                "maxLength": 61440,
+                "minLength": 1,
+                "pattern": "\\S",
+                "type": "string"
+              },
+              "type": {
+                "const": "text"
+              }
+            },
+            "required": [
+              "type",
+              "text"
+            ],
+            "type": "object"
           }
         },
         "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
-        "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+        "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
         "properties": {
           "request": {
             "additionalProperties": false,
             "properties": {
               "content": {
-                "minLength": 1,
-                "pattern": "\\S",
-                "type": "string"
+                "oneOf": [
+                  {
+                    "maxLength": 61440,
+                    "minLength": 1,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "$ref": "#/$defs/image_block"
+                    },
+                    "maxItems": 3,
+                    "minItems": 1,
+                    "prefixItems": [
+                      {
+                        "$ref": "#/$defs/text_block"
+                      }
+                    ],
+                    "type": "array"
+                  }
+                ]
               },
               "conversation_id": {
                 "$ref": "#/$defs/identifier"
@@ -13830,20 +14025,85 @@
                 },
                 "pattern": "^[A-Za-z0-9]",
                 "type": "string"
+              },
+              "image_block": {
+                "additionalProperties": false,
+                "properties": {
+                  "image_url": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "url": {
+                        "maxLength": 1398127,
+                        "minLength": 1,
+                        "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
+                  },
+                  "type": {
+                    "const": "image_url"
+                  }
+                },
+                "required": [
+                  "type",
+                  "image_url"
+                ],
+                "type": "object"
+              },
+              "text_block": {
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "maxLength": 61440,
+                    "minLength": 1,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "text"
+                  }
+                },
+                "required": [
+                  "type",
+                  "text"
+                ],
+                "type": "object"
               }
             },
             "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "additionalProperties": false,
-            "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+            "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
             "properties": {
               "request": {
                 "additionalProperties": false,
                 "properties": {
                   "content": {
-                    "minLength": 1,
-                    "pattern": "\\S",
-                    "type": "string"
+                    "oneOf": [
+                      {
+                        "maxLength": 61440,
+                        "minLength": 1,
+                        "pattern": "\\S",
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "$ref": "#/$defs/image_block"
+                        },
+                        "maxItems": 3,
+                        "minItems": 1,
+                        "prefixItems": [
+                          {
+                            "$ref": "#/$defs/text_block"
+                          }
+                        ],
+                        "type": "array"
+                      }
+                    ]
                   },
                   "conversation_id": {
                     "$ref": "#/$defs/identifier"
@@ -16863,7 +17123,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:38234b63d09e6df70ccf9593a81aff9e5b839080e734e1ce1a1cd0322d8eb5d1",
+    "input_digest": "sha256:9dbc598818f5d29fad5072a78fc83eddcbde0e7479279c37986ea56d4ef4227c",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -17309,7 +17569,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_email_connector_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:8975cbad4a87ae7f9184135c420b04adc82af318c0da597cc461e94c1c77573f",
+        "digest": "sha256:439b74a835c79582afa71512721357cdd63e00ef047363e166328acff65a3fd2",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_file_inspect_pack/artifact-manifest.json"
       },
@@ -17614,7 +17874,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:e63ae12fc147dc3e672784364fdf04eae6220242ebc48cbe7387bd2023a0cf78",
+        "digest": "sha256:4a9f12da5579c8b601f922a9d1f080b68a0db022a1ebb1b60cd41d2b0a17fb4a",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -17629,7 +17889,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_agent_state_store_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:90aa272b0b588db2e046182392b83afa3f90bde9a4d13df2b18ff954dfbd1da6",
+        "digest": "sha256:6e6f93c13cc895357cc77cf794e538215212158f89f9f52a6bb85e2fd3a16a70",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json"
       },
@@ -17799,7 +18059,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_email_connector_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:afe6ed37240ce7e064ccf19bf3cdd88594afabd2d8486f69d97f1bf4b76c1282",
+        "digest": "sha256:4e3f970c385ff7206471b1f85d71b9bffe5bf0a35a5aa6cd37b5827ee3fc3a39",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_file_inspect_pack/rumi.pack.v3.json"
       },
@@ -17904,7 +18164,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_media_capture_host_service_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:99b581d06bf7785045ed5e85c6f7b4678872a14c430a5a4756124c4988f29276",
+        "digest": "sha256:2159d8a7553dc9bdd10885656adb642e12fcab8a64a3e4993d99ff4554ad338d",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_media_inspect_service_pack/rumi.pack.v3.json"
       },
@@ -18094,7 +18354,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:10eaf31dd144253363d99be0936e555c645768a050b130f6a81d559a7862e872",
+        "digest": "sha256:da5008dd310378123c69ff7029aa8acd9ece581f1113fe479a01753a03c694a0",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json"
       },
