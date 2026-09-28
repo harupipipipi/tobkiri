@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "e7660a086e06aa1119a8e525f8c34b39dd6abb1430c930d1470aea542db99368",
+    "digest": "6d0f918f64fbd5cb02de7ecfb8ee92eb674b2e0eb991104d76f49a60081783a6",
     "entries": [
       {
         "path": "index.html",
@@ -1535,13 +1535,13 @@
       },
       {
         "path": "src/lib/pendingChat.test.ts",
-        "size": 11292,
-        "sha256": "a93537a58e40caac603110588d58c85feafdba246e5f910eb76dfa3a2b63ae81"
+        "size": 11302,
+        "sha256": "81aa90d7dbef3854a9284ea276830d04b457dd279fc2253b65fd530975fa61bf"
       },
       {
         "path": "src/lib/pendingChat.ts",
-        "size": 9601,
-        "sha256": "37386fd8c71a865bfdec927fff83b3e3642cfb0349b90f48207922b51be27f54"
+        "size": 9680,
+        "sha256": "1c98f1df8d8d6a796eba430b34e2f1b83cceb112ad3d3df8a9b6281617b06359"
       },
       {
         "path": "src/lib/placement.test.ts",
@@ -1986,7 +1986,7 @@
     ]
   },
   "bundle": {
-    "digest": "e47603e7e4d121d5d778dd2c3e41d6dbe203ebf3d9b2c3feb41cebd587891c88",
+    "digest": "cc1f91f7db700f8a9b51f90586c468bfc98469fea26d3e8ac30a7d1c276fef27",
     "entries": [
       {
         "path": "shell-app.css",
@@ -2000,8 +2000,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2259137,
-        "sha256": "8ad63ec05dec97df30f0a7e8dd14e93f31a22cae0fce841d00bfc8d6b6164d4c"
+        "size": 2259216,
+        "sha256": "b7fa00ce0663e3c94aaf04e530fd802c06228eea5c9f0bb6358cee9c7693a28d"
       },
       {
         "path": "shell-rolldown-runtime.js",
