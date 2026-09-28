@@ -792,8 +792,18 @@ def test_rumi_harness_tool_selection_only_adds_vision_tools_for_model_visible_im
     )
 
     assert without_images["vision_tool_ids"] == []
-    assert "vision_zoom" in with_images["vision_tool_ids"]
+    assert without_images["harness_tool_ids"] == []
+    assert with_images["vision_tool_ids"] == [
+        "vision_zoom",
+        "vision_crop",
+        "vision_region_compare",
+    ]
+    assert with_images["harness_tool_ids"] == with_images["vision_tool_ids"]
     assert with_images["separate_from_model_tools"] is True
+    assert all(
+        not tool_id.startswith("deepthink_")
+        for tool_id in with_images["harness_tool_ids"]
+    )
 
 
 @pytest.mark.skip(reason=_V4_DIRECT_PROVIDER_TEST_REASON)

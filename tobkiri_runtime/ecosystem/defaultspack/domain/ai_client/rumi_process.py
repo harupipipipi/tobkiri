@@ -223,6 +223,56 @@ def request_mode(
     return "simple"
 
 
+def select_harness_tools(
+    messages: list[dict[str, Any]],
+    model_tools: list[dict[str, Any]] | None = None,
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Select generic harness tools for model-visible image input.
+
+    This compatibility API keeps harness tools separate from caller-supplied
+    model tools. It intentionally contains no strategy- or Pack-specific
+    tools: optional Packs contribute their behavior through the admitted
+    strategy contract.
+    """
+    del params
+    model_tool_ids = [_tool_id(tool) for tool in (model_tools or [])]
+    model_tool_ids = [tool_id for tool_id in model_tool_ids if tool_id]
+    vision_enabled = messages_have_images(messages)
+    vision_tools = (
+        [
+            {
+                "id": "vision_zoom",
+                "purpose": "inspect enlarged image regions before judging details",
+            },
+            {
+                "id": "vision_crop",
+                "purpose": "focus on a region of an image or screenshot",
+            },
+            {
+                "id": "vision_region_compare",
+                "purpose": "compare separated visual regions for UI and image tasks",
+            },
+        ]
+        if vision_enabled
+        else []
+    )
+    return {
+        "source": "model_visible_image_harness",
+        "separate_from_model_tools": True,
+        "model_tool_ids": model_tool_ids,
+        "harness_tool_ids": [item["id"] for item in vision_tools],
+        "vision_enabled": vision_enabled,
+        "vision_tool_ids": [item["id"] for item in vision_tools],
+        "tools": vision_tools,
+        "selection_note": (
+            "Vision harness tools are enabled because the model request still contains image blocks."
+            if vision_enabled
+            else "Vision harness tools are not enabled because this request has no model-visible image input."
+        ),
+    }
+
+
 def build_simple_messages(original_messages: list[dict[str, Any]], context: dict[str, Any]) -> list[dict[str, Any]]:
     return [
         {"role": "system", "content": _simple_system_prompt()},
