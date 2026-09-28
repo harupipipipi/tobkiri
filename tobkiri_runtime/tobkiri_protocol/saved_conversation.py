@@ -141,7 +141,7 @@ def _saved_user_text_bytes(value: Any) -> int | None:
 
 
 def saved_user_text(value: Any) -> str:
-    """Flatten saved user content for text-only readiness and DeepThink gates."""
+    """Flatten saved user content for text-only readiness checks."""
     if not is_saved_user_content(value):
         raise ValueError("saved turn user content is invalid")
     if isinstance(value, str):
@@ -208,7 +208,8 @@ def validate_saved_conversation_input(payload: Mapping[str, Any]) -> dict[str, A
     request = initial["request"]
     if not isinstance(request, dict) or set(request) - {
         "tool_selection",
-        "deepthink_enabled",
+        "strategy_reference",
+        "strategy_maximum_cost_microusd",
         "thinking_level",
     } != {
         "turn_id",
@@ -219,8 +220,18 @@ def validate_saved_conversation_input(payload: Mapping[str, Any]) -> dict[str, A
         raise ValueError("saved turn request fields are invalid")
     if "tool_selection" in request:
         validate_tool_selection(request["tool_selection"])
-    if type(request.get("deepthink_enabled", False)) is not bool:
-        raise ValueError("saved turn deepthink flag is invalid")
+    strategy_reference = request.get("strategy_reference")
+    if strategy_reference is not None and (
+        not isinstance(strategy_reference, str)
+        or _ID.fullmatch(strategy_reference) is None
+    ):
+        raise ValueError("saved turn strategy reference is invalid")
+    strategy_cost = request.get("strategy_maximum_cost_microusd")
+    if strategy_cost is not None and (
+        type(strategy_cost) is not int
+        or not 1 <= strategy_cost <= 1_000_000
+    ):
+        raise ValueError("saved turn strategy maximum cost is invalid")
     if "thinking_level" in request and (
         not isinstance(request["thinking_level"], str)
         or request["thinking_level"] not in {

@@ -381,13 +381,6 @@ class RuntimeCaptureInputs:
         ]
         | None
     ) = None
-    saved_deepthink_gate: (
-        Callable[
-            [str, list[dict[str, object]], list[dict[str, object]]],
-            Mapping[str, object],
-        ]
-        | None
-    ) = None
 
 
 class ActivationSnapshotLoader(Protocol):
@@ -3572,7 +3565,6 @@ class PackAPIServer:
                             inputs.authority_approval_window_open
                         ),
                         model_search=inputs.model_search,
-                        saved_deepthink_gate=inputs.saved_deepthink_gate,
                     )
                 except Exception:
                     authority.close()

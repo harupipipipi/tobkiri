@@ -18,6 +18,7 @@
     "rumi_ai_modality_pack",
     "rumi_ai_pipeline_pack",
     "rumi_ai_routing_pack",
+    "rumi_ai_strategy_runtime_pack",
     "rumi_ai_stream_pack",
     "rumi_ai_tool_bridge_pack",
     "rumi_ai_usage_pack",
@@ -54,6 +55,7 @@
     "rumi_credential_broker_pack",
     "rumi_customer_research_pack",
     "rumi_data_analysis_pack",
+    "rumi_deepthink_pack",
     "rumi_default_tool_projection_pack",
     "rumi_default_tools_pack",
     "rumi_desktop_host_service_pack",
@@ -186,7 +188,7 @@
             {
               "entrypoint_id": "saved_complete",
               "id": "saved_complete",
-              "implementation_digest": "sha256:9b1595eedfd8bc22199cd4211a19a58baf7b837c3608dd2704a443e8efd7a341"
+              "implementation_digest": "sha256:8937e6213ee34fc75f828676b0fe4a025c623ed80171dffeb18d3ae9b081e4e9"
             }
           ],
           "owner": "defaultspack",
@@ -264,9 +266,9 @@
                         }
                       ]
                     },
-                    "deepthink_enabled": {
-                      "type": "boolean",
-                      "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check."
+                    "strategy_reference": {
+                      "$ref": "#/$defs/identifier",
+                      "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
                     },
                     "thinking_level": {
                       "enum": [
@@ -490,7 +492,7 @@
             {
               "entrypoint_id": "defaultspack.presentation.read",
               "id": "defaultspack.presentation.read",
-              "implementation_digest": "sha256:712e2540875dc130c3d393c85a104c99b37f8d5d0248201b09c6e84c748157f2"
+              "implementation_digest": "sha256:9c51dee01a3fed6671b9eff7b02b581575bd294ac564f6ed1216071d64dc0235"
             }
           ],
           "owner": "defaultspack",
@@ -649,14 +651,8 @@
       "required_contracts": [
         {
           "cardinality": "one",
-          "contract_id": "tobkiri.service.ai.generate.v1",
-          "optional": false,
-          "version_range": ">=1.0.0 <2.0.0"
-        },
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.service.ai.stream.v1",
-          "optional": false,
+          "contract_id": "tobkiri.resource.ai.strategy.catalog.v1",
+          "optional": true,
           "version_range": ">=1.0.0 <2.0.0"
         },
         {
@@ -664,6 +660,24 @@
           "contract_id": "tobkiri.resource.prompt.studio.v1",
           "optional": true,
           "version_range": "^1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.ai.generate.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.ai.strategy.dispatch.v1",
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.ai.stream.v1",
+          "optional": false,
+          "version_range": ">=1.0.0 <2.0.0"
         }
       ],
       "runtime_artifacts": [
@@ -673,12 +687,12 @@
           "path": "runtime/conversation.py"
         },
         {
-          "digest": "sha256:712e2540875dc130c3d393c85a104c99b37f8d5d0248201b09c6e84c748157f2",
+          "digest": "sha256:9c51dee01a3fed6671b9eff7b02b581575bd294ac564f6ed1216071d64dc0235",
           "kind": "executable",
           "path": "runtime/application_presentation.py"
         },
         {
-          "digest": "sha256:9b1595eedfd8bc22199cd4211a19a58baf7b837c3608dd2704a443e8efd7a341",
+          "digest": "sha256:8937e6213ee34fc75f828676b0fe4a025c623ed80171dffeb18d3ae9b081e4e9",
           "kind": "executable",
           "path": "runtime/saved_conversation.py"
         },
@@ -1412,7 +1426,7 @@
       "secrets": [],
       "source_evidence": [
         {
-          "digest": "sha256:9fea15c85008d30047688edba660916ca375017a013ed5293375c829d2ff3f98",
+          "digest": "sha256:852a598043d2dbae330fec23613744d56b97173e03b6410cb7c79c141910d0fb",
           "path": "schemas/executable_sources.v1.json",
           "rule_id": "canonical-bundled-v4-source"
         }
@@ -1965,6 +1979,7 @@
       "capabilities": [
         "ai.gateway.diagnostics.read",
         "ai.gateway.generate",
+        "ai.gateway.route.quote.read",
         "ai.gateway.stream"
       ],
       "dependencies": {},
@@ -1992,7 +2007,7 @@
       "provided_contracts": [
         {
           "cardinality": "one",
-          "contract_id": "tobkiri.resource.ai.readiness.v1",
+          "contract_id": "tobkiri.resource.ai.route.quote.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
           "lifecycle": {
@@ -2002,96 +2017,204 @@
           },
           "operations": [
             {
-              "entrypoint_id": "ai-gateway-preflight",
-              "id": "rumi_ai_gateway_pack.ai-gateway.preflight",
-              "implementation_digest": "sha256:ad552779bc28743c787a7c198a630d5e398815445888341b694d61ccc4c7ca8c"
+              "entrypoint_id": "ai-gateway-route-quote",
+              "id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
+              "implementation_digest": "sha256:44be6a6f20a8e90e9ab30b7540e13ca2dfda50aed21932a035f7eac979777494"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
-          "provider_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+          "provider_id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
           "required_capabilities": [
-            "ai.gateway.readiness.read"
+            "ai.gateway.route.quote.read"
           ],
           "schemas": {
             "input": {
+              "type": "object",
               "additionalProperties": false,
-              "properties": {
-                "deepthink": {
-                  "type": "boolean"
-                },
-                "messages": {
-                  "items": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "content": {
-                        "type": "string"
-                      },
-                      "role": {
-                        "enum": [
-                          "system",
-                          "user",
-                          "assistant"
-                        ]
-                      }
-                    },
-                    "required": [
-                      "role",
-                      "content"
-                    ],
-                    "type": "object"
-                  },
-                  "maxItems": 2048,
-                  "minItems": 1,
-                  "type": "array"
-                },
-                "model_profile_id": {
-                  "maxLength": 256,
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "modalities": {
-                  "const": [
-                    "image",
-                    "text"
-                  ]
-                },
-                "tool_calling": {
-                  "type": "boolean"
-                }
-              },
               "required": [
-                "model_profile_id",
                 "messages"
               ],
-              "type": "object"
+              "anyOf": [
+                {
+                  "required": [
+                    "model_profile_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "model_reference"
+                  ]
+                }
+              ],
+              "properties": {
+                "model_profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "model_reference": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "profile_id"
+                      ],
+                      "properties": {
+                        "profile_id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        }
+                      }
+                    }
+                  ]
+                },
+                "messages": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 2048,
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "requirements": {
+                  "type": "object"
+                }
+              }
             },
             "output": {
+              "type": "object",
               "additionalProperties": false,
+              "required": [
+                "ready",
+                "model_id",
+                "provider_instance_id",
+                "catalog_provider_instance_id",
+                "catalog_revision",
+                "pricing_revision",
+                "pricing",
+                "route_binding"
+              ],
               "properties": {
-                "catalog_revision": {
-                  "type": "string"
+                "ready": {
+                  "const": true
                 },
                 "model_id": {
-                  "type": "string"
-                },
-                "model_profile_id": {
                   "type": "string"
                 },
                 "provider_instance_id": {
                   "type": "string"
                 },
-                "ready": {
-                  "const": true
+                "catalog_provider_instance_id": {
+                  "type": "string"
+                },
+                "catalog_revision": {
+                  "type": "string"
+                },
+                "pricing_revision": {
+                  "type": "string"
+                },
+                "pricing": {
+                  "$ref": "#/$defs/pricing"
+                },
+                "route_binding": {
+                  "$ref": "#/$defs/route_binding"
                 }
               },
-              "required": [
-                "ready",
-                "model_profile_id",
-                "model_id",
-                "provider_instance_id",
-                "catalog_revision"
-              ],
-              "type": "object"
+              "$defs": {
+                "pricing": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "input",
+                    "output",
+                    "currency",
+                    "unit"
+                  ],
+                  "properties": {
+                    "input": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "string",
+                          "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$",
+                          "maxLength": 128
+                        }
+                      ]
+                    },
+                    "output": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "string",
+                          "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$",
+                          "maxLength": 128
+                        }
+                      ]
+                    },
+                    "currency": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 16
+                    },
+                    "unit": {
+                      "const": "usd_per_token",
+                      "description": "Catalog input and output rates are USD per token; this matches the usage-cost owner calculation."
+                    }
+                  }
+                },
+                "route_binding": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "model_id",
+                    "provider_instance_id",
+                    "catalog_provider_instance_id",
+                    "catalog_revision",
+                    "pricing_revision",
+                    "pricing"
+                  ],
+                  "properties": {
+                    "model_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    "provider_instance_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    "catalog_provider_instance_id": {
+                      "type": "string",
+                      "maxLength": 512
+                    },
+                    "catalog_revision": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    "pricing_revision": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    "pricing": {
+                      "$ref": "#/$defs/pricing"
+                    }
+                  }
+                }
+              }
             }
           },
           "security": "sensitive",
@@ -2111,7 +2234,7 @@
             {
               "entrypoint_id": "ai-gateway-routing-diagnostics",
               "id": "rumi_ai_gateway_pack.ai-gateway-routing-diagnostics",
-              "implementation_digest": "sha256:56b83ae3d1377ed2618729028d6834935b67bc864c6210432554f3e2d0dfe2f5"
+              "implementation_digest": "sha256:92c1b24bf8efbb0a74ca4bb462ff117e4492dd06967a14a0dece46eb0d011c59"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2144,7 +2267,7 @@
             {
               "entrypoint_id": "ai-gateway-generate",
               "id": "rumi_ai_gateway_pack.ai-gateway.generate",
-              "implementation_digest": "sha256:56b83ae3d1377ed2618729028d6834935b67bc864c6210432554f3e2d0dfe2f5"
+              "implementation_digest": "sha256:92c1b24bf8efbb0a74ca4bb462ff117e4492dd06967a14a0dece46eb0d011c59"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2177,7 +2300,7 @@
             {
               "entrypoint_id": "ai-gateway-stream",
               "id": "rumi_ai_gateway_pack.ai-gateway.stream",
-              "implementation_digest": "sha256:56b83ae3d1377ed2618729028d6834935b67bc864c6210432554f3e2d0dfe2f5"
+              "implementation_digest": "sha256:92c1b24bf8efbb0a74ca4bb462ff117e4492dd06967a14a0dece46eb0d011c59"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2272,30 +2395,25 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:477c2e0e0b52e3a73ff08ec69bc18cb0cbe7607c5d911e4e72428c922562c1c2",
-          "kind": "executable",
-          "path": "runtime/deepthink.py"
-        },
-        {
-          "digest": "sha256:56b83ae3d1377ed2618729028d6834935b67bc864c6210432554f3e2d0dfe2f5",
+          "digest": "sha256:92c1b24bf8efbb0a74ca4bb462ff117e4492dd06967a14a0dece46eb0d011c59",
           "kind": "executable",
           "path": "runtime/gateway.py"
         },
         {
-          "digest": "sha256:ad552779bc28743c787a7c198a630d5e398815445888341b694d61ccc4c7ca8c",
+          "digest": "sha256:44be6a6f20a8e90e9ab30b7540e13ca2dfda50aed21932a035f7eac979777494",
           "kind": "executable",
-          "path": "runtime/preflight.py"
+          "path": "runtime/route_quote.py"
         }
       ],
       "secrets": [],
       "source_evidence": [
         {
-          "digest": "sha256:84718b2f439167d5d42bade5fd2ada512e72f19e1d74dabf5361d115e1ab1021",
+          "digest": "sha256:9d04e4f978db30b3c77f50c80583f765e7ecce1eef62b92a61c13ab768666ed7",
           "path": "ecosystem/rumi_ai_gateway_pack/ecosystem.json",
           "rule_id": "pack-v4-one-way-migration-input"
         },
         {
-          "digest": "sha256:2f4cefb6bee613233be46f66ad937e6cbdcb915b06568d76f931d68a4aebc5cb",
+          "digest": "sha256:0cf0b80b8e8736b12e2c5919fef4a9199a7d99d58b03a494cf6596d264fe5ef7",
           "path": "ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json",
           "rule_id": "pack-v4-one-way-migration-input"
         }
@@ -2578,17 +2696,17 @@
             {
               "entrypoint_id": "ai-failover-decide",
               "id": "rumi_ai_pipeline_pack.ai-failover-decide",
-              "implementation_digest": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91"
+              "implementation_digest": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4"
             },
             {
               "entrypoint_id": "ai-failover-decide.generate",
               "id": "rumi_ai_pipeline_pack.ai-failover-decide.generate",
-              "implementation_digest": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91"
+              "implementation_digest": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4"
             },
             {
               "entrypoint_id": "ai-failover-decide.stream",
               "id": "rumi_ai_pipeline_pack.ai-failover-decide.stream",
-              "implementation_digest": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91"
+              "implementation_digest": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4"
             }
           ],
           "owner": "rumi_ai_pipeline_pack",
@@ -2621,17 +2739,17 @@
             {
               "entrypoint_id": "ai-request-prepare",
               "id": "rumi_ai_pipeline_pack.ai-request-prepare",
-              "implementation_digest": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91"
+              "implementation_digest": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4"
             },
             {
               "entrypoint_id": "ai-request-prepare.generate",
               "id": "rumi_ai_pipeline_pack.ai-request-prepare.generate",
-              "implementation_digest": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91"
+              "implementation_digest": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4"
             },
             {
               "entrypoint_id": "ai-request-prepare.stream",
               "id": "rumi_ai_pipeline_pack.ai-request-prepare.stream",
-              "implementation_digest": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91"
+              "implementation_digest": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4"
             }
           ],
           "owner": "rumi_ai_pipeline_pack",
@@ -2659,7 +2777,7 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:4561de22a28a77607dde5e0c22a3b16fece1d402ca1b2a4288b3e3e5a95fcd91",
+          "digest": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4",
           "kind": "executable",
           "path": "runtime/pipeline.py"
         }
@@ -2667,12 +2785,12 @@
       "secrets": [],
       "source_evidence": [
         {
-          "digest": "sha256:e8265ad7705551f216200fe457e713350a7385df729eb1e5b5c30f659702ca01",
+          "digest": "sha256:5a774233e863d61f33bbf45860ad0fb3cf7c8646aca8ce8d2e570dafffc45d09",
           "path": "ecosystem/rumi_ai_pipeline_pack/ecosystem.json",
           "rule_id": "pack-v4-one-way-migration-input"
         },
         {
-          "digest": "sha256:a4096dd1904f2fbe0e78cae8b5e0609f6d74936fb5fb07d13a83ee9dd88c6446",
+          "digest": "sha256:a5d6be15ddefd06648ca891c2cb9313b66b9bb84d103046d5a76324b9d5653ac",
           "path": "ecosystem/rumi_ai_pipeline_pack/rumi.pack.v3.json",
           "rule_id": "pack-v4-one-way-migration-input"
         }
@@ -2791,6 +2909,280 @@
       },
       "version": "1.0.0",
       "workspace_boundary": "host_brokered"
+    },
+    {
+      "approval_policy": "none",
+      "authority": "v4-authoritative",
+      "capabilities": [
+        "ai.strategy.catalog.read",
+        "ai.strategy.dispatch"
+      ],
+      "dependencies": {},
+      "description": "Plan-pinned discovery and dispatch for installed AI strategy Packs.",
+      "display_name": "Tobkiri AI Strategy Runtime",
+      "execution_boundary": "host_brokered",
+      "kind": "host_extension",
+      "legacy_ids": [],
+      "legacy_operations": [],
+      "migration": {
+        "removal_wave": 10,
+        "sunset_at": "2027-12-31"
+      },
+      "network": {
+        "allowed_domains": [],
+        "allowed_ports": []
+      },
+      "pack_id": "rumi_ai_strategy_runtime_pack",
+      "provided_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.ai.strategy.dispatch.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_ai_strategy_runtime_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "rumi_ai_strategy_runtime_pack.ai-strategy.dispatch",
+              "id": "rumi_ai_strategy_runtime_pack.ai-strategy.dispatch",
+              "implementation_digest": "sha256:9c9f81b839e3e755cc6fe832816362932ceb15431cccb671cc114d1ff86c1d39"
+            }
+          ],
+          "owner": "rumi_ai_strategy_runtime_pack",
+          "provider_id": "rumi_ai_strategy_runtime_pack.ai-strategy.dispatch",
+          "required_capabilities": [
+            "ai.strategy.dispatch"
+          ],
+          "schemas": {
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "request": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "allow_failover": {
+                      "type": "boolean"
+                    },
+                    "deadline": {
+                      "description": "Host-bounded Unix epoch milliseconds.",
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "idempotency_key": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                      "type": "string"
+                    },
+                    "input": {
+                      "type": "string"
+                    },
+                    "maximum_cost_microusd": {
+                      "description": "Host-enforced maximum total cost in integer micro-USD (at most 1 USD).",
+                      "maximum": 1000000,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "messages": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "maxItems": 2048,
+                      "type": "array"
+                    },
+                    "model_profile_id": {
+                      "type": "string"
+                    },
+                    "model_reference": {
+                      "type": "string"
+                    },
+                    "parameters": {
+                      "type": "object"
+                    },
+                    "policy_revision": {
+                      "type": "string"
+                    },
+                    "profile_id": {
+                      "type": "string"
+                    },
+                    "request_id": {
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                      "type": "string"
+                    },
+                    "requirements": {
+                      "type": "object"
+                    },
+                    "system_prompt_digest": {
+                      "pattern": "^sha256:[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "tools": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "request_id",
+                    "messages",
+                    "deadline",
+                    "idempotency_key"
+                  ],
+                  "type": "object"
+                },
+                "strategy_reference": {
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "strategy_reference",
+                "request"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.ai.strategy.catalog.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_ai_strategy_runtime_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+              "id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+              "implementation_digest": "sha256:9c9f81b839e3e755cc6fe832816362932ceb15431cccb671cc114d1ff86c1d39"
+            }
+          ],
+          "owner": "rumi_ai_strategy_runtime_pack",
+          "provider_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+          "required_capabilities": [
+            "ai.strategy.catalog.read"
+          ],
+          "schemas": {
+            "input": {
+              "additionalProperties": false,
+              "maxProperties": 0,
+              "type": "object"
+            },
+            "output": {
+              "additionalProperties": false,
+              "properties": {
+                "count": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "strategies": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "artifact_digest": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "implementation_digest": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "operation_id": {
+                        "type": "string"
+                      },
+                      "pack_id": {
+                        "type": "string"
+                      },
+                      "provider_id": {
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                        "type": "string"
+                      },
+                      "provider_instance_id": {
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                        "type": "string"
+                      },
+                      "strategy_reference": {
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "provider_instance_id",
+                      "provider_id",
+                      "pack_id",
+                      "operation_id",
+                      "artifact_digest",
+                      "implementation_digest",
+                      "strategy_reference",
+                      "label",
+                      "description"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "strategies",
+                "count"
+              ],
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        }
+      ],
+      "required_contracts": [
+        {
+          "cardinality": "many",
+          "contract_id": "tobkiri.service.ai.strategy.execute.v1",
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
+        }
+      ],
+      "runtime_artifacts": [
+        {
+          "digest": "sha256:a4966ed8955cc52c26d7397e7efb0e99665ab5082487f9a72a07d70fef857df4",
+          "kind": "executable",
+          "path": "__init__.py"
+        },
+        {
+          "digest": "sha256:61d811396f00b7e99a4cbca1e183f0f61b6b51d7d10a506aab884401af6d219f",
+          "kind": "executable",
+          "path": "runtime/__init__.py"
+        },
+        {
+          "digest": "sha256:9c9f81b839e3e755cc6fe832816362932ceb15431cccb671cc114d1ff86c1d39",
+          "kind": "executable",
+          "path": "runtime/strategy.py"
+        }
+      ],
+      "secrets": [],
+      "source_provenance": {
+        "historical_classification": "modern-only",
+        "mode": "canonical-v4",
+        "owner": "rumi_ai_strategy_runtime_pack",
+        "source_format": "pack_v4_catalog.v1"
+      },
+      "version": "1.0.0",
+      "workspace_boundary": "none",
+      "source_evidence": []
     },
     {
       "approval_policy": "none",
@@ -4112,7 +4504,7 @@
         {
           "contract_id": "tobkiri.resource.command.state.v1",
           "function_id": "rumi_command_protocol_pack.command.state",
-          "implementation_digest": "sha256:9171d03ffe8847830e788dc7edfd99c508ead810f71019bd680fd2d5ddd7c5f4",
+          "implementation_digest": "sha256:2707d6b9bd1063aaf53fe51b05779531bf6afa7294c57231786a7801161ee37f",
           "operation_ids": [
             "command.state.query"
           ]
@@ -4136,7 +4528,7 @@
         {
           "contract_id": "tobkiri.resource.command.catalog.v1",
           "function_id": "rumi_command_protocol_pack.catalog.read",
-          "implementation_digest": "sha256:ff8ff76a53f685a2febdcc5555e8e619f82d774591ad2d7e546a3571d2120935",
+          "implementation_digest": "sha256:2879daab1ad896ac7e76c78f080fa2905812c62b2a58326db870059c577bbe87",
           "operation_ids": [
             "command.catalog.read"
           ]
@@ -4294,7 +4686,7 @@
             {
               "entrypoint_id": "command.state.query",
               "id": "command.state.query",
-              "implementation_digest": "sha256:9171d03ffe8847830e788dc7edfd99c508ead810f71019bd680fd2d5ddd7c5f4"
+              "implementation_digest": "sha256:2707d6b9bd1063aaf53fe51b05779531bf6afa7294c57231786a7801161ee37f"
             }
           ],
           "owner": "rumi_command_protocol_pack",
@@ -4316,7 +4708,7 @@
                 },
                 "state_refs": {
                   "items": {
-                    "const": "defaultspack:models.deepthink_enabled"
+                    "const": "defaultspack:models.strategy_reference"
                   },
                   "maxItems": 16,
                   "type": "array",
@@ -4500,7 +4892,7 @@
             {
               "entrypoint_id": "command.catalog.read",
               "id": "command.catalog.read",
-              "implementation_digest": "sha256:ff8ff76a53f685a2febdcc5555e8e619f82d774591ad2d7e546a3571d2120935"
+              "implementation_digest": "sha256:2879daab1ad896ac7e76c78f080fa2905812c62b2a58326db870059c577bbe87"
             }
           ],
           "owner": "rumi_command_protocol_pack",
@@ -4553,7 +4945,7 @@
           "path": "runtime/invoke.py"
         },
         {
-          "digest": "sha256:9171d03ffe8847830e788dc7edfd99c508ead810f71019bd680fd2d5ddd7c5f4",
+          "digest": "sha256:2707d6b9bd1063aaf53fe51b05779531bf6afa7294c57231786a7801161ee37f",
           "kind": "executable",
           "path": "runtime/state.py"
         },
@@ -4568,7 +4960,7 @@
           "path": "runtime/high_risk_adapter.py"
         },
         {
-          "digest": "sha256:ff8ff76a53f685a2febdcc5555e8e619f82d774591ad2d7e546a3571d2120935",
+          "digest": "sha256:2879daab1ad896ac7e76c78f080fa2905812c62b2a58326db870059c577bbe87",
           "kind": "executable",
           "path": "runtime/catalog.py"
         },
@@ -4581,7 +4973,7 @@
       "secrets": [],
       "source_evidence": [
         {
-          "digest": "sha256:3d1665e4b1c697e64eab36a65249db3a0dad108863fafac5508689c96e1f0942",
+          "digest": "sha256:94a2bbc3581cdbe66a89b03522a154cc660b9ddec29197f46c13e41361b6dd2a",
           "path": "schemas/executable_sources.v1.json",
           "rule_id": "canonical-bundled-v4-source"
         }
@@ -7065,6 +7457,337 @@
       },
       "version": "1.0.0",
       "workspace_boundary": "pack_local"
+    },
+    {
+      "approval_policy": "none",
+      "authority": "v4-authoritative",
+      "capabilities": [
+        "ai.gateway.generate",
+        "ai.gateway.route.quote.read",
+        "ai.strategy.execute"
+      ],
+      "dependencies": {
+        "rumi_ai_gateway_pack": ">=1.0.0,<2.0.0",
+        "rumi_ai_strategy_runtime_pack": ">=1.0.0,<2.0.0"
+      },
+      "description": "Bounded provider-neutral deliberation strategy using quoted AI gateway routes.",
+      "display_name": "DeepThink Strategy",
+      "execution_boundary": "sandbox",
+      "kind": "normal_sandbox",
+      "legacy_ids": [],
+      "legacy_operations": [],
+      "migration": {
+        "removal_wave": 10,
+        "sunset_at": "2027-12-31"
+      },
+      "network": {
+        "allowed_domains": [],
+        "allowed_ports": []
+      },
+      "pack_id": "rumi_deepthink_pack",
+      "provided_contracts": [
+        {
+          "cardinality": "many",
+          "contract_id": "tobkiri.service.ai.strategy.execute.v1",
+          "failure": "fail_closed",
+          "isolation": "process",
+          "lifecycle": {
+            "data_owner": "rumi_deepthink_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "rumi_deepthink_pack.deepthink.execute",
+              "id": "rumi_deepthink_pack.deepthink.execute",
+              "implementation_digest": "sha256:acd2b6a612ce7f381fa218491b49bb5e2cdd83fa37e1109829dfbd95b2f4da61"
+            }
+          ],
+          "owner": "rumi_deepthink_pack",
+          "provider_id": "rumi_deepthink_pack.deepthink.execute",
+          "required_capabilities": [
+            "ai.strategy.execute"
+          ],
+          "schemas": {
+            "error": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2048
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "allow_failover": {
+                  "type": "boolean"
+                },
+                "deadline": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "idempotency_key": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "input": {
+                  "type": "string",
+                  "maxLength": 16384
+                },
+                "messages": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 2048,
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "model_profile_id": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "model_reference": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "profile_id": {
+                          "$ref": "#/$defs/identifier"
+                        }
+                      },
+                      "required": [
+                        "profile_id"
+                      ]
+                    }
+                  ]
+                },
+                "parameters": {
+                  "type": "object"
+                },
+                "policy_revision": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "profile_id": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "request_id": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "requirements": {
+                  "type": "object"
+                },
+                "system_prompt_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "tools": {
+                  "type": "array",
+                  "maxItems": 128,
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "maximum_cost_microusd": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000000
+                }
+              },
+              "required": [
+                "request_id",
+                "messages",
+                "deadline",
+                "idempotency_key"
+              ],
+              "anyOf": [
+                {
+                  "required": [
+                    "model_profile_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "model_reference"
+                  ]
+                }
+              ],
+              "type": "object",
+              "$defs": {
+                "identifier": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[^\\u0000-\\u001F\\u007F\\s](?:[^\\u0000-\\u001F\\u007F]{0,254}[^\\u0000-\\u001F\\u007F\\s])?$"
+                }
+              }
+            },
+            "output": {
+              "additionalProperties": true,
+              "properties": {
+                "catalog_provider_instance_id": {
+                  "type": "string"
+                },
+                "catalog_revision": {
+                  "type": "string"
+                },
+                "finish_reason": {
+                  "type": "string"
+                },
+                "model_id": {
+                  "type": "string"
+                },
+                "output": {},
+                "pricing_revision": {
+                  "type": "string"
+                },
+                "provider_instance_id": {
+                  "type": "string"
+                },
+                "request_id": {
+                  "type": "string"
+                },
+                "status": {
+                  "const": "ok"
+                },
+                "strategy_runtime": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "approved": {
+                      "type": "boolean"
+                    },
+                    "calls": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 5
+                    },
+                    "maximum_calls": {
+                      "const": 5
+                    },
+                    "phases": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 5
+                    },
+                    "provider": {
+                      "const": "rumi_deepthink_pack"
+                    },
+                    "reserved_cost_usd": {
+                      "type": "string",
+                      "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
+                    },
+                    "tool_deferred": {
+                      "type": "boolean"
+                    },
+                    "used_cost_usd": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
+                    },
+                    "version": {
+                      "const": "1"
+                    },
+                    "maximum_cost_microusd": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000000
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "provider",
+                    "approved",
+                    "tool_deferred",
+                    "calls",
+                    "maximum_calls",
+                    "maximum_cost_microusd",
+                    "reserved_cost_usd",
+                    "used_cost_usd",
+                    "phases"
+                  ],
+                  "type": "object"
+                },
+                "tool_intents": {
+                  "type": "array"
+                },
+                "usage": {
+                  "type": "object"
+                },
+                "usage_cost": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "status",
+                "request_id",
+                "model_id",
+                "provider_instance_id",
+                "output",
+                "tool_intents",
+                "usage",
+                "usage_cost",
+                "strategy_runtime"
+              ],
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        }
+      ],
+      "required_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.service.ai.generate.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "optional": false
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.ai.route.quote.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "optional": false
+        }
+      ],
+      "secrets": [],
+      "source_evidence": [],
+      "source_provenance": {
+        "historical_classification": "modern-only",
+        "mode": "canonical-v4",
+        "owner": "rumi_deepthink_pack",
+        "source_format": "pack_v4_catalog.v1"
+      },
+      "version": "1.0.0",
+      "workspace_boundary": "none",
+      "runtime_artifacts": [
+        {
+          "kind": "executable",
+          "path": "runtime/strategy.py",
+          "digest": "sha256:acd2b6a612ce7f381fa218491b49bb5e2cdd83fa37e1109829dfbd95b2f4da61"
+        },
+        {
+          "kind": "sidecar",
+          "index_role": "sidecar",
+          "path": "frontend/contributions/ai-strategy.json",
+          "digest": "sha256:2292db6276ebff6f5019f7e06c8f87837642c00f0056d13b1af871785045dd50"
+        }
+      ]
     },
     {
       "approval_policy": "capability_gated",
@@ -17797,9 +18520,9 @@
                         }
                       ]
                     },
-                    "deepthink_enabled": {
-                      "type": "boolean",
-                      "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check."
+                    "strategy_reference": {
+                      "$ref": "#/$defs/identifier",
+                      "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
                     },
                     "thinking_level": {
                       "enum": [
@@ -18054,7 +18777,7 @@
           "path": "runtime/durable.py"
         },
         {
-          "digest": "sha256:4a434e93b4ba72e2f262bb0c8709a77d313a2d5b088958d8409b74e0de7eab87",
+          "digest": "sha256:17381c0209197e7a23c675a67368a446a9977cb287d41dd867fb7288026b7c43",
           "kind": "executable",
           "path": "runtime/saved.py"
         }
@@ -18062,12 +18785,12 @@
       "secrets": [],
       "source_evidence": [
         {
-          "digest": "sha256:e173d820b85bfebd9d98dde9e609ecc8f03de5b91774defa21abad655f3c9868",
+          "digest": "sha256:948fc05a5d15b9371d03c41fdadd67a429fac358473079304c791ee471ac3fec",
           "path": "ecosystem/rumi_turn_runtime_pack/ecosystem.json",
           "rule_id": "pack-v4-one-way-migration-input"
         },
         {
-          "digest": "sha256:30f05697237ec35a9e3caf64ca6b06a5835afc9071467ba2083a58cfe01e551d",
+          "digest": "sha256:da5008dd310378123c69ff7029aa8acd9ece581f1113fe479a01753a03c694a0",
           "path": "ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json",
           "rule_id": "pack-v4-one-way-migration-input"
         }
@@ -19499,7 +20222,7 @@
         {
           "contract_id": "tobkiri.resource.ui.model-state.v1",
           "function_id": "tobkiri.ui.model-state.read",
-          "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
+          "implementation_digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
           "operation_ids": [
             "tobkiri_ui_settings_pack.model-state-read"
           ]
@@ -19507,7 +20230,7 @@
         {
           "contract_id": "tobkiri.action.ui.model-state.v1",
           "function_id": "tobkiri.ui.model-state.write",
-          "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
+          "implementation_digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
           "operation_ids": [
             "tobkiri_ui_settings_pack.model-state-write"
           ]
@@ -19515,7 +20238,7 @@
         {
           "contract_id": "tobkiri.resource.ui.recovery-diagnostic.v1",
           "function_id": "tobkiri.ui.recovery-diagnostic.read",
-          "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
+          "implementation_digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
           "operation_ids": [
             "tobkiri_ui_settings_pack.recovery-diagnostic-read"
           ]
@@ -19523,7 +20246,7 @@
         {
           "contract_id": "tobkiri.action.ui.recovery-diagnostic.v1",
           "function_id": "tobkiri.ui.recovery-diagnostic.write",
-          "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
+          "implementation_digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
           "operation_ids": [
             "tobkiri_ui_settings_pack.recovery-diagnostic-write"
           ]
@@ -19877,7 +20600,7 @@
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.model-state-read",
               "id": "tobkiri_ui_settings_pack.model-state-read",
-              "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7"
+              "implementation_digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea"
             }
           ],
           "owner": "tobkiri_ui_settings_pack",
@@ -19919,7 +20642,7 @@
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.model-state-write",
               "id": "tobkiri_ui_settings_pack.model-state-write",
-              "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7"
+              "implementation_digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea"
             }
           ],
           "owner": "tobkiri_ui_settings_pack",
@@ -19942,7 +20665,7 @@
                   "enum": [
                     "preferred_model",
                     "thinking_level",
-                    "deepthink_enabled"
+                    "strategy_reference"
                   ],
                   "type": "string"
                 },
@@ -19986,7 +20709,7 @@
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.recovery-diagnostic-read",
               "id": "tobkiri_ui_settings_pack.recovery-diagnostic-read",
-              "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7"
+              "implementation_digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea"
             }
           ],
           "owner": "tobkiri_ui_settings_pack",
@@ -20028,7 +20751,7 @@
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.recovery-diagnostic-write",
               "id": "tobkiri_ui_settings_pack.recovery-diagnostic-write",
-              "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7"
+              "implementation_digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea"
             }
           ],
           "owner": "tobkiri_ui_settings_pack",
@@ -20306,6 +21029,12 @@
         },
         {
           "cardinality": "one",
+          "contract_id": "tobkiri.resource.ai.strategy.catalog.v1",
+          "optional": true,
+          "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
           "contract_id": "tobkiri.resource.application.presentation.v1",
           "optional": false,
           "version_range": ">=1.0.0 <2.0.0"
@@ -20313,7 +21042,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
+          "digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
           "kind": "executable",
           "path": "runtime/state_changes.py"
         },
@@ -20338,7 +21067,7 @@
           "path": "runtime/store.py"
         },
         {
-          "digest": "sha256:340b88316d3063444cdb1b0ab107bb38e699c96940d69eb72c0866836719df61",
+          "digest": "sha256:fe99080d5e5a57604a4a6d20632cb96147844be9e1fb1ac408f731dc663fca62",
           "kind": "asset",
           "path": "runtime/public-settings-fields.v1.json"
         }

@@ -14,7 +14,7 @@ from core_runtime.host_provider_backend_v4 import (
 FUNCTION_ID = "rumi_command_protocol_pack.command.state"
 CONTRACT_ID = "tobkiri.resource.command.state.v1"
 OPERATION_ID = "command.state.query"
-STATE_REF = "defaultspack:models.deepthink_enabled"
+STATE_REF = "defaultspack:models.strategy_reference"
 MODEL_STATE_CONTRACT = "tobkiri.resource.ui.model-state.v1"
 MODEL_STATE_OPERATION = "tobkiri_ui_settings_pack.model-state-read"
 _ALLOWED_FIELDS = frozenset({"profile_id", "state_refs", "_session_id"})
@@ -98,19 +98,26 @@ class CommandStateHostFactoryV4:
             invocation.assert_current()
             values = state.get("values") if isinstance(state, Mapping) else None
             revision = state.get("revision") if isinstance(state, Mapping) else None
-            enabled = (
-                values.get("deepthink_enabled")
+            strategy_reference = (
+                values.get("strategy_reference")
                 if isinstance(values, Mapping)
                 else None
             )
-            if type(enabled) is not bool or type(revision) is not int or revision < 0:
+            if (
+                strategy_reference is not None
+                and (
+                    not isinstance(strategy_reference, str)
+                    or not strategy_reference
+                    or len(strategy_reference) > 256
+                )
+            ) or type(revision) is not int or revision < 0:
                 raise ValueError("model state owner returned invalid state")
             return {
                 "api_version": "tobkiri.commands/v1",
                 "states": [
                     {
                         "state_ref": STATE_REF,
-                        "value": enabled,
+                        "value": strategy_reference,
                         "revision": revision,
                         "freshness": "authoritative",
                     }

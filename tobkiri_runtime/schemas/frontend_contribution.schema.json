@@ -24,7 +24,8 @@
         "action",
         "data_source",
         "settings",
-        "command"
+        "command",
+        "ai_strategy"
       ]
     },
     "mode": {"enum": ["declarative", "isolated", "same_origin_builtin"]},
@@ -43,6 +44,32 @@
     "data_source_contract": {
       "type": "string",
       "pattern": "^rumi\\.resource\\.[a-z0-9]+(?:[._-][a-z0-9]+)*\\.v[1-9][0-9]*$"
+    },
+    "strategy_reference": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        },
+        "label": {"type": "string", "minLength": 1, "maxLength": 256},
+        "description": {"type": "string", "maxLength": 1024},
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "uniqueItems": true,
+          "maxItems": 8
+        }
+      }
     },
     "module": {
       "type": "object",
@@ -84,7 +111,12 @@
   },
   "allOf": [
     {
-      "if": {"properties": {"mode": {"const": "declarative"}}},
+      "if": {
+        "allOf": [
+          {"properties": {"mode": {"const": "declarative"}}},
+          {"properties": {"kind": {"not": {"const": "ai_strategy"}}}}
+        ]
+      },
       "then": {"required": ["view"]}
     },
     {
@@ -118,7 +150,10 @@
     {
       "if": {"properties": {"kind": {"const": "settings"}}},
       "then": {"required": ["schema"]}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "ai_strategy"}}},
+      "then": {"required": ["strategy_reference"]}
     }
   ]
 }
-

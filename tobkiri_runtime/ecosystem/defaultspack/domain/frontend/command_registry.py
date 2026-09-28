@@ -23,8 +23,6 @@ ALLOWED_RUMI_FUNCTIONS = {
     "ai_set_thinking_level",
     "ai_get_effective_thinking_level",
     "ai_normalize_thinking_level",
-    "ai_get_deepthink_enabled",
-    "ai_set_deepthink_enabled",
 }
 
 # pack_block execution type: lets a manifest-defined slash command dispatch to a
@@ -461,24 +459,6 @@ class SlashCommandRegistry:
                     str(args.get("provider_id") or ""),
                     str(args.get("model_id") or args.get("model") or ""),
                     str(args.get("level") or args.get("thinking_level") or ""),
-                )
-            if function_id == "ai_get_deepthink_enabled":
-                return service.get_deepthink_enabled()
-            if function_id == "ai_set_deepthink_enabled":
-                enabled = args.get("enabled")
-                invocation = invocation or {}
-                expected_revision = invocation.get("expected_revision")
-                if not isinstance(expected_revision, int) or isinstance(expected_revision, bool):
-                    expected_revision = None
-                idempotency_key = str(invocation.get("idempotency_key") or "").strip() or None
-                kwargs: dict[str, Any] = {}
-                if expected_revision is not None:
-                    kwargs["expected_revision"] = expected_revision
-                if idempotency_key is not None:
-                    kwargs["idempotency_key"] = idempotency_key
-                return service.set_deepthink_enabled(
-                    enabled if isinstance(enabled, bool) else None,
-                    **kwargs,
                 )
         except Exception as exc:
             from domain.frontend_settings_store import (

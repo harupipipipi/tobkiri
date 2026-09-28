@@ -1,6 +1,6 @@
 import type { FormEvent, MutableRefObject, ReactNode } from "react";
 
-import type { ChatActivityEvent, ChatContentBlock, CodingContextEntry, CodingGitStatus, CodingWorkspaceRecord, ComposerWidgetAction, ConversationSteerItem, ModelCommandCandidate, ModelProfile, PromptUsageSummary, SettingsSection, SidebarAction, SidebarItem, TemplateComposerInput, ToolLogEntry, ToolTarget, UICatalog } from "../lib/api";
+import type { ChatActivityEvent, ChatContentBlock, CodingContextEntry, CodingGitStatus, CodingWorkspaceRecord, ComposerWidgetAction, ConversationSteerItem, ModelCommandCandidate, ModelProfile, PromptUsageSummary, SettingsSection, SidebarAction, SidebarItem, StrategyContribution, TemplateComposerInput, ToolLogEntry, ToolTarget, UICatalog } from "../lib/api";
 import type { DesktopSystemInfo } from "../lib/desktopSystemInfo";
 import type { ComposerCommandItem, RuntimeHealth } from "../lib/api";
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "../components/HistoryBoard";
@@ -197,6 +197,9 @@ export type ComposerRendererProps = {
   modelProfiles?: ModelProfile[];
   modelSelectorSchema?: ModelSelectorSchema;
   thinkingLevel: string | null;
+  strategyContributions?: StrategyContribution[];
+  strategyReference?: string | null;
+  strategySelectionInvalid?: boolean;
   contextUsage: ContextUsageInfo;
   inlineExtensions: ComposerExtensionItem[];
   belowExtensions: ComposerExtensionItem[];
@@ -248,6 +251,7 @@ export type ComposerRendererProps = {
   onModelProfileSelect: (profileId: string) => void;
   onProviderApiKeySave?: (providerId: string, value: string) => Promise<void> | void;
   onThinkingLevelChange: (level: string | null) => void;
+  onStrategyReferenceChange?: (reference: string | null) => void;
   onInputChange: (value: string) => void;
   onStructuredInputChange?: (values: Record<string, string>) => void;
   onSubmit: (event: FormEvent) => void;

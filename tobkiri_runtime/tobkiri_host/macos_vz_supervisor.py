@@ -100,6 +100,9 @@ _PACKVM_GUEST_RUNNER_PROTOCOL = "io.tobkiri.packvm-supervisor.v1"
 _HOST_NONCE = re.compile(r"^[a-f0-9]{64}$")
 _GUEST_NONCE = re.compile(r"^[a-f0-9]{48}$")
 _BRIDGE_ERROR_CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+_BRIDGE_IDENTIFIER = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
+_MAX_BRIDGE_HOPS = 16
+_MAX_BRIDGE_REQUEST_BYTES = 64 * 1024
 _GUEST_OPERATION_ERROR_CODES = frozenset(
     {
         "ARTIFACT_VERIFICATION_FAILED",
@@ -1194,85 +1197,117 @@ class MacOSVZSupervisorDriver:
         if outer_domain_id != domain_id:
             self._compromise("macOS VZ bridge domain binding mismatch")
             raise BackendUnavailableError("macOS VZ bridge domain binding mismatch")
-        bridge_request = _validate_host_bridge_request(
-            host_frame,
-            request_id=outer_request_id,
-            domain_id=domain_id,
-            guest_artifact_identity=session.attestation.guest_artifact_identity,
-            request_digest=outer_request_digest,
-            deadline_monotonic=_deadline_value(
-                getattr(outer_request, "deadline_monotonic", None)
-            ),
+        wrapper = host_frame
+        expected_hop = 0
+        maximum_hops: int | None = None
+        previous_result_digest: str | None = None
+        outer_operation_id = _bounded_text(
+            getattr(outer_request, "operation_id", None), "operation"
         )
-        continuation = _validate_bridge_request(bridge_request)
-        guest_nonce = continuation["nonce"]
-        binding = (
-            canonical_digest(continuation["target"]),
-            continuation["request_digest"],
-        )
-        with self._lock:
-            if len(self._guest_nonce_ledger) >= self._max_nonce_ledger_entries:
-                self._compromise("macOS VZ guest nonce ledger is exhausted")
-                raise BackendUnavailableError("macOS VZ guest nonce ledger is exhausted")
-            key = (domain_id, guest_nonce)
-            if key in self._guest_nonce_ledger:
-                self._compromise("macOS VZ guest bridge nonce replay")
-                raise BackendUnavailableError("macOS VZ guest bridge nonce replay")
-            self._guest_nonce_ledger[key] = binding
-            callback = self._capability_bridge
-        if callback is None:
-            raise BackendUnavailableError("macOS VZ Host capability bridge is unavailable")
-        active.require_not_cancelled()
-        try:
-            bridge_result = callback(outer_request, bridge_request)
-        except Exception as exc:
-            raise BackendUnavailableError("macOS VZ Host capability bridge rejected request") from exc
-        active.require_not_cancelled()
-        _validate_bridge_result(bridge_result, continuation)
-        host_nonce = self._new_host_nonce()
-        guest_challenge = self._new_guest_challenge(domain_id)
-        response = self._exchange(
-            {
-                "kind": _REQUEST_KIND,
-                "protocol": _SUPERVISOR_PROTOCOL,
-                "version": 1,
-                "operation": "bridge_result",
-                "host_nonce": host_nonce,
-                "domain_id": domain_id,
-                "launch_binding_digest": session.launch_binding_digest,
-                "guest_challenge": guest_challenge,
-                "host_bridge_result": {
-                    "kind": "tobkiri.packvm.bridge.host-result.v1",
-                    "protocol": _BRIDGE_PROTOCOL,
+        for _ in range(_MAX_BRIDGE_HOPS):
+            active.require_not_cancelled()
+            bridge_request = _validate_host_bridge_request(
+                wrapper,
+                request_id=outer_request_id,
+                domain_id=domain_id,
+                guest_artifact_identity=session.attestation.guest_artifact_identity,
+                request_digest=outer_request_digest,
+                deadline_monotonic=_deadline_value(
+                    getattr(outer_request, "deadline_monotonic", None)
+                ),
+            )
+            continuation = _validate_bridge_request(
+                bridge_request,
+                operation_id=outer_operation_id,
+                expected_hop=expected_hop,
+                expected_max_hops=maximum_hops,
+                previous_result_digest=previous_result_digest,
+            )
+            if "max_hops" in continuation:
+                maximum_hops = int(continuation["max_hops"])
+            guest_nonce = str(continuation["nonce"])
+            binding = (
+                canonical_digest(continuation["target"]),
+                str(continuation["request_digest"]),
+            )
+            with self._lock:
+                if len(self._guest_nonce_ledger) >= self._max_nonce_ledger_entries:
+                    self._compromise("macOS VZ guest nonce ledger is exhausted")
+                    raise BackendUnavailableError("macOS VZ guest nonce ledger is exhausted")
+                key = (domain_id, guest_nonce)
+                if key in self._guest_nonce_ledger:
+                    self._compromise("macOS VZ guest bridge nonce replay")
+                    raise BackendUnavailableError("macOS VZ guest bridge nonce replay")
+                self._guest_nonce_ledger[key] = binding
+                callback = self._capability_bridge
+            if callback is None:
+                raise BackendUnavailableError("macOS VZ Host capability bridge is unavailable")
+            try:
+                bridge_result = callback(outer_request, bridge_request)
+            except Exception as exc:
+                raise BackendUnavailableError(
+                    "macOS VZ Host capability bridge rejected request"
+                ) from exc
+            active.require_not_cancelled()
+            _validate_bridge_result(bridge_result, continuation)
+            host_nonce = self._new_host_nonce()
+            guest_challenge = self._new_guest_challenge(domain_id)
+            response = self._exchange(
+                {
+                    "kind": _REQUEST_KIND,
+                    "protocol": _SUPERVISOR_PROTOCOL,
                     "version": 1,
-                    "request_id": outer_request_id,
-                    "target_domain": domain_id,
-                    "guest_artifact_identity": session.attestation.guest_artifact_identity,
-                    "request_digest": outer_request_digest,
-                    "bridge_request_digest": canonical_digest(dict(bridge_request)),
-                    "continuation_nonce": continuation["nonce"],
-                    "bridge_result": dict(bridge_result),
-                    "bridge_result_digest": canonical_digest(dict(bridge_result)),
+                    "operation": "bridge_result",
+                    "host_nonce": host_nonce,
+                    "domain_id": domain_id,
+                    "launch_binding_digest": session.launch_binding_digest,
+                    "guest_challenge": guest_challenge,
+                    "host_bridge_result": {
+                        "kind": "tobkiri.packvm.bridge.host-result.v1",
+                        "protocol": _BRIDGE_PROTOCOL,
+                        "version": 1,
+                        "request_id": outer_request_id,
+                        "target_domain": domain_id,
+                        "guest_artifact_identity": session.attestation.guest_artifact_identity,
+                        "request_digest": outer_request_digest,
+                        "bridge_request_digest": canonical_digest(dict(bridge_request)),
+                        "continuation_nonce": continuation["nonce"],
+                        "bridge_result": dict(bridge_result),
+                        "bridge_result_digest": canonical_digest(dict(bridge_result)),
+                    },
                 },
-            },
-            transport=session.transport,
-            channel_key=session.channel_key,
-            expected_operation="bridge_result",
-            expected_host_nonce=host_nonce,
-            expected_domain_id=domain_id,
-            expected_binding_digest=session.launch_binding_digest,
-        )
-        guest_data = self._validated_guest_response(
-            response["payload"],
-            operation="bridge_result",
-            request_id=outer_request_id,
-            domain_id=domain_id,
-            binding_digests=session.binding_digests,
-            guest_challenge=guest_challenge,
-            public_key=session.allocation.guest_public_key,
-        )
-        active.require_not_cancelled()
-        return ProviderOutcome(_validated_invoke_outcome(guest_data))
+                transport=session.transport,
+                channel_key=session.channel_key,
+                expected_operation="bridge_result",
+                expected_host_nonce=host_nonce,
+                expected_domain_id=domain_id,
+                expected_binding_digest=session.launch_binding_digest,
+            )
+            guest_data = self._validated_guest_response(
+                response["payload"],
+                operation="bridge_result",
+                request_id=outer_request_id,
+                domain_id=domain_id,
+                binding_digests=session.binding_digests,
+                guest_challenge=guest_challenge,
+                public_key=session.allocation.guest_public_key,
+            )
+            active.require_not_cancelled()
+            if (
+                set(guest_data) == {"state", "host_bridge_request"}
+                and guest_data.get("state") == "pending"
+                and isinstance(guest_data.get("host_bridge_request"), Mapping)
+            ):
+                if maximum_hops is None or expected_hop + 1 >= maximum_hops:
+                    raise BackendUnavailableError(
+                        "macOS VZ bridge exceeds its declared hop bound"
+                    )
+                wrapper = dict(guest_data["host_bridge_request"])
+                previous_result_digest = str(bridge_result["result_digest"])
+                expected_hop += 1
+                continue
+            return ProviderOutcome(_validated_invoke_outcome(guest_data))
+        raise BackendUnavailableError("macOS VZ bridge exceeds its hard hop bound")
 
     def _invoke_envelope(
         self,
@@ -1841,7 +1876,14 @@ def _project_cancellation_ack(
     }
 
 
-def _validate_bridge_request(value: Mapping[str, Any]) -> dict[str, Any]:
+def _validate_bridge_request(
+    value: Mapping[str, Any],
+    *,
+    operation_id: str | None = None,
+    expected_hop: int = 0,
+    expected_max_hops: int | None = None,
+    previous_result_digest: str | None = None,
+) -> dict[str, Any]:
     expected = {
         "kind",
         "protocol",
@@ -1859,8 +1901,14 @@ def _validate_bridge_request(value: Mapping[str, Any]) -> dict[str, Any]:
     request_digest = value.get("request_digest")
     if (
         value.get("kind") != "tobkiri.packvm.bridge.request.v1"
+        or not isinstance(target, Mapping)
+        or not isinstance(request, Mapping)
         or not _valid_bridge_target(target)
-        or not _valid_bridge_payload(request)
+        or not (
+            _valid_bridge_payload(request)
+            if dict(target) == _CONVERSATION_BRIDGE_TARGET
+            else _valid_generic_bridge_payload(request)
+        )
         or not isinstance(request_digest, str)
         or not isinstance(continuation, Mapping)
     ):
@@ -1871,24 +1919,60 @@ def _validate_bridge_request(value: Mapping[str, Any]) -> dict[str, Any]:
         raise BackendUnavailableError("macOS VZ guest bridge request is invalid")
     try:
         require_digest(request_digest, "macOS VZ bridge request")
+        if len(canonical_json(dict(value))) > _MAX_BRIDGE_REQUEST_BYTES:
+            raise ValueError("bridge request is too large")
     except Exception as exc:
         raise BackendUnavailableError("macOS VZ guest bridge request is invalid") from exc
     if request_digest != canonical_digest(dict(request)):
         raise BackendUnavailableError("macOS VZ guest bridge request digest mismatch")
-    expected_continuation = {
+    legacy_continuation = {
         "kind": "tobkiri.packvm.continuation.v1",
         "protocol": _BRIDGE_PROTOCOL,
         "version": 1,
-        "operation_id": "complete",
+        "operation_id": operation_id or "complete",
         "nonce": continuation.get("nonce"),
         "target": dict(target),
         "request_digest": request_digest,
     }
+    extended_fields = set(legacy_continuation) | {
+        "hop", "max_hops", "previous_result_digest", "state", "state_digest",
+    }
+    if not isinstance(continuation.get("nonce"), str) or _GUEST_NONCE.fullmatch(
+        continuation["nonce"]
+    ) is None:
+        raise BackendUnavailableError("macOS VZ guest bridge continuation is invalid")
+    if set(continuation) == set(legacy_continuation):
+        if continuation != legacy_continuation or expected_hop != 0:
+            raise BackendUnavailableError("macOS VZ guest bridge continuation is invalid")
+        return dict(continuation)
+    if set(continuation) != extended_fields:
+        raise BackendUnavailableError("macOS VZ guest bridge continuation is invalid")
+    state = continuation.get("state")
+    state_digest = continuation.get("state_digest")
+    hop = continuation.get("hop")
+    max_hops = continuation.get("max_hops")
+    predecessor = continuation.get("previous_result_digest")
+    try:
+        encoded_state = canonical_json(dict(state)) if isinstance(state, Mapping) else b""
+        expected_state_digest = (
+            canonical_digest(dict(state)) if isinstance(state, Mapping) else None
+        )
+    except Exception as exc:
+        raise BackendUnavailableError(
+            "macOS VZ guest bridge continuation is invalid"
+        ) from exc
     if (
-        set(continuation) != set(expected_continuation)
-        or continuation != expected_continuation
-        or not isinstance(continuation.get("nonce"), str)
-        or _GUEST_NONCE.fullmatch(continuation["nonce"]) is None
+        any(continuation.get(key) != expected for key, expected in legacy_continuation.items())
+        or type(hop) is not int
+        or hop != expected_hop
+        or type(max_hops) is not int
+        or not 1 <= max_hops <= _MAX_BRIDGE_HOPS
+        or (expected_max_hops is not None and max_hops != expected_max_hops)
+        or predecessor != previous_result_digest
+        or not isinstance(state, Mapping)
+        or len(encoded_state) > _MAX_BRIDGE_REQUEST_BYTES
+        or not isinstance(state_digest, str)
+        or state_digest != expected_state_digest
     ):
         raise BackendUnavailableError("macOS VZ guest bridge continuation is invalid")
     return dict(continuation)
@@ -1957,7 +2041,7 @@ def _validate_bridge_result(
     if (
         value.get("protocol") != _BRIDGE_PROTOCOL
         or value.get("version") != 1
-        or value.get("operation_id") != "complete"
+        or value.get("operation_id") != continuation.get("operation_id")
         or value.get("nonce") != continuation.get("nonce")
         or value.get("target") != continuation.get("target")
         or value.get("request_digest") != continuation.get("request_digest")
@@ -1972,9 +2056,15 @@ def _validate_bridge_result(
 
 
 def _valid_bridge_target(value: object) -> bool:
-    if not isinstance(value, Mapping) or set(value) != {"contract_id", "operation_id"}:
+    if not isinstance(value, Mapping) or set(value) not in (
+        {"contract_id"},
+        {"contract_id", "operation_id"},
+    ):
         return False
-    return dict(value) == _CONVERSATION_BRIDGE_TARGET
+    return all(
+        isinstance(item, str) and _BRIDGE_IDENTIFIER.fullmatch(item) is not None
+        for item in value.values()
+    )
 
 
 def _valid_bridge_payload(value: object) -> bool:
@@ -1984,6 +2074,8 @@ def _valid_bridge_payload(value: object) -> bool:
         or not required <= set(value)
         or set(value) - required - {"model_reference"}
     ):
+        return False
+    if not _valid_generic_bridge_payload(value):
         return False
     if "model_reference" in value:
         model = value["model_reference"]
@@ -1997,12 +2089,21 @@ def _valid_bridge_payload(value: object) -> bool:
             return False
     messages = value.get("messages")
     requirements = value.get("requirements")
-    if not isinstance(messages, list) or not messages or len(messages) > 128:
-        return False
-    if requirements != {"request_surface": "defaultspack.conversation"}:
+    return (
+        isinstance(messages, list)
+        and 0 < len(messages) <= 128
+        and requirements == {"request_surface": "defaultspack.conversation"}
+    )
+
+
+def _valid_generic_bridge_payload(value: object) -> bool:
+    """Bound generic payload shape; the captured contract validates its schema."""
+
+    if not isinstance(value, Mapping):
         return False
     try:
-        canonical_json(dict(value))
+        if len(canonical_json(dict(value))) > _MAX_BRIDGE_REQUEST_BYTES:
+            return False
     except Exception:
         return False
     return True

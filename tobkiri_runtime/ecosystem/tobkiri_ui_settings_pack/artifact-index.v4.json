@@ -1,18 +1,18 @@
 {
-  "artifact_set_digest": "sha256:3a802cbe56366a68129d8aaac2ecfde82e303f5d22e5bb9aed244017dd947820",
+  "artifact_set_digest": "sha256:8824c239b09ec46ee2e9068bc0958605fe62ef11765a45b3bf19a0f6d89d76b1",
   "artifacts": [
     {
-      "digest": "sha256:2c098095fc48119f2fadfbef50dff06dbd72bbf001d132544d083063333533cb",
+      "digest": "sha256:ee71e642af27e9eda7ced482dc8fbd787f86743ec3872bc78634dc37a08e87b8",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:ff84d30e1101b742079751225e34a06f47f7a44022f2a41f70d250a7e1ce1c71",
+      "digest": "sha256:db484066a1fd3689e35ff38e9c22b7ef67a0c35dfb54cea4c95b3b414b277fc2",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:97eee3bd93f47738add227f07d05d3ec80ce3a7209c8f3eeeeff5498dc9fdb4e",
+      "digest": "sha256:725bdaefa90fca92a2aa93901ed159a5cc2a2dd71ca7213596d37f168394ddf1",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -27,7 +27,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:340b88316d3063444cdb1b0ab107bb38e699c96940d69eb72c0866836719df61",
+      "digest": "sha256:fe99080d5e5a57604a4a6d20632cb96147844be9e1fb1ac408f731dc663fca62",
       "path": "runtime/public-settings-fields.v1.json",
       "role": "runtime"
     },
@@ -37,7 +37,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
+      "digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
       "path": "runtime/state_changes.py",
       "role": "runtime"
     },
@@ -50,8 +50,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:573f59dcbca19c6880d10502f3a3ad0f0143d06c967b72c30c9c1a4aa3c7c323"
+    "signed_digest": "sha256:0d7b8909f40c5a6b69d723bb449421d60a25d25175dd11bed3d1d28bf1d02a92"
   },
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:cba6c79fafd68c5f3348f149c8334afb2aca401ecb259b780e71a6e6371e2bd9"
+  "source_identity": "sha256:39cc1d3afef8c9adf57ef62f9908b2b9ee3b121cb25cf07dd09c1965ccb84832"
 }

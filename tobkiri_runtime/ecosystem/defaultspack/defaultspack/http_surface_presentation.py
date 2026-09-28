@@ -61,6 +61,7 @@ from .chat_continuation_presentation import (
     normalize_chat_continuation,
     present_chat_continuation,
 )
+from .ai_strategy_presentation import present_ai_strategy_catalog
 
 _PROJECT_READ_TARGET = (
     "defaults.projects.read", "tobkiri.resource.project.state.v1",
@@ -594,6 +595,8 @@ class DefaultspackHTTPPresentation:
             return present_turn_events(result)
         if binding.presentation == "chat_continuation":
             return present_chat_continuation(result)
+        if binding.presentation == "ai_strategy_catalog":
+            return present_ai_strategy_catalog(result, session=session)
         if binding.presentation != "dynamic_pack_catalog":
             return dict(result)
         capability_binding = routes.get(("POST", "/api/ui/capability/invoke"))

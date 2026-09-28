@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:af817628e6c18dcd4d9d75a78128725bc7c5211047afa5e3ce849b93677a06e9",
+  "source_identity": "sha256:544fbdf71f97362b6fdbe52e41d9532a392410ad57ebd6cd4e62ae40ffc45fa5",
   "variants": [
     {
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.events.python",
@@ -183,7 +183,7 @@
         {
           "contract_id": "tobkiri.action.turn.saved.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:fb3763aac6d9129129c4d09691167b973da644c6698d31479bdaf203b6548aa1",
+          "revision_digest": "sha256:ab0db7feb2cbb783f252f2be679676b896c3b3c9f27bbfb5860fb989505cd27c",
           "operation_id": "rumi_turn_runtime_pack.turn-saved",
           "input_schema": {
             "$defs": {
@@ -283,9 +283,9 @@
                     "minimum": 1,
                     "type": "integer"
                   },
-                  "deepthink_enabled": {
-                    "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check.",
-                    "type": "boolean"
+                  "strategy_reference": {
+                    "$ref": "#/$defs/identifier",
+                    "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
                   },
                   "thinking_level": {
                     "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call.",
@@ -577,6 +577,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:4ad301bce4de160f9bae11916ed0ebb8ffb669056601d7c144be0488d742a7f5",
-  "catalog_digest": "sha256:1a1410b4cc97cb4c4901e8eba04f8b44a945f919a31637fd0ad5800bb6e4d71a"
+  "materialization_catalog_digest": "sha256:20fa901a568a6329504d094923d1ecc1738445d7f2f4c8327922124a5e2194c1",
+  "catalog_digest": "sha256:af83f51c9d934dfdc5d79e1b73f84bdb2bca48b0e4039823fb462f6e98502021"
 }

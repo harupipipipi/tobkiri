@@ -136,7 +136,7 @@ def test_saved_image_is_flattened_for_readiness_and_retained_for_generation(
                     "[Earlier inline image omitted from saved context.]"
                 ),
             }],
-            "modalities": ["image", "text"],
+            "requirements": {"modalities": ["image", "text"]},
         },
     )
 

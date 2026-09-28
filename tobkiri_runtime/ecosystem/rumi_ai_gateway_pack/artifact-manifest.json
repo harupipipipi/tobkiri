@@ -5,12 +5,12 @@
       "sha256": "sha256:08f90b5cf858099d62200b839418caa5b15cdcb36fb03e5ec1b55efe5603cbbb"
     },
     {
-      "path": "runtime/deepthink.py",
-      "sha256": "sha256:477c2e0e0b52e3a73ff08ec69bc18cb0cbe7607c5d911e4e72428c922562c1c2"
+      "path": "runtime/gateway.py",
+      "sha256": "sha256:92c1b24bf8efbb0a74ca4bb462ff117e4492dd06967a14a0dece46eb0d011c59"
     },
     {
-      "path": "runtime/gateway.py",
-      "sha256": "sha256:56b83ae3d1377ed2618729028d6834935b67bc864c6210432554f3e2d0dfe2f5"
+      "path": "runtime/route_quote.py",
+      "sha256": "sha256:44be6a6f20a8e90e9ab30b7540e13ca2dfda50aed21932a035f7eac979777494"
     }
   ],
   "version": "rumi.pack-artifacts.v1"

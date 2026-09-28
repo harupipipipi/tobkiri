@@ -27,11 +27,6 @@ from domain.ai_client.request_planner import plan_model_request
 from domain.capability.models import stable_revision
 from domain.capability.orchestrator import CapabilityOrchestrator
 from domain.capability.repository import CapabilityRepository
-from domain.chat.deepthink_preflight import (
-    DeepThinkPreflightError,
-    DeepThinkReadinessError,
-    _enforce_deepthink_preflight,
-)
 from domain.chat.ir import RumiChatIR
 from domain.chat.ir_blocks import IR_SCHEMA_VERSION
 from domain.chat.ir_legacy_adapter import (
@@ -445,9 +440,6 @@ def prepare_chat_run(
                 conversation_id=conversation_id,
             )["level"]
         )
-    if "deepthink_enabled" not in params:
-        params["deepthink_enabled"] = bool(model_settings.get("deepthink_enabled", False))
-
     request_context = _merge_active_startup_profile_context(context or {}, active_startup_profile)
     requested_tool_ids_for_policy = _requested_tool_ids_from_selection(tool_selection)
     _apply_requested_tool_policy(request_context, requested_tool_ids_for_policy)
@@ -693,18 +685,6 @@ def prepare_chat_run(
             routing_decision.explanation = f"{model} selected because it was explicitly requested."
     else:
         model = routing_decision.selected_model
-    deepthink_preflight_report = _enforce_deepthink_preflight(
-        model,
-        params,
-        model_settings,
-        original_model=str(getattr(routing_decision, "original_model", "") or ""),
-        settings_owner=settings_owner,
-        messages=standard_messages,
-        tools=provider_tools,
-    )
-    if deepthink_preflight_report:
-        # Observability: resolved chain members + effective bounded budget.
-        request_context["deepthink_preflight"] = deepthink_preflight_report
     selected_capabilities = get_model_capabilities(
         model,
         settings=model_settings,

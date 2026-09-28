@@ -54,7 +54,7 @@ import { ConversationShareLanding, ImportedConversationNotice } from "./pages/Co
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "./components/HistoryBoard";
 import type { ToolPreviewItem, ToolPreviewMode } from "./components/ToolPreview";
 import { buildToolPreviewDisplayItems, hasCanvasItems } from "./components/ToolPreview";
-import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, isDefaultspackContractOperationUnknownError, mergeComposerCommands, savedTurnContentFromAttachments, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
+import { ChatStreamInterruptedError, admittedStrategyContributions, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, isDefaultspackContractOperationUnknownError, mergeComposerCommands, savedTurnContentFromAttachments, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
 import { modelStateWriteForSettingsField } from "./lib/modelSettingsWrite";
 import { applyCommandStateSnapshots, createCommandInvocationId } from "./lib/commandState";
 import type { ActionApprovalMode } from "./features/tools/ActionApprovalControl";
@@ -2971,17 +2971,24 @@ export function ChatApp() {
     ?? activeProfile?.default_thinking_level
     ?? "medium",
   );
-  const deepthinkEnabled = parseCommandBoolean(settingsValues.models?.deepthink_enabled, false);
+  const strategyReference = typeof settingsValues.models?.strategy_reference === "string"
+    && settingsValues.models.strategy_reference.trim()
+    ? settingsValues.models.strategy_reference.trim()
+    : undefined;
+  const strategyContributions = useMemo(
+    () => admittedStrategyContributions(catalog?.strategy_contributions),
+    [catalog],
+  );
+  const selectedStrategyContribution = strategyReference
+    ? strategyContributions.find((strategy) => strategy.reference === strategyReference)
+    : undefined;
+  // A persisted selection is never silently downgraded when its Pack becomes
+  // unavailable. The user must explicitly choose Direct or another admitted strategy.
+  const strategySelectionInvalid = Boolean(
+    catalog && strategyReference && !selectedStrategyContribution,
+  );
   const commandStateRevisionsRef = useRef<Record<string, number>>({});
-  const deepthinkMutationQueueRef = useRef<Promise<unknown>>(Promise.resolve());
-  const deepthinkDesiredStateRef = useRef(deepthinkEnabled);
-  const deepthinkPendingCountRef = useRef(0);
   const commandClientSequenceRef = useRef(0);
-  useEffect(() => {
-    if (deepthinkPendingCountRef.current === 0) {
-      deepthinkDesiredStateRef.current = deepthinkEnabled;
-    }
-  }, [deepthinkEnabled]);
   const contextUsage = contextUsageFor(activeConversation, activeProfile);
   const composerExtensions = useMemo(
     () => composerExtensionItems(sidebarItems)
@@ -3409,18 +3416,14 @@ export function ChatApp() {
         const stateRef = protocolCommandStateRef(command);
         const protocolState = stateRef === "host:approval.full_access"
           ? ultraYoloMode
-          : stateRef === "defaultspack:models.deepthink_enabled"
-            ? deepthinkEnabled
-            : settingsStateRefValue(stateRef, settingsValues);
+          : settingsStateRefValue(stateRef, settingsValues);
         const legacyState = command.id === "yolo" || command.id === "ultra_yolo"
           ? ultraYoloMode
-          : command.id === "deepthink"
-            ? deepthinkEnabled
-            : command.id === mode;
+          : command.id === mode;
         const active = protocolState ?? legacyState;
         return { ...command, active, enabled: active };
       });
-  }, [activeProfile, deepthinkEnabled, effectiveCommandCatalog, mode, selectableModelProfiles, settingsValues, slashCommandsEnabled, ultraYoloMode]);
+  }, [activeProfile, effectiveCommandCatalog, mode, selectableModelProfiles, settingsValues, slashCommandsEnabled, ultraYoloMode]);
   const modelCommandCandidates = composerCandidateMenu?.mode === "model" ? composerCandidateMenu.candidates : [];
   const unknownBlockStrategy = String(settingsValues.chat_rendering?.unknown_block_strategy ?? "placeholder");
   const showWidgets = settingsValues.chat_rendering?.show_widgets !== false;
@@ -4846,8 +4849,8 @@ export function ChatApp() {
       ? ["preferred_model", preferredModelUpdate] as const
       : Object.prototype.hasOwnProperty.call(normalizedUpdates, "thinking_level")
         ? ["thinking_level", normalizedUpdates.thinking_level] as const
-        : Object.prototype.hasOwnProperty.call(normalizedUpdates, "deepthink_enabled")
-          ? ["deepthink_enabled", normalizedUpdates.deepthink_enabled] as const
+        : Object.prototype.hasOwnProperty.call(normalizedUpdates, "strategy_reference")
+          ? ["strategy_reference", normalizedUpdates.strategy_reference] as const
           : null;
     if (modelMutation) {
       void api.updateModelState(modelMutation[0], modelMutation[1]).catch((modelError) => {
@@ -4885,6 +4888,10 @@ export function ChatApp() {
         [key]: level,
       },
     });
+  };
+
+  const handleStrategyReferenceChange = (reference: string | null) => {
+    updateModelSettings({ strategy_reference: reference || null });
   };
 
   const openSettingsSection = useCallback((sectionId: string) => {
@@ -5175,7 +5182,7 @@ export function ChatApp() {
       }
       case "show_status":
         setError(
-          `status: mode=${mode}, model=${activeProfile?.display_name ?? preferredModel}, thinking=${selectedThinkingLevel}, deepthink=${deepthinkEnabled ? "on" : "off"}, yolo=${yoloMode ? "on" : "off"}, ultra_yolo=${ultraYoloMode ? "on" : "off"}, tools=${selectedTools.length}`,
+          `status: mode=${mode}, model=${activeProfile?.display_name ?? preferredModel}, thinking=${selectedThinkingLevel}, strategy=${strategyReference ?? "direct"}, yolo=${yoloMode ? "on" : "off"}, ultra_yolo=${ultraYoloMode ? "on" : "off"}, tools=${selectedTools.length}`,
         );
         return;
       case "open_context_viewer":
@@ -5467,56 +5474,17 @@ export function ChatApp() {
         commandArgs.scope = "profile";
         commandArgs.profile_id = profileKey(activeProfile, preferredModel);
       }
-      const isDeepthinkMutation = parsed.command.protocol_execution?.kind === "state_mutation"
-        ? parsed.command.protocol_execution.state_ref === "defaultspack:models.deepthink_enabled"
-        : parsed.command.id === "deepthink" && parsed.command.execution.type === "rumi_function";
       const resolvedCommandName = parsed.command.canonical_id ?? parsed.command.name ?? parsed.command.id;
       let result: ComposerCommandExecuteResult;
-      if (isDeepthinkMutation) {
-        const desired = Object.prototype.hasOwnProperty.call(commandArgs, "enabled")
-          ? parseCommandBoolean(commandArgs.enabled, !deepthinkDesiredStateRef.current)
-          : !deepthinkDesiredStateRef.current;
-        deepthinkDesiredStateRef.current = desired;
-        commandArgs.enabled = desired;
-        const invocationId = createCommandInvocationId("deepthink");
-        void followCommandProgress(invocationId);
-        const clientSequence = ++commandClientSequenceRef.current;
-        deepthinkPendingCountRef.current += 1;
-        const executeMutation = () => {
-          const expectedRevision = commandStateRevisionsRef.current[
-            "defaultspack:models.deepthink_enabled"
-          ];
-          return api.executeResolvedUiCommand({
-            command: resolvedCommandName,
-            args: commandArgs,
-            conversation_id: activeConversationId,
-            mode: mode as ComposerCommandMode,
-            invocation_id: invocationId,
-            idempotency_key: invocationId,
-            client_sequence: clientSequence,
-            expected_revision: Number.isInteger(expectedRevision) ? expectedRevision : undefined,
-          });
-        };
-        const queued = deepthinkMutationQueueRef.current
-          .catch(() => undefined)
-          .then(executeMutation);
-        deepthinkMutationQueueRef.current = queued.then(() => undefined, () => undefined);
-        try {
-          result = await queued;
-        } finally {
-          deepthinkPendingCountRef.current = Math.max(0, deepthinkPendingCountRef.current - 1);
-        }
-      } else {
-        const invocationId = createCommandInvocationId(parsed.command.id);
-        void followCommandProgress(invocationId);
-        result = await api.executeResolvedUiCommand({
-          command: resolvedCommandName,
-          args: commandArgs,
-          conversation_id: activeConversationId,
-          mode: mode as ComposerCommandMode,
-          invocation_id: invocationId,
-        });
-      }
+      const invocationId = createCommandInvocationId(parsed.command.id);
+      void followCommandProgress(invocationId);
+      result = await api.executeResolvedUiCommand({
+        command: resolvedCommandName,
+        args: commandArgs,
+        conversation_id: activeConversationId,
+        mode: mode as ComposerCommandMode,
+        invocation_id: invocationId,
+      });
       const appliedStatePaths = applyAuthoritativeCommandState(result);
       const feedbackMessage = composerCommandResultMessage(result);
       if (result.requires_approval) {
@@ -6652,6 +6620,10 @@ export function ChatApp() {
       setError("This imported conversation is read-only. Import a continue copy to send messages.");
       return;
     }
+    if (strategySelectionInvalid) {
+      setError("選択した Strategy は現在の Plan で利用できません。Direct または利用可能な Strategy を選択してください。");
+      return;
+    }
     if (pendingMentionAttachmentRequestsRef.current.size > 0) {
       setError("workspace file の読み込みが終わるまでお待ちください。");
       return;
@@ -6870,7 +6842,7 @@ export function ChatApp() {
         conversation_revision: conversation.conversation_revision!,
         content: savedTurnContent,
         tool_selection: savedToolSelection,
-        deepthink_enabled: deepthinkEnabled ? true : undefined,
+        strategy_reference: strategyReference,
         thinking_level: activeProfile?.supports_thinking
           ? selectedThinkingLevel as "none" | "low" | "medium" | "high" | "xhigh"
           : undefined,
@@ -6897,13 +6869,9 @@ export function ChatApp() {
       if (snapshotState === "pending") {
         throw new Error(savedTurnConfirmationPendingNotice());
       }
-      const readinessReport = result.turn.result_reference.deepthink;
-      const readinessNotice = readinessReport?.member_models?.length
-        ? `DeepThink review chain: ${readinessReport.member_models.join(" → ")}`
-        : "";
       const snapshotNotice = savedTurnSnapshotNotice(snapshotState);
       setError(
-        [snapshotNotice, readinessNotice].filter(Boolean).join(" ") || null,
+        snapshotNotice || null,
       );
       setActiveConversation((current) => current?.id === snapshot.id ? snapshot : current);
       setConversations((current) => [
@@ -7144,6 +7112,9 @@ export function ChatApp() {
       modelProfiles={selectableModelProfiles}
       modelSelectorSchema={modelSelectorSchema}
       thinkingLevel={activeProfile?.supports_thinking ? selectedThinkingLevel : null}
+      strategyContributions={strategyContributions}
+      strategyReference={strategyReference ?? null}
+      strategySelectionInvalid={strategySelectionInvalid}
       contextUsage={contextUsage}
       inlineExtensions={composerExtensions}
       belowExtensions={[]}
@@ -7194,6 +7165,7 @@ export function ChatApp() {
       onModelProfileSelect={handleModelProfileSelect}
       onProviderApiKeySave={handleProviderApiKeySave}
       onThinkingLevelChange={handleThinkingLevelChange}
+      onStrategyReferenceChange={handleStrategyReferenceChange}
       onInputChange={handleComposerInputChange}
       onStructuredInputChange={setStructuredComposerValues}
       onSubmit={handleSubmit}

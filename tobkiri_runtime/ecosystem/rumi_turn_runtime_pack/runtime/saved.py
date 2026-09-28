@@ -167,24 +167,6 @@ def execute_saved_turn(
             if failure is None:
                 reference = _completed_reference(initial["request"], outcome)
     except Exception as error:
-        # A structured DeepThink rejection carries its machine-readable record
-        # through the captured chain; settle it as a finite failed turn instead
-        # of an uncertain outcome.
-        rejection = _deepthink_rejection(error)
-        if rejection is not None:
-            payload, user_persistence = rejection
-            return _settle(
-                store,
-                record,
-                "failed",
-                {
-                    "phase": "saved_execution_failed",
-                    "error_code": payload["code"],
-                    "error": payload,
-                    "user_persistence": user_persistence,
-                    "assistant_persistence": "not_written",
-                },
-            )
         terminal_code = _terminal_rejection(error)
         if terminal_code is not None:
             # The supervisor only marks rejections that provably precede any
@@ -403,37 +385,6 @@ def _settle(
     }
 
 
-def _deepthink_rejection(
-    error: BaseException,
-) -> tuple[dict[str, Any], str] | None:
-    """Unwrap a structured DeepThink failure from a captured exception chain.
-
-    Returns ``(payload, user_persistence)`` where the payload is the typed
-    error's ``to_dict()`` and ``user_persistence`` reports whether the user
-    append had already been acknowledged when the check failed.
-    """
-    current: BaseException | None = error
-    for _ in range(8):
-        if current is None:
-            return None
-        code = getattr(current, "code", None)
-        to_dict = getattr(current, "to_dict", None)
-        if (
-            isinstance(code, str)
-            and code.startswith("DEEPTHINK_")
-            and callable(to_dict)
-        ):
-            payload = to_dict()
-            if isinstance(payload, dict) and payload.get("code") == code:
-                persistence = getattr(current, "saved_user_persistence", None)
-                return dict(payload), (
-                    persistence if persistence in {"not_written", "saved"} else "not_written"
-                )
-            return None
-        current = current.__cause__ or current.__context__
-    return None
-
-
 def _terminal_rejection(error: BaseException) -> str | None:
     """Return the surfaced code when dispatch provably never reached the guest.
 
@@ -471,7 +422,7 @@ def _completed_reference(request: Mapping[str, Any], value: Any) -> dict[str, An
         ).removeprefix("sha256:")
         for role in ("user", "assistant")
     )
-    if not isinstance(result, dict) or set(result) - {"deepthink"} != {
+    if not isinstance(result, dict) or set(result) != {
         "status",
         "turn_id",
         "conversation_id",
@@ -480,15 +431,6 @@ def _completed_reference(request: Mapping[str, Any], value: Any) -> dict[str, An
         "message",
     }:
         raise ValueError("saved result is not a complete acknowledgement")
-    deepthink = result.get("deepthink")
-    if (
-        request.get("deepthink_enabled") is True
-        and (not isinstance(deepthink, dict) or not deepthink)
-    ) or (
-        request.get("deepthink_enabled") is not True
-        and "deepthink" in result
-    ):
-        raise ValueError("saved acknowledgement DeepThink report is invalid")
     message = result["message"]
     revision = result["conversation_revision"]
     if (
@@ -530,12 +472,8 @@ def _completed_reference(request: Mapping[str, Any], value: Any) -> dict[str, An
         "conversation_revision": revision,
         "user_message_id": user_id,
         "assistant_message_id": assistant_id,
-        "outcome_digest": canonical_digest(
-            {key: result[key] for key in result if key != "deepthink"}
-        ),
+        "outcome_digest": canonical_digest(result),
     }
-    if isinstance(deepthink, dict):
-        reference["deepthink"] = deepthink
     return reference
 
 
@@ -561,12 +499,6 @@ def _failure_settlement(
         "AI_COMPLETION_UNAVAILABLE",
         "CONTEXT_RESOLUTION_REQUIRED",
         "CONVERSATION_REVISION_CONFLICT",
-        "DEEPTHINK_BUDGET_INVALID",
-        "DEEPTHINK_CHAIN_MEMBERS_EMPTY",
-        "DEEPTHINK_GATE_UNAVAILABLE",
-        "DEEPTHINK_MEMBER_PROVIDER_UNCONFIGURED",
-        "DEEPTHINK_READINESS_FAILED",
-        "DEEPTHINK_REQUIRES_REVIEW_CHAIN",
         "HOST_ACTION_FAILED",
         "MODEL_REFERENCE_REQUIRED",
         "OWNER_RESPONSE_INVALID",

@@ -1520,7 +1520,6 @@ class AIClient:
             "trace_id": rumi_process.trace_id(),
             "process_version": rumi_process.RUMI_PROCESS_VERSION,
             "mode": context["mode"],
-            "deepthink_enabled": rumi_process.deepthink_enabled(params),
             "base_model": generator_model,
             **base_model_metadata,
             "reviewer_model": reviewer_model,
@@ -1530,21 +1529,10 @@ class AIClient:
                 "quarantine_on_exhaustion": True,
             },
             "criteria": list(rumi_process.RUMI_CRITERIA),
-            "action_preflight_required": bool(context.get("action_preflight_required")),
+            "action_preflight_required": bool(
+                context.get("action_preflight_required")
+            ),
         }
-        if process["deepthink_enabled"]:
-            harness_tool_selection = rumi_process.select_harness_tools(
-                messages, tools or [], params
-            )
-            context["harness_tool_selection"] = harness_tool_selection
-            process["mode"] = "deepthink"
-            process["warnings"] = [rumi_process.RUMI_DEEPTHINK_WARNING_JA]
-            process["tooling"] = {
-                "model_tool_ids": harness_tool_selection.get("model_tool_ids", []),
-                "harness_tool_ids": harness_tool_selection.get("harness_tool_ids", []),
-                "vision_tool_ids": harness_tool_selection.get("vision_tool_ids", []),
-                "model_tools_are_separate_from_harness_tools": True,
-            }
         runner = RumiProcessRunner(
             complete=self.complete,
             response_text=self._response_text,
@@ -1588,8 +1576,7 @@ class AIClient:
             return model
         if isinstance(params, dict) and params.get("rumi_require_intended_base_model"):
             return model
-        # ``model_inventory`` lets local-only callers (e.g. the DeepThink
-        # preflight) substitute the declarative catalog for ``list_models``,
+        # ``model_inventory`` lets local-only callers substitute the declarative catalog for ``list_models``,
         # which may query live provider inventories.
         inventory = self.list_models() if model_inventory is None else model_inventory
         available_models: list[str] = []
@@ -1639,13 +1626,6 @@ class AIClient:
     def _provider_params(params):
         provider_params = dict(params or {})
         for key in (
-            "deepthink_enabled",
-            "deepthink",
-            "rumi_deepthink",
-            "deepthink_max_review_iterations",
-            "deepthink_user_rejection_review_cycles",
-            "deepthink_max_sections",
-            "deepthink_loop_breaker",
             "rumi_base_model_override",
             "rumi_require_intended_base_model",
             "_authority_context",

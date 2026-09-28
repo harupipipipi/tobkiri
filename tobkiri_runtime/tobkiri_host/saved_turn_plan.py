@@ -12,6 +12,10 @@ from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_CALLS, saved_tool_logs, 
 READ = ("tobkiri.resource.conversation.v1", "rumi_conversation_store_pack.conversation-resource")
 APPEND = ("tobkiri.action.message.manage.v1", "rumi_conversation_store_pack.message-manage")
 AI = ("tobkiri.service.ai.generate.v1", "rumi_ai_gateway_pack.ai-gateway.generate")
+STRATEGY = (
+    "tobkiri.service.ai.strategy.dispatch.v1",
+    "rumi_ai_strategy_runtime_pack.ai-strategy.dispatch",
+)
 TOOL = ("tobkiri.service.tool.invoke.v1", "rumi_tool_broker_pack.tool-invoke")
 TARGETS = (READ, APPEND, AI, APPEND)
 
@@ -41,11 +45,18 @@ class SavedTurnPlan:
         self.pending: list[dict[str, Any]] = []
         self.seen: set[str] = set()
         self.failed = False
+        self.strategy_reference = request.get("strategy_reference")
 
     @property
     def target(self) -> tuple[str, str]:
         """Return the single next permitted target from acknowledged outcomes."""
-        return {"read": READ, "user": APPEND, "ai": AI, "tool": TOOL, "assistant": APPEND}[self.stage]
+        return {
+            "read": READ,
+            "user": APPEND,
+            "ai": STRATEGY if self.strategy_reference is not None else AI,
+            "tool": TOOL,
+            "assistant": APPEND,
+        }[self.stage]
 
     def check(self, payload: Mapping[str, Any]) -> None:
         """Match an effect or saved transcript before any nested dispatch."""

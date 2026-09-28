@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:97eee3bd93f47738add227f07d05d3ec80ce3a7209c8f3eeeeff5498dc9fdb4e",
+  "source_identity": "sha256:725bdaefa90fca92a2aa93901ed159a5cc2a2dd71ca7213596d37f168394ddf1",
   "variants": [
     {
       "variant_id": "tobkiri.project.state.read.python",
@@ -272,7 +272,7 @@
       "variant_id": "tobkiri.ui.model-state.read.python",
       "function_id": "tobkiri.ui.model-state.read",
       "implementation_path": "runtime/state_changes.py",
-      "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
+      "implementation_digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -316,7 +316,7 @@
       "variant_id": "tobkiri.ui.model-state.write.python",
       "function_id": "tobkiri.ui.model-state.write",
       "implementation_path": "runtime/state_changes.py",
-      "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
+      "implementation_digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -328,7 +328,7 @@
         {
           "contract_id": "tobkiri.action.ui.model-state.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:52597556ddb2d74c77f9a7244acdbed20935612cd28b3ee2aaed5e2251da19d2",
+          "revision_digest": "sha256:8087d410093474a71a5e1fb64b7085a5a13bc10fe22c8d258bff79b9763b8532",
           "operation_id": "tobkiri_ui_settings_pack.model-state-write",
           "input_schema": {
             "additionalProperties": false,
@@ -341,7 +341,7 @@
                 "enum": [
                   "preferred_model",
                   "thinking_level",
-                  "deepthink_enabled"
+                  "strategy_reference"
                 ],
                 "type": "string"
               },
@@ -547,7 +547,7 @@
       "variant_id": "tobkiri.ui.recovery-diagnostic.read.python",
       "function_id": "tobkiri.ui.recovery-diagnostic.read",
       "implementation_path": "runtime/state_changes.py",
-      "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
+      "implementation_digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -591,7 +591,7 @@
       "variant_id": "tobkiri.ui.recovery-diagnostic.write.python",
       "function_id": "tobkiri.ui.recovery-diagnostic.write",
       "implementation_path": "runtime/state_changes.py",
-      "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
+      "implementation_digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -784,6 +784,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:9e60013ef4b4f8b9a38b484b9e8d8b52b2d820cf319fa80774fdeb66024d85a9",
-  "catalog_digest": "sha256:af497c89fb8eb3088f2dd8b3d497e5d8c060bc91e67be9e4f4ce355a88d22d7c"
+  "materialization_catalog_digest": "sha256:3e751dd953c819b620975e498ed05066594cfa3abff724f0cf1f621f103ed4cc",
+  "catalog_digest": "sha256:aa59d069a302c98f1f094e8ede8c22cadc1c938f6df4483500eed1e6196dad9f"
 }

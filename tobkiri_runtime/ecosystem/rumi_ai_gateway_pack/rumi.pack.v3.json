@@ -148,7 +148,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:56b83ae3d1377ed2618729028d6834935b67bc864c6210432554f3e2d0dfe2f5",
+      "artifact_hash": "sha256:92c1b24bf8efbb0a74ca4bb462ff117e4492dd06967a14a0dece46eb0d011c59",
       "contract_id": "rumi.service.ai.generate.v1",
       "id": "ai-gateway-generate",
       "loader": "python",
@@ -156,7 +156,7 @@
       "symbol": "create_generate_operation"
     },
     {
-      "artifact_hash": "sha256:56b83ae3d1377ed2618729028d6834935b67bc864c6210432554f3e2d0dfe2f5",
+      "artifact_hash": "sha256:92c1b24bf8efbb0a74ca4bb462ff117e4492dd06967a14a0dece46eb0d011c59",
       "contract_id": "rumi.service.ai.stream.v1",
       "id": "ai-gateway-stream",
       "loader": "python",
@@ -164,7 +164,7 @@
       "symbol": "create_stream_operation"
     },
     {
-      "artifact_hash": "sha256:56b83ae3d1377ed2618729028d6834935b67bc864c6210432554f3e2d0dfe2f5",
+      "artifact_hash": "sha256:92c1b24bf8efbb0a74ca4bb462ff117e4492dd06967a14a0dece46eb0d011c59",
       "contract_id": "rumi.resource.ai.routing.diagnostics.v1",
       "id": "ai-gateway-routing-diagnostics",
       "loader": "python",

@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:827a090db8f952997cd423b0b1a1814cdf510b19874aaacd8acd3a0d259a140c",
+  "catalog_digest": "sha256:25bde911e3198c71c74c84d0c21f880aaf3421cee33d6950cfa86aa47efb20b3",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:9d2adda220c3a2f781c37b040b2a30314c2459f7c143a6e387361dce295a8f1a",
+  "source_identity": "sha256:49aee2e06383e5eed4a9685a0dc1dce9a99a1d0f31c5f63277390b4f011ac4fe",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "defaultspack.application-presentation",
-      "implementation_digest": "sha256:712e2540875dc130c3d393c85a104c99b37f8d5d0248201b09c6e84c748157f2",
+      "implementation_digest": "sha256:9c51dee01a3fed6671b9eff7b02b581575bd294ac564f6ed1216071d64dc0235",
       "implementation_path": "runtime/application_presentation.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -180,7 +180,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "defaultspack.conversation.saved",
-      "implementation_digest": "sha256:9b1595eedfd8bc22199cd4211a19a58baf7b837c3608dd2704a443e8efd7a341",
+      "implementation_digest": "sha256:8937e6213ee34fc75f828676b0fe4a025c623ed80171dffeb18d3ae9b081e4e9",
       "implementation_path": "runtime/saved_conversation.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -303,9 +303,9 @@
                     "minimum": 1,
                     "type": "integer"
                   },
-                  "deepthink_enabled": {
-                    "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check.",
-                    "type": "boolean"
+                  "strategy_reference": {
+                    "$ref": "#/$defs/identifier",
+                    "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
                   },
                   "thinking_level": {
                     "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call.",
@@ -470,7 +470,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:77ec1a2ee34e66feb576df265b05a76fbcce69c7b1c6b859f23d842bb3f1a063",
+          "revision_digest": "sha256:930358794e1d9a6d10d644173dc01739e5bc00c1a486fba985d0f776e376f3a2",
           "timeout_default_ms": 120000,
           "timeout_hard_max_ms": 300000
         }

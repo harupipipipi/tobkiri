@@ -31,6 +31,8 @@ MODEL_READ_OPERATION = "tobkiri_ui_settings_pack.model-state-read"
 MODEL_WRITE_OPERATION = "tobkiri_ui_settings_pack.model-state-write"
 DIAGNOSTIC_READ_OPERATION = "tobkiri_ui_settings_pack.recovery-diagnostic-read"
 DIAGNOSTIC_WRITE_OPERATION = "tobkiri_ui_settings_pack.recovery-diagnostic-write"
+STRATEGY_CATALOG_CONTRACT = "tobkiri.resource.ai.strategy.catalog.v1"
+STRATEGY_CATALOG_OPERATION = "rumi_ai_strategy_runtime_pack.ai-strategy.catalog"
 
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{7,255}\Z")
 _THINKING = frozenset({"none", "low", "medium", "high", "xhigh"})
@@ -75,11 +77,55 @@ def _model_value(kind: Any, value: Any) -> tuple[str, Any]:
         if value not in _THINKING:
             raise ValueError("thinking level is invalid")
         return kind, value
-    if kind == "deepthink_enabled":
-        if type(value) is not bool:
-            raise ValueError("deepthink state is invalid")
+    if kind == "strategy_reference":
+        if value is None:
+            return kind, None
+        if (
+            not isinstance(value, str)
+            or not value.strip()
+            or value.strip() != value
+            or _ID.fullmatch(value) is None
+        ):
+            raise ValueError("strategy reference is invalid")
         return kind, value
     raise ValueError("model mutation kind is unsupported")
+
+
+def _assert_admitted_strategy_reference(
+    invocation: HostProviderInvocationContextV4,
+    strategy_reference: str,
+) -> None:
+    """Require an active-Plan strategy before persisting its public reference.
+
+    The browser's catalog is only a presentation projection.  This independent
+    read uses the Host-bound contract client, so an arbitrary client value cannot
+    become durable state merely by mimicking a catalog entry.
+    """
+
+    client = invocation.contract_client(
+        allowed_contract_ids=frozenset({STRATEGY_CATALOG_CONTRACT}),
+        consumer_pack_id=PACK_ID,
+        include_credentials=False,
+    )
+    catalog = client.invoke(
+        STRATEGY_CATALOG_CONTRACT,
+        STRATEGY_CATALOG_OPERATION,
+        {},
+    )
+    if not isinstance(catalog, Mapping):
+        raise PermissionError("strategy catalog is unavailable")
+    strategies = catalog.get("strategies")
+    if not isinstance(strategies, list):
+        raise PermissionError("strategy catalog is unavailable")
+    matches = [
+        item
+        for item in strategies
+        if isinstance(item, Mapping)
+        and item.get("strategy_reference") == strategy_reference
+    ]
+    if len(matches) != 1:
+        raise PermissionError("selected strategy is unavailable")
+    invocation.assert_current()
 
 
 def _diagnostic(value: Any) -> dict[str, Any]:
@@ -174,7 +220,12 @@ class StateChangesHostFactoryV4:
                     result["values"] = {
                         "preferred_model": str(models.get("preferred_model") or "stub/default"),
                         "thinking_level": str(models.get("thinking_level") or "medium"),
-                        "deepthink_enabled": bool(models.get("deepthink_enabled", False)),
+                        "strategy_reference": (
+                            models.get("strategy_reference")
+                            if isinstance(models.get("strategy_reference"), str)
+                            and models.get("strategy_reference")
+                            else None
+                        ),
                     }
                 else:
                     events = snapshot.get("recovery_diagnostics", {}).get(namespace, [])
@@ -190,6 +241,8 @@ class StateChangesHostFactoryV4:
                 raise ValueError("state mutation control is invalid")
             if operation_id == MODEL_WRITE_OPERATION:
                 model_kind, model_value = _model_value(payload.get("kind"), payload.get("value"))
+                if model_kind == "strategy_reference" and model_value is not None:
+                    _assert_admitted_strategy_reference(invocation, model_value)
                 normalized = {"kind": model_kind, "value": model_value}
             elif operation_id == DIAGNOSTIC_WRITE_OPERATION:
                 normalized = {"diagnostic": _diagnostic(payload.get("diagnostic"))}

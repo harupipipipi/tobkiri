@@ -47,16 +47,15 @@ class SavedHostExchange:
         self._ai_output_digest: str | None = None
         self._completion_digest: str | None = None
         self._tool_plan: SavedTurnPlan | None = None
-        self._deepthink: Any = None
-        self._deepthink_enabled = False
         self._max_frame_bytes = 64 * 1024
         if request is not None:
             initial = validate_saved_conversation_input({"request": dict(request)})
-            self._deepthink_enabled = (
-                initial["request"].get("deepthink_enabled") is True
-            )
             plan = SavedTurnPlan(initial["request"])
-            self._tool_plan = plan if plan.enabled else None
+            self._tool_plan = (
+                plan
+                if plan.enabled or plan.strategy_reference is not None
+                else None
+            )
             self._max_frame_bytes = MAX_SAVED_FRAME_BYTES
 
     @property
@@ -147,26 +146,6 @@ class SavedHostExchange:
                 and is_saved_text_content(output)
             ):
                 self._ai_output_digest = canonical_digest(output)
-            deepthink = owned.get("deepthink")
-            if deepthink is not None:
-                if (
-                    not self._deepthink_enabled
-                    or not isinstance(deepthink, dict)
-                    or not deepthink
-                    or len(canonical_json(deepthink)) > 32 * 1024
-                ):
-                    raise ValueError(
-                        "saved Host DeepThink readiness report is invalid"
-                    )
-                self._deepthink = deepthink
-            if (
-                self._deepthink_enabled
-                and owned.get("status") == "ok"
-                and not isinstance(deepthink, dict)
-            ):
-                raise ValueError(
-                    "saved Host DeepThink readiness report is required"
-                )
         elif stage in ("user", "assistant"):
             payload = strict_loads(frame.payload)
             message = owned.get("message")
@@ -190,8 +169,6 @@ class SavedHostExchange:
                         "conversation_revision": revision,
                         "user_message_id": message["parent_id"], "message": message,
                     }
-                    if self._deepthink is not None:
-                        completion["deepthink"] = self._deepthink
                     self._completion_digest = canonical_digest(completion)
         if self._tool_plan is not None:
             self._tool_plan.receive(strict_loads(checked.frame)["outcome"])

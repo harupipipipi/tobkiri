@@ -38,7 +38,11 @@ class ContinuationSession:
         """Capture an immutable bounded target plan, never an application plan."""
         if (
             type(targets) is not tuple
-            or not 1 <= len(targets) <= 4
+            # Saved turns have five distinct Host-owned targets when the
+            # optional generic strategy dispatcher is admitted: read, append,
+            # direct AI, strategy AI, and tool. The target selector still
+            # exposes exactly one of them at each authenticated hop.
+            or not 1 <= len(targets) <= 5
             or any(
                 type(target) is not tuple
                 or len(target) != 2

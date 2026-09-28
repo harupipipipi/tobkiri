@@ -38,8 +38,7 @@ LEGACY_CLOUD_DEFAULT_MODELS = {
     "openrouter/tencent/hy3-preview:free",
 }
 DEFAULT_THINKING_LEVEL = "medium"
-DEFAULT_DEEPTHINK_ENABLED = False
-DEEPTHINK_STATE_REF = "defaultspack:models.deepthink_enabled"
+STRATEGY_REFERENCE_STATE_REF = "defaultspack:models.strategy_reference"
 CEREBRAS_REASONING_MODELS = {"gpt-oss-120b", "zai-glm-4.7"}
 MODEL_SLOT_MAIN = "main"
 MODEL_SLOT_LIGHTWEIGHT = "lightweight"
@@ -225,49 +224,59 @@ class ModelRuntimeSettingsService:
             "settings": updated,
         }
 
-    def get_deepthink_enabled(self) -> dict[str, Any]:
+    def get_strategy_reference(self) -> dict[str, Any]:
+        """Return the selected admitted AI strategy, if one is selected."""
         snapshot = self._read_all()
         settings = snapshot["models"]
+        reference = settings.get("strategy_reference")
+        reference = reference if isinstance(reference, str) and reference else None
         return {
-            "enabled": bool(settings.get("deepthink_enabled", DEFAULT_DEEPTHINK_ENABLED)),
-            "state_ref": DEEPTHINK_STATE_REF,
-            "revision": settings_state_revision(snapshot, DEEPTHINK_STATE_REF),
-            "warning": "DeepThinkが有効なタスクには数時間かかる可能性があります。",
+            "strategy_reference": reference,
+            "state_ref": STRATEGY_REFERENCE_STATE_REF,
+            "revision": settings_state_revision(snapshot, STRATEGY_REFERENCE_STATE_REF),
         }
 
-    def set_deepthink_enabled(
+    def set_strategy_reference(
         self,
-        enabled: bool | None = None,
+        strategy_reference: str | None,
         *,
         expected_revision: int | None = None,
         idempotency_key: str | None = None,
     ) -> dict[str, Any]:
-        requested = enabled if isinstance(enabled, bool) else None
+        """Clear a strategy reference through the legacy settings facade.
+
+        Selecting a strategy needs an active Plan catalog read, which this
+        compatibility facade does not have.  Selection therefore belongs to
+        the captured ``tobkiri.ui.model-state.write`` action.  Clearing an
+        existing selection is safe and remains available for migration code.
+        """
+
+        if strategy_reference is not None:
+            raise PermissionError(
+                "strategy selection requires the captured model-state action"
+            )
+        requested = None
 
         def mutate(all_settings: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
             current_models = all_settings.get("models", {})
             if not isinstance(current_models, dict):
                 current_models = {}
-            current_enabled = bool(
-                current_models.get("deepthink_enabled", DEFAULT_DEEPTHINK_ENABLED)
-            )
-            next_enabled = not current_enabled if requested is None else requested
             sanitized = self.sanitize_models_patch(
-                {"deepthink_enabled": next_enabled}, current_models=current_models
+                {"strategy_reference": requested}, current_models=current_models
             )
             updated_models = self.refresh_models_settings(
                 self._deep_merge(current_models, sanitized)
             )
             all_settings["models"] = dict(updated_models)
             return all_settings, {
-                "enabled": next_enabled,
+                "strategy_reference": requested,
                 "persisted": True,
                 "settings": updated_models,
             }
 
         fingerprint = json.dumps(
             {
-                "state_ref": DEEPTHINK_STATE_REF,
+                "state_ref": STRATEGY_REFERENCE_STATE_REF,
                 "desired": requested,
                 "expected_revision": expected_revision,
             },
@@ -277,23 +286,15 @@ class ModelRuntimeSettingsService:
         )
         updated = update_settings_state(
             self._settings_store,
-            DEEPTHINK_STATE_REF,
+            STRATEGY_REFERENCE_STATE_REF,
             mutate,
             expected_revision=expected_revision,
             idempotency_key=idempotency_key,
             request_fingerprint=fingerprint,
         )
-        next_enabled = bool(updated.get("enabled"))
-        message = (
-            "DeepThinkをONにしました。タスクには数時間かかる可能性があります。"
-            if next_enabled
-            else "DeepThinkをOFFにしました。"
-        )
-        updated["message"] = message
-        updated["warning"] = "タスクには数時間かかる可能性があります。" if next_enabled else ""
         updated["state_snapshot"] = {
-            "state_ref": DEEPTHINK_STATE_REF,
-            "value": next_enabled,
+            "state_ref": STRATEGY_REFERENCE_STATE_REF,
+            "value": requested,
             "revision": int(updated.get("revision") or 0),
             "freshness": "authoritative",
         }
@@ -425,7 +426,7 @@ class ModelRuntimeSettingsService:
             "model_groups": default_model_groups(),
             "on_switch_to_non_vision_with_images": "auto_bridge",
             "thinking_level": DEFAULT_THINKING_LEVEL,
-            "deepthink_enabled": DEFAULT_DEEPTHINK_ENABLED,
+            "strategy_reference": None,
             "favorite_profiles": [DEFAULT_MODEL],
             "thinking_level_by_profile": {DEFAULT_MODEL: DEFAULT_THINKING_LEVEL},
             "thinking_level_by_conversation": {},
@@ -585,11 +586,14 @@ class ModelRuntimeSettingsService:
             sanitized["preferred_model_group"] = str(sanitized.get("preferred_model_group") or "default").strip() or "default"
         if "auto_route_within_group" in sanitized:
             sanitized["auto_route_within_group"] = bool(sanitized.get("auto_route_within_group"))
-        if "deepthink_enabled" in sanitized:
-            sanitized["deepthink_enabled"] = self._coerce_bool(
-                sanitized.get("deepthink_enabled"),
-                default=DEFAULT_DEEPTHINK_ENABLED,
-            )
+        if "strategy_reference" in sanitized:
+            reference = sanitized.get("strategy_reference")
+            if reference is None or reference == "":
+                sanitized["strategy_reference"] = None
+            else:
+                raise PermissionError(
+                    "strategy selection requires the captured model-state action"
+                )
         if "on_switch_to_non_vision_with_images" in sanitized:
             policy = str(sanitized.get("on_switch_to_non_vision_with_images") or "auto_bridge").strip()
             sanitized["on_switch_to_non_vision_with_images"] = policy if policy in {"auto_bridge", "ask", "block", "ignore"} else "auto_bridge"
@@ -635,9 +639,9 @@ class ModelRuntimeSettingsService:
                     values_by_scope = {}
             models[key] = values_by_scope if isinstance(values_by_scope, dict) else {}
         models["thinking_level"] = self._normalize_level(models.get("thinking_level"))
-        models["deepthink_enabled"] = self._coerce_bool(
-            models.get("deepthink_enabled"),
-            default=DEFAULT_DEEPTHINK_ENABLED,
+        reference = models.get("strategy_reference")
+        models["strategy_reference"] = (
+            reference.strip() if isinstance(reference, str) and reference.strip() else None
         )
         models["model_api_routes"] = self._normalize_model_api_routes(models.get("model_api_routes", ""))
         models["api_routes"] = self._normalize_api_routes(models.get("api_routes"))

@@ -51,6 +51,7 @@ from tobkiri_host.operation_cancellation import (
     OwnedCancellationHandles,
     nested_cancellation_proof_for,
 )
+from tobkiri_host.packvm_bridge_budget import PackVMBridgeBudgetRegistry
 from tobkiri_host.materialization import MaterializationCoordinator
 from tobkiri_host.models import (
     ArtifactVariant,
@@ -127,7 +128,6 @@ from ..credential_transport import (
 )
 from ..global_contract_dispatch import (
     GlobalContractClient,
-    GlobalContractInvocationError,
 )
 from ..host_provider_backend_v4 import (
     CapturedHostPackDataV4,
@@ -196,6 +196,7 @@ _CONTROL_CONTRACTS = {PACK_CONTROL_CONTRACT, CONTROL_PRESENTATION_CONTRACT}
 _PACKVM_BRIDGE_PROTOCOL = "io.tobkiri.packvm.bridge.v1"
 _PACKVM_BRIDGE_MAX_REQUEST_BYTES = 64 * 1024
 _PACKVM_BRIDGE_MAX_RESULT_BYTES = 512 * 1024
+_PACKVM_BRIDGE_MAX_HOPS = 16
 # Keep resource-axis defaults aligned with the bounded admission queue.  A
 # request reservation remains held while a verified provider performs a
 # nested Host dispatch, so ResourceAmount's constructor defaults of one slot
@@ -547,7 +548,7 @@ def _host_profile_catalog(
     bundle_root: Path,
     *,
     authority_user_data: Path,
-) -> object:
+) -> Any:
     """Capture the Host catalog without dropping registry-owned Profiles.
 
     ``BundledCatalog.load`` verifies the Host-global artifact inventory, but it
@@ -1134,9 +1135,10 @@ def _bridge_targets_by_outer_edge(
     """Derive Host continuation targets from signed Profile edges only.
 
     A PackVM may receive a bridge only to non-PackVM edges whose signed caller
-    is that PackVM Function.  The guest selects one of those exact edges by
-    Contract and operation; provider names, product IDs, and operation-only
-    maps cannot create a continuation capability.
+    is that PackVM Function. The guest may name a Contract only when the Plan
+    contains exactly one matching edge, or retain the legacy exact Contract
+    and operation target. Provider names, product IDs, and operation-only maps
+    cannot create a continuation capability.
     """
 
     result: dict[tuple[str, str, str, str, str, str], tuple[_CapturedPlanEdge, ...]] = {}
@@ -1153,6 +1155,128 @@ def _bridge_targets_by_outer_edge(
         if candidates:
             result[outer.key] = candidates
     return result
+
+
+def _resolve_packvm_bridge_target(
+    candidates: tuple[_CapturedPlanEdge, ...],
+    target: object,
+) -> tuple[_CapturedPlanEdge, dict[str, str]]:
+    """Resolve a guest target only through one caller-bound captured Plan edge."""
+
+    if (
+        not isinstance(target, Mapping)
+        or set(target) not in (
+            {"contract_id"},
+            {"contract_id", "operation_id"},
+        )
+        or not isinstance(target.get("contract_id"), str)
+        or not target.get("contract_id")
+    ):
+        raise AuthorityDenied("PackVM capability bridge request is invalid")
+    requested_operation = target.get("operation_id")
+    if requested_operation is not None and (
+        not isinstance(requested_operation, str) or not requested_operation
+    ):
+        raise AuthorityDenied("PackVM capability bridge request is invalid")
+    matches = tuple(
+        edge
+        for edge in candidates
+        if edge.resolved_binding.operation.contract_id == target.get("contract_id")
+        and (
+            requested_operation is None
+            or edge.resolved_binding.operation.operation_id == requested_operation
+        )
+    )
+    if len(matches) != 1:
+        raise AuthorityDenied("PackVM capability bridge target is ambiguous")
+    return matches[0], {key: str(value) for key, value in target.items()}
+
+
+def _validate_packvm_bridge_continuation(
+    continuation: object,
+    *,
+    operation_id: str,
+    target: Mapping[str, str],
+    request_digest: str,
+) -> dict[str, Any]:
+    """Validate a legacy or bounded multi-hop PackVM continuation.
+
+    The Host independently binds every continuation to the captured outer
+    operation, the Plan-resolved target, and the canonical request digest.
+    Chain ordering and one-shot consumption are additionally enforced by the
+    PackVM backend; this boundary still rejects malformed predecessor and
+    state bindings before any nested Provider invocation occurs.
+    """
+
+    if not isinstance(continuation, Mapping):
+        raise AuthorityDenied("PackVM capability bridge continuation is invalid")
+    common = {
+        "kind": "tobkiri.packvm.continuation.v1",
+        "protocol": _PACKVM_BRIDGE_PROTOCOL,
+        "version": 1,
+        "operation_id": operation_id,
+        "nonce": continuation.get("nonce"),
+        "target": dict(target),
+        "request_digest": request_digest,
+    }
+    legacy_fields = set(common)
+    extended_fields = legacy_fields | {
+        "hop",
+        "max_hops",
+        "previous_result_digest",
+        "state",
+        "state_digest",
+    }
+    nonce = continuation.get("nonce")
+    if (
+        not isinstance(nonce, str)
+        or len(nonce) != 48
+        or any(character not in "0123456789abcdef" for character in nonce)
+        or any(continuation.get(key) != value for key, value in common.items())
+    ):
+        raise AuthorityDenied("PackVM capability bridge continuation is invalid")
+    if set(continuation) == legacy_fields:
+        return dict(continuation)
+    if set(continuation) != extended_fields:
+        raise AuthorityDenied("PackVM capability bridge continuation is invalid")
+
+    hop = continuation.get("hop")
+    max_hops = continuation.get("max_hops")
+    predecessor = continuation.get("previous_result_digest")
+    state = continuation.get("state")
+    state_digest = continuation.get("state_digest")
+
+    def valid_digest(value: object) -> bool:
+        return (
+            isinstance(value, str)
+            and len(value) == 71
+            and value.startswith("sha256:")
+            and all(character in "0123456789abcdef" for character in value[7:])
+        )
+
+    try:
+        state_bytes = canonical_json(dict(state)) if isinstance(state, Mapping) else ""
+        expected_state_digest = (
+            canonical_digest(dict(state)) if isinstance(state, Mapping) else None
+        )
+    except Exception as error:
+        raise AuthorityDenied(
+            "PackVM capability bridge continuation is invalid"
+        ) from error
+    if (
+        type(hop) is not int
+        or type(max_hops) is not int
+        or not 1 <= max_hops <= _PACKVM_BRIDGE_MAX_HOPS
+        or not 0 <= hop < max_hops
+        or (hop == 0 and predecessor is not None)
+        or (hop > 0 and not valid_digest(predecessor))
+        or not isinstance(state, Mapping)
+        or len(state_bytes) > _PACKVM_BRIDGE_MAX_REQUEST_BYTES
+        or not valid_digest(state_digest)
+        or state_digest != expected_state_digest
+    ):
+        raise AuthorityDenied("PackVM capability bridge continuation is invalid")
+    return dict(continuation)
 
 
 def _interactive_effect_coordinator_factory(
@@ -1309,24 +1433,11 @@ def _provider_unavailable_bridge_result(
 ) -> dict[str, Any]:
     """Return the bounded error projection allowed across the guest boundary."""
 
-    code = "PROVIDER_UNAVAILABLE"
-    current = error
-    for _ in range(8):
-        if current is None:
-            break
-        if (
-            isinstance(current, GlobalContractInvocationError)
-            and current.code == "DEEPTHINK_PRICING_UNAVAILABLE"
-        ):
-            # This code exposes no provider detail. It proves the read-only
-            # readiness check rejected DeepThink before the saved guest ran.
-            code = current.code
-            break
-        current = current.__cause__ or current.__context__
+    del error
     return {
         "status": "error",
         "error": {
-            "code": code,
+            "code": "PROVIDER_UNAVAILABLE",
             "message": "The verified AI capability is unavailable.",
         },
     }
@@ -1362,13 +1473,6 @@ def capture_production_dispatch(
                 list[Mapping[str, Any]],
                 Mapping[str, Any],
             ],
-            Mapping[str, Any],
-        ]
-        | None
-    ) = None,
-    saved_deepthink_gate: (
-        Callable[
-            [str, list[dict[str, Any]], list[dict[str, Any]]],
             Mapping[str, Any],
         ]
         | None
@@ -1991,6 +2095,7 @@ def capture_production_dispatch(
     # session, contract, provider, or plan identity from the guest.
     dispatch_holder: list[V4DispatchSession] = []
     bridge_targets = _bridge_targets_by_outer_edge(captured_edges)
+    bridge_budget_registry = PackVMBridgeBudgetRegistry()
 
     def resolve_bridge_outer(outer_request: object) -> _CapturedPlanEdge:
         """Resolve bridge authority only from the captured authenticated outer edge."""
@@ -2145,21 +2250,10 @@ def capture_production_dispatch(
         request = bridge_request.get("request")
         continuation = bridge_request.get("continuation")
         bridge_candidates = bridge_targets[outer_edge.key]
-        if not isinstance(target, Mapping):
-            raise AuthorityDenied("PackVM capability bridge request is invalid")
-        bridge_edges = tuple(
-            edge
-            for edge in bridge_candidates
-            if edge.resolved_binding.operation.contract_id == target.get("contract_id")
-            and edge.resolved_binding.operation.operation_id == target.get("operation_id")
+        bridge_edge, expected_bridge_target = _resolve_packvm_bridge_target(
+            bridge_candidates,
+            target,
         )
-        if len(bridge_edges) != 1:
-            raise AuthorityDenied("PackVM capability bridge target is ambiguous")
-        bridge_edge = bridge_edges[0]
-        expected_bridge_target = {
-            "contract_id": bridge_edge.resolved_binding.operation.contract_id,
-            "operation_id": bridge_edge.resolved_binding.operation.operation_id,
-        }
         if (
             set(bridge_request) != expected_fields
             or bridge_request.get("kind") != "tobkiri.packvm.bridge.request.v1"
@@ -2187,24 +2281,19 @@ def capture_production_dispatch(
         except Exception as error:
             raise AuthorityDenied("PackVM capability bridge request is invalid") from error
 
-        nonce = continuation.get("nonce")
-        expected_continuation = {
-            "kind": "tobkiri.packvm.continuation.v1",
-            "protocol": _PACKVM_BRIDGE_PROTOCOL,
-            "version": 1,
-            "operation_id": outer_edge.resolved_binding.operation.operation_id,
-            "nonce": nonce,
-            "target": expected_bridge_target,
-            "request_digest": bridge_request["request_digest"],
-        }
-        if (
-            dict(continuation) != expected_continuation
-            or not isinstance(nonce, str)
-            or len(nonce) != 48
-            or any(character not in "0123456789abcdef" for character in nonce)
-        ):
-            raise AuthorityDenied("PackVM capability bridge continuation is invalid")
+        checked_continuation = _validate_packvm_bridge_continuation(
+            continuation,
+            operation_id=outer_edge.resolved_binding.operation.operation_id,
+            target=expected_bridge_target,
+            request_digest=str(bridge_request["request_digest"]),
+        )
+        nonce = str(checked_continuation["nonce"])
 
+        budget_admission = bridge_budget_registry.admit(
+            outer_request,
+            bridge_edge.resolved_binding.operation.contract_id,
+            request,
+        )
         result = invoke_bridge_provider(
             outer_request,
             outer_edge,
@@ -2212,6 +2301,7 @@ def capture_production_dispatch(
             request,
             parent_cancellation_proof=parent_cancellation_proof,
         )
+        bridge_budget_registry.record(budget_admission, result)
 
         response = {
             "kind": "tobkiri.packvm.bridge.result.v1",
@@ -2289,7 +2379,11 @@ def capture_production_dispatch(
             parent_cancellation_proof=saved_bridge_cancellation_proof.get(),
             result_projector=(
                 project_saved_ai_result
-                if target[0] == "tobkiri.service.ai.generate.v1"
+                if target[0]
+                in {
+                    "tobkiri.service.ai.generate.v1",
+                    "tobkiri.service.ai.strategy.dispatch.v1",
+                }
                 else project_saved_tool_result if target[0] == "tobkiri.service.tool.invoke.v1" else None
             ),
         )
@@ -2297,7 +2391,6 @@ def capture_production_dispatch(
     saved_callbacks = SavedBridgeCallbacks(
         saved_dispatch,
         require_saved_targets,
-        deepthink_gate=saved_deepthink_gate,
     )
 
     def saved_capability_bridge(
@@ -3035,6 +3128,20 @@ def capture_production_dispatch(
         function_principal = binding["function_principal"]
         function_id = str(function_principal["function_id"])
         pack_id = str(binding["pack_id"])
+        pack_manifest = catalog.packs.get(pack_id)
+        pack_identity = (
+            pack_manifest.get("pack")
+            if isinstance(pack_manifest, Mapping)
+            else None
+        )
+        if not isinstance(pack_identity, Mapping):
+            raise AuthorityDenied("selected Provider Pack identity is unavailable")
+        pack_display_name = pack_identity.get("display_name")
+        pack_description = pack_identity.get("description", "")
+        if not isinstance(pack_display_name, str) or not pack_display_name.strip():
+            raise AuthorityDenied("selected Provider Pack display name is invalid")
+        if not isinstance(pack_description, str):
+            raise AuthorityDenied("selected Provider Pack description is invalid")
         provider_prefix = f"{pack_id}."
         provider_instance_id = (
             function_id.removeprefix(provider_prefix)
@@ -3048,6 +3155,9 @@ def capture_production_dispatch(
             {
                 "provider_id": function_id,
                 "provider_instance_id": provider_instance_id,
+                "pack_id": pack_id,
+                "pack_display_name": pack_display_name.strip(),
+                "pack_description": pack_description.strip(),
                 "function_id": function_id,
                 "principal_id": resolved_binding.principal_ref.value,
                 "implementation_digest": resolved_binding.function.implementation_digest,

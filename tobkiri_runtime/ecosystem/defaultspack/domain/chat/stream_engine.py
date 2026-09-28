@@ -2027,8 +2027,8 @@ class ChatRunEngine:
                 "code": "CHAT_RUN_FAILED",
                 "message": str(exc),
             }
-            # Structured domain errors (for example the DeepThink readiness
-            # gate) carry a machine-readable to_dict() contract; surface the
+            # Structured domain errors from captured providers carry a
+            # machine-readable to_dict() contract; surface the
             # whole payload instead of reducing it to the message string.
             to_dict = getattr(exc, "to_dict", None)
             error_code = getattr(exc, "code", None)
@@ -4745,7 +4745,6 @@ class ChatRunEngine:
                 "unknown_selected_tools": unknown_selected_tools,
                 "thinking": thinking,
                 "thinking_level": prepared.params.get("thinking_level"),
-                "deepthink_enabled": bool(prepared.params.get("deepthink_enabled")),
                 "model_routing": dict(prepared.model_routing or {}),
                 "chat_references": dict(prepared.chat_references or {}),
                 "ir": {"schema_version": prepared.ir_schema_version},
@@ -5234,7 +5233,6 @@ class ChatRunEngine:
             metadata.setdefault("attached_tool_count", len(_external_provider_tools(prepared.provider_tools)))
             metadata.setdefault("attached_tools", list(prepared.tools_called))
             metadata["thinking_level"] = prepared.params.get("thinking_level")
-            metadata["deepthink_enabled"] = bool(prepared.params.get("deepthink_enabled"))
             response["metadata"] = metadata
             return response
         return None

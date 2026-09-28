@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:ee2c93653e74514ff05b38c3a807a57d221b68f2b8cf5671c0c969fa310f2ded",
+      "digest": "sha256:7f0ea6fca9a85174dc61045055c0e477f2b9b47e72de9cea0123976fe47a3c4f",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -16,7 +16,7 @@
       "path": "runtime/projects.py"
     },
     {
-      "digest": "sha256:340b88316d3063444cdb1b0ab107bb38e699c96940d69eb72c0866836719df61",
+      "digest": "sha256:fe99080d5e5a57604a4a6d20632cb96147844be9e1fb1ac408f731dc663fca62",
       "kind": "asset",
       "path": "runtime/public-settings-fields.v1.json"
     },
@@ -26,7 +26,7 @@
       "path": "runtime/settings.py"
     },
     {
-      "digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
+      "digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
       "kind": "executable",
       "path": "runtime/state_changes.py"
     },
@@ -78,7 +78,7 @@
       "operations": [
         "tobkiri_ui_settings_pack.model-state-write"
       ],
-      "revision_digest": "sha256:52597556ddb2d74c77f9a7244acdbed20935612cd28b3ee2aaed5e2251da19d2"
+      "revision_digest": "sha256:8087d410093474a71a5e1fb64b7085a5a13bc10fe22c8d258bff79b9763b8532"
     },
     {
       "contract_id": "tobkiri.resource.ui.recovery-diagnostic.v1",
@@ -146,7 +146,7 @@
     {
       "contract_revision_digest": "sha256:d24028c9659f3d43753ff03cd5706fcda20cdab5149ca947c87dcfc66e1a6618",
       "id": "tobkiri.ui.model-state.read",
-      "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
+      "implementation_digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
       "isolation": "dedicated_process",
       "operations": [
         "tobkiri_ui_settings_pack.model-state-read"
@@ -154,9 +154,9 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:52597556ddb2d74c77f9a7244acdbed20935612cd28b3ee2aaed5e2251da19d2",
+      "contract_revision_digest": "sha256:8087d410093474a71a5e1fb64b7085a5a13bc10fe22c8d258bff79b9763b8532",
       "id": "tobkiri.ui.model-state.write",
-      "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
+      "implementation_digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
       "isolation": "dedicated_process",
       "operations": [
         "tobkiri_ui_settings_pack.model-state-write"
@@ -176,7 +176,7 @@
     {
       "contract_revision_digest": "sha256:45320eb949a53cfac1206f4dca8e2b01583b81f09ed1b4c5da8b9365cda2c9a0",
       "id": "tobkiri.ui.recovery-diagnostic.read",
-      "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
+      "implementation_digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
       "isolation": "dedicated_process",
       "operations": [
         "tobkiri_ui_settings_pack.recovery-diagnostic-read"
@@ -186,7 +186,7 @@
     {
       "contract_revision_digest": "sha256:647f16b2650f887dac5349746617b4081c68c31118ee3486aba4c8b5ac4421ea",
       "id": "tobkiri.ui.recovery-diagnostic.write",
-      "implementation_digest": "sha256:f7d30971e025e380c2f47aeb9354ecfa2bdce330835bbe8df3057b90679f86b7",
+      "implementation_digest": "sha256:732da5b0606f1fe89271c4b5fc36912855defc331157cb8994b9a9d3697d38ea",
       "isolation": "dedicated_process",
       "operations": [
         "tobkiri_ui_settings_pack.recovery-diagnostic-write"
@@ -205,9 +205,9 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:97eee3bd93f47738add227f07d05d3ec80ce3a7209c8f3eeeeff5498dc9fdb4e",
-    "artifact_set_digest": "sha256:312782df906b17023d6a497c3f524d4424e27480109cb57ed6344aad42768c2c",
-    "contract_catalog_digest": "sha256:dc449ac0a02ea21ffcbd44ecba68537f1104e6d21c7332823bc7ce6fd05d0683"
+    "source_identity": "sha256:725bdaefa90fca92a2aa93901ed159a5cc2a2dd71ca7213596d37f168394ddf1",
+    "artifact_set_digest": "sha256:a7bddbb740c5c97b89e757e5c810f6f716fe3b33f1f2e997b72a64936f024070",
+    "contract_catalog_digest": "sha256:f87d94b0917856ad1b57d6d6c7db53db9b701e815d9c2bf8afa7228770ccaec3"
   },
   "migration": {
     "compatibility": "none",
@@ -298,7 +298,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:3a802cbe56366a68129d8aaac2ecfde82e303f5d22e5bb9aed244017dd947820",
+    "artifact_digest": "sha256:8824c239b09ec46ee2e9068bc0958605fe62ef11765a45b3bf19a0f6d89d76b1",
     "display_name": "Tobkiri UI Settings",
     "id": "tobkiri_ui_settings_pack",
     "kind": "host_extension",
@@ -309,15 +309,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/tobkiri_ui_settings_pack/pack.v4.json",
-    "source_digest": "sha256:97eee3bd93f47738add227f07d05d3ec80ce3a7209c8f3eeeeff5498dc9fdb4e",
+    "source_digest": "sha256:725bdaefa90fca92a2aa93901ed159a5cc2a2dd71ca7213596d37f168394ddf1",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:2142f8ed767a07dc808b9918b73643660ae9b3abf79f4aad5b918bf3fd0d41ad",
+    "content_root_digest": "sha256:62ac99d06806dc6f713e25dc6ed2873ca9dc2c5ab6d0e2c50c15a037310d43af",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
-    "input_inventory_digest": "sha256:f423d19c2da6a60f49ec688eaf3ce549c8fd3c5e411d98f1dde73766cb4cf2ea",
+    "input_inventory_digest": "sha256:5d0fa435819d76a49358d6dc433a6ceedbb353c5b366536a9507d9c9b12ec49a",
     "normative": true,
     "evidence": [
       {
@@ -328,7 +328,7 @@
       {
         "path": "ecosystem/tobkiri_ui_settings_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:97eee3bd93f47738add227f07d05d3ec80ce3a7209c8f3eeeeff5498dc9fdb4e"
+        "digest": "sha256:725bdaefa90fca92a2aa93901ed159a5cc2a2dd71ca7213596d37f168394ddf1"
       }
     ]
   },
@@ -432,6 +432,12 @@
         "cardinality": "one",
         "contract_id": "tobkiri.resource.ai.model.profile.v1",
         "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.ai.strategy.catalog.v1",
+        "optional": true,
         "version_range": ">=1.0.0 <2.0.0"
       },
       {

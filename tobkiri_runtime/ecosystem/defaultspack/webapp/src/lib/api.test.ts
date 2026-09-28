@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, isDefaultspackContractOperationUnknownError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, usesBrowserComputerApprovalEndpoint, validSavedTurnContent } from "./api";
+import { ChatStreamInterruptedError, admittedStrategyContributions, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, isDefaultspackContractOperationUnknownError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, usesBrowserComputerApprovalEndpoint, validSavedTurnContent } from "./api";
 import type { ComposerCommandItem } from "./api";
 import { authorityApprovalRuntimeContent } from "./authorityApproval";
 import { deleteCalendarScheduleBeforeLocalChange } from "./calendarScheduleDeletion";
@@ -163,6 +163,41 @@ test("saved reconciliation posts only an existing turn ID, never the original in
   assert.equal(calls, 3);
 });
 
+test("strategy catalog accepts only host-admitted contribution records", () => {
+  assert.deepEqual(
+    admittedStrategyContributions([
+      {
+        strategy_reference: "provider:deepthink",
+        label: "DeepThink",
+        description: "Multi-step reasoning",
+        signature_verified: true,
+        plan_admitted: true,
+        available: true,
+      },
+      {
+        strategy_reference: "provider:disabled",
+        label: "Disabled",
+        signature_verified: true,
+        plan_admitted: true,
+        available: false,
+      },
+      {
+        strategy_reference: "provider:unsigned",
+        label: "Unsigned",
+        signature_verified: false,
+        plan_admitted: true,
+        available: true,
+      },
+    ]),
+    [{
+      reference: "provider:deepthink",
+      label: "DeepThink",
+      description: "Multi-step reasoning",
+    }],
+  );
+  assert.deepEqual(admittedStrategyContributions({ strategies: [] }), []);
+});
+
 test("saved turn uses exact canonical transport and never retries an uncertain outcome", async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });
@@ -183,13 +218,13 @@ test("saved turn uses exact canonical transport and never retries an uncertain o
   assert.equal(calls, 2);
 });
 
-test("saved turn sends the selected thinking level with DeepThink", async (context) => {
+test("saved turn sends the selected admitted strategy reference", async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });
   const input = {
     turn_id: "turn-1", conversation_id: "conversation-1",
     conversation_revision: 7, content: "hello",
-    deepthink_enabled: true, thinking_level: "high" as const,
+    strategy_reference: "provider:deepthink", thinking_level: "high" as const,
   };
   globalThis.fetch = async (_url, init) => {
     assert.deepEqual(JSON.parse(String(init?.body)), { request: input });
@@ -206,7 +241,7 @@ test("saved turn rejects unsupported fields and invalid revisions before sending
   let calls = 0;
   globalThis.fetch = async () => { calls += 1; throw new Error("must not send"); };
   const input = { turn_id: "turn-1", conversation_id: "conversation-1", conversation_revision: 7, content: "hello" };
-  for (const patch of [{ approved: true }, { state: {} }, { attachments: [] }, { thinking_level: "ultra" }, { thinking_level: true }, { conversation_revision: 0 },
+  for (const patch of [{ approved: true }, { state: {} }, { attachments: [] }, { thinking_level: "ultra" }, { thinking_level: true }, { strategy_reference: "" }, { strategy_reference: "x".repeat(257) }, { conversation_revision: 0 },
     { conversation_revision: Number.MAX_SAFE_INTEGER + 1 }, { turn_id: "../escape" }, { content: " " }, { content: "あ".repeat(22000) }]) {
     await assert.rejects(api.startSavedTurn({ ...input, ...patch } as Parameters<typeof api.startSavedTurn>[0]), /invalid|unsupported/);
   }
@@ -1080,57 +1115,29 @@ test("composer command feedback surfaces pack block result messages and paths", 
   );
 });
 
-test("deepthink command feedback uses warning only while the mode is enabled", () => {
+test("generic state changes do not alter command feedback severity", () => {
   assert.equal(
     composerCommandFeedbackTone({
       command: {
-        id: "deepthink",
-        name: "deepthink",
-        label: "DeepThink",
+        id: "strategy",
+        name: "strategy",
+        label: "Strategy",
         category: "model",
         visibility: "default",
         risk: "medium",
-        execution: {
-          type: "rumi_function",
-          qualified_name: "defaultspack:ai_set_deepthink_enabled",
-        },
+        execution: { type: "settings_patch", section: "models", field: "strategy_reference" },
       },
       executed: true,
       operation_status: "succeeded",
       state_changes: [{
-        state_ref: "defaultspack:models.deepthink_enabled",
-        value: true,
+        state_ref: "defaultspack:models.strategy_reference",
+        value: "provider:strategy",
         revision: 1,
-      }],
-    }),
-    "warning",
-  );
-  assert.equal(
-    composerCommandFeedbackTone({
-      command: {
-        id: "deepthink",
-        name: "deepthink",
-        label: "DeepThink",
-        category: "model",
-        visibility: "default",
-        risk: "medium",
-        execution: {
-          type: "rumi_function",
-          qualified_name: "defaultspack:ai_set_deepthink_enabled",
-        },
-      },
-      executed: true,
-      operation_status: "succeeded",
-      state_changes: [{
-        state_ref: "defaultspack:models.deepthink_enabled",
-        value: false,
-        revision: 2,
       }],
     }),
     "success",
   );
 });
-
 test("template ai input selects composer and tool policy metadata", () => {
   const catalog = {
     ai_inputs: [
@@ -1354,13 +1361,13 @@ test("command protocol catalog is authoritative and invocation preserves its env
   const originalFetch = globalThis.fetch;
   const requests: string[] = [];
   const legacyCommand = {
-    id: "deepthink",
-    name: "deepthink",
-    label: "DeepThink",
+    id: "strategy",
+    name: "strategy",
+    label: "Strategy",
     category: "model",
     visibility: "default",
     risk: "medium",
-    execution: { type: "rumi_function", qualified_name: "defaultspack:ai_set_deepthink_enabled" },
+    execution: { type: "rumi_function", qualified_name: "defaultspack:ai_set_strategy_enabled" },
   };
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = requestTarget(input);
@@ -1371,20 +1378,20 @@ test("command protocol catalog is authoritative and invocation preserves its env
           kind: "ResolvedCommandCatalog",
           catalog_revision: "revision-1",
           commands: [{
-            canonical_id: "defaultspack:deepthink",
+            canonical_id: "defaultspack:strategy",
             pack_id: "defaultspack",
             pack_generation: 1,
             command_version: "1.0.0",
-            identity: { id: "deepthink", name: "deepthink", version: "1.0.0" },
+            identity: { id: "strategy", name: "strategy", version: "1.0.0" },
             presentation: {
-              label: { fallback: "DeepThink" },
+              label: { fallback: "Strategy" },
               category: "model",
               visibility: "default",
-              icon: "deepthink",
-              input: { kind: "toggle", state_ref: "defaultspack:models.deepthink_enabled" },
+              icon: "strategy",
+              input: { kind: "toggle", state_ref: "defaultspack:models.strategy_enabled" },
               mounts: [],
             },
-            execution: { kind: "state_mutation", state_ref: "defaultspack:models.deepthink_enabled" },
+            execution: { kind: "state_mutation", state_ref: "defaultspack:models.strategy_enabled" },
             availability: { status: "available" },
             legacy: legacyCommand,
           }],
@@ -1395,9 +1402,9 @@ test("command protocol catalog is authoritative and invocation preserves its env
           api_version: "tobkiri.commands/v1",
           operation_id: "operation-1",
           status: "succeeded",
-          command_ref: "defaultspack:deepthink",
+          command_ref: "defaultspack:strategy",
           state_changes: [{
-            state_ref: "defaultspack:models.deepthink_enabled",
+            state_ref: "defaultspack:models.strategy_enabled",
             value: true,
             revision: 1,
             freshness: "authoritative",
@@ -1583,6 +1590,22 @@ const validUiCatalogFixture = {
   extension_points: [],
 };
 
+const strategyCatalogFixture = {
+  api_version: "tobkiri.ai.strategy.catalog/v1",
+  strategies: [{
+    strategy_reference: "rumi_deepthink_pack.deepthink.execute",
+    label: "DeepThink",
+    description: "Multi-step reasoning",
+    signature_verified: true,
+    plan_admitted: true,
+    available: true,
+  }],
+  count: 1,
+  catalog_revision: "strategy-revision-1",
+  diagnostics: [],
+  quarantined_pack_ids: [],
+};
+
 const selectedToolCatalogFixture = {
   services: [{ service_id: "web", label: "Web検索" }],
   tools: [{
@@ -1630,16 +1653,19 @@ test("uiCatalog accepts the canonical Pack v4 response envelope", async () => {
       status: "ok",
       data: path === routeKey("api/ui/full-catalog")
         ? validUiCatalogFixture
-        : selectedToolCatalogFixture,
+        : path === routeKey("api/ai/strategies")
+          ? strategyCatalogFixture
+          : selectedToolCatalogFixture,
     }), { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
   try {
     const catalog = await api.uiCatalog();
     assert.equal(catalog.app?.id, "defaultspack");
-    assert.deepEqual(paths, [routeKey("api/ui/full-catalog"), routeKey("api/tools/catalog")]);
+    assert.deepEqual(paths, [routeKey("api/ui/full-catalog"), routeKey("api/tools/catalog"), routeKey("api/ai/strategies")]);
     assert.deepEqual(catalog.sidebar.items.map((item) => item.id), ["web_search", "calculator"]);
     assert.equal(catalog.sidebar.items[0]?.ui?.composer_label, "Web Search");
     assert.equal(catalog.sidebar.items[0]?.badge, "Unavailable");
+    assert.deepEqual(catalog.strategy_contributions, strategyCatalogFixture.strategies);
     const mentionableTools = composerExtensionItems(catalog.sidebar.items);
     assert.deepEqual(mentionableTools.map((item) => item.id), ["calculator"]);
     assert.equal(mentionableTools[0]?.originKind, "profile_tool_catalog");
@@ -1655,7 +1681,9 @@ test("uiCatalog rejects a broken selected tool projection instead of showing an 
     status: "ok",
     data: requestTarget(input) === routeKey("api/ui/full-catalog")
       ? validUiCatalogFixture
-      : { ...selectedToolCatalogFixture, count: 3 },
+      : requestTarget(input) === routeKey("api/ai/strategies")
+        ? strategyCatalogFixture
+        : { ...selectedToolCatalogFixture, count: 3 },
   }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
   try {
     await assert.rejects(api.uiCatalog(), /endpoint schema/);

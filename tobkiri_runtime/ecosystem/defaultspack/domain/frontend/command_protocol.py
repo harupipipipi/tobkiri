@@ -152,9 +152,9 @@ class CommandProtocolRegistry(CommandCatalogProjection):
             "commands": commands,
             "states": [
                 {
-                    "state_ref": "defaultspack:models.deepthink_enabled",
+                    "state_ref": "defaultspack:models.strategy_reference",
                     "schema_version": "1.0.0",
-                    "value_type": "boolean",
+                    "value_type": "string",
                     "authority": "backend_runtime",
                 }
             ],
@@ -173,7 +173,7 @@ class CommandProtocolRegistry(CommandCatalogProjection):
                 },
             ],
             "state_snapshots": self.query_states(
-                ["defaultspack:models.deepthink_enabled"]
+                ["defaultspack:models.strategy_reference"]
             )["states"],
             "diagnostics": diagnostics,
         }
@@ -862,17 +862,17 @@ class CommandProtocolRegistry(CommandCatalogProjection):
     def query_states(self, state_refs: list[str] | None = None) -> dict[str, Any]:
         requested = {str(item or "").strip() for item in state_refs or [] if str(item or "").strip()}
         states: list[dict[str, Any]] = []
-        deepthink_ref = "defaultspack:models.deepthink_enabled"
-        if not requested or deepthink_ref in requested:
+        strategy_ref = "defaultspack:models.strategy_reference"
+        if not requested or strategy_ref in requested:
             from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 
             value = ModelRuntimeSettingsService(
                 self.pack_root, settings_owner=self._settings_store,
-            ).get_deepthink_enabled()
+            ).get_strategy_reference()
             states.append(
                 {
-                    "state_ref": deepthink_ref,
-                    "value": bool(value.get("enabled")),
+                    "state_ref": strategy_ref,
+                    "value": value.get("strategy_reference"),
                     "revision": int(value.get("revision") or 0),
                     "freshness": "authoritative",
                 }

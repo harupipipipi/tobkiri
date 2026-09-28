@@ -13,3 +13,10 @@ test("both visible and advanced model pickers use the model-state write contract
   assert.equal(modelStateWriteForSettingsField("general", "main_model", "openrouter/example"), null);
   assert.equal(modelStateWriteForSettingsField("models", "model_api_routes", "route"), null);
 });
+
+test("strategy selection uses the revisioned model-state contract", () => {
+  assert.deepEqual(
+    modelStateWriteForSettingsField("models", "strategy_reference", "provider:deepthink"),
+    { kind: "strategy_reference", value: "provider:deepthink" },
+  );
+});

@@ -21,7 +21,23 @@ from tobkiri_protocol.validation import validate_file
 _SCHEMA_PATH = Path(__file__).resolve().parents[3] / "schemas" / "frontend_contribution.schema.json"
 _SCHEMA = Draft202012Validator(strict_loads(_SCHEMA_PATH.read_bytes()))
 _ROUTE = re.compile(r"/(?:[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*)?")
+_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{7,255}\Z")
 _MAX_DESCRIPTOR_BYTES = 64 * 1024
+_STRATEGY_CONTRIBUTION_FIELDS = frozenset(
+    {
+        "version",
+        "id",
+        "kind",
+        "mode",
+        "label",
+        "description",
+        "priority",
+        "strategy_reference",
+        "command",
+        "localization",
+        "accessibility",
+    }
+)
 
 
 class FrontendPackDenied(ValueError):
@@ -259,3 +275,247 @@ def project_selected_declarative_routes(
     accepted = [item for item in proposed if item["owner_pack_id"] not in quarantined]
     accepted.sort(key=lambda item: (str(item["route"]), str(item["contribution_id"])))
     return accepted, diagnostics, sorted(quarantined)
+
+
+def project_selected_ai_strategies(
+    effective_set: Sequence[Mapping[str, Any]],
+    strategy_catalog: Mapping[str, Any],
+    *,
+    profile_id: str,
+    profile_revision: str,
+    activation_id: str,
+    plan_digest: str,
+) -> tuple[list[dict[str, object]], list[dict[str, str]], list[str]]:
+    """Project strategy choices only from signed Pack data and one Host Plan.
+
+    The resource catalog is the execution authority.  A Pack descriptor can
+    supply display text only after its signed artifact identity and its exact
+    public strategy reference both match that catalog.  Neither Pack metadata
+    nor browser input can claim that a strategy is available.
+    """
+
+    records = strategy_catalog.get("strategies")
+    if not isinstance(records, list):
+        raise FrontendPackDenied("strategy catalog is invalid")
+    by_reference: dict[str, Mapping[str, Any]] = {}
+    for record in records:
+        if not isinstance(record, Mapping):
+            continue
+        reference = record.get("strategy_reference")
+        if not isinstance(reference, str) or _IDENTIFIER.fullmatch(reference) is None:
+            continue
+        if reference in by_reference:
+            raise FrontendPackDenied("strategy catalog has duplicate references")
+        by_reference[reference] = record
+
+    proposed: list[dict[str, object]] = []
+    diagnostics: list[dict[str, str]] = []
+    quarantined: set[str] = set()
+    admitted = load_admitted_pack_catalog()
+    seen_pack_ids: set[str] = set()
+    for item in effective_set:
+        if item.get("role") != "pack":
+            continue
+        pack_id = str(item.get("identity") or "")
+        digest = str(item.get("artifact_digest") or "")
+        if not pack_id or pack_id in seen_pack_ids:
+            raise FrontendPackDenied("selected Pack closure is ambiguous")
+        seen_pack_ids.add(pack_id)
+        record = admitted.get(pack_id)
+        artifacts = record.get("runtime_artifacts", ()) if isinstance(record, Mapping) else ()
+        if not isinstance(artifacts, (list, tuple)) or not any(
+            isinstance(artifact, Mapping) and artifact.get("kind") == "ui.contribution"
+            for artifact in artifacts
+        ):
+            continue
+        try:
+            proposed.extend(
+                _load_pack_ai_strategies(
+                    pack_id,
+                    digest,
+                    catalog=by_reference,
+                    profile_id=profile_id,
+                    profile_revision=profile_revision,
+                    activation_id=activation_id,
+                    plan_digest=plan_digest,
+                )
+            )
+        except Exception as exc:
+            quarantined.add(pack_id)
+            diagnostics.append(
+                {
+                    "code": "v4_strategy_pack_quarantined",
+                    "severity": "error",
+                    "owner_pack_id": pack_id,
+                    "message": (
+                        "Selected Pack strategy contribution is unavailable: "
+                        f"{type(exc).__name__}"
+                    ),
+                }
+            )
+
+    by_reference_items: dict[str, list[dict[str, object]]] = {}
+    for item in proposed:
+        by_reference_items.setdefault(str(item["strategy_reference"]), []).append(item)
+    for reference, items in by_reference_items.items():
+        if len(items) > 1:
+            for item in items:
+                quarantined.add(str(item["owner_pack_id"]))
+            diagnostics.append(
+                {
+                    "code": "v4_strategy_reference_collision",
+                    "severity": "error",
+                    "owner_pack_id": "",
+                    "message": f"Strategy reference is ambiguous: {reference}",
+                }
+            )
+    accepted = [
+        item for item in proposed if str(item["owner_pack_id"]) not in quarantined
+    ]
+    accepted.sort(
+        key=lambda item: (
+            -_strategy_priority(item),
+            str(item["label"]),
+            str(item["strategy_reference"]),
+        )
+    )
+    return accepted, diagnostics, sorted(quarantined)
+
+
+def _strategy_priority(item: Mapping[str, object]) -> int:
+    """Return the schema-validated strategy priority without accepting bools."""
+
+    priority = item.get("priority")
+    if isinstance(priority, bool) or not isinstance(priority, int):
+        raise FrontendPackDenied("strategy contribution priority is invalid")
+    return priority
+
+
+def _load_pack_ai_strategies(
+    pack_id: str,
+    expected_digest: str,
+    *,
+    catalog: Mapping[str, Mapping[str, Any]],
+    profile_id: str,
+    profile_revision: str,
+    activation_id: str,
+    plan_digest: str,
+) -> list[dict[str, object]]:
+    """Verify and project the strategy declarations from one exact Pack."""
+
+    root = resolve_admitted_pack_root(pack_id)
+    if root.is_symlink() or not root.is_dir():
+        raise FrontendPackDenied("selected Pack root is unavailable")
+    if (root / "pack.v4.json").is_symlink() or (root / "artifact-index.v4.json").is_symlink():
+        raise FrontendPackDenied("selected Pack authority file is unsafe")
+    manifest = validate_file(root / "pack.v4.json", "pack")
+    descriptors = [
+        item for item in manifest["artifacts"] if item["kind"] == "ui.contribution"
+    ]
+    if not descriptors:
+        return []
+    if (
+        manifest["pack"]["id"] != pack_id
+        or manifest["pack"]["artifact_digest"] != expected_digest
+        or manifest["pack"]["kind"] not in {"normal_sandbox", "host_extension"}
+    ):
+        raise FrontendPackDenied("selected Pack manifest identity changed")
+    compiled = compile_pack_root(root)
+    if compiled.artifact.pack_id != pack_id or compiled.artifact.digest != expected_digest:
+        raise FrontendPackDenied("selected Pack artifact digest changed")
+    index = validate_file(root / "artifact-index.v4.json", "pack_artifact_index")
+    if index["pack_id"] != pack_id or index["artifact_set_digest"] != expected_digest:
+        raise FrontendPackDenied("selected Pack artifact index changed")
+    index_by_path = {str(item["path"]): item for item in index["artifacts"]}
+    projected: list[dict[str, object]] = []
+    for artifact in descriptors:
+        relative = str(artifact["path"])
+        index_entry = index_by_path.get(relative)
+        if (
+            index_entry is None
+            or index_entry["role"] != "sidecar"
+            or index_entry["digest"] != artifact["digest"]
+        ):
+            raise FrontendPackDenied(
+                "frontend descriptor is not bound by the artifact index"
+            )
+        path = _descriptor_path(root, relative)
+        if path.stat().st_size > _MAX_DESCRIPTOR_BYTES:
+            raise FrontendPackDenied("frontend descriptor exceeds its size limit")
+        raw = path.read_bytes()
+        digest = _digest(raw)
+        if digest != artifact["digest"]:
+            raise FrontendPackDenied("frontend descriptor digest changed")
+        payload = strict_loads(raw)
+        if not isinstance(payload, Mapping) or not _SCHEMA.is_valid(payload):
+            raise FrontendPackDenied("frontend descriptor schema is invalid")
+        if (
+            payload.get("kind") != "ai_strategy"
+            or payload.get("mode") != "declarative"
+            or set(payload) - _STRATEGY_CONTRIBUTION_FIELDS
+            or any(
+                field in payload
+                for field in (
+                    "route",
+                    "action_contract",
+                    "data_source_contract",
+                    "isolated",
+                    "module",
+                    "region",
+                    "renderer",
+                    "schema",
+                    "view",
+                )
+            )
+        ):
+            continue
+        reference = payload.get("strategy_reference")
+        if not isinstance(reference, str) or _IDENTIFIER.fullmatch(reference) is None:
+            raise FrontendPackDenied("strategy reference is invalid")
+        catalog_record = catalog.get(reference)
+        if (
+            catalog_record is None
+            or catalog_record.get("pack_id") != pack_id
+            or catalog_record.get("artifact_digest") != expected_digest
+        ):
+            raise FrontendPackDenied("strategy reference is not admitted by the Plan")
+        label = payload.get("label")
+        description = payload.get("description")
+        command = payload.get("command")
+        if (
+            not isinstance(label, str)
+            or not label.strip()
+            or len(label) > 256
+            or (description is not None and not isinstance(description, str))
+            or (isinstance(description, str) and len(description) > 1024)
+            or (command is not None and not isinstance(command, Mapping))
+        ):
+            raise FrontendPackDenied("strategy contribution presentation is invalid")
+        result: dict[str, object] = {
+            "contribution_id": str(payload["id"]),
+            "kind": "ai_strategy",
+            "mode": "declarative",
+            "strategy_reference": reference,
+            "label": label.strip(),
+            "priority": int(payload["priority"]),
+            "owner_pack_id": pack_id,
+            "owner_pack_hash": expected_digest,
+            "build_identity": str(manifest["integrity"]["source_identity"]),
+            "resolved_profile_id": profile_id,
+            "resolved_profile_revision": profile_revision,
+            "resolved_activation_id": activation_id,
+            "resolved_plan_hash": plan_digest,
+            "descriptor_hash": digest,
+            # These values are a server projection of verification facts.  No
+            # caller-supplied availability flag participates in this decision.
+            "signature_verified": True,
+            "plan_admitted": True,
+            "available": True,
+            "accessibility": dict(payload["accessibility"]),
+        }
+        if isinstance(description, str) and description.strip():
+            result["description"] = description.strip()
+        if command is not None:
+            result["command"] = dict(command)
+        projected.append(result)
+    return projected

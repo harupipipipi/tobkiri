@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:39b270979e7ae5493e48e810bea0bf898b9dfac36f2f5039fa8ed825182d2f20",
+  "source_identity": "sha256:9396fede92cd9fe41bc7192d3f3ddf97f0dd1d64228440f8836d9cdac0110431",
   "variants": [
     {
       "variant_id": "defaultspack.application-presentation.python",
       "function_id": "defaultspack.application-presentation",
       "implementation_path": "runtime/application_presentation.py",
-      "implementation_digest": "sha256:712e2540875dc130c3d393c85a104c99b37f8d5d0248201b09c6e84c748157f2",
+      "implementation_digest": "sha256:9c51dee01a3fed6671b9eff7b02b581575bd294ac564f6ed1216071d64dc0235",
       "execution_kind": "pack_vm",
       "platform": "any",
       "architecture": "any",
@@ -177,7 +177,7 @@
       "variant_id": "defaultspack.conversation.saved.python",
       "function_id": "defaultspack.conversation.saved",
       "implementation_path": "runtime/saved_conversation.py",
-      "implementation_digest": "sha256:9b1595eedfd8bc22199cd4211a19a58baf7b837c3608dd2704a443e8efd7a341",
+      "implementation_digest": "sha256:8937e6213ee34fc75f828676b0fe4a025c623ed80171dffeb18d3ae9b081e4e9",
       "execution_kind": "pack_vm",
       "platform": "any",
       "architecture": "any",
@@ -189,7 +189,7 @@
         {
           "contract_id": "conversation.saved-turn.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:77ec1a2ee34e66feb576df265b05a76fbcce69c7b1c6b859f23d842bb3f1a063",
+          "revision_digest": "sha256:930358794e1d9a6d10d644173dc01739e5bc00c1a486fba985d0f776e376f3a2",
           "operation_id": "saved_complete",
           "input_schema": {
             "$defs": {
@@ -289,9 +289,9 @@
                     "minimum": 1,
                     "type": "integer"
                   },
-                  "deepthink_enabled": {
-                    "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check.",
-                    "type": "boolean"
+                  "strategy_reference": {
+                    "$ref": "#/$defs/identifier",
+                    "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
                   },
                   "thinking_level": {
                     "description": "Requested model reasoning level. The Host validates this finite value and binds it to the saved AI call.",
@@ -479,6 +479,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:827a090db8f952997cd423b0b1a1814cdf510b19874aaacd8acd3a0d259a140c",
-  "catalog_digest": "sha256:fc1777e088506682bd0d0d564af0c95191e80223c4dc501ab7111020daa046c0"
+  "materialization_catalog_digest": "sha256:25bde911e3198c71c74c84d0c21f880aaf3421cee33d6950cfa86aa47efb20b3",
+  "catalog_digest": "sha256:a6635dab5ff9c00f1bd552df82737ba3309000bde18c274ea320d2324d353be7"
 }

@@ -71,6 +71,83 @@ def test_host_accepts_only_model_reference_not_caller_authority() -> None:
         assert not macos_vz_supervisor._valid_bridge_payload({**payload, **extra})
 
 
+def _generic_host_bridge(
+    hop: int,
+    *,
+    predecessor: str | None = None,
+    max_hops: int = 3,
+) -> dict[str, Any]:
+    target = {"contract_id": "tobkiri.resource.ai.route.quote.v1"}
+    request = {"phase": hop, "messages": [{"role": "user", "content": "hello"}]}
+    state = {"version": 1, "phase": hop}
+    request_digest = canonical_digest(request)
+    return {
+        "kind": "tobkiri.packvm.bridge.request.v1",
+        "protocol": "io.tobkiri.packvm.bridge.v1",
+        "version": 1,
+        "target": target,
+        "request": request,
+        "request_digest": request_digest,
+        "continuation": {
+            "kind": "tobkiri.packvm.continuation.v1",
+            "protocol": "io.tobkiri.packvm.bridge.v1",
+            "version": 1,
+            "operation_id": "strategy.execute",
+            "nonce": format(hop + 1, "048x"),
+            "target": target,
+            "request_digest": request_digest,
+            "hop": hop,
+            "max_hops": max_hops,
+            "previous_result_digest": predecessor,
+            "state": state,
+            "state_digest": canonical_digest(state),
+        },
+    }
+
+
+def test_host_validates_generic_target_and_exact_continuation_chain() -> None:
+    first = _generic_host_bridge(0)
+    checked = macos_vz_supervisor._validate_bridge_request(
+        first, operation_id="strategy.execute"
+    )
+    assert checked == first["continuation"]
+    predecessor = canonical_digest({"status": "ok", "value": {"quote": 1}})
+    second = _generic_host_bridge(1, predecessor=predecessor)
+    checked = macos_vz_supervisor._validate_bridge_request(
+        second,
+        operation_id="strategy.execute",
+        expected_hop=1,
+        expected_max_hops=3,
+        previous_result_digest=predecessor,
+    )
+    assert checked == second["continuation"]
+
+    for field, value in (
+        ("hop", 2),
+        ("max_hops", 4),
+        ("previous_result_digest", "sha256:" + "0" * 64),
+        ("state_digest", "sha256:" + "0" * 64),
+    ):
+        tampered = _generic_host_bridge(1, predecessor=predecessor)
+        tampered["continuation"][field] = value
+        with pytest.raises(BackendUnavailableError, match="continuation"):
+            macos_vz_supervisor._validate_bridge_request(
+                tampered,
+                operation_id="strategy.execute",
+                expected_hop=1,
+                expected_max_hops=3,
+                previous_result_digest=predecessor,
+            )
+
+
+def test_host_rejects_generic_bridge_above_hard_hop_limit() -> None:
+    with pytest.raises(BackendUnavailableError, match="continuation"):
+        macos_vz_supervisor._validate_bridge_request(
+            _generic_host_bridge(0, max_hops=macos_vz_supervisor._MAX_BRIDGE_HOPS + 1),
+            operation_id="strategy.execute",
+        )
+
+
 def _digest(value: str | bytes) -> str:
     raw = value.encode() if isinstance(value, str) else value
     return "sha256:" + hashlib.sha256(raw).hexdigest()
@@ -882,6 +959,116 @@ def test_signed_pending_bridge_uses_host_callback_and_resumes_once(tmp_path: Pat
         driver.invoke(_request("domain.provider.conversation", "request-2"))
     assert driver.capability()[0] is False
 
+
+def test_signed_generic_bridge_requeues_multiple_hops_with_one_outer_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    driver, allocator = _driver(tmp_path)
+    observed: list[Mapping[str, Any]] = []
+
+    def callback(
+        _outer_request: object,
+        bridge_request: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        observed.append(bridge_request)
+        return _bridge_result(bridge_request)
+
+    driver.bind_capability_bridge(callback)
+    _launch(driver)
+    transport = allocator.transports["domain.provider.conversation"]
+    original_exchange = transport.exchange
+
+    def pending_data(
+        helper_request: Mapping[str, Any],
+        *,
+        hop: int,
+        predecessor: str | None,
+    ) -> Mapping[str, Any]:
+        bridge = _generic_host_bridge(hop, predecessor=predecessor, max_hops=2)
+        bridge["continuation"]["operation_id"] = "complete"
+        outer = helper_request.get("request")
+        if not isinstance(outer, Mapping):
+            outer = {"request_digest": helper_request["host_bridge_result"]["request_digest"]}
+        wrapper = {
+            "kind": "tobkiri.packvm.bridge.host-request.v1",
+            "protocol": "io.tobkiri.packvm.bridge.v1",
+            "version": 1,
+            "request_id": "request-1",
+            "target_domain": transport.allocation.domain_id,
+            "guest_artifact_identity": canonical_digest(transport.binding_digests),
+            "request_digest": outer["request_digest"],
+            "bridge_request_digest": canonical_digest(bridge),
+            "bridge_request": bridge,
+            "deadline_monotonic": outer.get("deadline_monotonic"),
+        }
+        # Bridge-result helper envelopes do not repeat the outer deadline.
+        if wrapper["deadline_monotonic"] is None:
+            wrapper["deadline_monotonic"] = transport.requests[1]["request"][
+                "deadline_monotonic"
+            ]
+        return {"state": "pending", "host_bridge_request": wrapper}
+
+    bridge_results = 0
+
+    def signed_helper_response(
+        request: Mapping[str, Any], payload: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        core = {
+            "kind": "tobkiri.macos-vz.supervisor.response.v1",
+            "protocol": "io.tobkiri.macos-vz-supervisor.v1",
+            "version": 1,
+            "operation": request["operation"],
+            "host_nonce": request["host_nonce"],
+            "domain_id": transport.allocation.domain_id,
+            "launch_binding_digest": request["launch_binding_digest"],
+            "payload": payload,
+        }
+        mac = hmac.new(
+            transport.allocator.channel_keys[transport.allocation.domain_id],
+            canonical_json(core),
+            hashlib.sha256,
+        ).hexdigest()
+        return {**core, "agent_mac": mac}
+
+    def exchange(request: Mapping[str, Any]) -> Mapping[str, Any]:
+        nonlocal bridge_results
+        if request.get("operation") == "invoke":
+            transport.requests.append(dict(request))
+            return signed_helper_response(
+                request,
+                transport._guest(
+                    request,
+                    operation="invoke",
+                    request_id="request-1",
+                    data=pending_data(request, hop=0, predecessor=None),
+                ),
+            )
+        if request.get("operation") == "bridge_result" and bridge_results == 0:
+            bridge_results += 1
+            transport.requests.append(dict(request))
+            predecessor = request["host_bridge_result"]["bridge_result"][
+                "result_digest"
+            ]
+            return signed_helper_response(
+                request,
+                transport._guest(
+                    request,
+                    operation="bridge_result",
+                    request_id="request-1",
+                    data=pending_data(request, hop=1, predecessor=predecessor),
+                ),
+            )
+        return original_exchange(request)
+
+    monkeypatch.setattr(transport, "exchange", exchange)
+    assert driver.invoke(_request("domain.provider.conversation")).payload == {
+        "text": "bridged"
+    }
+    assert [item["continuation"]["hop"] for item in observed] == [0, 1]
+    assert len(
+        [request for request in transport.requests if request["operation"] == "bridge_result"]
+    ) == 2
 
 @pytest.mark.parametrize("tamper", [
     None, "target", "binding", "predecessor", "cancel", "early_success",

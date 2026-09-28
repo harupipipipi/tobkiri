@@ -35,8 +35,8 @@ from ecosystem.defaultspack.defaultspack.model_profile_presentation import (
 )
 from ecosystem.defaultspack.runtime import saved_conversation as saved
 from ecosystem.rumi_ai_gateway_pack.runtime import gateway
-from ecosystem.rumi_ai_gateway_pack.runtime.preflight import (
-    create_preflight_operation,
+from ecosystem.rumi_ai_gateway_pack.runtime.route_quote import (
+    create_route_quote_operation,
 )
 from ecosystem.rumi_ai_pipeline_pack.runtime.pipeline import (
     create_failover_operation,
@@ -178,7 +178,7 @@ def _bridge_setup(
         allowed_contract_ids=gateway._GENERATE_ALLOWED_CONTRACTS,
         consumer_pack_id="rumi_ai_gateway_pack",
     )
-    readiness = create_preflight_operation(client)
+    readiness = create_route_quote_operation(client)
     generate = gateway.create_generate_operation(client)
     outer = SimpleNamespace(
         context=SimpleNamespace(request_id="host-request", profile_id="defaults"),
@@ -249,26 +249,6 @@ def _bridge_setup(
 
     callbacks = SavedBridgeCallbacks(dispatch, require_targets)
     return store, outer, calls, callbacks, session
-
-
-def test_deepthink_pricing_rejection_precedes_saved_user_append(
-    tmp_path: Path,
-) -> None:
-    """An unpriced connection route fails in read-only preflight."""
-
-    store, outer, _calls, callbacks, session = _bridge_setup(
-        tmp_path, {"mode": "none"}
-    )
-    outer.payload["request"]["deepthink_enabled"] = True
-    before = store.path.read_bytes()
-
-    with pytest.raises(GlobalContractInvocationError) as captured:
-        callbacks.preflight(outer)
-
-    assert captured.value.code == "DEEPTHINK_PRICING_UNAVAILABLE"
-    assert store.path.read_bytes() == before
-    assert store.get("conversation-1")["conversation_revision"] == 1
-    assert session.provider_requests == []
 
 
 def test_connection_route_uses_exact_reviewed_catalog_pricing(
@@ -394,27 +374,6 @@ def test_connection_catalog_pricing_requires_exact_trusted_evidence(
         connection,
         "deepseek/deepseek-r1-0528",
     ) == {}
-
-
-def test_pricing_failure_crosses_guest_bridge_as_bounded_code() -> None:
-    """The bridge exposes only the safe DeepThink readiness code."""
-
-    from core_runtime.bootstrap.production_v4 import (
-        _provider_unavailable_bridge_result,
-    )
-
-    pricing_error = GlobalContractInvocationError(
-        "DEEPTHINK_PRICING_UNAVAILABLE",
-        "provider-specific detail that must not cross the boundary",
-    )
-
-    assert _provider_unavailable_bridge_result(pricing_error) == {
-        "status": "error",
-        "error": {
-            "code": "DEEPTHINK_PRICING_UNAVAILABLE",
-            "message": "The verified AI capability is unavailable.",
-        },
-    }
 
 
 def test_unrecognized_provider_failure_remains_generic() -> None:
@@ -551,7 +510,7 @@ def test_required_tool_selection_fails_closed_on_connection_bound_profile(
         callbacks.preflight(outer)
     assert raised.value.code == "unresolved_profile"
     readiness = [payload for target, payload in calls if target == READINESS]
-    assert readiness and readiness[0]["tool_calling"] is True
+    assert readiness and readiness[0]["requirements"]["tool_calling"] is True
 
     # The AI stage applies the same hard requirement before generation, so a
     # forged or bypassed preflight cannot smuggle tools into the route.

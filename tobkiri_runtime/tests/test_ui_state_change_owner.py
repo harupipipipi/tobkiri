@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+
 from ecosystem.tobkiri_ui_settings_pack.runtime.state_changes import (
     DIAGNOSTIC_ACTION,
     DIAGNOSTIC_CONTRACT,
@@ -20,6 +21,8 @@ from ecosystem.tobkiri_ui_settings_pack.runtime.state_changes import (
     MODEL_READ_OPERATION,
     MODEL_WRITE_FUNCTION,
     MODEL_WRITE_OPERATION,
+    STRATEGY_CATALOG_CONTRACT,
+    STRATEGY_CATALOG_OPERATION,
     StateChangesHostFactoryV4,
 )
 
@@ -31,6 +34,42 @@ class _Invocation:
 
     def assert_current(self) -> None:
         """Represent a current Host-authenticated request."""
+
+
+class _StrategyCatalogClient:
+    """A captured read-only strategy catalog used by model state writes."""
+
+    def __init__(self, strategies: list[dict[str, object]]) -> None:
+        self.strategies = strategies
+        self.calls: list[tuple[str, str, dict[str, object]]] = []
+
+    def invoke(
+        self,
+        contract_id: str,
+        operation_id: str,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        self.calls.append((contract_id, operation_id, payload))
+        assert (contract_id, operation_id) == (
+            STRATEGY_CATALOG_CONTRACT,
+            STRATEGY_CATALOG_OPERATION,
+        )
+        return {"strategies": self.strategies}
+
+
+class _StrategyInvocation(_Invocation):
+    """Expose only the invocation-bound catalog client to the state owner."""
+
+    def __init__(self, strategies: list[dict[str, object]]) -> None:
+        self.client = _StrategyCatalogClient(strategies)
+
+    def contract_client(self, **kwargs: object) -> _StrategyCatalogClient:
+        assert kwargs == {
+            "allowed_contract_ids": frozenset({STRATEGY_CATALOG_CONTRACT}),
+            "consumer_pack_id": "tobkiri_ui_settings_pack",
+            "include_credentials": False,
+        }
+        return self.client
 
 
 def _capture(root: Path, function_id: str, contract: str, operation: str):
@@ -80,6 +119,59 @@ def test_model_state_is_finite_revisioned_and_receipted(tmp_path: Path) -> None:
     for forbidden in ({"path": "/tmp/state"}, {"approved": True}, {"callback": "x"}):
         with pytest.raises(PermissionError):
             writer.invoke(MODEL_WRITE_OPERATION, {**payload, **forbidden}, _Invocation())
+
+
+def test_strategy_state_write_requires_the_captured_plan_catalog(tmp_path: Path) -> None:
+    """A persisted strategy reference must be present exactly once in the Host catalog."""
+
+    writer = StateChangesHostFactoryV4(MODEL_WRITE_FUNCTION).capture(
+        _capture(tmp_path, MODEL_WRITE_FUNCTION, MODEL_ACTION, MODEL_WRITE_OPERATION)
+    ).contributions[0]
+    reference = "third_party_strategy_pack.review.execute"
+    payload = {
+        "profile_id": "defaults",
+        "kind": "strategy_reference",
+        "value": reference,
+        "expected_revision": 0,
+        "mutation_id": "strategy-mutation-1",
+    }
+    invocation = _StrategyInvocation([{"strategy_reference": reference}])
+
+    result = writer.invoke(MODEL_WRITE_OPERATION, payload, invocation)
+
+    assert result["value"] == reference
+    assert invocation.client.calls == [
+        (STRATEGY_CATALOG_CONTRACT, STRATEGY_CATALOG_OPERATION, {})
+    ]
+    with pytest.raises(PermissionError, match="selected strategy is unavailable"):
+        writer.invoke(
+            MODEL_WRITE_OPERATION,
+            {
+                **payload,
+                "value": "missing_strategy_pack.review.execute",
+                "expected_revision": 1,
+                "mutation_id": "strategy-mutation-2",
+            },
+            _StrategyInvocation([]),
+        )
+
+
+def test_legacy_model_settings_cannot_bypass_strategy_catalog(tmp_path: Path) -> None:
+    """Legacy settings writes may clear, but cannot select, a strategy."""
+
+    import sys
+
+    defaultspack_root = Path(__file__).resolve().parents[1] / "ecosystem" / "defaultspack"
+    sys.path.insert(0, str(defaultspack_root))
+    from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
+
+    settings = ModelRuntimeSettingsService(pack_root=tmp_path)
+    with pytest.raises(PermissionError, match="captured model-state action"):
+        settings.set_strategy_reference("third_party_strategy_pack.review.execute")
+    with pytest.raises(PermissionError, match="captured model-state action"):
+        settings.sanitize_models_patch(
+            {"strategy_reference": "third_party_strategy_pack.review.execute"}
+        )
 
 
 def test_diagnostic_is_redacted_bounded_and_never_returns_content(tmp_path: Path) -> None:

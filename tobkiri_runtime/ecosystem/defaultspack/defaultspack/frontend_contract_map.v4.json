@@ -781,6 +781,21 @@
     },
     {
       "method": "GET",
+      "path": "/api/ai/strategies",
+      "presentation": "ai_strategy_catalog",
+      "targets": [
+        {
+          "contribution_id": "defaults.ai.strategy.catalog.read",
+          "contract_id": "tobkiri.resource.ai.strategy.catalog.v1",
+          "operation_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+          "provider_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+          "function_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/api/ai/profiles",
       "presentation": "model_profile_list",
       "targets": [

@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:7cde8427de977b8e3761699b0afab8ba2ec46916545c0144c7dd52c38b88dc2d",
+  "source_identity": "sha256:7463f52304c8b3ebe41e1e281a2c255ebbd746bbb2c2f44c2c3db840e9246198",
   "variants": [
     {
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.generate.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:56b83ae3d1377ed2618729028d6834935b67bc864c6210432554f3e2d0dfe2f5",
+      "implementation_digest": "sha256:92c1b24bf8efbb0a74ca4bb462ff117e4492dd06967a14a0dece46eb0d011c59",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -38,10 +38,10 @@
       ]
     },
     {
-      "variant_id": "rumi_ai_gateway_pack.ai-gateway.preflight.python",
-      "function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
-      "implementation_path": "runtime/preflight.py",
-      "implementation_digest": "sha256:ad552779bc28743c787a7c198a630d5e398815445888341b694d61ccc4c7ca8c",
+      "variant_id": "rumi_ai_gateway_pack.ai-gateway.route-quote.python",
+      "function_id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
+      "implementation_path": "runtime/route_quote.py",
+      "implementation_digest": "sha256:44be6a6f20a8e90e9ab30b7540e13ca2dfda50aed21932a035f7eac979777494",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -51,72 +51,174 @@
       "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
-          "contract_id": "tobkiri.resource.ai.readiness.v1",
+          "contract_id": "tobkiri.resource.ai.route.quote.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:9d1ebfdf436e137cf40d6515ae562c8efd3a95c7f9bae3f05c8e6896740dfd7b",
-          "operation_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+          "revision_digest": "sha256:6a931c71d36a3560524844a3051277d6bff8772db77f759a82fd7eb7497fe1b0",
+          "operation_id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
           "input_schema": {
             "additionalProperties": false,
-            "properties": {
-              "deepthink": {
-                "type": "boolean"
+            "anyOf": [
+              {
+                "required": [
+                  "model_profile_id"
+                ]
               },
+              {
+                "required": [
+                  "model_reference"
+                ]
+              }
+            ],
+            "properties": {
               "messages": {
                 "items": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "content": {
-                      "type": "string"
-                    },
-                    "role": {
-                      "enum": [
-                        "system",
-                        "user",
-                        "assistant"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "role",
-                    "content"
-                  ],
                   "type": "object"
                 },
                 "maxItems": 2048,
                 "minItems": 1,
                 "type": "array"
               },
-              "modalities": {
-                "const": [
-                  "image",
-                  "text"
-                ]
-              },
               "model_profile_id": {
                 "maxLength": 256,
                 "minLength": 1,
                 "type": "string"
               },
-              "tool_calling": {
-                "type": "boolean"
+              "model_reference": {
+                "oneOf": [
+                  {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "profile_id": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "profile_id"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "requirements": {
+                "type": "object"
               }
             },
             "required": [
-              "model_profile_id",
               "messages"
             ],
             "type": "object"
           },
           "output_schema": {
+            "$defs": {
+              "pricing": {
+                "additionalProperties": false,
+                "properties": {
+                  "currency": {
+                    "maxLength": 16,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "input": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "maxLength": 128,
+                        "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "output": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "maxLength": 128,
+                        "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "unit": {
+                    "const": "usd_per_token",
+                    "description": "Catalog input and output rates are USD per token; this matches the usage-cost owner calculation."
+                  }
+                },
+                "required": [
+                  "input",
+                  "output",
+                  "currency",
+                  "unit"
+                ],
+                "type": "object"
+              },
+              "route_binding": {
+                "additionalProperties": false,
+                "properties": {
+                  "catalog_provider_instance_id": {
+                    "maxLength": 512,
+                    "type": "string"
+                  },
+                  "catalog_revision": {
+                    "maxLength": 512,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "model_id": {
+                    "maxLength": 512,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "pricing": {
+                    "$ref": "#/$defs/pricing"
+                  },
+                  "pricing_revision": {
+                    "maxLength": 512,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "provider_instance_id": {
+                    "maxLength": 512,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "model_id",
+                  "provider_instance_id",
+                  "catalog_provider_instance_id",
+                  "catalog_revision",
+                  "pricing_revision",
+                  "pricing"
+                ],
+                "type": "object"
+              }
+            },
             "additionalProperties": false,
             "properties": {
+              "catalog_provider_instance_id": {
+                "type": "string"
+              },
               "catalog_revision": {
                 "type": "string"
               },
               "model_id": {
                 "type": "string"
               },
-              "model_profile_id": {
+              "pricing": {
+                "$ref": "#/$defs/pricing"
+              },
+              "pricing_revision": {
                 "type": "string"
               },
               "provider_instance_id": {
@@ -124,14 +226,20 @@
               },
               "ready": {
                 "const": true
+              },
+              "route_binding": {
+                "$ref": "#/$defs/route_binding"
               }
             },
             "required": [
               "ready",
-              "model_profile_id",
               "model_id",
               "provider_instance_id",
-              "catalog_revision"
+              "catalog_provider_instance_id",
+              "catalog_revision",
+              "pricing_revision",
+              "pricing",
+              "route_binding"
             ],
             "type": "object"
           },
@@ -149,7 +257,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:56b83ae3d1377ed2618729028d6834935b67bc864c6210432554f3e2d0dfe2f5",
+      "implementation_digest": "sha256:92c1b24bf8efbb0a74ca4bb462ff117e4492dd06967a14a0dece46eb0d011c59",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -183,7 +291,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.stream.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:56b83ae3d1377ed2618729028d6834935b67bc864c6210432554f3e2d0dfe2f5",
+      "implementation_digest": "sha256:92c1b24bf8efbb0a74ca4bb462ff117e4492dd06967a14a0dece46eb0d011c59",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -214,6 +322,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:4255506e5370ca766d81b5d46fe78f92abbb7c38c099c21b45abe05b50fb2214",
-  "catalog_digest": "sha256:d2af6730d085cfc6c415a28e296349c5817ea376d1eb8b7d45b14385cb93df70"
+  "materialization_catalog_digest": "sha256:1cebd9b864106ac3169fef681c8eb315beae816651d6efeaa03734f1e8891c72",
+  "catalog_digest": "sha256:d9810c1560eaeaed4f29fe889a5b734178487ec4a1fbbce8a739a818362482fc"
 }

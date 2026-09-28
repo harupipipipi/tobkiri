@@ -25,6 +25,8 @@ from tobkiri_protocol.canonical import canonical_digest
 
 PACK_ID = "qa.frontend.route"
 DESCRIPTOR = "frontend/contributions/route.json"
+STRATEGY_DESCRIPTOR = "frontend/contributions/strategy.json"
+STRATEGY_REFERENCE = "qa_frontend_route.strategy.execute"
 _NO_INPUT = object()
 
 
@@ -99,6 +101,153 @@ def _admit_fixture(monkeypatch, root: Path) -> None:
     monkeypatch.setattr(frontend, "load_admitted_pack_catalog", lambda: {
         PACK_ID: {"runtime_artifacts": [{"kind": "ui.contribution", "path": DESCRIPTOR}]},
     })
+
+
+def _strategy_pack(
+    root: Path,
+    *,
+    pack_kind: str = "normal_sandbox",
+) -> tuple[Path, str]:
+    """Build one signed declarative strategy descriptor fixture."""
+
+    scaffold_pack(root, pack_id=PACK_ID, display_name="QA strategy")
+    descriptor = root / STRATEGY_DESCRIPTOR
+    descriptor.parent.mkdir(parents=True)
+    _write(
+        descriptor,
+        {
+            "version": "rumi.ui.contribution.v1",
+            "id": "qa.frontend.route.strategy",
+            "kind": "ai_strategy",
+            "mode": "declarative",
+            "label": "QA strategy",
+            "description": "A strategy supplied by the selected Pack.",
+            "priority": 0,
+            "strategy_reference": STRATEGY_REFERENCE,
+            "accessibility": {"name": "QA strategy", "keyboard": True},
+            "command": {
+                "name": "qa-strategy",
+                "label": "QA strategy",
+                "description": "Select QA strategy.",
+                "aliases": ["qa"],
+            },
+        },
+    )
+    refresh_scaffold_artifacts(root)
+    manifest_path = root / "pack.v4.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["pack"]["kind"] = pack_kind
+    declaration = next(
+        item for item in manifest["artifacts"] if item["path"] == STRATEGY_DESCRIPTOR
+    )
+    declaration["kind"] = "ui.contribution"
+    artifact_digest = canonical_digest(manifest["artifacts"])
+    manifest["pack"]["artifact_digest"] = artifact_digest
+    manifest["integrity"]["artifact_set_digest"] = artifact_digest
+    _write(manifest_path, manifest)
+    index_path = root / "artifact-index.v4.json"
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    index["artifact_set_digest"] = artifact_digest
+    next(
+        item for item in index["artifacts"] if item["path"] == "pack.v4.json"
+    )["digest"] = _digest(manifest_path)
+    unsigned = {key: value for key, value in index.items() if key != "integrity_seal"}
+    index["integrity_seal"]["signed_digest"] = canonical_digest(unsigned)
+    _write(index_path, index)
+    return root, artifact_digest
+
+
+def _project_strategy(digest: str, catalog: list[dict[str, object]]):
+    return frontend.project_selected_ai_strategies(
+        [{"role": "pack", "identity": PACK_ID, "artifact_digest": digest}],
+        {"strategies": catalog},
+        profile_id="defaults",
+        profile_revision="revision-1",
+        activation_id="activation-1",
+        plan_digest="plan-1",
+    )
+
+
+def _admit_strategy_fixture(monkeypatch, root: Path) -> None:
+    monkeypatch.setattr(frontend, "resolve_admitted_pack_root", lambda pack_id: root)
+    monkeypatch.setattr(frontend, "load_admitted_pack_catalog", lambda: {
+        PACK_ID: {
+            "runtime_artifacts": [
+                {"kind": "ui.contribution", "path": STRATEGY_DESCRIPTOR}
+            ]
+        },
+    })
+
+
+@pytest.mark.parametrize("pack_kind", ["normal_sandbox", "host_extension"])
+def test_selected_signed_strategy_descriptor_is_projected_generically(
+    tmp_path: Path,
+    monkeypatch,
+    pack_kind: str,
+) -> None:
+    """A signed descriptor works for either supported Pack execution boundary."""
+
+    root, digest = _strategy_pack(tmp_path / PACK_ID, pack_kind=pack_kind)
+    _admit_strategy_fixture(monkeypatch, root)
+    projected, diagnostics, quarantined = _project_strategy(
+        digest,
+        [{
+            "strategy_reference": STRATEGY_REFERENCE,
+            "pack_id": PACK_ID,
+            "artifact_digest": digest,
+        }],
+    )
+
+    assert diagnostics == []
+    assert quarantined == []
+    assert len(projected) == 1
+    strategy = projected[0]
+    assert strategy["build_identity"].startswith("sha256:")
+    assert strategy["descriptor_hash"].startswith("sha256:")
+    assert {
+        key: value
+        for key, value in strategy.items()
+        if key not in {"build_identity", "descriptor_hash"}
+    } == {
+        "accessibility": {"name": "QA strategy", "keyboard": True},
+        "available": True,
+        "command": {
+            "name": "qa-strategy",
+            "label": "QA strategy",
+            "description": "Select QA strategy.",
+            "aliases": ["qa"],
+        },
+        "contribution_id": "qa.frontend.route.strategy",
+        "description": "A strategy supplied by the selected Pack.",
+        "kind": "ai_strategy",
+        "label": "QA strategy",
+        "mode": "declarative",
+        "owner_pack_hash": digest,
+        "owner_pack_id": PACK_ID,
+        "plan_admitted": True,
+        "priority": 0,
+        "resolved_activation_id": "activation-1",
+        "resolved_plan_hash": "plan-1",
+        "resolved_profile_id": "defaults",
+        "resolved_profile_revision": "revision-1",
+        "signature_verified": True,
+        "strategy_reference": STRATEGY_REFERENCE,
+    }
+
+
+def test_strategy_descriptor_without_matching_plan_provider_is_quarantined(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Descriptor text cannot introduce a strategy the active Plan did not admit."""
+
+    root, digest = _strategy_pack(tmp_path / PACK_ID)
+    _admit_strategy_fixture(monkeypatch, root)
+    projected, diagnostics, quarantined = _project_strategy(digest, [])
+
+    assert projected == []
+    assert quarantined == [PACK_ID]
+    assert diagnostics[0]["code"] == "v4_strategy_pack_quarantined"
 
 
 def test_selected_v4_declarative_route_is_bound_to_capture(tmp_path: Path, monkeypatch) -> None:

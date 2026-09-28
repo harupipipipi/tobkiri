@@ -226,7 +226,7 @@
               },
               "state_refs": {
                 "items": {
-                  "const": "defaultspack:models.deepthink_enabled"
+                  "const": "defaultspack:models.strategy_reference"
                 },
                 "maxItems": 16,
                 "type": "array",
@@ -306,7 +306,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:ff8ff76a53f685a2febdcc5555e8e619f82d774591ad2d7e546a3571d2120935",
+      "artifact_hash": "sha256:2879daab1ad896ac7e76c78f080fa2905812c62b2a58326db870059c577bbe87",
       "contract_id": "rumi.resource.command.catalog.v1",
       "id": "catalog-read",
       "loader": "python",
@@ -330,7 +330,7 @@
       "symbol": "HOST_PROVIDER_FACTORY"
     },
     {
-      "artifact_hash": "sha256:9171d03ffe8847830e788dc7edfd99c508ead810f71019bd680fd2d5ddd7c5f4",
+      "artifact_hash": "sha256:2707d6b9bd1063aaf53fe51b05779531bf6afa7294c57231786a7801161ee37f",
       "contract_id": "rumi.resource.command.state.v1",
       "id": "state-query",
       "loader": "python",

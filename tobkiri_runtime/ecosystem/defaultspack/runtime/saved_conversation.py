@@ -19,6 +19,10 @@ TARGETS = (
     ("tobkiri.service.ai.generate.v1", "rumi_ai_gateway_pack.ai-gateway.generate"),
     ("tobkiri.action.message.manage.v1", "rumi_conversation_store_pack.message-manage"),
 )
+_STRATEGY_DISPATCH_TARGET = (
+    "tobkiri.service.ai.strategy.dispatch.v1",
+    "rumi_ai_strategy_runtime_pack.ai-strategy.dispatch",
+)
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 _REQUEST_FIELDS = {"turn_id", "conversation_id", "conversation_revision", "content"}
 _MAX_SAVED_TEXT_BYTES = 60 * 1024
@@ -50,7 +54,6 @@ _STATE_FIELDS = {
     "tool_count",
     "seen_tools",
     "system_prompt_digest",
-    "deepthink",
     "user_content",
     "user_content_digest",
 }
@@ -159,12 +162,12 @@ def _saved_user_content(value: Any) -> bool:
 def _request(value: Any) -> dict[str, Any]:
     if type(value) is not dict or set(value) - {
         "tool_selection",
-        "deepthink_enabled",
+        "strategy_reference",
         "thinking_level",
     } != _REQUEST_FIELDS:
         raise ValueError("saved conversation request fields are invalid")
-    if type(value.get("deepthink_enabled", False)) is not bool:
-        raise ValueError("saved conversation deepthink flag is invalid")
+    if "strategy_reference" in value and value["strategy_reference"] is not None:
+        _identifier(value["strategy_reference"])
     if "thinking_level" in value and (
         not isinstance(value["thinking_level"], str)
         or value["thinking_level"] not in {
@@ -212,14 +215,14 @@ def _request(value: Any) -> dict[str, Any]:
 def _state_request(value: Any) -> dict[str, Any]:
     """Validate compact request identity retained after the user append."""
     fields = {"turn_id", "conversation_id", "conversation_revision"}
-    optional = {"tool_selection", "deepthink_enabled", "thinking_level"}
+    optional = {"tool_selection", "strategy_reference", "thinking_level"}
     if type(value) is not dict or set(value) - optional != fields:
         raise ValueError("saved continuation request fields are invalid")
     _identifier(value["turn_id"])
     _identifier(value["conversation_id"])
     _revision(value["conversation_revision"])
-    if type(value.get("deepthink_enabled", False)) is not bool:
-        raise ValueError("saved conversation deepthink flag is invalid")
+    if "strategy_reference" in value and value["strategy_reference"] is not None:
+        _identifier(value["strategy_reference"])
     if "thinking_level" in value and value["thinking_level"] not in {
         "none", "low", "medium", "high", "xhigh"
     }:
@@ -299,18 +302,34 @@ def _intent(
         payload = state["pending_tools"][0]
     else:
         requirements = {"request_surface": "conversation.saved"}
-        if request.get("deepthink_enabled") is True:
-            requirements["deepthink"] = True
-        payload = {
+        request_payload = {
             "model_reference": state["model_reference"],
             "requirements": requirements,
         }
+        strategy_reference = request.get("strategy_reference")
+        if strategy_reference is None:
+            payload = request_payload
+            target = _STAGE_TARGETS[stage]
+        else:
+            payload = {
+                "strategy_reference": strategy_reference,
+                "request": request_payload,
+            }
+            target = _STRATEGY_DISPATCH_TARGET
     if stage in {"user", "ai"} and prompt_digest is not None:
-        payload["system_prompt_digest"] = prompt_digest
+        if stage == "ai" and request.get("strategy_reference") is not None:
+            payload["request"]["system_prompt_digest"] = prompt_digest
+        else:
+            payload["system_prompt_digest"] = prompt_digest
     value = {
         "kind": "tobkiri.packvm.continuation.intent.v2",
         "hop": state["hop"],
-        "target": dict(zip(("contract_id", "operation_id"), _STAGE_TARGETS[stage])),
+        "target": dict(
+            zip(
+                ("contract_id", "operation_id"),
+                target if stage == "ai" else _STAGE_TARGETS[stage],
+            )
+        ),
         "payload": payload,
         "state": state,
     }
@@ -404,7 +423,6 @@ def start(payload: dict[str, Any]) -> dict[str, Any]:
             "tool_count": 0,
             "seen_tools": [],
             "system_prompt_digest": None,
-            "deepthink": None,
             "user_content": user_content,
             "user_content_digest": None,
         }
@@ -527,8 +545,6 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
                     "user_message_id": _message_id(request, "user"),
                     "message": message,
                 }
-                if state["deepthink"] is not None:
-                    result["deepthink"] = state["deepthink"]
                 return result
             state["stage"] = "ai"
         elif stage == "tool":
@@ -552,17 +568,6 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
         else:
             if value.get("status") != "ok":
                 return _failure(state, "AI_COMPLETION_UNAVAILABLE")
-            deepthink = value.get("deepthink")
-            if deepthink is None:
-                if request.get("deepthink_enabled") is True:
-                    raise ValueError("AI DeepThink readiness report is required")
-            elif (
-                not isinstance(deepthink, dict)
-                or not deepthink
-                or request.get("deepthink_enabled") is not True
-            ):
-                raise ValueError("AI DeepThink readiness report is invalid")
-            state["deepthink"] = deepthink
             intents = value.get("tool_intents", [])
             if not isinstance(intents, list):
                 raise ValueError("tool intents are invalid")

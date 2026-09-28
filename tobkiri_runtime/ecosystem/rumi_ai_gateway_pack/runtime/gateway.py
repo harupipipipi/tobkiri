@@ -7,6 +7,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable, Mapping
 
 from core_runtime.global_contract_dispatch import (
@@ -20,11 +21,7 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
 )
-from ecosystem.rumi_ai_gateway_pack.runtime.deepthink import (
-    DeepThinkBudgetError,
-    run_deepthink,
-)
-
+from tobkiri_protocol.canonical import CanonicalizationError, canonical_json
 CATALOG_CONTRACT = "tobkiri.resource.ai.model.catalog.v1"
 CATALOG_GENERATE_OPERATION = (
     "rumi_model_catalog_pack.bundled-model-catalog.generate"
@@ -109,6 +106,7 @@ _SAVED_CONNECTION_CATALOG_ROUTES = {
     ),
 }
 _BUNDLED_APPROVED_CATALOG_SOURCE = "bundled_approved"
+_PRICING_UNIT_USD_PER_TOKEN = "usd_per_token"
 
 _GENERATE_ALLOWED_CONTRACTS = frozenset(
     {
@@ -157,7 +155,6 @@ class RouteRequirement:
     preferred_provider_id: str | None
     preferred_provider_instance_id: str | None
     health_max_age: float
-    deepthink: bool = False
 
 
 @dataclass(frozen=True)
@@ -339,19 +336,14 @@ def _invoke(
     streaming: bool,
 ) -> dict[str, Any]:
     resolve_only = bool(payload.get("resolve_only"))
+    packvm_response = _is_packvm_bridge_payload(payload)
+    route_binding = _route_binding(payload.get("route_binding"))
     decision_time = time.time()
-    raw_requirements = payload.get("requirements")
-    deepthink_requested = (
-        isinstance(raw_requirements, Mapping)
-        and raw_requirements.get("deepthink") is True
-    )
     prepared_payload = {
         **dict(payload),
         "request_id": str(payload.get("request_id") or uuid.uuid4()),
         "decision_time": decision_time,
     }
-    if deepthink_requested and payload.get("deadline") is None:
-        prepared_payload["deadline"] = decision_time + 300.0
     prepared = client.invoke(
         REQUEST_PREPARE_CONTRACT,
         (
@@ -430,6 +422,12 @@ def _invoke(
         )
     ordered = candidates
     selected = ordered[0]
+    _enforce_route_binding(route_binding, selected)
+    if route_binding is not None and request.get("allow_failover"):
+        raise GlobalContractInvocationError(
+            "route_binding_conflict",
+            "a route binding cannot permit provider failover",
+        )
     _record_diagnostic(
         request_id,
         requirement,
@@ -439,7 +437,7 @@ def _invoke(
         policy_revision=str(request.get("policy_revision") or ""),
     )
     if resolve_only:
-        return {
+        return _maybe_packvm_safe_response({
             "status": "ok",
             "model_id": selected.model_id,
             "provider_instance_id": selected.provider_instance_id,
@@ -453,7 +451,7 @@ def _invoke(
                 "output": selected.output_cost,
                 "currency": str(selected.raw.get("currency") or "USD"),
             },
-        }
+        }, packvm_response)
     invocation = {
         "request_id": request_id,
         "model_id": str(
@@ -475,37 +473,6 @@ def _invoke(
     provider_connection_id = selected.raw.get("provider_connection_id")
     if provider_connection_id is not None:
         invocation["provider_connection_id"] = provider_connection_id
-    if requirement.deepthink and streaming:
-        raise GlobalContractInvocationError(
-            "deepthink_stream_unsupported",
-            "DeepThink requires the bounded non-streaming Gateway operation",
-        )
-    if requirement.deepthink:
-        try:
-            return run_deepthink(
-                messages=[dict(item) for item in invocation["messages"]],
-                tools=[dict(item) for item in invocation["tools"]],
-                parameters=invocation["parameters"],
-                deadline=deadline,
-                maximum_cost_usd=requirement.maximum_cost,
-                input_cost_per_token=selected.input_cost,
-                output_cost_per_token=selected.output_cost,
-                complete=lambda phase, messages, tools, parameters: (
-                    _invoke_deepthink_phase(
-                        client,
-                        invocation,
-                        selected,
-                        phase=phase,
-                        messages=messages,
-                        tools=tools,
-                        parameters=parameters,
-                    )
-                ),
-            )
-        except DeepThinkBudgetError as exc:
-            raise GlobalContractInvocationError(
-                "deepthink_budget", str(exc)
-            ) from exc
     attempts: list[dict[str, Any]] = []
     for attempt_number, attempt_candidate in enumerate(ordered, 1):
         invocation["attempt"] = attempt_number
@@ -545,13 +512,13 @@ def _invoke(
                     )
                 _attach_stream_usage_cost(client, events, attempt_candidate)
                 _attach_stream_tool_intents(client, events, request_id)
-                return {
+                return _maybe_packvm_safe_response({
                     "request_id": request_id,
                     "model_id": attempt_candidate.model_id,
                     "provider_instance_id": attempt_candidate.provider_instance_id,
                     "events": events,
                     "attempts": attempts,
-                }
+                }, packvm_response)
             result = _normalize_result(value, request_id, attempt_candidate)
             result["tool_intents"] = _tool_intents(
                 client,
@@ -567,7 +534,7 @@ def _invoke(
                 streaming=streaming,
             )
             result["attempts"] = attempts
-            return result
+            return _maybe_packvm_safe_response(result, packvm_response)
         except GlobalContractUnavailable as exc:
             failure = GlobalContractInvocationError(
                 "provider_unavailable",
@@ -603,57 +570,6 @@ def _invoke(
         "provider_unavailable",
         "all selected providers failed",
     )
-
-
-def _invoke_deepthink_phase(
-    client: GlobalContractClient,
-    base_invocation: Mapping[str, Any],
-    selected: Candidate,
-    *,
-    phase: str,
-    messages: list[dict[str, Any]],
-    tools: list[dict[str, Any]],
-    parameters: dict[str, Any],
-) -> dict[str, Any]:
-    """Invoke one DeepThink phase through the already captured provider."""
-
-    invocation = {
-        **dict(base_invocation),
-        "request_id": f"{base_invocation['request_id']}:{phase}",
-        "attempt": 1,
-        "messages": messages,
-        "tools": tools,
-        "parameters": parameters,
-    }
-    idempotency_key = base_invocation.get("idempotency_key")
-    if idempotency_key:
-        invocation["idempotency_key"] = f"{idempotency_key}:{phase}"
-    value = client.invoke(
-        GENERATE_PROVIDER_CONTRACT,
-        GENERATE_PROVIDER_OPERATION,
-        invocation,
-        provider_instance_id=selected.provider_instance_id,
-    )
-    result = _normalize_result(
-        value,
-        str(base_invocation["request_id"]),
-        selected,
-    )
-    result["tool_intents"] = _tool_intents(
-        client,
-        result["tool_intents"],
-        str(base_invocation["request_id"]),
-        streaming=False,
-    )
-    result["usage_cost"] = _usage_cost(
-        client,
-        result["usage"],
-        selected,
-        result["usage_provenance"],
-        streaming=False,
-    )
-    result["attempts"] = []
-    return result
 
 
 def _requirement(request: Mapping[str, Any]) -> RouteRequirement:
@@ -693,8 +609,127 @@ def _requirement(request: Mapping[str, Any]) -> RouteRequirement:
             0.0,
             _optional_float(requirement.get("health_max_age")) or 60.0,
         ),
-        deepthink=requirement.get("deepthink") is True,
     )
+
+
+def _route_binding(value: Any) -> dict[str, Any] | None:
+    """Validate an optional quote binding before route selection can execute.
+
+    The binding is a generic precondition, not an authority grant.  Gateway
+    resolves the request again using its captured providers and rejects the
+    call if that fresh selection no longer has the quoted model, provider, or
+    pricing identity.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise GlobalContractInvocationError(
+            "route_binding_invalid", "route binding must be an object"
+        )
+    required = {
+        "model_id",
+        "provider_instance_id",
+        "catalog_provider_instance_id",
+        "catalog_revision",
+        "pricing_revision",
+        "pricing",
+    }
+    if set(value) != required:
+        raise GlobalContractInvocationError(
+            "route_binding_invalid", "route binding fields are invalid"
+        )
+    result = {
+        key: value.get(key)
+        for key in required
+        if key != "pricing"
+    }
+    required_identifiers = {
+        "model_id",
+        "provider_instance_id",
+        "catalog_revision",
+        "pricing_revision",
+    }
+    if any(
+        not isinstance(result[key], str)
+        or not result[key]
+        or len(result[key]) > 512
+        for key in required_identifiers
+    ) or (
+        not isinstance(result["catalog_provider_instance_id"], str)
+        or len(result["catalog_provider_instance_id"]) > 512
+    ):
+        raise GlobalContractInvocationError(
+            "route_binding_invalid", "route binding identity is invalid"
+        )
+    pricing = value.get("pricing")
+    if not isinstance(pricing, Mapping) or set(pricing) not in (
+        {"input", "output", "currency"},
+        {"input", "output", "currency", "unit"},
+    ):
+        raise GlobalContractInvocationError(
+            "route_binding_invalid", "route binding pricing is invalid"
+        )
+    input_cost = _canonical_pricing_rate(pricing.get("input"))
+    output_cost = _canonical_pricing_rate(pricing.get("output"))
+    if pricing.get("input") is not None and input_cost is None:
+        raise GlobalContractInvocationError(
+            "route_binding_invalid", "route binding rate is invalid"
+        )
+    if pricing.get("output") is not None and output_cost is None:
+        raise GlobalContractInvocationError(
+            "route_binding_invalid", "route binding rate is invalid"
+        )
+    currency = pricing.get("currency")
+    if not isinstance(currency, str) or not currency or len(currency) > 16:
+        raise GlobalContractInvocationError(
+            "route_binding_invalid", "route binding currency is invalid"
+        )
+    unit = pricing.get("unit", _PRICING_UNIT_USD_PER_TOKEN)
+    if unit != _PRICING_UNIT_USD_PER_TOKEN:
+        raise GlobalContractInvocationError(
+            "route_binding_invalid", "route binding pricing unit is invalid"
+        )
+    return {
+        **result,
+        "pricing": {
+            "input": input_cost,
+            "output": output_cost,
+            "currency": currency,
+            "unit": unit,
+        },
+    }
+
+
+def _enforce_route_binding(
+    binding: Mapping[str, Any] | None,
+    selected: Candidate,
+) -> None:
+    """Fail closed when a fresh route no longer matches its quoted binding."""
+    if binding is None:
+        return
+    current = _candidate_route_binding(selected)
+    if dict(binding) != current:
+        raise GlobalContractInvocationError(
+            "route_binding_stale",
+            "quoted route no longer matches the current owner-bound route",
+        )
+
+
+def _candidate_route_binding(selected: Candidate) -> dict[str, Any]:
+    """Project the non-secret route identity used for quote verification."""
+    return {
+        "model_id": selected.model_id,
+        "provider_instance_id": selected.provider_instance_id,
+        "catalog_provider_instance_id": selected.catalog_provider_instance_id,
+        "catalog_revision": selected.catalog_revision,
+        "pricing_revision": selected.catalog_revision,
+        "pricing": {
+            "input": _canonical_pricing_rate(selected.input_cost),
+            "output": _canonical_pricing_rate(selected.output_cost),
+            "currency": str(selected.raw.get("currency") or "USD"),
+            "unit": _PRICING_UNIT_USD_PER_TOKEN,
+        },
+    }
 
 
 def _resolve_model_reference(
@@ -703,8 +738,18 @@ def _resolve_model_reference(
     *,
     streaming: bool,
 ) -> None:
-    explicit = str(request.get("model_profile_id") or "").strip()
-    legacy = str(request.get("model_reference") or "").strip()
+    explicit = _model_reference_identifier(request.get("model_profile_id"))
+    if request.get("model_profile_id") is not None and not explicit:
+        raise GlobalContractInvocationError(
+            "unresolved_profile", "model profile reference is invalid"
+        )
+    legacy, structured_reference = _model_reference_value(
+        request.get("model_reference")
+    )
+    if request.get("model_reference") is not None and not legacy:
+        raise GlobalContractInvocationError(
+            "unresolved_profile", "model reference is invalid"
+        )
     identifier = explicit or legacy
     if not identifier:
         return
@@ -719,7 +764,7 @@ def _resolve_model_reference(
             {"identifier": identifier},
         )
     except GlobalContractInvocationError:
-        if explicit:
+        if explicit or structured_reference:
             raise
         requirements = dict(request.get("requirements") or {})
         requirements.setdefault("preferred_model_id", legacy)
@@ -791,6 +836,31 @@ def _resolve_model_reference(
                 or "model-profile"
             ),
         }
+
+
+def _model_reference_value(value: Any) -> tuple[str, bool]:
+    """Return a model/profile identifier and whether it was profile-scoped.
+
+    The structured form is intentionally narrow: ``{"profile_id": "..."}``.
+    It is the generic strategy envelope representation and maps to the same
+    profile lookup used by an explicit ``model_profile_id``.  Plain strings
+    retain the legacy model-id fallback when no profile is registered.
+    """
+    identifier = _model_reference_identifier(value)
+    return identifier, isinstance(value, Mapping)
+
+
+def _model_reference_identifier(value: Any) -> str:
+    """Return one bounded model/profile identifier without coercing objects."""
+    if isinstance(value, str):
+        normalized = value.strip()
+        return normalized if 0 < len(normalized) <= 256 else ""
+    if isinstance(value, Mapping) and set(value) == {"profile_id"}:
+        profile_id = value.get("profile_id")
+        if isinstance(profile_id, str):
+            normalized = profile_id.strip()
+            return normalized if 0 < len(normalized) <= 256 else ""
+    return ""
 
 
 def _merge_requirements(
@@ -1185,7 +1255,6 @@ def _requirement_payload(requirement: RouteRequirement) -> dict[str, Any]:
             requirement.preferred_provider_instance_id
         ),
         "health_max_age": requirement.health_max_age,
-        "deepthink": requirement.deepthink,
     }
 
 
@@ -1323,6 +1392,7 @@ def _usage_cost(
                 "input": candidate.input_cost,
                 "output": candidate.output_cost,
                 "currency": str(candidate.raw.get("currency") or "USD"),
+                "unit": _PRICING_UNIT_USD_PER_TOKEN,
             },
             "pricing_revision": candidate.catalog_revision,
         },
@@ -1351,7 +1421,6 @@ def _record_diagnostic(
             "data_residency": requirement.data_residency,
             "maximum_cost": requirement.maximum_cost,
             "health_max_age": requirement.health_max_age,
-            "deepthink": requirement.deepthink,
         },
         "candidates": [
             {
@@ -1391,3 +1460,125 @@ def _optional_float(value: Any) -> float | None:
         return float(value) if value is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def canonical_pricing_rate(value: Any) -> str | None:
+    """Return a bounded, exact decimal rate safe for PackVM JSON frames.
+
+    Gateway catalog values remain numeric internally.  Quotes and route
+    bindings cross a strict canonical-JSON boundary, where floating-point
+    values are deliberately forbidden.  Normalize finite non-negative numbers
+    to a plain decimal string so a quote and a later generation precondition
+    have one stable representation.  ``None`` still means the owner did not
+    publish a rate.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if not isinstance(value, (str, int, float, Decimal)):
+        return None
+    if isinstance(value, str) and (not value or len(value) > 128):
+        return None
+    try:
+        rate = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    if not rate.is_finite() or rate < 0:
+        return None
+    if rate.is_zero():
+        return "0"
+    # Do not expand attacker-controlled scientific notation into an
+    # unbounded plain-decimal string before the size check below.
+    if rate.adjusted() > 126 or rate.adjusted() < -126:
+        return None
+    normalized = format(rate.normalize(), "f")
+    if not normalized or len(normalized) > 128:
+        return None
+    return normalized
+
+
+def _canonical_pricing_rate(value: Any) -> str | None:
+    """Alias used by Gateway's internal route-binding projection."""
+    return canonical_pricing_rate(value)
+
+
+def _is_packvm_bridge_payload(payload: Mapping[str, Any]) -> bool:
+    """Recognize the Host-only nested session marker for a PackVM bridge."""
+    session_id = payload.get("_session_id")
+    return (
+        isinstance(session_id, str)
+        and session_id.startswith("session.packvm-bridge.")
+    )
+
+
+def _maybe_packvm_safe_response(
+    value: Mapping[str, Any],
+    required: bool,
+) -> dict[str, Any]:
+    """Preserve ordinary Gateway response types outside the PackVM ABI."""
+    return _packvm_safe_response(value) if required else dict(value)
+
+
+def _packvm_safe_response(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a Gateway response representable by the strict PackVM ABI.
+
+    The Host authenticates bridge results with canonical JSON, which does not
+    permit binary floating-point values.  Providers and the usage calculator
+    can still use floats internally, so normalize only those response values
+    to exact decimal strings at this public Pack boundary.  This keeps normal
+    integers as integers and preserves every nonnumeric JSON value.
+    """
+    normalized = _packvm_safe_value(value)
+    if not isinstance(normalized, dict):  # pragma: no cover - typed input
+        raise GlobalContractInvocationError(
+            "invalid_response", "AI gateway response is invalid"
+        )
+    try:
+        canonical_json(normalized)
+    except CanonicalizationError as exc:
+        raise GlobalContractInvocationError(
+            "invalid_response", "AI gateway response is not PackVM-safe"
+        ) from exc
+    return normalized
+
+
+def _packvm_safe_value(value: Any, *, depth: int = 0) -> Any:
+    """Normalize floating-point response values without changing JSON shape."""
+    if depth > 64:
+        raise GlobalContractInvocationError(
+            "invalid_response", "AI gateway response nesting is invalid"
+        )
+    if isinstance(value, float) or isinstance(value, Decimal):
+        normalized = _canonical_decimal_text(value)
+        if normalized is None:
+            raise GlobalContractInvocationError(
+                "invalid_response", "AI gateway response number is invalid"
+            )
+        return normalized
+    if isinstance(value, Mapping):
+        if any(not isinstance(key, str) for key in value):
+            raise GlobalContractInvocationError(
+                "invalid_response", "AI gateway response key is invalid"
+            )
+        return {
+            key: _packvm_safe_value(item, depth=depth + 1)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_packvm_safe_value(item, depth=depth + 1) for item in value]
+    return value
+
+
+def _canonical_decimal_text(value: Decimal | float) -> str | None:
+    """Encode one finite float-like result as bounded plain decimal text."""
+    try:
+        decimal_value = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    if not decimal_value.is_finite():
+        return None
+    if decimal_value.is_zero():
+        return "0"
+    if decimal_value.adjusted() > 126 or decimal_value.adjusted() < -126:
+        return None
+    normalized = format(decimal_value.normalize(), "f")
+    return normalized if normalized and len(normalized) <= 128 else None

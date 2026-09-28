@@ -8,7 +8,9 @@ Route readiness is not a credential/network probe or a promise of AI success.
 from __future__ import annotations
 
 import json
+import math
 import re
+import time
 from typing import Any, Callable, Mapping, Sequence
 
 from tobkiri_host.saved_turn_plan import TARGETS, TOOL, SavedToolFrame
@@ -35,26 +37,6 @@ from ..authority.v4 import AuthorityDenied
 Target = tuple[str, str]
 
 
-class SavedDeepThinkUnavailableError(ValueError):
-    """DeepThink was requested with no Host readiness gate bound.
-
-    The gate runs local metadata only; when a profile cannot supply it the
-    request must fail before any write instead of silently degrading to a
-    plain completion.
-    """
-
-    code = "DEEPTHINK_GATE_UNAVAILABLE"
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "code": self.code,
-            "message": str(self),
-            "cause": "the active profile has no saved DeepThink readiness gate",
-            "fix": "Turn DeepThink off or use a profile whose defaults expose "
-            "the saved-turn DeepThink gate",
-        }
-
-
 def project_saved_ai_result(value: Mapping[str, Any]) -> dict[str, Any]:
     """Cross the strict guest ABI with reply data, not floating-point telemetry."""
     return {
@@ -65,8 +47,16 @@ def project_saved_ai_result(value: Mapping[str, Any]) -> dict[str, Any]:
 
 
 READINESS: Target = (
-    "tobkiri.resource.ai.readiness.v1",
-    "rumi_ai_gateway_pack.ai-gateway.preflight",
+    "tobkiri.resource.ai.route.quote.v1",
+    "rumi_ai_gateway_pack.ai-gateway.route-quote",
+)
+STRATEGY: Target = (
+    "tobkiri.service.ai.strategy.dispatch.v1",
+    "rumi_ai_strategy_runtime_pack.ai-strategy.dispatch",
+)
+STRATEGY_CATALOG: Target = (
+    "tobkiri.resource.ai.strategy.catalog.v1",
+    "rumi_ai_strategy_runtime_pack.ai-strategy.catalog",
 )
 REQUIRED_TARGETS = (*dict.fromkeys(TARGETS), READINESS)
 DEFINITION: Target = (
@@ -74,12 +64,81 @@ DEFINITION: Target = (
     "rumi_tool_registry_pack.tool-definition-resource",
 )
 TOOL_TARGETS = (DEFINITION, TOOL)
-ALLOWED_TARGETS = (*REQUIRED_TARGETS, *TOOL_TARGETS, PROMPT_TARGET)
+ALLOWED_TARGETS = (
+    *REQUIRED_TARGETS,
+    STRATEGY,
+    STRATEGY_CATALOG,
+    *TOOL_TARGETS,
+    PROMPT_TARGET,
+)
 Dispatch = Callable[[object, Target, Mapping[str, Any]], Mapping[str, Any]]
 RequireTargets = Callable[[object, tuple[Target, ...]], None]
-DeepThinkGate = Callable[
-    [str, list[dict[str, Any]], list[dict[str, Any]]], Mapping[str, Any]
-]
+
+
+def _required_targets(request: Mapping[str, Any]) -> tuple[Target, ...]:
+    """Return only the direct or strategy execution edge selected by owner state."""
+
+    strategy_selected = request.get("strategy_reference") is not None
+    ai_target = STRATEGY if strategy_selected else TARGETS[2]
+    preflight_target = STRATEGY_CATALOG if strategy_selected else READINESS
+    return (
+        *dict.fromkeys(
+            (TARGETS[0], TARGETS[1], ai_target, TARGETS[3], preflight_target)
+        ),
+    )
+
+
+_WALL_MONOTONIC_OFFSET = time.time() - time.monotonic()
+_STRATEGY_MAXIMUM_COST_MICROUSD = 1_000_000
+
+
+def _strategy_maximum_cost(request: Mapping[str, Any]) -> int:
+    """Apply the immutable Host ceiling and an optional lower user limit."""
+
+    requested = request.get(
+        "strategy_maximum_cost_microusd",
+        _STRATEGY_MAXIMUM_COST_MICROUSD,
+    )
+    if type(requested) is not int or requested <= 0:
+        raise AuthorityDenied("saved bridge strategy cost limit is invalid")
+    return min(requested, _STRATEGY_MAXIMUM_COST_MICROUSD)
+
+
+def _strategy_deadline(outer: object) -> int:
+    """Project the immutable Host deadline to bounded Unix milliseconds."""
+
+    value = getattr(outer, "deadline_monotonic", None)
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value <= time.monotonic()
+    ):
+        raise AuthorityDenied("saved bridge strategy deadline is unavailable")
+    # Floor instead of rounding so the Pack-visible fence can never outlive
+    # the Host-owned monotonic deadline. Integer milliseconds also remain in
+    # the strict canonical JSON subset used at the PackVM boundary.
+    return math.floor((float(value) + _WALL_MONOTONIC_OFFSET) * 1000)
+
+
+def _strategy_idempotency_key(
+    request: Mapping[str, Any],
+    conversation: Mapping[str, Any],
+    trace: Sequence[Mapping[str, Any]],
+    *,
+    request_id: str,
+) -> str:
+    """Bind one billable strategy step to immutable owner state and tool trace."""
+
+    generation_step = canonical_digest(
+        {
+            "turn_id": request["turn_id"],
+            "conversation_revision": conversation.get("conversation_revision"),
+            "current_node_id": conversation.get("current_node_id"),
+            "tool_trace": list(trace),
+        }
+    ).removeprefix("sha256:")[:32]
+    return f"{request_id}:strategy:{generation_step}"
 
 
 def _request(outer: object) -> dict[str, Any]:
@@ -301,30 +360,9 @@ class SavedBridgeCallbacks:
         self,
         dispatch: Dispatch,
         require_targets: RequireTargets,
-        *,
-        deepthink_gate: DeepThinkGate | None = None,
     ) -> None:
         self._dispatch = dispatch
         self._require_targets = require_targets
-        self._deepthink_gate = deepthink_gate
-
-    def _deepthink_report(
-        self,
-        model: str,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-    ) -> dict[str, Any]:
-        """Run the Host-local readiness gate; never reaches providers."""
-        if self._deepthink_gate is None:
-            raise SavedDeepThinkUnavailableError(
-                "saved bridge DeepThink readiness gate is unavailable"
-            )
-        report = self._deepthink_gate(model, messages, tools)
-        if not isinstance(report, Mapping) or not report:
-            raise SavedDeepThinkUnavailableError(
-                "saved bridge DeepThink readiness report is invalid"
-            )
-        return dict(report)
 
     def _conversation(self, outer: object, request: Mapping[str, Any]) -> Mapping[str, Any]:
         outcome = self._dispatch(
@@ -424,7 +462,7 @@ class SavedBridgeCallbacks:
     def preflight(self, outer: object) -> None:
         """Check every captured target and owned context before any user append."""
         request = _request(outer)
-        self._require_targets(outer, REQUIRED_TARGETS)
+        self._require_targets(outer, _required_targets(request))
         tools = self._tools(outer, request)
         conversation = self._conversation(outer, request)
         prompt = self._system_prompt(outer, conversation)
@@ -434,25 +472,45 @@ class SavedBridgeCallbacks:
         model = conversation.get("model_reference")
         if not isinstance(model, str) or not model.strip():
             raise AuthorityDenied("saved bridge owned model is unavailable")
+        strategy_reference = request.get("strategy_reference")
+        if strategy_reference is not None:
+            outcome = self._dispatch(outer, STRATEGY_CATALOG, {})
+            value = outcome.get("value")
+            strategies = value.get("strategies") if isinstance(value, Mapping) else None
+            matches = (
+                [
+                    item
+                    for item in strategies
+                    if isinstance(item, Mapping)
+                    and item.get("strategy_reference") == strategy_reference
+                ]
+                if isinstance(strategies, list)
+                else []
+            )
+            if outcome.get("status") != "ok" or len(matches) != 1:
+                raise AuthorityDenied(
+                    "saved bridge selected AI strategy is unavailable"
+                )
+            return
         owner_messages = _messages(conversation, system_prompt=prompt)
         requires_image_input = _contains_inline_images(
             owner_messages
         ) or _contains_inline_images(
             [{"role": "user", "content": request["content"]}]
         )
+        requirements: dict[str, Any] = {}
+        if requires_image_input:
+            requirements["modalities"] = ["image", "text"]
+        if tools["tools"] and _requires_tool_calling(request):
+            requirements["tool_calling"] = True
         payload: dict[str, Any] = {
             "model_profile_id": model,
             "messages": [
                 *_messages(conversation, flatten_text_blocks=True, system_prompt=prompt),
                 {"role": "user", "content": saved_user_text(request["content"])},
             ],
+            **({"requirements": requirements} if requirements else {}),
         }
-        if requires_image_input:
-            payload["modalities"] = ["image", "text"]
-        if tools["tools"] and _requires_tool_calling(request):
-            payload["tool_calling"] = True
-        if request.get("deepthink_enabled") is True:
-            payload["deepthink"] = True
         if len(canonical_json(payload)) > MAX_SAVED_INPUT_BYTES:
             raise AuthorityDenied("saved bridge readiness input exceeds budget")
         outcome = self._dispatch(outer, READINESS, payload)
@@ -461,7 +519,6 @@ class SavedBridgeCallbacks:
             outcome.get("status") != "ok"
             or not isinstance(value, Mapping)
             or value.get("ready") is not True
-            or value.get("model_profile_id") != model
         ):
             # The bridge result only ever carries a bounded Host-owned code;
             # surface it so a terminal preflight rejection can report the
@@ -473,11 +530,6 @@ class SavedBridgeCallbacks:
                 code=code
                 if type(code) is str and re.fullmatch(r"[A-Za-z0-9_]{1,64}", code)
                 else "authority_denied",
-            )
-        if request.get("deepthink_enabled") is True:
-            # Reject an unrunnable chain before the user message is written.
-            self._deepthink_report(
-                model, payload["messages"], list(tools["tools"])
             )
 
     def __call__(
@@ -524,7 +576,9 @@ class SavedBridgeCallbacks:
         target = {
             "read": TARGETS[0],
             "user": TARGETS[1],
-            "ai": TARGETS[2],
+            "ai": STRATEGY
+            if request.get("strategy_reference") is not None
+            else TARGETS[2],
             "assistant": TARGETS[3],
             "tool": TOOL,
         }.get(stage)
@@ -533,7 +587,7 @@ class SavedBridgeCallbacks:
             "operation_id": target[1],
         }:
             raise AuthorityDenied("saved bridge stage target is invalid")
-        self._require_targets(outer, REQUIRED_TARGETS)
+        self._require_targets(outer, _required_targets(request))
         payload = frame.get("payload")
         if (
             not isinstance(payload, Mapping)
@@ -577,31 +631,47 @@ class SavedBridgeCallbacks:
                 conversation, owner_revision, owner_current_node_id
             )
             prompt = self._system_prompt(outer, conversation)
+            strategy_reference = request.get("strategy_reference")
+            provider_payload = payload
+            if strategy_reference is not None:
+                if (
+                    set(payload) != {
+                        "strategy_reference",
+                        "request",
+                    }
+                    or payload.get("strategy_reference") != strategy_reference
+                    or not isinstance(payload.get("request"), Mapping)
+                ):
+                    raise AuthorityDenied(
+                        "saved bridge strategy input differs from the owner"
+                    )
+                provider_payload = payload["request"]
             expected_fields = {"model_reference", "requirements"}
             if prompt is not None:
                 expected_fields.add("system_prompt_digest")
-            deepthink = request.get("deepthink_enabled") is True
             expected_requirements: dict[str, Any] = {
                 "request_surface": "conversation.saved"
             }
-            if deepthink:
-                expected_requirements["deepthink"] = True
             if (
-                set(payload) != expected_fields
-                or payload.get("system_prompt_digest") != saved_prompt_digest(prompt)
-                or payload["model_reference"] != conversation.get("model_reference")
-                or payload["requirements"] != expected_requirements
+                set(provider_payload) != expected_fields
+                or provider_payload.get("system_prompt_digest")
+                != saved_prompt_digest(prompt)
+                or provider_payload["model_reference"]
+                != conversation.get("model_reference")
+                or provider_payload["requirements"] != expected_requirements
             ):
                 raise AuthorityDenied("saved bridge AI input differs from the owner")
             selected = self._tools(outer, request)
             arguments = {
-                key: value for key, value in payload.items() if key != "system_prompt_digest"
+                key: value
+                for key, value in provider_payload.items()
+                if key != "system_prompt_digest"
             }
             arguments["messages"] = [
                 *_messages(conversation, system_prompt=prompt),
                 *trace,
             ]
-            requirements = dict(payload["requirements"])
+            requirements = dict(provider_payload["requirements"])
             if _contains_inline_images(arguments["messages"]):
                 requirements["modalities"] = ["image", "text"]
             arguments["requirements"] = requirements
@@ -627,39 +697,42 @@ class SavedBridgeCallbacks:
                         "parameters": parameters,
                     }
                 )
-            deepthink_report: dict[str, Any] | None = None
-            if deepthink:
-                # Recheck against the just-acknowledged owner before generation.
-                # The user append already committed, so a structured failure
-                # here reports the persisted user message, not a clean reject.
-                try:
-                    deepthink_report = self._deepthink_report(
-                        str(conversation.get("model_reference") or ""),
-                        [
-                            *_messages(
-                                conversation,
-                                flatten_text_blocks=True,
-                                system_prompt=prompt,
-                            ),
-                            *[
-                                {
-                                    "role": "assistant",
-                                    "content": canonical_json(item).decode(),
-                                }
-                                for item in trace
-                            ],
-                        ],
-                        list(selected["tools"]),
+            if strategy_reference is not None:
+                request_id = str(
+                    getattr(getattr(outer, "context", None), "request_id", "")
+                )
+                if not request_id:
+                    raise AuthorityDenied(
+                        "saved bridge strategy request identity is unavailable"
                     )
-                except Exception as error:
-                    try:
-                        setattr(error, "saved_user_persistence", "saved")
-                    except Exception:
-                        pass
-                    raise
+                arguments.update(
+                    {
+                        "request_id": request_id,
+                        "idempotency_key": _strategy_idempotency_key(
+                            request,
+                            conversation,
+                            trace,
+                            request_id=request_id,
+                        ),
+                        "deadline": _strategy_deadline(outer),
+                        "maximum_cost_microusd": _strategy_maximum_cost(request),
+                    }
+                )
+                if prompt is not None:
+                    arguments["system_prompt_digest"] = saved_prompt_digest(
+                        prompt
+                    )
             if len(canonical_json(arguments)) > MAX_SAVED_INPUT_BYTES:
                 raise AuthorityDenied("saved bridge AI input exceeds budget")
-            outcome = self._dispatch(outer, target, arguments)
+            dispatch_arguments = (
+                {
+                    "strategy_reference": strategy_reference,
+                    "request": arguments,
+                }
+                if strategy_reference is not None
+                else arguments
+            )
+            outcome = self._dispatch(outer, target, dispatch_arguments)
             additions: dict[str, Any] = {}
             if (
                 outcome.get("status") == "ok"
@@ -667,8 +740,6 @@ class SavedBridgeCallbacks:
             ):
                 if enabled:
                     additions["tool_definitions"] = selected["definitions"]
-                if deepthink_report is not None:
-                    additions["deepthink"] = deepthink_report
             if additions:
                 return {
                     **outcome,

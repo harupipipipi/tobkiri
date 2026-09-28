@@ -53,9 +53,15 @@
             }
           ]
         },
-        "deepthink_enabled": {
-          "type": "boolean",
-          "description": "Request the local-only DeepThink review chain. The model selection stays with the owned conversation model_reference; the Host re-checks readiness before any AI call. No generation happens during the check."
+        "strategy_reference": {
+          "$ref": "#/$defs/identifier",
+          "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
+        },
+        "strategy_maximum_cost_microusd": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000,
+          "description": "Optional lower per-turn strategy limit in integer micro-USD. The Host always enforces its own one-dollar ceiling."
         },
         "thinking_level": {
           "enum": ["none", "low", "medium", "high", "xhigh"],

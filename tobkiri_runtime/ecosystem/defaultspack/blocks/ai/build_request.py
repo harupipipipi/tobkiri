@@ -46,8 +46,6 @@ def run(input_data, context):
         "tools": tools,
         "params": dict(params) if isinstance(params, dict) else {},
     }
-    if data.get("deepthink_enabled") is True:
-        request["params"]["deepthink_enabled"] = True
     if data.get("vision_bridge_result"):
         request["vision_bridge_result"] = data["vision_bridge_result"]
     return ok(request)

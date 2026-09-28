@@ -37,6 +37,23 @@ def _session(*, clock=lambda: 1.0, max_bytes: int = 1024 * 1024):
     return chains, session, frame
 
 
+def test_saved_target_inventory_is_bounded_to_five_distinct_targets() -> None:
+    """Generic strategy admission adds one target without opening the bound."""
+
+    chains = ContinuationChains(clock=lambda: 1.0)
+    five = tuple(
+        (f"owned.contract.{index}", f"owned.operation.{index}")
+        for index in range(5)
+    )
+    ContinuationSession(IDENTITY, five, chains=chains)
+    with pytest.raises(ValueError, match="target plan"):
+        ContinuationSession(
+            IDENTITY,
+            (*five, ("owned.contract.5", "owned.operation.5")),
+            chains=chains,
+        )
+
+
 def test_one_result_and_one_resume_input_win_under_concurrency() -> None:
     _, session, frame = _session()
 

@@ -228,3 +228,114 @@ def test_functionless_non_application_cannot_borrow_shell_caller() -> None:
 
     with pytest.raises(ProfileResolutionDenied, match="caller is ambiguous"):
         dynamic_profile_edges(catalog, "defaults", ("a",))
+
+
+def test_arbitrary_strategy_pack_gets_generic_bidirectional_edges() -> None:
+    """A new strategy binds through signed generic dependencies only.
+
+    The Profile contains no edge naming the optional strategy Pack.  Its
+    signed dependency on the generic strategy runtime permits the runtime's
+    optional execute Contract to bind back to the newly installed provider,
+    while its signed Gateway dependency grants only the generic quote and
+    generate operations the provider declared.
+    """
+
+    execute_contract = "tobkiri.service.ai.strategy.execute.v1"
+    dispatch_contract = "tobkiri.service.ai.strategy.dispatch.v1"
+    quote_contract = "tobkiri.resource.ai.route.quote.v1"
+    generate_contract = "tobkiri.service.ai.generate.v1"
+    strategy_pack_id = "example_third_party_strategy_pack"
+    strategy_function_id = f"{strategy_pack_id}.review.execute"
+    runtime_dispatch_id = "rumi_ai_strategy_runtime_pack.ai-strategy.dispatch"
+    runtime_catalog_id = "rumi_ai_strategy_runtime_pack.ai-strategy.catalog"
+    gateway_quote_id = "rumi_ai_gateway_pack.ai-gateway.route-quote"
+    gateway_generate_id = "rumi_ai_gateway_pack.ai-gateway.generate"
+
+    strategy_runtime = _manifest(
+        "rumi_ai_strategy_runtime_pack",
+        {
+            dispatch_contract: "ai-strategy.dispatch",
+            "tobkiri.resource.ai.strategy.catalog.v1": "ai-strategy.catalog",
+        },
+    )
+    strategy_runtime["functions"] = [
+        {"id": runtime_dispatch_id, "operations": ["ai-strategy.dispatch"]},
+        {"id": runtime_catalog_id, "operations": ["ai-strategy.catalog"]},
+    ]
+    strategy_runtime["requirements"]["contract_dependencies"] = [
+        {"contract_id": execute_contract, "optional": True}
+    ]
+
+    gateway = _manifest(
+        "rumi_ai_gateway_pack",
+        {
+            quote_contract: "ai-gateway.route-quote",
+            generate_contract: "ai-gateway.generate",
+        },
+    )
+    gateway["functions"] = [
+        {"id": gateway_quote_id, "operations": ["ai-gateway.route-quote"]},
+        {"id": gateway_generate_id, "operations": ["ai-gateway.generate"]},
+    ]
+
+    strategy = _manifest(
+        strategy_pack_id,
+        {execute_contract: "review.execute"},
+        required=(quote_contract, generate_contract),
+        dependencies=("rumi_ai_strategy_runtime_pack", "rumi_ai_gateway_pack"),
+    )
+    strategy["functions"] = [
+        {"id": strategy_function_id, "operations": ["review.execute"]}
+    ]
+
+    static_dispatch = _static(
+        "shell.main",
+        runtime_dispatch_id,
+        dispatch_contract,
+        "ai-strategy.dispatch",
+    )
+    catalog = BundledCatalog(
+        root=Path("."),
+        packs={
+            "shell": {
+                "functions": [{"id": "shell.main", "role": "brokered"}],
+            },
+            "rumi_ai_strategy_runtime_pack": strategy_runtime,
+            "rumi_ai_gateway_pack": gateway,
+            strategy_pack_id: strategy,
+        },
+        bases={},
+        shells={"shell.main": {"pack_id": "shell"}},
+        profiles={
+            "defaults": {
+                "shell": {"provider_id": "shell.main"},
+                "requested_edges": [static_dispatch],
+            }
+        },
+    )
+
+    keys = _keys(dynamic_profile_edges(catalog, "defaults", (strategy_pack_id,)))
+
+    assert (
+        runtime_dispatch_id,
+        strategy_function_id,
+        execute_contract,
+        "review.execute",
+    ) in keys
+    assert (
+        strategy_function_id,
+        gateway_quote_id,
+        quote_contract,
+        "ai-gateway.route-quote",
+    ) in keys
+    assert (
+        strategy_function_id,
+        gateway_generate_id,
+        generate_contract,
+        "ai-gateway.generate",
+    ) in keys
+    assert not any(
+        caller == "shell.main" and target == strategy_function_id
+        for caller, target, _contract, _operation in keys
+    )
+    assert all(strategy_pack_id not in str(edge) for edge in (static_dispatch,))

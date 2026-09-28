@@ -452,13 +452,6 @@ class SettingsSections:
                         "help": "Rumi は none/low/medium/high/xhigh を送り、各 provider が対応する API パラメータへ変換します。Gemini/Gemma では未対応の値を自動で近い値へ落とします。",
                     },
                     {
-                        "id": "deepthink_enabled",
-                        "label": "DeepThink",
-                        "type": "toggle",
-                        "default": False,
-                        "help": "thinker型のDeepThink loopを有効にします。タスクには数時間かかる可能性があります。",
-                    },
-                    {
                         "id": "favorite_profiles",
                         "label": "Composer Model Pins",
                         "type": "textarea",

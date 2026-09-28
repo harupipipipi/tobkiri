@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_command_protocol_pack",
-  "source_identity": "sha256:c87e30e243f53b193c3a77c7a5b6e772893b7a518368204d11748bab25e55643",
+  "source_identity": "sha256:0c3c5a3096e684b5e078d9cc2fde3aee9f72ae4a33aee0919f1a863a38b1e4cc",
   "variants": [
     {
       "variant_id": "rumi_command_protocol_pack.catalog.read.python",
       "function_id": "rumi_command_protocol_pack.catalog.read",
       "implementation_path": "runtime/catalog.py",
-      "implementation_digest": "sha256:ff8ff76a53f685a2febdcc5555e8e619f82d774591ad2d7e546a3571d2120935",
+      "implementation_digest": "sha256:2879daab1ad896ac7e76c78f080fa2905812c62b2a58326db870059c577bbe87",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -238,7 +238,7 @@
       "variant_id": "rumi_command_protocol_pack.command.state.python",
       "function_id": "rumi_command_protocol_pack.command.state",
       "implementation_path": "runtime/state.py",
-      "implementation_digest": "sha256:9171d03ffe8847830e788dc7edfd99c508ead810f71019bd680fd2d5ddd7c5f4",
+      "implementation_digest": "sha256:2707d6b9bd1063aaf53fe51b05779531bf6afa7294c57231786a7801161ee37f",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -250,7 +250,7 @@
         {
           "contract_id": "tobkiri.resource.command.state.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:5561eccef0ab7444420f23455aeb029b4a7b2400b96ba3df92aafa0c465aa815",
+          "revision_digest": "sha256:62970fca04358986227d8d52e7c33e67b0d71488bb19d86eface7552e6b0aef6",
           "operation_id": "command.state.query",
           "input_schema": {
             "additionalProperties": false,
@@ -262,7 +262,7 @@
               },
               "state_refs": {
                 "items": {
-                  "const": "defaultspack:models.deepthink_enabled"
+                  "const": "defaultspack:models.strategy_reference"
                 },
                 "maxItems": 16,
                 "type": "array",
@@ -354,6 +354,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:d60c70e3d21656edb5609d1bd0cb48d255dfe34903829fd68e9b44519e147bde",
-  "catalog_digest": "sha256:3617fb1ca2edcd714734158f501f49ba43af76a92439ed74543c813c47fcdee9"
+  "materialization_catalog_digest": "sha256:cdada9a25bdd21293a51c9347a91c4d8d82213af9739289c41f9aaa1f40d805e",
+  "catalog_digest": "sha256:c6866d66a4daf3a00fbdb57762bdcc9f841f548aa48ec18a952527a112f128ba"
 }

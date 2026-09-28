@@ -1,5 +1,5 @@
 export type ModelStateWrite = {
-  kind: "preferred_model" | "thinking_level" | "deepthink_enabled";
+  kind: "preferred_model" | "thinking_level" | "strategy_reference";
   value: unknown;
 };
 
@@ -13,7 +13,7 @@ export function modelStateWriteForSettingsField(
   if (fieldId === "main_model" || fieldId === "preferred_model") {
     return { kind: "preferred_model", value: String(value ?? "").trim() };
   }
-  if (fieldId === "thinking_level" || fieldId === "deepthink_enabled") {
+  if (fieldId === "thinking_level" || fieldId === "strategy_reference") {
     return { kind: fieldId, value };
   }
   return null;

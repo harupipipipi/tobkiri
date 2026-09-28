@@ -75,7 +75,10 @@ class ToolTurn:
                 "name": "file_read", "description": "Read", "parameters": {"type": "object"},
             }}], "definitions": {"file_read": "b" * 64}}
         elif target == READINESS:
-            assert payload.get("tool_calling", False) is self.required
+            assert (
+                payload.get("requirements", {}).get("tool_calling", False)
+                is self.required
+            )
             value = {"ready": True, "model_profile_id": "model-1"}
         elif target == AI:
             assert payload["tools"][0]["function"]["name"] == "file_read"

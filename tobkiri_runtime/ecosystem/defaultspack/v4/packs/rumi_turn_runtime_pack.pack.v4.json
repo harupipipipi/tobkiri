@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:1c9d54ba31317cda3fc1b1d14db9f87efa020093075a1addb91fa6582ed68ec9",
+      "digest": "sha256:61cbbd81ce4a27e23771145dc46ebd44dfab921ddf6a8b2543babcba00acf16b",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -16,7 +16,7 @@
       "path": "runtime/host.py"
     },
     {
-      "digest": "sha256:4a434e93b4ba72e2f262bb0c8709a77d313a2d5b088958d8409b74e0de7eab87",
+      "digest": "sha256:17381c0209197e7a23c675a67368a446a9977cb287d41dd867fb7288026b7c43",
       "kind": "executable",
       "path": "runtime/saved.py"
     },
@@ -67,7 +67,7 @@
       "operations": [
         "rumi_turn_runtime_pack.turn-saved"
       ],
-      "revision_digest": "sha256:fb3763aac6d9129129c4d09691167b973da644c6698d31479bdaf203b6548aa1"
+      "revision_digest": "sha256:ab0db7feb2cbb783f252f2be679676b896c3b3c9f27bbfb5860fb989505cd27c"
     }
   ],
   "functions": [
@@ -112,7 +112,7 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:fb3763aac6d9129129c4d09691167b973da644c6698d31479bdaf203b6548aa1",
+      "contract_revision_digest": "sha256:ab0db7feb2cbb783f252f2be679676b896c3b3c9f27bbfb5860fb989505cd27c",
       "id": "rumi_turn_runtime_pack.turn-runtime.saved",
       "implementation_digest": "sha256:1b55dd49a2abad2ea9f57e969a5583c59abebda6f38841bb403d79b28742b2de",
       "isolation": "dedicated_process",
@@ -133,9 +133,9 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:af817628e6c18dcd4d9d75a78128725bc7c5211047afa5e3ce849b93677a06e9",
-    "artifact_set_digest": "sha256:c43ae067ce9903735f8d3bc15dfa3b1eff83580521d75c624b6923a4f2c6fc49",
-    "contract_catalog_digest": "sha256:c4de33d69a690f23a2d344072e874e55ca0ee0f637c333ec6deaba7802048aad"
+    "source_identity": "sha256:544fbdf71f97362b6fdbe52e41d9532a392410ad57ebd6cd4e62ae40ffc45fa5",
+    "artifact_set_digest": "sha256:7f63d9d256e6ece0e28bba8b0464a01b9b43fab09ff5ea0c8ba914cb36f2484e",
+    "contract_catalog_digest": "sha256:bfe276b3bf06b05bdf91510eac1b147faab67d596b5d92766852f612d650cef5"
   },
   "migration": {
     "compatibility": "read_only",
@@ -200,7 +200,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:91c14d78385e5a9da8338a2976e8e86f93bb8b8d99e758d7765d3ccdec4ddd20",
+    "artifact_digest": "sha256:71c02e8b2c0c276eb43bac5bd3f49872cdcbb50d0d0f7c43e23dcbcd4a88ad98",
     "display_name": "Tobkiri Turn Runtime",
     "id": "rumi_turn_runtime_pack",
     "kind": "host_extension",
@@ -211,15 +211,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_turn_runtime_pack/pack.v4.json",
-    "source_digest": "sha256:af817628e6c18dcd4d9d75a78128725bc7c5211047afa5e3ce849b93677a06e9",
+    "source_digest": "sha256:544fbdf71f97362b6fdbe52e41d9532a392410ad57ebd6cd4e62ae40ffc45fa5",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:d8ff46f35d83301b6367fb4023b028f2ff0ff621d36dce34d75efad078a96e4a",
+    "content_root_digest": "sha256:3eb9c1dc7b77ccbd3c5fd0469d51c6373ad4131e0bb7b6e2b2195ce3b54487c6",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
-    "input_inventory_digest": "sha256:7af69df61645428d5c9e25e102d61a8285c5480f0a14b8bd6bef9f1e8189fa75",
+    "input_inventory_digest": "sha256:bfacc15a4ef69837616de8654e8e897b669f6a83e35393abd7fba5c846d5428b",
     "normative": true,
     "evidence": [
       {
@@ -230,7 +230,7 @@
       {
         "path": "ecosystem/rumi_turn_runtime_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:af817628e6c18dcd4d9d75a78128725bc7c5211047afa5e3ce849b93677a06e9"
+        "digest": "sha256:544fbdf71f97362b6fdbe52e41d9532a392410ad57ebd6cd4e62ae40ffc45fa5"
       }
     ]
   },

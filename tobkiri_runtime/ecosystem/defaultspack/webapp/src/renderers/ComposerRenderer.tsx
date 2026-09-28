@@ -198,6 +198,7 @@ const COMPOSER_CHROME_WIDTHS = {
   mode: { basis: "auto", min: "2rem", max: "7rem", shrink: 1 },
   badge: { basis: "auto", min: "0", max: "11rem", shrink: 1 },
   thinking: { basis: "5.25rem", min: "5.25rem", max: "5.25rem", shrink: 0 },
+  strategy: { basis: "7.5rem", min: "6rem", max: "9rem", shrink: 1 },
   status: { basis: "auto", min: "2.5rem", shrink: 0 },
   send: { basis: "44px", min: "44px", max: "44px" },
   sendLarge: { basis: "44px", min: "44px", max: "44px" },
@@ -362,7 +363,7 @@ function composerIconForName(iconName: string | undefined, fallback: LucideIcon)
   if (/git|branch|repo/.test(normalized)) return GitBranch;
   if (/code|terminal|shell|cli/.test(normalized)) return Code2;
   if (/model|cpu|provider|ai/.test(normalized)) return Cpu;
-  if (/think|brain|reason/.test(normalized)) return BrainCircuit;
+  if (/strategy|think|brain|reason/.test(normalized)) return BrainCircuit;
   if (/key|auth|credential/.test(normalized)) return KeyRound;
   if (/message|chat|conversation/.test(normalized)) return MessageSquare;
   if (/mention|at/.test(normalized)) return AtSign;
@@ -374,7 +375,6 @@ const COMMAND_ICON_BY_ID: Partial<Record<string, LucideIcon>> = {
   help: CircleHelp,
   model: Cpu,
   think: Brain,
-  deepthink: BrainCircuit,
   fast: Zap,
   price: BadgeDollarSign,
   compact: Minimize2,
@@ -2778,6 +2778,9 @@ export function ComposerRenderer({
   modelProfiles = [],
   modelSelectorSchema = DEFAULT_MODEL_SELECTOR_SCHEMA,
   thinkingLevel,
+  strategyContributions = [],
+  strategyReference = null,
+  strategySelectionInvalid = false,
   contextUsage,
   inlineExtensions,
   belowExtensions,
@@ -2828,6 +2831,7 @@ export function ComposerRenderer({
   onModelProfileSelect,
   onProviderApiKeySave,
   onThinkingLevelChange,
+  onStrategyReferenceChange,
   onInputChange,
   onStructuredInputChange,
   onSubmit,
@@ -4316,6 +4320,48 @@ export function ComposerRenderer({
             {levels.map((level) => (
               <option key={level} value={level} className="bg-zinc-900 text-zinc-100">
                 {THINKING_LABELS[level] ?? level}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={12} className="pointer-events-none flex-shrink-0 text-zinc-500" />
+        </label>
+      ),
+    },
+    {
+      id: "strategy-control",
+      slot: "trailing",
+      homeSlot: "toolbar-trailing",
+      order: 25,
+      // An unavailable persisted selection remains visible only as an error
+      // recovery control. A Pack with no admitted contribution stays hidden.
+      visible: strategyContributions.length > 0 || strategySelectionInvalid,
+      mobile: "hide",
+      width: COMPOSER_CHROME_WIDTHS.strategy,
+      className: "rumi-composer-dock-control",
+      render: () => (
+        <label className={`${COMPOSER_CONTROL_SURFACE_CLASSNAME} cursor-pointer justify-between gap-1.5 text-[11px] font-medium ${
+          strategySelectionInvalid ? "border-red-500/60 text-red-200" : "text-zinc-500"
+        }`}>
+          <select
+            value={strategySelectionInvalid ? "" : strategyReference ?? ""}
+            onChange={(event) => onStrategyReferenceChange?.(event.target.value || null)}
+            disabled={isGenerating || !onStrategyReferenceChange}
+            tabIndex={chromeButtonTabIndex}
+            className={`h-full w-full cursor-pointer appearance-none bg-transparent text-right text-[11px] font-medium outline-none transition-colors disabled:opacity-50 ${
+              strategySelectionInvalid ? "text-red-200" : "text-zinc-300 hover:text-zinc-100"
+            }`}
+            aria-label={strategySelectionInvalid ? "Strategy unavailable" : "Strategy"}
+            aria-invalid={strategySelectionInvalid || undefined}
+            title={strategySelectionInvalid
+              ? "The selected Strategy is no longer admitted. Choose Direct or another available Strategy."
+              : "Strategy"}
+          >
+            <option value="" className="bg-zinc-900 text-zinc-100">
+              {strategySelectionInvalid ? "Strategy unavailable — Direct" : "Direct"}
+            </option>
+            {strategyContributions.map((strategy) => (
+              <option key={strategy.reference} value={strategy.reference} className="bg-zinc-900 text-zinc-100">
+                {strategy.label}
               </option>
             ))}
           </select>

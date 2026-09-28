@@ -409,15 +409,15 @@ test("JSON list panel renders trigger-neutral payload data", () => {
 
 test("slash commands use the same JSON palette contract as mentions", () => {
   const command: ComposerCommandItem = {
-    id: "deepthink",
-    name: "deepthink",
-    label: "DeepThink",
-    description: "Toggle the DeepThink loop.",
+    id: "strategy",
+    name: "strategy",
+    label: "Strategy",
+    description: "Choose an admitted strategy.",
     category: "model",
     visibility: "default",
     risk: "medium",
     active: false,
-    execution: { type: "settings_patch", section: "models", field: "deepthink_enabled" },
+    execution: { type: "settings_patch", section: "models", field: "strategy_reference" },
   };
   const mentionPayload = atMentionPalettePayload([]);
   const commandPayload = commandPalettePayload([command]);
@@ -425,7 +425,7 @@ test("slash commands use the same JSON palette contract as mentions", () => {
   assert.equal(commandPayload.maxHeightRem, mentionPayload.maxHeightRem);
   assert.equal(commandPayload.item.showDescription, mentionPayload.item.showDescription);
   assert.equal(commandPayload.item.prefix, "/");
-  assert.equal(commandPayload.items[0]?.title, "deepthink");
+  assert.equal(commandPayload.items[0]?.title, "strategy");
   assert.deepEqual(commandPayload.items[0]?.badges, [
     { label: "medium", tone: "amber" },
     { label: "オフ", tone: "neutral" },
@@ -434,22 +434,22 @@ test("slash commands use the same JSON palette contract as mentions", () => {
 });
 
 test("composer runtime state hides persistent toggle indicators while they are off", () => {
-  const deepthink: ComposerCommandItem = {
-    id: "deepthink",
-    name: "deepthink",
-    label: "DeepThink",
+  const strategy: ComposerCommandItem = {
+    id: "strategy",
+    name: "strategy",
+    label: "Strategy",
     category: "model",
     visibility: "default",
     risk: "medium",
     active: false,
     enabled: false,
-    execution: { type: "rumi_function", qualified_name: "defaultspack:ai_set_deepthink_enabled" },
+    execution: { type: "rumi_function", qualified_name: "defaultspack:ai_set_strategy_reference" },
     protocol_presentation: {
-      label: { fallback: "DeepThink" },
+      label: { fallback: "Strategy" },
       category: "model",
       visibility: "default",
-      icon: "deepthink",
-      input: { kind: "toggle", state_ref: "defaultspack:models.deepthink_enabled" },
+      icon: "strategy",
+      input: { kind: "toggle", state_ref: "defaultspack:models.strategy_reference" },
       mounts: [{ slot_ref: "tobkiri:composer.toolbar.leading", display: "persistent", order: 20 }],
     },
   };
@@ -468,7 +468,7 @@ test("composer runtime state hides persistent toggle indicators while they are o
     favoriteProfiles: [],
     inlineExtensions: [],
     belowExtensions: [],
-    commands: [deepthink],
+    commands: [strategy],
     manualRuntimeModeSelectionEnabled: true,
     mode: "agent",
     thinkingLevel: "high",
@@ -479,32 +479,32 @@ test("composer runtime state hides persistent toggle indicators while they are o
     onThinkingLevelChange: () => undefined,
   }));
 
-  assert.deepEqual(persistentComposerToggleCommands([deepthink]), [deepthink]);
+  assert.deepEqual(persistentComposerToggleCommands([strategy]), [strategy]);
   assert.match(html, /data-composer-widget="runtime-option-states"/);
   assert.match(html, /aria-label="実行モード: 自律エージェント"/);
   assert.match(html, /aria-label="思考レベル: 高"/);
   assert.match(html, /lucide-bot/);
-  assert.doesNotMatch(html, /aria-label="DeepThink: オフ"/);
+  assert.doesNotMatch(html, /aria-label="Strategy: オフ"/);
   assert.doesNotMatch(html, /data-state="off"/);
 });
 
-test("composer runtime state updates the DeepThink SVG indicator when enabled", () => {
-  const deepthink: ComposerCommandItem = {
-    id: "deepthink",
-    name: "deepthink",
-    label: "DeepThink",
+test("composer runtime state updates the Strategy SVG indicator when enabled", () => {
+  const strategy: ComposerCommandItem = {
+    id: "strategy",
+    name: "strategy",
+    label: "Strategy",
     category: "model",
     visibility: "default",
     risk: "medium",
     active: true,
     enabled: true,
-    execution: { type: "rumi_function", qualified_name: "defaultspack:ai_set_deepthink_enabled" },
+    execution: { type: "rumi_function", qualified_name: "defaultspack:ai_set_strategy_reference" },
     protocol_presentation: {
-      label: { fallback: "DeepThink" },
+      label: { fallback: "Strategy" },
       category: "model",
       visibility: "default",
-      icon: "deepthink",
-      input: { kind: "toggle", state_ref: "defaultspack:models.deepthink_enabled" },
+      icon: "strategy",
+      input: { kind: "toggle", state_ref: "defaultspack:models.strategy_reference" },
       mounts: [{ slot_ref: "tobkiri:composer.toolbar.leading", display: "persistent", order: 20 }],
     },
   };
@@ -521,7 +521,7 @@ test("composer runtime state updates the DeepThink SVG indicator when enabled", 
     favoriteProfiles: [],
     inlineExtensions: [],
     belowExtensions: [],
-    commands: [deepthink],
+    commands: [strategy],
     manualRuntimeModeSelectionEnabled: true,
     mode: "chat",
     thinkingLevel: null,
@@ -532,12 +532,56 @@ test("composer runtime state updates the DeepThink SVG indicator when enabled", 
     onThinkingLevelChange: () => undefined,
   }));
 
-  assert.match(html, /aria-label="DeepThink: オン"/);
+  assert.match(html, /aria-label="Strategy: オン"/);
   assert.match(html, /data-state="on"/);
   assert.match(html, /lucide-brain-circuit/);
   assert.match(html, /drop-shadow-/);
-  assert.match(html, /role="tooltip"[^>]*>DeepThink: オン</);
+  assert.match(html, /role="tooltip"[^>]*>Strategy: オン</);
   assert.match(html, /group-focus\/runtime:opacity-100/);
+});
+
+test("composer shows only catalog-admitted Strategies and exposes stale selection recovery", () => {
+  const baseProps = {
+    input: "",
+    placeholder: "Message Tobkiri...",
+    isGenerating: false,
+    selectedProfile: {
+      profile_id: "stub/default",
+      display_name: "Stub Default",
+      provider_id: "stub",
+      model_id: "default",
+    },
+    favoriteProfiles: [],
+    inlineExtensions: [],
+    belowExtensions: [],
+    thinkingLevel: null,
+    contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+    onInputChange: () => undefined,
+    onSubmit: () => undefined,
+    onModelProfileSelect: () => undefined,
+    onThinkingLevelChange: () => undefined,
+    onStrategyReferenceChange: () => undefined,
+  };
+  const available = renderToStaticMarkup(createElement(ComposerRenderer, {
+    ...baseProps,
+    strategyContributions: [{
+      reference: "rumi_deepthink_pack.deepthink.execute",
+      label: "DeepThink",
+    }],
+    strategyReference: "rumi_deepthink_pack.deepthink.execute",
+  }));
+  assert.match(available, /aria-label="Strategy"/);
+  assert.match(available, /DeepThink/);
+
+  const unavailable = renderToStaticMarkup(createElement(ComposerRenderer, {
+    ...baseProps,
+    strategyContributions: [],
+    strategyReference: "removed.strategy",
+    strategySelectionInvalid: true,
+  }));
+  assert.match(unavailable, /aria-label="Strategy unavailable"/);
+  assert.match(unavailable, /Strategy unavailable/);
+  assert.match(unavailable, /aria-invalid="true"/);
 });
 
 test("composer hides runtime mode state until manual selection is explicitly enabled", () => {
@@ -1027,19 +1071,19 @@ test("composer only renders template-provided slash command suggestions while fo
 
 test("stateful slash commands expose explicit on/off state", () => {
   assert.equal(commandShowsToggleState({
-    id: "deepthink",
-    name: "deepthink",
-    label: "DeepThink",
+    id: "strategy",
+    name: "strategy",
+    label: "Strategy",
     category: "model",
     visibility: "default",
     risk: "medium",
     active: false,
-    execution: { type: "settings_patch", section: "models", field: "deepthink_enabled" },
+    execution: { type: "settings_patch", section: "models", field: "strategy_reference" },
     protocol_presentation: {
-      label: { fallback: "DeepThink" },
+      label: { fallback: "Strategy" },
       category: "model",
       visibility: "default",
-      input: { kind: "toggle", state_ref: "defaultspack:models.deepthink_enabled" },
+      input: { kind: "toggle", state_ref: "defaultspack:models.strategy_reference" },
       mounts: [],
     },
   }), true);
@@ -1074,8 +1118,8 @@ test("form commands with text arguments enter argument mode on Tab completion", 
   };
   const toggleCommand: ComposerCommandItem = {
     ...titleCommand,
-    id: "deepthink",
-    name: "deepthink",
+    id: "strategy",
+    name: "strategy",
     args: [{ name: "enabled", type: "boolean" }],
     protocol_presentation: {
       ...titleCommand.protocol_presentation!,

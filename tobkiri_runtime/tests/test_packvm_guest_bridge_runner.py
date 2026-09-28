@@ -293,6 +293,82 @@ def _bridge_result(bridge_request: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _generic_bridge_request(
+    hop: int,
+    *,
+    previous_result_digest: str | None = None,
+    max_hops: int = 3,
+) -> dict[str, object]:
+    target = {"contract_id": "tobkiri.resource.ai.route.quote.v1"}
+    request = {"phase": f"phase-{hop}", "messages": [{"role": "user", "content": "hi"}]}
+    request_digest = _digest(request)
+    state = {"version": 1, "phase": hop}
+    return {
+        "kind": runner.PACKVM_BRIDGE_REQUEST_KIND,
+        "protocol": runner.PACKVM_BRIDGE_PROTOCOL,
+        "version": runner.PACKVM_BRIDGE_VERSION,
+        "target": target,
+        "request": request,
+        "request_digest": request_digest,
+        "continuation": {
+            "kind": runner.PACKVM_CONTINUATION_KIND,
+            "protocol": runner.PACKVM_BRIDGE_PROTOCOL,
+            "version": runner.PACKVM_BRIDGE_VERSION,
+            "operation_id": "strategy.execute",
+            "nonce": format(hop + 1, "048x"),
+            "target": target,
+            "request_digest": request_digest,
+            "hop": hop,
+            "max_hops": max_hops,
+            "previous_result_digest": previous_result_digest,
+            "state": state,
+            "state_digest": _digest(state),
+        },
+    }
+
+
+def test_generic_bridge_validates_exact_multi_hop_chain_and_state() -> None:
+    first = runner._validate_bridge_request(
+        _generic_bridge_request(0), operation_id="strategy.execute"
+    )
+    result = _bridge_result(first)
+    result["operation_id"] = "strategy.execute"
+    second = _generic_bridge_request(
+        1, previous_result_digest=str(result["result_digest"])
+    )
+    checked = runner._validate_bridge_request(
+        second,
+        operation_id="strategy.execute",
+        previous_continuation=first["continuation"],
+        previous_result=result,
+    )
+    assert checked == second
+
+    for field, value in (
+        ("hop", 2),
+        ("max_hops", 4),
+        ("previous_result_digest", "sha256:" + "0" * 64),
+        ("state_digest", "sha256:" + "0" * 64),
+    ):
+        tampered = json.loads(json.dumps(second))
+        tampered["continuation"][field] = value
+        with pytest.raises(ValueError):
+            runner._validate_bridge_request(
+                tampered,
+                operation_id="strategy.execute",
+                previous_continuation=first["continuation"],
+                previous_result=result,
+            )
+
+
+def test_generic_bridge_hard_hop_limit_is_fail_closed() -> None:
+    with pytest.raises(ValueError, match="continuation state"):
+        runner._validate_bridge_request(
+            _generic_bridge_request(0, max_hops=runner.MAX_BRIDGE_HOPS + 1),
+            operation_id="strategy.execute",
+        )
+
+
 def _invoke_payload(
     request_id: str,
     config: runner._VsockAgentConfig | None = None,
@@ -484,6 +560,107 @@ def test_guest_agent_persists_only_a_verified_pending_bridge_then_resumes_once(
     )
     assert replay["success"] is False
     assert resumed[2] == bridge_result
+
+
+def test_guest_agent_requeues_next_bridge_without_renewing_identity_or_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config()
+    ledger = runner._PendingBridgeLedger()
+    first = _generic_bridge_request(0)
+    first = runner._validate_bridge_request(first, operation_id="strategy.execute")
+    invoked = _invoke_payload("multi-hop", config)
+    invoked["operation_id"] = "strategy.execute"
+    monkeypatch.setattr(
+        runner,
+        "_invoke",
+        lambda _payload, **_kwargs: {
+            "ok": True,
+            "protocol": runner.PROTOCOL,
+            "guest_artifact_identity": _guest_artifact_identity(config),
+            "payload": first,
+        },
+    )
+    calls = []
+
+    def resume(
+        request: dict[str, object],
+        bridge_request: dict[str, object],
+        bridge_result: dict[str, object],
+        *,
+        guest_deadline: float,
+    ) -> dict[str, object]:
+        calls.append((request, bridge_request, bridge_result, guest_deadline))
+        if len(calls) == 1:
+            next_request = _generic_bridge_request(
+                1,
+                previous_result_digest=str(bridge_result["result_digest"]),
+            )
+            next_request = runner._validate_bridge_request(
+                next_request,
+                operation_id="strategy.execute",
+                previous_continuation=bridge_request["continuation"],
+                previous_result=bridge_result,
+            )
+            return {
+                "ok": True,
+                "protocol": runner.PROTOCOL,
+                "guest_artifact_identity": _guest_artifact_identity(config),
+                "payload": next_request,
+            }
+        return {
+            "ok": True,
+            "protocol": runner.PROTOCOL,
+            "guest_artifact_identity": _guest_artifact_identity(config),
+            "payload": {"answer": "done"},
+        }
+
+    monkeypatch.setattr(runner, "_resume_bridge_invocation", resume)
+    initial = runner._dispatch_agent_request(
+        _envelope(config, "invoke", "multi-hop", "1" * 64, payload=invoked),
+        config,
+        ledger,
+    )
+    first_expiry = ledger._pending[(config.domain_id, "multi-hop")].expires_at
+    first_result = _host_result(config, "multi-hop", first)
+    first_result["bridge_result"]["operation_id"] = "strategy.execute"
+    first_result["bridge_result_digest"] = _digest(first_result["bridge_result"])
+    first_result["continuation_nonce"] = first["continuation"]["nonce"]
+    pending = runner._dispatch_agent_request(
+        _envelope(
+            config,
+            "bridge_result",
+            "multi-hop",
+            "2" * 64,
+            host_bridge_result=first_result,
+        ),
+        config,
+        ledger,
+    )
+    assert initial["data"]["host_bridge_request"]["request_id"] == "multi-hop"
+    second = pending["data"]["host_bridge_request"]["bridge_request"]
+    assert second["continuation"]["hop"] == 1
+    assert ledger._pending[(config.domain_id, "multi-hop")].expires_at == first_expiry
+    second_result = _host_result(config, "multi-hop", second)
+    second_result["bridge_result"]["operation_id"] = "strategy.execute"
+    second_result["bridge_result"]["nonce"] = second["continuation"]["nonce"]
+    second_result["bridge_result_digest"] = _digest(second_result["bridge_result"])
+    second_result["continuation_nonce"] = second["continuation"]["nonce"]
+    final = runner._dispatch_agent_request(
+        _envelope(
+            config,
+            "bridge_result",
+            "multi-hop",
+            "3" * 64,
+            host_bridge_result=second_result,
+        ),
+        config,
+        ledger,
+    )
+    assert final["data"] == {"answer": "done"}
+    assert len(calls) == 2
+    assert calls[0][0] == calls[1][0] == invoked
+    assert calls[0][3] == calls[1][3] == first_expiry
 
 
 @pytest.mark.parametrize("finish_late", [False, True])

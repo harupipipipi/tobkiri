@@ -37,19 +37,6 @@
     "execution": { "type": "rumi_function", "qualified_name": "defaultspack:ai_set_thinking_level" }
   },
   {
-    "id": "deepthink",
-    "name": "deepthink",
-    "aliases": ["deep thinking", "dt"],
-    "label": "DeepThink",
-    "description": "Toggle thinker-style DeepThink loop. Tasks may take several hours.",
-    "category": "model",
-    "visibility": "default",
-    "risk": "medium",
-    "modes": ["chat", "coding", "agent"],
-    "args": [{ "name": "enabled", "type": "boolean", "required": false }],
-    "execution": { "type": "rumi_function", "qualified_name": "defaultspack:ai_set_deepthink_enabled" }
-  },
-  {
     "id": "fast",
     "name": "fast",
     "label": "Fast Mode",

@@ -642,6 +642,11 @@ def dynamic_profile_edges(
     )
     result: list[dict[str, Any]] = []
     minted: set[tuple[str, str, str, str]] = set()
+    consumer_owned_operations = {
+        (provider_id, contract_id, operation_id)
+        for provider_id, _consumer_id, shared_operations in consumer_links
+        for contract_id, operation_id in shared_operations
+    }
     for pack_id in sorted(closure):
         # Only the optional Pack and its direct signed dependencies contribute
         # dynamic Authority edges.  Deeper dependencies are implementation
@@ -656,7 +661,11 @@ def dynamic_profile_edges(
                 if contract_id is None:
                     continue
                 callers: set[str] = set()
-                if depth_for_pack[pack_id] == 0:
+                if depth_for_pack[pack_id] == 0 and (
+                    pack_id,
+                    contract_id,
+                    operation_id,
+                ) not in consumer_owned_operations:
                     callers.add(caller_function_id)
                 callers.update(
                     caller_id

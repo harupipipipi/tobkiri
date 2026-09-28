@@ -215,16 +215,38 @@ class CommandCatalogProjection:
                 "bare_behavior": "toggle",
                 "show_current_state": True,
             }
-        elif command_id == "deepthink" or execution_type == "settings_patch":
+        elif execution_type == "settings_patch":
             section = str(execution.get("section") or "models")
-            field = str(execution.get("field") or "deepthink_enabled")
-            input_contract = {
-                "kind": "toggle",
-                "argument": "enabled",
-                "state_ref": f"defaultspack:{section}.{field}",
-                "bare_behavior": "toggle",
-                "show_current_state": True,
-            }
+            field = str(execution.get("field") or "").strip()
+            if not field:
+                raise ValueError("settings patch field is required")
+            if len(args) == 1 and args[0].get("type") == "boolean":
+                input_contract = {
+                    "kind": "toggle",
+                    "argument": str(args[0].get("name") or "value"),
+                    "state_ref": f"defaultspack:{section}.{field}",
+                    "bare_behavior": "toggle",
+                    "show_current_state": True,
+                }
+            elif len(args) == 1 and args[0].get("type") == "enum":
+                input_contract = {
+                    "kind": "select",
+                    "argument": str(args[0].get("name") or "value"),
+                    "selection": "single",
+                    "state_ref": f"defaultspack:{section}.{field}",
+                    "options": [
+                        {"value": value, "label": {"fallback": str(value)}}
+                        for value in args[0].get("values", [])
+                    ],
+                }
+            else:
+                input_contract = {
+                    "kind": "form",
+                    "fields": [
+                        self._form_field(item) for item in args if isinstance(item, dict)
+                    ],
+                    "state_ref": f"defaultspack:{section}.{field}",
+                }
         elif len(args) == 1 and args[0].get("type") == "enum":
             input_contract = {
                 "kind": "select",
@@ -250,15 +272,6 @@ class CommandCatalogProjection:
                 "order": 100,
             }
         ]
-        if command_id == "deepthink":
-            mounts.insert(
-                0,
-                {
-                    "slot_ref": "tobkiri:composer.toolbar.leading",
-                    "display": "persistent",
-                    "order": 20,
-                },
-            )
         return {
             "label": {"fallback": str(command.get("label") or command_id)},
             "description": {"fallback": str(command.get("description") or "")},
@@ -308,10 +321,14 @@ class CommandCatalogProjection:
                 "mutation": {"argument": "query", "when_present": "set"},
             }
         if execution_type == "settings_patch":
+            argument = "value"
+            args = command.get("args")
+            if isinstance(args, list) and args and isinstance(args[0], dict):
+                argument = str(args[0].get("name") or argument)
             return {
                 "kind": "state_mutation",
                 "state_ref": (f"defaultspack:{execution.get('section')}.{execution.get('field')}"),
-                "mutation": {"argument": "enabled", "when_present": "set"},
+                "mutation": {"argument": argument, "when_present": "set"},
                 "offline": {
                     "queueable": True,
                     "semantics": "set",
@@ -321,17 +338,6 @@ class CommandCatalogProjection:
         qualified = str(
             execution.get("qualified_name") or execution.get("action") or command.get("id") or ""
         )
-        if command.get("id") == "deepthink":
-            return {
-                "kind": "state_mutation",
-                "state_ref": "defaultspack:models.deepthink_enabled",
-                "mutation": {"argument": "enabled", "when_present": "set"},
-                "offline": {
-                    "queueable": True,
-                    "semantics": "set",
-                    "backend_authoritative": True,
-                },
-            }
         return {
             "kind": "pack_operation",
             "operation_ref": qualified,

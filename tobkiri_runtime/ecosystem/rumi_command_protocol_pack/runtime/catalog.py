@@ -122,7 +122,7 @@ def _catalog(
             "legacy_execution_enabled": False,
         },
         "commands": commands,
-        "states": ([{"state_ref": "defaultspack:models.deepthink_enabled"}]
+        "states": ([{"state_ref": "defaultspack:models.strategy_reference"}]
                    if state_available else []),
         "datasources": ([
             {"datasource_ref": "tobkiri:model_catalog"},

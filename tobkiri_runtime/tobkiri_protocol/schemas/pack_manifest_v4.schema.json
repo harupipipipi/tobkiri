@@ -17,6 +17,7 @@
         "kind": {"enum": ["normal_sandbox", "host_extension", "base", "shell", "application"]},
         "artifact_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
         "display_name": {"type": "string", "minLength": 1},
+        "description": {"type": "string"},
         "publisher_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
         "signing_lineage_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
       }

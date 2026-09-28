@@ -18,10 +18,6 @@ RUMI_BASE_MODEL = RUMI_INTENDED_BASE_MODEL
 RUMI_DISPLAY_NAME = "Rumi"
 RUMI_PROCESS_VERSION = "2026-06-04"
 RUMI_DEFAULT_THINKING_LEVEL = "medium"
-RUMI_DEEPTHINK_WARNING = "DeepThink is enabled. This task may take several hours."
-RUMI_DEEPTHINK_WARNING_JA = "DeepThinkが有効です。タスクには数時間かかる可能性があります。"
-RUMI_DEEPTHINK_SOURCE = "harupipipipi/thinker"
-RUMI_DEEPTHINK_MAX_SECTIONS = 3
 RUMI_USER_BACKGROUND_CONSTRAINT = (
     "Do not infer or record sensitive personal attributes (for example health, "
     "religion, political beliefs, ethnicity, sexual orientation, precise "
@@ -152,9 +148,6 @@ def default_rumi_model_pack(*, base_model: str | None = None) -> dict[str, Any]:
         "budget": {
             "simple_max_steps": 1,
             "deep_max_steps": 8,
-            "deepthink_max_review_iterations": 8,
-            "deepthink_user_rejection_review_cycles": 2,
-            "deepthink_max_sections": RUMI_DEEPTHINK_MAX_SECTIONS,
             "max_review_rounds": 2,
             "max_retries": 2,
             "timeout_seconds": 600,
@@ -190,22 +183,6 @@ def default_rumi_model_pack(*, base_model: str | None = None) -> dict[str, Any]:
                 "reviewer_receives": ["user_input", "draft_answer", "criteria", "freshness_summary"],
                 "reviewer_excludes": ["personalization", "private user background hypotheses"],
             },
-            "deepthink": {
-                "source": RUMI_DEEPTHINK_SOURCE,
-                "enabled_by_default": False,
-                "warning": RUMI_DEEPTHINK_WARNING_JA,
-                "mechanism": [
-                    "planner",
-                    "harness_tool_selection",
-                    "visible_public_notes",
-                    "section_writers",
-                    "final_writer",
-                    "stateless_reviewer",
-                    "user_rejection_review",
-                    "loop_watchdog",
-                ],
-                "model_tools_are_separate_from_harness_tools": True,
-            },
         },
         "aliases": [RUMI_MODEL_PACK_REF, RUMI_MODEL_PACK_ID],
     }
@@ -234,88 +211,16 @@ def trace_id() -> str:
     return "rumi-" + uuid.uuid4().hex[:12]
 
 
-def request_mode(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None, params: dict[str, Any] | None = None) -> str:
-    if deepthink_enabled(params):
-        return "deep"
-    raw_mode = str((params or {}).get("rumi_mode") or (params or {}).get("mode") or "").strip().lower()
-    if raw_mode in {"simple", "deep"}:
-        return raw_mode
-    text = messages_text(messages)
-    if tools or messages_have_images(messages):
-        return "deep"
-    if len(text.strip()) <= 160 and not _looks_like_large_task(text):
-        return "simple"
-    return "deep"
-
-
-def deepthink_enabled(params: dict[str, Any] | None = None) -> bool:
-    params = params if isinstance(params, dict) else {}
-    for key in ("deepthink_enabled", "rumi_deepthink", "deepthink"):
-        if key in params:
-            return _coerce_bool(params.get(key), default=False)
-    return False
-
-
-def select_harness_tools(
+def request_mode(
     messages: list[dict[str, Any]],
-    model_tools: list[dict[str, Any]] | None = None,
+    tools: list[dict[str, Any]] | None = None,
     params: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+) -> str:
     del params
-    model_tool_ids = [_tool_id(tool) for tool in (model_tools or [])]
-    model_tool_ids = [tool_id for tool_id in model_tool_ids if tool_id]
-    vision_enabled = messages_have_images(messages)
-    base_tools = [
-        {
-            "id": "deepthink_planner",
-            "purpose": "create answer structure, assumptions, blind spots, and segment order",
-        },
-        {
-            "id": "deepthink_public_notes",
-            "purpose": "write concise visible pseudo DeepThinking notes without hidden chain-of-thought",
-        },
-        {
-            "id": "deepthink_section_writer",
-            "purpose": "draft planned answer sections before final merge",
-        },
-        {
-            "id": "deepthink_reviewer",
-            "purpose": "stateless review of the final candidate",
-        },
-        {
-            "id": "deepthink_watchdog",
-            "purpose": "detect repeated reviewer feedback and stop loops",
-        },
-    ]
-    vision_tools = [
-        {
-            "id": "vision_zoom",
-            "purpose": "inspect enlarged image regions before judging details",
-        },
-        {
-            "id": "vision_crop",
-            "purpose": "focus on a region of an image or screenshot",
-        },
-        {
-            "id": "vision_region_compare",
-            "purpose": "compare separated visual regions for UI and image tasks",
-        },
-    ] if vision_enabled else []
-    selected = [*base_tools, *vision_tools]
-    return {
-        "source": "rumi_harness",
-        "separate_from_model_tools": True,
-        "model_tool_ids": model_tool_ids,
-        "harness_tool_ids": [item["id"] for item in selected],
-        "vision_enabled": vision_enabled,
-        "vision_tool_ids": [item["id"] for item in vision_tools],
-        "tools": selected,
-        "selection_note": (
-            "Vision harness tools are enabled because the model request still contains image blocks."
-            if vision_enabled
-            else "Vision harness tools are not enabled because this request has no model-visible image input."
-        ),
-    }
+    text = messages_text(messages)
+    if _looks_like_large_task(text) or (tools and len(tools) > 2):
+        return "normal"
+    return "simple"
 
 
 def build_simple_messages(original_messages: list[dict[str, Any]], context: dict[str, Any]) -> list[dict[str, Any]]:
@@ -372,203 +277,6 @@ def build_revision_messages(
     ]
 
 
-def build_deepthink_planner_messages(
-    original_messages: list[dict[str, Any]],
-    context: dict[str, Any],
-    *,
-    current_answer: str = "",
-    reviews: list[dict[str, Any]] | None = None,
-    cycle_label: str = "initial",
-) -> list[dict[str, Any]]:
-    task = messages_text(original_messages)
-    sections = [
-        f"Task:\n{task}",
-        f"Cycle:\n{cycle_label or 'initial'}",
-        f"Current final candidate:\n{current_answer or '(none yet)'}",
-        "Visible review feedback:\n" + json.dumps(reviews or [], ensure_ascii=False),
-        [
-            "Plan for a strong answer. Maximize useful assumptions, possible user intentions, hidden requirements, and risk predictions from the user's input.",
-            "Infer the user's background, skill level, tolerance for detail, emotional state, interests, likely motivation, and what answer depth would feel useful.",
-            RUMI_USER_BACKGROUND_CONSTRAINT,
-            "Generate broad hypothesis space, including playful intent, benchmark/testing intent, hobby interest, and fringe low-probability readings when they are plausible.",
-            "When you make assumptions, attach rough probabilities such as 65%, 20%, 5%, or 1%.",
-            "Use probabilities as flexible hypothesis labels, not as a reason to narrow the answer or discard low-probability but high-impact readings.",
-            "Split the answer into 3 compact sections that can be drafted one by one.",
-            "Also decide 5 useful perspectives/agents implied by the input.",
-            "No filler. Dense but concise.",
-        ],
-        "Rumi harness context:\n" + json.dumps(context.get("harness_tool_selection", {}), ensure_ascii=False),
-        'Return this exact shape: {"structure": string[], "key_points": string[], "risks": string[]}.',
-    ]
-    return [
-        {
-            "role": "system",
-            "content": f"Plan the response before writing it. Design the answer structure, assumptions, segment order, and blind spots. {_json_only()}",
-        },
-        {"role": "user", "content": "\n\n".join(_flatten_prompt_sections(sections))},
-    ]
-
-
-def build_deepthink_public_notes_messages(
-    original_messages: list[dict[str, Any]],
-    plan: dict[str, Any],
-    context: dict[str, Any],
-    *,
-    attempt: int,
-    existing_notes: list[dict[str, Any]] | None = None,
-    current_draft: str = "",
-    reviews: list[dict[str, Any]] | None = None,
-    stage_title: str,
-    instruction: str,
-    segment_title: str = "",
-    section_drafts: list[str] | None = None,
-    input_only: bool = False,
-) -> list[dict[str, Any]]:
-    task = messages_text(original_messages)
-    if input_only:
-        context_sections = [
-            f"Task:\n{task}",
-            f"Stage:\n{stage_title}",
-            f"Instruction:\n{instruction}",
-            f"Segment:\n{segment_title or '(none)'}",
-        ]
-    else:
-        context_sections = [
-            f"Task:\n{task}",
-            "Plan:\n" + json.dumps(plan, ensure_ascii=False),
-            f"Stage:\n{stage_title}",
-            f"Instruction:\n{instruction}",
-            f"Segment:\n{segment_title or '(none)'}",
-            f"Current final candidate:\n{current_draft or '(none yet)'}",
-            "Section drafts so far:\n" + json.dumps(section_drafts or [], ensure_ascii=False),
-            "Previous visible reviews:\n" + json.dumps(reviews or [], ensure_ascii=False),
-            f"Existing visible thinking-process count: {len(existing_notes or [])}.",
-        ]
-    context_sections.append("Rumi harness tool selection:\n" + json.dumps(context.get("harness_tool_selection", {}), ensure_ascii=False))
-    return [
-        {
-            "role": "system",
-            "content": (
-                "Write one visible pseudo DeepThinking step for the user. This is not hidden chain-of-thought or private reasoning; "
-                "it is a concise public reasoning-process log with thinking and output fields. Use concrete assumptions, alternative readings, "
-                "metacognitive checks, and improvement targets when useful. Be aggressively imaginative when reading the user's intent. "
-                "When you introduce assumptions or user-profile hypotheses, attach rough probabilities. Include even low-probability but plausible readings, "
-                "down to around 1%, when they could change the answer strategy. Return one valid JSON object only. No markdown."
-            ),
-        },
-        {
-            "role": "user",
-            "content": "\n\n".join(
-                [
-                    *context_sections,
-                    f"This is pseudo DeepThinking step {attempt}.",
-                    'Return exactly this shape: {"thinking": string, "output": string}.',
-                ]
-            ),
-        },
-    ]
-
-
-def build_deepthink_writer_messages(
-    original_messages: list[dict[str, Any]],
-    plan: dict[str, Any],
-    notes: list[dict[str, Any]],
-    current_answer: str,
-    reviews: list[dict[str, Any]],
-    *,
-    loop_breaker: bool = False,
-    draft_number: int = 1,
-    kind: str = "final",
-    stage_title: str = "",
-    section_title: str = "",
-    section_index: int | None = None,
-    total_sections: int | None = None,
-    section_drafts: list[str] | None = None,
-) -> list[dict[str, Any]]:
-    is_section = kind == "section"
-    sections = [
-        f"Task:\n{messages_text(original_messages)}",
-        "Plan:\n" + json.dumps(plan, ensure_ascii=False),
-        "Visible pseudo DeepThinking process:\n" + json.dumps(notes, ensure_ascii=False),
-        f"Current final candidate:\n{current_answer or '(none yet)'}",
-        "Previous reviewer and user feedback:\n" + json.dumps(reviews, ensure_ascii=False),
-        f"Draft number:\n{draft_number}",
-        f"Stage:\n{stage_title or ('section draft' if is_section else 'final candidate')}",
-        f"Section:\n{section_title or '(final merge)'}",
-        "Section position:\n" + (f"{section_index}/{total_sections}" if section_index and total_sections else "(none)"),
-        "Section drafts:\n" + json.dumps(section_drafts or [], ensure_ascii=False),
-    ]
-    if loop_breaker:
-        sections.append(
-            "The reviewer feedback is looping. Make one best-effort final revision that addresses the stable overlap and then stop."
-        )
-    return [
-        {
-            "role": "system",
-            "content": (
-                "Write a complete tentative answer for this section only. It must be pasteable as that section of the final answer. "
-                "Be concise, concrete, and do not mention reviewer feedback, hidden chain-of-thought, or the revision process. "
-                "Treat probabilities as assumptions, not constraints that shrink the answer. Output the section draft only."
-                if is_section
-                else "Write a complete tentative answer that can stand alone as the final answer if it passes final review. "
-                "Merge the section drafts, resolve contradictions, add missing specificity proactively, and avoid redundant wording. "
-                "Do not let numeric probabilities dominate the answer or erase low-probability but important readings. "
-                "Do not mention reviewer feedback, hidden chain-of-thought, or the revision process. "
-                "Do not output JSON or markdown code fences unless the user explicitly asks for them. Output the complete tentative answer only."
-            ),
-        },
-        {"role": "user", "content": "\n\n".join(sections)},
-    ]
-
-
-def build_deepthink_reviewer_messages(original_messages: list[dict[str, Any]], answer: str) -> list[dict[str, Any]]:
-    return [
-        {
-            "role": "system",
-            "content": (
-                "You are a stateless third-party reviewer. Judge only the user input and the output you are shown. "
-                "Do not assume access to notes, plans, drafts, or past reviews. Also check whether the output is trapped by probability estimates, "
-                "false precision, or majority-likely readings instead of serving the user. Return only valid JSON. No markdown."
-            ),
-        },
-        {
-            "role": "user",
-            "content": "\n\n".join(
-                [
-                    f"Task:\n{messages_text(original_messages)}",
-                    f"Output under review:\n{answer}",
-                    'Return this exact shape: {"pass": boolean, "score": number, "issues": string[], "required_changes": string[]}.',
-                ]
-            ),
-        },
-    ]
-
-
-def build_deepthink_user_rejection_review_messages(original_messages: list[dict[str, Any]], answer: str) -> list[dict[str, Any]]:
-    return [
-        {
-            "role": "system",
-            "content": (
-                "You are processing a direct user rejection that arrived after the requester reviewed the current final candidate. "
-                "Treat the rejection as authoritative feedback from the requester. You only see the original user input and the final candidate. "
-                "The requester says: 'これでは20点です。考えられていない点が複数あり、ユーザーの回答にあまり適していません。具体的に教えてもらえますか？などと聞かれる可能性があるので、問題点を自分で予測して完璧に修正して。' "
-                "Convert that rejection into actionable review JSON. Always set pass=false and score=20. Predict likely missing points and required fixes from the user input yourself. "
-                "Do not ask the user for clarification. Return only valid JSON. No markdown."
-            ),
-        },
-        {
-            "role": "user",
-            "content": "\n\n".join(
-                [
-                    f"Original user input:\n{messages_text(original_messages)}",
-                    f"Final candidate rejected by the requester:\n{answer}",
-                    'Return this exact shape: {"pass": boolean, "score": number, "issues": string[], "required_changes": string[]}.',
-                ]
-            ),
-        },
-    ]
-
-
 def build_json_repair_messages(schema_hint: str, broken_text: str) -> list[dict[str, Any]]:
     return [
         {"role": "system", "content": f"Repair malformed JSON without adding commentary. {_json_only()}"},
@@ -577,7 +285,7 @@ def build_json_repair_messages(schema_hint: str, broken_text: str) -> list[dict[
 
 
 def review_approved(text: str) -> bool:
-    review = parse_deepthink_review_strict(text)
+    review = parse_review_json_strict(text)
     return bool(review and review.get("pass"))
 
 
@@ -671,72 +379,14 @@ def response_has_tool_calls(response: Any) -> bool:
     return False
 
 
-def parse_deepthink_plan_strict(text: str) -> dict[str, Any] | None:
+def parse_review_json_strict(text: str) -> dict[str, Any] | None:
     value = _parse_jsonish(text, None)
-    plan = sanitize_deepthink_plan(value)
-    if plan["structure"] or plan["key_points"] or plan["risks"]:
-        return plan
-    return None
-
-
-def parse_deepthink_plan(text: str) -> dict[str, Any]:
-    return parse_deepthink_plan_strict(text) or sanitize_deepthink_plan({})
-
-
-def parse_deepthink_note_strict(text: str) -> dict[str, str] | None:
-    notes = sanitize_deepthink_notes(_parse_jsonish(text, None))
-    if notes:
-        return notes[0]
-    return None
-
-
-def parse_deepthink_note(text: str) -> dict[str, str]:
-    return parse_deepthink_note_strict(text) or {
-        "thinking": "DeepThink note parse fallback.",
-        "output": "Rumi recorded this step internally but could not parse a safe public note.",
-    }
-
-
-def parse_deepthink_review_strict(text: str) -> dict[str, Any] | None:
-    value = _parse_jsonish(text, None)
-    if not isinstance(value, dict) or "pass" not in value:
+    if not isinstance(value, dict):
         return None
-    return sanitize_deepthink_review(value)
+    return sanitize_review_json(value)
 
 
-def parse_deepthink_review(text: str) -> dict[str, Any]:
-    return parse_deepthink_review_strict(text) or sanitize_deepthink_review({})
-
-
-def sanitize_deepthink_plan(value: Any) -> dict[str, Any]:
-    record = value if isinstance(value, dict) else {}
-    return {
-        "structure": _string_list(record.get("structure")),
-        "key_points": _string_list(record.get("key_points")),
-        "risks": _string_list(record.get("risks")),
-    }
-
-
-def sanitize_deepthink_notes(value: Any) -> list[dict[str, str]]:
-    if isinstance(value, dict):
-        raw_items = value.get("notes") if isinstance(value.get("notes"), list) else value.get("items") if isinstance(value.get("items"), list) else [value]
-    elif isinstance(value, list):
-        raw_items = value
-    else:
-        raw_items = []
-    notes: list[dict[str, str]] = []
-    for item in raw_items:
-        record = item if isinstance(item, dict) else {}
-        note = {
-            "thinking": str(record.get("thinking") or "").strip(),
-            "output": str(record.get("output") or "").strip(),
-        }
-        if note["thinking"] or note["output"]:
-            notes.append(note)
-    return notes[:2]
-
-
-def sanitize_deepthink_review(value: Any) -> dict[str, Any]:
+def sanitize_review_json(value: Any) -> dict[str, Any]:
     record = value if isinstance(value, dict) else {}
     try:
         score = float(record.get("score") or 0)
@@ -748,41 +398,6 @@ def sanitize_deepthink_review(value: Any) -> dict[str, Any]:
         "issues": _string_list(record.get("issues")),
         "required_changes": _string_list(record.get("required_changes")),
     }
-
-
-def enforce_user_rejection_review(review: dict[str, Any]) -> dict[str, Any]:
-    issues = [
-        "これでは20点です。",
-        "考えられていない点が複数あり、ユーザーの回答にあまり適していません。",
-        "具体的に教えてもらえますか？と聞かれそうな曖昧さが残っています。",
-        *_string_list(review.get("issues")),
-    ]
-    required_changes = [
-        "ユーザーに追加質問せず、問題点を自分で予測して完璧に修正してください。",
-        "入力からあり得る読み取り方を増やし、複数視点で不足を補ってください。",
-        "具体性、適合性、抜け漏れ、保守的すぎる判断を見直してください。",
-        *_string_list(review.get("required_changes")),
-    ]
-    return {
-        "pass": False,
-        "score": 20,
-        "issues": list(dict.fromkeys(issues)),
-        "required_changes": list(dict.fromkeys(required_changes)),
-    }
-
-
-def deepthink_plan_segments(plan: dict[str, Any], *, max_sections: int = RUMI_DEEPTHINK_MAX_SECTIONS) -> list[str]:
-    fallback = ["意図の読み取り", "回答本体", "抜け漏れ補強"]
-    raw_segments = _string_list((plan or {}).get("structure"))
-    segments = raw_segments or fallback
-    return segments[: max(1, int(max_sections or RUMI_DEEPTHINK_MAX_SECTIONS))]
-
-
-def hash_required_changes(required_changes: list[str]) -> str:
-    import hashlib
-
-    normalized = [str(item).strip() for item in required_changes if str(item or "").strip()]
-    return hashlib.sha1(json.dumps(normalized, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
 def attach_rumi_metadata(response: Any, process: dict[str, Any]) -> Any:

@@ -1,13 +1,13 @@
 {
-  "artifact_set_digest": "sha256:9fa11048ea1398d1b6eb62751f23048655bf3a95428964c5799dd5c14b1ecd00",
+  "artifact_set_digest": "sha256:7bad323c2a529c33ecb5ec9301ce228f80a9ffd2bae8a9f8ae0c400abbbc1713",
   "artifacts": [
     {
-      "digest": "sha256:6e11e8f2f92506df11ab5ad04ec9fd1591eec96399aa78b79460497f6c675653",
+      "digest": "sha256:be90b987e752c2ce1bb0f7786a3f3f8748c3546637a9c3fd8d174d579e477827",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:9a475024ffdad708f9536b868136ade3e5a2e4e1e410a94fffaf5d4d3d439ca6",
+      "digest": "sha256:90918386fbbbedd5d9a948986fb628ec13d00bdb4c9a1e1be031828c5c436620",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -27,12 +27,12 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:39b270979e7ae5493e48e810bea0bf898b9dfac36f2f5039fa8ed825182d2f20",
+      "digest": "sha256:9396fede92cd9fe41bc7192d3f3ddf97f0dd1d64228440f8836d9cdac0110431",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
     {
-      "digest": "sha256:712e2540875dc130c3d393c85a104c99b37f8d5d0248201b09c6e84c748157f2",
+      "digest": "sha256:9c51dee01a3fed6671b9eff7b02b581575bd294ac564f6ed1216071d64dc0235",
       "path": "runtime/application_presentation.py",
       "role": "runtime"
     },
@@ -42,7 +42,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:9b1595eedfd8bc22199cd4211a19a58baf7b837c3608dd2704a443e8efd7a341",
+      "digest": "sha256:8937e6213ee34fc75f828676b0fe4a025c623ed80171dffeb18d3ae9b081e4e9",
       "path": "runtime/saved_conversation.py",
       "role": "runtime"
     },
@@ -640,8 +640,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:453a7f320e7b4f8ae985643c4897af03b40ea4fc5626204f1d0eab263ba6807b"
+    "signed_digest": "sha256:81254231562007ed491f8119886b853d5775e0a8bd56bfca362cb7c34ce98f29"
   },
   "pack_id": "defaultspack",
-  "source_identity": "sha256:9d2adda220c3a2f781c37b040b2a30314c2459f7c143a6e387361dce295a8f1a"
+  "source_identity": "sha256:49aee2e06383e5eed4a9685a0dc1dce9a99a1d0f31c5f63277390b4f011ac4fe"
 }

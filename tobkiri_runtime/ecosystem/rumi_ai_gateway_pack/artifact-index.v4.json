@@ -1,18 +1,18 @@
 {
-  "artifact_set_digest": "sha256:2012ce2dfdad703d18dd1a225e8857ab2f7a361c2e1b81ccc60925f74ec59075",
+  "artifact_set_digest": "sha256:2434050a9372b7daee4c62779992c65ecdaa061989b56dacb30e30a3a99533f4",
   "artifacts": [
     {
-      "digest": "sha256:ed1f5486bb5f27f655c012f5d87076804dcef64dff23320e0aab3f62420c72f4",
+      "digest": "sha256:51a897785c2ef22507a778b2acea8c3c43540846319df1d3128f4b91f73e6642",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:fec4b525e4d668fc74174ef50aca17904bdd5d9b40337a9d34a096725db3a9bf",
+      "digest": "sha256:48fb5583fcbaccf3991eda93781078f6e64bd090d80c2e1d96aa466442ed618b",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:7cde8427de977b8e3761699b0afab8ba2ec46916545c0144c7dd52c38b88dc2d",
+      "digest": "sha256:7463f52304c8b3ebe41e1e281a2c255ebbd746bbb2c2f44c2c3db840e9246198",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -22,26 +22,21 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:477c2e0e0b52e3a73ff08ec69bc18cb0cbe7607c5d911e4e72428c922562c1c2",
-      "path": "runtime/deepthink.py",
-      "role": "runtime"
-    },
-    {
-      "digest": "sha256:56b83ae3d1377ed2618729028d6834935b67bc864c6210432554f3e2d0dfe2f5",
+      "digest": "sha256:92c1b24bf8efbb0a74ca4bb462ff117e4492dd06967a14a0dece46eb0d011c59",
       "path": "runtime/gateway.py",
       "role": "runtime"
     },
     {
-      "digest": "sha256:ad552779bc28743c787a7c198a630d5e398815445888341b694d61ccc4c7ca8c",
-      "path": "runtime/preflight.py",
+      "digest": "sha256:44be6a6f20a8e90e9ab30b7540e13ca2dfda50aed21932a035f7eac979777494",
+      "path": "runtime/route_quote.py",
       "role": "runtime"
     }
   ],
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:e393f33ca8d03dabe813edb7bcbef6ef5238caae9cb8910ee5a3f30749c08d93"
+    "signed_digest": "sha256:5ade53d928e519bccb7939be6b4532d12eb1c7e913c0b3254c91200aa8953a52"
   },
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:9605689108299a765103b81fd4d049b095414a5b31e541be16d7edc32998aa33"
+  "source_identity": "sha256:d2daaa1df689e5357b31186a49dc679498d8efe28f372812ecead6c9bc555cf6"
 }
