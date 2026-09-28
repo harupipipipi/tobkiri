@@ -5849,7 +5849,9 @@ fn copy_file(src: &Path, dst: &Path) -> io::Result<u64> {
 }
 
 fn copy_development_venv_tree(src: &Path, dst: &Path) -> io::Result<()> {
-    fs::create_dir_all(dst)?;
+    // The runtime seal lists files, so a copied empty directory would become
+    // unaccounted residue and prevent the next macOS staging reset. copy_file
+    // creates parent directories only when a file is actually present.
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let source_path = entry.path();
@@ -6501,6 +6503,28 @@ mod tests {
         let error = capture_local_development_authority(&project_dir, repo_root, &output)
             .expect_err("stale prepared Pack must not become active Profile authority");
         assert!(error.to_string().contains("rumi_ai_gateway_pack is stale"));
+    }
+
+    #[test]
+    fn development_venv_stage_omits_empty_directories() {
+        let tree = TestTree::new("development-venv-empty-directory");
+        let source = tree.path().join("venv");
+        let staged = tree.path().join("staged/dev-venv");
+        fs::create_dir_all(source.join("include/nested-empty")).unwrap();
+        fs::create_dir_all(source.join("lib/python3.14/site-packages")).unwrap();
+        fs::write(
+            source.join("lib/python3.14/site-packages/marker.py"),
+            b"marker",
+        )
+        .unwrap();
+
+        copy_development_venv_tree(&source, &staged).unwrap();
+        assert!(!staged.join("include").exists());
+        assert!(staged
+            .join("lib/python3.14/site-packages/marker.py")
+            .is_file());
+        write_runtime_resource_manifest(&staged).unwrap();
+        assert!(staged.join(RUNTIME_RESOURCE_MANIFEST).is_file());
     }
 
     #[test]
