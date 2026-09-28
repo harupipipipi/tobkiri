@@ -12,7 +12,11 @@ import {
 test("the checked-in generated map is deterministic and current", async () => {
   const result = await checkGeneratedFrontendContractMap();
   assert.equal(result.rawDigest, "sha256:6d0667f33f55b57b698b9b1d6655884a4b7c69598e61887cebdfa67020123cbb");
-  assert.equal(result.runtimeMap.routes.length, 62);
+  assert.equal(result.runtimeMap.routes.length, 63);
+  const strategies = result.runtimeMap.routes.find(
+    (route) => route.method === "GET" && route.path === "/api/ai/strategies",
+  );
+  assert.equal(strategies?.targets[0]?.contract_id, "tobkiri.resource.ai.strategy.catalog.v1");
   for (const path of ["/api/chat/approval/approve", "/api/chat/approval/resume"]) {
     const continuation = result.runtimeMap.routes.find(
       (route) => route.method === "POST" && route.path === path,
