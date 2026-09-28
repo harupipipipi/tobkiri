@@ -71,6 +71,7 @@ def test_bounded_inline_image_matches_external_and_guest_contracts() -> None:
         "あ" * 21000,
         [{"type": "text", "text": "あ" * 21000}],
     ],
+    ids=["unicode_text", "unicode_text_part"],
 )
 def test_oversized_utf8_text_reports_byte_limit(content: object) -> None:
     payload = _input()

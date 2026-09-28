@@ -522,7 +522,7 @@ def test_high_risk_operation_plan_binds_workspace_and_git_state(
     )
 
     assert approved["cwd"] == str(workspace.resolve())
-    assert Path(approved["argv"][0]).name == "true"
+    assert Path(approved["argv"][0]).stem == "true"
     assert approved["argv"][0] == approved["executable"]["path"]
     assert approved["executable"]["sha256"].startswith("sha256:")
     assert approved["plan_sha256"] != changed["plan_sha256"]
@@ -546,9 +546,9 @@ def test_high_risk_operation_plan_binds_workspace_and_git_state(
         {"paths": "tracked.txt"},
         context,
     )
-    assert Path(patch["argv"][0]).name == "git"
+    assert Path(patch["argv"][0]).stem == "git"
     assert patch["argv"][1] == "apply"
-    assert Path(restore["argv"][0]).name == "git"
+    assert Path(restore["argv"][0]).stem == "git"
     assert restore["argv"][1:3] == ["restore", "--worktree"]
     applied = protocol.operations._execute_high_risk_host_operation(
         {"id": "patch"},
