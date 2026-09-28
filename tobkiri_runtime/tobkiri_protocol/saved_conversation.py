@@ -114,6 +114,32 @@ def is_saved_user_content(value: Any) -> bool:
     )
 
 
+def _saved_user_text_bytes(value: Any) -> int | None:
+    """Return the user text byte count when the text slot is well formed."""
+    if isinstance(value, str) and bool(value.strip()):
+        return len(value.encode("utf-8"))
+    if (
+        isinstance(value, list)
+        and 1 <= len(value) <= 1 + MAX_SAVED_IMAGE_COUNT
+        and isinstance(value[0], Mapping)
+        and set(value[0]) == {"type", "text"}
+        and value[0].get("type") == "text"
+        and isinstance(value[0].get("text"), str)
+        and bool(value[0]["text"].strip())
+        and all(
+            isinstance(part, Mapping)
+            and set(part) == {"type", "image_url"}
+            and part.get("type") == "image_url"
+            and isinstance(part.get("image_url"), Mapping)
+            and set(part["image_url"]) == {"url"}
+            and _saved_image_url(part["image_url"].get("url"))
+            for part in value[1:]
+        )
+    ):
+        return len(value[0]["text"].encode("utf-8"))
+    return None
+
+
 def saved_user_text(value: Any) -> str:
     """Flatten saved user content for text-only readiness and DeepThink gates."""
     if not is_saved_user_content(value):
@@ -208,7 +234,11 @@ def validate_saved_conversation_input(payload: Mapping[str, Any]) -> dict[str, A
     revision = request["conversation_revision"]
     if type(revision) is not int or revision < 1:
         raise ValueError("saved turn revision is invalid")
-    if not is_saved_user_content(request["content"]):
+    content = request["content"]
+    text_bytes = _saved_user_text_bytes(content)
+    if text_bytes is not None and text_bytes > MAX_SAVED_TEXT_BYTES:
+        raise ValueError("saved turn input exceeds byte limit")
+    if not is_saved_user_content(content):
         raise ValueError("saved turn content is invalid")
     if len(canonical_json(request)) > MAX_SAVED_INPUT_BYTES:
         raise ValueError("saved turn input exceeds byte limit")

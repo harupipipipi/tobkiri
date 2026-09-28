@@ -65,6 +65,31 @@ def test_bounded_inline_image_matches_external_and_guest_contracts() -> None:
     assert "content" not in intent["state"]["request"]
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        "あ" * 21000,
+        [{"type": "text", "text": "あ" * 21000}],
+    ],
+)
+def test_oversized_utf8_text_reports_byte_limit(content: object) -> None:
+    payload = _input()
+    payload["request"]["content"] = content
+
+    with pytest.raises(ValueError, match="byte limit"):
+        validate_saved_conversation_input(payload)
+
+
+def test_oversized_text_does_not_mask_malformed_content() -> None:
+    payload = _input()
+    payload["request"]["content"] = [
+        {"type": "text", "text": "あ" * 21000, "unexpected": True}
+    ]
+
+    with pytest.raises(ValueError, match="content is invalid"):
+        validate_saved_conversation_input(payload)
+
+
 @pytest.mark.parametrize("url", [
     "https://example.test/image.png",
     "data:image/svg+xml;base64,PHN2Zy8+",
