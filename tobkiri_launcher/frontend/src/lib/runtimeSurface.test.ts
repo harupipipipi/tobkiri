@@ -273,6 +273,7 @@ test('generated Contract Map is pinned to the canonical raw artifact and include
       'local_only',
       'min_knowledge_level',
       'max_results',
+      'offset',
     ],
   }]);
   assert.doesNotThrow(() => validateGeneratedFrontendContractMap(GENERATED_FRONTEND_CONTRACT_MAP));
