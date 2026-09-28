@@ -213,8 +213,11 @@ test("only matching terminal saved turns stop reconciliation", () => {
     },
   }, "c1", "turn-1")!;
   assert.match(genericFailureNotice, /失敗で終了/);
+  assert.match(genericFailureNotice, /会話の保存内容を確認してから/);
   assert.doesNotMatch(genericFailureNotice, /(?:turn|ledger|台帳)/i);
-  assert.match(savedTurnTerminalNotice({ ...turn, status: "cancelled" }, "c1", "turn-1")!, /停止を確認/);
+  const cancelledNotice = savedTurnTerminalNotice({ ...turn, status: "cancelled" }, "c1", "turn-1")!;
+  assert.match(cancelledNotice, /停止を確認/);
+  assert.match(cancelledNotice, /会話の保存内容を確認してから/);
   for (const candidate of [
     { ...turn, status: "running" },
     { ...turn, status: "waiting" },

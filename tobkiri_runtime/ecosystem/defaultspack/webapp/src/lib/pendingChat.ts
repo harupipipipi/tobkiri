@@ -133,7 +133,7 @@ export function savedTurnTerminalNotice(
 ): string | null {
   if (turn.id !== turnId || turn.conversation_id !== conversationId) return null;
   if (turn.status === "cancelled") {
-    return "送信の停止を確認しました。保存済みメッセージを表示し、自動再送はしません。";
+    return "送信の停止を確認しました。会話の保存内容を確認してから、必要ならもう一度送信してください。";
   }
   if (turn.status === "failed") {
     const structured = turn.error;
@@ -145,10 +145,10 @@ export function savedTurnTerminalNotice(
           && !GENERIC_SAVED_TURN_FAILURE_DETAIL.test(item)
         ));
       if (parts.length) {
-        return `送信は失敗で終了しました。${parts.join(" — ")} 自動再送はしません。`;
+        return `送信は失敗で終了しました。${parts.join(" — ")} 会話の保存内容を確認してから、必要ならもう一度送信してください。`;
       }
     }
-    return "送信は失敗で終了しました。自動では送信し直しません。必要なら内容を確認して、もう一度送信してください。";
+    return "送信は失敗で終了しました。会話の保存内容を確認してから、必要ならもう一度送信してください。";
   }
   return null;
 }

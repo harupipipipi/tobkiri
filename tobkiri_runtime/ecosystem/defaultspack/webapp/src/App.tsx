@@ -6884,16 +6884,9 @@ export function ChatApp() {
           setInput(inputForSubmit);
           setAttachedFiles(submittedAttachments);
           setDroppedWidgets(droppedWidgetsForSubmit);
-          if (result.turn.status === "failed") {
-            setRetryableSubmission({
-              input: inputForSubmit,
-              attachments: submittedAttachments,
-              droppedWidgets: droppedWidgetsForSubmit,
-              toolSelectionRequest,
-              skipReview: true,
-              errorMessage: terminalNotice,
-            });
-          }
+          // A terminal result does not prove that the user message was not
+          // saved. Restore the draft, but do not offer a retry until the user
+          // has checked the refreshed conversation.
           void refreshConversations(conversation.id);
           return;
         }
