@@ -449,8 +449,13 @@ class DefaultspackProfileRuntime:
         from ecosystem.defaultspack.domain.runtime_v4.service import (
             ProfileReconfirmationRequired,
         )
+        from tobkiri_host.errors import ResolutionError
 
-        return isinstance(error, ProfileReconfirmationRequired)
+        if isinstance(error, ProfileReconfirmationRequired):
+            return True
+        return isinstance(error, ResolutionError) and error.args == (
+            "ResolvedPlan binding lacks a verified artifact",
+        )
 
     def is_resolution_denied(self, error: BaseException) -> bool:
         """Classify Defaultspack Profile resolution failures."""

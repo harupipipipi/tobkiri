@@ -147,6 +147,27 @@ def test_profile_port_rejects_replacement_after_composition(
     assert profile_port.require_profile_runtime() is first
 
 
+def test_only_stale_verified_artifact_resolution_requires_reconfirmation() -> None:
+    """A resealed artifact returns to review without masking other host failures."""
+
+    from ecosystem.defaultspack.defaultspack.profile_runtime_composition import (
+        DefaultspackProfileRuntime,
+    )
+    from tobkiri_host.errors import ResolutionError
+
+    runtime = DefaultspackProfileRuntime()
+
+    assert runtime.is_reconfirmation_required(
+        ResolutionError("ResolvedPlan binding lacks a verified artifact")
+    )
+    assert not runtime.is_reconfirmation_required(
+        ResolutionError("ResolvedPlan binding Pack identity is stale")
+    )
+    assert not runtime.is_reconfirmation_required(
+        ResolutionError("ResolvedPlan binding lacks executable metadata")
+    )
+
+
 def test_defaultspack_catalog_profile_projection_preserves_pack_inventory() -> None:
     """Host Profile definitions must never replace the sealed Pack map."""
 

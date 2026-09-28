@@ -91,7 +91,10 @@ def _publish_launcher_contract(
     return path
 
 
-@pytest.mark.parametrize("failure_stage", ["profile_capture", "http_composition"])
+@pytest.mark.parametrize(
+    "failure_stage",
+    ["profile_capture", "http_composition", "stale_verified_artifact"],
+)
 def test_superseded_packaged_artifact_starts_ui_ready_reconfirmation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -103,10 +106,15 @@ def test_superseded_packaged_artifact_starts_ui_ready_reconfirmation(
     from ecosystem.defaultspack.domain.runtime_v4 import (
         ProfileReconfirmationRequired,
     )
+    from tobkiri_host.errors import ResolutionError
 
     diagnostic = (
-        "active Profile Shell artifact identity was superseded by the verified "
-        "packaged release; explicit reconfirmation is required"
+        "ResolvedPlan binding lacks a verified artifact"
+        if failure_stage == "stale_verified_artifact"
+        else (
+            "active Profile Shell artifact identity was superseded by the verified "
+            "packaged release; explicit reconfirmation is required"
+        )
     )
     monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path / "user_data"))
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user_data"))
@@ -117,6 +125,8 @@ def test_superseded_packaged_artifact_starts_ui_ready_reconfirmation(
     port = _free_port()
 
     def require_reconfirmation() -> None:
+        if failure_stage == "stale_verified_artifact":
+            raise ResolutionError(diagnostic)
         raise ProfileReconfirmationRequired(diagnostic)
 
     monkeypatch.setattr(runtime_bootstrap, "active_profile_exists", lambda: True)
