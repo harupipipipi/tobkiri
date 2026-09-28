@@ -15730,7 +15730,7 @@
       "source": {
         "digest": "sha256:d8c47d5c6fdf876694b704d32b9b33fb9b8d496a9f27a67e76151260dde08251",
         "executable_source_registry": {
-          "digest": "sha256:21a509ab2fad069c8a51eda733f9966ee5d1f87afd2b490ac2f4c498321b4124",
+          "digest": "sha256:dd0fe7c205a1825d73ea2c4795e823b46ab34c8c43e014c57536c43206d17998",
           "path": "tobkiri_runtime/schemas/executable_sources.v1.json",
           "record_count": 10
         },
@@ -15825,7 +15825,7 @@
   "source": {
     "attestation": "none",
     "authority": "evidence-only",
-    "content_digest": "sha256:d910047c7304d9a339de8c76f62e0c358ff8e3364ee552a8650e7fcf0e209702",
+    "content_digest": "sha256:20add40a80e10522de2b1e1dd74eecaeab2e1acc4e2caac47197c2f7a8b268ed",
     "feasibility_audit": {
       "semantically_reviewed": {
         "count": 75,
@@ -16067,7 +16067,7 @@
     "freshness_basis": "exact-input-digests-and-deterministic-recomputation",
     "generator_id": "tobkiri.quality.migration-proof-generator",
     "generator_version": "2.1.0",
-    "input_digest": "sha256:fc2cfe935c62761a95bc37e18f44f1799d45d2e081733b94e7821daea1c64eb3",
+    "input_digest": "sha256:30ed4023958c3dd78c52fb7dae61660fc2bddd37c4090e29ff799fcb2d91a945",
     "input_paths": [
       "tobkiri_runtime/core_runtime/profile_definition_store_v4.py",
       "tobkiri_runtime/ecosystem/defaultspack/artifact-index.v4.json",
@@ -22899,7 +22899,7 @@
         "path": "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/schemas/workflow-result.v4.schema.json"
       },
       {
-        "digest": "sha256:97dc9b4802fa6bc98a7ee54cf8aa5df7de8cba6efa48087392a13a78d21dafc0",
+        "digest": "sha256:be8c5a850318d8827bd0d15dba55f3e01793cf762b4f1c52759a2a9e6a503643",
         "kind": "hardened-executable-source-registry",
         "path": "tobkiri_runtime/schemas/executable_sources.v1.json"
       },
@@ -22960,7 +22960,7 @@
       "release-verified": 0,
       "semantically-reviewed": 75
     },
-    "observed_head_sha": "5191213d5981e4345121d2456f1c09d2c46808f5",
+    "observed_head_sha": "15296fce6313de662f291b6afdccab9ba119cdc0",
     "pack_count": 141,
     "profile_collection_proof": {
       "identity_proof": {
