@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:1b6970579481436278994984d3f1c70e0938721edfe69d8df7e3be8abbeaaee1",
+  "source_identity": "sha256:97eee3bd93f47738add227f07d05d3ec80ce3a7209c8f3eeeeff5498dc9fdb4e",
   "variants": [
     {
       "variant_id": "tobkiri.project.state.read.python",
@@ -152,7 +152,7 @@
       "variant_id": "tobkiri.ui.model-search.read.python",
       "function_id": "tobkiri.ui.model-search.read",
       "implementation_path": "runtime/model_search.py",
-      "implementation_digest": "sha256:4f3bd4ae8b82c5e6190a243610bfb897eab50d6d730d4d1f5c9e246c487e93aa",
+      "implementation_digest": "sha256:df54e0daf4aba99b389d5b82392fdee5ff290d2b7eb3e287221d3bf4dca14bce",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -164,7 +164,7 @@
         {
           "contract_id": "tobkiri.resource.ui.model-search.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:1cca717fba9514c2b7c4947f4aefa92cf4a2e9cdbdd9a89441caff2ce2736f63",
+          "revision_digest": "sha256:303e77d4e704f1cf8edf8b4524cd1b386088c72643e24eb81f2e97cb2781cbc2",
           "operation_id": "tobkiri_ui_settings_pack.model-search",
           "input_schema": {
             "additionalProperties": false,
@@ -188,6 +188,11 @@
               "model_type": {
                 "maxLength": 64,
                 "type": "string"
+              },
+              "offset": {
+                "maximum": 10000,
+                "minimum": 0,
+                "type": "integer"
               },
               "profile_id": {
                 "minLength": 1,
@@ -779,6 +784,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:c3aa266a0940ded7d0e374f9918fe04898f44783825a7cc3d8e418bd2c5e63bb",
-  "catalog_digest": "sha256:c4b2fadcedff6b012559d36f6af4c6742a3f966a6e56c21d2de2b254cf1dc574"
+  "materialization_catalog_digest": "sha256:9e60013ef4b4f8b9a38b484b9e8d8b52b2d820cf319fa80774fdeb66024d85a9",
+  "catalog_digest": "sha256:af497c89fb8eb3088f2dd8b3d497e5d8c060bc91e67be9e4f4ce355a88d22d7c"
 }
