@@ -2072,11 +2072,82 @@ function ModeSelector({
   );
 }
 
-type ComposerAtMentionCandidate =
-  | { kind: "tool"; id: string; label: string; description?: string; item: ComposerExtensionItem }
-  | { kind: "service"; id: string; label: string; description?: string; service: ToolGroup }
-  | { kind: "skill"; id: string; label: string; description?: string; skill: ComposerSkillItem }
-  | { kind: "file"; id: string; label: string; description?: string; file: string };
+export type ComposerMentionSection = {
+  id: "plugin" | "builtin-tool" | "other-tool" | "skill" | "service" | "file";
+  label: string;
+  badge: string;
+  tone: "sky" | "cyan" | "violet" | "blue" | "emerald" | "amber" | "rose" | "neutral";
+};
+
+const COMPOSER_MENTION_SECTIONS: Record<ComposerMentionSection["id"], ComposerMentionSection> = {
+  plugin: { id: "plugin", label: "プラグイン・接続", badge: "接続", tone: "cyan" },
+  "builtin-tool": { id: "builtin-tool", label: "内蔵ツール", badge: "内蔵", tone: "sky" },
+  "other-tool": { id: "other-tool", label: "その他のツール", badge: "その他", tone: "emerald" },
+  skill: { id: "skill", label: "スキル", badge: "スキル", tone: "violet" },
+  service: { id: "service", label: "ツールのまとまり", badge: "まとまり", tone: "blue" },
+  file: { id: "file", label: "ワークスペースのファイル", badge: "ファイル", tone: "neutral" },
+};
+
+const BUILTIN_TOOL_PACK_IDS = new Set([
+  "defaultspack",
+  "rumi_default_tools_pack",
+]);
+
+/**
+ * Group mentionable tools by the catalog provenance that already controls
+ * their discovery. No label or identifier heuristics are used here.
+ */
+export function composerMentionSectionForTool(item: ComposerExtensionItem): ComposerMentionSection {
+  const sourcePackId = String(item.sourcePackId ?? "").trim().toLowerCase();
+  if (sourcePackId === "user_dynamic") return COMPOSER_MENTION_SECTIONS["other-tool"];
+  if (item.originKind === "profile_tool_catalog") {
+    return item.serviceId === "other"
+      ? COMPOSER_MENTION_SECTIONS["other-tool"]
+      : COMPOSER_MENTION_SECTIONS.plugin;
+  }
+  if (sourcePackId && !BUILTIN_TOOL_PACK_IDS.has(sourcePackId)) {
+    return COMPOSER_MENTION_SECTIONS.plugin;
+  }
+  return COMPOSER_MENTION_SECTIONS["builtin-tool"];
+}
+
+/** Keep service mentions beside homogeneous tool provenance. */
+export function composerMentionSectionForToolGroup(
+  items: readonly ComposerExtensionItem[],
+): ComposerMentionSection {
+  let section: ComposerMentionSection | null = null;
+  for (const item of items) {
+    if (item.disabled) continue;
+    const itemSection = composerMentionSectionForTool(item);
+    if (section && section.id !== itemSection.id) return COMPOSER_MENTION_SECTIONS.service;
+    section = itemSection;
+  }
+  return section ?? COMPOSER_MENTION_SECTIONS.service;
+}
+
+const COMPOSER_MENTION_SECTION_ORDER: readonly ComposerMentionSection["id"][] = [
+  "plugin",
+  "builtin-tool",
+  "other-tool",
+  "skill",
+  "service",
+  "file",
+];
+
+export type ComposerAtMentionCandidate =
+  | { kind: "tool"; id: string; label: string; displayLabel?: string; description?: string; item: ComposerExtensionItem; section: ComposerMentionSection }
+  | { kind: "service"; id: string; label: string; displayLabel?: string; description?: string; service: ToolGroup; section: ComposerMentionSection }
+  | { kind: "skill"; id: string; label: string; displayLabel?: string; description?: string; skill: ComposerSkillItem; section: ComposerMentionSection }
+  | { kind: "file"; id: string; label: string; displayLabel?: string; description?: string; file: string; section: ComposerMentionSection };
+
+/** Keep palette section headings contiguous without changing candidate identity. */
+export function orderComposerAtMentionCandidates(
+  candidates: readonly ComposerAtMentionCandidate[],
+): ComposerAtMentionCandidate[] {
+  return COMPOSER_MENTION_SECTION_ORDER.flatMap((sectionId) => (
+    candidates.filter((candidate) => candidate.section.id === sectionId)
+  ));
+}
 
 /** Keep Settings available even when the host omits its skill catalog entry. */
 export function composerMentionSkills(skills: ComposerSkillItem[]): ComposerSkillItem[] {
@@ -2087,6 +2158,10 @@ export type JsonListPanelItem = {
   id: string;
   title: string;
   description?: string;
+  section?: {
+    id: string;
+    label: string;
+  };
   icon?: string;
   fallbackIcon: "tool" | "service" | "skill" | "file" | "command";
   badges?: Array<{
@@ -2216,42 +2291,50 @@ export function JsonListPanel({
         )}
         {payload.items.map((item, index) => {
           const Icon = composerIconForName(item.icon, JSON_LIST_FALLBACK_ICON[item.fallbackIcon]);
+          const previousSectionId = payload.items[index - 1]?.section?.id;
+          const startsSection = item.section && item.section.id !== previousSectionId;
           return (
-            <button
-              key={item.id}
-              id={`${payload.id}-option-${index}`}
-              type="button"
-              role="option"
-              aria-selected={index === activeIndex}
-              aria-disabled={item.disabled || undefined}
-              disabled={item.disabled}
-              title={item.disabledReason}
-              tabIndex={-1}
-              onMouseEnter={() => onActiveIndexChange(index)}
-              onClick={() => onSelect(index)}
-              className={`flex min-h-11 w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
-                index === activeIndex ? "bg-white/[0.08] text-zinc-100" : "hover:bg-white/[0.05]"
-              }`}
-            >
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.04] text-zinc-300">
-                  <Icon size={14} />
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-[13px] text-zinc-200">{payload.item.prefix ?? ""}{item.title}</span>
-                  {payload.item.showDescription !== false && item.description && <span className="block truncate text-[10px] text-zinc-500">{item.description}</span>}
-                </span>
-              </span>
-              {item.badges && item.badges.length > 0 && (
-                <span className="flex flex-shrink-0 items-center gap-1">
-                  {item.badges.map((badge, badgeIndex) => (
-                    <span key={`${badge.label}:${badgeIndex}`} className={`rounded-full border px-1.5 py-0.5 text-[9px] leading-none ${JSON_LIST_BADGE_TONE_CLASS[badge.tone]}`}>
-                      {badge.label}
-                    </span>
-                  ))}
-                </span>
+            <div key={item.id}>
+              {startsSection && (
+                <div aria-hidden="true" className="px-3 pb-1 pt-2 text-[10px] font-medium text-zinc-500">
+                  {item.section?.label}
+                </div>
               )}
-            </button>
+              <button
+                id={`${payload.id}-option-${index}`}
+                type="button"
+                role="option"
+                aria-selected={index === activeIndex}
+                aria-disabled={item.disabled || undefined}
+                disabled={item.disabled}
+                title={item.disabledReason}
+                tabIndex={-1}
+                onMouseEnter={() => onActiveIndexChange(index)}
+                onClick={() => onSelect(index)}
+                className={`flex min-h-11 w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                  index === activeIndex ? "bg-white/[0.08] text-zinc-100" : "hover:bg-white/[0.05]"
+                }`}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.04] text-zinc-300">
+                    <Icon size={14} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-[13px] text-zinc-200">{payload.item.prefix ?? ""}{item.title}</span>
+                    {payload.item.showDescription !== false && item.description && <span className="block truncate text-[10px] text-zinc-500">{item.description}</span>}
+                  </span>
+                </span>
+                {item.badges && item.badges.length > 0 && (
+                  <span className="flex flex-shrink-0 items-center gap-1">
+                    {item.badges.map((badge, badgeIndex) => (
+                      <span key={`${badge.label}:${badgeIndex}`} className={`rounded-full border px-1.5 py-0.5 text-[9px] leading-none ${JSON_LIST_BADGE_TONE_CLASS[badge.tone]}`}>
+                        {badge.label}
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </button>
+            </div>
           );
         })}
       </div>
@@ -2268,20 +2351,14 @@ export function atMentionPalettePayload(candidates: ComposerAtMentionCandidate[]
         : candidate.kind === "skill"
           ? String(candidate.skill.metadata?.icon ?? candidate.skill.id)
           : candidate.file;
-    const tone: NonNullable<JsonListPanelItem["badges"]>[number]["tone"] = candidate.kind === "tool"
-      ? "sky"
-      : candidate.kind === "service"
-        ? "cyan"
-        : candidate.kind === "skill"
-          ? "violet"
-          : "blue";
     return {
       id: candidate.id,
-      title: candidate.label,
+      title: candidate.displayLabel ?? candidate.label,
       description: candidate.description,
+      section: { id: candidate.section.id, label: candidate.section.label },
       icon,
       fallbackIcon: candidate.kind,
-      badges: [{ label: candidate.kind, tone }],
+      badges: [{ label: candidate.section.badge, tone: candidate.section.tone }],
     };
   });
 
@@ -3001,6 +3078,7 @@ export function ComposerRenderer({
         label: display.label,
         description: display.description,
         item,
+        section: composerMentionSectionForTool(item),
       };
     });
     const skillCandidates = filterComposerSkillMentions(mentionSkills, atMentionQuery, 8).map((skill) => {
@@ -3011,6 +3089,7 @@ export function ComposerRenderer({
         label: display.label,
         description: display.description,
         skill,
+        section: COMPOSER_MENTION_SECTIONS.skill,
       };
     });
     const normalizedServiceQuery = atMentionQuery.trim().toLowerCase();
@@ -3023,13 +3102,21 @@ export function ComposerRenderer({
           .includes(normalizedServiceQuery)
       ))
       .slice(0, 8)
-      .map((service) => ({
-        kind: "service" as const,
-        id: `service:${service.id}`,
-        label: service.label,
-        description: service.description,
-        service,
-      }));
+      .map((service) => {
+        const availableItemCount = service.items.filter((item) => !item.disabled).length;
+        return {
+          kind: "service" as const,
+          id: `service:${service.id}`,
+          label: service.label,
+          displayLabel: `${service.label}（まとめ）`,
+          description: [
+            service.description,
+            `${availableItemCount}件のツールをまとめて選択`,
+          ].filter(Boolean).join(" · "),
+          service,
+          section: composerMentionSectionForToolGroup(service.items),
+        };
+      });
     const fileCandidates = mode === "coding"
       ? filterAtMentionFiles(codingContext?.files ?? [], atMentionQuery).slice(0, 8).map((file) => ({
           kind: "file" as const,
@@ -3037,9 +3124,15 @@ export function ComposerRenderer({
           label: file,
           description: "workspace file",
           file,
+          section: COMPOSER_MENTION_SECTIONS.file,
         }))
       : [];
-	    return [...toolCandidates, ...skillCandidates, ...serviceCandidates, ...fileCandidates];
+    return orderComposerAtMentionCandidates([
+      ...toolCandidates,
+      ...skillCandidates,
+      ...serviceCandidates,
+      ...fileCandidates,
+    ]);
 	  }, [atMentionQuery, codingContext?.files, mentionSkills, mode, toolGroups, toolItems]);
 
   const atMentionPalette = useMemo(() => atMentionPalettePayload(atMentionCandidates), [atMentionCandidates]);

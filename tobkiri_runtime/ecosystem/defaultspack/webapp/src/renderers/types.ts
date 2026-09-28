@@ -58,6 +58,11 @@ export type ComposerExtensionItem = {
   description?: string;
   tags?: string[];
   disabled?: boolean;
+  /** Provenance retained from the trusted sidebar catalog for mention grouping. */
+  sourcePackId?: string;
+  originKind?: string;
+  /** Service id supplied by the profile tool catalog, when present. */
+  serviceId?: string;
   ui?: SidebarItem["ui"];
 };
 

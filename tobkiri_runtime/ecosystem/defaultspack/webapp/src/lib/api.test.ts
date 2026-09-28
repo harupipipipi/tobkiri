@@ -1640,7 +1640,10 @@ test("uiCatalog accepts the canonical Pack v4 response envelope", async () => {
     assert.deepEqual(catalog.sidebar.items.map((item) => item.id), ["web_search", "calculator"]);
     assert.equal(catalog.sidebar.items[0]?.ui?.composer_label, "Web Search");
     assert.equal(catalog.sidebar.items[0]?.badge, "Unavailable");
-    assert.deepEqual(composerExtensionItems(catalog.sidebar.items).map((item) => item.id), ["calculator"]);
+    const mentionableTools = composerExtensionItems(catalog.sidebar.items);
+    assert.deepEqual(mentionableTools.map((item) => item.id), ["calculator"]);
+    assert.equal(mentionableTools[0]?.originKind, "profile_tool_catalog");
+    assert.equal(mentionableTools[0]?.serviceId, "other");
   } finally {
     globalThis.fetch = originalFetch;
   }

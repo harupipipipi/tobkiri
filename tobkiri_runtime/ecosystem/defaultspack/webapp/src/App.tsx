@@ -2245,6 +2245,11 @@ export function composerExtensionItems(items: SidebarItem[]): ComposerExtensionI
       category: item.category,
       description: item.description,
       tags: item.tags ?? [],
+      sourcePackId: item.tool_info?.source_pack_id,
+      originKind: item.origin?.kind,
+      serviceId: item.origin?.kind === "profile_tool_catalog"
+        ? item.ui?.group_id
+        : undefined,
       ui: item.ui,
     }));
 }
