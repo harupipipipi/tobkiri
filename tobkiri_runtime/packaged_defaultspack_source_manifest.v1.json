@@ -196,8 +196,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/v4_frontend_contributions.py",
       "type": "regular-file",
-      "size": 21569,
-      "sha256": "96b0fbc53a8653d98135e5d02f0dcab39aa82686b43c799aa64a9210b025daf3",
+      "size": 22040,
+      "sha256": "c13c5b9e8c2dfb872c97e3f67a6a5c72889b57d01adfff293295506cdc74cf5b",
       "executable": false
     },
     {

@@ -64,6 +64,18 @@ def _descriptor_path(root: Path, relative: str) -> Path:
     return candidate
 
 
+def _is_frontend_descriptor_artifact(artifact: Mapping[str, Any]) -> bool:
+    """Recognize both v4 UI artifacts and signed contribution sidecars."""
+
+    path = artifact.get("path")
+    return (
+        artifact.get("kind") in {"ui.contribution", "sidecar"}
+        and isinstance(path, str)
+        and re.fullmatch(r"frontend/contributions/[a-zA-Z0-9._-]+\.json", path)
+        is not None
+    )
+
+
 def _load_pack_routes(
     pack_id: str,
     expected_digest: str,
@@ -80,7 +92,8 @@ def _load_pack_routes(
         raise FrontendPackDenied("selected Pack authority file is unsafe")
     manifest = validate_file(root / "pack.v4.json", "pack")
     descriptors = [
-        item for item in manifest["artifacts"] if item["kind"] == "ui.contribution"
+        item for item in manifest["artifacts"]
+        if _is_frontend_descriptor_artifact(item)
     ]
     if not descriptors:
         return []
@@ -117,9 +130,10 @@ def _load_pack_routes(
         payload = strict_loads(raw)
         if not isinstance(payload, Mapping) or not _SCHEMA.is_valid(payload):
             raise FrontendPackDenied("frontend descriptor schema is invalid")
+        if payload["kind"] != "route":
+            continue
         if (
-            payload["kind"] != "route"
-            or payload["mode"] != "declarative"
+            payload["mode"] != "declarative"
             or len(str(payload["label"])) > 256
             or any(
                 field in payload
@@ -211,7 +225,8 @@ def project_selected_declarative_routes(
         record = admitted.get(pack_id)
         artifacts = record.get("runtime_artifacts", ()) if isinstance(record, Mapping) else ()
         if not isinstance(artifacts, (list, tuple)) or not any(
-            isinstance(artifact, Mapping) and artifact.get("kind") == "ui.contribution"
+            isinstance(artifact, Mapping)
+            and _is_frontend_descriptor_artifact(artifact)
             for artifact in artifacts
         ):
             continue
@@ -324,7 +339,8 @@ def project_selected_ai_strategies(
         record = admitted.get(pack_id)
         artifacts = record.get("runtime_artifacts", ()) if isinstance(record, Mapping) else ()
         if not isinstance(artifacts, (list, tuple)) or not any(
-            isinstance(artifact, Mapping) and artifact.get("kind") == "ui.contribution"
+            isinstance(artifact, Mapping)
+            and _is_frontend_descriptor_artifact(artifact)
             for artifact in artifacts
         ):
             continue
@@ -410,7 +426,8 @@ def _load_pack_ai_strategies(
         raise FrontendPackDenied("selected Pack authority file is unsafe")
     manifest = validate_file(root / "pack.v4.json", "pack")
     descriptors = [
-        item for item in manifest["artifacts"] if item["kind"] == "ui.contribution"
+        item for item in manifest["artifacts"]
+        if _is_frontend_descriptor_artifact(item)
     ]
     if not descriptors:
         return []

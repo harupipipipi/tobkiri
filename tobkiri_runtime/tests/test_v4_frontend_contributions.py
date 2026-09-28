@@ -107,6 +107,7 @@ def _strategy_pack(
     root: Path,
     *,
     pack_kind: str = "normal_sandbox",
+    descriptor_kind: str = "ui.contribution",
 ) -> tuple[Path, str]:
     """Build one signed declarative strategy descriptor fixture."""
 
@@ -140,7 +141,7 @@ def _strategy_pack(
     declaration = next(
         item for item in manifest["artifacts"] if item["path"] == STRATEGY_DESCRIPTOR
     )
-    declaration["kind"] = "ui.contribution"
+    declaration["kind"] = descriptor_kind
     artifact_digest = canonical_digest(manifest["artifacts"])
     manifest["pack"]["artifact_digest"] = artifact_digest
     manifest["integrity"]["artifact_set_digest"] = artifact_digest
@@ -168,27 +169,35 @@ def _project_strategy(digest: str, catalog: list[dict[str, object]]):
     )
 
 
-def _admit_strategy_fixture(monkeypatch, root: Path) -> None:
+def _admit_strategy_fixture(
+    monkeypatch, root: Path, *, descriptor_kind: str = "ui.contribution"
+) -> None:
     monkeypatch.setattr(frontend, "resolve_admitted_pack_root", lambda pack_id: root)
     monkeypatch.setattr(frontend, "load_admitted_pack_catalog", lambda: {
         PACK_ID: {
             "runtime_artifacts": [
-                {"kind": "ui.contribution", "path": STRATEGY_DESCRIPTOR}
+                {"kind": descriptor_kind, "path": STRATEGY_DESCRIPTOR}
             ]
         },
     })
 
 
 @pytest.mark.parametrize("pack_kind", ["normal_sandbox", "host_extension"])
+@pytest.mark.parametrize("descriptor_kind", ["ui.contribution", "sidecar"])
 def test_selected_signed_strategy_descriptor_is_projected_generically(
     tmp_path: Path,
     monkeypatch,
     pack_kind: str,
+    descriptor_kind: str,
 ) -> None:
     """A signed descriptor works for either supported Pack execution boundary."""
 
-    root, digest = _strategy_pack(tmp_path / PACK_ID, pack_kind=pack_kind)
-    _admit_strategy_fixture(monkeypatch, root)
+    root, digest = _strategy_pack(
+        tmp_path / PACK_ID,
+        pack_kind=pack_kind,
+        descriptor_kind=descriptor_kind,
+    )
+    _admit_strategy_fixture(monkeypatch, root, descriptor_kind=descriptor_kind)
     projected, diagnostics, quarantined = _project_strategy(
         digest,
         [{
@@ -233,6 +242,23 @@ def test_selected_signed_strategy_descriptor_is_projected_generically(
         "signature_verified": True,
         "strategy_reference": STRATEGY_REFERENCE,
     }
+
+
+def test_strategy_sidecar_does_not_quarantine_unrelated_route_projection(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A verified strategy descriptor cannot break another UI projection."""
+
+    root, digest = _strategy_pack(
+        tmp_path / PACK_ID, descriptor_kind="sidecar"
+    )
+    _admit_strategy_fixture(monkeypatch, root, descriptor_kind="sidecar")
+
+    routes, diagnostics, quarantined = _project(digest)
+
+    assert routes == []
+    assert diagnostics == []
+    assert quarantined == []
 
 
 def test_strategy_descriptor_without_matching_plan_provider_is_quarantined(
