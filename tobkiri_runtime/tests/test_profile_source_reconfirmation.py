@@ -8,7 +8,10 @@ import pytest
 from core_runtime.authority.v4 import AuthorityStore
 from core_runtime.bootstrap import profile_capture
 from core_runtime.bootstrap.profile_registry import register_bootstrap_definition
-from core_runtime.bootstrap.profile_source_update import interrupted_source_update_predecessor
+from core_runtime.bootstrap.profile_source_update import (
+    interrupted_source_update_predecessor,
+    profile_binding_renewal_required,
+)
 from core_runtime.profile_definition_store_v4 import (
     ProfileDefinitionStore, ProfileDefinitionStoreConflict,
 )
@@ -19,6 +22,166 @@ from ecosystem.defaultspack.defaultspack.runtime_composition import (
 from ecosystem.defaultspack.domain.runtime_v4 import ActivationStore, ProfileResolutionDenied
 from tests.test_profile_architecture_review_c import _packaged_catalog_revision, _resolve
 from tobkiri_protocol.canonical import canonical_digest
+
+
+def test_binding_renewal_requires_a_changed_sealed_pack_digest() -> None:
+    """Unchanged selection may renew only a superseded operation artifact."""
+
+    from types import SimpleNamespace
+
+    previous = "sha256:" + "1" * 64
+    current = "sha256:" + "2" * 64
+    plan = {
+        "bindings": [
+            {
+                "pack_id": "selected-pack",
+                "artifact_digest": previous,
+            }
+        ]
+    }
+
+    assert profile_binding_renewal_required(
+        plan,
+        SimpleNamespace(
+            packs={"selected-pack": {"pack": {"artifact_digest": current}}}
+        ),
+    )
+    assert not profile_binding_renewal_required(
+        plan,
+        SimpleNamespace(
+            packs={"selected-pack": {"pack": {"artifact_digest": previous}}}
+        ),
+    )
+    with pytest.raises(
+        ProfileDefinitionStoreConflict,
+        match="cannot verify the selected Pack",
+    ):
+        profile_binding_renewal_required(plan, SimpleNamespace(packs={}))
+
+
+@pytest.mark.parametrize("resealed", [False, True])
+def test_unchanged_source_review_allows_only_resealed_binding_renewal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    resealed: bool,
+) -> None:
+    """The explicit additions review can renew an unchanged selected binding."""
+
+    from types import SimpleNamespace
+
+    from core_runtime.bootstrap import profile_registry
+
+    profile = {
+        "profile_id": "defaults",
+        "base": {"pack_id": "base"},
+        "shell": {"pack_id": "shell"},
+        "packs": [{"pack_id": "selected-pack"}],
+        "requested_edges": [],
+    }
+    previous_digest = "sha256:" + "1" * 64
+    current_digest = ("sha256:" + "2" * 64) if resealed else previous_digest
+    plan = {
+        "profile_definition_digest": canonical_digest(profile),
+        "profile_revision": "sha256:" + "3" * 64,
+        "plan_digest": "sha256:" + "4" * 64,
+        "bindings": [
+            {
+                "pack_id": "selected-pack",
+                "artifact_digest": previous_digest,
+            }
+        ],
+    }
+    active = SimpleNamespace(
+        resolved=SimpleNamespace(
+            profile=deepcopy(profile),
+            plan=plan,
+            lock={"lock_digest": "sha256:" + "5" * 64},
+        ),
+        activation={"activation_id": "activation:verified-predecessor"},
+    )
+    pointer = SimpleNamespace(
+        profile_id="defaults",
+        profile_revision=plan["profile_revision"],
+        plan_digest=plan["plan_digest"],
+        lock_digest=active.resolved.lock["lock_digest"],
+        activation_id=active.activation["activation_id"],
+    )
+    catalog = SimpleNamespace(
+        profiles={"defaults": deepcopy(profile)},
+        packs={
+            pack_id: {
+                "pack": {"artifact_digest": digest},
+                "requirements": {"pack_dependencies": []},
+            }
+            for pack_id, digest in {
+                "base": "sha256:" + "6" * 64,
+                "shell": "sha256:" + "7" * 64,
+                "selected-pack": current_digest,
+            }.items()
+        },
+    )
+
+    class FakeDefinitions:
+        def __init__(self, _root: Path) -> None:
+            pass
+
+        def get_profile(self, _profile_id: str) -> SimpleNamespace:
+            return SimpleNamespace(profile=deepcopy(profile))
+
+        def snapshot(self) -> dict[str, object]:
+            return {"profiles": []}
+
+    class FakeRuntime:
+        @staticmethod
+        def activation_store(**_kwargs: object) -> SimpleNamespace:
+            return SimpleNamespace(load_active_snapshot=lambda: active)
+
+        @staticmethod
+        def catalog_with_profiles(
+            selected_catalog: SimpleNamespace,
+            profiles: dict[str, object],
+        ) -> SimpleNamespace:
+            return SimpleNamespace(
+                profiles=profiles,
+                packs=selected_catalog.packs,
+            )
+
+        @staticmethod
+        def denied(message: str) -> ProfileResolutionDenied:
+            return ProfileResolutionDenied(message)
+
+        @staticmethod
+        def is_reconfirmation_required(_error: BaseException) -> bool:
+            return False
+
+    (tmp_path / "profiles").mkdir()
+    (tmp_path / "profiles" / "active.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(profile_registry, "ProfileDefinitionStore", FakeDefinitions)
+    monkeypatch.setattr(
+        profile_registry,
+        "ActiveProfileStore",
+        lambda _root: SimpleNamespace(load=lambda **_kwargs: pointer),
+    )
+
+    if resealed:
+        reviewed, additional = profile_registry.bootstrap_review_catalog(
+            runtime=FakeRuntime(),
+            catalog=catalog,
+            user_data=tmp_path,
+            profile_id="defaults",
+            include_source_additions=True,
+        )
+        assert reviewed.profiles["defaults"] == profile
+        assert additional == ()
+    else:
+        with pytest.raises(ProfileResolutionDenied, match="requires reconfirmation"):
+            profile_registry.bootstrap_review_catalog(
+                runtime=FakeRuntime(),
+                catalog=catalog,
+                user_data=tmp_path,
+                profile_id="defaults",
+                include_source_additions=True,
+            )
 
 
 @pytest.mark.parametrize("unpinned_scope", [False, True])

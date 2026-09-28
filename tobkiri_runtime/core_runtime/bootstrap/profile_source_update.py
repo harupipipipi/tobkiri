@@ -8,6 +8,41 @@ from tobkiri_protocol.canonical import canonical_digest
 from ..profile_definition_store_v4 import ProfileDefinitionStoreConflict
 
 
+def profile_binding_renewal_required(
+    plan: Mapping[str, Any], catalog: Any
+) -> bool:
+    """Return whether a verified plan binds a superseded sealed Pack artifact.
+
+    This identifies only digest renewal for operation bindings already present
+    in the active plan.  It does not add Packs, operations, or authority and
+    the resulting candidate still requires the normal exact confirmation.
+    """
+
+    bindings = plan.get("bindings")
+    packs = getattr(catalog, "packs", None)
+    if not isinstance(bindings, list) or not isinstance(packs, Mapping):
+        raise ProfileDefinitionStoreConflict(
+            "artifact binding renewal requires a verified active plan"
+        )
+    renewal_required = False
+    for binding in bindings:
+        if not isinstance(binding, Mapping):
+            raise ProfileDefinitionStoreConflict(
+                "artifact binding renewal contains an invalid binding"
+            )
+        pack_id = binding.get("pack_id")
+        artifact_digest = binding.get("artifact_digest")
+        manifest = packs.get(pack_id) if isinstance(pack_id, str) else None
+        pack = manifest.get("pack") if isinstance(manifest, Mapping) else None
+        current_digest = pack.get("artifact_digest") if isinstance(pack, Mapping) else None
+        if not isinstance(artifact_digest, str) or not isinstance(current_digest, str):
+            raise ProfileDefinitionStoreConflict(
+                "artifact binding renewal cannot verify the selected Pack"
+            )
+        renewal_required = renewal_required or artifact_digest != current_digest
+    return renewal_required
+
+
 def interrupted_source_update_predecessor(
     registry: Mapping[str, Any],
     registered: Mapping[str, Any],

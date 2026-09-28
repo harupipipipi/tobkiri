@@ -139,7 +139,7 @@ def test_superseded_packaged_artifact_starts_ui_ready_reconfirmation(
     monkeypatch.setattr(runtime_bootstrap, "resolve_runtime_port", lambda: port)
 
     kernel = _kernel()
-    if failure_stage == "http_composition":
+    if failure_stage in {"http_composition", "stale_verified_artifact"}:
         def unavailable_composition(active):
             del active
             require_reconfirmation()

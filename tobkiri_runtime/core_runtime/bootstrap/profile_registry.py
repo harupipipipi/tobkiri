@@ -14,6 +14,7 @@ from ..profile_definition_store_v4 import (
 )
 from .profile_source_update import (
     interrupted_source_update_predecessor,
+    profile_binding_renewal_required,
     profile_scope_successor,
     profile_source_additions,
 )
@@ -45,6 +46,7 @@ def bootstrap_review_catalog(
         return catalog, ()
     workspace = user_data / "workspaces" / profile_id
     successor_required = False
+    binding_renewal_required = False
     with AuthorityStore(user_data / "authority" / "v4.sqlite3") as authority:
         try:
             active = runtime.activation_store(
@@ -63,6 +65,9 @@ def bootstrap_review_catalog(
             successor_required = True
         else:
             definition_digest = active.resolved.plan["profile_definition_digest"]
+            binding_renewal_required = profile_binding_renewal_required(
+                active.resolved.plan, catalog
+            )
             identity = (
                 active.resolved.plan["profile_revision"],
                 active.activation["activation_id"],
@@ -92,6 +97,7 @@ def bootstrap_review_catalog(
         )
     if successor_required:
         candidate["shell"] = deepcopy(catalog.profiles[profile_id]["shell"])
+    binding_renewal_predecessor = deepcopy(candidate)
     if successor_required or include_source_additions:
         candidate = profile_scope_successor(candidate, catalog.profiles[profile_id])
     if include_source_additions:
@@ -99,7 +105,14 @@ def bootstrap_review_catalog(
             updated = profile_source_additions(candidate, catalog.profiles[profile_id])
         except ProfileDefinitionStoreConflict as error:
             raise runtime.denied("source update conflicts with the registered Profile") from error
-        if not successor_required and updated == candidate:
+        if (
+            not successor_required
+            and updated == candidate
+            and (
+                not binding_renewal_required
+                or updated != binding_renewal_predecessor
+            )
+        ):
             raise runtime.denied("source update requires reconfirmation")
         candidate = updated
     declared_ids = {item["pack_id"] for item in candidate["packs"]}
