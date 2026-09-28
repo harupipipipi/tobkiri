@@ -191,6 +191,22 @@ def test_optional_consumer_dependency_keeps_exact_available_operation() -> None:
     assert ("d.c.two", "a.a.own", "a.own", "a.op") not in keys
 
 
+def test_optional_consumer_dependency_does_not_gain_sibling_operation() -> None:
+    """An optional Contract grants only its named operation."""
+
+    catalog = _catalog(consumer=True)
+    requirement = catalog.packs["d"]["requirements"]["contract_dependencies"][0]
+    requirement["optional"] = True
+    requirement["operations"] = ["a.op"]
+    catalog.packs["a"]["contracts"][0]["operations"].append("a.op.sibling")
+    catalog.packs["a"]["functions"][0]["operations"].append("a.op.sibling")
+
+    keys = _keys(dynamic_profile_edges(catalog, "defaults", ("a",)))
+
+    assert ("d.c.one", "a.a.own", "a.own", "a.op") in keys
+    assert ("d.c.one", "a.a.own", "a.own", "a.op.sibling") not in keys
+
+
 def test_functionless_application_uses_exact_shell_caller_for_required_dependency() -> None:
     """A signed UI surface can use its declared direct dependency via Shell."""
 
