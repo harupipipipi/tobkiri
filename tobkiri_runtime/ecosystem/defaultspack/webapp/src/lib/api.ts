@@ -5,6 +5,7 @@ import { chatContinuationPacketMatchesTurn } from "./pendingChat";
 import { defaultspackUrlWithLocalAuthToken } from "./defaultspackLocalAuth";
 import { configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
 import { openAuthorityApprovalWindow } from "./desktopApproval";
+import { providerSetupPreset } from "./providerPresets";
 
 const PANEL_CSRF_STORAGE_KEY = "rumi-panel-csrf";
 const DEFAULTSPACK_CSRF_STORAGE_KEY = "rumi-defaultspack-csrf";
@@ -4825,7 +4826,8 @@ export const api = {
     kind?: string;
     protocol?: "openai-compatible" | "anthropic";
   }) {
-    const protocol = options?.protocol ?? (
+    const preset = providerSetupPreset(providerId);
+    const protocol = options?.protocol ?? preset?.protocol ?? (
       providerId === "anthropic" ? "anthropic"
         : ["openai", "openai_compatible", "deepseek", "openrouter"].includes(providerId)
           ? "openai-compatible" : null
@@ -4837,7 +4839,11 @@ export const api = {
       throw new Error("モデル・メモ・quotaの同時保存は未対応です。接続設定とは別に設定してください。");
     }
     const connection = `${providerId}.${options?.apiId || "default"}`;
-    const endpoint = options?.baseUrl?.trim() ?? "";
+    // Hosted providers use the reviewed catalog preset unless the caller
+    // deliberately supplies an endpoint override. Custom providers still have
+    // no preset, so their HTTPS endpoint remains required by the validation
+    // below.
+    const endpoint = options?.baseUrl?.trim() || preset?.endpoint || "";
     let url: URL;
     try { url = new URL(endpoint); } catch { throw new Error("HTTPSのProvider接続先URLを入力してください。"); }
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(connection)

@@ -2365,6 +2365,69 @@ test("saveProviderApiKey sends canonical preparation and returns success only af
   }
 });
 
+test("saveProviderApiKey applies the OpenRouter preset when no endpoint override is supplied", async () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const originalFetch = globalThis.fetch;
+  const bodies: Record<string, unknown>[] = [];
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      sessionStorage: {
+        getItem: () => null,
+        setItem: () => undefined,
+        removeItem: () => undefined,
+      },
+      location: { hash: "" },
+    },
+  });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    bodies.push(body);
+    const path = requestTarget(input);
+    const data = path.includes("interactive-approval")
+      ? { request_id: "approval-1", state: "approved" }
+      : {
+        effect_id: "effect-1",
+        approval_request_id: "approval-1",
+        state: body.phase === "resume" ? "succeeded" : "approval_pending",
+      };
+    return new Response(JSON.stringify({ status: "ok", data }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const result = await api.saveProviderApiKey("openrouter", "fixture-private-key", {
+      apiId: "main",
+    });
+    assert.equal(result.configured, true);
+    assert.deepEqual(bodies[0], {
+      phase: "prepare",
+      effect_kind: "provider_configure",
+      request: {
+        connection_name: "openrouter.main",
+        protocol: "openai-compatible",
+        endpoint: "https://openrouter.ai/api/v1",
+        key_value: "fixture-private-key",
+      },
+      correlation_id: bodies[0].correlation_id,
+    });
+    assert.doesNotMatch(JSON.stringify(bodies.slice(1)), /fixture-private-key|openrouter\.ai/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+test("saveProviderApiKey requires an explicit HTTPS endpoint for Custom", async () => {
+  await assert.rejects(api.saveProviderApiKey("openai_compatible", "fixture-private-key", {
+    apiId: "main",
+    kind: "llm",
+    protocol: "openai-compatible",
+  }), /HTTPSのProvider接続先URLを入力してください/);
+});
+
 test("saveProviderApiKey forwards an explicit custom LLM protocol unchanged", async () => {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   const originalFetch = globalThis.fetch;
