@@ -1,23 +1,23 @@
 {
-  "artifact_set_digest": "sha256:88f28f0b08f22b9b63940829b04a5f24d4e55cf63b4a852ab1ffa0b21cd4cc95",
+  "artifact_set_digest": "sha256:a16bc321d13d04d6a833fba6a41e1917051dc64bae9e3d52068f1e34cbf62bbd",
   "artifacts": [
     {
-      "digest": "sha256:2cef535a0ae093c21f1825aa85bffa8b3e167502e80dedb413118c49ac1c8db6",
+      "digest": "sha256:61801f465ecb49599394829dd74721ff666a4f7e5de2a4e2557c8a035f8230d0",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:bf0f3b78aad2ffb30e178b64391c2322de393a75e532f4756600e774db016ed4",
+      "digest": "sha256:1a9fbb395824c3090df4acba0fb3ba8b4273263a80229f939f835d70845eb004",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:54e4fa06b9331698b6c1b14d80fcfff7d23144382a8f45a9eb241441b1c1231d",
+      "digest": "sha256:d6ff3b5484fc45de0ac8467e6b9d407f44cc4095487248bd4da9a08f834415c5",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
     {
-      "digest": "sha256:9267d5985023bcbdd20c318d07d01dcb8239d7628a2621005a37e89eed7a75bd",
+      "digest": "sha256:8fb786fa4c4339b5c6d9e94e66e1d4a5677b101df7f83a3a5f1694c3bbfd1c56",
       "path": "runtime/inspect.py",
       "role": "runtime"
     }
@@ -25,8 +25,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:96a674e19a3df17cc5456ebe354975b24baf722efce8326c0fd7be2a372d5c77"
+    "signed_digest": "sha256:4fa1c9ca9c2842c9effd7f59fb8c5b032d59403cd8f46c826b0663b833b6537b"
   },
   "pack_id": "rumi_file_inspect_pack",
-  "source_identity": "sha256:b8f75ee1c64e26e7853a7b0babd0654a3d4b7aeb8f8dcd14addda0490f4dec7b"
+  "source_identity": "sha256:91932d86bf1369134727f528c00e8e616ac063ba2477f026791f4d40fc171084"
 }
