@@ -6,11 +6,13 @@ inside ``SavedBridgeCallbacks`` — before the first user append and again at th
 AI stage — never inside the sandbox.
 """
 
+import json
+import sys
 from copy import deepcopy
 from pathlib import Path
-import sys
 from typing import Any
 
+from jsonschema import Draft202012Validator
 import pytest
 
 _DEFAULTSPACK = Path(__file__).resolve().parents[1] / "ecosystem" / "defaultspack"
@@ -47,6 +49,32 @@ _REPORT = {
     "budget": {"max_review_rounds": 2},
     "problems": [],
 }
+
+
+def test_gateway_preflight_contract_accepts_deepthink_boolean() -> None:
+    """The catalog accepts the flag emitted by saved-turn preflight."""
+    pack_root = (
+        Path(__file__).resolve().parents[1]
+        / "ecosystem"
+        / "rumi_ai_gateway_pack"
+    )
+    catalog = json.loads(
+        (pack_root / "executables.v4.json").read_text(encoding="utf-8")
+    )
+    operation = next(
+        operation
+        for variant in catalog["variants"]
+        for operation in variant["operations"]
+        if operation["operation_id"]
+        == "rumi_ai_gateway_pack.ai-gateway.preflight"
+    )
+    validator = Draft202012Validator(operation["input_schema"])
+    base = {
+        "model_profile_id": "model-profile-1",
+        "messages": [{"role": "user", "content": "Hello"}],
+    }
+    validator.validate({**base, "deepthink": True})
+    assert list(validator.iter_errors({**base, "deepthink": "true"}))
 
 
 def _deepthink_outer(store_setup):

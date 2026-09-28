@@ -77,6 +77,7 @@ from .effects import ProviderOutcome
 from .errors import (
     BackendUnavailableError,
     PackVMAcceptanceError,
+    ResolutionError,
     SavedTurnRejectedError,
 )
 from .models import require_digest
@@ -474,7 +475,7 @@ def _saved_terminal_code(exc: BaseException, *, default: str) -> str | None:
 
     if _is_gate_busy_error(exc):
         return None
-    if isinstance(exc, (AuthorityDenied, ValueError)):
+    if isinstance(exc, (AuthorityDenied, ResolutionError, ValueError)):
         code = getattr(exc, "code", None)
         return code if type(code) is str and code else default
     code = getattr(exc, "code", None)

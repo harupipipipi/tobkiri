@@ -59,6 +59,9 @@
           "input_schema": {
             "additionalProperties": false,
             "properties": {
+              "deepthink": {
+                "type": "boolean"
+              },
               "messages": {
                 "items": {
                   "additionalProperties": false,
