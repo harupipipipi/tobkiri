@@ -250,7 +250,7 @@ class VerifiedCodingContracts:
         binding = {
             "workspace_id": self.workspace_id,
             "access": "read_only",
-            "mount_revision": str(self.mount_revision),
+            "mount_revision": self.mount_revision,
             "canonical_root": str(self.root),
             "root_st_dev": int(stat.st_dev),
             "root_st_ino": int(stat.st_ino),
