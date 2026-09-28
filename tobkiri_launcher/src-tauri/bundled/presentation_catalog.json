@@ -784,7 +784,7 @@
     "rumi_credential_broker_pack": "sha256:8cdfba1621a51bf24986bf0599aed797661b12465b78e79113326915fa41b63f",
     "rumi_default_tools_pack": "sha256:8f9807905f3d435861f5af21fd49318d8dc7c71c5dda0c1100d9a673440ce251",
     "rumi_desktop_host_service_pack": "sha256:74dbfba068896f27d238068646a118c76de51630a1797ba50fc0f432d8af905e",
-    "rumi_file_inspect_pack": "sha256:c930dddc44e644cff6e82d8724ca96f23d549ace6eb4c415541d3165714393ab",
+    "rumi_file_inspect_pack": "sha256:06a56c37d642a08c6a2dd686cc47bc60a40d4bda9c980a49a737a5832effa502",
     "rumi_git_publish_pack": "sha256:dd6fde7640a7f77bab877d2badac4200bb09d22efa27bd0cbe6fde19267807be",
     "rumi_git_read_pack": "sha256:af8b7c96a7e9af792d42b22a882125a965cd78833aaff0ad22b8e7ff9d3598ec",
     "rumi_git_write_pack": "sha256:2f3b749d30a51919bc9c5c240b242fb90623e0b1157d089658c1a2eddc5ff0ac",
