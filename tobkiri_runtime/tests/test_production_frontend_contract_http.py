@@ -3584,12 +3584,12 @@ def test_command_state_and_datasource_queries_reach_exact_canonical_owners(
         server,
         "POST",
         _contract("POST", "/api/command-protocol/v1/states/query"),
-        body={"state_refs": ["defaultspack:models.deepthink_enabled"]},
+        body={"state_refs": ["defaultspack:models.strategy_reference"]},
         headers=headers,
     )
     assert status == 200, state_result
     assert state_result["data"]["states"][0]["state_ref"] == (
-        "defaultspack:models.deepthink_enabled"
+        "defaultspack:models.strategy_reference"
     )
     assert state_result["data"]["states"][0]["freshness"] == "authoritative"
 
