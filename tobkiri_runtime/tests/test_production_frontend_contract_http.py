@@ -3179,11 +3179,27 @@ def test_model_search_uses_captured_provider_and_nested_profile_edge(
         for index in range(125)
     ]
     assert all(model is not None for model in live_models)
-    monkeypatch.setattr(catalog_module, "_OPENROUTER_MEMORY_INVENTORY", None)
+    # Capture loads the verified Catalog source under its digest-based module
+    # name. Seed the owner's persisted inventory so that module reads the same
+    # fixture without a network request or a patch to an unrelated import.
+    now = int(time.time())
+    catalog_module._save_openrouter_inventory_cache(
+        {
+            "version": 1,
+            "saved_at": now,
+            "expires_at": now + 3600,
+            "models": [model for model in live_models if model is not None],
+        }
+    )
+    assert catalog_module._openrouter_inventory_cache_path().is_file()
+
+    def reject_public_inventory_request(*args, **kwargs):
+        raise AssertionError("fresh fixture inventory must avoid network")
+
     monkeypatch.setattr(
-        catalog_module,
-        "_fetch_openrouter_inventory",
-        lambda: [model for model in live_models if model is not None],
+        catalog_module.urllib.request,
+        "urlopen",
+        reject_public_inventory_request,
     )
 
     registry = ModelRegistry("defaults", user_data_root=tmp_path / "user-data")
@@ -3223,7 +3239,7 @@ def test_model_search_uses_captured_provider_and_nested_profile_edge(
             headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
         )
 
-    status, payload, _ = post({"query": "fixture-chat", "max_results": 30, "offset": 0})
+    status, payload, _ = post({"query": "fixture-chat-7b", "max_results": 30, "offset": 0})
     assert status == 200, payload
     assert len(observed) == 3
     outer, nested, catalog_read = observed
@@ -3248,10 +3264,10 @@ def test_model_search_uses_captured_provider_and_nested_profile_edge(
     assert models[0]["provider_id"] == "provider.fixture"
     assert models[0]["configured"] is True
     assert "opaque:test-only" not in json.dumps(payload)
-    assert data["filters_applied"]["query"] == "fixture-chat"
+    assert data["filters_applied"]["query"] == "fixture-chat-7b"
     assert data["filters_applied"]["offset"] == 0
 
-    status, payload, _ = post({"query": "fixture-chat", "max_results": 1, "offset": 1})
+    status, payload, _ = post({"query": "fixture-chat-7b", "max_results": 1, "offset": 1})
     assert status == 200, payload
     assert payload["data"]["models"] == []
     assert payload["data"]["filters_applied"]["offset"] == 1
