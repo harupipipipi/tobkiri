@@ -8,7 +8,7 @@ from tobkiri_host.backends import (
 )
 from tobkiri_host.broker import RequestEnvelope
 from tobkiri_host.contracts import ResolvedOperationBinding
-from tobkiri_host.effects import ProviderOutcome
+from tobkiri_host.effects import EffectDisposition, ProviderOutcome
 from tobkiri_host.models import ExecutionKind, OpaqueAuthorityRef, RuntimeEvidence
 
 from .pack_control_v4 import (
@@ -17,6 +17,7 @@ from .pack_control_v4 import (
     CapturedPackCatalogReader,
     CapturedPackControlSession,
     PackControlDenied,
+    PackControlOutcomeUnknown,
 )
 
 
@@ -109,6 +110,34 @@ class PackCatalogBackendV4:
 class PackControlBackendV4:
     """Execute only the Profile-selected finite Pack control operations."""
 
+    # Host control writes can outlive the Broker's wait.  Cancellation is
+    # best effort once a Provider entered, so only these exact operations
+    # need an uncertain outcome rather than a false terminal failure.
+    cancellation_may_leave_effect_operations = frozenset(
+        {
+            (PACK_CONTROL_CONTRACT, operation)
+            for operation in (
+                "pack.install",
+                "approval.candidate",
+                "approval.approve",
+                "approval.revoke",
+                "pack.enable",
+                "pack.disable",
+                "profile.reload",
+                "runtime.restart",
+            )
+        }
+        | {
+            (CONTROL_PRESENTATION_CONTRACT, operation)
+            for operation in (
+                "profile.change.resolve",
+                "profile.change.review",
+                "profile.change.approve",
+                "profile.change.activate",
+            )
+        }
+    )
+
     def __init__(
         self,
         *,
@@ -177,18 +206,21 @@ class PackControlBackendV4:
             or request.target_domain.value != expected[2]
         ):
             raise PackControlDenied("Pack control Provider envelope is invalid")
-        result = self._session.invoke(
-            request.contract_id,
-            request.operation_id,
-            {
-                **dict(request.payload),
-                "_session_id": request.context.caller_session_id,
-            },
-        )
+        try:
+            result = self._session.invoke(
+                request.contract_id,
+                request.operation_id,
+                {
+                    **dict(request.payload),
+                    "_session_id": request.context.caller_session_id,
+                },
+            )
+        except PackControlOutcomeUnknown:
+            return ProviderOutcome(None, disposition=EffectDisposition.UNKNOWN)
         return ProviderOutcome(result)
 
     def cancel(self, request_id: str) -> None:
-        """Accept Broker cancellation without creating another authority path."""
+        """Accept Broker cancellation; an entered mutation remains uncertain."""
 
         del request_id
 

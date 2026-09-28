@@ -167,7 +167,7 @@ class V4DispatchSession:
     def cancel_pending_reads(self) -> None:
         """Fence server-owned reads at a reusable stop/restart boundary."""
 
-        self.broker.cancel_pending_requests()
+        self.broker.cancel_pending_requests(reads_only=True)
         for callback in self.stop_callbacks:
             callback()
 
@@ -176,6 +176,8 @@ class V4DispatchSession:
 
         with self._close_lock:
             self.broker.close()
+            if isinstance(self.broker, RequestBroker) and self.broker.has_undrained_requests():
+                raise RuntimeError("captured Provider is still draining")
             failed = False
             for index, callback in enumerate(self.close_callbacks):
                 if index in self._completed_closes:

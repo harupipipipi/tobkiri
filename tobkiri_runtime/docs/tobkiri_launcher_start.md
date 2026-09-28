@@ -13,11 +13,14 @@ without a terminal:
 1. Open File Explorer and navigate to the checkout's
    `tobkiri_launcher\src-tauri\target\x86_64-pc-windows-msvc\debug` folder.
 2. Double-click `tobkiri-launcher.exe`.
-3. In the Launcher, choose **Open Setup**, review the listed Defaults Profile,
-   select its confirmation checkbox, and choose **Activate Defaults Profile**.
-   Submit it only once. Verification can take several minutes while the Host
-   restarts; if **Verify activation** becomes available, choose it. Do not
-   submit the Profile again while verification is pending.
+3. If setup is offered, choose **Open Setup**, review the listed Defaults
+   Profile, select its confirmation checkbox, and choose **Activate Defaults
+   Profile**. Submit it only once. Verification can take several minutes while
+   the Host restarts; if **Verify activation** becomes available, choose it.
+   Do not submit the Profile again while verification is pending. An existing
+   active Profile may hide **Open Setup**. If the Launcher instead reports a
+   stale Profile revision or unavailable Host Pack service, stop and record
+   that error; this is not a verified activation or a usable Pack catalog.
 
 The current Windows build can activate a Profile but cannot provision the
 PackVM needed to launch Defaultspack Chat and Pack functions. Home disables
@@ -27,6 +30,9 @@ Launcher with a Windows PackVM backend. Use the Apple Silicon macOS package
 below for a complete GUI and PackVM test until Windows support is implemented.
 
 The executable exists only after the Windows development build has completed.
+An executable left in this folder can predate the current checkout. Its version
+label does not identify the source commit, so an old executable cannot prove
+current-HEAD behavior. Build the intended revision before acceptance testing.
 For a normal installed copy, open **Tobkiri Launcher** from the Start menu.
 
 ## Open a packaged Launcher on Apple Silicon macOS

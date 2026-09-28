@@ -60,6 +60,30 @@ from .ports import (
 from tobkiri_protocol.canonical import strict_loads
 
 
+# These Host-owned operations are reads even though their signed executable
+# metadata uses the broad PRIVILEGED UI effect hint.  Shutdown may cancel
+# them without making a committed Profile mutation look like a failed read.
+_HOST_CONTROL_READS = frozenset(
+    {
+        ("tobkiri.host.pack-control.v4", operation)
+        for operation in ("catalog.read", "dashboard.read", "pack.status")
+    }
+    | {
+        ("tobkiri.host.control-presentation.v4", operation)
+        for operation in (
+            "profile.catalog.read",
+            "operation.status.read",
+            "profile.read",
+            "settings.read",
+            "topology.contracts.read",
+            "topology.operations.read",
+            "topology.packs.read",
+            "topology.principals.read",
+        )
+    }
+)
+
+
 @dataclass(frozen=True)
 class AdmissionTicket:
     """Reservation returned after bounded queue admission."""
@@ -189,6 +213,8 @@ class _ActiveRequest:
     """Broker-private shutdown state for one admitted request."""
 
     cancellation_requested: threading.Event
+    effect_class: EffectClass
+    operation_key: tuple[str, str]
     completed: threading.Event = field(default_factory=threading.Event)
 
 
@@ -549,7 +575,11 @@ class RequestBroker:
             if cancellation_requested is not None
             else threading.Event()
         )
-        active_request = _ActiveRequest(cancellation_signal)
+        active_request = _ActiveRequest(
+            cancellation_signal,
+            binding.operation.effect_class,
+            (binding.operation.contract_id, binding.operation.operation_id),
+        )
         with self._lifecycle_lock:
             if self._closed:
                 self._admission.release(ticket)
@@ -1097,7 +1127,13 @@ class RequestBroker:
             ambiguous = (
                 future is not None
                 and provider_entry_claimed.is_set()
-                and binding.operation.effect_class is EffectClass.EXTERNAL_EFFECT
+                and (
+                    binding.operation.effect_class is EffectClass.EXTERNAL_EFFECT
+                    or (
+                        envelope.contract_id,
+                        envelope.operation_id,
+                    ) in getattr(backend, "cancellation_may_leave_effect_operations", ())
+                )
             )
             self._record_audit_failure(
                 audit_reservation,
@@ -1221,13 +1257,23 @@ class RequestBroker:
             active_request.completed.wait(max(0.0, deadline - time.monotonic()))
         self._executor.shutdown(wait=False, cancel_futures=True)
 
-    def cancel_pending_requests(self) -> None:
-        """Signal every exact admitted request before an HTTP drain begins."""
+    def has_undrained_requests(self) -> bool:
+        """Retain captured Authority while an entered Provider still owns it."""
+
+        with self._lifecycle_lock:
+            return bool(self._active_requests)
+
+    def cancel_pending_requests(self, *, reads_only: bool = False) -> None:
+        """Signal admitted requests, or only reads before an HTTP drain."""
 
         with self._lifecycle_lock:
             active_requests = tuple(self._active_requests.values())
         for active_request in active_requests:
-            active_request.cancellation_requested.set()
+            if not reads_only or (
+                active_request.effect_class in {EffectClass.PURE, EffectClass.READ}
+                or active_request.operation_key in _HOST_CONTROL_READS
+            ):
+                active_request.cancellation_requested.set()
 
     def __enter__(self) -> "RequestBroker":
         """Return this open Broker for explicit scoped ownership."""

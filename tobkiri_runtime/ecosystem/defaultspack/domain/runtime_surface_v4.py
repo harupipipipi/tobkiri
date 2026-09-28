@@ -692,9 +692,12 @@ class RuntimeProfileChangeService:
                 approval,
                 user_data_root=self._user_data_root,
             )
-            try:
-                from core_runtime.pack_control_v4 import activate_resolved_profile_pack_set
+            from core_runtime.pack_control_v4 import (
+                PackControlOutcomeUnknown,
+                activate_resolved_profile_pack_set,
+            )
 
+            try:
                 bundle_binding = (
                     {} if self._bundle_root is None else {"bundle_root": self._bundle_root}
                 )
@@ -708,7 +711,9 @@ class RuntimeProfileChangeService:
                     user_data_root=self._user_data_root,
                 )
             except Exception as error:
-                raise _map_change_error(error) from error
+                raise PackControlOutcomeUnknown(
+                    "Profile activation outcome requires reconciliation"
+                ) from error
             try:
                 self._store.mark_activated(
                     approval_id,
@@ -717,7 +722,9 @@ class RuntimeProfileChangeService:
                     activation=activation,
                 )
             except Exception as error:
-                raise _map_reconciliation_error(error, approval=True) from error
+                raise PackControlOutcomeUnknown(
+                    "Profile activation committed but receipt is unavailable"
+                ) from error
         return self._activation_projection(activation)
 
     @staticmethod

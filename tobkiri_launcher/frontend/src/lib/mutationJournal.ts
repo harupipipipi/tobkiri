@@ -356,8 +356,16 @@ export function bindMutationStatusDigest(
 export function isMutationResultUnknown(error: unknown): boolean {
   if (error instanceof MutationResultUnknownError) return true;
   if (!error || typeof error !== 'object') return false;
-  const candidate = error as {name?: unknown; message?: unknown};
-  if (candidate.name === 'ApiContractError') return false;
+  const candidate = error as {name?: unknown; message?: unknown; data?: unknown};
+  if (candidate.name === 'ApiContractError') {
+    // An entered Host mutation may commit after the response is lost. Keep
+    // its original request ID for operation.status.read, and block a fresh
+    // submission until the authoritative state has been reconciled.
+    return isRecord(candidate.data)
+      && candidate.data.state === 'indeterminate'
+      && candidate.data.code === 'operation_reconciliation_required'
+      && candidate.data.retryable === false;
+  }
   if (candidate.name === 'AbortError' || candidate.name === 'ApiRequestTimeoutError') return true;
   const message = typeof candidate.message === 'string' ? candidate.message.toLowerCase() : '';
   return message.includes('timed out')

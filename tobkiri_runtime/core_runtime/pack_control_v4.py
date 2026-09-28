@@ -214,6 +214,10 @@ class PackControlTimedOut(PackControlDenied):
     code = "pack_control_timeout"
 
 
+class PackControlOutcomeUnknown(PackControlUnavailable):
+    """A Profile mutation may have committed before its result was lost."""
+
+
 @dataclass(frozen=True)
 class _Binding:
     profile_id: str
@@ -779,11 +783,16 @@ class CapturedPackControlSession:
             handler = getattr(self._profile_changes, action)
             result = handler(arguments, session_id=_panel_session_root(session_id))
             if action == "activate":
-                self._recapture()
-                result = {
-                    **result,
-                    "authoritative_snapshot": self._runtime_surface.read_profile(),
-                }
+                try:
+                    self._recapture()
+                    result = {
+                        **result,
+                        "authoritative_snapshot": self._runtime_surface.read_profile(),
+                    }
+                except Exception as error:
+                    raise PackControlOutcomeUnknown(
+                        "Profile activation committed but read-back is unavailable"
+                    ) from error
             return result
         except Exception as error:
             as_dict = getattr(error, "as_dict", None)
@@ -867,7 +876,15 @@ class CapturedPackControlSession:
             "content_digest": content_digest,
             "catalog_revision": self._binding.catalog_revision,
         }
-        _write_control_state(self._binding.profile_id, state)
+        try:
+            _write_control_state(self._binding.profile_id, state)
+        except Exception as error:
+            # Atomic publication can succeed before the identity check or
+            # directory fsync reports a failure.  The receipt may already
+            # be visible, so a fresh install must reconcile first.
+            raise PackControlOutcomeUnknown(
+                "Pack install outcome requires reconciliation"
+            ) from error
         return {"pack_id": pack_id, "installed": True, **self._binding_payload()}
 
     def _approval_candidate(self, arguments: Mapping[str, Any], session_id: str) -> dict[str, Any]:
@@ -909,13 +926,18 @@ class CapturedPackControlSession:
         current_digest = _pack_snapshot(pack_id, resolve_pack_root(pack_id))
         if not hmac.compare_digest(current_digest, candidate.snapshot_digest):
             raise PackControlDigestMismatch("Pack contents changed after approval was requested")
-        _persist_approval(
-            pack_id,
-            current_digest,
-            self._binding,
-            approval_nonce=candidate.candidate_id,
-        )
-        self._recapture()
+        try:
+            _persist_approval(
+                pack_id,
+                current_digest,
+                self._binding,
+                approval_nonce=candidate.candidate_id,
+            )
+            self._recapture()
+        except Exception as error:
+            raise PackControlOutcomeUnknown(
+                "Pack approval outcome requires reconciliation"
+            ) from error
         return {
             "pack_id": pack_id,
             "approved": True,
@@ -951,22 +973,20 @@ class CapturedPackControlSession:
         except Exception as error:
             raise PackControlUnavailable("Pack approval revocation was not committed") from error
 
-        if pack_id in active_pack_ids:
-            active_pack_ids.remove(pack_id)
-            try:
+        try:
+            if pack_id in active_pack_ids:
+                active_pack_ids.remove(pack_id)
                 _activate_pack_set(state, active_pack_ids)
-            except PackControlDenied:
-                raise
-            except Exception as error:
-                raise PackControlUnavailable(
-                    "Pack approval was fenced but Profile deactivation failed"
-                ) from error
-        _persist_revoked_approval(
-            pack_id,
-            approval,
-            revocation_id=revocation_id,
-        )
-        self._recapture()
+            _persist_revoked_approval(
+                pack_id,
+                approval,
+                revocation_id=revocation_id,
+            )
+            self._recapture()
+        except Exception as error:
+            raise PackControlOutcomeUnknown(
+                "Pack revocation committed but Profile outcome requires reconciliation"
+            ) from error
         return {
             "pack_id": pack_id,
             "approved": False,
@@ -1033,7 +1053,12 @@ class CapturedPackControlSession:
                     retained.append(candidate)
             packs = retained
         _activate_pack_set(state, packs)
-        self._recapture()
+        try:
+            self._recapture()
+        except Exception as error:
+            raise PackControlOutcomeUnknown(
+                "Profile activation committed but recapture is unavailable"
+            ) from error
         return {"pack_id": pack_id, "enabled": enabled, **self._binding_payload()}
 
     def _status(
@@ -2003,18 +2028,26 @@ def _activate_pack_set(state: Mapping[str, Any], pack_ids: list[str]) -> None:
     from .app_lifecycle_manager import pack_profile_transition
 
     with pack_profile_transition():
-        activate_resolved_profile_pack_set(
-            resolved,
-            activation_id=(
-                f"activation:{profile_id}-"
-                + resolved.plan["plan_digest"].removeprefix("sha256:")[:16]
-                + "-"
-                + secrets.token_hex(8)
-            ),
-            expected_profile_revision=str(plan.get("profile_revision") or ""),
-            expected_plan_digest=str(plan.get("plan_digest") or ""),
-            expected_activation_id=str(state.get("activation", {}).get("activation_id") or ""),
-        )
+        try:
+            activate_resolved_profile_pack_set(
+                resolved,
+                activation_id=(
+                    f"activation:{profile_id}-"
+                    + resolved.plan["plan_digest"].removeprefix("sha256:")[:16]
+                    + "-"
+                    + secrets.token_hex(8)
+                ),
+                expected_profile_revision=str(plan.get("profile_revision") or ""),
+                expected_plan_digest=str(plan.get("plan_digest") or ""),
+                expected_activation_id=str(state.get("activation", {}).get("activation_id") or ""),
+            )
+        except Exception as error:
+            # Once activation begins, a workspace record or the Host pointer
+            # may have committed before this exception.  A fresh request
+            # must inspect the active Profile rather than replay blindly.
+            raise PackControlOutcomeUnknown(
+                "Profile activation outcome requires reconciliation"
+            ) from error
 
 
 def _control_state_path(profile_id: str) -> Path:
