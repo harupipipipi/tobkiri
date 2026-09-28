@@ -4,7 +4,7 @@
   "reviews": {
     "defaultspack": {
       "pack_id": "defaultspack",
-      "review_attestation_digest": "sha256:4c065e951508ae1b083d662994913cffb2f44c88d7dbb91ceccb13c97c96361f",
+      "review_attestation_digest": "sha256:31ba7a23c45e52b2e06ff44ed89b324f93a4e7a9e2c1f7408313d9df22bb7897",
       "review_basis": {
         "evidence_paths": [
           "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
@@ -13,8 +13,15 @@
           "tobkiri_runtime/ecosystem/defaultspack/artifact-index.v4.json",
           "tobkiri_runtime/schemas/executable_sources.v1.json",
           "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json",
+          "tobkiri_runtime/tobkiri_protocol/schemas/saved_conversation_input_v1.schema.json",
+          "tobkiri_runtime/tobkiri_protocol/saved_conversation.py",
           "tobkiri_runtime/ecosystem/defaultspack/runtime/saved_conversation.py",
-          "tobkiri_runtime/tobkiri_protocol/saved_conversation.py"
+          "tobkiri_runtime/core_runtime/bootstrap/saved_bridge.py",
+          "tobkiri_runtime/tobkiri_host/saved_host_exchange.py",
+          "tobkiri_runtime/tests/test_saved_conversation_input_contract.py",
+          "tobkiri_runtime/tests/test_saved_bridge_callbacks.py",
+          "tobkiri_runtime/tests/test_saved_host_exchange.py",
+          "tobkiri_runtime/tests/test_saved_tool_turn.py"
         ],
         "excluded_claims": [
           "runtime admission",
@@ -25,14 +32,19 @@
         "method": "independent-file-by-file-review.v1",
         "verified_claims": [
           "one-to-one operation identity between committed legacy source records and the v4 executable catalog",
-          "v4 contract and provider identity recorded per operation",
+          "v4 contract, provider, isolation, failure, and security identity recorded per operation",
           "legacy source record bound by exact digest",
-          "target artifact bound by exact digest",
-          "input/output schema identity for all three operations, including optional saved thinking_level"
+          "target artifact quartet bound by exact digest",
+          "input and output schema identity for all three operations",
+          "saved_complete identically accepts bounded text or one text block followed by at most two inline PNG, JPEG, WebP, or GIF data URLs in legacy and v4 schemas",
+          "saved image runtime validation independently enforces nonempty text, MIME-matched raster magic, at most two images, at most one MiB decoded bytes per image, and a three MiB initial payload",
+          "saved user content is exact-bound to the captured request and owner acknowledgement, removed from guest continuation state after append, and retained only by digest",
+          "saved generation re-reads owner history and fences provider or tool effects to the Host-acknowledged conversation revision and current node",
+          "optional finite thinking_level remains identically declared and Host-bound"
         ]
       },
-      "reviewed_at": "2026-09-28T04:47:14+09:00",
-      "reviewer_id": "codex:independent-semantic-review:v2",
+      "reviewed_at": "2026-09-28T22:14:57+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v3",
       "semantic_record": {
         "accepted_divergences": [],
         "equivalent": true,
@@ -150,7 +162,7 @@
             "legacy_operation_id": "saved_complete",
             "legacy_operation_kind": "legacy-explicit-entrypoint",
             "parameter_mapping": {
-              "legacy_schema_digest": "sha256:5cbaba8b3f594fb71cc1848db57acb9271f2c1e0f468fcb3df1c8eb207f3306b",
+              "legacy_schema_digest": "sha256:e66884f8668acab40d727bfc5ac98f3acaecbf8dc9996493380935b57608a577",
               "method": "canonical-json-schema-equality",
               "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
               "rules": [
@@ -158,20 +170,20 @@
                 "output:identity"
               ],
               "status": "verified",
-              "v4_schema_digest": "sha256:5cbaba8b3f594fb71cc1848db57acb9271f2c1e0f468fcb3df1c8eb207f3306b"
+              "v4_schema_digest": "sha256:e66884f8668acab40d727bfc5ac98f3acaecbf8dc9996493380935b57608a577"
             },
             "v4_contract_id": "conversation.saved-turn.v1",
             "v4_operation_id": "saved_complete"
           }
         ],
-        "rationale": "Independent file-by-file review confirmed a complete one-to-one operation inventory (3 operations), all three input/output schema pairs equal between the committed legacy source and v4 operations, and the recorded v4 Contract/provider/role mapping. The saved input now contains the same optional finite thinking_level in both legacy and v4 schemas. The deterministic comparator remains unverified because this Pack has no separate legacy authority manifest; the authority mapping was reviewed against the explicit legacy source record and current v4 Pack/Contract.",
-        "semantic_record_digest": "sha256:f794cff1307495dd855eefce1a1be335727d4d8fe0b315e822b5d6e426844996",
+        "rationale": "Independent file-by-file review confirmed a complete one-to-one operation inventory (3 operations), exact input/output schema identity for every legacy and v4 operation, and unchanged Contract/provider/role authority mappings. The saved_complete schema identically expands both sides to bounded text or a text block followed by at most two inline PNG, JPEG, WebP, or GIF images while retaining the optional finite thinking_level. Protocol, guest, Host bridge, exchange, and focused tests independently enforce decoded image type/size bounds, exact request and owner-acknowledgement binding, compact digest-only continuation state after the user append, owner-history reconstruction, and conversation revision/current-node fencing before provider or tool effects. The deterministic comparator remains unverified because this Pack has no separate legacy authority manifest; authority was reviewed against the explicit legacy source record and current v4 Pack/Contract. No source-to-target semantic divergence was found.",
+        "semantic_record_digest": "sha256:5f31934f4a3d54d4460b2017e74c12106361a7ba0acadaec5d9fdeaa720442b6",
         "status": "verified"
       },
-      "semantic_record_digest": "sha256:f794cff1307495dd855eefce1a1be335727d4d8fe0b315e822b5d6e426844996",
-      "source_digest": "sha256:e2c379c42acdb7398a8195b72bda1a0fbc70c9b135ae314f69b29cc0f271f5a8",
+      "semantic_record_digest": "sha256:5f31934f4a3d54d4460b2017e74c12106361a7ba0acadaec5d9fdeaa720442b6",
+      "source_digest": "sha256:7a1b7447642b20bd89ff20a756b69dd597c834feaf5ff926c4e3515e0998641d",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:423231c81510665964e5b31b01bd4945d33a3feafb37efca9065f313b40dca94"
+      "target_digest": "sha256:9fa11048ea1398d1b6eb62751f23048655bf3a95428964c5799dd5c14b1ecd00"
     },
     "rumi_agent_continuity_pack": {
       "pack_id": "rumi_agent_continuity_pack",
@@ -413,13 +425,14 @@
     },
     "rumi_ai_gateway_pack": {
       "pack_id": "rumi_ai_gateway_pack",
-      "review_attestation_digest": "sha256:621d436af1b5754106497141b31617c3f1d5f93c3e3e551a2fcd612256d33456",
+      "review_attestation_digest": "sha256:7ed3e73f2b21835761d8b3914d4938d8e09ab646af8c42d6db18b302f4b13013",
       "review_basis": {
         "evidence_paths": [
           "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/pack.v4.json",
           "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/contracts.v4.json",
           "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/executables.v4.json",
           "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/artifact-index.v4.json",
+          "tobkiri_runtime/schemas/pack_v4_catalog.v1.json",
           "tobkiri_runtime/schemas/executable_sources.v1.json",
           "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json",
           "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json",
@@ -427,8 +440,11 @@
           "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/ecosystem.json",
           "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
           "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/deepthink.py",
-          "tobkiri_runtime/tests/test_ai_gateway_host_provider_v4.py",
           "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/preflight.py",
+          "tobkiri_runtime/core_runtime/bootstrap/saved_bridge.py",
+          "tobkiri_runtime/tests/test_ai_gateway_host_provider_v4.py",
+          "tobkiri_runtime/tests/test_saved_deepthink_gate.py",
+          "tobkiri_runtime/tests/test_saved_conversation_input_contract.py",
           "tobkiri_runtime/tests/test_saved_bridge_tool_requirement.py",
           "tobkiri_runtime/tests/test_model_catalog_v4_routing.py"
         ],
@@ -440,20 +456,21 @@
         ],
         "method": "independent-file-by-file-review.v1",
         "verified_claims": [
-          "one-to-one operation identity between committed legacy source records and the v4 executable catalog",
-          "v4 contract and provider identity recorded per operation",
-          "legacy source record bound by exact digest",
-          "target artifact bound by exact digest",
-          "parameter schema divergence accepted for rumi_ai_gateway_pack.ai-gateway.preflight (product-owner decision 2026-09-26)",
-          "four operation identities, input/output schemas, and fail-closed contract metadata remain unchanged after the Gateway runtime update",
-          "legacy v3 and v4 generation and stream entrypoints bind the same current Gateway runtime bytes; DeepThink runs only for non-stream generation and DeepThink stream requests fail closed before provider invocation",
-          "saved connection catalog lookup requires an exact reviewed adapter, endpoint, and model and sends a bundled_approved source query; an unmatched saved route skips catalog enumeration",
-          "saved connection pricing requires one matching bundled_approved descriptor and owner inventory, reviewed currency, and finite nonnegative rates; unmatched evidence leaves the route unpriced",
-          "DeepThink preflight rejects unavailable pricing before provider execution with a bounded error; ordinary saved routes remain available without DeepThink pricing"
+          "one-to-one operation identity between four committed legacy source records and four v4 executable operations",
+          "v4 contract, provider, capability, failure, isolation, security, and output-schema identities remain unchanged",
+          "legacy source record and target artifact are bound by the exact frozen proof digests",
+          "the preflight v4 input accepts only boolean deepthink and the exact optional modalities value [image, text], while unknown or noncanonical fields fail closed",
+          "the preflight implementation and generated contract agree on the exact image/text modality value and the Host emits it only after detecting inline images in owner-controlled saved content",
+          "preflight enforces a three MiB aggregate canonical-JSON limit before dependency reads; input above the former sixty KiB bound but below three MiB remains bounded and routable",
+          "image-aware preflight changes only catalog and routing eligibility so a selected model must support image and text; it cannot invoke provider generation, usage billing, failover, or credential transport",
+          "gateway.py and deepthink.py are byte-identical to the previously accepted runtime, preserving provider calls, streaming normalization, pricing, replay-safe failover, and failure handling",
+          "legacy v3 and v4 generation and stream entrypoints bind the same Gateway runtime bytes; DeepThink remains non-stream-only and streaming DeepThink fails before provider invocation",
+          "saved connection pricing still requires an exact reviewed adapter, endpoint, model, owner inventory, reviewed currency, and finite nonnegative rates",
+          "DeepThink preflight still rejects unavailable pricing before provider execution; ordinary saved routes remain available without DeepThink pricing"
         ]
       },
-      "reviewed_at": "2026-09-28T19:43:50+09:00",
-      "reviewer_id": "codex:independent-semantic-review:v4",
+      "reviewed_at": "2026-09-28T22:14:33+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v5",
       "semantic_record": {
         "accepted_divergences": [
           "function_mapping",
@@ -471,17 +488,10 @@
           {
             "authority_mapping": {
               "legacy": {
-                "artifact_role": null,
-                "cardinality": "one",
                 "contract_id": "rumi.service.ai.generate.v1",
                 "contract_version": "1.0.0",
                 "failure": "fail_closed",
                 "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_ai_gateway_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
                 "provider_instance_id": "ai-gateway.generate",
                 "required_capabilities": [
                   "ai.gateway.generate"
@@ -490,16 +500,10 @@
               },
               "status": "verified",
               "v4": {
-                "cardinality": "one",
                 "contract_id": "tobkiri.service.ai.generate.v1",
                 "failure": "fail_closed",
                 "function_role": "host_capability_provider",
                 "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_ai_gateway_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
                 "provider_id": "rumi_ai_gateway_pack.ai-gateway.generate",
                 "required_capabilities": [
                   "ai.gateway.generate"
@@ -533,16 +537,10 @@
               },
               "status": "verified",
               "v4": {
-                "cardinality": "one",
                 "contract_id": "tobkiri.resource.ai.readiness.v1",
                 "failure": "fail_closed",
                 "function_role": "host_capability_provider",
                 "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_ai_gateway_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
                 "provider_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
                 "required_capabilities": [
                   "ai.gateway.readiness.read"
@@ -558,11 +556,12 @@
               "method": "curated-parameter-mapping-review.v1",
               "output_schema_digest": "sha256:cd97c792d371ed1374119c65daeb879e4ff87e56f788009689401faf8d361081",
               "rules": [
-                "input:accepted-divergence:accepted as the intended v4 evolution by product-owner decision (user-decision 2026-09-26)",
+                "input:accepted-divergence:boolean deepthink and exact optional [image,text] modalities are the intended v4 evolution authorized by product-owner decisions on 2026-09-26 and 2026-09-28",
+                "input:bounded-divergence:three-MiB aggregate canonical JSON is enforced before any dependency read",
                 "output:identity"
               ],
               "status": "verified",
-              "v4_schema_digest": "sha256:b86c0cc6fd35f4c78f2606c4e31c670fcb51fbb142fb0a6b382d684b02094b13"
+              "v4_schema_digest": "sha256:6c2b9b36d4d99b496fe748ae94e7ed8458b2ef1e217c6f62171eb31dd1cd48f4"
             },
             "v4_contract_id": "tobkiri.resource.ai.readiness.v1",
             "v4_operation_id": "rumi_ai_gateway_pack.ai-gateway.preflight"
@@ -570,17 +569,10 @@
           {
             "authority_mapping": {
               "legacy": {
-                "artifact_role": null,
-                "cardinality": "one",
                 "contract_id": "rumi.resource.ai.routing.diagnostics.v1",
                 "contract_version": "1.0.0",
                 "failure": "isolate",
                 "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_ai_gateway_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
                 "provider_instance_id": "ai-gateway.routing-diagnostics",
                 "required_capabilities": [
                   "ai.gateway.diagnostics.read"
@@ -589,16 +581,10 @@
               },
               "status": "verified",
               "v4": {
-                "cardinality": "one",
                 "contract_id": "tobkiri.resource.ai.routing.diagnostics.v1",
                 "failure": "isolate",
                 "function_role": "host_capability_provider",
                 "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_ai_gateway_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
                 "provider_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
                 "required_capabilities": [
                   "ai.gateway.diagnostics.read"
@@ -626,17 +612,10 @@
           {
             "authority_mapping": {
               "legacy": {
-                "artifact_role": null,
-                "cardinality": "one",
                 "contract_id": "rumi.service.ai.stream.v1",
                 "contract_version": "1.0.0",
                 "failure": "fail_closed",
                 "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_ai_gateway_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
                 "provider_instance_id": "ai-gateway.stream",
                 "required_capabilities": [
                   "ai.gateway.stream"
@@ -645,16 +624,10 @@
               },
               "status": "verified",
               "v4": {
-                "cardinality": "one",
                 "contract_id": "tobkiri.service.ai.stream.v1",
                 "failure": "fail_closed",
                 "function_role": "host_capability_provider",
                 "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_ai_gateway_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
                 "provider_id": "rumi_ai_gateway_pack.ai-gateway.stream",
                 "required_capabilities": [
                   "ai.gateway.stream"
@@ -680,14 +653,14 @@
             "v4_operation_id": "rumi_ai_gateway_pack.ai-gateway.stream"
           }
         ],
-        "rationale": "Independent file-by-file review confirmed a complete one-to-one operation inventory (4 operations). The deterministic comparator flagged function_mapping, legacy_artifact_role_missing, parameter_schema_mapping_mismatch; each flagged difference was inspected and accepted as the intended v4 evolution by product-owner decision (user-decision 2026-09-26).",
-        "semantic_record_digest": "sha256:5dbf3802ba8dad2b404c3d2f44e798f8bd76f027ed156ebdb8c6921a6100eee8",
+        "rationale": "Independent file-by-file review confirmed a complete one-to-one four-operation inventory. The deterministic comparator flags the known function mapping and missing legacy artifact roles. The preflight parameter divergence was reviewed against the frozen schema, Host caller, implementation, and tests: it adds only bounded DeepThink and exact image/text route requirements, invokes no effectful dependency, and is covered by the product-owner image and DeepThink decisions. No provider, streaming, pricing, failover, credential, capability, or approval authority expanded.",
+        "semantic_record_digest": "sha256:454775d4f51690625b17154cb232f38a59a0651300684adaf75f1cf21f748e96",
         "status": "verified"
       },
-      "semantic_record_digest": "sha256:5dbf3802ba8dad2b404c3d2f44e798f8bd76f027ed156ebdb8c6921a6100eee8",
-      "source_digest": "sha256:495e283f17b012b6772021d2d7aaee3b4fa2271cc1997871eddb3316fbba41a0",
+      "semantic_record_digest": "sha256:454775d4f51690625b17154cb232f38a59a0651300684adaf75f1cf21f748e96",
+      "source_digest": "sha256:d5ea64fed59571624222cacd8ae86c5820f8425a4c2d3db8d944f5e73e7f19d9",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:a78c7030af3decdb725427c63b85c6fe9ac196a0ad58322bd16a56d5ff147744"
+      "target_digest": "sha256:2012ce2dfdad703d18dd1a225e8857ab2f7a361c2e1b81ccc60925f74ec59075"
     },
     "rumi_ai_modality_pack": {
       "pack_id": "rumi_ai_modality_pack",
@@ -5264,7 +5237,7 @@
     },
     "rumi_media_inspect_service_pack": {
       "pack_id": "rumi_media_inspect_service_pack",
-      "review_attestation_digest": "sha256:2b6c4b86da1544e1e72699873e4249439964bbb762672ea426fa02d475b3e3de",
+      "review_attestation_digest": "sha256:0d329a6a207cf8edffdb282ed4876aa2e32777d0aa3d48534c6754e1df3d8535",
       "review_basis": {
         "evidence_paths": [
           "tobkiri_runtime/ecosystem/rumi_media_inspect_service_pack/rumi.pack.v3.json",
@@ -5272,7 +5245,11 @@
           "tobkiri_runtime/ecosystem/rumi_media_inspect_service_pack/pack.v4.json",
           "tobkiri_runtime/ecosystem/rumi_media_inspect_service_pack/contracts.v4.json",
           "tobkiri_runtime/ecosystem/rumi_media_inspect_service_pack/executables.v4.json",
-          "tobkiri_runtime/schemas/executable_sources.v1.json"
+          "tobkiri_runtime/ecosystem/rumi_media_inspect_service_pack/runtime/inspect.py",
+          "tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/service.py",
+          "tobkiri_runtime/schemas/executable_sources.v1.json",
+          "tobkiri_runtime/tests/test_media_inspect_dynamic_projection.py",
+          "tobkiri_runtime/tests/test_dynamic_profile_edge_callers.py"
         ],
         "excluded_claims": [
           "runtime admission",
@@ -5287,15 +5264,18 @@
           "runtime artifact path/digest equality",
           "target owner equality",
           "authority field equality",
-          "Pack-qualified provider identity"
+          "Pack-qualified provider identity",
+          "the only file-inspect dependency is the exact rumi_file_inspect_pack.file-inspect.for-media operation",
+          "dynamic dependency resolution rejects missing or unknown operation scopes instead of widening to the contract",
+          "media inspection retains the same public operation, capabilities, no-network policy, and no-secret policy"
         ]
       },
-      "reviewed_at": "2026-09-26T11:30:00+09:00",
+      "reviewed_at": "2026-09-28T22:15:03+09:00",
       "reviewer_id": "codex:independent-semantic-review:v1",
       "semantic_record_digest": "sha256:0911ba38421104d828529503905376cb5541bae9f6f1b2e4297f3904befc2e0e",
-      "source_digest": "sha256:2036affe2e0a7fc3843731c87d070cbc75a059d5c660e66d9ea7757ab30017f4",
+      "source_digest": "sha256:51b8ddc97a47b43d8594c02beac50a5a34d640eb45884bb0fa4d78c3dd9fe6f4",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:945779951b78e8a0efacc486a28383a46d40afb575b915f7298014bb31587450"
+      "target_digest": "sha256:daaac6cbdbe53bb825227740f3e6c8f42152738529aeaa92fe2c48e70e15ca42"
     },
     "rumi_meeting_intelligence_pack": {
       "pack_id": "rumi_meeting_intelligence_pack",
@@ -8749,7 +8729,7 @@
     },
     "rumi_turn_runtime_pack": {
       "pack_id": "rumi_turn_runtime_pack",
-      "review_attestation_digest": "sha256:387b8dbcb99048d1e32cee290dd591fd3d73922e36794eba46984cecc26bc014",
+      "review_attestation_digest": "sha256:91d5516acaea7e168a87e1a1c11cbcf8515de7031f9b766493e4054f83e825e5",
       "review_basis": {
         "evidence_paths": [
           "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/pack.v4.json",
@@ -8761,8 +8741,20 @@
           "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json",
           "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/artifact-manifest.json",
           "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/ecosystem.json",
+          "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py",
+          "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/durable.py",
           "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/saved.py",
-          "tobkiri_runtime/tobkiri_protocol/saved_conversation.py"
+          "tobkiri_runtime/ecosystem/defaultspack/runtime/saved_conversation.py",
+          "tobkiri_runtime/core_runtime/bootstrap/saved_bridge.py",
+          "tobkiri_runtime/tobkiri_host/saved_host_exchange.py",
+          "tobkiri_runtime/tobkiri_protocol/saved_conversation.py",
+          "tobkiri_runtime/tobkiri_protocol/schemas/saved_conversation_input_v1.schema.json",
+          "tobkiri_runtime/tests/test_saved_conversation_input_contract.py",
+          "tobkiri_runtime/tests/test_saved_bridge_callbacks.py",
+          "tobkiri_runtime/tests/test_saved_host_exchange.py",
+          "tobkiri_runtime/tests/test_saved_turn_coordinator.py",
+          "tobkiri_runtime/tests/test_saved_turn_terminal_rejection.py",
+          "tobkiri_runtime/tests/test_turn_host.py"
         ],
         "excluded_claims": [
           "runtime admission",
@@ -8772,15 +8764,21 @@
         ],
         "method": "independent-file-by-file-review.v1",
         "verified_claims": [
-          "one-to-one operation identity between committed legacy source records and the v4 executable catalog",
-          "v4 contract and provider identity recorded per operation",
-          "legacy source record bound by exact digest",
-          "target artifact bound by exact digest",
-          "saved input/output schema identity and turn-stop output divergence accepted by product-owner decision 2026-09-26"
+          "all six committed legacy operation identities map one-to-one to the six v4 executable operations",
+          "contract IDs, provider IDs, execution kinds, effect classes, timeouts, required capabilities and effect ceilings are unchanged from the pre-image target",
+          "legacy source record and v4 target artifact are bound by their exact frozen digests",
+          "the legacy saved source record, protocol schema and v4 saved input schema are canonically identical at sha256:e66884f8668acab40d727bfc5ac98f3acaecbf8dc9996493380935b57608a577",
+          "saved content is limited to nonblank text or a text-first list with at most two inline PNG, JPEG, WebP or GIF data URLs; each decoded image is at most one MiB, MIME magic is checked, remote URLs are rejected, and aggregate request, frame and chain limits remain Host-owned",
+          "the canonical saved input digest binds image bytes before durable claim; after the owner acknowledges the user append the guest retains only a digest, while AI and tool dispatch are fenced to the acknowledged conversation revision and current node",
+          "provider input is rebuilt from conversation-owner history, retains only the newest two inline images, and image readiness sends text placeholders plus an explicit image modality without provider generation",
+          "ambiguous post-dispatch failures remain waiting without automatic resend and reconciliation can only consume an exact owner receipt through a read-only edge",
+          "the saved Turn provider adds no network domains or secrets and retains only turn.execute plus host-brokered-execution authority",
+          "the turn-stop output divergence remains the previously reviewed evolution that reports stopped_confirmed only after verified nested drain",
+          "image-capable saved turns are the intended product evolution requested by the user on 2026-09-28"
         ]
       },
-      "reviewed_at": "2026-09-28T04:47:14+09:00",
-      "reviewer_id": "codex:independent-semantic-review:v2",
+      "reviewed_at": "2026-09-28T22:14:22+09:00",
+      "reviewer_id": "codex:independent-semantic-review:turn-runtime:v1",
       "semantic_record": {
         "accepted_divergences": [
           "function_mapping",
@@ -8803,11 +8801,6 @@
                 "contract_version": "1.0.0",
                 "failure": "fail_closed",
                 "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_turn_runtime_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
                 "provider_instance_id": "turn-runtime.events",
                 "required_capabilities": [
                   "turn.read"
@@ -8821,11 +8814,6 @@
                 "failure": "fail_closed",
                 "function_role": "host_capability_provider",
                 "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_turn_runtime_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
                 "provider_id": "rumi_turn_runtime_pack.turn-runtime.events",
                 "required_capabilities": [
                   "turn.read"
@@ -8858,11 +8846,6 @@
                 "contract_version": "1.0.0",
                 "failure": "fail_closed",
                 "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_turn_runtime_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
                 "provider_instance_id": "turn-runtime.lifecycle",
                 "required_capabilities": [
                   "turn.manage"
@@ -8876,11 +8859,6 @@
                 "failure": "fail_closed",
                 "function_role": "host_capability_provider",
                 "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_turn_runtime_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
                 "provider_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
                 "required_capabilities": [
                   "turn.manage"
@@ -8919,11 +8897,6 @@
                 "failure": "fail_closed",
                 "function_role": "host_capability_provider",
                 "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_turn_runtime_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
                 "provider_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
                 "required_capabilities": [
                   "turn.reconcile"
@@ -8956,11 +8929,6 @@
                 "contract_version": "1.0.0",
                 "failure": "fail_closed",
                 "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_turn_runtime_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
                 "provider_instance_id": "turn-runtime.resource",
                 "required_capabilities": [
                   "turn.read"
@@ -8974,11 +8942,6 @@
                 "failure": "fail_closed",
                 "function_role": "host_capability_provider",
                 "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_turn_runtime_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
                 "provider_id": "rumi_turn_runtime_pack.turn-runtime.resource",
                 "required_capabilities": [
                   "turn.read"
@@ -9017,11 +8980,6 @@
                 "failure": "fail_closed",
                 "function_role": "host_capability_provider",
                 "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_turn_runtime_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
                 "provider_id": "rumi_turn_runtime_pack.turn-runtime.saved",
                 "required_capabilities": [
                   "turn.execute"
@@ -9033,7 +8991,7 @@
             "legacy_operation_id": "rumi_turn_runtime_pack.turn-saved",
             "legacy_operation_kind": "legacy-explicit-entrypoint",
             "parameter_mapping": {
-              "legacy_schema_digest": "sha256:5cbaba8b3f594fb71cc1848db57acb9271f2c1e0f468fcb3df1c8eb207f3306b",
+              "legacy_schema_digest": "sha256:e66884f8668acab40d727bfc5ac98f3acaecbf8dc9996493380935b57608a577",
               "method": "canonical-json-schema-equality",
               "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
               "rules": [
@@ -9041,7 +8999,7 @@
                 "output:identity"
               ],
               "status": "verified",
-              "v4_schema_digest": "sha256:5cbaba8b3f594fb71cc1848db57acb9271f2c1e0f468fcb3df1c8eb207f3306b"
+              "v4_schema_digest": "sha256:e66884f8668acab40d727bfc5ac98f3acaecbf8dc9996493380935b57608a577"
             },
             "v4_contract_id": "tobkiri.action.turn.saved.v1",
             "v4_operation_id": "rumi_turn_runtime_pack.turn-saved"
@@ -9060,11 +9018,6 @@
                 "failure": "fail_closed",
                 "function_role": "host_capability_provider",
                 "isolation": "in_process",
-                "lifecycle": {
-                  "data_owner": "rumi_turn_runtime_pack",
-                  "deprecated": false,
-                  "introduced": "1.0.0"
-                },
                 "provider_id": "rumi_turn_runtime_pack.turn-runtime.stop",
                 "required_capabilities": [
                   "turn.stop"
@@ -9078,10 +9031,10 @@
             "parameter_mapping": {
               "legacy_schema_digest": "sha256:c05db4a198208ec7dced9d8647ab885f2fd5bab45486a5cae9ff69099d7d30b9",
               "method": "curated-parameter-mapping-review.v1",
-              "output_schema_digest": "sha256:0c9b738425758e19818d298cf92a71fd328903d2ee87171f51a5afa1f053a7b9",
+              "output_schema_digest": "sha256:e9f1ea9ca439e506a8a29d0adad78270a12332fe94db2339bffe516ce79f7bca",
               "rules": [
                 "input:identity",
-                "output:accepted-divergence:accepted as the intended v4 evolution by product-owner decision (user-decision 2026-09-26)"
+                "output:accepted-divergence:stopped_confirmed is emitted only after Host-verified nested resource drain; otherwise cancellation_requested remains nonterminal"
               ],
               "status": "verified",
               "v4_schema_digest": "sha256:c05db4a198208ec7dced9d8647ab885f2fd5bab45486a5cae9ff69099d7d30b9"
@@ -9090,14 +9043,14 @@
             "v4_operation_id": "rumi_turn_runtime_pack.turn-stop"
           }
         ],
-        "rationale": "Independent file-by-file review confirmed a complete one-to-one operation inventory (6 operations) and the recorded legacy/v4 Contract/provider/role mappings. All six legacy/v4 input schemas match, including the saved input with optional finite thinking_level. Five output schemas match; turn-stop output remains the reviewed v4 evolution accepted by product-owner decision (user-decision 2026-09-26). The deterministic comparator still flags function_mapping and legacy_artifact_record_missing for the same legacy record-shape gaps reviewed against committed v3 entrypoints, Contracts, artifact manifest and explicit legacy source records.",
-        "semantic_record_digest": "sha256:13323f19faf4bf590b6790d2641bf744c2a218ab01537a04954940b90b1179f6",
+        "rationale": "Independent review at frozen HEAD 029ec8207 compared all six committed legacy records with the v4 Pack, Contract and executable quartet. The three v3 entrypoints retain their exact lifecycle/read authority and the three explicit saved/reconcile/stop records retain their exact operation identities. The saved input evolved identically in the legacy fixture, protocol schema and v4 target to admit only bounded inline raster images requested by the user; it does not add a Contract, capability, secret or network grant. Host-owned claim, append acknowledgement, branch fencing, ambiguous-outcome waiting and read-only exact-receipt reconciliation remain intact. The earlier reviewed turn-stop output divergence remains limited to a positive stopped confirmation after verified nested drain.",
+        "semantic_record_digest": "sha256:3837a8a74f662616c3411487128e2c4bd088d5ca9324c7f14a496d878603a0b0",
         "status": "verified"
       },
-      "semantic_record_digest": "sha256:13323f19faf4bf590b6790d2641bf744c2a218ab01537a04954940b90b1179f6",
-      "source_digest": "sha256:c0fc8ef94110729fb8daefb20049a06a645bf7d783f86d171e53d9b13918c509",
+      "semantic_record_digest": "sha256:3837a8a74f662616c3411487128e2c4bd088d5ca9324c7f14a496d878603a0b0",
+      "source_digest": "sha256:b5422fec6107bd400fcd8f277225f0be4fab91da8813fce24a8159a0a8fde902",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:d0a3806a7243c9f15724096765fe4290080125316378c680cd385fab2bedb9d7"
+      "target_digest": "sha256:91c14d78385e5a9da8338a2976e8e86f93bb8b8d99e758d7765d3ccdec4ddd20"
     },
     "rumi_voice_mobile_pack": {
       "pack_id": "rumi_voice_mobile_pack",
