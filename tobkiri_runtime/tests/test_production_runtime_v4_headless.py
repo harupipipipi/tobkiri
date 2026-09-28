@@ -208,16 +208,17 @@ def test_headless_activation_compiles_exact_plan_and_reads_after_restart(
 
     mount = {
         "root_path": str(workspace),
-        "revision": "mount-1",
+        "mount_revision": 1,
     }
 
     class MountClient:
         def invoke(
             self, _contract: str, operation: str, _payload: Mapping[str, Any]
         ) -> Mapping[str, Any]:
+            assert operation == "rumi_workspace_mount_pack.workspace-resource"
             return (
                 {"selected_workspace_id": "workspace-1"}
-                if operation == "list"
+                if _payload["operation"] == "list"
                 else mount
             )
 
@@ -225,7 +226,7 @@ def test_headless_activation_compiles_exact_plan_and_reads_after_restart(
     binding = {
         "workspace_id": "workspace-1",
         "access": "read_only",
-        "mount_revision": "mount-1",
+        "mount_revision": 1,
         "canonical_root": str(workspace.resolve()),
         "root_st_dev": int(stat.st_dev),
         "root_st_ino": int(stat.st_ino),

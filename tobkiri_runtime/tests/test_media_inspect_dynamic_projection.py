@@ -138,12 +138,13 @@ class _WorkspaceClient:
         payload: Mapping[str, Any],
     ) -> Mapping[str, Any]:
         assert contract_id == WORKSPACE_CONTRACT
-        if operation_id == "get":
+        assert operation_id == "rumi_workspace_mount_pack.workspace-resource"
+        if payload["operation"] == "get":
             mount = self.store.get(str(payload["workspace_id"]))
             if mount is None:
                 raise KeyError("workspace mount is unknown")
             return mount
-        if operation_id == "list":
+        if payload["operation"] == "list":
             return self.store.snapshot()
         raise AssertionError(operation_id)
 
