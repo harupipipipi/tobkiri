@@ -288,7 +288,11 @@ def test_send_wrapper_returns_cancelled_final_when_nonstream_run_is_cancelled(tm
 
     monkeypatch.setattr(run_request_module, "ModelRuntimeSettingsService", RuntimeSettingsStub)
     monkeypatch.setattr(run_request_module, "route_model_request", lambda request: RoutingDecisionStub())
-    monkeypatch.setattr(run_request_module, "get_model_capabilities", lambda model: {"supports_thinking": True})
+    monkeypatch.setattr(
+        run_request_module,
+        "get_model_capabilities",
+        lambda model, *, settings=None: {"supports_thinking": True},
+    )
     monkeypatch.setattr(engine_module.ChatRunEngine, "_execute", fake_execute)
 
     result = send_run(
