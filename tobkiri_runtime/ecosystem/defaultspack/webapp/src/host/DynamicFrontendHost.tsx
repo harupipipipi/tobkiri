@@ -216,6 +216,10 @@ function DeclarativeView({
   const view = item.view ?? {};
   const title = String(view.title ?? item.label);
   const body = String(view.body ?? item.description ?? "");
+  const localInput = !item.action_contract && !item.data_source_contract
+    ? declarativeLocalTextInput(view.input)
+    : null;
+  const [localInputValue, setLocalInputValue] = useState("");
   const [result, setResult] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -249,6 +253,23 @@ function DeclarativeView({
     >
       <h2>{title}</h2>
       {body && <p>{body}</p>}
+      {localInput && (
+        <label className="flex max-w-md flex-col gap-1">
+          <span>{localInput.label}</span>
+          <input
+            data-pack-local-input
+            type="text"
+            autoComplete="off"
+            maxLength={MAX_DECLARATIVE_LOCAL_INPUT_LENGTH}
+            placeholder={localInput.placeholder}
+            value={localInputValue}
+            onChange={(event) => setLocalInputValue(
+              event.currentTarget.value.slice(0, MAX_DECLARATIVE_LOCAL_INPUT_LENGTH),
+            )}
+            className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100"
+          />
+        </label>
+      )}
       {item.action_contract && (
         <button type="button" disabled={busy} onClick={() => void invoke()}>
           {busy ? "Working…" : String(view.action_label ?? "Continue")}
@@ -265,6 +286,27 @@ function DeclarativeView({
       {result !== null && <GenericValue value={result} />}
     </section>
   );
+}
+
+const MAX_DECLARATIVE_LOCAL_INPUT_LENGTH = 256;
+
+function declarativeLocalTextInput(value: unknown): {
+  label: string;
+  placeholder?: string;
+} | null {
+  if (!isRecord(value)) return null;
+  const { label, placeholder } = value;
+  if (
+    Object.keys(value).some((key) => key !== "label" && key !== "placeholder")
+    ||
+    typeof label !== "string"
+    || !label.trim()
+    || label.length > 256
+    || (placeholder !== undefined && (
+      typeof placeholder !== "string" || placeholder.length > 256
+    ))
+  ) return null;
+  return { label, placeholder: placeholder as string | undefined };
 }
 
 type IsolatedCapabilityRequest = {

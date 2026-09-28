@@ -25,6 +25,17 @@ from .models import InvocationFrame, PackArtifact, RequestContext
 logger = logging.getLogger(__name__)
 
 
+def _selected_frontend_pack_closure(lock: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
+    """Keep Normal Pack candidates, excluding the bundle-only Application."""
+    application = lock.get("application")
+    application_id = str(application.get("pack_id") or "") if isinstance(application, Mapping) else ""
+    return tuple(
+        dict(item)
+        for item in lock["effective_set"]
+        if item["role"] == "pack" and item["identity"] != application_id
+    )
+
+
 @dataclass(frozen=True)
 class ProductionRuntimeV4:
     """One activation-scoped runtime; it has no mutable provider discovery."""
@@ -120,6 +131,7 @@ class ProductionRuntimeV4:
             profile_revision=str(self.composition.plan["profile_revision"]),
             activation_id=str(self.composition.activation["activation_id"]),
             frontend_entry_id=str(self.composition.profile.get("frontend_entry_id") or ""),
+            selected_pack_closure=_selected_frontend_pack_closure(self.composition.lock),
             security_epoch=int(self.composition.activation["security_epoch"]),
             authority_control=authority_control,
             current_capture_check=current_capture_check,
@@ -142,6 +154,7 @@ class V4DispatchSession:
     profile_revision: str
     activation_id: str
     frontend_entry_id: str = ""
+    selected_pack_closure: tuple[Mapping[str, Any], ...] = ()
     security_epoch: int = 0
     authority_control: AuthorityV4Adapter | None = None
     current_capture_check: Callable[[], None] | None = None

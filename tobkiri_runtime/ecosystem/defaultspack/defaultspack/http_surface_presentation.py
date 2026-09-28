@@ -625,6 +625,16 @@ class DefaultspackHTTPPresentation:
                     "captured Profile frontend entry is unavailable in the Application"
                 )
             selected_route = str(selected[0]["route"])
+        builtins = [
+            _frontend_entry(entry, index, binding, session)
+            for index, entry in enumerate(entries)
+        ] + [
+            _action_contribution(target, index, session)
+            for index, target in enumerate(snapshot.targets)
+        ]
+        pack_routes, pack_diagnostics, quarantined_pack_ids = (
+            _selected_pack_frontend_routes(session, builtins)
+        )
         return {
             **dict(result),
             "dynamic_host": {
@@ -634,18 +644,46 @@ class DefaultspackHTTPPresentation:
                 "activation_id": str(getattr(session, "activation_id", "")),
                 "plan_hash": str(getattr(session, "plan_digest", "")),
                 "selected_entry_route": selected_route,
-                "contributions": [
-                    _frontend_entry(entry, index, binding, session)
-                    for index, entry in enumerate(entries)
-                ] + [
-                    _action_contribution(target, index, session)
-                    for index, target in enumerate(snapshot.targets)
-                ],
-                "diagnostics": _diagnostics(result, session),
-                "quarantined_pack_ids": [],
+                "contributions": builtins + pack_routes,
+                "diagnostics": _diagnostics(result, session) + pack_diagnostics,
+                "quarantined_pack_ids": quarantined_pack_ids,
                 "catalog_hash": snapshot.catalog_hash,
             },
         }
+
+
+def _selected_pack_frontend_routes(
+    session: DispatchSession | None,
+    occupied: list[dict[str, object]],
+) -> tuple[list[dict[str, object]], list[dict[str, str]], list[str]]:
+    """Bind optional Pack display declarations to the live Host activation."""
+    if session is None:
+        return [], [], []
+    closure = getattr(session, "selected_pack_closure", ())
+    if not closure:
+        return [], [], []
+    from .v4_frontend_contributions import project_selected_declarative_routes
+
+    try:
+        projected = project_selected_declarative_routes(
+            closure,
+            occupied,
+            profile_id=str(session.profile_id),
+            profile_revision=str(session.profile_revision),
+            activation_id=str(session.activation_id),
+            plan_digest=str(session.plan_digest),
+        )
+        if any(projected):
+            session.assert_current()
+        return projected
+    except Exception as exc:
+        # The sealed Application remains usable; no unverified optional Pack
+        # route is ever advertised after a failed capture or verification.
+        return [], [{
+            "code": "v4_frontend_capture_unavailable",
+            "severity": "error",
+            "message": f"Selected Pack frontend is unavailable: {type(exc).__name__}",
+        }], []
 
 
 def _is_conversation(target: HTTPContractTarget) -> bool:

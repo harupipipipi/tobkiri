@@ -19,6 +19,7 @@ from core_runtime.pack_boundary import load_pack_catalog
 from core_runtime.pack_artifact_integrity import write_host_install_record
 import core_runtime.pack_artifact_integrity as pack_integrity
 from core_runtime.pack_control_v4 import (
+    CONTROL_PRESENTATION_CONTRACT,
     PACK_CONTROL_CONTRACT,
     capture_pack_control_session,
 )
@@ -105,6 +106,7 @@ def _signed_external_pack(
     kind: str | None = None,
     runtime_suffix: str | None = None,
     materialization_catalog_digest: str | None = None,
+    with_frontend: bool = False,
 ) -> tuple[Path, Path]:
     source = tmp_path / PACK_ID
     shutil.copytree(FIXTURE, source)
@@ -129,12 +131,52 @@ def _signed_external_pack(
         executable = json.loads(executable_path.read_text(encoding="utf-8"))
         executable["materialization_catalog_digest"] = materialization_catalog_digest
         _write_json(executable_path, executable)
+    if with_frontend:
+        descriptor = source / "frontend" / "contributions" / "input.json"
+        descriptor.parent.mkdir(parents=True)
+        _write_json(descriptor, {
+            "version": "rumi.ui.contribution.v1",
+            "id": "conformance.minimal.echo.input",
+            "kind": "route",
+            "mode": "declarative",
+            "label": "Echo Pack input",
+            "priority": 0,
+            "route": "/echo-pack-input",
+            "view": {
+                "title": "Echo Pack input",
+                "body": "A selected external Pack route",
+                "input": {"label": "Local note", "placeholder": "Type locally"},
+            },
+            "accessibility": {"name": "Echo Pack input", "keyboard": True},
+        })
+        manifest_path = source / "pack.v4.json"
+        pack_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        pack_manifest["artifacts"].append({
+            "path": "frontend/contributions/input.json",
+            "digest": _file_digest(descriptor),
+            "kind": "ui.contribution",
+        })
+        _write_json(manifest_path, pack_manifest)
+        index_path = source / "artifact-index.v4.json"
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+        index["artifacts"].append({
+            "path": "frontend/contributions/input.json",
+            "digest": _file_digest(descriptor),
+            "role": "sidecar",
+        })
+        _write_json(index_path, index)
     if (
         kind is not None
         or runtime_suffix is not None
         or materialization_catalog_digest is not None
+        or with_frontend
     ):
         _refresh_fixture_artifacts(source)
+    for path in (source, *source.rglob("*")):
+        if path.is_dir():
+            path.chmod(0o755)
+        elif path.is_file():
+            path.chmod(0o644)
     private_key = Ed25519PrivateKey.generate()
     manifest = build_signed_manifest(
         source,
@@ -194,6 +236,175 @@ def _invoke(session, operation: str, payload: dict | None = None) -> dict:
             {**(payload or {}), "_session_id": "external-pack-session"},
         )
     )
+
+
+def _present(session, operation: str, payload: dict | None = None) -> dict:
+    return dict(session.invoke(
+        CONTROL_PRESENTATION_CONTRACT,
+        operation,
+        {**(payload or {}), "_session_id": "external-pack-session"},
+    ))
+
+
+def test_signed_frontend_pack_projects_from_real_admitted_cas(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ecosystem.defaultspack.defaultspack.v4_frontend_contributions import (
+        project_selected_declarative_routes,
+    )
+
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user-data"))
+    source, trust_store = _signed_external_pack(tmp_path, with_frontend=True)
+    committed = admit_signed_external_pack(source, trust_store_path=trust_store)
+    selected_digest = committed["artifact_digest"]
+    routes, diagnostics, quarantined = project_selected_declarative_routes(
+        [{"role": "pack", "identity": PACK_ID, "artifact_digest": selected_digest}],
+        [], profile_id="defaults", profile_revision="revision-1",
+        activation_id="activation-1", plan_digest="plan-1",
+    )
+    assert diagnostics == []
+    assert quarantined == []
+    assert len(routes) == 1
+    assert routes[0]["route"] == "/echo-pack-input"
+    assert routes[0]["view"]["input"]["label"] == "Local note"
+
+
+def test_signed_declarative_input_pack_reaches_production_selected_closure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A signed, activated external Pack reaches the real production UI projection."""
+
+    from core_runtime.authority.v4 import AuthorityScope, FunctionPrincipal
+    from core_runtime.external_pack_catalog_v4 import resolve_admitted_pack_roots
+    from ecosystem.defaultspack.defaultspack.v4_frontend_contributions import (
+        project_selected_declarative_routes,
+    )
+    from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
+    from ecosystem.defaultspack.defaultspack.profile_runtime_composition import (
+        install_defaultspack_profile_runtime,
+    )
+    from tests.test_production_runtime_v4_headless import _shell_artifact
+    from tobkiri_host.artifact_compiler import compile_pack_root
+    from tobkiri_host.composition import AuthorityCeilings
+    from tobkiri_host.runtime import ProductionRuntimeV4, _selected_frontend_pack_closure
+
+    user_data = tmp_path / "user-data"
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    install_defaultspack_profile_runtime()
+    source, trust_store = _signed_external_pack(tmp_path, with_frontend=True)
+    admit_signed_external_pack(source, trust_store_path=trust_store)
+    capture_default_profile(confirmation=prepare_default_profile_confirmation())
+    control = _capture_control_session()
+    assert _invoke(control, "pack.install", {"pack_id": PACK_ID})["installed"]
+    candidate = _invoke(control, "approval.candidate", {"pack_id": PACK_ID})
+    assert _invoke(control, "approval.approve", {
+        "pack_id": PACK_ID, "candidate_id": candidate["candidate_id"],
+    })["approved"]
+    assert _invoke(control, "pack.enable", {"pack_id": PACK_ID})["enabled"]
+
+    profile = _present(control, "profile.read")
+    desired = [
+        item["pack_id"] for item in profile["data"]["profile_document"]["packs"]
+        if item.get("role") != "application"
+    ]
+    assert PACK_ID in desired
+    resolved = _present(control, "profile.change.resolve", {
+        "profile_id": "defaults",
+        "expected_profile_revision": profile["profile_revision"],
+        "expected_plan_digest": profile["plan_digest"],
+        "desired_pack_ids": desired,
+    })
+    reviewed = _present(control, "profile.change.review", {
+        "candidate_id": resolved["candidate_id"],
+        "candidate_digest": resolved["candidate_digest"],
+    })
+    approved = _present(control, "profile.change.approve", {
+        "candidate_id": reviewed["candidate_id"],
+        "candidate_digest": reviewed["candidate_digest"],
+    })
+    assert _present(control, "profile.change.activate", {
+        "approval_id": approved["approval_id"],
+        "approval_digest": approved["approval_digest"],
+    })["state"] == "active"
+
+    active = capture_default_profile()
+    selected = next(
+        item for item in active.resolved.lock["effective_set"]
+        if item["identity"] == PACK_ID
+    )
+    assert selected["role"] == "pack"
+    binding_pack_ids = {item["pack_id"] for item in active.resolved.plan["bindings"]}
+    pack_roots = resolve_admitted_pack_roots(
+        tuple(sorted(binding_pack_ids)), RUNTIME_ROOT / "ecosystem",
+    )
+    catalog = BundledCatalog.load(RUNTIME_ROOT / "ecosystem" / "defaultspack" / "v4")
+    shell = _shell_artifact(catalog)
+    artifacts = [shell, *(compile_pack_root(root).artifact for root in pack_roots.values())]
+    principals_by_function: dict[str, list[FunctionPrincipal]] = {}
+    for artifact in artifacts:
+        for function in artifact.functions:
+            for operation in function.operations:
+                principal = FunctionPrincipal(
+                    artifact.digest, function.implementation_digest, function.function_id,
+                    operation.revision_digest, operation.operation_id,
+                )
+                principals_by_function.setdefault(function.function_id, []).append(principal)
+    bindings = {
+        (item["caller_function_id"], item["contract_id"], item["operation_id"]): item
+        for item in active.resolved.plan["bindings"]
+    }
+    ceilings = {}
+    for edge in active.resolved.profile["requested_edges"]:
+        binding = bindings[(
+            edge["caller_function_id"], edge["contract_id"], edge["operation_id"],
+        )]
+        caller_candidates = principals_by_function[edge["caller_function_id"]]
+        assert len(caller_candidates) == 1
+        target = FunctionPrincipal.from_dict(binding["function_principal"])
+        scope = AuthorityScope(
+            capability="operation.invoke", semantics_digest=target.contract_revision_digest,
+        )
+        ceilings[(
+            active.resolved.profile["profile_id"], active.activation["activation_id"],
+            caller_candidates[0].principal_id, target.principal_id,
+            edge["contract_id"], edge["operation_id"],
+        )] = AuthorityCeilings(scope, scope, scope)
+    effective = {
+        item["identity"]: item["artifact_digest"]
+        for item in active.resolved.lock["effective_set"]
+    }
+    runtime = ProductionRuntimeV4.capture(
+        profile=active.resolved.profile,
+        lock=active.resolved.lock,
+        plan=active.resolved.plan,
+        activation=active.activation,
+        pack_roots=pack_roots,
+        supporting_artifacts=(shell,),
+        verified_effective_artifacts=effective,
+        authority_ceilings=ceilings,
+    )
+    assert runtime.composition.lock["effective_set"] == active.resolved.lock["effective_set"]
+    closure = _selected_frontend_pack_closure(runtime.composition.lock)
+    assert any(
+        item["identity"] == PACK_ID and item["artifact_digest"] == selected["artifact_digest"]
+        for item in closure
+    )
+    routes, diagnostics, quarantined = project_selected_declarative_routes(
+        closure, [], profile_id="defaults",
+        profile_revision=active.resolved.plan["profile_revision"],
+        activation_id=active.activation["activation_id"],
+        plan_digest=active.resolved.plan["plan_digest"],
+    )
+    assert diagnostics == []
+    assert quarantined == []
+    assert len(routes) == 1
+    assert routes[0]["route"] == "/echo-pack-input"
+    assert routes[0]["view"]["input"] == {
+        "label": "Local note", "placeholder": "Type locally",
+    }
+    assert routes[0]["owner_pack_hash"] == selected["artifact_digest"]
 
 
 def test_signed_external_pack_install_approve_enable_creates_profile_revision(
