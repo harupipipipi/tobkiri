@@ -4,60 +4,60 @@
   "receipts": {
     "defaultspack": {
       "admission": {
-        "admission_id": "s-9zhoI1hdh7ivUCQ203wF8fNBNw7zZw",
+        "admission_id": "XyEAx_Wyr3LvHqOWjzN3iu6N76szeJbn",
         "amount": {
           "disk_bytes": 0,
           "memory_bytes": 4096,
           "process_slots": 1,
           "start_slots": 1
         },
-        "host_instance_id": "host-process:pid:26350:start:darwin:26350:1790609045:033630",
+        "host_instance_id": "host-process:pid:68896:start:darwin:68896:1790613136:100082",
         "kind": "admission",
-        "observed_at": "2026-09-28T15:24:12.851759Z",
-        "owner_identity": "darwin:26350:1790609045:033630",
-        "owner_pid": 26350,
+        "observed_at": "2026-09-28T16:32:18.502760Z",
+        "owner_identity": "darwin:68896:1790613136:100082",
+        "owner_pid": 68896,
         "pack_id": "defaultspack",
-        "policy_digest": "sha256:17486e51b75cc7f730b70afcb888651acf97b4a260647302aaf33a7d6e603dc9",
-        "receipt_digest": "sha256:6f27688712a0cf93a8dcea70ec8df00d66b572c8db4248c731bcfcadb4d46b7e",
-        "reservation_journal_digest": "sha256:56b397938a0714200ee4be424791ae8003b49a9848773d9b6c45ede98ac0f98c",
+        "policy_digest": "sha256:f585c9d95161b3c633edca85d0ca830fe89cd6cd7ab80704815b6a9d047a9e78",
+        "receipt_digest": "sha256:839dbce58449830cec793e3d0fab5ee02fcc31220c3b9e381b454df0afb535d3",
+        "reservation_journal_digest": "sha256:ee49e44608a1f89c7c6e85993382d364562e05d2d53e1d32b62bcf7cd9b8af6c",
         "reservation_profile_id": "defaults",
         "status": "verified",
-        "target_digest": "sha256:7bad323c2a529c33ecb5ec9301ce228f80a9ffd2bae8a9f8ae0c400abbbc1713"
+        "target_digest": "sha256:d91a53876ef8faeb8f1890e8b63334065eb855507d562af4a8725c1519f3670d"
       },
       "install": {
-        "admission_receipt_digest": "sha256:6f27688712a0cf93a8dcea70ec8df00d66b572c8db4248c731bcfcadb4d46b7e",
-        "approval_record_digest": "sha256:52b049ba873e71e3c591930ed220b77e6b9833e19d41d19989a9f93c29fbd2cc",
-        "catalog_revision": "sha256:8b8ec9ac0879566c7a539535af322314356f73acf636f06fab94f2f6b21eb90a",
-        "content_digest": "sha256:f7654f1301c48e6a3a5b53d8297e57af666903408410e4571bf7988d92cff796",
-        "host_instance_id": "host-pid:26350",
-        "install_record_digest": "sha256:1ace6e49188707044ec002eddc7447eb88a728c032e0b2afacc39a5b2a63748e",
-        "installation_id": "sha256:042996bb2c4bf077490b4a4feb33cb10e40a7cee148b73caf923c1f7f798c106",
+        "admission_receipt_digest": "sha256:839dbce58449830cec793e3d0fab5ee02fcc31220c3b9e381b454df0afb535d3",
+        "approval_record_digest": "sha256:c7949dbcb02f5ca26e80686481b860bceecbb78b1aac8da93f43134c4682d3bc",
+        "catalog_revision": "sha256:ed8895c222cf2592cee3ab59bc537ba8f7a44f370a42778657bae6cea986d40e",
+        "content_digest": "sha256:f24fb7eed37b740128956d7cd254c668377376f84a7d3a925145385f5a165cf3",
+        "host_instance_id": "host-pid:68896",
+        "install_record_digest": "sha256:fcab01e4d01a91b21131ea35ba66cb08a973f7185576c1f976af97fddb7c99fe",
+        "installation_id": "sha256:f9c2d02a1a2355ed92986ccbb3d174f15cb4654cbda859d18e0655f725546a47",
         "kind": "install",
-        "observed_at": "2026-09-28T15:24:22.266937Z",
+        "observed_at": "2026-09-28T16:32:22.168348Z",
         "pack_id": "defaultspack",
-        "receipt_digest": "sha256:6190f53bc718219536b3bebe16ab3bde6a8cc1504187484d06f1c7b635ff1df9",
+        "receipt_digest": "sha256:8cf75cce25ab9ea0ab5fc7a17903fd935ab8333892f96195a79846c685670fca",
         "status": "verified",
-        "target_digest": "sha256:7bad323c2a529c33ecb5ec9301ce228f80a9ffd2bae8a9f8ae0c400abbbc1713"
+        "target_digest": "sha256:d91a53876ef8faeb8f1890e8b63334065eb855507d562af4a8725c1519f3670d"
       },
       "isolated-conformance": {
-        "host_instance_id": "host-process:pid:26631:start:darwin:26631:1790609062:267537",
-        "install_receipt_digest": "sha256:6190f53bc718219536b3bebe16ab3bde6a8cc1504187484d06f1c7b635ff1df9",
+        "host_instance_id": "host-process:pid:68946:start:darwin:68946:1790613142:168657",
+        "install_receipt_digest": "sha256:8cf75cce25ab9ea0ab5fc7a17903fd935ab8333892f96195a79846c685670fca",
         "kind": "isolated-conformance",
-        "observed_at": "2026-09-28T15:24:31.064768Z",
+        "observed_at": "2026-09-28T16:32:27.212198Z",
         "operation_count": 3,
         "pack_id": "defaultspack",
-        "probe_result_digest": "sha256:6d9c3ca664a3f190c4de4f1386cbd5fdc4a7fde4374e1bbedd68f1c147c4ed0b",
-        "receipt_digest": "sha256:da90c0cbef32781ed7dd62e8b527b7cb72d79587341cd6e52b17275bc0fcbb71",
-        "result_digest": "sha256:6d9c3ca664a3f190c4de4f1386cbd5fdc4a7fde4374e1bbedd68f1c147c4ed0b",
+        "probe_result_digest": "sha256:95b2f675f61aa2159c90017abaa9ecc1340a7223297cfddaa53e7b95406208c3",
+        "receipt_digest": "sha256:9508c6bf4ad5133d8f1810f2cf783f56c87caecdb4e0f47a781399d535c07778",
+        "result_digest": "sha256:95b2f675f61aa2159c90017abaa9ecc1340a7223297cfddaa53e7b95406208c3",
         "status": "verified",
-        "target_digest": "sha256:7bad323c2a529c33ecb5ec9301ce228f80a9ffd2bae8a9f8ae0c400abbbc1713",
-        "test_suite_digest": "sha256:2e41a82b366c6a52b4f8634d4ba5c11a4480df37892777f549af003bb905a045"
+        "target_digest": "sha256:d91a53876ef8faeb8f1890e8b63334065eb855507d562af4a8725c1519f3670d",
+        "test_suite_digest": "sha256:661eb471d88f797f2869233ed1edf4695e1421a7a00525007827f8e177be2252"
       },
       "pack_id": "defaultspack",
-      "release_receipt_digest": "sha256:1587aa22ef9946b00b85d5862517cf5d853b0631b155f9a47bcbe840a3de1ae5",
-      "review_attestation_digest": "sha256:238898b459c19156df2066ea4a2285c3a163452c853aae0bd76cf2d736e1a83a",
-      "semantic_record_digest": "sha256:5a79118f2900ec9de8ed19078ef47624a4e27979c85bc650cc6e8bd0da1b138d",
-      "target_digest": "sha256:7bad323c2a529c33ecb5ec9301ce228f80a9ffd2bae8a9f8ae0c400abbbc1713"
+      "release_receipt_digest": "sha256:a547a4188b0b42fa84f50ad3c48d4e4040f048eab4cbdf0ab6b63c6160519094",
+      "review_attestation_digest": "sha256:72c44d7fead925c26dbcdffadd9a6f46c176088dd5324d983e7ca12478e84793",
+      "semantic_record_digest": "sha256:d2a2260013d18766df8800c6917d57b52d1c61c23772ccb6f082073f4bc17136",
+      "target_digest": "sha256:d91a53876ef8faeb8f1890e8b63334065eb855507d562af4a8725c1519f3670d"
     },
     "rumi_agent_continuity_pack": {
       "admission": {
@@ -568,6 +568,63 @@
       "review_attestation_digest": "sha256:96db5bc121dfd6c005a92a509d0d8c9f54cd0ea434af518e904f485b016aa628",
       "semantic_record_digest": "sha256:c5d330fc83b284a20d15472de6aab4a77f92801a464a9bf661be32d95ea143ff",
       "target_digest": "sha256:c5b52e64224aafa9ca9425d53787bd7789d3f37d2b2a8acfbcfb025b8c552cfa"
+    },
+    "rumi_ai_strategy_runtime_pack": {
+      "admission": {
+        "admission_id": "fe10-JKtY8H-JeQo5y1t3u7jqGeCb58z",
+        "amount": {
+          "disk_bytes": 0,
+          "memory_bytes": 4096,
+          "process_slots": 1,
+          "start_slots": 1
+        },
+        "host_instance_id": "host-process:pid:26350:start:darwin:26350:1790609045:033630",
+        "kind": "admission",
+        "observed_at": "2026-09-28T15:24:52.981653Z",
+        "owner_identity": "darwin:26350:1790609045:033630",
+        "owner_pid": 26350,
+        "pack_id": "rumi_ai_strategy_runtime_pack",
+        "policy_digest": "sha256:17486e51b75cc7f730b70afcb888651acf97b4a260647302aaf33a7d6e603dc9",
+        "receipt_digest": "sha256:b2bb4c898eae8659859bbf5313556ef47ca7b311e35c8290f0f1b92adf8e89cb",
+        "reservation_journal_digest": "sha256:73709916f07b99e7f8e8c2975527535054fe6126019b0d697b4116d8f7ca08f8",
+        "reservation_profile_id": "defaults",
+        "status": "verified",
+        "target_digest": "sha256:b3e5a5703c7b994b591eab86132ce757474fe030980be6fc4cf4f265824aaff2"
+      },
+      "install": {
+        "admission_receipt_digest": "sha256:b2bb4c898eae8659859bbf5313556ef47ca7b311e35c8290f0f1b92adf8e89cb",
+        "approval_record_digest": "sha256:02568261cc2716791f9d6f827103458894c001cdaefd8376f353f51d73fffcdf",
+        "catalog_revision": "sha256:8b8ec9ac0879566c7a539535af322314356f73acf636f06fab94f2f6b21eb90a",
+        "content_digest": "sha256:5b53970230749aa2b0d2cd5d2bdce6b2a4bc0678d65e66a3d9332b92233a82bf",
+        "host_instance_id": "host-pid:26350",
+        "install_record_digest": "sha256:7738d92f2909458eadcb914f4a1a89f4f45e8db9b886e3191aa2d2edbf439a9d",
+        "installation_id": "sha256:4f888f32ece2e8110ca07babe54bf95dd8a9f5eff6b97e9b1ed0523522d9bd56",
+        "kind": "install",
+        "observed_at": "2026-09-28T15:24:57.338568Z",
+        "pack_id": "rumi_ai_strategy_runtime_pack",
+        "receipt_digest": "sha256:c2bf4d7f26929ea27d23161e8b73698321dee747855a9c064d8e48a93874ca32",
+        "status": "verified",
+        "target_digest": "sha256:b3e5a5703c7b994b591eab86132ce757474fe030980be6fc4cf4f265824aaff2"
+      },
+      "isolated-conformance": {
+        "host_instance_id": "host-process:pid:26844:start:darwin:26844:1790609097:338844",
+        "install_receipt_digest": "sha256:c2bf4d7f26929ea27d23161e8b73698321dee747855a9c064d8e48a93874ca32",
+        "kind": "isolated-conformance",
+        "observed_at": "2026-09-28T15:25:03.148207Z",
+        "operation_count": 2,
+        "pack_id": "rumi_ai_strategy_runtime_pack",
+        "probe_result_digest": "sha256:e847e0f57b73a23eaa6a1a232bcc15d9675bbcdab3671ecf81b828457e163f69",
+        "receipt_digest": "sha256:80197f57d1128895be84fa265b9cd48de5299238a4dc53f9ea39602452b468e5",
+        "result_digest": "sha256:e847e0f57b73a23eaa6a1a232bcc15d9675bbcdab3671ecf81b828457e163f69",
+        "status": "verified",
+        "target_digest": "sha256:b3e5a5703c7b994b591eab86132ce757474fe030980be6fc4cf4f265824aaff2",
+        "test_suite_digest": "sha256:647858d9b18e721a092a3bf538451b567c74b4b573a74fb112c51eed89ca62b3"
+      },
+      "pack_id": "rumi_ai_strategy_runtime_pack",
+      "release_receipt_digest": "sha256:5223b3df2f0e72a909163028835a280a9a52e4bee5e4d561cae7cbcf492337e8",
+      "review_attestation_digest": "sha256:2a06c5b8d7a585812403696c74e19fdb8a73516393eee6b9e8c274dc398c857f",
+      "semantic_record_digest": "sha256:877a6067f8da2cfad92783b4a9ac988c9b5b6bfabc15f5ca186a1287daca72a3",
+      "target_digest": "sha256:b3e5a5703c7b994b591eab86132ce757474fe030980be6fc4cf4f265824aaff2"
     },
     "rumi_ai_stream_pack": {
       "admission": {
@@ -2609,6 +2666,63 @@
       "review_attestation_digest": "sha256:0f1b57951a89a562d2bf23a52bb22a4ffbff8b8e6e2efd55a5901896c4ab1957",
       "semantic_record_digest": "sha256:daa3aecea8fa67da12b80f52c0833ffb48b517736d0fcec96f5d0687dad64c08",
       "target_digest": "sha256:49b6de8241c6eec1808be5084cb3457389fad037fc2d506e665d834b14aa28c1"
+    },
+    "rumi_deepthink_pack": {
+      "admission": {
+        "admission_id": "p9CsMnt7_DM1vFQoI5XAuAkNRAPzc9B1",
+        "amount": {
+          "disk_bytes": 0,
+          "memory_bytes": 4096,
+          "process_slots": 1,
+          "start_slots": 1
+        },
+        "host_instance_id": "host-process:pid:26350:start:darwin:26350:1790609045:033630",
+        "kind": "admission",
+        "observed_at": "2026-09-28T15:25:11.791098Z",
+        "owner_identity": "darwin:26350:1790609045:033630",
+        "owner_pid": 26350,
+        "pack_id": "rumi_deepthink_pack",
+        "policy_digest": "sha256:17486e51b75cc7f730b70afcb888651acf97b4a260647302aaf33a7d6e603dc9",
+        "receipt_digest": "sha256:3dbe1c8d7508227291bbc97d0ba6aa94c856db85ccaac02e3c1d488b6702d860",
+        "reservation_journal_digest": "sha256:de086630210d262aeefa4bc8940891545198cf2701285f7288e4922f524a39c6",
+        "reservation_profile_id": "defaults",
+        "status": "verified",
+        "target_digest": "sha256:4b369e33e66252dd59a68b924f735cff557c05d98a15822cb729a8b481917a7d"
+      },
+      "install": {
+        "admission_receipt_digest": "sha256:3dbe1c8d7508227291bbc97d0ba6aa94c856db85ccaac02e3c1d488b6702d860",
+        "approval_record_digest": "sha256:a94569b41db02f06900b16d90de78d49f8146c0cf2328e43896a183fb94f0162",
+        "catalog_revision": "sha256:8b8ec9ac0879566c7a539535af322314356f73acf636f06fab94f2f6b21eb90a",
+        "content_digest": "sha256:d363d171f22ed420dac195c42f4bfd0d2d182d2595b6473743d7d3afc025f92c",
+        "host_instance_id": "host-pid:26350",
+        "install_record_digest": "sha256:0c1926e8f39a08f38aa33b2825696b39635dd7bd499724f703ae45af0b172bdf",
+        "installation_id": "sha256:2d3e26b9d5f18aa4d50f444eca3fbe424ff53e941b727fabc508016369e51ddc",
+        "kind": "install",
+        "observed_at": "2026-09-28T15:25:14.148318Z",
+        "pack_id": "rumi_deepthink_pack",
+        "receipt_digest": "sha256:59885fa0566533cda5a9655d802e61e7769993a7d86f9e6b8f91dc3cc3eeeb29",
+        "status": "verified",
+        "target_digest": "sha256:4b369e33e66252dd59a68b924f735cff557c05d98a15822cb729a8b481917a7d"
+      },
+      "isolated-conformance": {
+        "host_instance_id": "host-process:pid:26949:start:darwin:26949:1790609114:148586",
+        "install_receipt_digest": "sha256:59885fa0566533cda5a9655d802e61e7769993a7d86f9e6b8f91dc3cc3eeeb29",
+        "kind": "isolated-conformance",
+        "observed_at": "2026-09-28T15:25:18.734421Z",
+        "operation_count": 1,
+        "pack_id": "rumi_deepthink_pack",
+        "probe_result_digest": "sha256:136ca83844f2ef135d2918216ba78ecc1bcbdd70421d0ef8f066e629cd0155f2",
+        "receipt_digest": "sha256:4c46debc7c4441e412e47476a9e2f47d5fb7dbdbeeb5332e4b32fb11c4c0368a",
+        "result_digest": "sha256:136ca83844f2ef135d2918216ba78ecc1bcbdd70421d0ef8f066e629cd0155f2",
+        "status": "verified",
+        "target_digest": "sha256:4b369e33e66252dd59a68b924f735cff557c05d98a15822cb729a8b481917a7d",
+        "test_suite_digest": "sha256:dc033a441ab9bbd567c54c4e7653ef9871469c47528021442f21b2f8d26b012d"
+      },
+      "pack_id": "rumi_deepthink_pack",
+      "release_receipt_digest": "sha256:23dcc582f7d949337fb989a555e8cda47a930a293877f0a8de3f619b1e14c86e",
+      "review_attestation_digest": "sha256:e3f575dd24e7239384de76f007f16ab411542cbf5bc53e638783ee986267fe62",
+      "semantic_record_digest": "sha256:97c236c6ed45fed78b2c29f5bb9dc47dd6eccba24fff4a87c86436475e6b32f7",
+      "target_digest": "sha256:4b369e33e66252dd59a68b924f735cff557c05d98a15822cb729a8b481917a7d"
     },
     "rumi_default_tool_projection_pack": {
       "admission": {
@@ -7436,60 +7550,60 @@
     },
     "rumi_turn_runtime_pack": {
       "admission": {
-        "admission_id": "nMnVE15tjzlWXTzLfc9AJPPhnPElKlTH",
+        "admission_id": "_tUM9PpsZEH1ZHDdmbUYhhR6JDbym6XB",
         "amount": {
           "disk_bytes": 0,
           "memory_bytes": 4096,
           "process_slots": 1,
           "start_slots": 1
         },
-        "host_instance_id": "host-process:pid:26350:start:darwin:26350:1790609045:033630",
+        "host_instance_id": "host-process:pid:70498:start:darwin:70498:1790613301:213169",
         "kind": "admission",
-        "observed_at": "2026-09-28T15:25:18.776243Z",
-        "owner_identity": "darwin:26350:1790609045:033630",
-        "owner_pid": 26350,
+        "observed_at": "2026-09-28T16:35:04.057682Z",
+        "owner_identity": "darwin:70498:1790613301:213169",
+        "owner_pid": 70498,
         "pack_id": "rumi_turn_runtime_pack",
-        "policy_digest": "sha256:17486e51b75cc7f730b70afcb888651acf97b4a260647302aaf33a7d6e603dc9",
-        "receipt_digest": "sha256:6ec288b480f34277d0c8959af5ccb87cc2bf3ee53d5a7d6e706de1c683707149",
-        "reservation_journal_digest": "sha256:685b6b71137f53f01286720438055498fa23aaa9f38aba9f9d52afa2e9f310f1",
+        "policy_digest": "sha256:f585c9d95161b3c633edca85d0ca830fe89cd6cd7ab80704815b6a9d047a9e78",
+        "receipt_digest": "sha256:253bd693b3200c266ef25507de9a9c35ea83f15a5ebb851bb28254eb419f8a65",
+        "reservation_journal_digest": "sha256:e84bf563580b6c735175d9643b66fa7ccd85bda153b7b58334d56a6664b654a6",
         "reservation_profile_id": "defaults",
         "status": "verified",
-        "target_digest": "sha256:71c02e8b2c0c276eb43bac5bd3f49872cdcbb50d0d0f7c43e23dcbcd4a88ad98"
+        "target_digest": "sha256:a1070d4f3f52b21ccfdbd3c17ea5927ab2a8e2366a00254c7c2c466d483522ca"
       },
       "install": {
-        "admission_receipt_digest": "sha256:6ec288b480f34277d0c8959af5ccb87cc2bf3ee53d5a7d6e706de1c683707149",
-        "approval_record_digest": "sha256:c95521ee8de11f0aa2ae56a7882b3d7aa8987efeca0267c9fc6c9e139e2b803d",
-        "catalog_revision": "sha256:8b8ec9ac0879566c7a539535af322314356f73acf636f06fab94f2f6b21eb90a",
-        "content_digest": "sha256:f57f029757c14b23270e72fc1f1fde05a74170f15edca715361478c5323cef3b",
-        "host_instance_id": "host-pid:26350",
-        "install_record_digest": "sha256:32bed4cad2b1817c8630f0b673dbb06424cbc163f9e12e80128e56e3a8a55b50",
-        "installation_id": "sha256:5fb6ca6ba2635668bc271a342e73dab576646a054e2ddf44869f7a772aeecaf0",
+        "admission_receipt_digest": "sha256:253bd693b3200c266ef25507de9a9c35ea83f15a5ebb851bb28254eb419f8a65",
+        "approval_record_digest": "sha256:57b6fe33ae93386d5e3f558da6f43540e0c664c6b3f834c317a8f9642a332637",
+        "catalog_revision": "sha256:ed8895c222cf2592cee3ab59bc537ba8f7a44f370a42778657bae6cea986d40e",
+        "content_digest": "sha256:8c42c558f8be5f37bfdd8ad3c35d5c9cae425713579da90396780f8145be3a17",
+        "host_instance_id": "host-pid:70498",
+        "install_record_digest": "sha256:0bb18929ee776fbbf6f7c21265b79822a7e64cfc1ca6d73d47505ca3cf1a8f3c",
+        "installation_id": "sha256:1aaecc781be80a278afd8f4095e440d76c5fa80ce6a53db7431ec9ca4e6ecae2",
         "kind": "install",
-        "observed_at": "2026-09-28T15:25:21.238079Z",
+        "observed_at": "2026-09-28T16:35:06.108829Z",
         "pack_id": "rumi_turn_runtime_pack",
-        "receipt_digest": "sha256:e7eed415451300fdb502229d324219453ab84a248dd48f24f747a34b6a195f80",
+        "receipt_digest": "sha256:d837e4a68238f46eea7caa8d311aa69d4f4192a112fa426a927dac4471852132",
         "status": "verified",
-        "target_digest": "sha256:71c02e8b2c0c276eb43bac5bd3f49872cdcbb50d0d0f7c43e23dcbcd4a88ad98"
+        "target_digest": "sha256:a1070d4f3f52b21ccfdbd3c17ea5927ab2a8e2366a00254c7c2c466d483522ca"
       },
       "isolated-conformance": {
-        "host_instance_id": "host-process:pid:26981:start:darwin:26981:1790609121:238349",
-        "install_receipt_digest": "sha256:e7eed415451300fdb502229d324219453ab84a248dd48f24f747a34b6a195f80",
+        "host_instance_id": "host-process:pid:70546:start:darwin:70546:1790613306:109104",
+        "install_receipt_digest": "sha256:d837e4a68238f46eea7caa8d311aa69d4f4192a112fa426a927dac4471852132",
         "kind": "isolated-conformance",
-        "observed_at": "2026-09-28T15:25:25.547682Z",
+        "observed_at": "2026-09-28T16:35:09.818529Z",
         "operation_count": 6,
         "pack_id": "rumi_turn_runtime_pack",
-        "probe_result_digest": "sha256:1e7729917e44ca7a0e343fc2c3070eb4d108976430f182b54d50837b8abe181c",
-        "receipt_digest": "sha256:2b8418b5230079625e0129e35b63e25aed53c4bcd0402835d5a8ffd61d1e2e1e",
-        "result_digest": "sha256:1e7729917e44ca7a0e343fc2c3070eb4d108976430f182b54d50837b8abe181c",
+        "probe_result_digest": "sha256:5ef808f638685d6e3ebcd1499b32b10f4cd908d8bb3c87bb9983cbbf361ead61",
+        "receipt_digest": "sha256:b028a4c149e359afee358965b0f5f4588d1fb9a8cf55b4e82bb771bf1deb9564",
+        "result_digest": "sha256:5ef808f638685d6e3ebcd1499b32b10f4cd908d8bb3c87bb9983cbbf361ead61",
         "status": "verified",
-        "target_digest": "sha256:71c02e8b2c0c276eb43bac5bd3f49872cdcbb50d0d0f7c43e23dcbcd4a88ad98",
-        "test_suite_digest": "sha256:15fa0f96771be495fafd7e2a881697c1e9ab4bbceaebbe2d3a2cbbfc8956fff6"
+        "target_digest": "sha256:a1070d4f3f52b21ccfdbd3c17ea5927ab2a8e2366a00254c7c2c466d483522ca",
+        "test_suite_digest": "sha256:c14bf6d7ba246de88c7b686f76f29de36a4a36922f32c4d0f7bc79400fdba4ee"
       },
       "pack_id": "rumi_turn_runtime_pack",
-      "release_receipt_digest": "sha256:9de856f9cf4fd7139ed6cb254bd2a3b6ae1d4072dc5c53fc05bd5fde3a09fff5",
-      "review_attestation_digest": "sha256:ec83122f25c9b1f49f19bbc0c9d4b48e283b15680b8646e904e5f1c1b857dbb3",
-      "semantic_record_digest": "sha256:18e2572ef9ab3321881aa7c3edbec02f75bfd09ad1ba36a9426f57a5cae1dec8",
-      "target_digest": "sha256:71c02e8b2c0c276eb43bac5bd3f49872cdcbb50d0d0f7c43e23dcbcd4a88ad98"
+      "release_receipt_digest": "sha256:e6ae7301d08b8ac93384d92b5825fc99bf7d2ba05c6f6efe72ebbdb77a62b024",
+      "review_attestation_digest": "sha256:56e2cb588b723d9b41c8dfcb503208c755f94d1e91f84794bbb927c8bbb04120",
+      "semantic_record_digest": "sha256:d26b68b0d0744d30a53a5407b45258f5010b2f933cbef4eb3477c6ead5ffc0f4",
+      "target_digest": "sha256:a1070d4f3f52b21ccfdbd3c17ea5927ab2a8e2366a00254c7c2c466d483522ca"
     },
     "rumi_voice_mobile_pack": {
       "admission": {
@@ -7999,120 +8113,6 @@
       "review_attestation_digest": "sha256:64a31dc130acf01e4c2f0e49383e2b8d352ee08475704c92ecae8f5a11b3ab6b",
       "semantic_record_digest": "sha256:0b10a14ca5cd8c6902f2853b130a5e5e5413e7534429a9b70c84b2dc0fb9b28f",
       "target_digest": "sha256:102ba424d6048109af3d3abab0462c8a0d3740c86393bebadb0b100ed54c0a8f"
-    },
-    "rumi_ai_strategy_runtime_pack": {
-      "admission": {
-        "admission_id": "fe10-JKtY8H-JeQo5y1t3u7jqGeCb58z",
-        "amount": {
-          "disk_bytes": 0,
-          "memory_bytes": 4096,
-          "process_slots": 1,
-          "start_slots": 1
-        },
-        "host_instance_id": "host-process:pid:26350:start:darwin:26350:1790609045:033630",
-        "kind": "admission",
-        "observed_at": "2026-09-28T15:24:52.981653Z",
-        "owner_identity": "darwin:26350:1790609045:033630",
-        "owner_pid": 26350,
-        "pack_id": "rumi_ai_strategy_runtime_pack",
-        "policy_digest": "sha256:17486e51b75cc7f730b70afcb888651acf97b4a260647302aaf33a7d6e603dc9",
-        "receipt_digest": "sha256:b2bb4c898eae8659859bbf5313556ef47ca7b311e35c8290f0f1b92adf8e89cb",
-        "reservation_journal_digest": "sha256:73709916f07b99e7f8e8c2975527535054fe6126019b0d697b4116d8f7ca08f8",
-        "reservation_profile_id": "defaults",
-        "status": "verified",
-        "target_digest": "sha256:b3e5a5703c7b994b591eab86132ce757474fe030980be6fc4cf4f265824aaff2"
-      },
-      "install": {
-        "admission_receipt_digest": "sha256:b2bb4c898eae8659859bbf5313556ef47ca7b311e35c8290f0f1b92adf8e89cb",
-        "approval_record_digest": "sha256:02568261cc2716791f9d6f827103458894c001cdaefd8376f353f51d73fffcdf",
-        "catalog_revision": "sha256:8b8ec9ac0879566c7a539535af322314356f73acf636f06fab94f2f6b21eb90a",
-        "content_digest": "sha256:5b53970230749aa2b0d2cd5d2bdce6b2a4bc0678d65e66a3d9332b92233a82bf",
-        "host_instance_id": "host-pid:26350",
-        "install_record_digest": "sha256:7738d92f2909458eadcb914f4a1a89f4f45e8db9b886e3191aa2d2edbf439a9d",
-        "installation_id": "sha256:4f888f32ece2e8110ca07babe54bf95dd8a9f5eff6b97e9b1ed0523522d9bd56",
-        "kind": "install",
-        "observed_at": "2026-09-28T15:24:57.338568Z",
-        "pack_id": "rumi_ai_strategy_runtime_pack",
-        "receipt_digest": "sha256:c2bf4d7f26929ea27d23161e8b73698321dee747855a9c064d8e48a93874ca32",
-        "status": "verified",
-        "target_digest": "sha256:b3e5a5703c7b994b591eab86132ce757474fe030980be6fc4cf4f265824aaff2"
-      },
-      "isolated-conformance": {
-        "host_instance_id": "host-process:pid:26844:start:darwin:26844:1790609097:338844",
-        "install_receipt_digest": "sha256:c2bf4d7f26929ea27d23161e8b73698321dee747855a9c064d8e48a93874ca32",
-        "kind": "isolated-conformance",
-        "observed_at": "2026-09-28T15:25:03.148207Z",
-        "operation_count": 2,
-        "pack_id": "rumi_ai_strategy_runtime_pack",
-        "probe_result_digest": "sha256:e847e0f57b73a23eaa6a1a232bcc15d9675bbcdab3671ecf81b828457e163f69",
-        "receipt_digest": "sha256:80197f57d1128895be84fa265b9cd48de5299238a4dc53f9ea39602452b468e5",
-        "result_digest": "sha256:e847e0f57b73a23eaa6a1a232bcc15d9675bbcdab3671ecf81b828457e163f69",
-        "status": "verified",
-        "target_digest": "sha256:b3e5a5703c7b994b591eab86132ce757474fe030980be6fc4cf4f265824aaff2",
-        "test_suite_digest": "sha256:647858d9b18e721a092a3bf538451b567c74b4b573a74fb112c51eed89ca62b3"
-      },
-      "pack_id": "rumi_ai_strategy_runtime_pack",
-      "release_receipt_digest": "sha256:5223b3df2f0e72a909163028835a280a9a52e4bee5e4d561cae7cbcf492337e8",
-      "review_attestation_digest": "sha256:2a06c5b8d7a585812403696c74e19fdb8a73516393eee6b9e8c274dc398c857f",
-      "semantic_record_digest": "sha256:877a6067f8da2cfad92783b4a9ac988c9b5b6bfabc15f5ca186a1287daca72a3",
-      "target_digest": "sha256:b3e5a5703c7b994b591eab86132ce757474fe030980be6fc4cf4f265824aaff2"
-    },
-    "rumi_deepthink_pack": {
-      "admission": {
-        "admission_id": "p9CsMnt7_DM1vFQoI5XAuAkNRAPzc9B1",
-        "amount": {
-          "disk_bytes": 0,
-          "memory_bytes": 4096,
-          "process_slots": 1,
-          "start_slots": 1
-        },
-        "host_instance_id": "host-process:pid:26350:start:darwin:26350:1790609045:033630",
-        "kind": "admission",
-        "observed_at": "2026-09-28T15:25:11.791098Z",
-        "owner_identity": "darwin:26350:1790609045:033630",
-        "owner_pid": 26350,
-        "pack_id": "rumi_deepthink_pack",
-        "policy_digest": "sha256:17486e51b75cc7f730b70afcb888651acf97b4a260647302aaf33a7d6e603dc9",
-        "receipt_digest": "sha256:3dbe1c8d7508227291bbc97d0ba6aa94c856db85ccaac02e3c1d488b6702d860",
-        "reservation_journal_digest": "sha256:de086630210d262aeefa4bc8940891545198cf2701285f7288e4922f524a39c6",
-        "reservation_profile_id": "defaults",
-        "status": "verified",
-        "target_digest": "sha256:4b369e33e66252dd59a68b924f735cff557c05d98a15822cb729a8b481917a7d"
-      },
-      "install": {
-        "admission_receipt_digest": "sha256:3dbe1c8d7508227291bbc97d0ba6aa94c856db85ccaac02e3c1d488b6702d860",
-        "approval_record_digest": "sha256:a94569b41db02f06900b16d90de78d49f8146c0cf2328e43896a183fb94f0162",
-        "catalog_revision": "sha256:8b8ec9ac0879566c7a539535af322314356f73acf636f06fab94f2f6b21eb90a",
-        "content_digest": "sha256:d363d171f22ed420dac195c42f4bfd0d2d182d2595b6473743d7d3afc025f92c",
-        "host_instance_id": "host-pid:26350",
-        "install_record_digest": "sha256:0c1926e8f39a08f38aa33b2825696b39635dd7bd499724f703ae45af0b172bdf",
-        "installation_id": "sha256:2d3e26b9d5f18aa4d50f444eca3fbe424ff53e941b727fabc508016369e51ddc",
-        "kind": "install",
-        "observed_at": "2026-09-28T15:25:14.148318Z",
-        "pack_id": "rumi_deepthink_pack",
-        "receipt_digest": "sha256:59885fa0566533cda5a9655d802e61e7769993a7d86f9e6b8f91dc3cc3eeeb29",
-        "status": "verified",
-        "target_digest": "sha256:4b369e33e66252dd59a68b924f735cff557c05d98a15822cb729a8b481917a7d"
-      },
-      "isolated-conformance": {
-        "host_instance_id": "host-process:pid:26949:start:darwin:26949:1790609114:148586",
-        "install_receipt_digest": "sha256:59885fa0566533cda5a9655d802e61e7769993a7d86f9e6b8f91dc3cc3eeeb29",
-        "kind": "isolated-conformance",
-        "observed_at": "2026-09-28T15:25:18.734421Z",
-        "operation_count": 1,
-        "pack_id": "rumi_deepthink_pack",
-        "probe_result_digest": "sha256:136ca83844f2ef135d2918216ba78ecc1bcbdd70421d0ef8f066e629cd0155f2",
-        "receipt_digest": "sha256:4c46debc7c4441e412e47476a9e2f47d5fb7dbdbeeb5332e4b32fb11c4c0368a",
-        "result_digest": "sha256:136ca83844f2ef135d2918216ba78ecc1bcbdd70421d0ef8f066e629cd0155f2",
-        "status": "verified",
-        "target_digest": "sha256:4b369e33e66252dd59a68b924f735cff557c05d98a15822cb729a8b481917a7d",
-        "test_suite_digest": "sha256:dc033a441ab9bbd567c54c4e7653ef9871469c47528021442f21b2f8d26b012d"
-      },
-      "pack_id": "rumi_deepthink_pack",
-      "release_receipt_digest": "sha256:23dcc582f7d949337fb989a555e8cda47a930a293877f0a8de3f619b1e14c86e",
-      "review_attestation_digest": "sha256:e3f575dd24e7239384de76f007f16ab411542cbf5bc53e638783ee986267fe62",
-      "semantic_record_digest": "sha256:97c236c6ed45fed78b2c29f5bb9dc47dd6eccba24fff4a87c86436475e6b32f7",
-      "target_digest": "sha256:4b369e33e66252dd59a68b924f735cff557c05d98a15822cb729a8b481917a7d"
     }
   },
   "schema": "io.tobkiri.quality.pack-migration-runtime-receipts.v1"

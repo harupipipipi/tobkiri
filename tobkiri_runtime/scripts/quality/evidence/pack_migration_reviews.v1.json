@@ -8756,10 +8756,10 @@
           "release readiness"
         ]
       },
-      "reviewed_at": "2026-09-29T01:29:09+09:00",
-      "reviewer_id": "codex:independent-semantic-review:saved-strategy-budget-2026-09-29",
+      "reviewed_at": "2026-09-29T01:34:54+09:00",
+      "reviewer_id": "codex:independent-semantic-review:saved-strategy-projection-2026-09-29",
       "semantic_record_digest": "sha256:d26b68b0d0744d30a53a5407b45258f5010b2f933cbef4eb3477c6ead5ffc0f4",
-      "source_digest": "sha256:875ef2ca61ed1ccfd6a53b01ddb1f039c09cef548552b311a3d2f2e3c0db8261",
+      "source_digest": "sha256:80c375aa33730d9b660bbd663a24c34e45e70da4ad64140423333635d28f3038",
       "source_kind": "independent-curated",
       "target_digest": "sha256:a1070d4f3f52b21ccfdbd3c17ea5927ab2a8e2366a00254c7c2c466d483522ca",
       "semantic_record": {
@@ -9037,7 +9037,7 @@
         "rationale": "Independent review reconciled 6 hardened legacy operation records with the exact v4 Pack quartet for rumi_turn_runtime_pack. Every mapping has the same function identity, contract identifier/version, implementation path/digest, and target provider semantics. The only nonidentity parameter mappings are bounded and preserve legacy requests: input:identity; output:accepted-divergence:stopped_confirmed is emitted only after Host-verified nested resource drain; otherwise cancellation_requested remains nonterminal.",
         "semantic_record_digest": "sha256:d26b68b0d0744d30a53a5407b45258f5010b2f933cbef4eb3477c6ead5ffc0f4"
       },
-      "review_attestation_digest": "sha256:be3c0bf055e778062a05f7d6cbf2c7f2c34aa34cc26d0beed4865697ef8a0ff3"
+      "review_attestation_digest": "sha256:56e2cb588b723d9b41c8dfcb503208c755f94d1e91f84794bbb927c8bbb04120"
     },
     "rumi_voice_mobile_pack": {
       "pack_id": "rumi_voice_mobile_pack",
