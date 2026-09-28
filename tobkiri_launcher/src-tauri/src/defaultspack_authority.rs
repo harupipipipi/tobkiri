@@ -63,7 +63,7 @@ const DEFAULT_PROVIDER_PACK_IDS: [&str; 13] = [
     "rumi_provider_registry_pack",
     "tobkiri_host_pack_control",
 ];
-#[cfg(test)]
+#[cfg(any(test, debug_assertions))]
 const PROFILE_PATH: &str = "defaults.profile.v5.json";
 #[cfg(test)]
 const DEFAULTSPACK_PACK_PATH: &str = "packs/defaultspack.pack.v4.json";
