@@ -4,10 +4,10 @@
   "resolution_scope": "source_release",
   "activation_authority": "unbound",
   "profile_id": "defaults",
-  "profile_revision": "sha256:c107093464573bbf56dd0e6b7ab43c4a35443a26751269b0d4dc1c22c911dbe1",
+  "profile_revision": "sha256:5bf805007690a29615c63b00aa105ca2942a90049077ede0699d6512fff482d0",
   "profile_definition_digest": "sha256:fe8148694dba7c2ad887ace011ac51b3b09a749c2ba719e871198943e9ec5a7c",
-  "catalog_revision": "sha256:03796c881142fcef18b770debaa3c2989883946cb794abe9e592c8ad5429dee6",
-  "bundle_digest": "sha256:f914e1c0c6f31c533474c67a59406cfcb52ff6789e93bac7d2403e705ee51eb6",
+  "catalog_revision": "sha256:8c7e50beb9e86f8c62abbeaed8bea67fb91140ce018a767fc8cbd272984ab76f",
+  "bundle_digest": "sha256:f8564d2c3a7a1e9ca2af289e1a9255988eeb5f20547605e6852ecebd835ef547",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
@@ -93,7 +93,7 @@
     {
       "role": "pack",
       "identity": "rumi_ai_gateway_pack",
-      "artifact_digest": "sha256:5dbe622b1f8f26346cef218127de089a3a2328408318b98dd801cda20d1167c9"
+      "artifact_digest": "sha256:aaacbd6381af50871f3bb4596eb3cc6dcf4ee9293f7e6acdc15d32c04adf6e45"
     },
     {
       "role": "pack",
@@ -262,8 +262,8 @@
     },
     {
       "pack_id": "rumi_ai_gateway_pack",
-      "artifact_digest": "sha256:5dbe622b1f8f26346cef218127de089a3a2328408318b98dd801cda20d1167c9",
-      "executable_catalog_digest": "sha256:b4997227a4c3d9ccf500f8418629c8aa8baef8717d128297e4e95df15c97f28d",
+      "artifact_digest": "sha256:aaacbd6381af50871f3bb4596eb3cc6dcf4ee9293f7e6acdc15d32c04adf6e45",
+      "executable_catalog_digest": "sha256:498e9428c11020907a211e03fce697dba9920755121f5be9882b435677a12e1a",
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.generate.python",
       "platform": "any",
       "architecture": "any",
@@ -274,8 +274,8 @@
     },
     {
       "pack_id": "rumi_ai_gateway_pack",
-      "artifact_digest": "sha256:5dbe622b1f8f26346cef218127de089a3a2328408318b98dd801cda20d1167c9",
-      "executable_catalog_digest": "sha256:b4997227a4c3d9ccf500f8418629c8aa8baef8717d128297e4e95df15c97f28d",
+      "artifact_digest": "sha256:aaacbd6381af50871f3bb4596eb3cc6dcf4ee9293f7e6acdc15d32c04adf6e45",
+      "executable_catalog_digest": "sha256:498e9428c11020907a211e03fce697dba9920755121f5be9882b435677a12e1a",
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.preflight.python",
       "platform": "any",
       "architecture": "any",
@@ -286,8 +286,8 @@
     },
     {
       "pack_id": "rumi_ai_gateway_pack",
-      "artifact_digest": "sha256:5dbe622b1f8f26346cef218127de089a3a2328408318b98dd801cda20d1167c9",
-      "executable_catalog_digest": "sha256:b4997227a4c3d9ccf500f8418629c8aa8baef8717d128297e4e95df15c97f28d",
+      "artifact_digest": "sha256:aaacbd6381af50871f3bb4596eb3cc6dcf4ee9293f7e6acdc15d32c04adf6e45",
+      "executable_catalog_digest": "sha256:498e9428c11020907a211e03fce697dba9920755121f5be9882b435677a12e1a",
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.stream.python",
       "platform": "any",
       "architecture": "any",
@@ -1089,9 +1089,9 @@
       "domain_kind": "dedicated_process"
     }
   ],
-  "requested_edges_digest": "sha256:3fb7fb8a4eb6b48793c144ddc51d7780dba22bde5b62cd3c18a3dbef95dd5619",
+  "requested_edges_digest": "sha256:5e66eb1638d5fcab055e0c1d7644c771db2ccf8854b0f13e4a392b499b369a3b",
   "constraints_digest": "sha256:d70a27b59e56dc8c18fcb6447cba032e8958951f6af3710bb1d307cf6e438c67",
-  "closure_digest": "sha256:18a15a1aaa4451b2b9cad05638ee7e93b70a33dca5752358173da9f333d6ca72",
-  "provenance_digest": "sha256:fb380f5ca64d5d7a45bc8ce97f7e1a05725410ccbcb1016eb917c9b6e1750c85",
-  "lock_digest": "sha256:fdc5675617eda661a6f834a871e310fea9fec084ccf8bf5ef632f1d1e2c90f3f"
+  "closure_digest": "sha256:e69de0a5287c14f1ec87d3facb656de553a882f75848fc21c47e4678c299dcca",
+  "provenance_digest": "sha256:1d77eac0aeb00a566447bb9cc0519c1b6a2e021419680df7052501159d5ad2ee",
+  "lock_digest": "sha256:c1bf5c7df7555c17f371364d4da689df0e588d893e723a93eff697f3fea6b78b"
 }
