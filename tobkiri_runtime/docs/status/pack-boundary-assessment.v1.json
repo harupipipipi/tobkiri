@@ -409,7 +409,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/ecosystem.json",
-          "sha256": "8e23f87009c695d683f4f7fb4f37e5f17961e9577756aaca9b6aceda8df7eda5"
+          "sha256": "cbceadaefe64356755f1f9453e0218888a4142335583c6b38bc76d5241c1a3bb"
         }
       ]
     },
