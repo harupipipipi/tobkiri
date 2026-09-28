@@ -467,12 +467,22 @@ def dynamic_profile_edges(
         requirements = {
             str(item["contract_id"]): item
             for item in consumer["requirements"]["contract_dependencies"]
-            if not item["optional"]
         }
         selected: list[tuple[str, str]] = []
         for contract_id in contract_ids:
             provided = provider_operations[contract_id]
-            requested = requirements[contract_id].get("operations")
+            requirement = requirements.get(contract_id)
+            if requirement is None:
+                raise ProfileResolutionDenied(
+                    "dynamic Pack dependency is missing its signed Contract "
+                    f"requirement: {consumer['pack']['id']} -> "
+                    f"{provider['pack']['id']} ({contract_id})"
+                )
+            # ``optional`` permits the provider to be absent. Once this exact
+            # declared dependency supplies the Contract, it remains a signed
+            # consumer relationship and must retain the same narrow operation
+            # selection rules as a required dependency.
+            requested = requirement.get("operations")
             if requested is None:
                 if len(provided) != 1:
                     raise ProfileResolutionDenied(

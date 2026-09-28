@@ -179,6 +179,18 @@ def test_static_edge_does_not_suppress_consumer_link() -> None:
     assert ("shell.main", "a.a.own", "a.own", "a.op") not in keys
 
 
+def test_optional_consumer_dependency_keeps_exact_available_operation() -> None:
+    """An optional Contract remains callable when its signed provider is present."""
+
+    catalog = _catalog(consumer=True)
+    catalog.packs["d"]["requirements"]["contract_dependencies"][0]["optional"] = True
+
+    keys = _keys(dynamic_profile_edges(catalog, "defaults", ("a",)))
+
+    assert ("d.c.one", "a.a.own", "a.own", "a.op") in keys
+    assert ("d.c.two", "a.a.own", "a.own", "a.op") not in keys
+
+
 def test_functionless_application_uses_exact_shell_caller_for_required_dependency() -> None:
     """A signed UI surface can use its declared direct dependency via Shell."""
 
