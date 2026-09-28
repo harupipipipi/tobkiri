@@ -869,13 +869,23 @@ def _catalog_candidates(
         # A saved raw model/connection pair is an explicit route, not a catalog
         # brand/model identifier. Unknown capabilities stay unknown; requests
         # cannot manufacture tool, image, context-size or residency evidence.
+        pricing = (
+            dict(explicit_pricing)
+            if isinstance(explicit_pricing, Mapping)
+            else {}
+        )
         catalog_models = [{
             "model_id": requirement.preferred_model_id,
             "provider_model_id": requirement.preferred_model_id,
             "provider_connection_id": explicit_connection,
             "execution_provider_instance_id": requirement.preferred_provider_instance_id,
             "health_provider_instance_id": explicit_connection,
-            "catalog_revision": "saved-connection:v1",
+            "catalog_revision": str(
+                pricing.get("revision") or "saved-connection:v1"
+            ),
+            "input_cost": _optional_float(pricing.get("input")),
+            "output_cost": _optional_float(pricing.get("output")),
+            "currency": str(pricing.get("currency") or "USD"),
             "modalities": ["text"],
             "capabilities": [],
         }]

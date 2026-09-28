@@ -125,7 +125,10 @@ from ..credential_transport import (
     AuthorizedEnvelopeCredentialTransport,
     CredentialMaterialStoreFactory,
 )
-from ..global_contract_dispatch import GlobalContractClient
+from ..global_contract_dispatch import (
+    GlobalContractClient,
+    GlobalContractInvocationError,
+)
 from ..host_provider_backend_v4 import (
     CapturedHostPackDataV4,
     ExactHostProviderBackendV4,
@@ -1301,13 +1304,29 @@ def _recover_interactive_effect_controller(controller: PendingEffectController) 
         raise AuthorityDenied("interactive effect recovery is unavailable") from error
 
 
-def _provider_unavailable_bridge_result() -> dict[str, Any]:
+def _provider_unavailable_bridge_result(
+    error: BaseException | None = None,
+) -> dict[str, Any]:
     """Return the bounded error projection allowed across the guest boundary."""
 
+    code = "PROVIDER_UNAVAILABLE"
+    current = error
+    for _ in range(8):
+        if current is None:
+            break
+        if (
+            isinstance(current, GlobalContractInvocationError)
+            and current.code == "DEEPTHINK_PRICING_UNAVAILABLE"
+        ):
+            # This code exposes no provider detail. It proves the read-only
+            # readiness check rejected DeepThink before the saved guest ran.
+            code = current.code
+            break
+        current = current.__cause__ or current.__context__
     return {
         "status": "error",
         "error": {
-            "code": "PROVIDER_UNAVAILABLE",
+            "code": code,
             "message": "The verified AI capability is unavailable.",
         },
     }
@@ -2101,7 +2120,7 @@ def capture_production_dispatch(
             from .bridge_diagnostics import record_bridge_failure
 
             record_bridge_failure(error)
-            result = _provider_unavailable_bridge_result()
+            result = _provider_unavailable_bridge_result(error)
         finally:
             release_nested_session(bridge_session_id, bridge_authority_session_id)
         return result

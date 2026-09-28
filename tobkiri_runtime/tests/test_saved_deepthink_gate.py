@@ -97,10 +97,10 @@ def test_saved_preflight_uses_gateway_budget_for_single_model(
     }
 
 
-def test_saved_preflight_preserves_non_selection_failures(
+def test_saved_preflight_does_not_requery_legacy_registry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Gateway fallback never hides registry or configuration failures."""
+    """Captured Gateway readiness is the sole saved model-routing oracle."""
 
     import domain.chat.deepthink_preflight as preflight
 
@@ -116,11 +116,7 @@ def test_saved_preflight_preserves_non_selection_failures(
         "_enforce_deepthink_preflight",
         reject_registry,
     )
-    with pytest.raises(
-        DeepThinkPreflightError,
-        match="could not inspect the local provider registry",
-    ):
-        saved_deepthink_preflight_report("profile/mimo")
+    assert saved_deepthink_preflight_report("profile/mimo")["ok"] is True
 
 
 def test_input_contract_accepts_flag_and_rejects_non_bool() -> None:
@@ -326,7 +322,6 @@ def test_exchange_requires_report_only_when_enabled(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="readiness report is required"):
         exchange.step({"status": "ok", "value": {"status": "ok", "output": "Hi"}})
 
-    plain = _steps_setup(tmp_path / "plain")
     exchange2 = _DeepThinkExchange.__new__(_DeepThinkExchange)
     exchange2.__dict__["store"], exchange2.__dict__["outer"], exchange2.__dict__["calls"], callback = (
         _bridge_setup(tmp_path / "plain2")

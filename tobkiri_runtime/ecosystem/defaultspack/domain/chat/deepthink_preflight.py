@@ -908,48 +908,33 @@ def saved_deepthink_preflight_report(
 ) -> dict[str, Any]:
     """Host-side DeepThink gate for the sandboxed saved-turn path.
 
-    The saved request carries only ``deepthink_enabled``; the chain selection
-    is the conversation owner record's ``model_reference``, and the Host — not
-    the PackVM guest — owns this check because member credentials and pack
-    specifications are visible only here.  Returns the readiness report or
-    raises ``DeepThinkPreflightError``/``DeepThinkReadinessError`` with the
-    structured ``to_dict()`` payload.
+    The captured Gateway preflight owns saved model routing and credential
+    readiness. This helper supplies the fixed budget used by the sandboxed
+    review loop after that check succeeds.
     """
-    model_id = str(model or "")
-    try:
-        report_holder = _enforce_deepthink_preflight(
-            model_id,
-            {"deepthink_enabled": True},
-            {},
-            settings_owner=settings_owner,
-            messages=messages,
-            tools=tools,
-        )
-    except DeepThinkPreflightError as error:
-        if error.cause != f"selected model {model_id!r} is not chain-capable":
-            raise
-        # Saved turns execute DeepThink in the Pack v4 Gateway, which can use
-        # one resolved model for both drafting and review. The ordinary chat
-        # path still requires a legacy review_chain composite. AI Gateway
-        # preflight has already resolved the owner-selected profile and exact
-        # captured provider before this local report is requested.
-        return {
-            "ok": True,
-            "chain_id": model_id,
-            "chain_source": "pack_v4_gateway",
-            "member_models": [model_id],
-            "budget": {
-                "maximum_calls": 5,
-                "maximum_output_tokens_per_call": 1024,
-                "maximum_cost_usd": 0.05,
-            },
-            "problems": [],
-        }
-    report = (report_holder or {}).get("deepthink")
-    if not isinstance(report, dict):
+    del settings_owner, messages, tools
+    model_id = str(model or "").strip()
+    if not model_id:
         raise DeepThinkPreflightError(
-            model=str(model or ""),
-            cause="could not resolve the review chain for the saved selection",
+            model=model_id,
+            cause="saved model profile is unavailable",
             fix=_DEEPTHINK_REVIEW_CHAIN_FIX,
         )
-    return dict(report)
+    # Saved turns run the bounded review loop in the Pack v4 AI Gateway. The
+    # bridge has already resolved this exact owner-selected profile through the
+    # captured read-only Gateway preflight before requesting this report. Do
+    # not re-run the legacy Defaultspack registry oracle here: V4 connection
+    # profiles are intentionally absent from that ambient registry, and the
+    # duplicate lookup can reject a route the captured Gateway just proved.
+    return {
+        "ok": True,
+        "chain_id": model_id,
+        "chain_source": "pack_v4_gateway",
+        "member_models": [model_id],
+        "budget": {
+            "maximum_calls": 5,
+            "maximum_output_tokens_per_call": 1024,
+            "maximum_cost_usd": 0.05,
+        },
+        "problems": [],
+    }

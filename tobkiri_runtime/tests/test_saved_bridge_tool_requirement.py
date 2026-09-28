@@ -247,6 +247,99 @@ def _bridge_setup(
     return store, outer, calls, callbacks, session
 
 
+def test_deepthink_pricing_rejection_precedes_saved_user_append(
+    tmp_path: Path,
+) -> None:
+    """An unpriced connection route fails in read-only preflight."""
+
+    store, outer, _calls, callbacks, session = _bridge_setup(
+        tmp_path, {"mode": "none"}
+    )
+    outer.payload["request"]["deepthink_enabled"] = True
+    before = store.path.read_bytes()
+
+    with pytest.raises(GlobalContractInvocationError) as captured:
+        callbacks.preflight(outer)
+
+    assert captured.value.code == "DEEPTHINK_PRICING_UNAVAILABLE"
+    assert store.path.read_bytes() == before
+    assert store.get("conversation-1")["conversation_revision"] == 1
+    assert session.provider_requests == []
+
+
+def test_connection_route_preserves_owner_bound_pricing_for_deepthink() -> None:
+    """Reviewed profile pricing survives the synthetic connection route."""
+
+    session = _SavedRouteSession("provider/model")
+    session.record["metadata"]["pricing"] = {
+        "input": 0.000001,
+        "output": 0.000002,
+        "currency": "USD",
+    }
+    client = GlobalContractClient(
+        session=session,
+        allowed_contract_ids=gateway._GENERATE_ALLOWED_CONTRACTS,
+        consumer_pack_id="rumi_ai_gateway_pack",
+    )
+
+    resolved = gateway.create_generate_operation(client)(
+        "resolve",
+        {
+            "model_profile_id": "daily",
+            "messages": [{"role": "user", "content": "hello"}],
+            "requirements": {"deepthink": True},
+        },
+    )
+
+    assert resolved["pricing"] == {
+        "input": 0.000001,
+        "output": 0.000002,
+        "currency": "USD",
+    }
+
+
+def test_pricing_failure_crosses_guest_bridge_as_bounded_code() -> None:
+    """The bridge exposes only the safe DeepThink readiness code."""
+
+    from core_runtime.bootstrap.production_v4 import (
+        _provider_unavailable_bridge_result,
+    )
+
+    pricing_error = GlobalContractInvocationError(
+        "DEEPTHINK_PRICING_UNAVAILABLE",
+        "provider-specific detail that must not cross the boundary",
+    )
+
+    assert _provider_unavailable_bridge_result(pricing_error) == {
+        "status": "error",
+        "error": {
+            "code": "DEEPTHINK_PRICING_UNAVAILABLE",
+            "message": "The verified AI capability is unavailable.",
+        },
+    }
+
+
+def test_unrecognized_provider_failure_remains_generic() -> None:
+    """Arbitrary provider diagnostics do not cross the guest boundary."""
+
+    from core_runtime.bootstrap.production_v4 import (
+        _provider_unavailable_bridge_result,
+    )
+
+    provider_error = GlobalContractInvocationError(
+        "PROVIDER_SECRET_DETAIL",
+        "provider-specific detail that must not cross the boundary",
+    )
+
+    assert _provider_unavailable_bridge_result(provider_error) == {
+        "status": "error",
+        "error": {
+            "code": "PROVIDER_UNAVAILABLE",
+            "message": "The verified AI capability is unavailable.",
+        },
+    }
+
+
 def _tool_frame(
     intent: Mapping[str, Any], request: Mapping[str, Any]
 ) -> SavedToolFrame:

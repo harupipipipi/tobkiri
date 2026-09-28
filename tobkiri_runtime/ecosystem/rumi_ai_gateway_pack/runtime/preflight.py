@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any, Callable, Mapping
 
 from core_runtime.global_contract_dispatch import (
-    GlobalContractClient, GlobalContractUnavailable, V4ContractDispatch,
+    GlobalContractClient,
+    GlobalContractInvocationError,
+    GlobalContractUnavailable,
+    V4ContractDispatch,
 )
 from tobkiri_protocol.canonical import canonical_json
 
@@ -91,6 +95,23 @@ def create_preflight_operation(
             "model_profile_id": identifier, "messages": messages,
             **({"requirements": requirements} if requirements else {}),
         })
+        if payload.get("deepthink") is True:
+            pricing = resolved.get("pricing")
+            rates = (
+                pricing.get("input") if isinstance(pricing, Mapping) else None,
+                pricing.get("output") if isinstance(pricing, Mapping) else None,
+            )
+            if any(
+                not isinstance(rate, (int, float))
+                or isinstance(rate, bool)
+                or not math.isfinite(float(rate))
+                or float(rate) < 0
+                for rate in rates
+            ):
+                raise GlobalContractInvocationError(
+                    "DEEPTHINK_PRICING_UNAVAILABLE",
+                    "DeepThink requires owner-bound input and output pricing",
+                )
         selected = [item for item in readonly.providers(gateway.GENERATE_PROVIDER_CONTRACT)
                     if item.get("provider_instance_id") == resolved.get("provider_instance_id")
                     and item.get("operation_id") == gateway.GENERATE_PROVIDER_OPERATION]
