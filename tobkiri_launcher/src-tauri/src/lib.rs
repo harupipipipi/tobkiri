@@ -892,6 +892,9 @@ fn activate_app_for_authority_approval() {
 }
 
 fn focus_authority_approval_window(window: &tauri::WebviewWindow) -> Result<(), String> {
+    // The Shell is a separate macOS app. Re-activate the Launcher after a
+    // newly built window exists, immediately before making that window key.
+    activate_app_for_authority_approval();
     window
         .unminimize()
         .map_err(|error| format!("failed to unminimize approval window: {error}"))?;
@@ -899,7 +902,7 @@ fn focus_authority_approval_window(window: &tauri::WebviewWindow) -> Result<(), 
         .show()
         .map_err(|error| format!("failed to show approval window: {error}"))?;
     window
-        .set_always_on_top(true)
+        .set_always_on_top(!cfg!(target_os = "macos"))
         .map_err(|error| format!("failed to bring approval window forward: {error}"))?;
     window
         .set_focus()
@@ -946,7 +949,9 @@ pub(crate) fn open_authority_approval_window_at_url(
     .resizable(true)
     .focused(true)
     .visible(true)
-    .always_on_top(true)
+    // On macOS a floating approval window can remain visible without becoming
+    // the key window, which makes the required focus check reject its click.
+    .always_on_top(!cfg!(target_os = "macos"))
     // The approval window must run on an isolated, non-persistent webview
     // data store: its confined `rumi_approval_session` cookie can then
     // neither read nor overwrite the main window's `rumi_panel_session`
