@@ -151,10 +151,21 @@ def test_superseded_packaged_artifact_starts_ui_ready_reconfirmation(
         assert result == {"status": "ok", "step_id": "api_init", "port": port}
         assert kernel._dispatch_session.session_kind == "host_profile_control"
         assert get_container().get_or_none("v4_dispatch_session") is None
+        assert kernel.run_startup_remaining() == {
+            "status": "setup_required",
+            "runtime_ready": False,
+        }
         with urlopen(f"http://127.0.0.1:{port}/health", timeout=10) as response:
             health = json.load(response)["data"]
         assert health["panel_ready"] is True
         assert health["runtime_ready"] is False
+        assert health["runtime_status"] == "profile_reconfirmation_required"
+        assert health["runtime_error"] == diagnostic
+        assert health["needs_setup"] is True
+        assert health["host_catalog_verified"] is True
+        assert health["profile_ceremony_available"] is True
+        assert health["active_profile_ready"] is False
+        assert health["launch_ready"] is False
         assert readiness == {
             "panel_ready": True,
             "runtime_ready": False,

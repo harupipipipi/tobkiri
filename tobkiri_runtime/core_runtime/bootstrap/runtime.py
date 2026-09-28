@@ -287,6 +287,13 @@ class Kernel:
                     "status": "restart_required",
                     "runtime_ready": False,
                 }
+            if getattr(self._dispatch_session, "session_kind", None) == (
+                "host_profile_control"
+            ):
+                return {
+                    "status": "setup_required",
+                    "runtime_ready": False,
+                }
             if self._lifecycle.check_setup_status().get("needs_setup") is True:
                 return {
                     "status": "setup_required",

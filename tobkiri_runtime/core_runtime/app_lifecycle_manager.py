@@ -155,6 +155,22 @@ class AppLifecycleManager:
         )
         from .profile_definition_store_v4 import ProfileDefinitionStore
 
+        readiness = get_runtime_readiness()
+        if readiness.get("runtime_status") == "profile_reconfirmation_required":
+            result = {
+                "needs_setup": True,
+                "reason": "profile_reconfirmation_required",
+                "setup_state": "profile_reconfirmation_required",
+                "denial_diagnostic": readiness.get("runtime_error"),
+                "host_catalog_verified": True,
+                "profile_ceremony_available": True,
+                "active_profile_ready": False,
+                "launch_ready": False,
+                "defaults_bootstrap_required": False,
+            }
+            result.update(readiness)
+            return result
+
         if not active_profile_exists(base_dir=self.base_dir):
             try:
                 catalog = host_profile_catalog(base_dir=self.base_dir)

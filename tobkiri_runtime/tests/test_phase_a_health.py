@@ -25,6 +25,44 @@ if str(_CORE_SETUP_DIR) not in sys.path:
 class TestAppLifecycleManagerHealth:
     """AppLifecycleManager.get_health() のテスト"""
 
+    def test_reconfirmation_health_remains_setup_required(
+        self, tmp_path, monkeypatch
+    ):
+        """A control-only capture cannot be projected as launch-ready."""
+
+        from core_runtime import app_lifecycle_manager as lifecycle_module
+        from core_runtime.bootstrap import profile_capture
+
+        diagnostic = "ResolvedPlan binding lacks a verified artifact"
+        monkeypatch.setattr(
+            lifecycle_module,
+            "get_runtime_readiness",
+            lambda: {
+                "panel_ready": True,
+                "runtime_ready": False,
+                "runtime_status": "profile_reconfirmation_required",
+                "runtime_error": diagnostic,
+            },
+        )
+        monkeypatch.setattr(
+            profile_capture,
+            "active_profile_exists",
+            lambda **_kwargs: (_ for _ in ()).throw(
+                AssertionError("reconfirmation health recaptured the Profile")
+            ),
+        )
+
+        result = lifecycle_module.AppLifecycleManager(base_dir=tmp_path).get_health()
+
+        assert result["needs_setup"] is True
+        assert result["runtime_ready"] is False
+        assert result["runtime_status"] == "profile_reconfirmation_required"
+        assert result["runtime_error"] == diagnostic
+        assert result["host_catalog_verified"] is True
+        assert result["profile_ceremony_available"] is True
+        assert result["active_profile_ready"] is False
+        assert result["launch_ready"] is False
+
     def test_pack_activation_health_stays_pending_until_host_pointer_is_published(
         self, tmp_path, monkeypatch
     ):
