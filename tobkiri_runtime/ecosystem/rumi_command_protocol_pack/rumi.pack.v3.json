@@ -368,9 +368,9 @@
         "metadata": {
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:5ecbd66b3e2691b3ab9f55e65db79981547a9c267756df56aaf7647c9a1eb72c",
+            "artifact_digest": "sha256:0bd4040a0f097520388ea31700e1ddf3c78c022242216b6799d9b2840ab704f9",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:a53c0b45c77e2f8950d5b7962423f36e890bc4194dbe3ef259bfb5a9a4da0a65"
+            "source_identity": "sha256:cec607e7f1f6e7333c88a8c7404b13ceee4f5fb8bcc52e7b12435e3335465f0c"
           },
           "integrity": {
             "artifact_manifest": "artifact-manifest.json"
@@ -381,7 +381,7 @@
         "pack_identity": "rumi:ecosystem/rumi_command_protocol_pack",
         "provenance": {
           "build_identity": "rumi_command_protocol_pack:1.0.0",
-          "content_hash": "sha256:bf6752bc6fbb0d612e44a9a8141af15b0d8d92fe2ef37815facff326b58c72cc",
+          "content_hash": "sha256:f895ff68050d0ab04cbd14572f86141243af0cf60ca42d1b0f860fb849a87a57",
           "signature": null,
           "trust_class": "local"
         },
@@ -410,7 +410,7 @@
       "owner": "rumi_command_protocol_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:a53c0b45c77e2f8950d5b7962423f36e890bc4194dbe3ef259bfb5a9a4da0a65"
+      "source_identity": "sha256:cec607e7f1f6e7333c88a8c7404b13ceee4f5fb8bcc52e7b12435e3335465f0c"
     }
   },
   "migration": {
@@ -450,7 +450,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_command_protocol_pack:1.0.0",
-    "content_hash": "sha256:bf6752bc6fbb0d612e44a9a8141af15b0d8d92fe2ef37815facff326b58c72cc",
+    "content_hash": "sha256:f895ff68050d0ab04cbd14572f86141243af0cf60ca42d1b0f860fb849a87a57",
     "signature": null,
     "trust_class": "local"
   },

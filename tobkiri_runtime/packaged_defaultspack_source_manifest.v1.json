@@ -3325,8 +3325,8 @@
     {
       "path": "scripts/generator_source_manifest.py",
       "type": "regular-file",
-      "size": 33875,
-      "sha256": "5e6b46b82231c2881921ae74aafd145cc9df758885b5bc3ca2a316a4e8635089",
+      "size": 33901,
+      "sha256": "1f988e8dbde967ae56b3e7d22644a023712927cc2ed482ac2444924a7f7c6e9d",
       "executable": false
     },
     {
@@ -3458,8 +3458,8 @@
     {
       "path": "scripts/quality/run_independent_migration_proof.py",
       "type": "regular-file",
-      "size": 48948,
-      "sha256": "1dbc0313f18947161ae9e7cf9e639bebde2c4bf80dc0fbe235f4272083f7326b",
+      "size": 52129,
+      "sha256": "2e6f6fa309f5186d695b8444331326ffb7e696738104c0636d8dcee8e9d762bf",
       "executable": false
     },
     {

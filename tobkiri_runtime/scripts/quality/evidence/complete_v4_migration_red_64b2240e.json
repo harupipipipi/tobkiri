@@ -9,16 +9,16 @@
       "declaration_disk_runtime": 0,
       "double_authority": 0,
       "executable_source_registry": 0,
-      "launcher_safety": 3,
+      "launcher_safety": 0,
       "legacy_registry_and_installed_lookup": 0,
       "migration_evidence": 7,
-      "offline_projection": 8
+      "offline_projection": 0
     },
-    "legacy_manifest_declared_packs": 141,
+    "legacy_manifest_declared_packs": 143,
     "migration_status": {
-      "generated-draft": 6,
+      "generated-draft": 4,
       "release-verified": 135,
-      "semantically-reviewed": 2
+      "semantically-reviewed": 4
     },
     "production_pack_directories": 143,
     "v4_artifact_files": 572,
@@ -34,32 +34,7 @@
     "declaration_disk_runtime": [],
     "double_authority": [],
     "executable_source_registry": [],
-    "launcher_safety": [
-      {
-        "expected_build_identity": "rumi_ai_gateway_pack:1.0.0",
-        "expected_content_hash": "sha256:91be40db9c1bd2e1f36eec3ed8c147e67cae890ed05a0ed684666e8daa032821",
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json",
-        "rule": "unverified_v3_provenance",
-        "symbol": "unverified_v3_provenance"
-      },
-      {
-        "expected_build_identity": "rumi_ai_pipeline_pack:1.0.0",
-        "expected_content_hash": "sha256:9d7ccc4dd9a3f0a63edbf2ac89e8e5e9e9d7f3d0e25b62b1014dc20bfa86d818",
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/rumi_ai_pipeline_pack/rumi.pack.v3.json",
-        "rule": "unverified_v3_provenance",
-        "symbol": "unverified_v3_provenance"
-      },
-      {
-        "expected_build_identity": "rumi_command_protocol_pack:1.0.0",
-        "expected_content_hash": "sha256:f895ff68050d0ab04cbd14572f86141243af0cf60ca42d1b0f860fb849a87a57",
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/rumi.pack.v3.json",
-        "rule": "unverified_v3_provenance",
-        "symbol": "unverified_v3_provenance"
-      }
-    ],
+    "launcher_safety": [],
     "legacy_registry_and_installed_lookup": [],
     "migration_evidence": [
       {
@@ -67,9 +42,10 @@
           "pack_specific_semantic_comparison_unverified",
           "pack_specific_operation_mapping_missing",
           "pack_specific_migration_receipt_missing",
-          "curated_review_source_digest_mismatch",
           "curated_review_target_digest_mismatch",
           "runtime_receipt_target_digest_mismatch",
+          "runtime_receipt_semantic_record_digest_mismatch",
+          "runtime_receipt_review_attestation_digest_mismatch",
           "pack_specific_semantic_comparison_unverified",
           "pack_specific_operation_mapping_missing"
         ],
@@ -85,8 +61,9 @@
           "pack_specific_operation_mapping_missing",
           "pack_specific_migration_receipt_missing",
           "curated_review_source_digest_mismatch",
-          "curated_review_target_digest_mismatch",
           "runtime_receipt_target_digest_mismatch",
+          "runtime_receipt_semantic_record_digest_mismatch",
+          "runtime_receipt_review_attestation_digest_mismatch",
           "pack_specific_semantic_comparison_unverified",
           "pack_specific_operation_mapping_missing"
         ],
@@ -99,8 +76,8 @@
       {
         "errors": [
           "curated_review_source_digest_mismatch",
-          "curated_review_target_digest_mismatch",
-          "runtime_receipt_target_digest_mismatch"
+          "runtime_receipt_target_digest_mismatch",
+          "runtime_receipt_review_attestation_digest_mismatch"
         ],
         "line": 1,
         "pack_id": "rumi_ai_pipeline_pack",
@@ -111,8 +88,9 @@
       {
         "errors": [
           "curated_review_source_digest_mismatch",
-          "curated_review_target_digest_mismatch",
-          "runtime_receipt_target_digest_mismatch"
+          "runtime_receipt_target_digest_mismatch",
+          "runtime_receipt_semantic_record_digest_mismatch",
+          "runtime_receipt_review_attestation_digest_mismatch"
         ],
         "line": 1,
         "pack_id": "rumi_command_protocol_pack",
@@ -125,8 +103,10 @@
           "pack_specific_semantic_comparison_unverified",
           "pack_specific_operation_mapping_missing",
           "pack_specific_migration_receipt_missing",
-          "curated_review_target_digest_mismatch",
+          "curated_review_source_digest_mismatch",
           "runtime_receipt_target_digest_mismatch",
+          "runtime_receipt_semantic_record_digest_mismatch",
+          "runtime_receipt_review_attestation_digest_mismatch",
           "pack_specific_semantic_comparison_unverified",
           "pack_specific_operation_mapping_missing"
         ],
@@ -138,14 +118,9 @@
       },
       {
         "errors": [
-          "pack_specific_semantic_comparison_unverified",
-          "pack_specific_operation_mapping_missing",
-          "pack_specific_migration_receipt_missing",
-          "curated_review_source_digest_mismatch",
-          "curated_review_target_digest_mismatch",
           "runtime_receipt_target_digest_mismatch",
-          "pack_specific_semantic_comparison_unverified",
-          "pack_specific_operation_mapping_missing"
+          "runtime_receipt_semantic_record_digest_mismatch",
+          "runtime_receipt_review_attestation_digest_mismatch"
         ],
         "line": 1,
         "pack_id": "tobkiri_ui_settings_pack",
@@ -168,64 +143,15 @@
           "tobkiri_ui_settings_pack"
         ],
         "status_counts": {
-          "generated-draft": 6,
+          "generated-draft": 4,
           "release-verified": 135,
-          "semantically-reviewed": 2
+          "semantically-reviewed": 4
         },
         "symbol": "migration_release_proof_missing",
         "unverified_count": 8
       }
     ],
-    "offline_projection": [
-      {
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/ecosystem.json",
-        "rule": "projection_source_identity_mismatch",
-        "symbol": "projection_source_identity_mismatch"
-      },
-      {
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/ecosystem.json",
-        "rule": "canonical_v4_projection_identity_mismatch",
-        "symbol": "canonical_v4_projection_identity_mismatch"
-      },
-      {
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/rumi_ai_pipeline_pack/ecosystem.json",
-        "rule": "projection_source_identity_mismatch",
-        "symbol": "projection_source_identity_mismatch"
-      },
-      {
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/rumi_ai_pipeline_pack/ecosystem.json",
-        "rule": "canonical_v4_projection_identity_mismatch",
-        "symbol": "canonical_v4_projection_identity_mismatch"
-      },
-      {
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/ecosystem.json",
-        "rule": "projection_source_identity_mismatch",
-        "symbol": "projection_source_identity_mismatch"
-      },
-      {
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/ecosystem.json",
-        "rule": "canonical_v4_projection_identity_mismatch",
-        "symbol": "canonical_v4_projection_identity_mismatch"
-      },
-      {
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/ecosystem.json",
-        "rule": "projection_source_identity_mismatch",
-        "symbol": "projection_source_identity_mismatch"
-      },
-      {
-        "line": 1,
-        "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/ecosystem.json",
-        "rule": "canonical_v4_projection_identity_mismatch",
-        "symbol": "canonical_v4_projection_identity_mismatch"
-      }
-    ]
+    "offline_projection": []
   },
   "gate": {
     "clean": false,
@@ -269,33 +195,8 @@
       "status": "GREEN"
     },
     "launcher_safety": {
-      "findings": [
-        {
-          "expected_build_identity": "rumi_ai_gateway_pack:1.0.0",
-          "expected_content_hash": "sha256:91be40db9c1bd2e1f36eec3ed8c147e67cae890ed05a0ed684666e8daa032821",
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json",
-          "rule": "unverified_v3_provenance",
-          "symbol": "unverified_v3_provenance"
-        },
-        {
-          "expected_build_identity": "rumi_ai_pipeline_pack:1.0.0",
-          "expected_content_hash": "sha256:9d7ccc4dd9a3f0a63edbf2ac89e8e5e9e9d7f3d0e25b62b1014dc20bfa86d818",
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/rumi_ai_pipeline_pack/rumi.pack.v3.json",
-          "rule": "unverified_v3_provenance",
-          "symbol": "unverified_v3_provenance"
-        },
-        {
-          "expected_build_identity": "rumi_command_protocol_pack:1.0.0",
-          "expected_content_hash": "sha256:f895ff68050d0ab04cbd14572f86141243af0cf60ca42d1b0f860fb849a87a57",
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/rumi.pack.v3.json",
-          "rule": "unverified_v3_provenance",
-          "symbol": "unverified_v3_provenance"
-        }
-      ],
-      "status": "RED"
+      "findings": [],
+      "status": "GREEN"
     },
     "legacy_registry_and_installed_lookup": {
       "findings": [],
@@ -308,9 +209,10 @@
             "pack_specific_semantic_comparison_unverified",
             "pack_specific_operation_mapping_missing",
             "pack_specific_migration_receipt_missing",
-            "curated_review_source_digest_mismatch",
             "curated_review_target_digest_mismatch",
             "runtime_receipt_target_digest_mismatch",
+            "runtime_receipt_semantic_record_digest_mismatch",
+            "runtime_receipt_review_attestation_digest_mismatch",
             "pack_specific_semantic_comparison_unverified",
             "pack_specific_operation_mapping_missing"
           ],
@@ -326,8 +228,9 @@
             "pack_specific_operation_mapping_missing",
             "pack_specific_migration_receipt_missing",
             "curated_review_source_digest_mismatch",
-            "curated_review_target_digest_mismatch",
             "runtime_receipt_target_digest_mismatch",
+            "runtime_receipt_semantic_record_digest_mismatch",
+            "runtime_receipt_review_attestation_digest_mismatch",
             "pack_specific_semantic_comparison_unverified",
             "pack_specific_operation_mapping_missing"
           ],
@@ -340,8 +243,8 @@
         {
           "errors": [
             "curated_review_source_digest_mismatch",
-            "curated_review_target_digest_mismatch",
-            "runtime_receipt_target_digest_mismatch"
+            "runtime_receipt_target_digest_mismatch",
+            "runtime_receipt_review_attestation_digest_mismatch"
           ],
           "line": 1,
           "pack_id": "rumi_ai_pipeline_pack",
@@ -352,8 +255,9 @@
         {
           "errors": [
             "curated_review_source_digest_mismatch",
-            "curated_review_target_digest_mismatch",
-            "runtime_receipt_target_digest_mismatch"
+            "runtime_receipt_target_digest_mismatch",
+            "runtime_receipt_semantic_record_digest_mismatch",
+            "runtime_receipt_review_attestation_digest_mismatch"
           ],
           "line": 1,
           "pack_id": "rumi_command_protocol_pack",
@@ -366,8 +270,10 @@
             "pack_specific_semantic_comparison_unverified",
             "pack_specific_operation_mapping_missing",
             "pack_specific_migration_receipt_missing",
-            "curated_review_target_digest_mismatch",
+            "curated_review_source_digest_mismatch",
             "runtime_receipt_target_digest_mismatch",
+            "runtime_receipt_semantic_record_digest_mismatch",
+            "runtime_receipt_review_attestation_digest_mismatch",
             "pack_specific_semantic_comparison_unverified",
             "pack_specific_operation_mapping_missing"
           ],
@@ -379,14 +285,9 @@
         },
         {
           "errors": [
-            "pack_specific_semantic_comparison_unverified",
-            "pack_specific_operation_mapping_missing",
-            "pack_specific_migration_receipt_missing",
-            "curated_review_source_digest_mismatch",
-            "curated_review_target_digest_mismatch",
             "runtime_receipt_target_digest_mismatch",
-            "pack_specific_semantic_comparison_unverified",
-            "pack_specific_operation_mapping_missing"
+            "runtime_receipt_semantic_record_digest_mismatch",
+            "runtime_receipt_review_attestation_digest_mismatch"
           ],
           "line": 1,
           "pack_id": "tobkiri_ui_settings_pack",
@@ -409,9 +310,9 @@
             "tobkiri_ui_settings_pack"
           ],
           "status_counts": {
-            "generated-draft": 6,
+            "generated-draft": 4,
             "release-verified": 135,
-            "semantically-reviewed": 2
+            "semantically-reviewed": 4
           },
           "symbol": "migration_release_proof_missing",
           "unverified_count": 8
@@ -420,57 +321,8 @@
       "status": "RED"
     },
     "offline_projection": {
-      "findings": [
-        {
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/ecosystem.json",
-          "rule": "projection_source_identity_mismatch",
-          "symbol": "projection_source_identity_mismatch"
-        },
-        {
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/ecosystem.json",
-          "rule": "canonical_v4_projection_identity_mismatch",
-          "symbol": "canonical_v4_projection_identity_mismatch"
-        },
-        {
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/rumi_ai_pipeline_pack/ecosystem.json",
-          "rule": "projection_source_identity_mismatch",
-          "symbol": "projection_source_identity_mismatch"
-        },
-        {
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/rumi_ai_pipeline_pack/ecosystem.json",
-          "rule": "canonical_v4_projection_identity_mismatch",
-          "symbol": "canonical_v4_projection_identity_mismatch"
-        },
-        {
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/ecosystem.json",
-          "rule": "projection_source_identity_mismatch",
-          "symbol": "projection_source_identity_mismatch"
-        },
-        {
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/ecosystem.json",
-          "rule": "canonical_v4_projection_identity_mismatch",
-          "symbol": "canonical_v4_projection_identity_mismatch"
-        },
-        {
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/ecosystem.json",
-          "rule": "projection_source_identity_mismatch",
-          "symbol": "projection_source_identity_mismatch"
-        },
-        {
-          "line": 1,
-          "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/ecosystem.json",
-          "rule": "canonical_v4_projection_identity_mismatch",
-          "symbol": "canonical_v4_projection_identity_mismatch"
-        }
-      ],
-      "status": "RED"
+      "findings": [],
+      "status": "GREEN"
     }
   },
   "nodeids": [
@@ -798,6 +650,7 @@
         "rumi_ai_modality_pack",
         "rumi_ai_pipeline_pack",
         "rumi_ai_routing_pack",
+        "rumi_ai_strategy_runtime_pack",
         "rumi_ai_stream_pack",
         "rumi_ai_tool_bridge_pack",
         "rumi_ai_usage_pack",
@@ -834,6 +687,7 @@
         "rumi_credential_broker_pack",
         "rumi_customer_research_pack",
         "rumi_data_analysis_pack",
+        "rumi_deepthink_pack",
         "rumi_default_tool_projection_pack",
         "rumi_default_tools_pack",
         "rumi_desktop_host_service_pack",
@@ -1224,9 +1078,9 @@
       ]
     },
     "migration_status_counts": {
-      "generated-draft": 6,
+      "generated-draft": 4,
       "release-verified": 135,
-      "semantically-reviewed": 2
+      "semantically-reviewed": 4
     },
     "migration_status_records": [
       {
@@ -1312,7 +1166,7 @@
       {
         "classified_as": "generated-draft",
         "declared_authority": "v4-authoritative",
-        "legacy_manifest_authority": null,
+        "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_ai_strategy_runtime_pack",
         "v4_artifacts": true,
         "v4_only": true
@@ -1606,9 +1460,9 @@
         "v4_only": false
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "semantically-reviewed",
         "declared_authority": "v4-authoritative",
-        "legacy_manifest_authority": null,
+        "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_deepthink_pack",
         "v4_artifacts": true,
         "v4_only": true
@@ -2358,7 +2212,7 @@
         "v4_only": true
       },
       {
-        "classified_as": "generated-draft",
+        "classified_as": "semantically-reviewed",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "tobkiri_ui_settings_pack",
@@ -2529,8 +2383,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "bd5fc1b29b4e25387329240a0d3b656e2e317b12",
-    "semantic_digest": "sha256:788cd3523d67ff4c5e3e50a2d1595bc1f6affe207bbb6b58168dc6ba446e85f4",
+    "observed_head_sha": "15ab3d6ca5afea96f1e584e3fd99248613133e48",
+    "semantic_digest": "sha256:5a0b62dc1875649e05c4a1aa3e6b9d511413141835e78684b5069181562cfd08",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }

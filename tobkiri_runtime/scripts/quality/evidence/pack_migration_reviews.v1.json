@@ -31,12 +31,12 @@
           "release readiness"
         ]
       },
-      "reviewed_at": "2026-09-29T00:17:13+09:00",
+      "reviewed_at": "2026-09-29T00:21:25+09:00",
       "reviewer_id": "codex:independent-semantic-review:strategy-isolation-2026-09-29",
       "semantic_record_digest": "sha256:5a79118f2900ec9de8ed19078ef47624a4e27979c85bc650cc6e8bd0da1b138d",
       "source_digest": "sha256:595d5167a3672392f81a23d5df1059c32f8809dcadc4f5dc0bd95ad4e13f9956",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:625998d3de08c1a3698610beb67fbfa38b13f648cc97e3e531ee581580f85ddb",
+      "target_digest": "sha256:7bad323c2a529c33ecb5ec9301ce228f80a9ffd2bae8a9f8ae0c400abbbc1713",
       "semantic_record": {
         "status": "verified",
         "equivalent": true,
@@ -172,7 +172,7 @@
         "rationale": "Independent review reconciled 3 hardened legacy operation records with the exact v4 Pack quartet for defaultspack. Every mapping has the same function identity, contract identifier/version, implementation path/digest, and target provider semantics. All input, output, and error schemas are canonically equal.",
         "semantic_record_digest": "sha256:5a79118f2900ec9de8ed19078ef47624a4e27979c85bc650cc6e8bd0da1b138d"
       },
-      "review_attestation_digest": "sha256:a821d68b88c7a1b9d30613a11ae5b553719d887dc89ae313d5581c1a9496c81d"
+      "review_attestation_digest": "sha256:238898b459c19156df2066ea4a2285c3a163452c853aae0bd76cf2d736e1a83a"
     },
     "rumi_agent_continuity_pack": {
       "pack_id": "rumi_agent_continuity_pack",
@@ -443,10 +443,10 @@
           "release readiness"
         ]
       },
-      "reviewed_at": "2026-09-29T00:17:13+09:00",
+      "reviewed_at": "2026-09-29T00:21:25+09:00",
       "reviewer_id": "codex:independent-semantic-review:strategy-isolation-2026-09-29",
       "semantic_record_digest": "sha256:d640c20ceb8c2692936416bd773f9af26109075eaf394bede9570807e21db60f",
-      "source_digest": "sha256:6e0dd7e4d6fd661ac9b5b2ae2ef8b2aa4eb6075904660da8b263060614ce5a11",
+      "source_digest": "sha256:341320b106f2234f4b7a64b04cfbb0bddf9d720f99a7e8082148969841bc8d4f",
       "source_kind": "independent-curated",
       "target_digest": "sha256:2434050a9372b7daee4c62779992c65ecdaa061989b56dacb30e30a3a99533f4",
       "semantic_record": {
@@ -636,7 +636,7 @@
         "rationale": "Independent review reconciled 4 hardened legacy operation records with the exact v4 Pack quartet for rumi_ai_gateway_pack. Every mapping has the same function identity, contract identifier/version, implementation path/digest, and target provider semantics. All input, output, and error schemas are canonically equal.",
         "semantic_record_digest": "sha256:d640c20ceb8c2692936416bd773f9af26109075eaf394bede9570807e21db60f"
       },
-      "review_attestation_digest": "sha256:e38f7eb201cd215a52a1f74321a69441e12e5bbc2bef2d55b933cad3ad2a3b05"
+      "review_attestation_digest": "sha256:56141e6d4a9ac86501b2b129a4b6677d32c166ce91228cd61237bf070c552604"
     },
     "rumi_ai_modality_pack": {
       "pack_id": "rumi_ai_modality_pack",
@@ -703,13 +703,13 @@
           "release readiness"
         ]
       },
-      "reviewed_at": "2026-09-29T00:17:13+09:00",
+      "reviewed_at": "2026-09-29T00:21:25+09:00",
       "reviewer_id": "codex:independent-semantic-review:strategy-isolation-2026-09-29",
       "semantic_record_digest": "sha256:6c7a9167d99b3500a9e35e02ba8946337cb3d813dddd95ddfd9ed385f4b44bb4",
-      "source_digest": "sha256:79c82b84d710e14b4e0450d7c451447c8d420243068a73a55bcc52270f69ff4f",
+      "source_digest": "sha256:42263e44db3ad798c6872a3fa8b67209fe4a54829f19308acfe5fbc3961ccd83",
       "source_kind": "independent-curated",
       "target_digest": "sha256:ff28630be8f3aa98bb6bc7ae18513dc71a5d39cb3f9f05b0e5deaa66f160c27b",
-      "review_attestation_digest": "sha256:a6714f3ed18e0bee9abb68b8264348378ad4966991228a27b880c2dd76c772d4"
+      "review_attestation_digest": "sha256:753d56048216134e556cbdd0edb5d4a606de2e18401cb4c99dc2c28f4056c863"
     },
     "rumi_ai_routing_pack": {
       "pack_id": "rumi_ai_routing_pack",
@@ -1552,13 +1552,13 @@
           "release readiness"
         ]
       },
-      "reviewed_at": "2026-09-29T00:17:13+09:00",
+      "reviewed_at": "2026-09-29T00:21:25+09:00",
       "reviewer_id": "codex:independent-semantic-review:strategy-isolation-2026-09-29",
       "semantic_record_digest": "sha256:0c98a8f256868e0238ece08a61c3186661f394638426c50e64bc54ec7ab1942d",
-      "source_digest": "sha256:c404d58d453ddd38f602f271d7cf2883b9c18c29e2bb317cfdab3bf51f5f87c1",
+      "source_digest": "sha256:5e24b987da94a1163ed71b5bb46b1b091b92ec9544fc5e4bfa6682938b7a05f7",
       "source_kind": "independent-curated",
       "target_digest": "sha256:0bd4040a0f097520388ea31700e1ddf3c78c022242216b6799d9b2840ab704f9",
-      "review_attestation_digest": "sha256:ccda4b646934782583e4bb04f55e8a36826fb8478261bff2af4eccf11f8d0754"
+      "review_attestation_digest": "sha256:c28f357e8c8b9b377663e9aff75978819e16d0b3edcf7f56fb2da40ade0d238e"
     },
     "rumi_company_agent_adapter_pack": {
       "pack_id": "rumi_company_agent_adapter_pack",
@@ -8756,10 +8756,10 @@
           "release readiness"
         ]
       },
-      "reviewed_at": "2026-09-29T00:17:13+09:00",
+      "reviewed_at": "2026-09-29T00:21:25+09:00",
       "reviewer_id": "codex:independent-semantic-review:strategy-isolation-2026-09-29",
       "semantic_record_digest": "sha256:18e2572ef9ab3321881aa7c3edbec02f75bfd09ad1ba36a9426f57a5cae1dec8",
-      "source_digest": "sha256:b5422fec6107bd400fcd8f277225f0be4fab91da8813fce24a8159a0a8fde902",
+      "source_digest": "sha256:875ef2ca61ed1ccfd6a53b01ddb1f039c09cef548552b311a3d2f2e3c0db8261",
       "source_kind": "independent-curated",
       "target_digest": "sha256:71c02e8b2c0c276eb43bac5bd3f49872cdcbb50d0d0f7c43e23dcbcd4a88ad98",
       "semantic_record": {
@@ -9037,7 +9037,7 @@
         "rationale": "Independent review reconciled 6 hardened legacy operation records with the exact v4 Pack quartet for rumi_turn_runtime_pack. Every mapping has the same function identity, contract identifier/version, implementation path/digest, and target provider semantics. The only nonidentity parameter mappings are bounded and preserve legacy requests: input:identity; output:accepted-divergence:stopped_confirmed is emitted only after Host-verified nested resource drain; otherwise cancellation_requested remains nonterminal.",
         "semantic_record_digest": "sha256:18e2572ef9ab3321881aa7c3edbec02f75bfd09ad1ba36a9426f57a5cae1dec8"
       },
-      "review_attestation_digest": "sha256:385015c6d6e3de1bf57a23b93178def05ced2af3b3c36a89a321a7f4ab39a99b"
+      "review_attestation_digest": "sha256:ec83122f25c9b1f49f19bbc0c9d4b48e283b15680b8646e904e5f1c1b857dbb3"
     },
     "rumi_voice_mobile_pack": {
       "pack_id": "rumi_voice_mobile_pack",
@@ -10743,7 +10743,7 @@
           "release readiness"
         ]
       },
-      "reviewed_at": "2026-09-29T00:17:13+09:00",
+      "reviewed_at": "2026-09-29T00:21:25+09:00",
       "reviewer_id": "codex:independent-semantic-review:strategy-isolation-2026-09-29",
       "semantic_record_digest": "sha256:5a801f26833544b8b40a6fe3e69138f33b80dbae25fec9844bd3907c8792f33f",
       "source_digest": "sha256:22f1563acf14943d539c0cc1c1da50aae7500dd3f627cb2bd7982cb88c87e4c3",
@@ -11186,7 +11186,7 @@
         "rationale": "Independent review reconciled 10 hardened legacy operation records with the exact v4 Pack quartet for tobkiri_ui_settings_pack. Every mapping has the same function identity, contract identifier/version, implementation path/digest, and target provider semantics. The only nonidentity parameter mappings are bounded and preserve legacy requests: input:accepted-divergence:optional v4 offset integer 0..10000; absent offset is first page and preserves legacy requests; output:identity.",
         "semantic_record_digest": "sha256:5a801f26833544b8b40a6fe3e69138f33b80dbae25fec9844bd3907c8792f33f"
       },
-      "review_attestation_digest": "sha256:1d36edd1eddccd1532bf0e961e88b70ac1ac2ee0b431c6747f2524d6ea20cd1c"
+      "review_attestation_digest": "sha256:bc1f98c767d1628bdd437dc4974290cdad571a66a6a7a55afeb8f57086f054fc"
     },
     "tobkiri_workflow_pack": {
       "pack_id": "tobkiri_workflow_pack",
@@ -12189,12 +12189,12 @@
           "release readiness"
         ]
       },
-      "reviewed_at": "2026-09-29T00:17:13+09:00",
+      "reviewed_at": "2026-09-29T00:21:25+09:00",
       "reviewer_id": "codex:independent-semantic-review:strategy-isolation-2026-09-29",
       "semantic_record_digest": "sha256:877a6067f8da2cfad92783b4a9ac988c9b5b6bfabc15f5ca186a1287daca72a3",
       "source_digest": "sha256:15c8115c5b47b480b1d1cd2a95220650de35cf51621cab29179c47d381817753",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:31031e4556cac4efa43185157ab6e3abb2bf9fc6fc7adaf04c803fb76234e75d",
+      "target_digest": "sha256:b3e5a5703c7b994b591eab86132ce757474fe030980be6fc4cf4f265824aaff2",
       "semantic_record": {
         "status": "verified",
         "equivalent": true,
@@ -12296,7 +12296,7 @@
         "rationale": "Independent review reconciled 2 hardened legacy operation records with the exact v4 Pack quartet for rumi_ai_strategy_runtime_pack. Every mapping has the same function identity, contract identifier/version, implementation path/digest, and target provider semantics. All input, output, and error schemas are canonically equal.",
         "semantic_record_digest": "sha256:877a6067f8da2cfad92783b4a9ac988c9b5b6bfabc15f5ca186a1287daca72a3"
       },
-      "review_attestation_digest": "sha256:f8324508b044d1ba35ced861c87bf4b77508797392e7fcb7a5cb0a4371d97817"
+      "review_attestation_digest": "sha256:2a06c5b8d7a585812403696c74e19fdb8a73516393eee6b9e8c274dc398c857f"
     },
     "rumi_deepthink_pack": {
       "pack_id": "rumi_deepthink_pack",
@@ -12327,7 +12327,7 @@
           "release readiness"
         ]
       },
-      "reviewed_at": "2026-09-29T00:17:13+09:00",
+      "reviewed_at": "2026-09-29T00:21:25+09:00",
       "reviewer_id": "codex:independent-semantic-review:strategy-isolation-2026-09-29",
       "semantic_record_digest": "sha256:97c236c6ed45fed78b2c29f5bb9dc47dd6eccba24fff4a87c86436475e6b32f7",
       "source_digest": "sha256:a928b1b8c52b0a933ac54ac5075a617672312bead1c9f635aadd42c9816db40e",
@@ -12391,7 +12391,7 @@
         "rationale": "Independent review reconciled 1 hardened legacy operation records with the exact v4 Pack quartet for rumi_deepthink_pack. Every mapping has the same function identity, contract identifier/version, implementation path/digest, and target provider semantics. All input, output, and error schemas are canonically equal.",
         "semantic_record_digest": "sha256:97c236c6ed45fed78b2c29f5bb9dc47dd6eccba24fff4a87c86436475e6b32f7"
       },
-      "review_attestation_digest": "sha256:961a899544121537cd580b670c21902a437b0ff6a3e8eff043eb98a79a04e318"
+      "review_attestation_digest": "sha256:e3f575dd24e7239384de76f007f16ab411542cbf5bc53e638783ee986267fe62"
     }
   },
   "schema": "io.tobkiri.quality.pack-migration-reviews.v1"
