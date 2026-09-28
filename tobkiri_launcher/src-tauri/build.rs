@@ -308,6 +308,7 @@ fn capture_local_development_authority(
             "prepared local development Defaults bundle is missing",
         ));
     }
+    verify_prepared_defaults_source_artifacts(&source_defaults, &repo_root.join(APP_SOURCE_DIR))?;
     let prepared_shell: serde_json::Value = serde_json::from_slice(&fs::read(
         source_defaults.join("v4/shell.tauri.default.shell.v1.json"),
     )?)
@@ -348,6 +349,54 @@ fn capture_local_development_authority(
     write_runtime_resource_manifest(&staged_root)?;
     let manifest = fs::read(staged_root.join(RUNTIME_RESOURCE_MANIFEST))?;
     Ok((staged_root, format!("{:x}", Sha256::digest(manifest))))
+}
+
+/// The Tauri dev hook prepares target/dev-defaults before Cargo runs. Direct
+/// Cargo builds must reject an older prepared bundle: the Host executes Pack
+/// roots from the checkout, while the active Profile pins the prepared bundle.
+fn verify_prepared_defaults_source_artifacts(
+    prepared_root: &Path,
+    runtime_root: &Path,
+) -> io::Result<()> {
+    let prepared_packs = prepared_root.join("v4/packs");
+    for entry in fs::read_dir(&prepared_packs)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        let name = entry.file_name();
+        let Some(pack_id) = name
+            .to_str()
+            .and_then(|name| name.strip_suffix(".pack.v4.json"))
+        else {
+            continue;
+        };
+        let source = runtime_root
+            .join("ecosystem")
+            .join(pack_id)
+            .join("pack.v4.json");
+        if !source.is_file() {
+            continue;
+        }
+        let prepared: serde_json::Value = serde_json::from_slice(&fs::read(entry.path())?)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        let current: serde_json::Value = serde_json::from_slice(&fs::read(source)?)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        let prepared_pack = &prepared["pack"];
+        let current_pack = &current["pack"];
+        let prepared_digest = prepared_pack["artifact_digest"].as_str();
+        let current_digest = current_pack["artifact_digest"].as_str();
+        if prepared_pack["id"].as_str() != Some(pack_id)
+            || current_pack["id"].as_str() != Some(pack_id)
+            || prepared_digest.is_none()
+            || prepared_digest != current_digest
+        {
+            return Err(invalid_release(format!(
+                "prepared development Defaults Pack {pack_id} is stale; rerun the Tauri dev preparation hook or prepare_viewer_runtime.py --mode dev"
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Tauri copies `gen/app` into `target/[<triple>/]debug/app` without removing
@@ -6343,7 +6392,7 @@ mod tests {
         let defaults = project_dir.join("target/dev-defaults");
         let pack = repo_root.join("tobkiri_runtime/ecosystem/defaultspack");
         let output = tree.path().join("out");
-        fs::create_dir_all(defaults.join("v4")).unwrap();
+        fs::create_dir_all(defaults.join("v4/packs")).unwrap();
         fs::create_dir_all(defaults.join("platform-artifacts")).unwrap();
         fs::create_dir_all(&pack).unwrap();
         fs::create_dir_all(&output).unwrap();
@@ -6393,6 +6442,65 @@ mod tests {
             fs::read(stage.join("bundled/dev-defaults/v4/bundle.lock.json")).unwrap(),
             b"defaults-lock"
         );
+    }
+
+    #[test]
+    fn local_authority_stage_rejects_prepared_pack_from_older_checkout() {
+        let tree = TestTree::new("local-authority-stale-pack");
+        let repo_root = tree.path();
+        let project_dir = repo_root.join("tobkiri_launcher/src-tauri");
+        let defaults = project_dir.join("target/dev-defaults");
+        let pack = repo_root.join("tobkiri_runtime/ecosystem/rumi_ai_gateway_pack");
+        let defaultspack = repo_root.join("tobkiri_runtime/ecosystem/defaultspack");
+        let output = tree.path().join("out");
+        fs::create_dir_all(defaults.join("v4/packs")).unwrap();
+        fs::create_dir_all(defaults.join("platform-artifacts")).unwrap();
+        fs::create_dir_all(&pack).unwrap();
+        fs::create_dir_all(&defaultspack).unwrap();
+        fs::create_dir_all(&output).unwrap();
+        fs::write(defaults.join("v4/bundle.lock.json"), b"defaults-lock").unwrap();
+        let artifact = defaults.join("platform-artifacts/shell.exe");
+        fs::write(&artifact, b"shell").unwrap();
+        let prepared_shell = serde_json::json!({
+            "availability": "verified",
+            "launch": {"variants": [{
+                "relative_path": "shell.exe",
+                "artifact_digest": release_artifact_digest(&artifact).unwrap().0,
+            }]},
+        });
+        fs::write(
+            defaults.join("v4/shell.tauri.default.shell.v1.json"),
+            serde_json::to_vec(&prepared_shell).unwrap(),
+        )
+        .unwrap();
+        let prepared_pack = serde_json::json!({
+            "pack": {"id": "rumi_ai_gateway_pack", "artifact_digest": format!("sha256:{}", "1".repeat(64))}
+        });
+        fs::write(
+            defaults.join("v4/packs/rumi_ai_gateway_pack.pack.v4.json"),
+            serde_json::to_vec(&prepared_pack).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            pack.join("pack.v4.json"),
+            serde_json::to_vec(&prepared_pack).unwrap(),
+        )
+        .unwrap();
+
+        capture_local_development_authority(&project_dir, repo_root, &output)
+            .expect("matching prepared Pack must stage");
+
+        let current_pack = serde_json::json!({
+            "pack": {"id": "rumi_ai_gateway_pack", "artifact_digest": format!("sha256:{}", "2".repeat(64))}
+        });
+        fs::write(
+            pack.join("pack.v4.json"),
+            serde_json::to_vec(&current_pack).unwrap(),
+        )
+        .unwrap();
+        let error = capture_local_development_authority(&project_dir, repo_root, &output)
+            .expect_err("stale prepared Pack must not become active Profile authority");
+        assert!(error.to_string().contains("rumi_ai_gateway_pack is stale"));
     }
 
     #[test]
