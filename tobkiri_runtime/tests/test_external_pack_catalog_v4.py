@@ -290,6 +290,7 @@ def test_signed_declarative_input_pack_reaches_production_selected_closure(
         install_defaultspack_profile_runtime,
     )
     from tests.test_production_runtime_v4_headless import _shell_artifact
+    from tests.conformance_support.packaged_profile import packaged_profile_bundle_root
     from tobkiri_host.artifact_compiler import compile_pack_root
     from tobkiri_host.composition import AuthorityCeilings
     from tobkiri_host.runtime import ProductionRuntimeV4, _selected_frontend_pack_closure
@@ -344,7 +345,7 @@ def test_signed_declarative_input_pack_reaches_production_selected_closure(
     pack_roots = resolve_admitted_pack_roots(
         tuple(sorted(binding_pack_ids)), RUNTIME_ROOT / "ecosystem",
     )
-    catalog = BundledCatalog.load(RUNTIME_ROOT / "ecosystem" / "defaultspack" / "v4")
+    catalog = BundledCatalog.load(packaged_profile_bundle_root())
     shell = _shell_artifact(catalog)
     artifacts = [shell, *(compile_pack_root(root).artifact for root in pack_roots.values())]
     principals_by_function: dict[str, list[FunctionPrincipal]] = {}
@@ -380,6 +381,7 @@ def test_signed_declarative_input_pack_reaches_production_selected_closure(
         item["identity"]: item["artifact_digest"]
         for item in active.resolved.lock["effective_set"]
     }
+    assert effective[shell.pack_id] == shell.digest
     runtime = ProductionRuntimeV4.capture(
         profile=active.resolved.profile,
         lock=active.resolved.lock,
