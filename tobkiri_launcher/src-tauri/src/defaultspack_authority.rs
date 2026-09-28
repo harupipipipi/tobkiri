@@ -1041,6 +1041,25 @@ fn catalog_for_bound_development_bundle(
     catalog_with_development_profile(catalog, &profile, profile_digest)
 }
 
+/// Give the presentation launch path the same build-bound catalog used by
+/// authority resolution. Both readers must compare the same Profile and Shell
+/// digests after the sealed development stage has been verified.
+#[cfg(debug_assertions)]
+pub(crate) fn catalog_for_verified_development_presentation(
+    config: &AppConfig,
+    catalog: crate::presentation::PresentationCatalog,
+) -> Result<crate::presentation::PresentationCatalog> {
+    if !has_verified_active_profile(config)?
+        || bound_local_development_authority_stage(config)?.is_none()
+    {
+        return Ok(catalog);
+    }
+    let (_, bundle_root, _) = development_defaults_roots(config)?
+        .context("build-bound development Defaults root is unavailable")?;
+    let bundle_lock = verify_bundle_lock(&bundle_root)?;
+    catalog_for_bound_development_bundle(catalog, &bundle_root, &bundle_lock)
+}
+
 #[cfg(debug_assertions)]
 fn catalog_with_development_profile(
     mut catalog: crate::presentation::PresentationCatalog,

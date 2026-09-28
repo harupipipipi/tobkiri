@@ -664,6 +664,10 @@ fn resolve_verified_presentation_target(
     let execution_identity = authority.execution_identity()?;
     let launch_contribution = authority.runtime_launch_contribution()?;
     let catalog = load_catalog(config)?;
+    #[cfg(debug_assertions)]
+    let catalog = crate::defaultspack_authority::catalog_for_verified_development_presentation(
+        config, catalog,
+    )?;
     let catalog_revision = catalog_revision(&catalog)?;
     if authority.catalog_revision != catalog_revision {
         bail!("active ResolvedPlan uses a stale presentation catalog");
@@ -1879,11 +1883,7 @@ fn resolve_artifact(
     // Development builds materialize the Shell beneath the ignored checkout
     // runtime. Verify those exact bytes at selection time instead of requiring
     // a production signing key merely to exercise the Launcher locally.
-    if cfg!(debug_assertions)
-        && config.is_dev_workspace()
-        && artifact.path.is_none()
-        && artifact.sha256.is_none()
-    {
+    if cfg!(debug_assertions) && config.is_dev_workspace() && artifact.path.is_none() {
         let relative = Path::new("bundled")
             .join("dev-shell")
             .join(&variant.artifact_ref);
@@ -1892,6 +1892,16 @@ fn resolve_artifact(
         if path.exists() {
             let (digest, size) = artifact_integrity::digest_and_size(&path)
                 .context("development Shell artifact could not be hashed or measured")?;
+            if artifact
+                .sha256
+                .as_deref()
+                .is_some_and(|expected| normalize_digest(expected) != normalize_digest(&digest))
+            {
+                artifact.status = "digest_mismatch".to_string();
+                artifact.status_detail =
+                    "Development Shell differs from the build-bound Profile digest.".to_string();
+                return Ok(artifact);
+            }
             artifact.path = Some(relative_string);
             artifact.sha256 = Some(digest);
             artifact.size = Some(size);
@@ -3388,6 +3398,19 @@ mod tests {
         fs::write(&artifact_path, b"verified development shell").unwrap();
         let artifact = resolve_artifact(&config, shell).unwrap();
         assert!(artifact.sha256.as_ref().unwrap().starts_with("sha256:"));
+        let mut build_bound_shell = shell.clone();
+        let pinned_variant = build_bound_shell
+            .artifact_variants
+            .iter_mut()
+            .find(|candidate| {
+                candidate.platform == current_platform()
+                    && candidate.architecture == current_architecture()
+            })
+            .unwrap();
+        pinned_variant.sha256 = artifact.sha256.clone();
+        let pinned_artifact = resolve_artifact(&config, &build_bound_shell).unwrap();
+        assert_eq!(pinned_artifact.status, "verified");
+        assert_eq!(pinned_artifact.sha256, artifact.sha256);
         write_selection_with_identity(
             &config,
             &catalog,
@@ -3397,6 +3420,12 @@ mod tests {
         )
         .unwrap();
         fs::write(&artifact_path, b"changed development shell").unwrap();
+        assert_eq!(
+            resolve_artifact(&config, &build_bound_shell)
+                .unwrap()
+                .status,
+            "digest_mismatch"
+        );
         assert!(write_selection_with_identity(
             &config,
             &catalog,
