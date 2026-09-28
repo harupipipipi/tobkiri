@@ -214,6 +214,10 @@ class PackControlTimedOut(PackControlDenied):
     code = "pack_control_timeout"
 
 
+class PackControlOutcomeUnknown(PackControlUnavailable):
+    """A Profile mutation may have committed before its result was lost."""
+
+
 @dataclass(frozen=True)
 class _Binding:
     profile_id: str
@@ -1033,7 +1037,12 @@ class CapturedPackControlSession:
                     retained.append(candidate)
             packs = retained
         _activate_pack_set(state, packs)
-        self._recapture()
+        try:
+            self._recapture()
+        except Exception as error:
+            raise PackControlOutcomeUnknown(
+                "Profile activation committed but recapture is unavailable"
+            ) from error
         return {"pack_id": pack_id, "enabled": enabled, **self._binding_payload()}
 
     def _status(
@@ -2003,18 +2012,26 @@ def _activate_pack_set(state: Mapping[str, Any], pack_ids: list[str]) -> None:
     from .app_lifecycle_manager import pack_profile_transition
 
     with pack_profile_transition():
-        activate_resolved_profile_pack_set(
-            resolved,
-            activation_id=(
-                f"activation:{profile_id}-"
-                + resolved.plan["plan_digest"].removeprefix("sha256:")[:16]
-                + "-"
-                + secrets.token_hex(8)
-            ),
-            expected_profile_revision=str(plan.get("profile_revision") or ""),
-            expected_plan_digest=str(plan.get("plan_digest") or ""),
-            expected_activation_id=str(state.get("activation", {}).get("activation_id") or ""),
-        )
+        try:
+            activate_resolved_profile_pack_set(
+                resolved,
+                activation_id=(
+                    f"activation:{profile_id}-"
+                    + resolved.plan["plan_digest"].removeprefix("sha256:")[:16]
+                    + "-"
+                    + secrets.token_hex(8)
+                ),
+                expected_profile_revision=str(plan.get("profile_revision") or ""),
+                expected_plan_digest=str(plan.get("plan_digest") or ""),
+                expected_activation_id=str(state.get("activation", {}).get("activation_id") or ""),
+            )
+        except Exception as error:
+            # Once activation begins, a workspace record or the Host pointer
+            # may have committed before this exception.  A fresh request
+            # must inspect the active Profile rather than replay blindly.
+            raise PackControlOutcomeUnknown(
+                "Profile activation outcome requires reconciliation"
+            ) from error
 
 
 def _control_state_path(profile_id: str) -> Path:

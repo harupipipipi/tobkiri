@@ -67,7 +67,11 @@ from tobkiri_host.backends import (
 )
 from tobkiri_host.broker import RequestEnvelope
 from tobkiri_host.effects import ProviderOutcome
-from tobkiri_host.errors import AuthorizationError, BackendUnavailableError
+from tobkiri_host.errors import (
+    AmbiguousEffectError,
+    AuthorizationError,
+    BackendUnavailableError,
+)
 from tobkiri_host.models import (
     ExecutionKind,
     InvocationFrame,
@@ -5121,6 +5125,72 @@ def test_pack_enable_defers_capture_until_launcher_contract_renewal(
     )
     assert operation["state"] == "succeeded"
     assert operation["result"]["enabled"] is True
+
+
+def test_ambiguous_pack_enable_is_not_journaled_as_failed_or_retryable(
+    production_server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An entered mutation can finish after its Broker caller stopped waiting."""
+
+    server, session, _authority = production_server
+    cookie, csrf, origin = _authenticate(server)
+    request_id = str(uuid.uuid4())
+    calls = 0
+
+    def uncertain_invoke(*_args: object, **_kwargs: object) -> Mapping[str, object]:
+        nonlocal calls
+        calls += 1
+        raise AmbiguousEffectError("host-control-reconciliation")
+
+    monkeypatch.setattr(session, "invoke", uncertain_invoke)
+    status, payload, _ = _request(
+        server,
+        "POST",
+        _contract("POST", "/api/pack-control/enable"),
+        body={"pack_id": "rumi_media_inspect_service_pack"},
+        headers={
+            "Cookie": cookie,
+            "Origin": origin,
+            "X-Rumi-CSRF": csrf,
+            "X-Tobkiri-Request-ID": request_id,
+        },
+    )
+    assert status == 409, payload
+    assert payload["data"]["state"] == "indeterminate"
+    assert payload["data"]["retryable"] is False
+    assert payload["data"]["request_id"] == request_id
+    assert calls == 1
+
+    handler = server.handler_class
+    assert handler is not None
+    binding = handler._current_panel_auth_binding()
+    assert binding is not None
+    raw_session_id = cookie.split("=", 1)[1]
+    verified_session = server._panel_auth_manager.verify_session(raw_session_id, binding)
+    assert verified_session is not None
+    operation = server._operation_journal.operation_status(
+        request_id,
+        session_id=str(verified_session["session_id"]),
+    )
+    assert operation["state"] == "indeterminate"
+    assert operation["result"] is None
+
+    replay_status, replay, _ = _request(
+        server,
+        "POST",
+        _contract("POST", "/api/pack-control/enable"),
+        body={"pack_id": "rumi_media_inspect_service_pack"},
+        headers={
+            "Cookie": cookie,
+            "Origin": origin,
+            "X-Rumi-CSRF": csrf,
+            "X-Tobkiri-Request-ID": request_id,
+        },
+    )
+    assert replay_status == 409, replay
+    assert replay["data"]["state"] == "indeterminate"
+    assert calls == 1
 
 
 def test_revoke_denials_respond_before_logging_and_release_for_retry(

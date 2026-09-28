@@ -45,15 +45,16 @@ def test_authority_close_failure_retries_without_repeating_provider_cleanup() ->
     assert session.owned_authority_store.close.call_count == 2
 
 
-def test_server_stop_cancels_broker_requests_before_read_owners() -> None:
+def test_server_stop_cancels_only_broker_reads_before_read_owners() -> None:
     events = []
     session = _session(
         stop_callbacks=(lambda: events.append("read_owner_cancelled"),)
     )
-    session.broker.cancel_pending_requests.side_effect = lambda: events.append(
+    session.broker.cancel_pending_requests.side_effect = lambda **kwargs: events.append(
         "broker_requests_cancelled"
     )
 
     session.cancel_pending_reads()
 
     assert events == ["broker_requests_cancelled", "read_owner_cancelled"]
+    session.broker.cancel_pending_requests.assert_called_once_with(reads_only=True)

@@ -61,7 +61,7 @@ from .panel_auth import PanelAuthBinding, PanelAuthManager, get_panel_auth_manag
 from .pack_control_v4 import RuntimeSurfaceFactory
 from .authority.v4_models import AuthorityDenied
 from .authority.v4 import AuthorityStore
-from tobkiri_host.errors import HostCoreError
+from tobkiri_host.errors import AmbiguousEffectError, HostCoreError
 
 logger = logging.getLogger(__name__)
 
@@ -1532,19 +1532,41 @@ class PackAPIHandler(
         ) as error:
             public_result = _public_error_result(_exception_error_code(error))
             journal_error: BaseException | None = None
+            uncertain_effect = isinstance(error, AmbiguousEffectError)
             if operation_journal is not None and operation_record is not None:
                 try:
                     operation_journal.finish_operation(
                         request_id,
                         session_id=session_id,
-                        state="failed",
-                        result=public_result,
-                        safe_error_code=str(public_result["code"]),
+                        state="indeterminate" if uncertain_effect else "failed",
+                        result=None if uncertain_effect else public_result,
+                        safe_error_code=(
+                            "AMBIGUOUS_EFFECT" if uncertain_effect else str(public_result["code"])
+                        ),
                     )
                 except ControlReconciliationError as reconciliation_error:
                     journal_error = reconciliation_error
                     public_result = _public_error_result(HTTPRuntimeErrorCode.API_FAILURE)
-            self._send_contract_outcome(route_binding, public_result)
+            if uncertain_effect:
+                # The Provider may still commit after Broker cancellation.
+                # Preserve an explicit non-retryable unknown outcome; the
+                # authenticated caller can read this request's journal status.
+                self._send_response(
+                    APIResponse(
+                        False,
+                        data={
+                            "state": "indeterminate",
+                            "code": "operation_reconciliation_required",
+                            "request_id": request_id,
+                            "retryable": False,
+                            "write_set": [],
+                        },
+                        error="Control operation outcome requires reconciliation",
+                    ),
+                    409,
+                )
+            else:
+                self._send_contract_outcome(route_binding, public_result)
             # Write the bounded, sanitized response before diagnostic logging.
             # Logging a provider traceback can contend with suite-wide capture or
             # a slow sink and must never extend the frontend response deadline.

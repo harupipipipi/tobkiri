@@ -11,10 +11,11 @@ import sqlite3
 import subprocess
 import sys
 from concurrent.futures import Future
-from threading import Barrier, Event, Lock, Thread
+from threading import Barrier, Event, Lock, RLock, Thread
 from types import SimpleNamespace
 import time
 from typing import Any, Mapping, cast
+from unittest.mock import Mock
 
 import pytest
 
@@ -28,6 +29,7 @@ from tobkiri_host.backends import (
     BackendStatus,
 )
 from tobkiri_host.broker import (
+    _ActiveRequest,
     AdmissionTicket,
     NestedCancellationProof,
     RequestBroker,
@@ -68,6 +70,7 @@ from tobkiri_host.operation_cancellation import (
     OwnedCancellationHandles,
     nested_cancellation_proof_for,
 )
+from tobkiri_host.runtime import V4DispatchSession
 from tobkiri_host.ports import (
     OpaqueAuditReservation,
     OpaqueInvocationLease,
@@ -504,6 +507,109 @@ def test_external_timeout_is_fenced_persisted_and_never_auto_retried() -> None:
     assert fixture.backend.cancelled == ["request-1"]
     assert fixture.authority.fenced == ["request-1"]
     assert fixture.audit.failures == [("ambiguous_effect", True)]
+
+
+def test_host_control_write_timeout_cannot_be_reported_as_failed() -> None:
+    """A best-effort cancel after Provider entry leaves its write uncertain."""
+
+    entered = Event()
+    release = Event()
+
+    class SlowHostControl(FakeBackend):
+        cancellation_may_leave_effect_operations = frozenset(
+            {("io.tobkiri.notification.v1", "send")}
+        )
+
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            entered.set()
+            assert release.wait(timeout=2)
+            return self.outcome
+
+    fixture = make_broker(
+        effect=EffectClass.PRIVILEGED,
+        timeout_ms=50,
+        backend=SlowHostControl([]),
+    )
+    try:
+        with pytest.raises(AmbiguousEffectError):
+            fixture.broker.invoke(frame(50), context(), effect_scope={})
+        assert entered.is_set()
+        assert fixture.audit.failures == [("ambiguous_effect", True)]
+    finally:
+        release.set()
+        fixture.broker.close()
+
+
+def test_http_stop_read_fence_preserves_admitted_host_control_write() -> None:
+    """A server read fence lets an admitted privileged mutation finish."""
+
+    entered = Event()
+    release = Event()
+    observed: list[Event] = []
+    outcomes: list[Mapping[str, Any]] = []
+    errors: list[BaseException] = []
+
+    class SlowHostControl(FakeBackend):
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            observed.append(request.cancellation_requested)
+            entered.set()
+            assert release.wait(timeout=2)
+            return self.outcome
+
+    fixture = make_broker(
+        effect=EffectClass.PRIVILEGED,
+        timeout_ms=1000,
+        backend=SlowHostControl([]),
+    )
+
+    def run() -> None:
+        try:
+            outcomes.append(fixture.broker.invoke(frame(1000), context(), effect_scope={}))
+        except BaseException as error:
+            errors.append(error)
+
+    worker = Thread(target=run)
+    worker.start()
+    try:
+        assert entered.wait(timeout=2)
+        fixture.broker.cancel_pending_requests(reads_only=True)
+        assert not observed[0].is_set()
+        release.set()
+        worker.join(timeout=2)
+        assert not worker.is_alive()
+        assert errors == []
+        assert outcomes == [{"delivered": True}]
+        assert fixture.audit.failures == []
+    finally:
+        release.set()
+        worker.join(timeout=2)
+        fixture.broker.close()
+
+
+def test_http_stop_read_fence_recognizes_privileged_host_control_reads() -> None:
+    """The signed control metadata calls these reads PRIVILEGED."""
+
+    broker = object.__new__(RequestBroker)
+    broker._lifecycle_lock = RLock()
+    read = Event()
+    write = Event()
+    broker._active_requests = {
+        1: _ActiveRequest(
+            read,
+            EffectClass.PRIVILEGED,
+            ("tobkiri.host.pack-control.v4", "pack.status"),
+        ),
+        2: _ActiveRequest(
+            write,
+            EffectClass.PRIVILEGED,
+            ("tobkiri.host.pack-control.v4", "pack.enable"),
+        ),
+    }
+
+    broker.cancel_pending_requests(reads_only=True)
+
+    assert read.is_set()
+    assert not write.is_set()
 
 
 def test_read_timeout_finishes_cleanup_and_later_unique_request_recovers() -> None:
@@ -1188,6 +1294,56 @@ def test_broker_close_does_not_release_unstopped_request(
     assert not worker.is_alive()
     assert errors == []
     assert resources_released.wait(timeout=2)
+
+
+def test_capture_close_keeps_authority_until_uncertain_provider_exits() -> None:
+    """A timed-out Host mutation cannot outlive its Authority owner."""
+
+    entered = Event()
+    release = Event()
+
+    class SlowHostControl(FakeBackend):
+        cancellation_may_leave_effect_operations = frozenset(
+            {("io.tobkiri.notification.v1", "send")}
+        )
+
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            entered.set()
+            assert release.wait(timeout=5)
+            return self.outcome
+
+    fixture = make_broker(
+        effect=EffectClass.PRIVILEGED,
+        timeout_ms=50,
+        backend=SlowHostControl([]),
+    )
+    owner = Mock()
+    session = V4DispatchSession(
+        broker=fixture.broker,
+        context_for=Mock(),
+        effect_scope_for=Mock(),
+        providers={},
+        profile_id="defaults",
+        plan_digest="plan",
+        profile_revision="revision",
+        activation_id="activation",
+        owned_authority_store=owner,
+    )
+    try:
+        with pytest.raises(AmbiguousEffectError):
+            fixture.broker.invoke(frame(50), context(), effect_scope={})
+        assert entered.is_set()
+        with pytest.raises(RuntimeError, match="still draining"):
+            session.close()
+        owner.close.assert_not_called()
+    finally:
+        release.set()
+    deadline = time.monotonic() + 2
+    while fixture.broker.has_undrained_requests() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert not fixture.broker.has_undrained_requests()
+    session.close()
+    owner.close.assert_called_once_with()
 
 
 @pytest.mark.parametrize("effect", [EffectClass.READ, EffectClass.EXTERNAL_EFFECT])

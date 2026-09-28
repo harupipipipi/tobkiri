@@ -17,6 +17,7 @@ import pytest
 from core_runtime.pack_control_v4 import (
     PACK_CONTROL_CONTRACT,
     PackControlDenied,
+    PackControlOutcomeUnknown,
     PackControlUnavailable,
     PackControlUnapproved,
     capture_pack_control_session,
@@ -260,6 +261,28 @@ def test_catalog_install_approve_enable_and_restart_read_back(captured_session, 
 
     with AuthorityStore(user_data / "authority" / "v4.sqlite3") as authority:
         assert authority.active_activation_reservation(str(first_activation)) is None
+
+
+def test_committed_enable_with_failed_recapture_is_never_a_definite_failure(
+    captured_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The active pointer can commit before a read-back exception."""
+
+    session, _state_path, _user_data = captured_session
+    _approve_target(session)
+    before = capture_default_profile().activation["activation_id"]
+
+    def fail_recapture() -> None:
+        raise OSError("read-back unavailable")
+
+    monkeypatch.setattr(session, "_recapture", fail_recapture)
+    with pytest.raises(PackControlOutcomeUnknown):
+        _invoke(session, "pack.enable", {"pack_id": TARGET_PACK})
+
+    active = capture_default_profile()
+    assert active.activation["activation_id"] != before
+    assert TARGET_PACK in {item["pack_id"] for item in active.resolved.profile["packs"]}
 
 
 def test_scheduler_enable_projects_signed_dependency_edges(captured_session) -> None:
