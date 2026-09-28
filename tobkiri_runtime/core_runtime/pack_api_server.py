@@ -2278,30 +2278,44 @@ class PackAPIHandler(
         expected_keys = {"source_root", "public_key_path"}
         if commit:
             expected_keys.add("preview_digest")
-        if set(body) != expected_keys or any(
-            not isinstance(body.get(key), str)
-            or not body[key]
-            or "\x00" in body[key]
-            for key in expected_keys
-        ) or any(
-            not Path(body[key]).is_absolute()
-            for key in ("source_root", "public_key_path")
+        source_value = body.get("source_root")
+        key_value = body.get("public_key_path")
+        preview_digest = body.get("preview_digest")
+        if (
+            set(body) != expected_keys
+            or not isinstance(source_value, str)
+            or not source_value
+            or "\x00" in source_value
+            or not Path(source_value).is_absolute()
+            or not isinstance(key_value, str)
+            or not key_value
+            or "\x00" in key_value
+            or not Path(key_value).is_absolute()
+            or (
+                commit
+                and (
+                    not isinstance(preview_digest, str)
+                    or not preview_digest
+                    or "\x00" in preview_digest
+                )
+            )
         ):
             self._send_response(APIResponse(False, error="Invalid Pack selection"), 400)
             return
         from .native_pack_onboarding import commit_signed_pack, preview_signed_pack
 
-        source = Path(body["source_root"])
-        key = Path(body["public_key_path"])
+        source = Path(source_value)
+        key = Path(key_value)
         try:
             if commit:
+                assert isinstance(preview_digest, str)
                 trust_store = self._native_pack_trust_store()
                 if trust_store is None:
                     raise ValueError("Host publisher trust store is not configured")
                 entry = commit_signed_pack(
                     source,
                     key,
-                    expected_preview_digest=str(body["preview_digest"]),
+                    expected_preview_digest=preview_digest,
                     trust_store_path=trust_store,
                 )
                 refreshed = False

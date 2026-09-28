@@ -144,7 +144,7 @@ def _load_pack_routes(
         ):
             raise FrontendPackDenied("declarative route input is invalid")
         verified_view = dict(view)
-        if "input" in verified_view:
+        if isinstance(input_view, Mapping):
             verified_view["input"] = dict(input_view)
         projected.append({
             "contribution_id": str(payload["id"]),
