@@ -24,7 +24,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:a811065a2f1b13b6ee89fbad1b56535857c90659b3f68cf55dff3984822ad0ef",
+            "digest": "sha256:9ebf7647f2fc829e5de7936b941e66a609e33c9b4e2bc1bb77df1ea223702cc3",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -35,7 +35,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:a811065a2f1b13b6ee89fbad1b56535857c90659b3f68cf55dff3984822ad0ef",
+        "source_digest": "sha256:9ebf7647f2fc829e5de7936b941e66a609e33c9b4e2bc1bb77df1ea223702cc3",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_gateway_pack"
       },
@@ -157,7 +157,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:a811065a2f1b13b6ee89fbad1b56535857c90659b3f68cf55dff3984822ad0ef",
+            "digest": "sha256:9ebf7647f2fc829e5de7936b941e66a609e33c9b4e2bc1bb77df1ea223702cc3",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -168,7 +168,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:a811065a2f1b13b6ee89fbad1b56535857c90659b3f68cf55dff3984822ad0ef",
+        "source_digest": "sha256:9ebf7647f2fc829e5de7936b941e66a609e33c9b4e2bc1bb77df1ea223702cc3",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_gateway_pack"
       },
@@ -219,7 +219,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:a811065a2f1b13b6ee89fbad1b56535857c90659b3f68cf55dff3984822ad0ef",
+            "digest": "sha256:9ebf7647f2fc829e5de7936b941e66a609e33c9b4e2bc1bb77df1ea223702cc3",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -230,7 +230,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:a811065a2f1b13b6ee89fbad1b56535857c90659b3f68cf55dff3984822ad0ef",
+        "source_digest": "sha256:9ebf7647f2fc829e5de7936b941e66a609e33c9b4e2bc1bb77df1ea223702cc3",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_gateway_pack"
       },
@@ -281,7 +281,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:a811065a2f1b13b6ee89fbad1b56535857c90659b3f68cf55dff3984822ad0ef",
+            "digest": "sha256:9ebf7647f2fc829e5de7936b941e66a609e33c9b4e2bc1bb77df1ea223702cc3",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -292,7 +292,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:a811065a2f1b13b6ee89fbad1b56535857c90659b3f68cf55dff3984822ad0ef",
+        "source_digest": "sha256:9ebf7647f2fc829e5de7936b941e66a609e33c9b4e2bc1bb77df1ea223702cc3",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ai_gateway_pack"
       },
@@ -322,5 +322,5 @@
     }
   ],
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:a811065a2f1b13b6ee89fbad1b56535857c90659b3f68cf55dff3984822ad0ef"
+  "source_identity": "sha256:9ebf7647f2fc829e5de7936b941e66a609e33c9b4e2bc1bb77df1ea223702cc3"
 }
