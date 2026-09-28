@@ -744,6 +744,21 @@ fn ensure_defaultspack_desktop_ready(
             server_ready = false;
         }
     }
+    if server_ready
+        && matches!(
+            crate::health_check::check_authenticated_runtime_readiness(
+                metadata.port,
+                &panel_bootstrap_secret,
+            ),
+            Ok(crate::health_check::AuthenticatedRuntimeReadiness::Failed)
+        )
+    {
+        // A panel-only child records backend failure at startup. Provisioning
+        // PackVM later cannot refresh that child, so retry with a fresh capture.
+        warn!("Restarting Defaultspack after its captured runtime backend failed");
+        manager.stop()?;
+        server_ready = false;
+    }
 
     if server_ready {
         info!(

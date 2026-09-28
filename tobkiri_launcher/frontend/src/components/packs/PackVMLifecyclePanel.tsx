@@ -742,7 +742,7 @@ export function PackVMLifecyclePanel() {
               <Button
                 variant="outline"
                 onClick={() => void handleStop()}
-                disabled={Boolean(pendingAction) || !doctor.instance}
+                disabled={Boolean(pendingAction) || hasActiveOperation || !doctor.instance}
                 loading={pendingAction === 'stop'}
               >
                 Stop PackVM
@@ -751,7 +751,7 @@ export function PackVMLifecyclePanel() {
                 <Button
                   variant="destructive"
                   onClick={() => setCleanupRequested(true)}
-                  disabled={Boolean(pendingAction) || !doctor.instance}
+                  disabled={Boolean(pendingAction) || hasActiveOperation || !doctor.instance}
                 >
                   Clean up PackVM
                 </Button>

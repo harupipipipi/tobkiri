@@ -551,10 +551,27 @@ test('PackVM GUI cancels only a queued operation', {concurrency: false}, async (
   await settle();
   await act(async () => buttonWithText(surface.container, 'Provision PackVM').click());
   await settle();
+  assert.equal(buttonWithText(surface.container, 'Stop PackVM').disabled, true);
+  assert.equal(buttonWithText(surface.container, 'Clean up PackVM').disabled, true);
   await act(async () => buttonWithText(surface.container, 'Cancel queued provisioning').click());
   await settle();
   assert.match(surface.container.textContent ?? '', /Cancelled/);
   assert.equal(routes.at(-1), '/api/v4/packvm/cancel');
+});
+
+test('PackVM GUI keeps destructive controls disabled while provisioning runs', {concurrency: false}, async () => {
+  configureStore();
+  writeSafeStorageValue(getBrowserStorage('local'), 'tobkiri-launcher-packvm-operation', operationId);
+  installFetch(async (route) => {
+    assert.equal(route, `/api/v4/packvm/progress?operation_id=${operationId}`);
+    return jsonResponse(operation('queued', {state: 'running'}));
+  });
+  assert.ok(surface);
+  await renderPanel(surface.root);
+  await settle();
+  assert.match(surface.container.textContent ?? '', /Provisioning: Provisioning/);
+  assert.equal(buttonWithText(surface.container, 'Stop PackVM').disabled, true);
+  assert.equal(buttonWithText(surface.container, 'Clean up PackVM').disabled, true);
 });
 
 test('PackVM GUI stops and cleans only the authenticated instance', {concurrency: false}, async () => {
