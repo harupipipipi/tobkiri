@@ -84,18 +84,22 @@ class FileInspectService:
         root, root_fd, binding = self._workspace(payload)
         try:
             if name == "read":
-                return self._read(root, payload, root_fd=root_fd)
-            if name == "stat":
-                return self._stat(root, payload)
-            if name == "list":
-                result = self._list(root, payload)
-                self._validate_root_binding(root, root_fd, binding)
-                return result
-            if name == "search":
-                result = self._search(root, payload)
-                self._validate_root_binding(root, root_fd, binding)
-                return result
-            raise ValueError(f"unknown file inspect operation: {name}")
+                result = self._read(root, payload, root_fd=root_fd)
+            elif name == "stat":
+                result = self._stat(payload, root_fd=root_fd)
+            elif name == "list":
+                result = self._list(root, payload, root_fd=root_fd)
+            elif name == "search":
+                result = self._search(payload, root_fd=root_fd)
+            else:
+                raise ValueError(f"unknown file inspect operation: {name}")
+            self._validate_workspace_still_current(
+                root,
+                root_fd,
+                binding,
+                payload,
+            )
+            return result
         finally:
             os.close(root_fd)
 
@@ -129,7 +133,7 @@ class FileInspectService:
             raise PermissionError("workspace root is unavailable")
         root_fd = os.open(
             root,
-            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
         )
         binding = dict(payload.get("_workspace_binding") or {})
         try:
@@ -161,6 +165,13 @@ class FileInspectService:
         root_fd: int,
         binding: Mapping[str, Any],
     ) -> None:
+        if str(mount.get("workspace_id") or workspace_id) != workspace_id:
+            raise PermissionError("workspace mount identity changed")
+        reported_root = Path(str(mount.get("root_path") or "")).resolve(
+            strict=True
+        )
+        if reported_root != root:
+            raise PermissionError("workspace mount root changed")
         if str(binding.get("workspace_id") or "") != workspace_id:
             raise PermissionError("Host workspace binding is required")
         if str(binding.get("access") or "") != "read_only":
@@ -206,6 +217,42 @@ class FileInspectService:
         ):
             raise PermissionError("workspace root changed during inspection")
 
+    def _validate_workspace_still_current(
+        self,
+        root: Path,
+        root_fd: int,
+        binding: Mapping[str, Any],
+        payload: Mapping[str, Any],
+    ) -> None:
+        """Reconfirm the canonical Host mount after descriptor-bound I/O."""
+        workspace_id = str(payload["workspace_id"])
+        self._guard()
+        mount = self.client.invoke(
+            WORKSPACE,
+            WORKSPACE_OPERATION,
+            {
+                "operation": "get",
+                "profile_id": _profile(payload),
+                "workspace_id": workspace_id,
+            },
+        )
+        self._guard()
+        if not isinstance(mount, Mapping):
+            raise PermissionError("workspace mount changed during inspection")
+        self._validate_mount_binding(
+            workspace_id,
+            mount,
+            root,
+            root_fd,
+            binding,
+        )
+        self._validate_root_binding(root, root_fd, binding)
+        if (
+            payload.get("require_selected")
+            and self._selected_workspace_id(payload) != workspace_id
+        ):
+            raise PermissionError("workspace selection changed during inspection")
+
     def _selected_workspace_id(
         self,
         payload: Mapping[str, Any],
@@ -230,9 +277,7 @@ class FileInspectService:
         *,
         root_fd: int,
     ) -> dict[str, Any]:
-        path = _jailed(root, payload.get("path"), must_exist=True)
-        if not path.is_file():
-            raise FileNotFoundError("file is unavailable")
+        relative = _safe_relative(payload.get("path"))
         max_bytes = max(
             1,
             min(
@@ -242,7 +287,7 @@ class FileInspectService:
         )
         content, size = _read_text_no_follow(
             root,
-            path.relative_to(root),
+            relative,
             encoding=str(payload.get("encoding") or "utf-8"),
             max_bytes=max_bytes,
             root_fd=root_fd,
@@ -254,7 +299,7 @@ class FileInspectService:
         selected = "".join(lines[start - 1 : end])
         return {
             "workspace_id": str(payload["workspace_id"]),
-            "path": path.relative_to(root).as_posix(),
+            "path": relative.as_posix(),
             "content": selected,
             "size": size,
             "encoding": str(payload.get("encoding") or "utf-8"),
@@ -264,62 +309,75 @@ class FileInspectService:
             "read_only": True,
         }
 
-    def _stat(self, root: Path, payload: Mapping[str, Any]) -> dict[str, Any]:
-        path = _jailed(root, payload.get("path"), must_exist=True)
-        stat = path.stat()
+    def _stat(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        root_fd: int,
+    ) -> dict[str, Any]:
+        relative = _safe_relative(payload.get("path"))
+        descriptor = _open_relative_fd(root_fd, relative)
+        try:
+            path_stat = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
         return {
             "workspace_id": str(payload["workspace_id"]),
-            "path": path.relative_to(root).as_posix() if path != root else ".",
-            "is_file": path.is_file(),
-            "is_dir": path.is_dir(),
-            "size": stat.st_size,
-            "modified_ns": stat.st_mtime_ns,
+            "path": relative.as_posix(),
+            "is_file": stat.S_ISREG(path_stat.st_mode),
+            "is_dir": stat.S_ISDIR(path_stat.st_mode),
+            "size": path_stat.st_size,
+            "modified_ns": path_stat.st_mtime_ns,
             "read_only": True,
         }
 
-    def _list(self, root: Path, payload: Mapping[str, Any]) -> dict[str, Any]:
-        directory = _jailed(root, payload.get("directory") or ".", must_exist=True)
-        if not directory.is_dir():
-            raise NotADirectoryError("workspace path is not a directory")
+    def _list(
+        self,
+        root: Path,
+        payload: Mapping[str, Any],
+        *,
+        root_fd: int,
+    ) -> dict[str, Any]:
+        directory = _safe_relative(payload.get("directory") or ".")
         recursive = bool(payload.get("recursive", False))
         if payload.get("tracked_only"):
-            iterator = _git_tracked_files(
+            relative_paths = _git_tracked_paths(
                 root,
+                root_fd,
                 directory,
                 recursive=recursive,
-                deadline_epoch_ms=int(
-                    payload.get("_deadline_epoch_ms") or 0
-                ),
+                deadline_epoch_ms=int(payload.get("_deadline_epoch_ms") or 0),
             )
         else:
-            iterator = (
-                _deterministic_files(directory, recursive=recursive)
+            relative_paths = _descriptor_relative_entries(
+                root_fd,
+                directory,
+                recursive=recursive,
+                guard=self._guard,
             )
-        items = []
-        for candidate in iterator:
+        items: list[dict[str, Any]] = []
+        for relative in relative_paths:
             self._guard()
-            try:
-                resolved = candidate.resolve(strict=True)
-            except (FileNotFoundError, OSError, RuntimeError):
-                continue
-            if not _within(root, resolved):
-                continue
-            relative = resolved.relative_to(root)
             try:
                 _deny_restricted_path(relative)
             except PermissionError:
                 continue
+            descriptor: int | None = None
             try:
-                stat = resolved.stat()
+                descriptor = _open_relative_fd(root_fd, relative)
+                path_stat = os.fstat(descriptor)
             except OSError:
                 continue
+            finally:
+                if descriptor is not None:
+                    os.close(descriptor)
             items.append(
                 {
                     "path": relative.as_posix(),
-                    "name": resolved.name,
-                    "is_file": resolved.is_file(),
-                    "is_dir": resolved.is_dir(),
-                    "size": stat.st_size,
+                    "name": relative.name,
+                    "is_file": stat.S_ISREG(path_stat.st_mode),
+                    "is_dir": stat.S_ISDIR(path_stat.st_mode),
+                    "size": path_stat.st_size,
                 }
             )
             if len(items) >= _MAX_RESULTS:
@@ -327,23 +385,34 @@ class FileInspectService:
         items.sort(key=lambda item: item["path"])
         return {"workspace_id": str(payload["workspace_id"]), "items": items}
 
-    def _search(self, root: Path, payload: Mapping[str, Any]) -> dict[str, Any]:
+    def _search(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        root_fd: int,
+    ) -> dict[str, Any]:
         pattern = str(payload.get("pattern") or "").strip()
         if not pattern:
             raise ValueError("file search pattern is required")
-        directory = _jailed(root, payload.get("directory") or ".", must_exist=True)
+        directory = _safe_relative(payload.get("directory") or ".")
         matches = []
-        for candidate in directory.rglob("*"):
+        for candidate in _descriptor_relative_entries(
+            root_fd,
+            directory,
+            recursive=True,
+            include_directories=True,
+            guard=self._guard,
+        ):
             self._guard()
-            resolved = candidate.resolve(strict=True)
-            if not _within(root, resolved):
-                continue
-            relative = resolved.relative_to(root).as_posix()
+            relative = candidate.as_posix()
             try:
                 _deny_restricted_path(Path(relative))
             except PermissionError:
                 continue
-            if fnmatch.fnmatch(relative, pattern) or fnmatch.fnmatch(resolved.name, pattern):
+            if fnmatch.fnmatch(relative, pattern) or fnmatch.fnmatch(
+                candidate.name,
+                pattern,
+            ):
                 matches.append(relative)
             if len(matches) >= _MAX_RESULTS:
                 break
@@ -485,6 +554,14 @@ def _jailed(root: Path, value: Any, *, must_exist: bool) -> Path:
     return resolved
 
 
+def _safe_relative(value: Any) -> Path:
+    raw = Path(str(value or "").strip() or ".")
+    if raw.is_absolute() or ".." in raw.parts:
+        raise PermissionError("absolute or traversing paths are not accepted")
+    _deny_restricted_path(raw)
+    return raw
+
+
 def _deny_restricted_path(path: Path) -> None:
     parts = tuple(
         part.casefold()
@@ -518,15 +595,60 @@ def _within(root: Path, candidate: Path) -> bool:
         return False
 
 
-def _deterministic_files(
+def _require_descriptor_support() -> None:
+    if (
+        not getattr(os, "O_NOFOLLOW", 0)
+        or os.open not in os.supports_dir_fd
+        or os.scandir not in os.supports_fd
+    ):
+        raise PermissionError(
+            "secure descriptor-relative file inspection is unavailable"
+        )
+
+
+def _open_relative_fd(root_fd: int, relative: Path) -> int:
+    _require_descriptor_support()
+    if relative.is_absolute() or ".." in relative.parts:
+        raise PermissionError("unsafe workspace path")
+    parts = tuple(part for part in relative.parts if part not in {"", "."})
+    current_fd = os.dup(root_fd)
+    try:
+        for index, part in enumerate(parts):
+            is_parent = index < len(parts) - 1
+            flags = os.O_RDONLY | os.O_NOFOLLOW
+            if is_parent:
+                flags |= getattr(os, "O_DIRECTORY", 0)
+            else:
+                flags |= getattr(os, "O_NONBLOCK", 0)
+            next_fd = os.open(part, flags, dir_fd=current_fd)
+            os.close(current_fd)
+            current_fd = next_fd
+        return current_fd
+    except Exception:
+        os.close(current_fd)
+        raise
+
+
+def _open_directory_fd(root_fd: int, relative: Path) -> int:
+    descriptor = _open_relative_fd(root_fd, relative)
+    if not stat.S_ISDIR(os.fstat(descriptor).st_mode):
+        os.close(descriptor)
+        raise NotADirectoryError("workspace path is not a directory")
+    return descriptor
+
+
+def _descriptor_relative_entries(
+    root_fd: int,
     directory: Path,
     *,
     recursive: bool,
+    include_directories: bool = False,
+    guard: Callable[[], None] | None = None,
 ) -> list[Path]:
-    if not recursive:
-        return sorted(directory.iterdir(), key=lambda item: item.name)
+    guard = guard or (lambda: None)
+    directory_fd = _open_directory_fd(root_fd, directory)
     result: list[Path] = []
-    pending = [directory]
+    pending = [(directory, directory_fd)]
     excluded = {
         ".git",
         ".venv",
@@ -536,36 +658,64 @@ def _deterministic_files(
         "target",
         "vendor",
     }
-    while pending and len(result) < _MAX_RESULTS:
-        current = pending.pop()
-        try:
-            children = sorted(
-                current.iterdir(),
-                key=lambda item: item.name,
-                reverse=True,
-            )
-        except OSError:
-            continue
-        for child in children:
-            if child.name in excluded:
-                continue
+    try:
+        while pending and len(result) < _MAX_RESULTS:
+            relative_directory, current_fd = pending.pop()
             try:
-                if child.is_dir() and not child.is_symlink():
-                    pending.append(child)
-                else:
-                    result.append(child)
+                guard()
+                try:
+                    with os.scandir(current_fd) as entries:
+                        names = sorted(entry.name for entry in entries)
+                except OSError:
+                    continue
+                for name in names:
+                    guard()
+                    if name in excluded:
+                        continue
+                    relative = relative_directory / name
+                    try:
+                        _deny_restricted_path(relative)
+                    except PermissionError:
+                        continue
+                    try:
+                        child_fd = _open_relative_fd(root_fd, relative)
+                        child_stat = os.fstat(child_fd)
+                    except OSError:
+                        continue
+                    if stat.S_ISDIR(child_stat.st_mode):
+                        if include_directories or not recursive:
+                            result.append(relative)
+                        if recursive:
+                            pending.append((relative, child_fd))
+                        else:
+                            os.close(child_fd)
+                    else:
+                        result.append(relative)
+                        os.close(child_fd)
+                    if len(result) >= _MAX_RESULTS:
+                        break
+            finally:
+                os.close(current_fd)
+            if not recursive:
+                break
+    finally:
+        for _, descriptor in pending:
+            try:
+                os.close(descriptor)
             except OSError:
-                continue
+                pass
     return sorted(result, key=lambda item: item.as_posix())[:_MAX_RESULTS]
 
 
-def _git_tracked_files(
+def _git_tracked_paths(
     root: Path,
+    root_fd: int,
     directory: Path,
     *,
     recursive: bool,
     deadline_epoch_ms: int = 0,
 ) -> list[Path]:
+    _require_descriptor_support()
     timeout = 15.0
     if deadline_epoch_ms:
         timeout = max(
@@ -586,13 +736,8 @@ def _git_tracked_files(
         )
     except (OSError, subprocess.SubprocessError):
         return []
-    relative_directory = directory.relative_to(root)
-    prefix = (
-        ""
-        if relative_directory == Path(".")
-        else relative_directory.as_posix().rstrip("/") + "/"
-    )
-    result = []
+    prefix = "" if directory == Path(".") else directory.as_posix().rstrip("/") + "/"
+    result: list[Path] = []
     for raw in completed.stdout.split(b"\0"):
         if not raw:
             continue
@@ -607,12 +752,24 @@ def _git_tracked_files(
             continue
         if not recursive and "/" in value[len(prefix) :]:
             continue
-        candidate = root / relative
-        if candidate.is_file() and not candidate.is_symlink():
-            result.append(candidate)
+        # Git's output is only an untrusted candidate set. Each result is
+        # authorized again through the captured root descriptor, so replacing
+        # the root pathname cannot expose content or entries outside that root.
+        descriptor: int | None = None
+        try:
+            _deny_restricted_path(relative)
+            descriptor = _open_relative_fd(root_fd, relative)
+            path_stat = os.fstat(descriptor)
+        except (OSError, PermissionError):
+            continue
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
+        if stat.S_ISREG(path_stat.st_mode):
+            result.append(relative)
         if len(result) >= _MAX_RESULTS:
             break
-    return sorted(result, key=lambda item: item.relative_to(root).as_posix())
+    return sorted(result, key=lambda item: item.as_posix())
 
 
 def _read_text_no_follow(
@@ -625,51 +782,30 @@ def _read_text_no_follow(
 ) -> tuple[str, int]:
     if relative.is_absolute() or ".." in relative.parts:
         raise PermissionError("unsafe workspace path")
-    directory_fd = (
-        os.dup(root_fd)
-        if root_fd is not None
-        else os.open(
+    close_root = root_fd is None
+    if root_fd is None:
+        root_fd = os.open(
             root,
             os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
         )
-    )
-    opened: list[int] = [directory_fd]
     try:
-        current_fd = directory_fd
-        for part in relative.parts[:-1]:
-            next_fd = os.open(
-                part,
-                os.O_RDONLY
-                | getattr(os, "O_DIRECTORY", 0)
-                | getattr(os, "O_NOFOLLOW", 0),
-                dir_fd=current_fd,
-            )
-            opened.append(next_fd)
-            current_fd = next_fd
-        file_fd = os.open(
-            relative.name,
-            os.O_RDONLY
-            | getattr(os, "O_NOFOLLOW", 0)
-            | getattr(os, "O_NONBLOCK", 0),
-            dir_fd=current_fd,
-        )
-        opened.append(file_fd)
-        file_stat = os.fstat(file_fd)
-        if not stat.S_ISREG(file_stat.st_mode):
-            raise PermissionError("workspace path is not a regular file")
-        size = file_stat.st_size
-        if size > max_bytes:
-            raise ValueError("file exceeds requested read budget")
-        content = os.read(file_fd, max_bytes + 1)
-        if len(content) > max_bytes:
-            raise ValueError("file exceeds requested read budget")
-        return content.decode(encoding), size
+        file_fd = _open_relative_fd(root_fd, relative)
+        try:
+            file_stat = os.fstat(file_fd)
+            if not stat.S_ISREG(file_stat.st_mode):
+                raise PermissionError("workspace path is not a regular file")
+            size = file_stat.st_size
+            if size > max_bytes:
+                raise ValueError("file exceeds requested read budget")
+            content = os.read(file_fd, max_bytes + 1)
+            if len(content) > max_bytes:
+                raise ValueError("file exceeds requested read budget")
+            return content.decode(encoding), size
+        finally:
+            os.close(file_fd)
     finally:
-        for descriptor in reversed(opened):
-            try:
-                os.close(descriptor)
-            except OSError:
-                pass
+        if close_root:
+            os.close(root_fd)
 
 
 def _profile(payload: Mapping[str, Any]) -> str:

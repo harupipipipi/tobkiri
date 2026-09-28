@@ -178,6 +178,8 @@ def test_factory_dispatches_through_canonical_workspace_contract(
         "list",
         "get",
         "list",
+        "get",
+        "list",
     ]
     assert invocation.current_checks >= 6
 
@@ -210,3 +212,110 @@ def test_factory_rejects_changed_capture_or_invocation_before_workspace_access(
             invocation,
         )
     assert client.calls == []
+
+
+def _service_payload(root: Path, **values: object) -> dict[str, object]:
+    return {
+        "profile_id": "defaults",
+        "workspace_id": "workspace-1",
+        "require_selected": True,
+        "_workspace_binding": _workspace_binding(root),
+        **values,
+    }
+
+
+@pytest.mark.parametrize("name", ["stat", "list", "search"])
+def test_path_operations_stay_bound_to_opened_root_during_swap_back_race(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+) -> None:
+    root = tmp_path / "workspace"
+    parked = tmp_path / "parked"
+    replacement = tmp_path / "replacement"
+    root.mkdir()
+    replacement.mkdir()
+    (root / "proof.txt").write_text("authorized", encoding="utf-8")
+    (replacement / "intruder.txt").write_text("unauthorized", encoding="utf-8")
+    original_open = inspect._open_relative_fd
+    swapped = False
+
+    def swap_around_open(root_fd: int, relative: Path) -> int:
+        nonlocal swapped
+        if not swapped:
+            swapped = True
+            root.rename(parked)
+            replacement.rename(root)
+            try:
+                return original_open(root_fd, relative)
+            finally:
+                root.rename(replacement)
+                parked.rename(root)
+        return original_open(root_fd, relative)
+
+    monkeypatch.setattr(inspect, "_open_relative_fd", swap_around_open)
+    payload_values: dict[str, object]
+    if name == "stat":
+        payload_values = {"path": "proof.txt"}
+    elif name == "search":
+        payload_values = {"directory": ".", "pattern": "*.txt"}
+    else:
+        payload_values = {"directory": ".", "recursive": True}
+
+    result = inspect.FileInspectService(_WorkspaceClient(root)).invoke(
+        name,
+        _service_payload(root, **payload_values),
+    )
+
+    assert swapped
+    if name == "stat":
+        assert result["size"] == len("authorized")
+    elif name == "search":
+        assert result["matches"] == ["proof.txt"]
+    else:
+        assert [item["path"] for item in result["items"]] == ["proof.txt"]
+
+
+def test_read_rejects_component_replaced_with_symlink_before_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    target = root / "proof.txt"
+    target.write_text("authorized", encoding="utf-8")
+    outside = tmp_path / "outside.txt"
+    outside.write_text("unauthorized", encoding="utf-8")
+    original_open = inspect._open_relative_fd
+    swapped = False
+
+    def swap_before_open(root_fd: int, relative: Path) -> int:
+        nonlocal swapped
+        if relative == Path("proof.txt") and not swapped:
+            swapped = True
+            target.unlink()
+            target.symlink_to(outside)
+        return original_open(root_fd, relative)
+
+    monkeypatch.setattr(inspect, "_open_relative_fd", swap_before_open)
+
+    with pytest.raises(OSError):
+        inspect.FileInspectService(_WorkspaceClient(root)).invoke(
+            "read",
+            _service_payload(root, path="proof.txt"),
+        )
+    assert swapped
+
+
+def test_file_inspect_fails_closed_without_descriptor_relative_primitives(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "proof.txt").write_text("authorized", encoding="utf-8")
+    monkeypatch.setattr(inspect.os, "supports_dir_fd", set())
+
+    with pytest.raises(PermissionError, match="descriptor-relative"):
+        inspect.FileInspectService(_WorkspaceClient(tmp_path)).invoke(
+            "stat",
+            _service_payload(tmp_path, path="proof.txt"),
+        )
