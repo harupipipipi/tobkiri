@@ -59,25 +59,49 @@ def test_binding_renewal_requires_a_changed_sealed_pack_digest() -> None:
         profile_binding_renewal_required(plan, SimpleNamespace(packs={}))
 
 
-@pytest.mark.parametrize("resealed", [False, True])
-def test_unchanged_source_review_allows_only_resealed_binding_renewal(
+@pytest.mark.parametrize(
+    ("resealed", "scope_changed", "reviewable"),
+    [
+        (False, False, False),
+        (True, False, True),
+        (False, True, True),
+    ],
+)
+def test_explicit_successor_review_requires_an_actual_verified_change(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     resealed: bool,
+    scope_changed: bool,
+    reviewable: bool,
 ) -> None:
-    """The explicit additions review can renew an unchanged selected binding."""
+    """Explicit review accepts a sealed successor while rejecting a no-op."""
 
     from types import SimpleNamespace
 
     from core_runtime.bootstrap import profile_registry
 
+    edge = {
+        "caller_function_id": "caller",
+        "target_provider_id": "provider",
+        "contract_id": "contract",
+        "operation_id": "operation",
+        "requested_scope_template": {
+            "scope": "selected",
+            "semantics_digest": "sha256:" + "8" * 64,
+        },
+    }
     profile = {
         "profile_id": "defaults",
         "base": {"pack_id": "base"},
         "shell": {"pack_id": "shell"},
         "packs": [{"pack_id": "selected-pack"}],
-        "requested_edges": [],
+        "requested_edges": [edge],
     }
+    source_profile = deepcopy(profile)
+    if scope_changed:
+        source_profile["requested_edges"][0]["requested_scope_template"][
+            "semantics_digest"
+        ] = "sha256:" + "9" * 64
     previous_digest = "sha256:" + "1" * 64
     current_digest = ("sha256:" + "2" * 64) if resealed else previous_digest
     plan = {
@@ -107,7 +131,7 @@ def test_unchanged_source_review_allows_only_resealed_binding_renewal(
         activation_id=active.activation["activation_id"],
     )
     catalog = SimpleNamespace(
-        profiles={"defaults": deepcopy(profile)},
+        profiles={"defaults": source_profile},
         packs={
             pack_id: {
                 "pack": {"artifact_digest": digest},
@@ -163,7 +187,7 @@ def test_unchanged_source_review_allows_only_resealed_binding_renewal(
         lambda _root: SimpleNamespace(load=lambda **_kwargs: pointer),
     )
 
-    if resealed:
+    if reviewable:
         reviewed, additional = profile_registry.bootstrap_review_catalog(
             runtime=FakeRuntime(),
             catalog=catalog,
@@ -171,7 +195,8 @@ def test_unchanged_source_review_allows_only_resealed_binding_renewal(
             profile_id="defaults",
             include_source_additions=True,
         )
-        assert reviewed.profiles["defaults"] == profile
+        expected = source_profile if scope_changed else profile
+        assert reviewed.profiles["defaults"] == expected
         assert additional == ()
     else:
         with pytest.raises(ProfileResolutionDenied, match="requires reconfirmation"):

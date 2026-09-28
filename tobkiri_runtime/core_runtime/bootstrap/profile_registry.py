@@ -107,11 +107,8 @@ def bootstrap_review_catalog(
             raise runtime.denied("source update conflicts with the registered Profile") from error
         if (
             not successor_required
-            and updated == candidate
-            and (
-                not binding_renewal_required
-                or updated != binding_renewal_predecessor
-            )
+            and updated == binding_renewal_predecessor
+            and not binding_renewal_required
         ):
             raise runtime.denied("source update requires reconfirmation")
         candidate = updated
