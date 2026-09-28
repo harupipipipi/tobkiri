@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:7a6c9f0fc78136e1ea625277d5c96b902160c045ed07f89ecfb4391f10dae0ed",
+  "catalog_digest": "sha256:28902e8ebe1975771ee92c4aecd5719706e165e6b90b4656ba746795b11daecf",
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:d98eb3f7e7e99cfd42a7c6806b6bf96c0eb5c94bddbafaf65bda907e848299b9",
+  "source_identity": "sha256:a811065a2f1b13b6ee89fbad1b56535857c90659b3f68cf55dff3984822ad0ef",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
-      "implementation_digest": "sha256:04a0e6d4797a94b1dcb238c08f9eb1caef9c2aad48f522ad80464c04ea35d4dd",
+      "implementation_digest": "sha256:a3523c71ad4320cf93a5dc22f9f2155e010a7677cc383e1430e74f630516025d",
       "implementation_path": "runtime/gateway.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -44,7 +44,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
-      "implementation_digest": "sha256:61342c1131bd576d7f53dc3d618089956666d04e71e46b2b90869274e4ce6873",
+      "implementation_digest": "sha256:daba401fb603d12813b89198d67f696c4b0365197faa8ac46945d38364fb395c",
       "implementation_path": "runtime/preflight.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -143,7 +143,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
-      "implementation_digest": "sha256:04a0e6d4797a94b1dcb238c08f9eb1caef9c2aad48f522ad80464c04ea35d4dd",
+      "implementation_digest": "sha256:a3523c71ad4320cf93a5dc22f9f2155e010a7677cc383e1430e74f630516025d",
       "implementation_path": "runtime/gateway.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -177,7 +177,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
-      "implementation_digest": "sha256:04a0e6d4797a94b1dcb238c08f9eb1caef9c2aad48f522ad80464c04ea35d4dd",
+      "implementation_digest": "sha256:a3523c71ad4320cf93a5dc22f9f2155e010a7677cc383e1430e74f630516025d",
       "implementation_path": "runtime/gateway.py",
       "materialization_mode": "on_demand",
       "operations": [

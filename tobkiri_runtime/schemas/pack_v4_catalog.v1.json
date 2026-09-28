@@ -1939,7 +1939,7 @@
             {
               "entrypoint_id": "ai-gateway-preflight",
               "id": "rumi_ai_gateway_pack.ai-gateway.preflight",
-              "implementation_digest": "sha256:61342c1131bd576d7f53dc3d618089956666d04e71e46b2b90869274e4ce6873"
+              "implementation_digest": "sha256:daba401fb603d12813b89198d67f696c4b0365197faa8ac46945d38364fb395c"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2037,7 +2037,7 @@
             {
               "entrypoint_id": "ai-gateway-routing-diagnostics",
               "id": "rumi_ai_gateway_pack.ai-gateway-routing-diagnostics",
-              "implementation_digest": "sha256:04a0e6d4797a94b1dcb238c08f9eb1caef9c2aad48f522ad80464c04ea35d4dd"
+              "implementation_digest": "sha256:a3523c71ad4320cf93a5dc22f9f2155e010a7677cc383e1430e74f630516025d"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2070,7 +2070,7 @@
             {
               "entrypoint_id": "ai-gateway-generate",
               "id": "rumi_ai_gateway_pack.ai-gateway.generate",
-              "implementation_digest": "sha256:04a0e6d4797a94b1dcb238c08f9eb1caef9c2aad48f522ad80464c04ea35d4dd"
+              "implementation_digest": "sha256:a3523c71ad4320cf93a5dc22f9f2155e010a7677cc383e1430e74f630516025d"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2103,7 +2103,7 @@
             {
               "entrypoint_id": "ai-gateway-stream",
               "id": "rumi_ai_gateway_pack.ai-gateway.stream",
-              "implementation_digest": "sha256:04a0e6d4797a94b1dcb238c08f9eb1caef9c2aad48f522ad80464c04ea35d4dd"
+              "implementation_digest": "sha256:a3523c71ad4320cf93a5dc22f9f2155e010a7677cc383e1430e74f630516025d"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2203,12 +2203,12 @@
           "path": "runtime/deepthink.py"
         },
         {
-          "digest": "sha256:04a0e6d4797a94b1dcb238c08f9eb1caef9c2aad48f522ad80464c04ea35d4dd",
+          "digest": "sha256:a3523c71ad4320cf93a5dc22f9f2155e010a7677cc383e1430e74f630516025d",
           "kind": "executable",
           "path": "runtime/gateway.py"
         },
         {
-          "digest": "sha256:61342c1131bd576d7f53dc3d618089956666d04e71e46b2b90869274e4ce6873",
+          "digest": "sha256:daba401fb603d12813b89198d67f696c4b0365197faa8ac46945d38364fb395c",
           "kind": "executable",
           "path": "runtime/preflight.py"
         }
