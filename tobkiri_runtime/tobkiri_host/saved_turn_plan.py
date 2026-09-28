@@ -21,9 +21,11 @@ class SavedToolFrame:
     """Host-local checked scope, never accepted from a serialized guest frame."""
 
     frame: Mapping[str, Any]
-    initial_digest: str
+    initial_digest: str | None
     tool_messages: bytes
     stage: str
+    expected_conversation_revision: int | None
+    expected_current_node_id: str | None
 
 
 class SavedTurnPlan:

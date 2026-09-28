@@ -68,11 +68,112 @@ export function validSavedToolSelection(value: unknown): value is SavedToolSelec
   return selection.mode !== "none" || (!selection.must_use && !(selection.include as unknown[] | undefined)?.length);
 }
 
+export const MAX_SAVED_TURN_TEXT_BYTES = 60 * 1024;
+export const MAX_SAVED_TURN_IMAGE_COUNT = 2;
+export const MAX_SAVED_TURN_IMAGE_BYTES = 1024 * 1024;
+export const MAX_SAVED_TURN_INPUT_BYTES = 3 * 1024 * 1024;
+
+export type SavedTurnTextBlock = { type: "text"; text: string };
+export type SavedTurnImageBlock = { type: "image_url"; image_url: { url: string } };
+export type SavedTurnContent = string | [SavedTurnTextBlock, ...SavedTurnImageBlock[]];
+export type SavedTurnImageAttachment = {
+  type?: string;
+  dataUrl?: string;
+  truncated?: boolean;
+};
+
+const SAVED_TURN_IMAGE_DATA_URL = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/]+={0,2})$/;
+
+function savedTurnImageMatchesMime(mime: string, bytes: Uint8Array): boolean {
+  const startsWith = (...signature: number[]) => signature.every((byte, index) => bytes[index] === byte);
+  if (mime === "image/png") return startsWith(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
+  if (mime === "image/jpeg") return startsWith(0xff, 0xd8, 0xff);
+  if (mime === "image/gif") return startsWith(0x47, 0x49, 0x46, 0x38, 0x37, 0x61)
+    || startsWith(0x47, 0x49, 0x46, 0x38, 0x39, 0x61);
+  return mime === "image/webp" && bytes.length >= 12
+    && startsWith(0x52, 0x49, 0x46, 0x46)
+    && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
+}
+
+function decodedSavedTurnImage(value: string): { mime: string; bytes: Uint8Array } | null {
+  const match = SAVED_TURN_IMAGE_DATA_URL.exec(value);
+  if (!match) return null;
+  const encoded = match[2];
+  const maximum = Math.ceil(MAX_SAVED_TURN_IMAGE_BYTES / 3) * 4;
+  if (!encoded.length || encoded.length % 4 || encoded.length > maximum) return null;
+  try {
+    const decoded = atob(encoded);
+    const bytes = Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+    return savedTurnImageMatchesMime(match[1], bytes) ? { mime: match[1], bytes } : null;
+  } catch {
+    return null;
+  }
+}
+
+const savedTurnImageByteLength = (value: string): number | null => {
+  return decodedSavedTurnImage(value)?.bytes.length ?? null;
+};
+
+export function validSavedTurnContent(value: unknown): value is SavedTurnContent {
+  if (typeof value === "string") {
+    return Boolean(value.trim()) && new TextEncoder().encode(value).length <= MAX_SAVED_TURN_TEXT_BYTES;
+  }
+  if (!Array.isArray(value) || value.length < 1 || value.length > 1 + MAX_SAVED_TURN_IMAGE_COUNT) {
+    return false;
+  }
+  const [text, ...images] = value;
+  const textBlock = text as Record<string, unknown>;
+  return Boolean(text && typeof text === "object" && !Array.isArray(text)
+    && Object.keys(textBlock).length === 2 && textBlock.type === "text"
+    && typeof textBlock.text === "string" && textBlock.text.trim()
+    && new TextEncoder().encode(textBlock.text).length <= MAX_SAVED_TURN_TEXT_BYTES)
+    && images.every((image) => {
+      if (!image || typeof image !== "object" || Array.isArray(image)) return false;
+      const imageBlock = image as Record<string, unknown>;
+      if (Object.keys(imageBlock).length !== 2 || imageBlock.type !== "image_url") return false;
+      const imageUrl = imageBlock.image_url as Record<string, unknown> | null;
+      if (!imageUrl || typeof imageUrl !== "object"
+        || Array.isArray(imageUrl) || Object.keys(imageUrl).length !== 1
+        || typeof imageUrl.url !== "string") return false;
+      const bytes = savedTurnImageByteLength(imageUrl.url);
+      return bytes !== null && bytes > 0 && bytes <= MAX_SAVED_TURN_IMAGE_BYTES;
+    });
+}
+
+export function savedTurnContentFromAttachments(
+  text: string,
+  attachments: readonly SavedTurnImageAttachment[],
+): SavedTurnContent {
+  if (!attachments.length) {
+    if (!validSavedTurnContent(text)) throw new Error("送信するメッセージを入力してください。");
+    return text;
+  }
+  if (attachments.length > MAX_SAVED_TURN_IMAGE_COUNT) {
+    throw new Error("保存付き送信では画像は2枚までです。");
+  }
+  const message = text.trim() || "添付画像を確認してください。";
+  const images = attachments.map((attachment) => {
+    if (attachment.truncated || typeof attachment.dataUrl !== "string") {
+      throw new Error("画像を読み込めませんでした。1 MiB以下のPNG、JPEG、WebP、GIFを選択してください。");
+    }
+    const bytes = savedTurnImageByteLength(attachment.dataUrl);
+    const dataMime = decodedSavedTurnImage(attachment.dataUrl)?.mime;
+    if (bytes === null || bytes > MAX_SAVED_TURN_IMAGE_BYTES
+      || (attachment.type && attachment.type.toLowerCase() !== dataMime)) {
+      throw new Error("保存付き送信では1 MiB以下のPNG、JPEG、WebP、GIF画像のみ送信できます。");
+    }
+    return { type: "image_url" as const, image_url: { url: attachment.dataUrl } };
+  });
+  const content: SavedTurnContent = [{ type: "text", text: message }, ...images];
+  if (!validSavedTurnContent(content)) throw new Error("保存付き送信の画像が無効です。");
+  return content;
+}
+
 export type SavedTurnRequest = {
   turn_id: string;
   conversation_id: string;
   conversation_revision: number;
-  content: string;
+  content: SavedTurnContent;
   tool_selection?: SavedToolSelection;
   deepthink_enabled?: boolean;
   thinking_level?: "none" | "low" | "medium" | "high" | "xhigh";
@@ -4098,8 +4199,8 @@ export const api = {
       || (input.tool_selection !== undefined && !validSavedToolSelection(input.tool_selection))
       || (input.deepthink_enabled !== undefined && typeof input.deepthink_enabled !== "boolean")
       || (input.thinking_level !== undefined && !["none", "low", "medium", "high", "xhigh"].includes(input.thinking_level))
-      || typeof input.content !== "string" || !input.content.trim()
-      || new TextEncoder().encode(JSON.stringify(input)).length > 60 * 1024) {
+      || !validSavedTurnContent(input.content)
+      || new TextEncoder().encode(JSON.stringify(input)).length > MAX_SAVED_TURN_INPUT_BYTES) {
       throw new Error("Saved conversation request is invalid or requires unsupported context.");
     }
     const result = await request<SavedTurnResult>(defaultspackContractRoute("api/chat/turn"), {

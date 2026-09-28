@@ -54,7 +54,7 @@ import { ConversationShareLanding, ImportedConversationNotice } from "./pages/Co
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "./components/HistoryBoard";
 import type { ToolPreviewItem, ToolPreviewMode } from "./components/ToolPreview";
 import { buildToolPreviewDisplayItems, hasCanvasItems } from "./components/ToolPreview";
-import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, isDefaultspackContractOperationUnknownError, mergeComposerCommands, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
+import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, isDefaultspackContractOperationUnknownError, mergeComposerCommands, savedTurnContentFromAttachments, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
 import { modelStateWriteForSettingsField } from "./lib/modelSettingsWrite";
 import { applyCommandStateSnapshots, createCommandInvocationId } from "./lib/commandState";
 import type { ActionApprovalMode } from "./features/tools/ActionApprovalControl";
@@ -6778,14 +6778,15 @@ export function ChatApp() {
     let savedSubmissionStarted = false;
 
     try {
-      if (submittedAttachments.length || submittedSkillIds.length
+      const savedTurnContent = savedTurnContentFromAttachments(userText, submittedAttachments);
+      if (submittedSkillIds.length
         || submittedDroppedWidgets.some((widget) => widget.type !== "tool" || widget.widgetKind !== "tool_toggle") || isCodingWorkspaceSubmit
         || groupIdForSubmit || rumiDataPathForSubmit
         || Object.keys(templateAiInputParams).length || Object.keys(effectiveStructuredComposerValues).length
         || Object.keys(templatePolicyReferencePayload).length || composerInputMetadata?.id
         || toolSelectionRequest.mode === "review"
         || isOperationsConversation(activeConversation) || isMimoCodingConversation(activeConversation)) {
-        throw new Error("添付・スキル・特殊contextは保存付き送信に未対応のため、保存前に停止しました。");
+        throw new Error("スキルまたは特殊な会話コンテキストは保存付き送信に未対応のため、送信前に停止しました。");
       }
       let conversation = activeConversation;
       if (!conversation) {
@@ -6821,13 +6822,16 @@ export function ChatApp() {
         must_use: toolSelectionRequest.must_use ?? false,
       };
       const requestStartedAt = Date.now();
-      const requestFingerprint = JSON.stringify({
-        text: userText,
+      const requestFingerprintInput = JSON.stringify({
+        content: savedTurnContent,
         tool_selection: savedToolSelection,
-        attachments: submittedAttachments.map(({ name, size, type, source, sourcePath }) => (
-          { name, size, type, source, sourcePath }
-        )),
       });
+      const requestFingerprintBytes = await globalThis.crypto?.subtle?.digest(
+        "SHA-256", new TextEncoder().encode(requestFingerprintInput),
+      );
+      const requestFingerprint = requestFingerprintBytes
+        ? `sha256:${Array.from(new Uint8Array(requestFingerprintBytes), (byte) => byte.toString(16).padStart(2, "0")).join("")}`
+        : `unavailable:${requestStartedAt}`;
       const recoverablePending = pendingRequests[conversation.id];
       if (!Number.isSafeInteger(conversation.conversation_revision) || (conversation.conversation_revision ?? 0) < 1) {
         throw new Error("会話のrevisionが未確認です。会話を開き直してください。");
@@ -6857,7 +6861,7 @@ export function ChatApp() {
         turn_id: operationId,
         conversation_id: conversation.id,
         conversation_revision: conversation.conversation_revision!,
-        content: userText,
+        content: savedTurnContent,
         tool_selection: savedToolSelection,
         deepthink_enabled: deepthinkEnabled ? true : undefined,
         thinking_level: activeProfile?.supports_thinking

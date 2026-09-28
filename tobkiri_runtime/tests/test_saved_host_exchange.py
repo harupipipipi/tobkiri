@@ -1,5 +1,6 @@
 """Host result binding with real owner writes; AI/transport are explicit adapters."""
 
+import base64
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,11 @@ from tobkiri_host.continuation_chain import ChainIdentity, ContinuationChains
 from tobkiri_host.continuation_envelope import seal_continuation_intent
 from tobkiri_host.saved_host_exchange import SavedHostExchange
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
+from tobkiri_protocol.saved_conversation import (
+    MAX_SAVED_CHAIN_BYTES,
+    MAX_SAVED_FRAME_BYTES,
+    MAX_SAVED_IMAGE_BYTES,
+)
 
 
 class _Exchange:
@@ -131,3 +137,62 @@ def test_host_fingerprints_do_not_follow_later_result_mutation(tmp_path: Path) -
     exchange.intent["payload"]["message"]["content"] = outcome["value"]["output"]
     with pytest.raises(ValueError, match="assistant differs"):
         exchange.step()
+
+
+def test_host_accepts_a_near_limit_saved_image_frame() -> None:
+    """The production-sized Host ledger accepts a valid one MiB image frame."""
+    image = base64.b64encode(
+        b"\x89PNG\r\n\x1a\n" + b"\0" * (MAX_SAVED_IMAGE_BYTES - 8)
+    ).decode("ascii")
+    request = {
+        "turn_id": "large-image-turn",
+        "conversation_id": "conversation-1",
+        "conversation_revision": 1,
+        "content": [
+            {"type": "text", "text": "Inspect this image"},
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{image}"},
+            },
+        ],
+    }
+    identity = ChainIdentity(
+        "domain", "host-request", "sha256:" + "a" * 64, 60
+    )
+    host = SavedHostExchange(
+        identity,
+        request_digest="sha256:" + "c" * 64,
+        artifact_identity="artifact",
+        deadline_text="60",
+        chains=ContinuationChains(
+            clock=lambda: 0, max_bytes=MAX_SAVED_CHAIN_BYTES
+        ),
+        request=request,
+    )
+    intent = saved.start(request)
+    frame = seal_continuation_intent(
+        canonical_json(intent),
+        identity=identity,
+        hop=0,
+        previous_digest=None,
+        target=saved.TARGETS[0],
+        nonce="0" * 48,
+        max_intent_bytes=MAX_SAVED_FRAME_BYTES,
+        max_frame_bytes=MAX_SAVED_FRAME_BYTES,
+    )
+    checked = host.accept({
+        "kind": "tobkiri.packvm.bridge.host-request.v2",
+        "protocol": "io.tobkiri.packvm.bridge.v2",
+        "version": 2,
+        "request_id": "host-request",
+        "target_domain": "domain",
+        "binding_digest": identity.binding_digest,
+        "guest_artifact_identity": "artifact",
+        "request_digest": "sha256:" + "c" * 64,
+        "deadline_monotonic": "60",
+        "bridge_request": strict_loads(
+            frame.frame, max_bytes=MAX_SAVED_FRAME_BYTES
+        ),
+        "bridge_request_digest": frame.digest,
+    })
+    assert checked.digest == frame.digest

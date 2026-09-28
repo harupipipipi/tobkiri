@@ -110,6 +110,56 @@ def test_preflight_is_read_only_and_four_stages_use_real_owner(tmp_path: Path) -
     ]
 
 
+def test_saved_image_is_flattened_for_readiness_and_retained_for_generation(
+    tmp_path: Path,
+) -> None:
+    """Image bytes leave guest state after append but stay in owner history."""
+    store, outer, calls, callbacks = _setup(tmp_path)
+    image = (
+        "data:image/png;base64,"
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/axR4xUAAAAASUVORK5CYII="
+    )
+    outer.payload["request"]["content"] = [
+        {"type": "text", "text": "What is shown here?"},
+        {"type": "image_url", "image_url": {"url": image}},
+    ]
+    outer.payload["request"]["thinking_level"] = "high"
+    callbacks.preflight(outer)
+    assert calls[-1] == (
+        READINESS,
+        {
+            "model_profile_id": "model-profile-1",
+            "messages": [{
+                "role": "user",
+                "content": (
+                    "What is shown here?\n"
+                    "[Earlier inline image omitted from saved context.]"
+                ),
+            }],
+            "modalities": ["image", "text"],
+        },
+    )
+
+    intent = saved.start(outer.payload["request"])
+    read = callbacks(outer, _frame(intent))
+    assert read["value"]["conversation"]["messages"] == []
+    intent = saved.resume(intent["state"], read)
+    assert intent["state"]["user_content"] is None
+    assert intent["payload"]["message"]["content"] == outer.payload["request"]["content"]
+    for _ in range(3):
+        intent = saved.resume(intent["state"], callbacks(outer, _frame(intent)))
+    assert intent["status"] == "ok"
+    generated = [payload for target, payload in calls if target == saved.TARGETS[2]][-1]
+    assert generated["requirements"]["modalities"] == ["image", "text"]
+    assert generated["parameters"] == {"thinking_level": "high"}
+    assert generated["messages"][-1] == {
+        "role": "user", "content": outer.payload["request"]["content"],
+    }
+    assert store.get("conversation-1")["messages"][0]["content"] == (
+        outer.payload["request"]["content"]
+    )
+
+
 def test_saved_thinking_level_is_bound_by_host_before_ai_dispatch(
     tmp_path: Path,
 ) -> None:

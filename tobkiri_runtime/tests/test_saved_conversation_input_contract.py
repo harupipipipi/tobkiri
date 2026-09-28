@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from copy import deepcopy
 from pathlib import Path
 import json
@@ -17,6 +18,11 @@ from tobkiri_protocol.validation import validate_document
 from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
 
 pytestmark = pytest.mark.contract
+
+_TINY_PNG = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/axR4xUAAAAASUVORK5CYII="
+)
 
 
 def _input() -> dict:
@@ -40,7 +46,89 @@ def test_valid_input_matches_pure_initial_abi(field: str, value: object) -> None
     assert validate_saved_conversation_input(payload) == checked
     intent = saved.tobkiri_packvm_invoke("saved_complete", checked)
     assert intent["hop"] == 0
-    assert intent["state"]["request"] == payload["request"]
+    assert intent["state"]["request"] == {
+        key: item for key, item in payload["request"].items() if key != "content"
+    }
+
+
+def test_bounded_inline_image_matches_external_and_guest_contracts() -> None:
+    """A saved turn accepts its exact bounded text-plus-raster block shape."""
+    payload = _input()
+    payload["request"]["content"] = [
+        {"type": "text", "text": "What is in this image?"},
+        {"type": "image_url", "image_url": {"url": _TINY_PNG}},
+    ]
+    checked = validate_document(payload, "saved_conversation_input")
+    assert validate_saved_conversation_input(checked) == checked
+    intent = saved.tobkiri_packvm_invoke("saved_complete", checked)
+    assert intent["state"]["user_content"] == payload["request"]["content"]
+    assert "content" not in intent["state"]["request"]
+
+
+@pytest.mark.parametrize("url", [
+    "https://example.test/image.png",
+    "data:image/svg+xml;base64,PHN2Zy8+",
+    "data:image/png;base64,A===",
+])
+def test_saved_inline_image_rejects_non_raster_or_invalid_data_url(url: str) -> None:
+    payload = _input()
+    payload["request"]["content"] = [
+        {"type": "text", "text": "Inspect this"},
+        {"type": "image_url", "image_url": {"url": url}},
+    ]
+    with pytest.raises(SchemaValidationError):
+        validate_document(payload, "saved_conversation_input")
+    with pytest.raises(ValueError):
+        validate_saved_conversation_input(payload)
+
+
+@pytest.mark.parametrize("url", [
+    "data:image/png;base64,AAE=",
+    "data:image/jpeg;base64,iVBORw0KGgo=",
+    "data:image/webp;base64,R0lGODlh",
+])
+def test_saved_inline_image_rejects_wrong_magic_for_declared_mime(url: str) -> None:
+    """Schema syntax is insufficient: both roots verify MIME-matched bytes."""
+    payload = _input()
+    payload["request"]["content"] = [
+        {"type": "text", "text": "Inspect this"},
+        {"type": "image_url", "image_url": {"url": url}},
+    ]
+    assert validate_document(payload, "saved_conversation_input") == payload
+    with pytest.raises(ValueError):
+        validate_saved_conversation_input(payload)
+    with pytest.raises(ValueError):
+        saved.tobkiri_packvm_invoke("saved_complete", payload)
+
+
+def test_saved_inline_image_limit_rejects_third_or_oversized_raster() -> None:
+    payload = _input()
+    payload["request"]["content"] = [
+        {"type": "text", "text": "Inspect these"},
+        *[
+            {"type": "image_url", "image_url": {"url": _TINY_PNG}}
+            for _ in range(3)
+        ],
+    ]
+    with pytest.raises(SchemaValidationError):
+        validate_document(payload, "saved_conversation_input")
+    with pytest.raises(ValueError):
+        validate_saved_conversation_input(payload)
+
+    oversized = _input()
+    encoded = base64.b64encode(
+        b"\x89PNG\r\n\x1a\n" + b"\0" * (1024 * 1024)
+    ).decode()
+    oversized["request"]["content"] = [
+        {"type": "text", "text": "Inspect this"},
+        {"type": "image_url", "image_url": {
+            "url": f"data:image/png;base64,{encoded}"
+        }},
+    ]
+    with pytest.raises(SchemaValidationError):
+        validate_document(oversized, "saved_conversation_input")
+    with pytest.raises(ValueError):
+        validate_saved_conversation_input(oversized)
 
 
 @pytest.mark.parametrize("field,value", [
