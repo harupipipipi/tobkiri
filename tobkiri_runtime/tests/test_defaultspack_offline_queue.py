@@ -30,7 +30,66 @@ def _commands(tmp_path: Path, monkeypatch) -> dict[str, dict]:
         DEFAULTSPACK_ROOT,
         settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
     ).catalog()
-    return {command["canonical_id"]: command for command in catalog["commands"]}
+    commands = {command["canonical_id"]: command for command in catalog["commands"]}
+    queueable = _queueable_command()
+    commands[queueable["canonical_id"]] = queueable
+    return commands
+
+
+def _queueable_command() -> dict:
+    """Exercise offline mechanics after the old DeepThink setting moved Packs."""
+    return {
+        "canonical_id": "defaultspack:test_offline_setting",
+        "pack_generation": 1,
+        "execution": {
+            "kind": "state_mutation",
+            "state_ref": "defaultspack:test_offline_setting",
+            "mutation": {"argument": "enabled", "when_present": "set"},
+            "offline": {
+                "queueable": True,
+                "semantics": "set",
+                "backend_authoritative": True,
+            },
+        },
+        "authorization": {"approval_required": False},
+    }
+
+
+def _protocol(
+    tmp_path: Path,
+    monkeypatch,
+    *,
+    settings_path: Path | None = None,
+) -> CommandProtocolRegistry:
+    settings_path = settings_path or tmp_path / "settings.json"
+    monkeypatch.setenv(
+        "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
+        str(settings_path),
+    )
+    protocol = CommandProtocolRegistry(
+        DEFAULTSPACK_ROOT,
+        settings_owner=FrontendSettingsStore(settings_path),
+    )
+    catalog = protocol.catalog()
+    command = _queueable_command()
+    command["pack_generation"] = protocol._pack_generation()
+    catalog["commands"].append(command)
+    monkeypatch.setattr(protocol, "catalog", lambda: catalog)
+
+    def invoke(payload, context=None):
+        assert payload["command_ref"] == command["canonical_id"]
+        return {
+            "status": "succeeded",
+            "state_changes": [
+                {
+                    "state_ref": command["execution"]["state_ref"],
+                    "value": payload["args"]["enabled"],
+                }
+            ],
+        }
+
+    monkeypatch.setattr(protocol, "invoke", invoke)
+    return protocol
 
 
 def test_only_explicit_desired_state_is_queueable(
@@ -41,9 +100,9 @@ def test_only_explicit_desired_state_is_queueable(
     queue = OfflineOperationQueue(tmp_path / "offline.sqlite3")
 
     record = queue.enqueue(
-        command=commands["defaultspack:deepthink"],
+        command=commands["defaultspack:test_offline_setting"],
         args={"enabled": True},
-        idempotency_key="offline-deepthink-1",
+        idempotency_key="offline-setting-1",
         expected_revision=4,
     )
 
@@ -69,7 +128,7 @@ def test_host_pack_approval_and_secret_operations_fail_closed(
         )
     with pytest.raises(OfflineQueueError, match="registered schema"):
         queue.enqueue(
-            command=commands["defaultspack:deepthink"],
+            command=commands["defaultspack:test_offline_setting"],
             args={"enabled": True, "api_key": "do-not-store"},
             idempotency_key="offline-secret-1",
             expected_revision=0,
@@ -83,13 +142,13 @@ def test_idempotency_conflict_and_explicit_conflict_result(
     commands = _commands(tmp_path, monkeypatch)
     queue = OfflineOperationQueue(tmp_path / "offline.sqlite3")
     record = queue.enqueue(
-        command=commands["defaultspack:deepthink"],
+        command=commands["defaultspack:test_offline_setting"],
         args={"enabled": True},
         idempotency_key="offline-conflict-1",
         expected_revision=2,
     )
     duplicate = queue.enqueue(
-        command=commands["defaultspack:deepthink"],
+        command=commands["defaultspack:test_offline_setting"],
         args={"enabled": True},
         idempotency_key="offline-conflict-1",
         expected_revision=2,
@@ -98,7 +157,7 @@ def test_idempotency_conflict_and_explicit_conflict_result(
     assert duplicate["queue_id"] == record["queue_id"]
     with pytest.raises(OfflineQueueConflict, match="different operation"):
         queue.enqueue(
-            command=commands["defaultspack:deepthink"],
+            command=commands["defaultspack:test_offline_setting"],
             args={"enabled": False},
             idempotency_key="offline-conflict-1",
             expected_revision=2,
@@ -118,22 +177,15 @@ def test_idempotency_conflict_and_explicit_conflict_result(
     assert queue.pending() == []
 
 
-def test_protocol_replays_offline_desired_state_through_normal_invocation(
+def test_protocol_replays_offline_desired_state_through_invoke_boundary(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setenv(
-        "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
-        str(tmp_path / "settings.json"),
-    )
-    protocol = CommandProtocolRegistry(
-        DEFAULTSPACK_ROOT,
-        settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
-    )
+    protocol = _protocol(tmp_path, monkeypatch)
 
     queued = protocol.enqueue_offline(
         {
-            "command_ref": "defaultspack:deepthink",
+            "command_ref": "defaultspack:test_offline_setting",
             "args": {"enabled": True},
             "idempotency_key": "offline-replay-1",
             "expected_revision": 0,
@@ -143,25 +195,17 @@ def test_protocol_replays_offline_desired_state_through_normal_invocation(
 
     assert queued["status"] == "queued"
     assert replayed["results"][0]["state"] == "completed"
-    assert protocol.query_states(
-        ["defaultspack:models.deepthink_enabled"]
-    )["states"][0]["value"] is True
+    assert replayed["results"][0]["result"]["state_changes"][0]["value"] is True
 
 
 def test_independent_command_state_reopens_queue_after_settings_path_change(
     tmp_path, monkeypatch,
 ):
     """Changing the preferences owner does not hide a retained pending request."""
-    monkeypatch.setenv(
-        "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(tmp_path / "old-settings.json"),
-    )
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMMAND_STATE_DIR", str(tmp_path / "commands"))
-    protocol = CommandProtocolRegistry(
-        DEFAULTSPACK_ROOT,
-        settings_owner=FrontendSettingsStore(tmp_path / "old-settings.json"),
-    )
+    protocol = _protocol(tmp_path, monkeypatch, settings_path=tmp_path / "old-settings.json")
     queued = protocol.enqueue_offline({
-        "command_ref": "defaultspack:deepthink",
+        "command_ref": "defaultspack:test_offline_setting",
         "args": {"enabled": True},
         "idempotency_key": "retained-queue",
         "expected_revision": 0,
@@ -191,14 +235,14 @@ def test_replay_lease_is_atomic_owner_scoped_and_cancellable(
     commands = _commands(tmp_path, monkeypatch)
     queue = OfflineOperationQueue(tmp_path / "offline.sqlite3")
     first = queue.enqueue(
-        command=commands["defaultspack:deepthink"],
+        command=commands["defaultspack:test_offline_setting"],
         args={"enabled": True},
         idempotency_key="offline-lease-1",
         expected_revision=0,
         owner_key="alice",
     )
     queue.enqueue(
-        command=commands["defaultspack:deepthink"],
+        command=commands["defaultspack:test_offline_setting"],
         args={"enabled": False},
         idempotency_key="offline-lease-2",
         expected_revision=0,
@@ -234,7 +278,7 @@ def test_cancel_before_effect_barrier_prevents_replay_effect(
     commands = _commands(tmp_path, monkeypatch)
     queue = OfflineOperationQueue(tmp_path / "offline.sqlite3")
     record = queue.enqueue(
-        command=commands["defaultspack:deepthink"],
+        command=commands["defaultspack:test_offline_setting"],
         args={"enabled": True},
         idempotency_key="offline-barrier-cancel-1",
         expected_revision=0,
@@ -264,7 +308,7 @@ def test_cancel_after_effect_barrier_is_durably_too_late(
     commands = _commands(tmp_path, monkeypatch)
     queue = OfflineOperationQueue(tmp_path / "offline.sqlite3")
     record = queue.enqueue(
-        command=commands["defaultspack:deepthink"],
+        command=commands["defaultspack:test_offline_setting"],
         args={"enabled": True},
         idempotency_key="offline-barrier-late-1",
         expected_revision=0,
@@ -309,7 +353,7 @@ def test_effect_barrier_and_cancel_race_allow_exactly_one_outcome(
     path = tmp_path / "offline.sqlite3"
     queue = OfflineOperationQueue(path)
     record = queue.enqueue(
-        command=commands["defaultspack:deepthink"],
+        command=commands["defaultspack:test_offline_setting"],
         args={"enabled": True},
         idempotency_key="offline-barrier-race-1",
         expected_revision=0,
@@ -367,7 +411,7 @@ def test_effect_owner_can_record_result_after_lease_expiry(
     commands = _commands(tmp_path, monkeypatch)
     queue = OfflineOperationQueue(tmp_path / "offline.sqlite3")
     record = queue.enqueue(
-        command=commands["defaultspack:deepthink"],
+        command=commands["defaultspack:test_offline_setting"],
         args={"enabled": True},
         idempotency_key="offline-expired-result-1",
         expected_revision=0,
@@ -404,7 +448,7 @@ def test_expired_effect_requires_reconciliation_without_auto_retry(
     commands = _commands(tmp_path, monkeypatch)
     queue = OfflineOperationQueue(tmp_path / "offline.sqlite3")
     record = queue.enqueue(
-        command=commands["defaultspack:deepthink"],
+        command=commands["defaultspack:test_offline_setting"],
         args={"enabled": True},
         idempotency_key="offline-reconcile-1",
         expected_revision=0,
@@ -447,7 +491,7 @@ def test_pending_include_inflight_exposes_replaying_and_effect_commits(
     commands = _commands(tmp_path, monkeypatch)
     queue = OfflineOperationQueue(tmp_path / "offline.sqlite3")
     record = queue.enqueue(
-        command=commands["defaultspack:deepthink"],
+        command=commands["defaultspack:test_offline_setting"],
         args={"enabled": True},
         idempotency_key="offline-inflight-1",
         expected_revision=0,
@@ -478,17 +522,10 @@ def test_cancel_of_unclaimed_queued_row_skips_replay_dispatch(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setenv(
-        "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
-        str(tmp_path / "settings.json"),
-    )
-    protocol = CommandProtocolRegistry(
-        DEFAULTSPACK_ROOT,
-        settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
-    )
+    protocol = _protocol(tmp_path, monkeypatch)
     queued = protocol.enqueue_offline(
         {
-            "command_ref": "defaultspack:deepthink",
+            "command_ref": "defaultspack:test_offline_setting",
             "args": {"enabled": True},
             "idempotency_key": "offline-cancel-queued-1",
             "expected_revision": 0,
@@ -514,9 +551,6 @@ def test_cancel_of_unclaimed_queued_row_skips_replay_dispatch(
     assert replayed["results"] == []
     assert invocations == []
     assert protocol.offline.get(queue_id, owner_key=owner_key)["state"] == "cancelled"
-    assert protocol.query_states(
-        ["defaultspack:models.deepthink_enabled"]
-    )["states"][0]["value"] is False
 
 
 def test_lease_expired_mid_invoke_returns_structured_outcome(
@@ -524,17 +558,10 @@ def test_lease_expired_mid_invoke_returns_structured_outcome(
     monkeypatch,
 ) -> None:
     """A >lease invoke reconciled mid-flight must not crash the replay call."""
-    monkeypatch.setenv(
-        "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
-        str(tmp_path / "settings.json"),
-    )
-    protocol = CommandProtocolRegistry(
-        DEFAULTSPACK_ROOT,
-        settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
-    )
+    protocol = _protocol(tmp_path, monkeypatch)
     queued = protocol.enqueue_offline(
         {
-            "command_ref": "defaultspack:deepthink",
+            "command_ref": "defaultspack:test_offline_setting",
             "args": {"enabled": True},
             "idempotency_key": "offline-expired-invoke-1",
             "expected_revision": 0,
