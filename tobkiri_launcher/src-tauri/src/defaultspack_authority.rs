@@ -1452,7 +1452,9 @@ fn validate_profile_pack_closure(
             if !generated_development_identity
                 && bundle_lock.authority_digests.get(&relative) != Some(expected)
             {
-                bail!("selected Profile Pack source digest differs from the signed catalog");
+                bail!(
+                    "selected Profile Pack source digest differs from the signed catalog: {pack_id}"
+                );
             }
         }
         let expected_artifact_digest = if pack_id == selected.application_pack_id {
