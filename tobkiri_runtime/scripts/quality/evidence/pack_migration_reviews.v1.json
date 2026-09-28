@@ -5462,7 +5462,7 @@
     },
     "rumi_model_catalog_pack": {
       "pack_id": "rumi_model_catalog_pack",
-      "review_attestation_digest": "sha256:0a958420627f96f0c6461fef205f89b3974d4c8a71c23f86efccb671a577df25",
+      "review_attestation_digest": "sha256:09b7c6db8ddf72c878d4bc1bb29938dc0213998d5df0e0c6dfee3df9765f1562",
       "review_basis": {
         "evidence_paths": [
           "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/runtime/catalog.py",
@@ -5477,7 +5477,8 @@
           "tobkiri_runtime/ecosystem/defaultspack/backend/ai_client/provider_catalog.py",
           "tobkiri_runtime/tests/test_model_catalog_contract.py",
           "tobkiri_runtime/tests/test_model_catalog_v4_routing.py",
-          "tobkiri_runtime/tests/test_saved_bridge_tool_requirement.py"
+          "tobkiri_runtime/tests/test_saved_bridge_tool_requirement.py",
+          "tobkiri_runtime/tests/test_production_frontend_contract_http.py"
         ],
         "excluded_claims": [
           "runtime admission",
@@ -5497,15 +5498,17 @@
           "OpenRouter inventory requests all output modalities without forwarding a credential",
           "without live or last-known-good inventory, unfiltered OpenRouter listing has no selectable models, including the Defaults fallback",
           "the bundled_approved lookup requires exact provider and model IDs, reads only the static catalog, and rejects unknown input fields or catalog sources",
-          "static catalog pricing accepts input/output and prompt/completion fields and marks the model as bundled_approved for exact saved-route pricing"
+          "static catalog pricing accepts input/output and prompt/completion fields and marks the model as bundled_approved for exact saved-route pricing",
+          "the declared bundled catalog read operation invokes the same verified catalog owner without changing its three legacy operation mappings",
+          "bundled model type is projected from its source value with chat as the default"
         ]
       },
-      "reviewed_at": "2026-09-28T19:43:50+09:00",
-      "reviewer_id": "codex:independent-semantic-review:v2",
+      "reviewed_at": "2026-09-28T21:41:53+00:00",
+      "reviewer_id": "codex:independent-semantic-review:model-search-2026-09-29",
       "semantic_record_digest": "sha256:fc3fbd3730136ba5318b695f094b42b82c54fa10c5296a499d91953fff2450f1",
-      "source_digest": "sha256:e43eec91fc0d7d90eff0abd203880425fd2eb0e7fadd20b16abb74d51ba66b0c",
+      "source_digest": "sha256:6cb6050b9c882ae1963978cccf89c8ee81a175d7f44840b301f32278198d54b5",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:e41b1c3db8c7dfa70585c019d05ab200726283d394597d33ff68641e11ec0204"
+      "target_digest": "sha256:23e720185e2ff1b501178a2f2a50e0483169caa5443a1661c50651d193e6ea06"
     },
     "rumi_model_evals_pack": {
       "pack_id": "rumi_model_evals_pack",
@@ -10727,14 +10730,17 @@
           "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/artifact-index.v4.json",
           "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/runtime/model_search.py",
           "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/runtime/projects.py",
-          "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/runtime/settings.py"
+          "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/runtime/settings.py",
+          "tobkiri_runtime/tests/test_production_frontend_contract_http.py"
         ],
         "verified_claims": [
           "one-to-one committed legacy-operation and v4-operation inventory",
           "contract identifier and version equality for every mapped operation",
           "implementation path and digest equality between the source registry and v4 executable catalog",
           "v4 provider identity, role, isolation, failure, and security semantics reviewed per operation",
-          "explicit backward-compatible parameter transformation reviewed for every nonidentity schema map"
+          "explicit backward-compatible parameter transformation reviewed for every nonidentity schema map",
+          "the ten reviewed v4 operation schemas and provider authority fields remain byte-identical to the curated mapping",
+          "model search reads captured registry and catalog snapshots through declared nested contracts without credential access"
         ],
         "excluded_claims": [
           "runtime admission",
@@ -10743,12 +10749,12 @@
           "release readiness"
         ]
       },
-      "reviewed_at": "2026-09-29T00:21:25+09:00",
-      "reviewer_id": "codex:independent-semantic-review:strategy-isolation-2026-09-29",
+      "reviewed_at": "2026-09-28T21:41:53+00:00",
+      "reviewer_id": "codex:independent-semantic-review:model-search-2026-09-29",
       "semantic_record_digest": "sha256:5a801f26833544b8b40a6fe3e69138f33b80dbae25fec9844bd3907c8792f33f",
       "source_digest": "sha256:22f1563acf14943d539c0cc1c1da50aae7500dd3f627cb2bd7982cb88c87e4c3",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:8824c239b09ec46ee2e9068bc0958605fe62ef11765a45b3bf19a0f6d89d76b1",
+      "target_digest": "sha256:4547c2127e7d0dcdfd45735822ac9a0f86e087b2e5dc22dfb5a5d36db243d177",
       "semantic_record": {
         "status": "verified",
         "equivalent": true,
@@ -11186,7 +11192,7 @@
         "rationale": "Independent review reconciled 10 hardened legacy operation records with the exact v4 Pack quartet for tobkiri_ui_settings_pack. Every mapping has the same function identity, contract identifier/version, implementation path/digest, and target provider semantics. The only nonidentity parameter mappings are bounded and preserve legacy requests: input:accepted-divergence:optional v4 offset integer 0..10000; absent offset is first page and preserves legacy requests; output:identity.",
         "semantic_record_digest": "sha256:5a801f26833544b8b40a6fe3e69138f33b80dbae25fec9844bd3907c8792f33f"
       },
-      "review_attestation_digest": "sha256:bc1f98c767d1628bdd437dc4974290cdad571a66a6a7a55afeb8f57086f054fc"
+      "review_attestation_digest": "sha256:b311e7f12737865e3229885afa16f345fe13dc6a0cc58ae7371e25776f0db35f"
     },
     "tobkiri_workflow_pack": {
       "pack_id": "tobkiri_workflow_pack",
