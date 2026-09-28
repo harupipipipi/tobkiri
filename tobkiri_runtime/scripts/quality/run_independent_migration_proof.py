@@ -15,7 +15,10 @@ import argparse
 import copy
 import hashlib
 import json
+import os
 import shutil
+import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -249,17 +252,74 @@ def _identity_proof(source: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _workspace_snapshot(root: Path) -> dict[str, str]:
-    """Hash every regular file in one legacy workspace without following links."""
+    """Hash regular files without accepting links or Windows reparse points."""
 
-    if root.is_symlink() or not root.is_dir():
+    if _unsafe_workspace_link(root) or not root.is_dir():
         raise IndependentMigrationProofError(f"workspace is not a regular directory: {root}")
     result: dict[str, str] = {}
     for path in sorted(root.rglob("*")):
-        if path.is_symlink():
-            raise IndependentMigrationProofError(f"workspace contains a symlink: {path}")
+        if _unsafe_workspace_link(path):
+            raise IndependentMigrationProofError(f"workspace contains an unsafe link: {path}")
         if path.is_file():
             result[path.relative_to(root).as_posix()] = _file_digest(path)
     return result
+
+
+def _unsafe_workspace_link(path: Path) -> bool:
+    """Identify links without following junctions (which are not symlinks)."""
+
+    metadata = path.lstat()
+    return stat.S_ISLNK(metadata.st_mode) or bool(
+        getattr(metadata, "st_file_attributes", 0) & 0x400  # FILE_ATTRIBUTE_REPARSE_POINT
+    )
+
+
+def _create_windows_junction(link: Path, target: Path) -> None:
+    """Create an unprivileged directory junction without a command shell."""
+
+    import ctypes
+    from ctypes import wintypes
+
+    link.mkdir()
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+        wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    handle = create_file(
+        str(link), 0x40000000, 0, None, 3, 0x00200000 | 0x02000000, None,
+    )  # GENERIC_WRITE, OPEN_EXISTING, OPEN_REPARSE_POINT | BACKUP_SEMANTICS
+    if handle == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        substitute = ("\\??\\" + str(target)).encode("utf-16-le")
+        print_name = str(target).encode("utf-16-le")
+        names = substitute + b"\0\0" + print_name + b"\0\0"
+        data = struct.pack(
+            "<IHHHHHH", 0xA0000003, 8 + len(names), 0,
+            0, len(substitute), len(substitute) + 2, len(print_name),
+        ) + names  # IO_REPARSE_TAG_MOUNT_POINT and MountPointReparseBuffer
+        returned = wintypes.DWORD()
+        device_io_control = kernel32.DeviceIoControl
+        device_io_control.argtypes = (
+            wintypes.HANDLE, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD,
+            wintypes.LPVOID, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD),
+            wintypes.LPVOID,
+        )
+        device_io_control.restype = wintypes.BOOL
+        payload = ctypes.create_string_buffer(data)
+        if not device_io_control(
+            handle, 0x000900A4, payload, len(data), None, 0,
+            ctypes.byref(returned), None,
+        ):  # FSCTL_SET_REPARSE_POINT
+            raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = (wintypes.HANDLE,)
+        close_handle.restype = wintypes.BOOL
+        close_handle(handle)
 
 
 class _FailingProfileStore(ProfileDefinitionStore):
@@ -284,10 +344,18 @@ def _copy_broken_workspace_fixture(source: Path, destination: Path) -> Path:
     """Copy the fixture and add one unsafe link for preflight rollback proof."""
 
     shutil.copytree(source, destination, symlinks=True)
-    outside = destination.parent / "outside-proof-target.txt"
-    outside.write_text("outside", encoding="utf-8")
     link = destination / "profiles" / "profile-cleo" / "notes" / "escape"
-    link.symlink_to(outside)
+    if os.name == "nt":
+        outside = destination.parent / "outside-proof-target"
+        outside.mkdir()
+        (outside / "sentinel.txt").write_text("outside", encoding="utf-8")
+        _create_windows_junction(link, outside)
+    else:
+        outside = destination.parent / "outside-proof-target.txt"
+        outside.write_text("outside", encoding="utf-8")
+        link.symlink_to(outside)
+    if not _unsafe_workspace_link(link) or link.resolve().is_relative_to(destination.resolve()):
+        raise IndependentMigrationProofError("unsafe workspace fixture did not escape")
     return destination
 
 
@@ -316,6 +384,12 @@ def _run_profile_transaction_proof(
         workspace_root,
         temporary_root / "broken-legacy",
     )
+    try:
+        _workspace_snapshot(broken_workspace / "profiles" / "profile-cleo")
+    except IndependentMigrationProofError:
+        pass
+    else:
+        raise IndependentMigrationProofError("unsafe workspace preflight unexpectedly passed")
     broken_destination = temporary_root / "broken-destination"
     try:
         ProfileDefinitionStore(broken_destination).import_legacy_collection(
