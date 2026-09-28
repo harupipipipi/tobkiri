@@ -133,6 +133,8 @@ def _require_optional_pin(
         raise ProfileResolutionDenied(f"{field} is stale or mismatched")
 
 
+
+
 @dataclass(frozen=True)
 class ResolvedDefaultProfile:
     """Schema-valid v4 records ready for Host activation ceremony."""
@@ -424,8 +426,9 @@ def dynamic_profile_edges(
     if len(caller_functions) != 1:
         raise ProfileResolutionDenied("dynamic Pack Shell caller role is absent or ambiguous")
     caller_function_id = selected_caller_id
-
-    def _operation_contract(manifest: Mapping[str, Any], operation_id: str) -> str | None:
+    def _operation_contract(
+        manifest: Mapping[str, Any], operation_id: str
+    ) -> str | None:
         return next(
             (
                 str(contract["contract_id"])
@@ -443,7 +446,9 @@ def dynamic_profile_edges(
     # compatibility boundary, not an authority grant: expanding one signed
     # dependency to every operation in that Contract would let a caller reach
     # sibling operations it never named.
-    provider_caller_operations: dict[str, dict[str, set[tuple[str, str]]]] = {}
+    provider_caller_operations: dict[
+        str, dict[str, set[tuple[str, str]]]
+    ] = {}
     consumer_links: list[tuple[str, str, tuple[tuple[str, str], ...]]] = []
 
     def _required_operations(
@@ -496,9 +501,11 @@ def dynamic_profile_edges(
                     f"required Contract: {consumer['pack']['id']} -> "
                     f"{provider['pack']['id']} ({contract_id})"
                 )
-            selected.extend((contract_id, operation_id) for operation_id in requested_operations)
+            selected.extend(
+                (contract_id, operation_id)
+                for operation_id in requested_operations
+            )
         return tuple(sorted(selected))
-
     closure: set[str] = set()
     while pending:
         pack_id, depth = pending.pop(0)
@@ -510,7 +517,9 @@ def dynamic_profile_edges(
             # caller/Contract pairs were recorded by the parent separately.
             if prior_depth < depth:
                 continue
-            raise ProfileResolutionDenied(f"dynamic Pack dependency caller is ambiguous: {pack_id}")
+            raise ProfileResolutionDenied(
+                f"dynamic Pack dependency caller is ambiguous: {pack_id}"
+            )
         if pack_id in closure:
             continue
         manifest = catalog.packs.get(pack_id)
@@ -524,13 +533,17 @@ def dynamic_profile_edges(
             # beyond this point would both broaden authority and walk valid
             # Host-provider dependency cycles.
             continue
-        pack_caller_ids = tuple(str(function["id"]) for function in manifest["functions"])
+        pack_caller_ids = tuple(
+            str(function["id"]) for function in manifest["functions"]
+        )
         required_contracts = {
             str(item["contract_id"])
             for item in manifest["requirements"]["contract_dependencies"]
             if not item["optional"]
         }
-        provided_contracts = {str(item["contract_id"]) for item in manifest["contracts"]}
+        provided_contracts = {
+            str(item["contract_id"]) for item in manifest["contracts"]
+        }
         dependencies = manifest["requirements"]["pack_dependencies"]
         for dependency in tuple(str(item) for item in dependencies):
             dependency_manifest = catalog.packs.get(dependency)
@@ -571,13 +584,17 @@ def dynamic_profile_edges(
                 )
                 caller_operations = provider_caller_operations.setdefault(dependency, {})
                 for caller_id in dependency_callers:
-                    caller_operations.setdefault(caller_id, set()).update(served_operations)
+                    caller_operations.setdefault(caller_id, set()).update(
+                        served_operations
+                    )
             if consumed_contracts:
                 consumer_links.append(
                     (
                         pack_id,
                         dependency,
-                        _required_operations(dependency_manifest, manifest, consumed_contracts),
+                        _required_operations(
+                            dependency_manifest, manifest, consumed_contracts
+                        ),
                     )
                 )
             pending.append((dependency, depth + 1))
@@ -607,8 +624,12 @@ def dynamic_profile_edges(
     # selected Shell's Functions and every Function named as an edge target.
     # A Function that is never a target cannot be reached to invoke anything,
     # so it cannot carry a caller edge either.
-    reachable_callers = {str(edge["target_provider_id"]) for edge in source["requested_edges"]}
-    reachable_callers.update(str(function["id"]) for function in shell_manifest["functions"])
+    reachable_callers = {
+        str(edge["target_provider_id"]) for edge in source["requested_edges"]
+    }
+    reachable_callers.update(
+        str(function["id"]) for function in shell_manifest["functions"]
+    )
     result: list[dict[str, Any]] = []
     minted: set[tuple[str, str, str, str]] = set()
     for pack_id in sorted(closure):
@@ -637,7 +658,9 @@ def dynamic_profile_edges(
                     if key in source_keys or key in minted:
                         continue
                     minted.add(key)
-                    result.append(_edge(caller_id, str(function["id"]), contract_id, operation_id))
+                    result.append(
+                        _edge(caller_id, str(function["id"]), contract_id, operation_id)
+                    )
     # A declared Pack dependency may also be a signed consumer of the enabling
     # Pack's own Contracts: it receives caller edges into the exact operations
     # it depends on, while still never inheriting the Shell caller.
@@ -646,9 +669,14 @@ def dynamic_profile_edges(
         consumer_manifest = catalog.packs[consumer_id]
         for consumer_function in consumer_manifest["functions"]:
             for provider_function in provider_manifest["functions"]:
-                for operation_id in sorted(str(item) for item in provider_function["operations"]):
+                for operation_id in sorted(
+                    str(item) for item in provider_function["operations"]
+                ):
                     contract_id = _operation_contract(provider_manifest, operation_id)
-                    if contract_id is None or (contract_id, operation_id) not in shared_operations:
+                    if (
+                        contract_id is None
+                        or (contract_id, operation_id) not in shared_operations
+                    ):
                         continue
                     key = (
                         str(consumer_function["id"]),
@@ -665,8 +693,14 @@ def dynamic_profile_edges(
     # fixpoint so a newly minted target edge can carry its own callers, while
     # an unreachable Function never gains authority it cannot exercise.
     while True:
-        callers = reachable_callers | {str(edge["target_provider_id"]) for edge in result}
-        filtered = [edge for edge in result if str(edge["caller_function_id"]) in callers]
+        callers = reachable_callers | {
+            str(edge["target_provider_id"]) for edge in result
+        }
+        filtered = [
+            edge
+            for edge in result
+            if str(edge["caller_function_id"]) in callers
+        ]
         if len(filtered) == len(result):
             return tuple(result)
         result = filtered
@@ -1360,9 +1394,9 @@ class ActivationStore:
         except SecurePersistenceError as exc:
             raise ProfileResolutionDenied("activation state root is unsafe") from exc
         self._workspace_digest = canonical_digest({"workspace_root": str(self.workspace_root)})
-        self._pending_migration_verified: tuple[str, str, _ArtifactTreeIdentity | None] | None = (
-            None
-        )
+        self._pending_migration_verified: (
+            tuple[str, str, _ArtifactTreeIdentity | None] | None
+        ) = None
 
     def _write_state(self, relative: str | Path, payload: Mapping[str, Any]) -> None:
         """Write canonical activation state below the pinned state root."""
@@ -1436,16 +1470,22 @@ class ActivationStore:
                 # exact verifications.
                 artifact_identity = self._capture_selected_artifact_identity(
                     profile,
-                    deadline_monotonic=(self._monotonic_clock() + self._lock_timeout_seconds),
+                    deadline_monotonic=(
+                        self._monotonic_clock() + self._lock_timeout_seconds
+                    ),
                 )
                 self._verify_selected_artifact(
                     profile,
-                    deadline_monotonic=(self._monotonic_clock() + self._lock_timeout_seconds),
+                    deadline_monotonic=(
+                        self._monotonic_clock() + self._lock_timeout_seconds
+                    ),
                 )
                 self._require_selected_artifact_identity(
                     profile,
                     artifact_identity,
-                    deadline_monotonic=(self._monotonic_clock() + self._lock_timeout_seconds),
+                    deadline_monotonic=(
+                        self._monotonic_clock() + self._lock_timeout_seconds
+                    ),
                 )
                 if any(value is not None for value in expected_predecessor) and (
                     self._state.exists("active.json")
@@ -1460,7 +1500,9 @@ class ActivationStore:
                             expected_predecessor_profile_revision
                         ),
                         expected_predecessor_plan_digest=expected_predecessor_plan_digest,
-                        expected_predecessor_activation_id=(expected_predecessor_activation_id),
+                        expected_predecessor_activation_id=(
+                            expected_predecessor_activation_id
+                        ),
                         verified_artifact_identity=artifact_identity,
                     )
             except _PendingRepublishRequired as pending:
@@ -1631,7 +1673,9 @@ class ActivationStore:
             self._require_selected_artifact_identity(
                 profile,
                 verified_artifact_identity,
-                deadline_monotonic=(self._monotonic_clock() + self._lock_timeout_seconds),
+                deadline_monotonic=(
+                    self._monotonic_clock() + self._lock_timeout_seconds
+                ),
             )
             self._authority.transition_activation(
                 reservation_id,
@@ -1650,7 +1694,9 @@ class ActivationStore:
             self._require_selected_artifact_identity(
                 profile,
                 verified_artifact_identity,
-                deadline_monotonic=(self._monotonic_clock() + self._lock_timeout_seconds),
+                deadline_monotonic=(
+                    self._monotonic_clock() + self._lock_timeout_seconds
+                ),
             )
             self._write_state(
                 "active.json",
@@ -1793,16 +1839,22 @@ class ActivationStore:
 
         artifact_identity = self._capture_selected_artifact_identity(
             republish.profile,
-            deadline_monotonic=(self._monotonic_clock() + self._lock_timeout_seconds),
+            deadline_monotonic=(
+                self._monotonic_clock() + self._lock_timeout_seconds
+            ),
         )
         self._verify_selected_artifact(
             republish.profile,
-            deadline_monotonic=(self._monotonic_clock() + self._lock_timeout_seconds),
+            deadline_monotonic=(
+                self._monotonic_clock() + self._lock_timeout_seconds
+            ),
         )
         self._require_selected_artifact_identity(
             republish.profile,
             artifact_identity,
-            deadline_monotonic=(self._monotonic_clock() + self._lock_timeout_seconds),
+            deadline_monotonic=(
+                self._monotonic_clock() + self._lock_timeout_seconds
+            ),
         )
         with self._activation_lock():
             if not self._state.exists("pending.json"):
@@ -1831,7 +1883,9 @@ class ActivationStore:
             self._require_selected_artifact_identity(
                 envelope["profile"],
                 artifact_identity,
-                deadline_monotonic=(self._monotonic_clock() + self._lock_timeout_seconds),
+                deadline_monotonic=(
+                    self._monotonic_clock() + self._lock_timeout_seconds
+                ),
             )
             self._write_state(
                 "active.json",
@@ -1855,16 +1909,22 @@ class ActivationStore:
         profile = pending.resolved.profile
         artifact_identity = self._capture_selected_artifact_identity(
             profile,
-            deadline_monotonic=(self._monotonic_clock() + self._lock_timeout_seconds),
+            deadline_monotonic=(
+                self._monotonic_clock() + self._lock_timeout_seconds
+            ),
         )
         self._verify_selected_artifact(
             profile,
-            deadline_monotonic=(self._monotonic_clock() + self._lock_timeout_seconds),
+            deadline_monotonic=(
+                self._monotonic_clock() + self._lock_timeout_seconds
+            ),
         )
         self._require_selected_artifact_identity(
             profile,
             artifact_identity,
-            deadline_monotonic=(self._monotonic_clock() + self._lock_timeout_seconds),
+            deadline_monotonic=(
+                self._monotonic_clock() + self._lock_timeout_seconds
+            ),
         )
         self._pending_migration_verified = (
             pending.activation_id,
@@ -2066,7 +2126,9 @@ class ActivationStore:
             try:
                 with self._activation_read_gate():
                     with self._activation_lock():
-                        active = self._load_active_snapshot_locked(verify_selected_artifact=False)
+                        active = self._load_active_snapshot_locked(
+                            verify_selected_artifact=False
+                        )
                 try:
                     self._verify_selected_artifact_coalesced(active)
                 except ProfileReconfirmationRequired as error:
@@ -2091,7 +2153,9 @@ class ActivationStore:
                 # successor.
                 with self._activation_read_gate():
                     with self._activation_lock():
-                        current = self._load_active_snapshot_locked(verify_selected_artifact=False)
+                        current = self._load_active_snapshot_locked(
+                            verify_selected_artifact=False
+                        )
                 if current != active:
                     raise ProfileResolutionDenied(
                         "active Profile changed during artifact verification"
@@ -2148,7 +2212,9 @@ class ActivationStore:
                 self._verify_selected_artifact(
                     active.resolved.profile,
                     allow_verified_successor_reconfirmation=True,
-                    deadline_monotonic=(self._monotonic_clock() + self._lock_timeout_seconds),
+                    deadline_monotonic=(
+                        self._monotonic_clock() + self._lock_timeout_seconds
+                    ),
                 )
             except BaseException as error:
                 flight.error = error
@@ -2167,12 +2233,16 @@ class ActivationStore:
         if not flight.complete.wait(self._lock_timeout_seconds):
             with _ARTIFACT_VERIFICATION_FLIGHTS_LOCK:
                 flight.waiters -= 1
-            raise ArtifactVerificationTimeout("coalesced artifact verification deadline exceeded")
+            raise ArtifactVerificationTimeout(
+                "coalesced artifact verification deadline exceeded"
+            )
         if flight.error is not None:
             self._verify_selected_artifact(
                 active.resolved.profile,
                 allow_verified_successor_reconfirmation=True,
-                deadline_monotonic=(self._monotonic_clock() + self._lock_timeout_seconds),
+                deadline_monotonic=(
+                    self._monotonic_clock() + self._lock_timeout_seconds
+                ),
             )
 
     def reconcile_active(
@@ -2222,23 +2292,33 @@ class ActivationStore:
                     except ProfileReconfirmationRequired:
                         pass
                     else:
-                        raise ProfileResolutionDenied("activation confirmation was replayed")
+                        raise ProfileResolutionDenied(
+                            "activation confirmation was replayed"
+                        )
                 artifact_identity = self._capture_selected_artifact_identity(
                     profile,
-                    deadline_monotonic=(self._monotonic_clock() + self._lock_timeout_seconds),
+                    deadline_monotonic=(
+                        self._monotonic_clock() + self._lock_timeout_seconds
+                    ),
                 )
                 self._verify_selected_artifact(
                     profile,
-                    deadline_monotonic=(self._monotonic_clock() + self._lock_timeout_seconds),
+                    deadline_monotonic=(
+                        self._monotonic_clock() + self._lock_timeout_seconds
+                    ),
                 )
                 self._require_selected_artifact_identity(
                     profile,
                     artifact_identity,
-                    deadline_monotonic=(self._monotonic_clock() + self._lock_timeout_seconds),
+                    deadline_monotonic=(
+                        self._monotonic_clock() + self._lock_timeout_seconds
+                    ),
                 )
                 with self._activation_lock():
                     try:
-                        current = self._load_active_snapshot_locked(verify_selected_artifact=False)
+                        current = self._load_active_snapshot_locked(
+                            verify_selected_artifact=False
+                        )
                     except ProfileReconfirmationRequired:
                         current = None
                     if current != predecessor:
@@ -2381,7 +2461,9 @@ class ActivationStore:
                 # The record graph and current Authority reservation were verified
                 # above. Expose their source and activation identities for the ceremony;
                 # the predecessor still cannot be captured for execution.
-                error.verified_profile_definition_digest = str(plan["profile_definition_digest"])
+                error.verified_profile_definition_digest = str(
+                    plan["profile_definition_digest"]
+                )
                 error.verified_profile = deepcopy(profile)
                 error.verified_activation_identity = (
                     str(plan["profile_revision"]),
@@ -2630,7 +2712,9 @@ class ActivationStore:
                 _PendingMigrationVerify(
                     resolved=successor,
                     activation_id=successor_id,
-                    created_at=str(activation.get("committed_at") or activation["created_at"]),
+                    created_at=str(
+                        activation.get("committed_at") or activation["created_at"]
+                    ),
                 )
             )
         self._activate_locked(
@@ -2733,7 +2817,9 @@ class ActivationStore:
             raise ProfileResolutionDenied("active Profile Shell binding is unavailable")
         definition = self._catalog.shells.get(str(shell.get("provider_id")))
         if not isinstance(definition, Mapping):
-            raise ProfileResolutionDenied("active Profile Shell definition is unavailable")
+            raise ProfileResolutionDenied(
+                "active Profile Shell definition is unavailable"
+            )
         variants = [
             item
             for item in definition["launch"]["variants"]
@@ -2742,18 +2828,27 @@ class ActivationStore:
             and item["entrypoint_digest"] == shell.get("executable_artifact_digest")
         ]
         if len(variants) != 1 or self._catalog.artifact_root is None:
-            raise ProfileResolutionDenied("active Profile Shell artifact is unavailable")
+            raise ProfileResolutionDenied(
+                "active Profile Shell artifact is unavailable"
+            )
         relative = Path(str(variants[0]["relative_path"]))
         if relative.is_absolute() or ".." in relative.parts:
-            raise ProfileResolutionDenied("active Profile Shell artifact is unavailable")
+            raise ProfileResolutionDenied(
+                "active Profile Shell artifact is unavailable"
+            )
 
         root = self._catalog.artifact_root
         artifact = root / relative
         entries: list[tuple[str, tuple[int, int, int, int, int, int, int]]] = []
 
         def check_deadline() -> None:
-            if deadline_monotonic is not None and self._monotonic_clock() >= deadline_monotonic:
-                raise ActivationLockTimeout("artifact identity verification deadline exceeded")
+            if (
+                deadline_monotonic is not None
+                and self._monotonic_clock() >= deadline_monotonic
+            ):
+                raise ActivationLockTimeout(
+                    "artifact identity verification deadline exceeded"
+                )
 
         def record(label: str, path: Path) -> os.stat_result:
             check_deadline()
@@ -2785,13 +2880,17 @@ class ActivationStore:
 
         root_stat = record("@root", root)
         if not stat.S_ISDIR(root_stat.st_mode):
-            raise ProfileResolutionDenied("active Profile Shell artifact root is unavailable")
+            raise ProfileResolutionDenied(
+                "active Profile Shell artifact root is unavailable"
+            )
         current = root
         for index, part in enumerate(relative.parts[:-1]):
             current /= part
             parent_stat = record(f"@parent:{index}:{part}", current)
             if not stat.S_ISDIR(parent_stat.st_mode):
-                raise ProfileResolutionDenied("active Profile Shell artifact parent is unavailable")
+                raise ProfileResolutionDenied(
+                    "active Profile Shell artifact parent is unavailable"
+                )
 
         def visit(path: Path, member: tuple[str, ...]) -> None:
             label = "/".join(member) or "."
@@ -2799,7 +2898,9 @@ class ActivationStore:
             if stat.S_ISREG(value.st_mode):
                 return
             if not stat.S_ISDIR(value.st_mode):
-                raise ProfileResolutionDenied("active Profile Shell artifact member is unavailable")
+                raise ProfileResolutionDenied(
+                    "active Profile Shell artifact member is unavailable"
+                )
             try:
                 children = sorted(path.iterdir(), key=lambda child: child.name)
             except OSError as exc:
