@@ -184,10 +184,10 @@ test("pending saved turn distinguishes owner message persistence without authori
       metadata: { turn_id: "turn-1" },
     })],
   }), "ledger_only");
-  assert.match(savedTurnProgressNotice("user_saved"), /assistant の保存状態/);
-  assert.match(savedTurnProgressNotice("all_messages_saved_unconfirmed"), /完了状態/);
-  assert.match(savedTurnProgressNotice("conversation_unavailable"), /取得できません/);
-  assert.match(savedTurnProgressNotice("ledger_only"), /保存状態/);
+  assert.match(savedTurnProgressNotice("user_saved"), /AIの返答を確認中/);
+  assert.match(savedTurnProgressNotice("all_messages_saved_unconfirmed"), /完了確認中/);
+  assert.match(savedTurnProgressNotice("conversation_unavailable"), /取得できず/);
+  assert.match(savedTurnProgressNotice("ledger_only"), /重複実行を防ぐため/);
 });
 
 test("only matching terminal saved turns stop reconciliation", () => {

@@ -106,15 +106,15 @@ export function savedTurnProgressState(
 
 export function savedTurnProgressNotice(state: SavedTurnProgressState): string {
   if (state === "user_saved") {
-    return "ユーザーメッセージは保存済みです。assistant の保存状態を照合中です。自動再送はしません。";
+    return "あなたのメッセージは保存されました。AIの返答を確認中です。自動再送はしません。";
   }
   if (state === "all_messages_saved_unconfirmed") {
-    return "user／assistant メッセージは保存済みです。turn の完了状態を照合中です。自動再送はしません。";
+    return "メッセージとAIの返答は保存されています。処理の完了確認中です。自動再送はしません。";
   }
   if (state === "conversation_unavailable") {
-    return "turn 台帳は未完了で、現在の会話を取得できません。自動再送せず照合を待ちます。";
+    return "会話を取得できず、前の処理の完了も確認できません。重複実行を防ぐため、自動再送せずに保存結果を確認します。";
   }
-  return "turn 台帳は未完了です。保存状態を照合中のため自動再送はしません。";
+  return "前の処理が完了したか確認できません。重複実行を防ぐため、自動再送せずに保存結果を確認しています。";
 }
 
 export function savedTurnTerminalNotice(
