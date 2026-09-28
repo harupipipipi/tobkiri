@@ -111,6 +111,7 @@ def _signed_external_pack(
     runtime_suffix: str | None = None,
     materialization_catalog_digest: str | None = None,
     with_frontend: bool = False,
+    frontend_artifact_kind: str = "ui.contribution",
 ) -> tuple[Path, Path]:
     source = tmp_path / PACK_ID
     shutil.copytree(FIXTURE, source)
@@ -158,7 +159,7 @@ def _signed_external_pack(
         pack_manifest["artifacts"].append({
             "path": "frontend/contributions/input.json",
             "digest": _file_digest(descriptor),
-            "kind": "ui.contribution",
+            "kind": frontend_artifact_kind,
         })
         _write_json(manifest_path, pack_manifest)
         index_path = source / "artifact-index.v4.json"
@@ -250,16 +251,21 @@ def _present(session, operation: str, payload: dict | None = None) -> dict:
     ))
 
 
+@pytest.mark.parametrize("frontend_artifact_kind", ["ui.contribution", "sidecar"])
 def test_signed_frontend_pack_projects_from_real_admitted_cas(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    frontend_artifact_kind: str,
 ) -> None:
     from ecosystem.defaultspack.defaultspack.v4_frontend_contributions import (
         project_selected_declarative_routes,
     )
 
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user-data"))
-    source, trust_store = _signed_external_pack(tmp_path, with_frontend=True)
+    source, trust_store = _signed_external_pack(
+        tmp_path, with_frontend=True,
+        frontend_artifact_kind=frontend_artifact_kind,
+    )
     committed = admit_signed_external_pack(source, trust_store_path=trust_store)
     selected_digest = committed["artifact_digest"]
     routes, diagnostics, quarantined = project_selected_declarative_routes(

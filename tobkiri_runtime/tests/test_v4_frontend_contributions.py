@@ -44,6 +44,8 @@ def _digest(path: Path) -> str:
 def _pack(
     root: Path, *, route: str = "/qa-route", mode: str = "declarative",
     input_view: object = _NO_INPUT,
+    pack_kind: str = "normal_sandbox",
+    descriptor_kind: str = "ui.contribution",
 ) -> tuple[Path, str]:
     scaffold_pack(root, pack_id=PACK_ID, display_name="QA frontend route")
     descriptor = root / DESCRIPTOR
@@ -69,8 +71,9 @@ def _pack(
     refresh_scaffold_artifacts(root)
     manifest_path = root / "pack.v4.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["pack"]["kind"] = pack_kind
     declaration = next(item for item in manifest["artifacts"] if item["path"] == DESCRIPTOR)
-    declaration["kind"] = "ui.contribution"
+    declaration["kind"] = descriptor_kind
     artifact_digest = canonical_digest(manifest["artifacts"])
     manifest["pack"]["artifact_digest"] = artifact_digest
     manifest["integrity"]["artifact_set_digest"] = artifact_digest
@@ -96,10 +99,12 @@ def _project(digest: str, occupied: list[dict[str, object]] | None = None):
     )
 
 
-def _admit_fixture(monkeypatch, root: Path) -> None:
+def _admit_fixture(
+    monkeypatch, root: Path, *, descriptor_kind: str = "ui.contribution"
+) -> None:
     monkeypatch.setattr(frontend, "resolve_admitted_pack_root", lambda pack_id: root)
     monkeypatch.setattr(frontend, "load_admitted_pack_catalog", lambda: {
-        PACK_ID: {"runtime_artifacts": [{"kind": "ui.contribution", "path": DESCRIPTOR}]},
+        PACK_ID: {"runtime_artifacts": [{"kind": descriptor_kind, "path": DESCRIPTOR}]},
     })
 
 
@@ -244,13 +249,14 @@ def test_selected_signed_strategy_descriptor_is_projected_generically(
     }
 
 
+@pytest.mark.parametrize("pack_kind", ["normal_sandbox", "host_extension"])
 def test_strategy_sidecar_does_not_quarantine_unrelated_route_projection(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch, pack_kind: str
 ) -> None:
     """A verified strategy descriptor cannot break another UI projection."""
 
     root, digest = _strategy_pack(
-        tmp_path / PACK_ID, descriptor_kind="sidecar"
+        tmp_path / PACK_ID, pack_kind=pack_kind, descriptor_kind="sidecar"
     )
     _admit_strategy_fixture(monkeypatch, root, descriptor_kind="sidecar")
 
@@ -259,6 +265,25 @@ def test_strategy_sidecar_does_not_quarantine_unrelated_route_projection(
     assert routes == []
     assert diagnostics == []
     assert quarantined == []
+
+
+def test_host_extension_route_sidecar_is_still_denied(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A Host extension cannot gain a route by naming its sidecar as UI."""
+
+    root, digest = _pack(
+        tmp_path / PACK_ID,
+        pack_kind="host_extension",
+        descriptor_kind="sidecar",
+    )
+    _admit_fixture(monkeypatch, root, descriptor_kind="sidecar")
+
+    routes, diagnostics, quarantined = _project(digest)
+
+    assert routes == []
+    assert quarantined == [PACK_ID]
+    assert diagnostics[0]["code"] == "v4_frontend_pack_quarantined"
 
 
 def test_strategy_descriptor_without_matching_plan_provider_is_quarantined(

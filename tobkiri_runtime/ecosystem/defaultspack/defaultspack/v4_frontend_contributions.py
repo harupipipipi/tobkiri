@@ -100,7 +100,7 @@ def _load_pack_routes(
     if (
         manifest["pack"]["id"] != pack_id
         or manifest["pack"]["artifact_digest"] != expected_digest
-        or manifest["pack"]["kind"] != "normal_sandbox"
+        or manifest["pack"]["kind"] not in {"normal_sandbox", "host_extension"}
     ):
         raise FrontendPackDenied("selected Pack manifest identity changed")
     compiled = compile_pack_root(root)
@@ -132,6 +132,8 @@ def _load_pack_routes(
             raise FrontendPackDenied("frontend descriptor schema is invalid")
         if payload["kind"] != "route":
             continue
+        if manifest["pack"]["kind"] != "normal_sandbox":
+            raise FrontendPackDenied("only Normal Packs can contribute routes")
         if (
             payload["mode"] != "declarative"
             or len(str(payload["label"])) > 256
