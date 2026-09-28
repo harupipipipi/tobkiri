@@ -344,6 +344,13 @@ impl SignedApplicationResolver {
             };
         verify_symlink_free_tree(&pack_root, &pack_root)?;
         let bundle_lock = verify_bundle_lock(&bundle_root)?;
+        #[cfg(debug_assertions)]
+        let catalog =
+            if development_bundle && bound_local_development_authority_stage(config)?.is_some() {
+                catalog_for_bound_development_bundle(catalog, &bundle_root, &bundle_lock)?
+            } else {
+                catalog
+            };
         #[cfg(test)]
         let catalog = fixture_catalog_with_shell_variant(catalog, &bundle_root, &bundle_lock)?;
         let active = select_profile_authority(config, &catalog, &bundle_root, &bundle_lock)?;
@@ -1004,6 +1011,82 @@ fn development_staged_runtime_for_executable(
     build_dir
         .starts_with(target_root)
         .then(|| build_dir.join("app"))
+}
+
+/// Pair the source catalog with the exact Profile and Shell sealed into this
+/// executable's local development authority stage. Packaging the developer
+/// Shell changes these digests, so the source bootstrap digest cannot select
+/// the staged Profile. The stage is independently bound to the build by its
+/// embedded manifest digest before this adapter is reached.
+#[cfg(debug_assertions)]
+fn catalog_for_bound_development_bundle(
+    catalog: crate::presentation::PresentationCatalog,
+    bundle_root: &Path,
+    bundle_lock: &VerifiedBundleLock,
+) -> Result<crate::presentation::PresentationCatalog> {
+    let profile_digest = bundle_lock
+        .authority_digests
+        .get(PROFILE_PATH)
+        .filter(|_| {
+            bundle_lock.authority_roles.get(PROFILE_PATH) == Some(&BundleEntryKind::Profile)
+        })
+        .context("build-bound development Profile is missing from its verified bundle lock")?;
+    let profile = read_json(
+        &bundle_root.join(PROFILE_PATH),
+        "build-bound development Profile",
+    )?;
+    if sha256(&fs::read(bundle_root.join(PROFILE_PATH))?) != *profile_digest {
+        bail!("build-bound development Profile differs from its verified bundle lock");
+    }
+    catalog_with_development_profile(catalog, &profile, profile_digest)
+}
+
+#[cfg(debug_assertions)]
+fn catalog_with_development_profile(
+    mut catalog: crate::presentation::PresentationCatalog,
+    profile: &Value,
+    profile_digest: &str,
+) -> Result<crate::presentation::PresentationCatalog> {
+    if catalog.release_binding.is_some()
+        || !valid_digest(profile_digest)
+        || value_str(profile, "/profile_id") != Some(catalog.default_profile_id.as_str())
+        || value_str(profile, "/base/pack_id")
+            != Some(catalog.default_selection.base_pack_id.as_str())
+        || value_str(profile, "/shell/provider_id")
+            != Some(catalog.default_selection.shell_provider_id.as_str())
+    {
+        bail!("build-bound development Profile differs from the source catalog selection");
+    }
+    let platform = value_str(profile, "/shell/platform")
+        .context("build-bound development Profile Shell platform is missing")?;
+    let architecture = value_str(profile, "/shell/architecture")
+        .context("build-bound development Profile Shell architecture is missing")?;
+    let artifact_digest = value_str(profile, "/shell/artifact_digest")
+        .filter(|digest| valid_digest(digest))
+        .context("build-bound development Shell artifact digest is invalid")?;
+    let entrypoint_digest = value_str(profile, "/shell/executable_artifact_digest")
+        .filter(|digest| valid_digest(digest))
+        .context("build-bound development Shell entrypoint digest is invalid")?;
+    let shell = catalog
+        .shell_providers
+        .iter_mut()
+        .find(|shell| shell.provider_id == catalog.default_selection.shell_provider_id)
+        .context("build-bound development Shell is missing from the source catalog")?;
+    let mut variants = shell
+        .artifact_variants
+        .iter_mut()
+        .filter(|variant| variant.platform == platform && variant.architecture == architecture)
+        .collect::<Vec<_>>();
+    if variants.len() != 1
+        || variants[0].sha256.is_some()
+        || variants[0].entrypoint_sha256.is_some()
+    {
+        bail!("build-bound development Shell has no unique unsealed catalog variant");
+    }
+    variants[0].sha256 = Some(artifact_digest.to_owned());
+    variants[0].entrypoint_sha256 = Some(entrypoint_digest.to_owned());
+    catalog.default_profile_digest = profile_digest.to_owned();
+    Ok(catalog)
 }
 
 #[cfg(not(debug_assertions))]
@@ -2948,6 +3031,48 @@ mod tests {
     fn verified_git() -> PathBuf {
         packaging_toolchain::verified_tool_executable("git")
             .expect("formal packaging Git binding should be available")
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn bound_development_profile_updates_only_its_bootstrap_digests() {
+        let catalog: crate::presentation::PresentationCatalog =
+            serde_json::from_str(include_str!("../bundled/presentation_catalog.json")).unwrap();
+        let source_digest = catalog.default_profile_digest.clone();
+        let profile = serde_json::json!({
+            "profile_id": catalog.default_profile_id,
+            "base": {"pack_id": catalog.default_selection.base_pack_id},
+            "shell": {
+                "provider_id": catalog.default_selection.shell_provider_id,
+                "platform": "macos",
+                "architecture": "arm64",
+                "artifact_digest": format!("sha256:{}", "1".repeat(64)),
+                "executable_artifact_digest": format!("sha256:{}", "2".repeat(64)),
+            },
+        });
+        let staged_digest = format!("sha256:{}", "3".repeat(64));
+        let selected =
+            catalog_with_development_profile(catalog.clone(), &profile, &staged_digest).unwrap();
+        assert_ne!(selected.default_profile_digest, source_digest);
+        assert_eq!(selected.default_profile_digest, staged_digest);
+        let variant = selected.shell_providers[0]
+            .artifact_variants
+            .iter()
+            .find(|variant| variant.platform == "macos" && variant.architecture == "arm64")
+            .unwrap();
+        assert_eq!(
+            variant.sha256.as_deref(),
+            profile["shell"]["artifact_digest"].as_str()
+        );
+        assert_eq!(
+            variant.entrypoint_sha256.as_deref(),
+            profile["shell"]["executable_artifact_digest"].as_str()
+        );
+        assert_eq!(catalog.shell_providers[0].artifact_variants[0].sha256, None);
+
+        let mut wrong_profile = profile;
+        wrong_profile["profile_id"] = Value::String("another-profile".into());
+        assert!(catalog_with_development_profile(catalog, &wrong_profile, &staged_digest).is_err());
     }
 
     fn verified_python() -> packaging_toolchain::VerifiedTool {
