@@ -98,8 +98,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/frontend_contract_map.v4.json",
       "type": "regular-file",
-      "size": 41017,
-      "sha256": "c4ed961160a56ea5d7ca5b6526473892f750a5f5819dd5c2e3df4753a9954249",
+      "size": 41027,
+      "sha256": "64b96857d957e2332dbb3eed98960a84149ece8c45e907b39b0fd26807a15abb",
       "executable": false
     },
     {
@@ -119,8 +119,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/http_surface_presentation.py",
       "type": "regular-file",
-      "size": 31469,
-      "sha256": "a33d600fa4e9c6502d6fd40ab8c165b2b51cc81438553dadf1fe3fbcbe07dc2d",
+      "size": 31487,
+      "sha256": "91ba6ab1ec43c53b0d10ec208f84b3d7b741ed0ef074542d5695b6940458aa4b",
       "executable": false
     },
     {
@@ -3095,7 +3095,7 @@
       "path": "ecosystem/defaultspack/v4/packs/runtime.tauri.application.default.pack.v4.json",
       "type": "regular-file",
       "size": 3909,
-      "sha256": "19cfa625d4700ec949b2d423ad47f21cc68562d4fabfd8237a0840c91197797e",
+      "sha256": "7d60d69d0184418feca9681258bc1097445a748fbdb5abbe69e615d9337fbbc4",
       "executable": false
     },
     {
