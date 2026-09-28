@@ -89,6 +89,35 @@ export async function openLauncherUpdateRelease(): Promise<void> {
   await invoke<void>('open_launcher_update_release');
 }
 
+export interface NativePackAdmission {
+  pack_id: string;
+  artifact_digest: string;
+  publisher_id: string;
+  catalog_refreshed: boolean;
+}
+
+export interface NativePackAdmissionStatus {
+  ready: boolean;
+  onboarding_supported: boolean;
+}
+
+export async function fetchSignedPackAdmissionStatus(): Promise<NativePackAdmissionStatus> {
+  const invoke = await requireTauriInvoke('Signed Pack trust status');
+  return invoke<NativePackAdmissionStatus>('signed_pack_admission_status');
+}
+
+/** The native picker keeps the selected filesystem path outside the renderer. */
+export async function admitSignedPackFromFolder(): Promise<NativePackAdmission | null> {
+  const invoke = await requireTauriInvoke('Signed Pack admission');
+  return invoke<NativePackAdmission | null>('admit_signed_pack_from_folder');
+}
+
+/** Both source and separate public key are selected and confirmed in native dialogs. */
+export async function onboardSignedPackFromFolder(): Promise<NativePackAdmission | null> {
+  const invoke = await requireTauriInvoke('Signed Pack publisher onboarding');
+  return invoke<NativePackAdmission | null>('onboard_signed_pack_from_folder');
+}
+
 export async function fetchDebugApprovalStatus(): Promise<DebugApprovalStatus | null> {
   const invoke = await loadTauriInvoke();
   return invoke ? invoke<DebugApprovalStatus>('debug_approval_status') : null;

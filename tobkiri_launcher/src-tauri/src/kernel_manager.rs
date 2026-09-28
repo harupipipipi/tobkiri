@@ -304,6 +304,10 @@ impl KernelManager {
                     .env("RUMI_HOME", &self.config.rumi_home)
                     .env("RUMI_USER_DATA", &self.config.user_data_dir)
                     .env(
+                        "RUMI_PACK_PUBLISHER_TRUST_STORE",
+                        self.config.publisher_trust_store_path(),
+                    )
+                    .env(
                         "RUMI_DEFAULTSPACK_SECRETS_DIR",
                         self.config.user_data_dir.join("secrets"),
                     )

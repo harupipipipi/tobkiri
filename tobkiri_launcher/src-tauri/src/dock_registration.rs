@@ -1167,6 +1167,10 @@ pub(crate) fn spawn_defaultspack_local_server(
                 .env("RUMI_HOME", &config.rumi_home)
                 .env("RUMI_USER_DATA", &config.user_data_dir)
                 .env(
+                    "RUMI_PACK_PUBLISHER_TRUST_STORE",
+                    config.publisher_trust_store_path(),
+                )
+                .env(
                     "RUMI_DEFAULTSPACK_SECRETS_DIR",
                     config.user_data_dir.join("secrets"),
                 )

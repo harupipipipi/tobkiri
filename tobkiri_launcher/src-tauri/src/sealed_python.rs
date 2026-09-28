@@ -233,6 +233,7 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
     let common = [
         "RUMI_HOME",
         "RUMI_USER_DATA",
+        "RUMI_PACK_PUBLISHER_TRUST_STORE",
         "RUMI_LOG_DIR",
         "PYTHONDONTWRITEBYTECODE",
     ];

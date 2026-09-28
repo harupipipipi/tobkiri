@@ -312,6 +312,15 @@ impl AppConfig {
             .unwrap_or_else(|| self.user_data_dir.clone())
             .join(".desktop_api_token")
     }
+
+    /// Host-owned publisher policy used by signed external Normal Packs.
+    /// The same path is passed to every managed Python role that can verify
+    /// Pack signatures, so admission and later approval cannot diverge.
+    pub fn publisher_trust_store_path(&self) -> PathBuf {
+        self.user_data_dir
+            .join("pack_control")
+            .join("publisher_trust.v4.json")
+    }
 }
 
 fn find_dev_workspace_root(resource_dir: &Path) -> Option<PathBuf> {

@@ -2156,6 +2156,176 @@ class PackAPIHandler(
             )
         )
 
+    def _native_pack_launcher_authenticated(self) -> bool:
+        manager = self._panel_auth_manager
+        secret = self.headers.get("X-Rumi-Desktop-Bootstrap", "")
+        return bool(
+            manager is not None
+            and self._is_loopback_client(self.client_address)
+            and manager.validate_bootstrap_secret(secret)
+        )
+
+    @staticmethod
+    def _native_pack_trust_store() -> Path | None:
+        value = os.environ.get("RUMI_PACK_PUBLISHER_TRUST_STORE", "")
+        path = Path(value) if value else None
+        return path if path is not None and path.is_absolute() else None
+
+    def _handle_native_external_pack_status(self) -> None:
+        if not self._native_pack_launcher_authenticated():
+            self._send_response(APIResponse(False, error="Unauthorized"), 401)
+            return
+        trust_store = self._native_pack_trust_store()
+        ready = False
+        if trust_store is not None and trust_store.is_file():
+            try:
+                from .pack_artifact_integrity import read_host_policy_snapshot
+
+                policy = read_host_policy_snapshot(trust_store)
+                ready = bool(policy.get("publishers")) and bool(
+                    policy.get("install_records")
+                )
+            except Exception as error:
+                logger.warning("Native Pack trust status failed closed", exc_info=error)
+        self._send_response(APIResponse(True, data={
+            "ready": ready,
+            "onboarding_supported": os.name != "nt",
+        }))
+
+    def _handle_native_external_pack_admission(self) -> None:
+        """Admit a folder selected by the native Launcher, outside Pack-control.
+
+        The renderer supplies no path.  The native Launcher owns the folder
+        picker and authenticates this loopback call with its private bootstrap
+        secret.  The existing Host policy still pins publisher, key, artifact,
+        and the authorized install location before the Pack enters the catalog.
+        """
+
+        if not self._native_pack_launcher_authenticated():
+            self._discard_request_body()
+            self._send_response(APIResponse(False, error="Unauthorized"), 401)
+            return
+        body = self._parse_object_body()
+        if body is None:
+            return
+        source_value = body.get("source_root")
+        if (
+            set(body) != {"source_root"}
+            or not isinstance(source_value, str)
+            or not source_value
+            or "\x00" in source_value
+            or not Path(source_value).is_absolute()
+        ):
+            self._send_response(APIResponse(False, error="Invalid Pack folder"), 400)
+            return
+        from .external_pack_catalog_v4 import admit_signed_external_pack
+
+        trust_store = self._native_pack_trust_store()
+        if trust_store is None or not trust_store.is_file():
+            self._send_response(
+                APIResponse(False, error="Publisher trust policy is unavailable"), 409
+            )
+            return
+        try:
+            entry = admit_signed_external_pack(
+                Path(source_value), trust_store_path=trust_store
+            )
+        except Exception as error:
+            logger.warning("Native external Pack admission failed closed", exc_info=error)
+            self._send_response(
+                APIResponse(False, error="Signed Pack admission was denied"), 409
+            )
+            return
+        refreshed = False
+        refresh = self._runtime_refresh
+        if refresh is not None:
+            try:
+                refresh(None)
+                refreshed = True
+            except Exception as error:
+                # The catalog commit cannot be rolled back.  Report that exact
+                # outcome and let the UI retry its read instead of claiming
+                # the signature or Host policy was denied.
+                logger.warning("Admitted Pack catalog refresh failed", exc_info=error)
+        self._send_response(
+            APIResponse(
+                True,
+                data={
+                    "pack_id": str(entry["pack_id"]),
+                    "artifact_digest": str(entry["artifact_digest"]),
+                    "publisher_id": str(entry["publisher_id"]),
+                    "catalog_refreshed": refreshed,
+                },
+            )
+        )
+
+    def _handle_native_pack_onboarding(self, *, commit: bool) -> None:
+        """Accept only Launcher-selected paths under private loopback authentication."""
+
+        if not self._native_pack_launcher_authenticated():
+            self._discard_request_body()
+            self._send_response(APIResponse(False, error="Unauthorized"), 401)
+            return
+        if os.name == "nt":
+            self._discard_request_body()
+            self._send_response(
+                APIResponse(False, error="Signed Pack onboarding requires a POSIX Host"), 409
+            )
+            return
+        body = self._parse_object_body()
+        if body is None:
+            return
+        expected_keys = {"source_root", "public_key_path"}
+        if commit:
+            expected_keys.add("preview_digest")
+        if set(body) != expected_keys or any(
+            not isinstance(body.get(key), str)
+            or not body[key]
+            or "\x00" in body[key]
+            for key in expected_keys
+        ) or any(
+            not Path(body[key]).is_absolute()
+            for key in ("source_root", "public_key_path")
+        ):
+            self._send_response(APIResponse(False, error="Invalid Pack selection"), 400)
+            return
+        from .native_pack_onboarding import commit_signed_pack, preview_signed_pack
+
+        source = Path(body["source_root"])
+        key = Path(body["public_key_path"])
+        try:
+            if commit:
+                trust_store = self._native_pack_trust_store()
+                if trust_store is None:
+                    raise ValueError("Host publisher trust store is not configured")
+                entry = commit_signed_pack(
+                    source,
+                    key,
+                    expected_preview_digest=str(body["preview_digest"]),
+                    trust_store_path=trust_store,
+                )
+                refreshed = False
+                refresh = self._runtime_refresh
+                if refresh is not None:
+                    try:
+                        refresh(None)
+                        refreshed = True
+                    except Exception as error:
+                        logger.warning("Onboarded Pack catalog refresh failed", exc_info=error)
+                result = {
+                    "pack_id": str(entry["pack_id"]),
+                    "artifact_digest": str(entry["artifact_digest"]),
+                    "publisher_id": str(entry["publisher_id"]),
+                    "catalog_refreshed": refreshed,
+                }
+            else:
+                result = preview_signed_pack(source, key)
+        except Exception as error:
+            logger.warning("Native Pack onboarding failed closed", exc_info=error)
+            self._send_response(APIResponse(False, error="Signed Pack verification was denied"), 409)
+            return
+        self._send_response(APIResponse(True, data=result))
+
     def _handle_panel_exchange(self, body: Mapping[str, object]) -> None:
         manager = self._panel_auth_manager
         if not self._is_loopback_client(self.client_address) or not self._check_panel_origin():
@@ -2709,6 +2879,9 @@ location.replace({target_literal})}})
 
         self._reset_request_state()
         path = urlparse(self.path).path
+        if path == "/api/internal/native-pack/status":
+            self._handle_native_external_pack_status()
+            return
         if self._handle_packvm_lifecycle("GET", path):
             return
         if self._handle_contract_request("GET"):
@@ -2810,6 +2983,15 @@ location.replace({target_literal})}})
             return
         if path == "/api/panel/auth/bootstrap":
             self._handle_panel_bootstrap()
+            return
+        if path == "/api/internal/native-pack/admit":
+            self._handle_native_external_pack_admission()
+            return
+        if path == "/api/internal/native-pack/preview":
+            self._handle_native_pack_onboarding(commit=False)
+            return
+        if path == "/api/internal/native-pack/commit":
+            self._handle_native_pack_onboarding(commit=True)
             return
         if path == "/api/panel/auth/exchange":
             body = self._parse_object_body()

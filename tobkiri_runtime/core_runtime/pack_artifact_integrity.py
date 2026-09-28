@@ -362,6 +362,7 @@ def write_host_install_record(
     pack_id: str,
     install_path: Path,
     record: Mapping[str, Any],
+    publisher_record: Mapping[str, Any] | None = None,
 ) -> None:
     """Atomically persist a complete Host-owned Pack install policy.
 
@@ -448,8 +449,58 @@ def write_host_install_record(
             policy_lock=policy_lock,
         )
         previous_policy_identity = host_policy_identity(payload)
+        if publisher_record is not None:
+            if set(publisher_record) != {
+                "public_key_pem", "allowed_pack_namespaces", "revoked_key_ids"
+            }:
+                raise ValueError("Host publisher policy fields are invalid")
+            public_key = serialization.load_pem_public_key(
+                str(publisher_record["public_key_pem"]).encode("utf-8")
+            )
+            if not isinstance(public_key, Ed25519PublicKey):
+                raise ValueError("Host publisher key must be Ed25519")
+            public_key_raw = public_key.public_bytes(
+                encoding=serialization.Encoding.Raw,
+                format=serialization.PublicFormat.Raw,
+            )
+            if hashlib.sha256(public_key_raw).hexdigest()[:32] != record["key_id"]:
+                raise ValueError("Host publisher key does not match signed Pack")
+            publisher_id = str(record["publisher_id"])
+            if publisher_record["allowed_pack_namespaces"] != [str(pack_id)]:
+                raise ValueError("Host publisher namespace must be the exact Pack ID")
+            if publisher_record["revoked_key_ids"] != []:
+                raise ValueError("new Host publisher record cannot revoke keys")
+            publishers = payload.get("publishers")
+            publishers = dict(publishers) if isinstance(publishers, Mapping) else {}
+            prior_publisher = publishers.get(publisher_id)
+            if prior_publisher is not None:
+                if (
+                    not isinstance(prior_publisher, Mapping)
+                    or str(prior_publisher.get("public_key_pem") or "")
+                    != publisher_record["public_key_pem"]
+                    or record["key_id"] in prior_publisher.get("revoked_key_ids", ())
+                ):
+                    raise ValueError("publisher identity is already bound to another key")
+                existing_namespaces = prior_publisher.get("allowed_pack_namespaces")
+                if not isinstance(existing_namespaces, list) or not all(
+                    isinstance(item, str) for item in existing_namespaces
+                ):
+                    raise ValueError("existing publisher namespaces are invalid")
+                publishers[publisher_id] = {
+                    **prior_publisher,
+                    "allowed_pack_namespaces": sorted(
+                        set(existing_namespaces) | {str(pack_id)}
+                    ),
+                }
+            else:
+                publishers[publisher_id] = dict(publisher_record)
+            payload["publishers"] = publishers
         records = payload.get("install_records")
         records = dict(records) if isinstance(records, Mapping) else {}
+        if publisher_record is not None:
+            prior_record = records.get(str(pack_id))
+            if prior_record is not None and prior_record != persisted_record:
+                raise ValueError("Pack ID is already bound to another install policy")
         records[str(pack_id)] = persisted_record
         payload["install_records"] = records
         generation = _policy_generation(payload) + 1

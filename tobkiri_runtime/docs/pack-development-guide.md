@@ -48,8 +48,8 @@ digest不一致はfail closedです。
 
 ## 3. Host-owned admission
 
-信頼済みinstallerだけが内部Host portを呼びます。desktop/web clientへsource pathやcatalog
-documentを渡すAPIはありません。
+信頼済みinstallerだけが内部Host portを呼びます。Web UI と Pack-control Contract に
+source path や catalog document を渡す API はありません。
 
 ```python
 from pathlib import Path
@@ -64,6 +64,19 @@ entry = admit_signed_external_pack(
 Hostは署名file inventoryを検証し、非実行quarantineからdigest-pinned read-only CASへatomicに
 promotionし、HMAC認証catalogとappend-only installed journalをcommitします。bundled canonical
 catalogは変更しません。同じID/digestは冪等、同じID/異digestとbundled ID shadowはconflictです。
+
+Launcher の **Packs → Trust and add signed Pack** では、ネイティブダイアログで署名済み
+Pack フォルダと、そのフォルダ外にある Ed25519 公開鍵 PEM を別々に選びます。Host が署名、
+全ファイル、Normal Sandbox v4 manifest を検証し、Pack ID、publisher、公開鍵 fingerprint、
+要求 capability、Contract、artifact digest を返します。Launcher のネイティブ確認ダイアログで
+明示承認すると、Host が再検証して publisher policy と exact install record を同一の Host policy
+書き込みで保存し、signed CAS catalog へ admission します。選択パスは Web UI に渡りません。
+Pack 内の鍵を自動信頼する経路はありません。署名・install path・artifact の検証に失敗すると
+登録されません。Launcher は `user_data/pack_control/publisher_trust.v4.json` を Host policy path
+として使い、Kernel と Defaultspack の両方へ同じ `RUMI_PACK_PUBLISHER_TRUST_STORE` を渡します。
+既に Host policy と exact install record がある場合は **Add from trusted folder** も使えます。
+この policy の安全なディレクトリ検証は現在 POSIX Host 専用です。Windows ではこの追加操作を
+Launcher に表示しません。
 
 ## 4. install、approval、Profile activation
 

@@ -7,12 +7,18 @@ import { Badge } from '@/src/components/ui/Badge';
 import { Switch } from '@/src/components/ui/Switch';
 import { Card } from '@/src/components/ui/Card';
 import { panelRoutes } from '@/src/lib/routes';
-import { AlertTriangle, CircleHelp, Search, Package, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, CircleHelp, FolderPlus, Package, Search, ShieldCheck } from 'lucide-react';
 import { Button } from '@/src/components/ui/Button';
 import { CopyErrorButton } from '@/src/components/ui/CopyErrorButton';
 import { InlineLoadError } from '@/src/components/ui/InlineLoadError';
 import { PackScopeSummary } from '@/src/components/packs/PackScopeSummary';
 import { isPackInCatalogScope } from '@/src/lib/packScope';
+import {
+  admitSignedPackFromFolder,
+  fetchSignedPackAdmissionStatus,
+  isDesktopShellAvailable,
+  onboardSignedPackFromFolder,
+} from '@/src/lib/desktopHost';
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning';
 
@@ -85,10 +91,32 @@ export function Packs() {
   const [installingPackId, setInstallingPackId] = useState<string | null>(null);
   const [approvingPackId, setApprovingPackId] = useState<string | null>(null);
   const [verifyingMutationKey, setVerifyingMutationKey] = useState<string | null>(null);
+  const [admittingPack, setAdmittingPack] = useState(false);
+  const [admissionError, setAdmissionError] = useState<string | null>(null);
+  const [admissionReady, setAdmissionReady] = useState<boolean | null>(null);
+  const [onboardingSupported, setOnboardingSupported] = useState<boolean | null>(null);
+  const [trustStatusUnavailable, setTrustStatusUnavailable] = useState(false);
 
   useEffect(() => {
     void loadPacks();
   }, [loadPacks]);
+
+  const refreshAdmissionStatus = async () => {
+    setTrustStatusUnavailable(false);
+    try {
+      const status = await fetchSignedPackAdmissionStatus();
+      setAdmissionReady(status.ready);
+      setOnboardingSupported(status.onboarding_supported);
+    } catch {
+      setAdmissionReady(null);
+      setOnboardingSupported(null);
+      setTrustStatusUnavailable(true);
+    }
+  };
+
+  useEffect(() => {
+    if (isDesktopShellAvailable()) void refreshAdmissionStatus();
+  }, []);
 
   const filteredPacks = packs.filter(pack => pack.name.toLowerCase().includes(search.toLowerCase()));
   const profileTransitionPending = Object.values(packTogglePending).some(Boolean);
@@ -145,6 +173,26 @@ export function Packs() {
     }
   };
 
+  const handleAdmitSignedPack = async (onboardPublisher: boolean) => {
+    setAdmittingPack(true);
+    setAdmissionError(null);
+    try {
+      const admitted = onboardPublisher
+        ? await onboardSignedPackFromFolder()
+        : await admitSignedPackFromFolder();
+      if (admitted === null) return;
+      await refreshAdmissionStatus();
+      await loadPacks(true);
+      addToast(admitted.catalog_refreshed
+        ? `${admitted.pack_id} was added to the signed catalog. Install and approve it before enabling.`
+        : `${admitted.pack_id} was admitted. Refresh the Pack catalog before installing.`, 'success');
+    } catch (error) {
+      setAdmissionError(error instanceof Error ? error.message : 'Signed Pack admission failed.');
+    } finally {
+      setAdmittingPack(false);
+    }
+  };
+
   return (
     <div className="flex-1 overflow-y-auto page-enter">
       <div className="w-full py-8 pr-6 flex flex-col gap-6">
@@ -152,6 +200,33 @@ export function Packs() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-text-main">{t('packs.title')}</h1>
           <p className="mt-1 text-sm text-text-muted">Manage installed packs and their capabilities.</p>
+          {isDesktopShellAvailable() ? (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              {onboardingSupported ? (
+                <Button type="button" variant="outline" onClick={() => void handleAdmitSignedPack(true)} loading={admittingPack}>
+                  <FolderPlus className="h-4 w-4" aria-hidden="true" />
+                  Trust and add signed Pack
+                </Button>
+              ) : null}
+              {admissionReady ? (
+                <Button type="button" variant="outline" onClick={() => void handleAdmitSignedPack(false)} disabled={admittingPack}>
+                  Add from trusted folder
+                </Button>
+              ) : null}
+              <span className="text-xs text-text-muted">{onboardingSupported === false
+                ? 'Signed Pack onboarding is unavailable on this Windows Host.'
+                : 'Choose a signed Pack folder and its separate publisher public key, then review the native confirmation.'}</span>
+              {trustStatusUnavailable ? (
+                <>
+                  <span className="text-xs text-destructive">Host Pack service is unavailable.</span>
+                  <Button type="button" size="sm" variant="outline" onClick={() => void refreshAdmissionStatus()}>
+                    Check Pack service
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+          {admissionError ? <p className="mt-2 text-sm text-destructive" role="alert">{admissionError}</p> : null}
         </div>
 
         <PackScopeSummary

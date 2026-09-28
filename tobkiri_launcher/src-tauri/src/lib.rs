@@ -223,6 +223,32 @@ struct ApiEnvelope<T> {
     error: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+struct NativePackAdmission {
+    pack_id: String,
+    artifact_digest: String,
+    publisher_id: String,
+    catalog_refreshed: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct NativePackAdmissionStatus {
+    ready: bool,
+    onboarding_supported: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct NativePackOnboardingPreview {
+    pack_id: String,
+    version: String,
+    publisher_id: String,
+    key_fingerprint: String,
+    requested_capabilities: Vec<String>,
+    contract_versions: std::collections::BTreeMap<String, String>,
+    artifact_digest: String,
+    preview_digest: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct TauriConfigEnv {
     build: Option<TauriBuildConfigEnv>,
@@ -434,6 +460,204 @@ async fn open_launcher_update_release(window: tauri::WebviewWindow) -> Result<()
     .await
     .map_err(|error| format!("Launcher update release task failed: {error}"))?
     .map_err(|error| format!("Launcher update release failed: {error:#}"))
+}
+
+/// The renderer can request a picker but cannot provide a Pack path or trust
+/// document.  Only the native Launcher sends the selected directory to the
+/// local Host installation port using the private desktop bootstrap secret.
+#[tauri::command]
+async fn signed_pack_admission_status(
+    window: tauri::WebviewWindow,
+    config: tauri::State<'_, AppConfig>,
+) -> Result<NativePackAdmissionStatus, String> {
+    validate_launcher_main_window(&window, "signed Pack trust status")?;
+    let config = config.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let bootstrap_secret = load_or_create_panel_bootstrap_secret(&config)
+            .map_err(|_| "Launcher Pack trust authentication is unavailable".to_string())?;
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|_| "Launcher Pack trust client is unavailable".to_string())?;
+        let url = format!(
+            "http://127.0.0.1:{}/api/internal/native-pack/status",
+            config.kernel_port
+        );
+        let response = client
+            .get(url)
+            .header("X-Rumi-Desktop-Bootstrap", bootstrap_secret)
+            .send()
+            .map_err(|_| "Local Host Pack trust status is unavailable".to_string())?;
+        let status = response.status();
+        let envelope: ApiEnvelope<NativePackAdmissionStatus> = response
+            .json()
+            .map_err(|_| "Local Host Pack trust status returned an invalid response".to_string())?;
+        if !status.is_success() || !envelope.success {
+            return Err("Local Host Pack trust status was denied".to_string());
+        }
+        envelope
+            .data
+            .ok_or_else(|| "Local Host Pack trust status returned no result".to_string())
+    })
+    .await
+    .map_err(|_| "Launcher Pack trust status task failed".to_string())?
+}
+
+#[tauri::command]
+async fn admit_signed_pack_from_folder(
+    window: tauri::WebviewWindow,
+    config: tauri::State<'_, AppConfig>,
+) -> Result<Option<NativePackAdmission>, String> {
+    validate_launcher_main_window(&window, "signed Pack admission")?;
+    let app = window.app_handle().clone();
+    let selected =
+        tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_folder())
+            .await
+            .map_err(|_| "Pack folder picker failed".to_string())?;
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    let source_root = selected
+        .into_path()
+        .map_err(|_| "Pack folder picker returned an invalid path".to_string())?;
+    let config = config.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let bootstrap_secret = load_or_create_panel_bootstrap_secret(&config)
+            .map_err(|_| "Launcher Pack admission authentication is unavailable".to_string())?;
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(180))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|_| "Launcher Pack admission client is unavailable".to_string())?;
+        let url = format!(
+            "http://127.0.0.1:{}/api/internal/native-pack/admit",
+            config.kernel_port
+        );
+        let response = client
+            .post(url)
+            .header("X-Rumi-Desktop-Bootstrap", bootstrap_secret)
+            .json(&serde_json::json!({"source_root": source_root}))
+            .send()
+            .map_err(|_| "Local Host Pack admission is unavailable".to_string())?;
+        let status = response.status();
+        let envelope: ApiEnvelope<NativePackAdmission> = response
+            .json()
+            .map_err(|_| "Local Host Pack admission returned an invalid response".to_string())?;
+        if !status.is_success() || !envelope.success {
+            return Err(envelope
+                .error
+                .unwrap_or_else(|| "Signed Pack admission was denied".to_string()));
+        }
+        envelope
+            .data
+            .map(Some)
+            .ok_or_else(|| "Local Host Pack admission returned no Pack identity".to_string())
+    })
+    .await
+    .map_err(|_| "Launcher Pack admission task failed".to_string())?
+}
+
+/// Two native pickers and a native confirmation bind the separately selected
+/// publisher key to the exact signed artifact verified by the Host.
+#[tauri::command]
+async fn onboard_signed_pack_from_folder(
+    window: tauri::WebviewWindow,
+    config: tauri::State<'_, AppConfig>,
+) -> Result<Option<NativePackAdmission>, String> {
+    validate_launcher_main_window(&window, "signed Pack onboarding")?;
+    let app = window.app_handle().clone();
+    let folder =
+        tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_folder())
+            .await
+            .map_err(|_| "Pack folder picker failed".to_string())?;
+    let Some(folder) = folder else {
+        return Ok(None);
+    };
+    let source_root = folder
+        .into_path()
+        .map_err(|_| "Pack folder picker returned an invalid path".to_string())?;
+    let app = window.app_handle().clone();
+    let key_file = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .add_filter("Ed25519 public key", &["pem"])
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|_| "Publisher public key picker failed".to_string())?;
+    let Some(key_file) = key_file else {
+        return Ok(None);
+    };
+    let public_key_path = key_file
+        .into_path()
+        .map_err(|_| "Public key picker returned an invalid path".to_string())?;
+    let config = config.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let secret = load_or_create_panel_bootstrap_secret(&config)
+            .map_err(|_| "Launcher Pack onboarding authentication is unavailable".to_string())?;
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(180))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|_| "Launcher Pack onboarding client is unavailable".to_string())?;
+        let base = format!("http://127.0.0.1:{}/api/internal/native-pack", config.kernel_port);
+        let preview_response = client.post(format!("{base}/preview"))
+            .header("X-Rumi-Desktop-Bootstrap", &secret)
+            .json(&serde_json::json!({
+                "source_root": source_root,
+                "public_key_path": public_key_path,
+            }))
+            .send()
+            .map_err(|_| "Local Host signed Pack preview is unavailable".to_string())?;
+        let preview_status = preview_response.status();
+        let preview_envelope: ApiEnvelope<NativePackOnboardingPreview> = preview_response.json()
+            .map_err(|_| "Local Host signed Pack preview is invalid".to_string())?;
+        if !preview_status.is_success() || !preview_envelope.success {
+            return Err(preview_envelope.error.unwrap_or_else(|| "Signed Pack preview was denied".into()));
+        }
+        let preview = preview_envelope.data
+            .ok_or_else(|| "Signed Pack preview returned no result".to_string())?;
+        let capabilities = if preview.requested_capabilities.is_empty() {
+            "none".to_string()
+        } else { preview.requested_capabilities.join(", ") };
+        let contracts = if preview.contract_versions.is_empty() {
+            "none".to_string()
+        } else {
+            preview.contract_versions.iter()
+                .map(|(name, version)| format!("{name}: {version}"))
+                .collect::<Vec<_>>().join(", ")
+        };
+        let confirmed = window.dialog().message(format!(
+            "Trust this separately selected publisher key for this signed Pack and add it?\n\nPack: {} {}\nPublisher: {}\nKey fingerprint: {}\nCapabilities: {}\nContracts: {}\nArtifact: {}\n\nThis grants trust for this exact Pack identity and artifact. Installation and capability approval remain separate.",
+            preview.pack_id, preview.version, preview.publisher_id,
+            preview.key_fingerprint, capabilities, contracts, preview.artifact_digest,
+        ))
+        .title("Review signed Pack")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom("Trust and add".into(), "Cancel".into()))
+        .blocking_show();
+        if !confirmed { return Ok(None) }
+        let response = client.post(format!("{base}/commit"))
+            .header("X-Rumi-Desktop-Bootstrap", &secret)
+            .json(&serde_json::json!({
+                "source_root": source_root,
+                "public_key_path": public_key_path,
+                "preview_digest": preview.preview_digest,
+            }))
+            .send()
+            .map_err(|_| "Local Host signed Pack commit is unavailable".to_string())?;
+        let status = response.status();
+        let envelope: ApiEnvelope<NativePackAdmission> = response.json()
+            .map_err(|_| "Local Host signed Pack commit returned an invalid response".to_string())?;
+        if !status.is_success() || !envelope.success {
+            return Err(envelope.error.unwrap_or_else(|| "Signed Pack onboarding was denied".into()));
+        }
+        envelope.data.map(Some)
+            .ok_or_else(|| "Signed Pack onboarding returned no Pack identity".to_string())
+    })
+    .await
+    .map_err(|_| "Launcher Pack onboarding task failed".to_string())?
 }
 
 #[tauri::command]
@@ -3758,6 +3982,9 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             open_external_url,
             check_launcher_update,
             open_launcher_update_release,
+            signed_pack_admission_status,
+            admit_signed_pack_from_folder,
+            onboard_signed_pack_from_folder,
             close_current_window,
             open_authority_approval_window,
             open_ambient_trigger_window,
