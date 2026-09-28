@@ -32,6 +32,7 @@ from tobkiri_host.macos_vz_supervisor import (
     verify_macos_vz_helper_identity,
 )
 from tobkiri_host.platform_backends import IsolationLaunch, IsolationLease
+from tobkiri_host.saved_turn_plan import SavedToolFrame
 
 
 @pytest.mark.parametrize("kind", [
@@ -907,14 +908,18 @@ def test_saved_host_and_guest_exchange_with_independent_signatures_and_real_owne
     request.payload = {"request": {"turn_id": "turn", "conversation_id": "conversation",
                                    "conversation_revision": 1, "content": "Hello"}}
 
-    def dispatch(outer: object, frame: Mapping[str, Any]) -> Mapping[str, Any]:
+    def dispatch(
+        outer: object, frame: Mapping[str, Any] | SavedToolFrame
+    ) -> Mapping[str, Any]:
         assert preflight == [request]
         assert outer is request
-        observed.append(frame["hop"])
-        payload = frame["payload"]
-        if frame["hop"] == 0:
+        assert isinstance(frame, SavedToolFrame)
+        guest_frame = frame.frame
+        observed.append(guest_frame["hop"])
+        payload = guest_frame["payload"]
+        if guest_frame["hop"] == 0:
             value = {"conversation": owner.get("conversation")}
-        elif frame["hop"] == 2:
+        elif guest_frame["hop"] == 2:
             if tamper == "cancel":
                 request.cancellation_requested.set()
             value = {"status": "ok", "output": "Hi"}

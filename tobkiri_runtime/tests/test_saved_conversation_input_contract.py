@@ -191,7 +191,12 @@ def test_saved_turn_accepts_finite_thinking_level(level: str) -> None:
     payload["request"]["thinking_level"] = level
     assert validate_document(payload, "saved_conversation_input") == payload
     assert validate_saved_conversation_input(payload) == payload
-    assert saved.start(payload["request"])["state"]["request"] == payload["request"]
+    state = saved.start(payload["request"])["state"]
+    assert state["request"] == {
+        key: item for key, item in payload["request"].items() if key != "content"
+    }
+    assert state["user_content"] == payload["request"]["content"]
+    assert state["user_content_digest"] is None
 
 
 @pytest.mark.parametrize("level", ["ultra", "", None, True, 1, [], {}])
