@@ -29,6 +29,7 @@
     "model_search.py",
     "models.py",
     "operation_cancellation.py",
+    "packvm_bridge_budget.py",
     "platform_backends.py",
     "ports.py",
     "resource_controller.py",
