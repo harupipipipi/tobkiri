@@ -9,6 +9,7 @@ import {
   atMentionMenuKeyAction,
   atomicComposerMentionEdit,
   atMentionPalettePayload,
+  composerMentionSkills,
   commandPalettePayload,
   commandArgumentPalettePayload,
   JsonListPanel,
@@ -35,6 +36,7 @@ import {
   ComposerRenderer,
   composerToolMentionWidget,
   filterComposerToolMentions,
+  filterComposerSkillMentions,
   filterModelProfilesBySearch,
   resolveComposerWidgetDrop,
   shouldFocusComposerForSlashKey,
@@ -58,6 +60,14 @@ test("composer file mention filters string context files", () => {
 
   assert.deepEqual(filterAtMentionFiles(files, "md"), ["README.md", "docs/context.md"]);
   assert.equal(typeof filterAtMentionFiles(files, "")[0], "string");
+});
+
+test("composer offers Settings when the host skill catalog is empty", () => {
+  const skills = composerMentionSkills([]);
+  const matches = filterComposerSkillMentions(skills, "setting");
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]?.label, "Settings");
+  assert.equal(matches[0]?.id, "settings_assistant");
 });
 
 test("composer file mention insertion keeps @ text for workspace attachment flow", () => {
