@@ -15,7 +15,7 @@
       "path": "ecosystem/defaultspack/artifact-index.v4.json",
       "type": "regular-file",
       "size": 23541,
-      "sha256": "da9b95ec07d97d517b6f67231121a7f1ec6981c9388ebc36b62f937ed331829f",
+      "sha256": "c55334e37d3a4b24a48f15e00b0aa153d79875f1c2ff94af3a9a870b1c39bed6",
       "executable": false
     },
     {
@@ -288,7 +288,7 @@
       "path": "ecosystem/defaultspack/pack.v4.json",
       "type": "regular-file",
       "size": 28880,
-      "sha256": "b04dc9b7e573017d168c919bd452f4d26b55362709793961932ed2134891be2b",
+      "sha256": "4ded4949bde0096e611a7468090e98e8fd716c2c4a2f740f37310df38e464fb3",
       "executable": false
     },
     {

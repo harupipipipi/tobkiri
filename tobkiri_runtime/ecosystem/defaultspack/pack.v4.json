@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:f344b4c1ef9ced95009b51c8d7702911ee23f504bd46f44355d03cec12a5e371",
+      "digest": "sha256:22a6a803781c33b6d0a57afb0e159afade5992e906ead1bc2d16e7d8b798fba3",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -682,7 +682,7 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:d91a53876ef8faeb8f1890e8b63334065eb855507d562af4a8725c1519f3670d",
+    "artifact_set_digest": "sha256:6863b374a8da437e7733c196023422527071d1a9806bcdcdfc6de1bc5644562b",
     "contract_catalog_digest": "sha256:98fbb61dcd6c0cc79e4f733a4ffb30e6039779c1b9ef98a072a0080440d8ce45",
     "source_identity": "sha256:befecec777dfa779bd1d1465d212455861899f89777244d14813f3472945a090"
   },
@@ -719,7 +719,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:d91a53876ef8faeb8f1890e8b63334065eb855507d562af4a8725c1519f3670d",
+    "artifact_digest": "sha256:6863b374a8da437e7733c196023422527071d1a9806bcdcdfc6de1bc5644562b",
     "display_name": "Tobkiri Defaults Providers",
     "id": "defaultspack",
     "kind": "normal_sandbox",
