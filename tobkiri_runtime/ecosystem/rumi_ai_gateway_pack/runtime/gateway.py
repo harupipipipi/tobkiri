@@ -108,6 +108,7 @@ _SAVED_CONNECTION_CATALOG_ROUTES = {
         "USD",
     ),
 }
+_BUNDLED_APPROVED_CATALOG_SOURCE = "bundled_approved"
 
 _GENERATE_ALLOWED_CONTRACTS = frozenset(
     {
@@ -861,14 +862,23 @@ def _catalog_candidates(
 ) -> tuple[list[Candidate], list[dict[str, str]]]:
     catalog_models: list[dict[str, Any]] = []
     catalog_inventory: dict[str, dict[str, dict[str, Any]]] = {}
-    for catalog_provider in client.providers(CATALOG_CONTRACT):
+    catalog_payload = _saved_connection_catalog_query(
+        explicit_connection,
+        str(requirement.preferred_model_id or ""),
+    )
+    catalog_providers = (
+        ()
+        if explicit_connection is not None and not catalog_payload
+        else client.providers(CATALOG_CONTRACT)
+    )
+    for catalog_provider in catalog_providers:
         catalog_provider_id = str(
             catalog_provider.get("provider_instance_id") or ""
         )
         result = client.invoke(
             CATALOG_CONTRACT,
             CATALOG_STREAM_OPERATION if streaming else CATALOG_GENERATE_OPERATION,
-            {},
+            catalog_payload,
             provider_instance_id=catalog_provider_id,
         )
         inventory = result.get("inventory") if isinstance(result, Mapping) else None
@@ -1042,9 +1052,9 @@ def _saved_connection_catalog_pricing(
         else None
     )
     if (
-        not isinstance(inventory, Mapping)
-        or inventory.get("stale") is not False
-        or inventory.get("source") not in {"live", "last_known_good"}
+        descriptor.get("catalog_source") != _BUNDLED_APPROVED_CATALOG_SOURCE
+        or not isinstance(inventory, Mapping)
+        or inventory.get("source") != _BUNDLED_APPROVED_CATALOG_SOURCE
     ):
         return {}
     currency = str(descriptor.get("currency") or reviewed_currency).upper()
@@ -1066,6 +1076,35 @@ def _saved_connection_catalog_pricing(
         "output": rates[1],
         "currency": currency,
         "revision": str(descriptor.get("catalog_revision") or ""),
+    }
+
+
+def _saved_connection_catalog_query(
+    connection_value: Any,
+    provider_model_id: str,
+) -> dict[str, Any]:
+    """Select a network-free owner lookup for an exact reviewed saved route."""
+
+    connection = (
+        dict(connection_value)
+        if isinstance(connection_value, Mapping)
+        else {}
+    )
+    route = _SAVED_CONNECTION_CATALOG_ROUTES.get(
+        (
+            str(connection.get("adapter_id") or ""),
+            str(connection.get("endpoint") or ""),
+        )
+    )
+    if route is None:
+        return {}
+    provider_id, reviewed_models, _currency = route
+    if provider_model_id not in reviewed_models:
+        return {}
+    return {
+        "provider_id": provider_id,
+        "model_id": provider_model_id,
+        "catalog_source": _BUNDLED_APPROVED_CATALOG_SOURCE,
     }
 
 

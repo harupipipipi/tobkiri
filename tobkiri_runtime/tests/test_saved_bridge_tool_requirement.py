@@ -80,6 +80,7 @@ class _SavedRouteSession:
             }
         )["record"]
         self.provider_requests: list[dict[str, Any]] = []
+        self.catalog_requests: list[dict[str, Any]] = []
 
     def provider_metadata(
         self, contract_id: str
@@ -137,6 +138,7 @@ class _SavedRouteSession:
                 ],
             }
         if contract_id == gateway.CATALOG_CONTRACT:
+            self.catalog_requests.append(dict(payload))
             return create_model_catalog_operation(None)(operation_id, payload)
         if contract_id == gateway.REQUEST_PREPARE_CONTRACT:
             return create_prepare_operation(None)(operation_id, payload)
@@ -269,8 +271,18 @@ def test_deepthink_pricing_rejection_precedes_saved_user_append(
     assert session.provider_requests == []
 
 
-def test_connection_route_uses_exact_reviewed_catalog_pricing() -> None:
+def test_connection_route_uses_exact_reviewed_catalog_pricing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """An exact reviewed connection/model pair uses catalog-owned rates."""
+
+    from ecosystem.rumi_model_catalog_pack.runtime import catalog
+
+    monkeypatch.setattr(
+        catalog,
+        "_openrouter_inventory",
+        lambda: pytest.fail("saved preflight must not refresh public inventory"),
+    )
 
     session = _SavedRouteSession("deepseek/deepseek-r1-0528")
     session.record["metadata"]["pricing"] = {
@@ -298,6 +310,11 @@ def test_connection_route_uses_exact_reviewed_catalog_pricing() -> None:
         "output": 0.00000215,
         "currency": "USD",
     }
+    assert session.catalog_requests == [{
+        "provider_id": "openrouter",
+        "model_id": "deepseek/deepseek-r1-0528",
+        "catalog_source": "bundled_approved",
+    }]
 
 
 def test_connection_route_keeps_unknown_mimo_pricing_unavailable() -> None:
@@ -324,6 +341,7 @@ def test_connection_route_keeps_unknown_mimo_pricing_unavailable() -> None:
         "output": None,
         "currency": "USD",
     }
+    assert session.catalog_requests == []
 
 
 @pytest.mark.parametrize(
@@ -334,7 +352,8 @@ def test_connection_route_keeps_unknown_mimo_pricing_unavailable() -> None:
         ({}, {"provider_model_id": "xiaomi/mimo-v2.6-flash"}, {}),
         ({}, {"currency": "EUR"}, {}),
         ({}, {"input_cost": float("nan")}, {}),
-        ({}, {}, {"stale": True}),
+        ({}, {"catalog_source": "live"}, {}),
+        ({}, {}, {"source": "live"}),
     ],
 )
 def test_connection_catalog_pricing_requires_exact_trusted_evidence(
@@ -342,7 +361,7 @@ def test_connection_catalog_pricing_requires_exact_trusted_evidence(
     model_update: Mapping[str, Any],
     inventory_update: Mapping[str, Any],
 ) -> None:
-    """Loose provider, model, currency, rate, or freshness matches fail closed."""
+    """Loose provider, model, currency, rate, or provenance matches fail closed."""
 
     connection = {
         "adapter_id": "openai-compatible",
@@ -357,13 +376,13 @@ def test_connection_catalog_pricing_requires_exact_trusted_evidence(
         "currency": "USD",
         "catalog_revision": "catalog-1",
         "catalog_provider_instance_id": "catalog-main",
+        "catalog_source": "bundled_approved",
         **model_update,
     }
     inventory = {
         "catalog-main": {
             "openrouter": {
-                "source": "live",
-                "stale": False,
+                "source": "bundled_approved",
                 **inventory_update,
             }
         }

@@ -3,6 +3,7 @@
 import pytest
 
 from ecosystem.rumi_ai_routing_pack.runtime.router import create_route_operation
+from ecosystem.rumi_model_catalog_pack.runtime import catalog as catalog_module
 from ecosystem.rumi_model_catalog_pack.runtime.catalog import (
     create_model_catalog_operation,
 )
@@ -43,3 +44,35 @@ def test_bundled_models_resolve_exact_v4_provider(mode: str) -> None:
     assert {item["reason"] for item in denied["excluded"]} == {
         "execution_provider_unresolved"
     }
+
+
+def test_exact_approved_lookup_never_refreshes_public_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Saved readiness reads immutable owner pricing without network or LKG."""
+
+    monkeypatch.setattr(
+        catalog_module,
+        "_openrouter_inventory",
+        lambda: pytest.fail("exact bundled lookup must not refresh inventory"),
+    )
+    result = create_model_catalog_operation(None)(
+        "rumi_model_catalog_pack.bundled-model-catalog.generate",
+        {
+            "provider_id": "openrouter",
+            "model_id": "deepseek/deepseek-r1-0528",
+            "catalog_source": "bundled_approved",
+        },
+    )
+
+    assert result["inventory"] == {
+        "openrouter": {
+            "source": "bundled_approved",
+            "model_count": 1,
+        }
+    }
+    assert len(result["models"]) == 1
+    assert result["models"][0]["catalog_source"] == "bundled_approved"
+    assert result["models"][0]["provider_model_id"] == (
+        "deepseek/deepseek-r1-0528"
+    )

@@ -32,6 +32,7 @@ _OPENROUTER_MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 _OPENROUTER_MAX_MODELS = 5000
 _OPENROUTER_MEMORY_INVENTORY: dict[str, Any] | None = None
 _OPENROUTER_INVENTORY_LOCK = threading.Lock()
+_BUNDLED_APPROVED_SOURCE = "bundled_approved"
 
 
 def create_model_catalog_operation(client: Any):
@@ -47,17 +48,41 @@ def create_model_catalog_operation(client: Any):
             "rumi_model_catalog_pack.bundled-model-catalog.stream",
         }:
             raise ValueError(f"unknown model catalog operation: {name}")
+        if set(payload) - {"provider_id", "model_id", "catalog_source"}:
+            raise ValueError("model catalog input fields are invalid")
+        catalog_source = str(payload.get("catalog_source") or "").strip()
+        if catalog_source not in {"", _BUNDLED_APPROVED_SOURCE}:
+            raise ValueError("model catalog source is invalid")
         providers, models = _load_catalog()
         provider_id = str(payload.get("provider_id") or "").strip()
         model_id = str(payload.get("model_id") or "").strip()
         inventory: dict[str, Any] = {}
-        if not provider_id or provider_id == _OPENROUTER_PROVIDER_ID:
+        if catalog_source == _BUNDLED_APPROVED_SOURCE:
+            if not provider_id or not model_id:
+                raise ValueError(
+                    "bundled model catalog lookup requires exact provider and model IDs"
+                )
+            inventory[provider_id] = {
+                "source": _BUNDLED_APPROVED_SOURCE,
+                "model_count": sum(
+                    1
+                    for item in models
+                    if item.get("provider_id") == provider_id
+                    and item.get("provider_model_id") == model_id
+                ),
+            }
+        elif not provider_id or provider_id == _OPENROUTER_PROVIDER_ID:
             models, inventory = _merge_openrouter_inventory(models)
         if provider_id:
             providers = [item for item in providers if item["provider_id"] == provider_id]
             models = [item for item in models if item["provider_id"] == provider_id]
         if model_id:
-            models = [item for item in models if item["model_id"] == model_id]
+            models = [
+                item
+                for item in models
+                if item["model_id"] == model_id
+                or item.get("provider_model_id") == model_id
+            ]
         # v4 pins generation and streaming as distinct executable providers.
         # The old unsuffixed instance cannot resolve either captured binding.
         execution_provider = (
@@ -202,12 +227,15 @@ def _model(
         "capabilities": capabilities,
         "modalities": modalities,
         "context_length": _integer(context_length),
-        "input_cost": _number(pricing.get("input")),
-        "output_cost": _number(pricing.get("output")),
+        "input_cost": _number(pricing.get("input", pricing.get("prompt"))),
+        "output_cost": _number(
+            pricing.get("output", pricing.get("completion"))
+        ),
         "priority": _integer(value.get("priority"), default=100),
         "available": bool(value.get("enabled", True) and provider_manifest.get("enabled", True)),
         "data_residency": str(value.get("data_residency") or "unknown"),
         "catalog_revision": CATALOG_REVISION,
+        "catalog_source": _BUNDLED_APPROVED_SOURCE,
     }
 
 
