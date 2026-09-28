@@ -31,12 +31,12 @@
           "release readiness"
         ]
       },
-      "reviewed_at": "2026-09-29T00:21:25+09:00",
-      "reviewer_id": "codex:independent-semantic-review:strategy-isolation-2026-09-29",
-      "semantic_record_digest": "sha256:5a79118f2900ec9de8ed19078ef47624a4e27979c85bc650cc6e8bd0da1b138d",
-      "source_digest": "sha256:595d5167a3672392f81a23d5df1059c32f8809dcadc4f5dc0bd95ad4e13f9956",
+      "reviewed_at": "2026-09-29T01:29:09+09:00",
+      "reviewer_id": "codex:independent-semantic-review:saved-strategy-budget-2026-09-29",
+      "semantic_record_digest": "sha256:d2a2260013d18766df8800c6917d57b52d1c61c23772ccb6f082073f4bc17136",
+      "source_digest": "sha256:d90ca0f9d7ea74f4e21e87cc0b9be82479fafcc338d4d3a46a461c90218508a8",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:7bad323c2a529c33ecb5ec9301ce228f80a9ffd2bae8a9f8ae0c400abbbc1713",
+      "target_digest": "sha256:d91a53876ef8faeb8f1890e8b63334065eb855507d562af4a8725c1519f3670d",
       "semantic_record": {
         "status": "verified",
         "equivalent": true,
@@ -136,8 +136,8 @@
             "parameter_mapping": {
               "status": "verified",
               "method": "canonical-json-schema-equality",
-              "legacy_schema_digest": "sha256:29461d681a152dcd66f5eb5d9aa26b40adf8492568d4d9ec85a52195274d1083",
-              "v4_schema_digest": "sha256:29461d681a152dcd66f5eb5d9aa26b40adf8492568d4d9ec85a52195274d1083",
+              "legacy_schema_digest": "sha256:5a702548b7400fff76afd6858d8e12a7d48ffc9824ac212fd900e75b7b19fc07",
+              "v4_schema_digest": "sha256:5a702548b7400fff76afd6858d8e12a7d48ffc9824ac212fd900e75b7b19fc07",
               "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
               "rules": [
                 "input:identity",
@@ -170,9 +170,9 @@
         ],
         "accepted_divergences": [],
         "rationale": "Independent review reconciled 3 hardened legacy operation records with the exact v4 Pack quartet for defaultspack. Every mapping has the same function identity, contract identifier/version, implementation path/digest, and target provider semantics. All input, output, and error schemas are canonically equal.",
-        "semantic_record_digest": "sha256:5a79118f2900ec9de8ed19078ef47624a4e27979c85bc650cc6e8bd0da1b138d"
+        "semantic_record_digest": "sha256:d2a2260013d18766df8800c6917d57b52d1c61c23772ccb6f082073f4bc17136"
       },
-      "review_attestation_digest": "sha256:238898b459c19156df2066ea4a2285c3a163452c853aae0bd76cf2d736e1a83a"
+      "review_attestation_digest": "sha256:72c44d7fead925c26dbcdffadd9a6f46c176088dd5324d983e7ca12478e84793"
     },
     "rumi_agent_continuity_pack": {
       "pack_id": "rumi_agent_continuity_pack",
@@ -8756,12 +8756,12 @@
           "release readiness"
         ]
       },
-      "reviewed_at": "2026-09-29T00:21:25+09:00",
-      "reviewer_id": "codex:independent-semantic-review:strategy-isolation-2026-09-29",
-      "semantic_record_digest": "sha256:18e2572ef9ab3321881aa7c3edbec02f75bfd09ad1ba36a9426f57a5cae1dec8",
+      "reviewed_at": "2026-09-29T01:29:09+09:00",
+      "reviewer_id": "codex:independent-semantic-review:saved-strategy-budget-2026-09-29",
+      "semantic_record_digest": "sha256:d26b68b0d0744d30a53a5407b45258f5010b2f933cbef4eb3477c6ead5ffc0f4",
       "source_digest": "sha256:875ef2ca61ed1ccfd6a53b01ddb1f039c09cef548552b311a3d2f2e3c0db8261",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:71c02e8b2c0c276eb43bac5bd3f49872cdcbb50d0d0f7c43e23dcbcd4a88ad98",
+      "target_digest": "sha256:a1070d4f3f52b21ccfdbd3c17ea5927ab2a8e2366a00254c7c2c466d483522ca",
       "semantic_record": {
         "status": "verified",
         "equivalent": true,
@@ -8953,8 +8953,8 @@
             "parameter_mapping": {
               "status": "verified",
               "method": "canonical-json-schema-equality",
-              "legacy_schema_digest": "sha256:29461d681a152dcd66f5eb5d9aa26b40adf8492568d4d9ec85a52195274d1083",
-              "v4_schema_digest": "sha256:29461d681a152dcd66f5eb5d9aa26b40adf8492568d4d9ec85a52195274d1083",
+              "legacy_schema_digest": "sha256:5a702548b7400fff76afd6858d8e12a7d48ffc9824ac212fd900e75b7b19fc07",
+              "v4_schema_digest": "sha256:5a702548b7400fff76afd6858d8e12a7d48ffc9824ac212fd900e75b7b19fc07",
               "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
               "rules": [
                 "input:identity",
@@ -9035,9 +9035,9 @@
           "parameter_schema_mapping_mismatch"
         ],
         "rationale": "Independent review reconciled 6 hardened legacy operation records with the exact v4 Pack quartet for rumi_turn_runtime_pack. Every mapping has the same function identity, contract identifier/version, implementation path/digest, and target provider semantics. The only nonidentity parameter mappings are bounded and preserve legacy requests: input:identity; output:accepted-divergence:stopped_confirmed is emitted only after Host-verified nested resource drain; otherwise cancellation_requested remains nonterminal.",
-        "semantic_record_digest": "sha256:18e2572ef9ab3321881aa7c3edbec02f75bfd09ad1ba36a9426f57a5cae1dec8"
+        "semantic_record_digest": "sha256:d26b68b0d0744d30a53a5407b45258f5010b2f933cbef4eb3477c6ead5ffc0f4"
       },
-      "review_attestation_digest": "sha256:ec83122f25c9b1f49f19bbc0c9d4b48e283b15680b8646e904e5f1c1b857dbb3"
+      "review_attestation_digest": "sha256:be3c0bf055e778062a05f7d6cbf2c7f2c34aa34cc26d0beed4865697ef8a0ff3"
     },
     "rumi_voice_mobile_pack": {
       "pack_id": "rumi_voice_mobile_pack",

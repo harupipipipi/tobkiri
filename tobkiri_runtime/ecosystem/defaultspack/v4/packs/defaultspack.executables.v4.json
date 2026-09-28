@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:9396fede92cd9fe41bc7192d3f3ddf97f0dd1d64228440f8836d9cdac0110431",
+  "source_identity": "sha256:b04dc9b7e573017d168c919bd452f4d26b55362709793961932ed2134891be2b",
   "variants": [
     {
       "variant_id": "defaultspack.application-presentation.python",
@@ -189,7 +189,7 @@
         {
           "contract_id": "conversation.saved-turn.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:930358794e1d9a6d10d644173dc01739e5bc00c1a486fba985d0f776e376f3a2",
+          "revision_digest": "sha256:591f3491dbec2c659f2006ca1dbc3e883ef5c0f5ef0704f71b5f5c6b56cb5976",
           "operation_id": "saved_complete",
           "input_schema": {
             "$defs": {
@@ -286,6 +286,12 @@
                   },
                   "conversation_revision": {
                     "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "strategy_maximum_cost_microusd": {
+                    "description": "Optional lower per-turn strategy limit in integer micro-USD. The Host always enforces its own one-dollar ceiling.",
+                    "maximum": 1000000,
                     "minimum": 1,
                     "type": "integer"
                   },
@@ -479,6 +485,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:25bde911e3198c71c74c84d0c21f880aaf3421cee33d6950cfa86aa47efb20b3",
-  "catalog_digest": "sha256:a6635dab5ff9c00f1bd552df82737ba3309000bde18c274ea320d2324d353be7"
+  "materialization_catalog_digest": "sha256:03f72c4d6b9ff75cfeb26211801f0a2aebc990eccebd8716eab9132a6ac99ac2",
+  "catalog_digest": "sha256:d00856f87514c99b69c52e1d07a40ea54f0677c2d6f630737842ccd4da6dc066"
 }

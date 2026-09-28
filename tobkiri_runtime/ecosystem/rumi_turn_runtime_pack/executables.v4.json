@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:20fa901a568a6329504d094923d1ecc1738445d7f2f4c8327922124a5e2194c1",
+  "catalog_digest": "sha256:e3da7eb797dadd50e9951ee28880e75454287d1e9b32194e34488974f6ba9da0",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:0b3ffef4269ffd4b3f913384f31d2e6c7c080ac551fca89802385cf9fe2e20a5",
+  "source_identity": "sha256:f9057e9498b1962fa535ca557bcadf289d92c19c60524968f6ec2a4fbd13ec5b",
   "variants": [
     {
       "architecture": "any",
@@ -297,6 +297,12 @@
                     "minimum": 1,
                     "type": "integer"
                   },
+                  "strategy_maximum_cost_microusd": {
+                    "description": "Optional lower per-turn strategy limit in integer micro-USD. The Host always enforces its own one-dollar ceiling.",
+                    "maximum": 1000000,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
                   "strategy_reference": {
                     "$ref": "#/$defs/identifier",
                     "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
@@ -464,7 +470,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:ab0db7feb2cbb783f252f2be679676b896c3b3c9f27bbfb5860fb989505cd27c",
+          "revision_digest": "sha256:0ba1b8a1e0bb00b658ff856dcf26c646ccd08a36f76dea14b20628c62acc3c94",
           "timeout_default_ms": 120000,
           "timeout_hard_max_ms": 300000
         }

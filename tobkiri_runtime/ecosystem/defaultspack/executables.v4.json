@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:25bde911e3198c71c74c84d0c21f880aaf3421cee33d6950cfa86aa47efb20b3",
+  "catalog_digest": "sha256:03f72c4d6b9ff75cfeb26211801f0a2aebc990eccebd8716eab9132a6ac99ac2",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:49aee2e06383e5eed4a9685a0dc1dce9a99a1d0f31c5f63277390b4f011ac4fe",
+  "source_identity": "sha256:befecec777dfa779bd1d1465d212455861899f89777244d14813f3472945a090",
   "variants": [
     {
       "architecture": "any",
@@ -303,6 +303,12 @@
                     "minimum": 1,
                     "type": "integer"
                   },
+                  "strategy_maximum_cost_microusd": {
+                    "description": "Optional lower per-turn strategy limit in integer micro-USD. The Host always enforces its own one-dollar ceiling.",
+                    "maximum": 1000000,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
                   "strategy_reference": {
                     "$ref": "#/$defs/identifier",
                     "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
@@ -470,7 +476,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:930358794e1d9a6d10d644173dc01739e5bc00c1a486fba985d0f776e376f3a2",
+          "revision_digest": "sha256:591f3491dbec2c659f2006ca1dbc3e883ef5c0f5ef0704f71b5f5c6b56cb5976",
           "timeout_default_ms": 120000,
           "timeout_hard_max_ms": 300000
         }

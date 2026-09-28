@@ -50,8 +50,8 @@ def test_resolved_catalog_projects_all_legacy_commands_to_v1(tmp_path: Path) -> 
     catalog = _owner_bound_protocol(tmp_path).catalog()
 
     assert catalog["api_version"] == "tobkiri.commands/v1"
-    assert len(catalog["commands"]) == 55
-    assert len({item["canonical_id"] for item in catalog["commands"]}) == 55
+    assert len(catalog["commands"]) == 54
+    assert len({item["canonical_id"] for item in catalog["commands"]}) == 54
 
 
 def test_command_state_binding_does_not_resolve_settings_path(tmp_path, monkeypatch):
@@ -131,7 +131,7 @@ def test_all_command_bindings_are_concretely_probed_and_pack_blocks_execute(
         }
     )
 
-    assert len(matrix) == 55
+    assert len(matrix) == 54
     assert all(item["verified_handler"] is True for item in matrix)
     assert all(item["concrete_binding"] for item in matrix)
     assert fast["status"] == "succeeded", fast
@@ -152,8 +152,11 @@ def test_all_command_bindings_are_concretely_probed_and_pack_blocks_execute(
     assert all("legacy" not in item for item in catalog["commands"])
 
     by_id = {item["identity"]["id"]: item for item in catalog["commands"]}
-    assert by_id["deepthink"]["presentation"]["input"]["kind"] == "toggle"
-    assert by_id["deepthink"]["execution"]["kind"] == "state_mutation"
+    assert "deepthink" not in by_id
+    assert by_id["think"]["presentation"]["input"]["kind"] == "select"
+    assert by_id["think"]["execution"]["operation_ref"] == (
+        "defaultspack:ai_set_thinking_level"
+    )
     assert by_id["model"]["presentation"]["input"]["kind"] == "search_select"
     assert (
         by_id["model"]["presentation"]["input"]["datasource_ref"]
@@ -221,11 +224,11 @@ def test_resolved_catalog_exposes_high_risk_commands_to_the_host_adapter(tmp_pat
     assert not any(item["code"] == "handler_missing" for item in catalog["diagnostics"])
 
 
-def test_all_55_commands_have_authority_and_completion_conformance(tmp_path: Path) -> None:
+def test_all_54_commands_have_authority_and_completion_conformance(tmp_path: Path) -> None:
     matrix = _owner_bound_protocol(tmp_path).conformance_matrix()
 
-    assert len(matrix) == 55
-    assert len({item["command_id"] for item in matrix}) == 55
+    assert len(matrix) == 54
+    assert len({item["command_id"] for item in matrix}) == 54
     assert all(item["operation_ref"] for item in matrix)
     assert all(item["completion_semantics"] != "noop" for item in matrix)
     high_risk = [item for item in matrix if item["authority"]["approval_required"]]
@@ -236,7 +239,7 @@ def test_all_55_commands_have_authority_and_completion_conformance(tmp_path: Pat
     )
 
 
-def test_protocol_deepthink_invocation_returns_authoritative_state(
+def test_removed_deepthink_command_cannot_mutate_strategy_state(
     tmp_path: Path, monkeypatch
 ) -> None:
     monkeypatch.setenv(
@@ -245,7 +248,8 @@ def test_protocol_deepthink_invocation_returns_authoritative_state(
     )
     protocol = _owner_bound_protocol(tmp_path)
 
-    enabled = protocol.invoke(
+    initial = protocol.query_states()["states"]
+    removed = protocol.invoke(
         {
             "command_ref": "defaultspack:deepthink",
             "args": {"enabled": True},
@@ -255,22 +259,17 @@ def test_protocol_deepthink_invocation_returns_authoritative_state(
             "expected_revision": 0,
         }
     )
-    disabled = protocol.invoke(
+    assert initial == [
         {
-            "command_ref": "defaultspack:deepthink",
-            "args": {"enabled": False},
-            "mode": "chat",
-            "invocation_id": "deepthink-protocol-2",
-            "idempotency_key": "deepthink-protocol-2",
-            "expected_revision": 1,
+            "state_ref": "defaultspack:models.strategy_reference",
+            "value": None,
+            "revision": 0,
+            "freshness": "authoritative",
         }
-    )
-
-    assert enabled["status"] == "succeeded"
-    assert enabled["state_changes"][0]["value"] is True
-    assert enabled["state_changes"][0]["revision"] == 1
-    assert disabled["state_changes"][0]["value"] is False
-    assert disabled["state_changes"][0]["revision"] == 2
+    ]
+    assert removed["status"] == "failed"
+    assert removed["error"]["code"] == "COMMAND_NOT_FOUND"
+    assert protocol.query_states()["states"] == initial
 
 
 def test_home_title_invocation_returns_frontend_action(tmp_path: Path) -> None:

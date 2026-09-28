@@ -53,21 +53,34 @@ def test_command_blocks_mutate_and_read_the_same_owner(tmp_path, monkeypatch):
     states = importlib.import_module("blocks.ui.command_protocol_states")
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMMAND_STATE_DIR", str(tmp_path / "events"))
     legacy = tmp_path / "legacy.json"
-    legacy.write_text('{"models":{"deepthink_enabled":false}}', encoding="utf-8")
+    legacy.write_text(
+        '{"models":{"strategy_reference":"legacy.strategy"}}',
+        encoding="utf-8",
+    )
     before = legacy.read_bytes()
     monkeypatch.setenv("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(legacy))
     owner = FrontendSettingsStore(tmp_path / "owned.json")
+    owner.update(
+        lambda current: {
+            **current,
+            "models": {"strategy_reference": "third_party_strategy_pack.review.execute"},
+        }
+    )
     result = invoke.run({
-        "command_ref": "defaultspack:deepthink",
+        "command_ref": "defaultspack:fast",
         "args": {"enabled": True}, "mode": "chat",
         "invocation_id": "block-owner", "expected_revision": 0,
         "idempotency_key": "block-owner",
     }, {}, settings_owner=owner)
     assert result["data"]["status"] == "succeeded", result
     result = states.run({}, {}, settings_owner=owner)
-    assert result["data"]["states"][0]["value"] is True
-    assert result["data"]["states"][0]["revision"] == 1
-    assert owner.read_snapshot()["models"]["deepthink_enabled"] is True
+    assert result["data"]["states"][0]["state_ref"] == (
+        "defaultspack:models.strategy_reference"
+    )
+    assert result["data"]["states"][0]["value"] == (
+        "third_party_strategy_pack.review.execute"
+    )
+    assert owner.read_snapshot()["models"]["fast_mode_enabled"] is True
     with pytest.raises(RuntimeError, match="explicit settings owner"):
         states.run({"settings_owner": str(owner.path)}, {})
     assert legacy.read_bytes() == before
@@ -143,11 +156,11 @@ def test_command_http_routes_retain_the_setup_owner(tmp_path, monkeypatch):
     assert not request_owner.path.exists()
 
 
-def test_offline_http_route_enqueue_cancel_replay_dispatches_nothing(
+def test_offline_http_route_rejects_unregistered_set_without_dispatch(
     tmp_path,
     monkeypatch,
 ):
-    """The registered offline route handler honours cancel before dispatch."""
+    """The route never queues a command without backend-authoritative set semantics."""
     setup = importlib.import_module("blocks.ui.setup")
     from domain.frontend.command_protocol import CommandProtocolRegistry
 
@@ -193,21 +206,15 @@ def test_offline_http_route_enqueue_cancel_replay_dispatches_nothing(
     enqueued = handler(
         {
             "action": "enqueue",
-            "command_ref": "defaultspack:deepthink",
+            "command_ref": "defaultspack:fast",
             "args": {"enabled": True},
             "idempotency_key": "http-offline-cancel-1",
             "expected_revision": 0,
         },
         {},
     )
-    assert enqueued["status"] == "ok", enqueued
-    assert enqueued["data"]["status"] == "queued"
-    queue_id = enqueued["data"]["queue"]["queue_id"]
-
-    cancelled = handler({"action": "cancel", "queue_id": queue_id}, {})
-    assert cancelled["status"] == "ok", cancelled
-    assert cancelled["data"]["status"] == "cancelled"
-    assert cancelled["data"]["too_late"] is False
+    assert enqueued["status"] == "error"
+    assert enqueued["error"]["code"] == "OFFLINE_QUEUE_REJECTED"
 
     replayed = handler({"action": "replay"}, {})
     assert replayed["status"] == "ok", replayed
@@ -218,7 +225,7 @@ def test_offline_http_route_enqueue_cancel_replay_dispatches_nothing(
     pending = handler({"action": "pending"}, {})
     assert pending["status"] == "ok", pending
     assert pending["data"]["queue"] == []
-    assert owner.read_snapshot().get("models", {}).get("deepthink_enabled") is not True
+    assert owner.read_snapshot().get("models", {}).get("fast_mode_enabled") is not True
 
 
 @pytest.mark.parametrize(

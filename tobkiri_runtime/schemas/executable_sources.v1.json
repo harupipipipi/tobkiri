@@ -427,6 +427,12 @@
                 "minimum": 1,
                 "type": "integer"
               },
+              "strategy_maximum_cost_microusd": {
+                "description": "Optional lower per-turn strategy limit in integer micro-USD. The Host always enforces its own one-dollar ceiling.",
+                "maximum": 1000000,
+                "minimum": 1,
+                "type": "integer"
+              },
               "strategy_reference": {
                 "$ref": "#/$defs/identifier",
                 "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
@@ -709,6 +715,12 @@
                   },
                   "conversation_revision": {
                     "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "strategy_maximum_cost_microusd": {
+                    "description": "Optional lower per-turn strategy limit in integer micro-USD. The Host always enforces its own one-dollar ceiling.",
+                    "maximum": 1000000,
                     "minimum": 1,
                     "type": "integer"
                   },
@@ -14971,6 +14983,12 @@
                 "minimum": 1,
                 "type": "integer"
               },
+              "strategy_maximum_cost_microusd": {
+                "description": "Optional lower per-turn strategy limit in integer micro-USD. The Host always enforces its own one-dollar ceiling.",
+                "maximum": 1000000,
+                "minimum": 1,
+                "type": "integer"
+              },
               "strategy_reference": {
                 "$ref": "#/$defs/identifier",
                 "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
@@ -15253,6 +15271,12 @@
                   },
                   "conversation_revision": {
                     "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "strategy_maximum_cost_microusd": {
+                    "description": "Optional lower per-turn strategy limit in integer micro-USD. The Host always enforces its own one-dollar ceiling.",
+                    "maximum": 1000000,
                     "minimum": 1,
                     "type": "integer"
                   },
@@ -18266,7 +18290,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:6f7751825e0d29e3edd48037edbf7729207b64853da7fdbffc5a4c5cddc691bf",
+    "input_digest": "sha256:870500e6571b63070cd9795cf0eec6eced010db1b21f79229d15bc361d186384",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -19017,7 +19041,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:ec9b560597983de581c3bcd171e527545e852bc3320a61aa5581ad56ca823f5d",
+        "digest": "sha256:6787c8f36508ff68238e3f528144638d3cccaf036358ae437985e2627b1cf05e",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },

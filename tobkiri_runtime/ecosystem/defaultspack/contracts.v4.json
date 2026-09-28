@@ -11,7 +11,7 @@
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:29461d681a152dcd66f5eb5d9aa26b40adf8492568d4d9ec85a52195274d1083",
+          "input_schema_digest": "sha256:5a702548b7400fff76afd6858d8e12a7d48ffc9824ac212fd900e75b7b19fc07",
           "operation_id": "saved_complete",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "declarative"
@@ -21,7 +21,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:49aee2e06383e5eed4a9685a0dc1dce9a99a1d0f31c5f63277390b4f011ac4fe",
+            "digest": "sha256:befecec777dfa779bd1d1465d212455861899f89777244d14813f3472945a090",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -32,7 +32,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:49aee2e06383e5eed4a9685a0dc1dce9a99a1d0f31c5f63277390b4f011ac4fe",
+        "source_digest": "sha256:befecec777dfa779bd1d1465d212455861899f89777244d14813f3472945a090",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
       },
@@ -48,9 +48,9 @@
         "required_capabilities": [],
         "security": "restricted"
       },
-      "revision_digest": "sha256:930358794e1d9a6d10d644173dc01739e5bc00c1a486fba985d0f776e376f3a2",
+      "revision_digest": "sha256:591f3491dbec2c659f2006ca1dbc3e883ef5c0f5ef0704f71b5f5c6b56cb5976",
       "schema_catalog": {
-        "sha256:29461d681a152dcd66f5eb5d9aa26b40adf8492568d4d9ec85a52195274d1083": {
+        "sha256:5a702548b7400fff76afd6858d8e12a7d48ffc9824ac212fd900e75b7b19fc07": {
           "$defs": {
             "identifier": {
               "maxLength": 256,
@@ -145,6 +145,12 @@
                 },
                 "conversation_revision": {
                   "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "strategy_maximum_cost_microusd": {
+                  "description": "Optional lower per-turn strategy limit in integer micro-USD. The Host always enforces its own one-dollar ceiling.",
+                  "maximum": 1000000,
                   "minimum": 1,
                   "type": "integer"
                 },
@@ -354,7 +360,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:49aee2e06383e5eed4a9685a0dc1dce9a99a1d0f31c5f63277390b4f011ac4fe",
+            "digest": "sha256:befecec777dfa779bd1d1465d212455861899f89777244d14813f3472945a090",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -365,7 +371,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:49aee2e06383e5eed4a9685a0dc1dce9a99a1d0f31c5f63277390b4f011ac4fe",
+        "source_digest": "sha256:befecec777dfa779bd1d1465d212455861899f89777244d14813f3472945a090",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
       },
@@ -471,7 +477,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:49aee2e06383e5eed4a9685a0dc1dce9a99a1d0f31c5f63277390b4f011ac4fe",
+            "digest": "sha256:befecec777dfa779bd1d1465d212455861899f89777244d14813f3472945a090",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -482,7 +488,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:49aee2e06383e5eed4a9685a0dc1dce9a99a1d0f31c5f63277390b4f011ac4fe",
+        "source_digest": "sha256:befecec777dfa779bd1d1465d212455861899f89777244d14813f3472945a090",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
       },
@@ -562,5 +568,5 @@
     }
   ],
   "pack_id": "defaultspack",
-  "source_identity": "sha256:49aee2e06383e5eed4a9685a0dc1dce9a99a1d0f31c5f63277390b4f011ac4fe"
+  "source_identity": "sha256:befecec777dfa779bd1d1465d212455861899f89777244d14813f3472945a090"
 }
