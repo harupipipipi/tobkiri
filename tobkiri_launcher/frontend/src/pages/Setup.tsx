@@ -334,6 +334,11 @@ export function Setup() {
         <TobkiriLoadingMark />
         Loading selected presentation…
       </div>}
+      {presentation?.selection && !reconciliationError && <div className="mt-4">
+        <Button variant="outline" onClick={() => navigate(panelRoutes.packs)}>
+          Open Packs to prepare PackVM
+        </Button>
+      </div>}
     </div></div>;
   }
 
