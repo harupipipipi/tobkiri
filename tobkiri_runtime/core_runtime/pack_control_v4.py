@@ -876,7 +876,15 @@ class CapturedPackControlSession:
             "content_digest": content_digest,
             "catalog_revision": self._binding.catalog_revision,
         }
-        _write_control_state(self._binding.profile_id, state)
+        try:
+            _write_control_state(self._binding.profile_id, state)
+        except Exception as error:
+            # Atomic publication can succeed before the identity check or
+            # directory fsync reports a failure.  The receipt may already
+            # be visible, so a fresh install must reconcile first.
+            raise PackControlOutcomeUnknown(
+                "Pack install outcome requires reconciliation"
+            ) from error
         return {"pack_id": pack_id, "installed": True, **self._binding_payload()}
 
     def _approval_candidate(self, arguments: Mapping[str, Any], session_id: str) -> dict[str, Any]:

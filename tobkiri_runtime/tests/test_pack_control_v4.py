@@ -314,6 +314,34 @@ def test_committed_approval_with_failed_recapture_is_indeterminate(
     )["approved"] is True
 
 
+def test_install_published_before_persistence_error_is_indeterminate(
+    captured_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A post-publication durability error cannot claim the receipt is absent."""
+
+    session, _state_path, user_data = captured_session
+    original = pack_control.SecureDirectory.write_bytes_atomic
+
+    def publish_then_fail(self, relative, data, **kwargs):
+        original(self, relative, data, **kwargs)
+        if Path(relative) == Path("defaults.v4.json"):
+            raise OSError("directory fsync failed after publication")
+
+    monkeypatch.setattr(
+        pack_control.SecureDirectory,
+        "write_bytes_atomic",
+        publish_then_fail,
+    )
+    with pytest.raises(PackControlOutcomeUnknown):
+        _invoke(session, "pack.install", {"pack_id": TARGET_PACK})
+
+    receipt = json.loads(
+        (user_data / "pack_control" / "defaults.v4.json").read_text(encoding="utf-8")
+    )
+    assert TARGET_PACK in receipt["installed"]
+
+
 def test_committed_revocation_with_failed_recapture_is_indeterminate(
     captured_session,
     monkeypatch: pytest.MonkeyPatch,
