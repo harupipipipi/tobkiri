@@ -467,6 +467,42 @@ def test_preflight_runtime_rejects_noncanonical_modalities(
     assert not dispatch.calls
 
 
+def test_preflight_rejects_payload_over_three_mib_before_dependency_reads() -> None:
+    """The preflight-only aggregate cap fails closed before model resolution."""
+    from ecosystem.rumi_ai_gateway_pack.runtime.preflight import FUNCTION_ID
+
+    contribution, _ = _captured_provider(preflight=True)
+    dispatch = _PreflightDispatch(configured_provider=True)
+    with pytest.raises(ValueError, match="AI preflight input is invalid"):
+        contribution.invoke(FUNCTION_ID, {
+            "model_profile_id": "model-profile",
+            "messages": [{
+                "role": "user",
+                "content": "x" * (3 * 1024 * 1024),
+            }],
+        }, _Invocation(dispatch))
+    assert not dispatch.calls
+
+
+def test_preflight_allows_payload_above_legacy_sixty_kib_limit() -> None:
+    """Readiness accepts bounded image-era context above the former text cap."""
+    from ecosystem.rumi_ai_gateway_pack.runtime.preflight import FUNCTION_ID
+
+    contribution, _ = _captured_provider(preflight=True)
+    dispatch = _PreflightDispatch(configured_provider=True)
+    result = contribution.invoke(FUNCTION_ID, {
+        "model_profile_id": "model-profile",
+        "messages": [{"role": "user", "content": "x" * (64 * 1024)}],
+    }, _Invocation(dispatch))
+
+    assert result["ready"] is True
+    assert [contract for contract, _, _ in dispatch.calls] == [
+        REQUEST_PREPARE_CONTRACT,
+        MODEL_PROFILE_CONTRACT,
+        ROUTING_CONTRACT,
+    ]
+
+
 def test_preflight_rechecks_the_exact_opaque_saved_connection() -> None:
     """Readiness requires the saved owner ID to remain enabled now."""
     from ecosystem.rumi_ai_gateway_pack.runtime.preflight import FUNCTION_ID
