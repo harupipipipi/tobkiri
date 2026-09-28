@@ -28,6 +28,8 @@ import {
   type NamedProfileRegistry,
 } from '@/src/lib/hostClient';
 import {fetchDashboard} from '@/src/lib/defaultspackClient';
+import {ApiContractError, ApiRequestTimeoutError} from '@/src/lib/apiTransport';
+import {RequestTimeoutError} from '@/src/lib/getRequestCoordinator';
 import {isDesktopShellAvailable, launchSelectedPresentation, openExternalUrl} from '@/src/lib/desktopHost';
 import {packVmLaunchBlockedReason, WINDOWS_PACKVM_ISSUE_URL} from '@/src/lib/packVmLaunchReadiness';
 import {panelRoutes} from '@/src/lib/routes';
@@ -134,6 +136,19 @@ function profileLaunchFailure(error: unknown): ProfileLaunchFailure {
   };
 }
 
+function isHomeReadTimeout(error: unknown): boolean {
+  if (error instanceof RequestTimeoutError || error instanceof ApiRequestTimeoutError) return true;
+  return error instanceof ApiContractError
+    && typeof error.data === 'object'
+    && error.data !== null
+    && 'code' in error.data
+    && error.data.code === 'TIMEOUT';
+}
+
+function packProfileTransitionPending(): boolean {
+  return Object.values(useAppStore.getState().packTogglePending).some(Boolean);
+}
+
 export function Dashboard() {
   const verificationBanner = useOutletContext<LayoutOutletContext | undefined>()?.verificationBanner;
   const addToast = useAppStore((state) => state.addToast);
@@ -146,7 +161,9 @@ export function Dashboard() {
   const activeProfileReady = useAppStore((state) => state.activeProfileReady);
   const launchReady = useAppStore((state) => state.launchReady);
   const packVmDoctor = useAppStore((state) => state.packVmDoctor);
+  const packTogglePending = useAppStore((state) => state.packTogglePending);
   const refreshPackVMDoctor = useAppStore((state) => state.refreshPackVMDoctor);
+  const profileTransitionPending = Object.values(packTogglePending).some(Boolean);
   const desktopShellAvailable = isDesktopShellAvailable();
   const packVmBlockedReason = packVmLaunchBlockedReason(packVmDoctor);
   const windowsPackVmUnavailable = Boolean(packVmBlockedReason) && packVmDoctor?.ready === false
@@ -158,13 +175,15 @@ export function Dashboard() {
   const [dashboard, setDashboard] = useState<DashboardData>(defaultDashboard);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
-  const summaryAvailable = runtimeReady && !dashboardLoading && !dashboardError;
+  const summaryAvailable = runtimeReady && !profileTransitionPending && !dashboardLoading && !dashboardError;
   const [registry, setRegistry] = useState<NamedProfileRegistry | null>(null);
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const [profileActionError, setProfileActionError] = useState<string | null>(null);
   const [launchFailure, setLaunchFailure] = useState<ProfileLaunchFailure | null>(null);
   const [profileBusy, setProfileBusy] = useState<string | null>(null);
   const profileOperationKeyRef = useRef<string | null>(null);
+  const dashboardReadGeneration = useRef(0);
+  const profileReadGeneration = useRef(0);
   const [newProfileId, setNewProfileId] = useState('');
   const [newProfileName, setNewProfileName] = useState('');
   const [newProfileSourceId, setNewProfileSourceId] = useState('');
@@ -186,40 +205,51 @@ export function Dashboard() {
   };
 
   const refreshDashboard = async () => {
+    const generation = ++dashboardReadGeneration.current;
     setDashboardLoading(true);
     try {
       const response = await fetchDashboard();
+      if (generation !== dashboardReadGeneration.current || packProfileTransitionPending()) return;
       setDashboard(transformDashboard(response));
       setDashboardError(null);
     } catch (error) {
+      if (generation !== dashboardReadGeneration.current) return;
+      if (packProfileTransitionPending() && isHomeReadTimeout(error)) return;
       const rawMessage = error instanceof Error ? error.message : '';
       setDashboardError(rawMessage || 'Failed to load your workspace summary.');
     } finally {
-      setDashboardLoading(false);
+      if (generation === dashboardReadGeneration.current) setDashboardLoading(false);
     }
   };
 
   const refreshProfiles = async () => {
+    const generation = ++profileReadGeneration.current;
     try {
-      setRegistry(await fetchNamedProfiles());
+      const nextRegistry = await fetchNamedProfiles();
+      if (generation !== profileReadGeneration.current || packProfileTransitionPending()) return;
+      setRegistry(nextRegistry);
       setProfileLoadError(null);
       setProfileActionError(null);
     } catch (error) {
+      if (generation !== profileReadGeneration.current) return;
+      if (packProfileTransitionPending() && isHomeReadTimeout(error)) return;
       setProfileLoadError(error instanceof Error ? error.message : 'Named Profiles could not be loaded.');
     }
   };
 
   useEffect(() => {
-    if (runtimeReady) {
+    if (profileTransitionPending) {
+      setDashboardLoading(false);
+    } else if (runtimeReady) {
       void refreshDashboard();
     } else {
       setDashboardLoading(false);
     }
-  }, [runtimeReady]);
+  }, [runtimeReady, profileTransitionPending]);
 
   useEffect(() => {
-    void refreshProfiles();
-  }, []);
+    if (!profileTransitionPending) void refreshProfiles();
+  }, [profileTransitionPending]);
 
   useEffect(() => {
     if (desktopShellAvailable && runtimeReady && !packVmDoctor) {
@@ -242,7 +272,7 @@ export function Dashboard() {
   }, [registry]);
   const browsingProfile = registry?.profiles.find((entry) => entry.profile_id === browsingProfileId) ?? null;
   const profileError = profileLoadError ?? profileActionError;
-  const profileCatalogVerified = hostCatalogVerified
+  const profileCatalogVerified = !profileTransitionPending && hostCatalogVerified
     && registry !== null
     && profileLoadError === null;
   const profileActivationAvailable = profileCeremonyAvailable && !defaultsBootstrapRequired;
@@ -282,7 +312,9 @@ export function Dashboard() {
     }
     if (!beginProfileOperation(key)) return false;
     try {
-      setRegistry(await operation());
+      const nextRegistry = await operation();
+      profileReadGeneration.current += 1;
+      setRegistry(nextRegistry);
       setProfileActionError(null);
       addToast(successMessage, 'success');
     } catch (error) {
@@ -470,6 +502,13 @@ export function Dashboard() {
         </section>
 
         {verificationBanner}
+
+        {profileTransitionPending && (
+          <div className="flex items-center gap-3 rounded-lg border border-warning/35 bg-warning/8 px-4 py-3 text-sm text-warning" role="status">
+            <TobkiriLoadingMark />
+            <span className="flex-1">Updating Profile. Home and Profiles will refresh when the Pack change finishes.</span>
+          </div>
+        )}
 
         {dashboardError && (
           <div className="flex items-center gap-3 rounded-lg border border-warning/35 bg-warning/8 px-4 py-3 text-sm text-warning" role="alert">

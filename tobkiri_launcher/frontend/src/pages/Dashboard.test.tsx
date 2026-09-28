@@ -12,9 +12,12 @@ import {
 } from './Dashboard';
 import type {NamedProfileRegistry} from '@/src/lib/api';
 import {DialogContainer} from '@/src/components/ui/DialogContainer';
+import {RequestTimeoutError} from '@/src/lib/getRequestCoordinator';
+import {getRuntimeDispatchStatus, setRuntimeDispatchStatus} from '@/src/lib/runtimeDispatchGate';
 import {useAppStore} from '@/src/store';
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
+const dashboardRequestPath = `/api/contracts/defaultspack/${encodeURIComponent('GET /api/home/dashboard')}`;
 
 function profileRecord(profileId: string, displayName: string, revision: string) {
   const resolved = profileId === 'defaults';
@@ -159,6 +162,15 @@ function jsonResponse(data: unknown): Response {
   return new Response(JSON.stringify({success: true, data}), {
     headers: {'Content-Type': 'application/json'},
   });
+}
+
+function dashboardProjection(enabled: number) {
+  return {
+    packs: {total: 141, enabled, disabled: 141 - enabled},
+    flows: {total: 0},
+    kernel: {status: 'running', uptime: null},
+    profile: null,
+  };
 }
 
 function buttonByLabel(container: HTMLElement, label: string): HTMLButtonElement {
@@ -990,6 +1002,242 @@ test('Home blocks reentrant Profile mutations and releases only the matching bus
       dom.window.close();
     }
   } finally {
+    globalThis.fetch = previousFetch;
+    Object.defineProperties(globalThis, {
+      window: {value: previousWindow, configurable: true},
+      document: {value: previousDocument, configurable: true},
+      navigator: {value: previousNavigator, configurable: true},
+      localStorage: {value: previousLocalStorage, configurable: true},
+      sessionStorage: {value: previousSessionStorage, configurable: true},
+    });
+    useAppStore.setState(previousState, true);
+  }
+});
+
+test('Home shows Updating Profile on navigation during a Pack toggle and reloads both projections afterward', async () => {
+  const previousState = useAppStore.getState();
+  const previousDispatchStatus = getRuntimeDispatchStatus();
+  const previousFetch = globalThis.fetch;
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const previousLocalStorage = (globalThis as typeof globalThis & {localStorage?: unknown}).localStorage;
+  const previousSessionStorage = (globalThis as typeof globalThis & {sessionStorage?: unknown}).sessionStorage;
+  const reads: string[] = [];
+
+  try {
+    globalThis.fetch = (async (input) => {
+      const path = new URL(String(input), 'http://localhost').pathname;
+      reads.push(path);
+      if (path === dashboardRequestPath) return jsonResponse(dashboardProjection(37));
+      if (path === '/api/v4/profiles') return jsonResponse(profileRegistry());
+      throw new Error(`Unexpected request: ${path}`);
+    }) as typeof fetch;
+    useAppStore.setState({
+      runtimeReady: true,
+      runtimeStatus: 'runtime_ready',
+      hostCatalogVerified: true,
+      profileCeremonyAvailable: true,
+      defaultsBootstrapRequired: false,
+      packTogglePending: {'catalog-pack': true},
+    });
+    setRuntimeDispatchStatus('runtime_ready');
+    const {dom, container, root} = createDashboardDom();
+    try {
+      await act(async () => root.render(<MemoryRouter><Dashboard /></MemoryRouter>));
+      await settle();
+      assert.deepEqual(reads, []);
+      assert.match(container.textContent ?? '', /Updating Profile/);
+      assert.equal(container.querySelector('[role="alert"]'), null);
+
+      await act(async () => useAppStore.setState({packTogglePending: {}}));
+      await settle();
+      assert.deepEqual(reads.sort(), [dashboardRequestPath, '/api/v4/profiles'].sort());
+      assert.match(container.querySelector('[aria-label="Workspace summary"]')?.textContent ?? '', /37/);
+      assert.match(container.textContent ?? '', /Defaults Profile/);
+      assert.doesNotMatch(container.textContent ?? '', /Updating Profile/);
+    } finally {
+      await act(async () => root.unmount());
+      dom.window.close();
+    }
+  } finally {
+    setRuntimeDispatchStatus(previousDispatchStatus);
+    globalThis.fetch = previousFetch;
+    Object.defineProperties(globalThis, {
+      window: {value: previousWindow, configurable: true},
+      document: {value: previousDocument, configurable: true},
+      navigator: {value: previousNavigator, configurable: true},
+      localStorage: {value: previousLocalStorage, configurable: true},
+      sessionStorage: {value: previousSessionStorage, configurable: true},
+    });
+    useAppStore.setState(previousState, true);
+  }
+});
+
+test('Home treats only in-flight Pack transition timeouts as pending and then recovers without manual Refresh', async () => {
+  const previousState = useAppStore.getState();
+  const previousDispatchStatus = getRuntimeDispatchStatus();
+  const previousFetch = globalThis.fetch;
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const previousLocalStorage = (globalThis as typeof globalThis & {localStorage?: unknown}).localStorage;
+  const previousSessionStorage = (globalThis as typeof globalThis & {sessionStorage?: unknown}).sessionStorage;
+  let rejectDashboard: ((error: Error) => void) | undefined;
+  let rejectProfiles: ((error: Error) => void) | undefined;
+  let stableTimeout = false;
+  const counts = {dashboard: 0, profiles: 0};
+
+  try {
+    globalThis.fetch = ((input) => {
+      const path = new URL(String(input), 'http://localhost').pathname;
+      if (path === dashboardRequestPath) {
+        counts.dashboard += 1;
+        if (counts.dashboard === 1) {
+          return new Promise<Response>((_resolve, reject) => { rejectDashboard = reject; });
+        }
+        return stableTimeout
+          ? Promise.reject(new RequestTimeoutError('GET request timed out after 30000ms: dashboard'))
+          : Promise.resolve(jsonResponse(dashboardProjection(37)));
+      }
+      if (path === '/api/v4/profiles') {
+        counts.profiles += 1;
+        if (counts.profiles === 1) {
+          return new Promise<Response>((_resolve, reject) => { rejectProfiles = reject; });
+        }
+        return stableTimeout
+          ? Promise.reject(new RequestTimeoutError('GET request timed out after 30000ms: profiles'))
+          : Promise.resolve(jsonResponse(profileRegistry()));
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    }) as typeof fetch;
+    useAppStore.setState({
+      runtimeReady: true,
+      runtimeStatus: 'runtime_ready',
+      hostCatalogVerified: true,
+      profileCeremonyAvailable: true,
+      defaultsBootstrapRequired: false,
+      packTogglePending: {},
+    });
+    setRuntimeDispatchStatus('runtime_ready');
+    const {dom, container, root} = createDashboardDom();
+    try {
+      await act(async () => root.render(<MemoryRouter><Dashboard /></MemoryRouter>));
+      assert.equal(counts.dashboard, 1);
+      assert.equal(counts.profiles, 1);
+      await act(async () => useAppStore.setState({packTogglePending: {'catalog-pack': true}}));
+      await act(async () => {
+        assert.ok(rejectDashboard);
+        assert.ok(rejectProfiles);
+        rejectDashboard(new RequestTimeoutError('GET request timed out after 30000ms: dashboard'));
+        rejectProfiles(new RequestTimeoutError('GET request timed out after 30000ms: profiles'));
+      });
+      await settle();
+      assert.match(container.textContent ?? '', /Updating Profile/);
+      assert.doesNotMatch(container.textContent ?? '', /GET request timed out/);
+      assert.equal(container.querySelector('[role="alert"]'), null);
+
+      await act(async () => useAppStore.setState({packTogglePending: {}}));
+      await settle();
+      assert.equal(counts.dashboard, 2);
+      assert.equal(counts.profiles, 2);
+      assert.match(container.querySelector('[aria-label="Workspace summary"]')?.textContent ?? '', /37/);
+      assert.match(container.textContent ?? '', /Defaults Profile/);
+
+      stableTimeout = true;
+      await act(async () => buttonByLabel(container, 'Refresh Home and Profiles').click());
+      await settle();
+      assert.equal(counts.dashboard, 3);
+      assert.equal(counts.profiles, 3);
+      assert.equal([...container.querySelectorAll('[role="alert"]')].filter((node) =>
+        node.textContent?.includes('GET request timed out')).length, 2);
+    } finally {
+      await act(async () => root.unmount());
+      dom.window.close();
+    }
+  } finally {
+    setRuntimeDispatchStatus(previousDispatchStatus);
+    globalThis.fetch = previousFetch;
+    Object.defineProperties(globalThis, {
+      window: {value: previousWindow, configurable: true},
+      document: {value: previousDocument, configurable: true},
+      navigator: {value: previousNavigator, configurable: true},
+      localStorage: {value: previousLocalStorage, configurable: true},
+      sessionStorage: {value: previousSessionStorage, configurable: true},
+    });
+    useAppStore.setState(previousState, true);
+  }
+});
+
+test('Home discards an old successful GET that finishes during the Pack Profile transition', async () => {
+  const previousState = useAppStore.getState();
+  const previousDispatchStatus = getRuntimeDispatchStatus();
+  const previousFetch = globalThis.fetch;
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const previousLocalStorage = (globalThis as typeof globalThis & {localStorage?: unknown}).localStorage;
+  const previousSessionStorage = (globalThis as typeof globalThis & {sessionStorage?: unknown}).sessionStorage;
+  let resolveOldDashboard: ((response: Response) => void) | undefined;
+  let resolveOldProfiles: ((response: Response) => void) | undefined;
+  const counts = {dashboard: 0, profiles: 0};
+
+  try {
+    globalThis.fetch = ((input) => {
+      const path = new URL(String(input), 'http://localhost').pathname;
+      if (path === dashboardRequestPath) {
+        counts.dashboard += 1;
+        return counts.dashboard === 1
+          ? new Promise<Response>((resolve) => { resolveOldDashboard = resolve; })
+          : Promise.resolve(jsonResponse(dashboardProjection(37)));
+      }
+      if (path === '/api/v4/profiles') {
+        counts.profiles += 1;
+        return counts.profiles === 1
+          ? new Promise<Response>((resolve) => { resolveOldProfiles = resolve; })
+          : Promise.resolve(jsonResponse(profileRegistry()));
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    }) as typeof fetch;
+    useAppStore.setState({
+      runtimeReady: true,
+      runtimeStatus: 'runtime_ready',
+      hostCatalogVerified: true,
+      profileCeremonyAvailable: true,
+      defaultsBootstrapRequired: false,
+      packTogglePending: {},
+    });
+    setRuntimeDispatchStatus('runtime_ready');
+    const {dom, container, root} = createDashboardDom();
+    try {
+      await act(async () => root.render(<MemoryRouter><Dashboard /></MemoryRouter>));
+      await act(async () => useAppStore.setState({packTogglePending: {'catalog-pack': true}}));
+      await act(async () => {
+        assert.ok(resolveOldDashboard);
+        assert.ok(resolveOldProfiles);
+        const oldRegistry = profileRegistry();
+        oldRegistry.profiles[1] = profileRecord('research', 'Old Research Profile', digest('b'));
+        resolveOldDashboard(jsonResponse(dashboardProjection(36)));
+        resolveOldProfiles(jsonResponse(oldRegistry));
+      });
+      await settle();
+      assert.match(container.textContent ?? '', /Updating Profile/);
+      assert.doesNotMatch(container.textContent ?? '', /Old Research Profile/);
+      assert.doesNotMatch(container.querySelector('[aria-label="Workspace summary"]')?.textContent ?? '', /36/);
+
+      await act(async () => useAppStore.setState({packTogglePending: {}}));
+      await settle();
+      assert.equal(counts.dashboard, 2);
+      assert.equal(counts.profiles, 2);
+      assert.match(container.querySelector('[aria-label="Workspace summary"]')?.textContent ?? '', /37/);
+      assert.match(container.textContent ?? '', /Research Profile/);
+      assert.doesNotMatch(container.textContent ?? '', /Old Research Profile/);
+    } finally {
+      await act(async () => root.unmount());
+      dom.window.close();
+    }
+  } finally {
+    setRuntimeDispatchStatus(previousDispatchStatus);
     globalThis.fetch = previousFetch;
     Object.defineProperties(globalThis, {
       window: {value: previousWindow, configurable: true},
