@@ -1596,6 +1596,12 @@ const strategyCatalogFixture = {
     strategy_reference: "rumi_deepthink_pack.deepthink.execute",
     label: "DeepThink",
     description: "Multi-step reasoning",
+    command: {
+      name: "deepthink",
+      label: "DeepThink",
+      description: "Use this strategy for the request.",
+      aliases: ["dt"],
+    },
     signature_verified: true,
     plan_admitted: true,
     available: true,

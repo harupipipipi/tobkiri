@@ -2871,7 +2871,12 @@ export type StrategyCatalogResponse = {
     strategy_reference: string;
     label: string;
     description?: string;
-    command?: string;
+    command?: {
+      name: string;
+      label?: string;
+      description?: string;
+      aliases?: string[];
+    };
     signature_verified: true;
     plan_admitted: true;
     available: true;
@@ -2881,6 +2886,32 @@ export type StrategyCatalogResponse = {
   diagnostics: unknown[];
   quarantined_pack_ids: string[];
 };
+
+function isStrategyCommand(value: unknown): boolean {
+  const command = objectRecord(value);
+  const allowedKeys = new Set(["name", "label", "description", "aliases"]);
+  if (!command || Object.keys(command).some((key) => !allowedKeys.has(key))) {
+    return false;
+  }
+  const namePattern = /^[a-z][a-z0-9_-]{0,63}$/;
+  return Boolean(
+    typeof command.name === "string" && namePattern.test(command.name)
+    && (command.label === undefined || (
+      typeof command.label === "string"
+      && command.label.length > 0
+      && command.label.length <= 256
+    ))
+    && (command.description === undefined || (
+      typeof command.description === "string" && command.description.length <= 1024
+    ))
+    && (command.aliases === undefined || (
+      Array.isArray(command.aliases)
+      && command.aliases.length <= 8
+      && command.aliases.every((alias) => typeof alias === "string" && namePattern.test(alias))
+      && new Set(command.aliases).size === command.aliases.length
+    ))
+  );
+}
 
 function isStrategyCatalogResponse(value: unknown): value is StrategyCatalogResponse {
   const catalog = objectRecord(value);
@@ -2902,7 +2933,7 @@ function isStrategyCatalogResponse(value: unknown): value is StrategyCatalogResp
         && hasNonEmptyString(strategy, "strategy_reference")
         && hasNonEmptyString(strategy, "label")
         && (strategy.description === undefined || typeof strategy.description === "string")
-        && (strategy.command === undefined || typeof strategy.command === "string")
+        && (strategy.command === undefined || isStrategyCommand(strategy.command))
         && strategy.signature_verified === true
         && strategy.plan_admitted === true
         && strategy.available === true,
