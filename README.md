@@ -153,8 +153,6 @@ cd tobkiri_launcher\frontend
 npm run tauri -- dev
 ```
 
-When the viewer window opens, complete setup if prompted, then use Home -> `Open Defaultspack` to launch the defaultspack UI. `python -m app` is useful for starting or checking the kernel, but the fresh-user desktop path for defaultspack is through the viewer button, not a manual port-8766 launch.
-
 macOS / Linux:
 
 ```bash
@@ -163,6 +161,8 @@ python -m app --health
 cd tobkiri_launcher/frontend
 npm run tauri -- dev
 ```
+
+When the Launcher window opens, complete setup if prompted. On Apple Silicon macOS, provision PackVM in **Packs**, then use **Home** → **Launch Defaults Profile** to open Defaultspack. The current Windows build can activate the Profile but cannot launch Defaultspack Chat or Pack functions because its PackVM backend is unfinished; see the [Launcher start guide](./tobkiri_runtime/docs/tobkiri_launcher_start.md) and [Windows support issue #1494](https://github.com/harupipipipi/tobkiri/issues/1494). `python -m app` is useful for starting or checking the kernel, but it does not replace Launcher and PackVM setup.
 
 `--health` は起動中の Host の `/health` endpoint を probe します。Host が未起動の場合は `status: "down"` と非ゼロの exit code を返すので、先に `python -m app` または Launcher で kernel を起動してください。
 
@@ -210,7 +210,7 @@ npm run tauri -- dev
 開発用 Defaults バンドルを準備する前に、ソース変更をコミットして作業ツリーをクリーンにしてください。ビルド元のコミットと実際のソースが一致しない場合、準備処理は停止します。
 Tauri の起動前処理は Python 3 を使います。macOS/Linux では `python3` を優先し、Windows では Python Launcher (`py -3`) を優先するため、`python` という別名を作る必要はありません。
 Viewer build は起動前に空き容量を確認します。`Rumi Viewer build preflight failed: not enough free disk space.` が出た場合はディスク容量を空けてから再実行してください。検証済みの環境で閾値だけを調整したい場合は `RUMI_VIEWER_MIN_FREE_MB=<MB>` を指定できます。
-`Open Defaultspack` は開発起動では repo 同梱の `defaultspack` を優先して開きます。
+Apple Silicon macOS で **Launch Defaults Profile** を使うと、開発起動では repo 同梱の `defaultspack` を優先して開きます。Windows の現行ビルドは PackVM を準備できないため、Chat や Pack 実行は起動できません。
 起動時の詰まり方を含めたガイドは [`tobkiri_runtime/docs/tobkiri_launcher_start.md`](./tobkiri_runtime/docs/tobkiri_launcher_start.md) を参照してください。
 
 ## Development
