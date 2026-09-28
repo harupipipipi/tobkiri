@@ -436,6 +436,24 @@ fn capture_local_development_authority(
         }
     }
     copy_dir_recursive(&source_defaults, &staged_root.join("bundled/dev-defaults"))?;
+    let source_catalog = project_dir
+        .join("bundled")
+        .join(PRESENTATION_CATALOG_FILENAME);
+    let catalog_bytes = read_regular_file(&source_catalog, "development presentation catalog")?;
+    let catalog: serde_json::Value = serde_json::from_slice(&catalog_bytes).map_err(|error| {
+        invalid_release(format!(
+            "development presentation catalog is malformed: {error}"
+        ))
+    })?;
+    verify_development_catalog_pack_bindings(
+        &catalog,
+        &staged_root.join("bundled/dev-defaults/v4"),
+    )?;
+    let staged_catalog = staged_root
+        .join("bundled")
+        .join(PRESENTATION_CATALOG_FILENAME);
+    fs::write(&staged_catalog, catalog_bytes)?;
+    verify_staged_catalog(&source_catalog, &staged_catalog)?;
     let runtime_root = repo_root.join(APP_SOURCE_DIR);
     copy_dir_recursive_filtered(
         &runtime_root.join("ecosystem/defaultspack"),
@@ -6598,8 +6616,65 @@ mod tests {
         assert!(resource_root.join("linked").is_file());
     }
 
+    fn write_local_development_catalog_fixture(project_dir: &Path) -> Vec<u8> {
+        let bundle_root = project_dir.join("target/dev-defaults/v4");
+        let mut entries = Vec::new();
+        let mut selected = serde_json::Map::new();
+        for pack_id in [
+            "fixture.base",
+            "runtime.tauri.application.default",
+            "shell.tauri.default",
+        ] {
+            let relative = format!("packs/{pack_id}.pack.v4.json");
+            let pack_path = bundle_root.join(&relative);
+            write_canonical_json(
+                &pack_path,
+                &serde_json::json!({
+                    "pack_api_version": "io.tobkiri.pack.v4",
+                    "pack": {"id": pack_id},
+                }),
+            )
+            .unwrap();
+            let digest = byte_digest(&fs::read(&pack_path).unwrap());
+            entries.push(serde_json::json!({
+                "kind": "pack", "path": relative, "digest": digest,
+            }));
+            selected.insert(
+                pack_id.to_owned(),
+                serde_json::Value::String(if pack_id == "fixture.base" {
+                    digest
+                } else {
+                    format!("sha256:{}", "0".repeat(64))
+                }),
+            );
+        }
+        write_canonical_json(
+            &bundle_root.join("bundle.lock.json"),
+            &serde_json::json!({"entries": entries}),
+        )
+        .unwrap();
+        write_canonical_json(
+            &bundle_root.join("defaults.profile.v5.json"),
+            &serde_json::json!({
+                "packs": [{
+                    "role": "application",
+                    "pack_id": "runtime.tauri.application.default",
+                }],
+                "shell": {"pack_id": "shell.tauri.default"},
+            }),
+        )
+        .unwrap();
+        let source_catalog = project_dir.join("bundled/presentation_catalog.json");
+        write_canonical_json(
+            &source_catalog,
+            &serde_json::json!({"source_manifest_digests": selected}),
+        )
+        .unwrap();
+        fs::read(source_catalog).unwrap()
+    }
+
     #[test]
-    fn local_authority_stage_captures_defaults_and_pack_in_one_seal() {
+    fn local_authority_stage_captures_defaults_catalog_and_pack_in_one_seal() {
         let tree = TestTree::new("local-authority-stage");
         let repo_root = tree.path();
         let project_dir = repo_root.join("tobkiri_launcher/src-tauri");
@@ -6610,7 +6685,8 @@ mod tests {
         fs::create_dir_all(defaults.join("platform-artifacts")).unwrap();
         fs::create_dir_all(&pack).unwrap();
         fs::create_dir_all(&output).unwrap();
-        fs::write(defaults.join("v4/bundle.lock.json"), b"defaults-lock").unwrap();
+        let catalog_bytes = write_local_development_catalog_fixture(&project_dir);
+        let lock_bytes = fs::read(defaults.join("v4/bundle.lock.json")).unwrap();
         let artifact = defaults.join("platform-artifacts/shell.exe");
         fs::write(&artifact, b"shell").unwrap();
         let prepared_shell = serde_json::json!({
@@ -6633,8 +6709,10 @@ mod tests {
         assert_eq!(digest.len(), 64);
         assert_eq!(
             fs::read(stage.join("bundled/dev-defaults/v4/bundle.lock.json")).unwrap(),
-            b"defaults-lock"
+            lock_bytes
         );
+        let staged_catalog = stage.join("bundled/presentation_catalog.json");
+        assert_eq!(fs::read(&staged_catalog).unwrap(), catalog_bytes);
         assert_eq!(
             fs::read(stage.join("ecosystem/defaultspack/pack.v4.json")).unwrap(),
             b"materialized-pack"
@@ -6649,12 +6727,44 @@ mod tests {
             .filter_map(|entry| entry["path"].as_str())
             .collect::<Vec<_>>();
         assert!(paths.contains(&"bundled/dev-defaults/v4/bundle.lock.json"));
+        assert!(paths.contains(&"bundled/presentation_catalog.json"));
         assert!(paths.contains(&"ecosystem/defaultspack/pack.v4.json"));
+        let catalog_entry = entries["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["path"] == "bundled/presentation_catalog.json")
+            .unwrap();
+        assert_eq!(
+            catalog_entry["sha256"],
+            format!("{:x}", Sha256::digest(&catalog_bytes)),
+        );
+
+        let runtime_root = repo_root.join("tobkiri_runtime");
+        let runtime_catalog = runtime_root.join("bundled/presentation_catalog.json");
+        fs::create_dir_all(runtime_catalog.parent().unwrap()).unwrap();
+        fs::write(&runtime_catalog, b"stale catalog").unwrap();
+        sync_local_development_catalog(&stage, &runtime_root)
+            .expect("the captured catalog must be accepted by the real sync path");
+        assert_eq!(fs::read(&runtime_catalog).unwrap(), catalog_bytes);
+
+        let source_catalog = project_dir.join("bundled/presentation_catalog.json");
+        let mut invalid_catalog: serde_json::Value =
+            serde_json::from_slice(&catalog_bytes).unwrap();
+        invalid_catalog["source_manifest_digests"]["fixture.base"] =
+            serde_json::Value::String(format!("sha256:{}", "0".repeat(64)));
+        write_canonical_json(&source_catalog, &invalid_catalog).unwrap();
+        let error = capture_local_development_authority(&project_dir, repo_root, &output)
+            .expect_err("a stale source catalog must not enter a sealed stage");
+        assert!(error
+            .to_string()
+            .contains("development catalog selected Pack digest differs"));
+        assert_eq!(fs::read(&runtime_catalog).unwrap(), catalog_bytes);
 
         fs::write(defaults.join("v4/bundle.lock.json"), b"changed").unwrap();
         assert_eq!(
             fs::read(stage.join("bundled/dev-defaults/v4/bundle.lock.json")).unwrap(),
-            b"defaults-lock"
+            lock_bytes
         );
     }
 
@@ -6672,7 +6782,7 @@ mod tests {
         fs::create_dir_all(&pack).unwrap();
         fs::create_dir_all(&defaultspack).unwrap();
         fs::create_dir_all(&output).unwrap();
-        fs::write(defaults.join("v4/bundle.lock.json"), b"defaults-lock").unwrap();
+        write_local_development_catalog_fixture(&project_dir);
         let artifact = defaults.join("platform-artifacts/shell.exe");
         fs::write(&artifact, b"shell").unwrap();
         let prepared_shell = serde_json::json!({
