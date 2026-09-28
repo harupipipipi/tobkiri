@@ -3110,6 +3110,7 @@ def test_model_search_map_route_and_profile_edges_are_exact() -> None:
                     "local_only",
                     "min_knowledge_level",
                     "max_results",
+                    "offset",
                 ],
             }
         ],
@@ -3186,7 +3187,7 @@ def test_model_search_uses_captured_provider_and_nested_profile_edge(
             headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
         )
 
-    status, payload, _ = post({"query": "fixture-chat"})
+    status, payload, _ = post({"query": "fixture-chat", "max_results": 30, "offset": 0})
     assert status == 200, payload
     assert len(observed) == 2
     outer, nested = observed
@@ -3206,6 +3207,12 @@ def test_model_search_uses_captured_provider_and_nested_profile_edge(
     assert models[0]["configured"] is True
     assert "opaque:test-only" not in json.dumps(payload)
     assert data["filters_applied"]["query"] == "fixture-chat"
+    assert data["filters_applied"]["offset"] == 0
+
+    status, payload, _ = post({"query": "fixture-chat", "max_results": 1, "offset": 1})
+    assert status == 200, payload
+    assert payload["data"]["models"] == []
+    assert payload["data"]["filters_applied"]["offset"] == 1
 
     observed.clear()
     status, payload, _ = post({"query": "does-not-match-anything"})
@@ -3336,6 +3343,9 @@ def test_model_search_rejects_unauthorized_and_malformed_payloads(
         {"max_results": 0},
         {"max_results": 1001},
         {"max_results": "many"},
+        {"offset": -1},
+        {"offset": 10001},
+        {"offset": "one"},
         {"speed_tier": 3},
     ):
         status, payload, _ = post(body)
