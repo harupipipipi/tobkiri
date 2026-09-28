@@ -1346,7 +1346,12 @@ def _validate_staged_uv(path: Path, target: str, version: str) -> None:
         raise RuntimeError(f"staged uv executable may not be hardlinked: {path}")
     if metadata.st_mode & 0o222:
         raise RuntimeError(f"staged uv executable is owner-writable: {path}")
-    if not metadata.st_mode & 0o111:
+    # Windows derives executable bits from the filename extension. A staged
+    # non-Windows binary cannot carry meaningful execute bits on that host.
+    if (
+        (os.name != "nt" or is_windows_target(target))
+        and not metadata.st_mode & 0o111
+    ):
         raise RuntimeError(f"staged uv executable is not executable: {path}")
     expected = expected_uv_binary_sha256(target, version)
     actual = compute_sha256(path)
@@ -1374,7 +1379,7 @@ def stage_uv(source_root: Path, target: str, version: str) -> Path:
         _assert_uv_directory(dest.parent)
         temporary_fd, temporary_name = tempfile.mkstemp(
             prefix=f".{binary_name}.",
-            suffix=".tmp",
+            suffix=".exe" if is_windows_target(target) else ".tmp",
             dir=dest.parent,
         )
         os.close(temporary_fd)
@@ -1415,6 +1420,11 @@ def stage_uv(source_root: Path, target: str, version: str) -> Path:
         _validate_staged_uv(dest, target, version)
     finally:
         if temporary is not None:
+            if os.name == "nt" and temporary.exists():
+                # chmod(0555) sets Windows' read-only attribute, which also
+                # prevents deleting a rejected staged file.
+                _assert_uv_destination(temporary)
+                temporary.chmod(0o666)
             temporary.unlink(missing_ok=True)
         archive_path.unlink(missing_ok=True)
 
