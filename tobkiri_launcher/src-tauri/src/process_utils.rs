@@ -619,6 +619,40 @@ mod tests {
     use super::*;
 
     #[test]
+    fn inspection_output_over_pipe_capacity_succeeds() {
+        let mut command = command(std::env::current_exe().unwrap());
+        command
+            .args(["emit_inspection_output_over_pipe_capacity", "--nocapture"])
+            .env("TOBKIRI_TEST_INSPECTION_PIPE_DRAIN", "1");
+
+        let started = Instant::now();
+        let output = bounded_output(&mut command, Duration::from_secs(10)).unwrap();
+        assert!(output.status.success());
+        assert!(started.elapsed() < Duration::from_secs(10));
+        let emitted = INSPECTION_OUTPUT_CAP / 2;
+        assert_eq!(
+            output.stdout.iter().filter(|&&byte| byte == 0).count(),
+            emitted
+        );
+        assert_eq!(
+            output.stderr.iter().filter(|&&byte| byte == 0).count(),
+            emitted
+        );
+    }
+
+    #[test]
+    fn emit_inspection_output_over_pipe_capacity() {
+        if std::env::var_os("TOBKIRI_TEST_INSPECTION_PIPE_DRAIN").is_none() {
+            return;
+        }
+        // Two 2 MiB streams exceed the pipe capacity on both Windows and Unix,
+        // while each remains below the inspection stream's 4 MiB retention cap.
+        let bytes = vec![0; INSPECTION_OUTPUT_CAP / 2];
+        std::io::stdout().write_all(&bytes).unwrap();
+        std::io::stderr().write_all(&bytes).unwrap();
+    }
+
+    #[test]
     fn oversized_inspection_output_is_rejected() {
         let mut command = command(std::env::current_exe().unwrap());
         command

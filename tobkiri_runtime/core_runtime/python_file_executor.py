@@ -576,9 +576,10 @@ def _run_in_worker_process(
     terminate (SIGTERM -> SIGKILL) and reap the worker so timed-out code
     provably cannot keep calling capability interfaces.
 
-    The ``fork`` start method is required so the worker inherits the injected
-    ``rumi_capability`` module / env and the non-picklable exec_context
-    callables (permission_proxy, network_check, http_request).  Platforms
+    The ``fork`` start method is required so the worker inherits the
+    non-picklable exec_context callables (permission_proxy, network_check,
+    http_request). Capability env/module injection and Pack import occur
+    inside the worker, within the same deadline as run(). Platforms
     without ``fork`` (e.g. Windows) reject host execution until a killable
     worker implementation is available. A thread deadline only abandons the
     caller and leaves the Pack function running with ambient capabilities.
@@ -1887,92 +1888,78 @@ else:
 
         # 警告を出力
         print(f"[PythonFileExecutor] SECURITY WARNING: Executing on host: {file_path}", file=sys.stderr)
-
-        # rumi_capability をPackコードからimport可能にする（best-effort）
-        _capability_injected = False
-        _prev_env_cap_sock = os.environ.get("RUMI_CAPABILITY_SOCKET")
-        try:
-            if capability_sock_path and capability_sock_path.exists():
-                os.environ["RUMI_CAPABILITY_SOCKET"] = str(capability_sock_path)
-            try:
-                from . import rumi_capability as _rc_module
-                sys.modules["rumi_capability"] = _rc_module
-                _capability_injected = True
-            except ImportError:
-                result.warnings.append(
-                    "rumi_capability module not available for host injection"
-                )
-        except Exception as e:
-            result.warnings.append(
-                f"Failed to inject rumi_capability for host execution: {e}"
-            )
-
         module_name = f"pfc_{owner_pack or 'unknown'}_{file_path.stem}_{abs(hash(str(file_path)))}"
+        effective_timeout = min(timeout_seconds, MAX_HOST_EXECUTION_TIMEOUT)
 
-        try:
-            # モジュールをロード
+        def _run_target() -> Dict[str, Any]:
+            # Pack import can execute arbitrary top-level code. Keep its
+            # capability, import path and module mutations in the same killable
+            # worker and under the same deadline as run().
+            warnings: List[str] = []
+            try:
+                if capability_sock_path and capability_sock_path.exists():
+                    os.environ["RUMI_CAPABILITY_SOCKET"] = str(capability_sock_path)
+                else:
+                    os.environ.pop("RUMI_CAPABILITY_SOCKET", None)
+                try:
+                    from . import rumi_capability as _rc_module
+                    sys.modules["rumi_capability"] = _rc_module
+                except ImportError:
+                    warnings.append(
+                        "rumi_capability module not available for host injection"
+                    )
+            except Exception as e:
+                warnings.append(
+                    f"Failed to inject rumi_capability for host execution: {e}"
+                )
+
             spec = importlib.util.spec_from_file_location(module_name, str(file_path))
-
             if spec is None or spec.loader is None:
-                result.error = f"Cannot load module from {file_path}"
-                result.error_type = "module_load_error"
-                return result
+                return {
+                    "error": f"Cannot load module from {file_path}",
+                    "error_type": "module_load_error",
+                    "warnings": warnings,
+                }
 
             module = importlib.util.module_from_spec(spec)
             sys.modules[module_name] = module
-
-            # sys.pathに追加（スレッドセーフ）
             file_dir = str(file_path.parent)
             path_added = False
-
-            with self._syspath_lock:
+            try:
                 if file_dir not in sys.path:
                     sys.path.insert(0, file_dir)
                     path_added = True
+                try:
+                    spec.loader.exec_module(module)
+                finally:
+                    if path_added and file_dir in sys.path:
+                        sys.path.remove(file_dir)
 
-            try:
-                spec.loader.exec_module(module)
-            finally:
-                # sys.pathから削除（追加した場合のみ）
-                if path_added:
-                    with self._syspath_lock:
-                        if file_dir in sys.path:
-                            sys.path.remove(file_dir)
+                run_fn = getattr(module, "run", None)
+                if run_fn is None:
+                    return {
+                        "error": f"No 'run' function found in {file_path}",
+                        "error_type": "no_run_function",
+                        "warnings": warnings,
+                    }
 
-            # run関数を探す
-            run_fn = getattr(module, "run", None)
-            if run_fn is None:
-                result.error = f"No 'run' function found in {file_path}"
-                result.error_type = "no_run_function"
-                return result
+                exec_context = {
+                    "flow_id": context.flow_id,
+                    "step_id": context.step_id,
+                    "phase": context.phase,
+                    "ts": context.ts,
+                    "owner_pack": owner_pack,
+                    "inputs": input_data,
+                    "network_check": self._create_network_check_fn(owner_pack),
+                    "http_request": self._create_proxy_request_fn(owner_pack),
+                }
+                if capability_sock_path:
+                    exec_context["capability_socket"] = str(capability_sock_path)
+                if context.permission_proxy:
+                    exec_context["permission_proxy"] = context.permission_proxy
 
-            # コンテキスト辞書を構築
-            exec_context = {
-                "flow_id": context.flow_id,
-                "step_id": context.step_id,
-                "phase": context.phase,
-                "ts": context.ts,
-                "owner_pack": owner_pack,
-                "inputs": input_data,
-                "network_check": self._create_network_check_fn(owner_pack),
-                "http_request": self._create_proxy_request_fn(owner_pack),
-            }
-
-            if capability_sock_path:
-                exec_context["capability_socket"] = str(capability_sock_path)
-
-            if context.permission_proxy:
-                exec_context["permission_proxy"] = context.permission_proxy
-
-            # 実行 (#4: タイムアウト付き — concurrent.futures.ThreadPoolExecutor)
-            import inspect
-            sig = inspect.signature(run_fn)
-            param_count = len(sig.parameters)
-
-            effective_timeout = min(timeout_seconds, MAX_HOST_EXECUTION_TIMEOUT)
-
-            def _run_target():
-                # --- async/generator support ---
+                import inspect
+                param_count = len(inspect.signature(run_fn).parameters)
                 if inspect.isgeneratorfunction(run_fn):
                     if param_count >= 2:
                         gen = run_fn(input_data, exec_context)
@@ -1980,8 +1967,7 @@ else:
                         gen = run_fn(input_data)
                     else:
                         gen = run_fn()
-                    chunks = list(gen)
-                    return {"chunks": chunks, "is_streaming": True}
+                    output = {"chunks": list(gen), "is_streaming": True}
                 elif inspect.iscoroutinefunction(run_fn):
                     import asyncio
                     if param_count >= 2:
@@ -1990,69 +1976,56 @@ else:
                         coro = run_fn(input_data)
                     else:
                         coro = run_fn()
-                    return asyncio.run(coro)
+                    output = asyncio.run(coro)
+                elif param_count >= 2:
+                    output = run_fn(input_data, exec_context)
+                elif param_count == 1:
+                    output = run_fn(input_data)
                 else:
-                    if param_count >= 2:
-                        return run_fn(input_data, exec_context)
-                    elif param_count == 1:
-                        return run_fn(input_data)
-                    else:
-                        return run_fn()
+                    output = run_fn()
+                return {"output": output, "warnings": warnings}
+            finally:
+                # Keep the module registered while a Pack exception unwinds:
+                # the worker still has to pickle its class for the parent's
+                # restricted decoder. This module table belongs only to the
+                # disposable child, so no parent cleanup is necessary.
+                if sys.exc_info()[0] is None:
+                    sys.modules.pop(module_name, None)
 
-            try:
-                # 子プロセス実行: タイムアウト時にワーカーを terminate+reap して
-                # から capability env/module を除去する（生存ワーカーの ambient
-                # authority 残留を防ぐ — PR#1322）
-                output = _run_in_worker_process(
-                    _run_target,
-                    effective_timeout,
-                    self._ensure_json_compatible,
-                )
-                if isinstance(output, dict) and output.get("is_streaming"):
-                    result.is_streaming = True
-            except _HostDeadlineError:
-                # executor 自身の deadline のみここで処理する。
-                # ワーカー内で投げられた builtins TimeoutError は型を保って
-                # round-trip するが executor timeout ではないため、外側の
-                # 汎用 except で error_type="TimeoutError" に分類させる
-                # （誤って timeout 診断イベントを出さない — R3 指摘3）。
-                result.error = f"Host execution timed out after {effective_timeout}s"
-                result.error_type = "timeout"
-                # 診断ログに記録
-                if context.diagnostics_callback:
-                    try:
-                        context.diagnostics_callback({
-                            "event": "host_execution_timeout",
-                            "file_path": str(file_path),
-                            "owner_pack": owner_pack,
-                            "timeout_seconds": effective_timeout,
-                            "ts": self._now_ts(),
-                        })
-                    except Exception:
-                        pass
+        try:
+            worker_result = _run_in_worker_process(
+                _run_target,
+                effective_timeout,
+                self._ensure_json_compatible,
+            )
+            result.warnings.extend(worker_result.get("warnings", []))
+            if "error_type" in worker_result:
+                result.error = worker_result["error"]
+                result.error_type = worker_result["error_type"]
                 return result
-
-            # 出力をJSON互換に変換
+            output = worker_result["output"]
+            if isinstance(output, dict) and output.get("is_streaming"):
+                result.is_streaming = True
             result.output = self._ensure_json_compatible(output)
             result.success = True
-
+        except _HostDeadlineError:
+            result.error = f"Host execution timed out after {effective_timeout}s"
+            result.error_type = "timeout"
+            if context.diagnostics_callback:
+                try:
+                    context.diagnostics_callback({
+                        "event": "host_execution_timeout",
+                        "file_path": str(file_path),
+                        "owner_pack": owner_pack,
+                        "timeout_seconds": effective_timeout,
+                        "ts": self._now_ts(),
+                    })
+                except Exception:
+                    pass
         except Exception as e:
             result.error = str(e)
             result.error_type = type(e).__name__
             result.warnings.append(f"Traceback: {traceback.format_exc()[-2000:]}")
-
-        finally:
-            # モジュールをクリーンアップ
-            if module_name in sys.modules:
-                del sys.modules[module_name]
-            # rumi_capability 注入のクリーンアップ
-            if _capability_injected:
-                sys.modules.pop("rumi_capability", None)
-            if _prev_env_cap_sock is not None:
-                os.environ["RUMI_CAPABILITY_SOCKET"] = _prev_env_cap_sock
-            elif "RUMI_CAPABILITY_SOCKET" in os.environ and capability_sock_path:
-                os.environ.pop("RUMI_CAPABILITY_SOCKET", None)
-
         return result
 
     def _ensure_json_compatible(self, value: Any) -> Any:

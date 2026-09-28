@@ -313,6 +313,36 @@ def test_host_execution_rejects_nonkillable_worker_without_running_pack() -> Non
     assert not executed
 
 
+def test_host_execution_rejects_nonkillable_worker_before_pack_import() -> None:
+    """A platform without fork must not run top-level Pack code in the Host."""
+    executor = PythonFileExecutor()
+    ctx = _make_context(owner_pack="my_pack")
+
+    with tempfile.TemporaryDirectory() as td:
+        tmpdir = Path(td)
+        marker = tmpdir / "imported.txt"
+        pack_file = tmpdir / "pack_run.py"
+        pack_file.write_text(
+            "from pathlib import Path\n"
+            f"Path({json.dumps(str(marker))}).write_text('imported')\n"
+            "def run(input_data, context):\n"
+            "    return {'unexpected': True}\n",
+            encoding="utf-8",
+        )
+        parent_module = sys.modules.get("rumi_capability")
+        parent_path = list(sys.path)
+        with patch("multiprocessing.get_context", side_effect=ValueError):
+            result = executor._execute_on_host(
+                pack_file, "my_pack", {}, ctx, timeout_seconds=0.01
+            )
+        assert not result.success
+        assert result.error_type == "RuntimeError"
+        assert "killable host worker process is unavailable" in result.error
+        assert not marker.exists()
+        assert sys.modules.get("rumi_capability") is parent_module
+        assert sys.path == parent_path
+
+
 class _NonBuiltinError(Exception):
     """whitelist 外（非 builtins）の例外型の格下げ確認用。"""
 
@@ -384,6 +414,84 @@ class TestHostWorkerProcessIsolation(unittest.TestCase):
             self.assertEqual(heartbeat.stat().st_size, size_at_return)
 
             # 子プロセスが残留していないこと
+            self.assertEqual(multiprocessing.active_children(), [])
+
+    def test_import_hang_is_bounded_and_reaped(self):
+        """Top-level Pack code is subject to the worker deadline too."""
+        executor = PythonFileExecutor()
+        ctx = _make_context(owner_pack="my_pack")
+
+        with tempfile.TemporaryDirectory() as td:
+            tmpdir = Path(td)
+            heartbeat = tmpdir / "import-heartbeat.txt"
+            pack_file = self._write_pack_file(
+                tmpdir,
+                "import time\n"
+                "while True:\n"
+                f"    with open({json.dumps(str(heartbeat))}, 'a') as f:\n"
+                "        f.write('x')\n"
+                "    time.sleep(0.02)\n"
+                "def run(input_data, context):\n"
+                "    return {'unreachable': True}\n",
+            )
+
+            result = executor._execute_on_host(
+                pack_file, "my_pack", {}, ctx, timeout_seconds=0.5
+            )
+            self.assertFalse(result.success)
+            self.assertEqual(result.error_type, "timeout")
+            self.assertTrue(heartbeat.exists(), "Pack import did not start")
+            size_at_return = heartbeat.stat().st_size
+            time.sleep(0.2)
+            self.assertEqual(heartbeat.stat().st_size, size_at_return)
+            self.assertEqual(multiprocessing.active_children(), [])
+
+    def test_import_time_side_effect_cannot_run_after_timeout(self):
+        """A late import side effect cannot outlive the capability grant."""
+        executor = PythonFileExecutor()
+        ctx = _make_context(owner_pack="my_pack")
+
+        with tempfile.TemporaryDirectory() as td:
+            tmpdir = Path(td)
+            cap_sock = tmpdir / "capability.sock"
+            cap_sock.touch()
+            started = tmpdir / "import-started.txt"
+            side_effect = tmpdir / "late-import-side-effect.txt"
+            pack_file = self._write_pack_file(
+                tmpdir,
+                "import os, time\n"
+                "from pathlib import Path\n"
+                "import rumi_capability\n"
+                f"Path({json.dumps(str(started))}).write_text("
+                "os.environ.get('RUMI_CAPABILITY_SOCKET', ''))\n"
+                "time.sleep(0.6)\n"
+                f"Path({json.dumps(str(side_effect))}).write_text('late')\n"
+                "def run(input_data, context):\n"
+                "    return {'unreachable': True}\n",
+            )
+            parent_module = sys.modules.get("rumi_capability")
+            parent_path = list(sys.path)
+            with patch.dict(os.environ, {"RUMI_CAPABILITY_SOCKET": "parent-socket"}):
+                result = executor._execute_on_host(
+                    pack_file,
+                    "my_pack",
+                    {},
+                    ctx,
+                    timeout_seconds=0.25,
+                    capability_sock_path=cap_sock,
+                )
+                self.assertEqual(os.environ["RUMI_CAPABILITY_SOCKET"], "parent-socket")
+
+            self.assertFalse(result.success)
+            self.assertEqual(result.error_type, "timeout")
+            self.assertEqual(started.read_text(), str(cap_sock))
+            self.assertIs(sys.modules.get("rumi_capability"), parent_module)
+            self.assertNotIn(
+                f"pfc_my_pack_{pack_file.stem}_{abs(hash(str(pack_file)))}", sys.modules
+            )
+            self.assertEqual(sys.path, parent_path)
+            time.sleep(0.7)
+            self.assertFalse(side_effect.exists())
             self.assertEqual(multiprocessing.active_children(), [])
 
     def test_worker_process_returns_result_with_capability_env(self):
