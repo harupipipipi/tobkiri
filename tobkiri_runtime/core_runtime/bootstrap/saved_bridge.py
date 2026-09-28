@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 from tobkiri_host.saved_turn_plan import TARGETS, TOOL, SavedToolFrame
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
@@ -97,7 +97,7 @@ def _require_resolved_context(conversation: Mapping[str, Any]) -> None:
         raise AuthorityDenied(str(error)) from error
 
 
-def _contains_inline_images(messages: list[Mapping[str, Any]]) -> bool:
+def _contains_inline_images(messages: Sequence[Mapping[str, Any]]) -> bool:
     """Return whether owner-built messages retain saved inline image blocks."""
     return any(
         isinstance(message.get("content"), list)
