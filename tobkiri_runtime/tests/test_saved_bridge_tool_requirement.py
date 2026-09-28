@@ -129,6 +129,8 @@ class _SavedRouteSession:
                 "providers": [
                     {
                         "provider_instance_id": self.connection_id,
+                        "adapter_id": "openai-compatible",
+                        "endpoint": "https://openrouter.ai/api/v1",
                         "display_name": "OpenRouter main",
                         "enabled": True,
                     }
@@ -267,14 +269,14 @@ def test_deepthink_pricing_rejection_precedes_saved_user_append(
     assert session.provider_requests == []
 
 
-def test_connection_route_preserves_owner_bound_pricing_for_deepthink() -> None:
-    """Reviewed profile pricing survives the synthetic connection route."""
+def test_connection_route_uses_exact_reviewed_catalog_pricing() -> None:
+    """An exact reviewed connection/model pair uses catalog-owned rates."""
 
-    session = _SavedRouteSession("provider/model")
+    session = _SavedRouteSession("deepseek/deepseek-r1-0528")
     session.record["metadata"]["pricing"] = {
-        "input": 0.000001,
-        "output": 0.000002,
-        "currency": "USD",
+        "input": 9.0,
+        "output": 9.0,
+        "currency": "EUR",
     }
     client = GlobalContractClient(
         session=session,
@@ -292,10 +294,87 @@ def test_connection_route_preserves_owner_bound_pricing_for_deepthink() -> None:
     )
 
     assert resolved["pricing"] == {
-        "input": 0.000001,
-        "output": 0.000002,
+        "input": 0.0000005,
+        "output": 0.00000215,
         "currency": "USD",
     }
+
+
+def test_connection_route_keeps_unknown_mimo_pricing_unavailable() -> None:
+    """A public inventory entry outside the reviewed set stays unpriced."""
+
+    session = _SavedRouteSession("xiaomi/mimo-v2.6-flash")
+    client = GlobalContractClient(
+        session=session,
+        allowed_contract_ids=gateway._GENERATE_ALLOWED_CONTRACTS,
+        consumer_pack_id="rumi_ai_gateway_pack",
+    )
+
+    resolved = gateway.create_generate_operation(client)(
+        "resolve",
+        {
+            "model_profile_id": "daily",
+            "messages": [{"role": "user", "content": "hello"}],
+            "requirements": {"deepthink": True},
+        },
+    )
+
+    assert resolved["pricing"] == {
+        "input": None,
+        "output": None,
+        "currency": "USD",
+    }
+
+
+@pytest.mark.parametrize(
+    ("connection_update", "model_update", "inventory_update"),
+    [
+        ({"endpoint": "https://example.com/v1"}, {}, {}),
+        ({}, {"provider_id": "other"}, {}),
+        ({}, {"provider_model_id": "xiaomi/mimo-v2.6-flash"}, {}),
+        ({}, {"currency": "EUR"}, {}),
+        ({}, {"input_cost": float("nan")}, {}),
+        ({}, {}, {"stale": True}),
+    ],
+)
+def test_connection_catalog_pricing_requires_exact_trusted_evidence(
+    connection_update: Mapping[str, Any],
+    model_update: Mapping[str, Any],
+    inventory_update: Mapping[str, Any],
+) -> None:
+    """Loose provider, model, currency, rate, or freshness matches fail closed."""
+
+    connection = {
+        "adapter_id": "openai-compatible",
+        "endpoint": "https://openrouter.ai/api/v1",
+        **connection_update,
+    }
+    model = {
+        "provider_id": "openrouter",
+        "provider_model_id": "deepseek/deepseek-r1-0528",
+        "input_cost": 0.0000005,
+        "output_cost": 0.00000215,
+        "currency": "USD",
+        "catalog_revision": "catalog-1",
+        "catalog_provider_instance_id": "catalog-main",
+        **model_update,
+    }
+    inventory = {
+        "catalog-main": {
+            "openrouter": {
+                "source": "live",
+                "stale": False,
+                **inventory_update,
+            }
+        }
+    }
+
+    assert gateway._saved_connection_catalog_pricing(
+        [model],
+        inventory,
+        connection,
+        "deepseek/deepseek-r1-0528",
+    ) == {}
 
 
 def test_pricing_failure_crosses_guest_bridge_as_bounded_code() -> None:

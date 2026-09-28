@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 import uuid
@@ -97,6 +98,16 @@ _STREAM_FUNCTION_ID = "rumi_ai_gateway_pack.ai-gateway.stream"
 _ROUTING_DIAGNOSTICS_FUNCTION_ID = (
     "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics"
 )
+
+# This allowlist binds reviewed provider-local model identities, not rates.
+# Rates still come only from the captured catalog owner at resolution time.
+_SAVED_CONNECTION_CATALOG_ROUTES = {
+    ("openai-compatible", "https://openrouter.ai/api/v1"): (
+        "openrouter",
+        frozenset({"deepseek/deepseek-r1-0528"}),
+        "USD",
+    ),
+}
 
 _GENERATE_ALLOWED_CONTRACTS = frozenset(
     {
@@ -378,7 +389,7 @@ def _invoke(
         health,
         streaming=streaming,
         explicit_pricing=request.get("_resolved_model_pricing"),
-        explicit_connection=request.get("_resolved_provider_connection_id"),
+        explicit_connection=request.get("_resolved_provider_connection"),
     )
     exact_binding = bool(
         requirement.preferred_model_id
@@ -744,7 +755,7 @@ def _resolve_model_reference(
             raise GlobalContractInvocationError(
                 "unresolved_profile", "saved Provider connection is invalid"
             )
-        _require_current_provider_connection(
+        connection = _require_current_provider_connection(
             client,
             connection_id,
             streaming=streaming,
@@ -763,6 +774,7 @@ def _resolve_model_reference(
                 "unresolved_profile", "saved Provider adapter is not uniquely selected"
             )
         request["_resolved_provider_connection_id"] = connection_id
+        request["_resolved_provider_connection"] = connection
         request["requirements"]["preferred_model_id"] = str(profile.get("model_id") or "")
         request["requirements"]["preferred_provider_instance_id"] = adapters[0]
         request["allow_failover"] = False
@@ -848,6 +860,7 @@ def _catalog_candidates(
     explicit_connection: Any = None,
 ) -> tuple[list[Candidate], list[dict[str, str]]]:
     catalog_models: list[dict[str, Any]] = []
+    catalog_inventory: dict[str, dict[str, dict[str, Any]]] = {}
     for catalog_provider in client.providers(CATALOG_CONTRACT):
         catalog_provider_id = str(
             catalog_provider.get("provider_instance_id") or ""
@@ -858,6 +871,14 @@ def _catalog_candidates(
             {},
             provider_instance_id=catalog_provider_id,
         )
+        inventory = result.get("inventory") if isinstance(result, Mapping) else None
+        catalog_inventory[catalog_provider_id] = {
+            str(provider_id): dict(state)
+            for provider_id, state in (
+                inventory.items() if isinstance(inventory, Mapping) else ()
+            )
+            if isinstance(state, Mapping)
+        }
         raw_models = result.get("models") if isinstance(result, Mapping) else None
         for raw in raw_models if isinstance(raw_models, list) else []:
             if not isinstance(raw, Mapping):
@@ -869,17 +890,24 @@ def _catalog_candidates(
         # A saved raw model/connection pair is an explicit route, not a catalog
         # brand/model identifier. Unknown capabilities stay unknown; requests
         # cannot manufacture tool, image, context-size or residency evidence.
-        pricing = (
-            dict(explicit_pricing)
-            if isinstance(explicit_pricing, Mapping)
+        connection = (
+            dict(explicit_connection)
+            if isinstance(explicit_connection, Mapping)
             else {}
+        )
+        pricing = _saved_connection_catalog_pricing(
+            catalog_models,
+            catalog_inventory,
+            connection,
+            str(requirement.preferred_model_id or ""),
         )
         catalog_models = [{
             "model_id": requirement.preferred_model_id,
             "provider_model_id": requirement.preferred_model_id,
-            "provider_connection_id": explicit_connection,
+            "provider_connection_id": connection.get("provider_instance_id"),
+            "provider_id": pricing.get("provider_id"),
             "execution_provider_instance_id": requirement.preferred_provider_instance_id,
-            "health_provider_instance_id": explicit_connection,
+            "health_provider_instance_id": connection.get("provider_instance_id"),
             "catalog_revision": str(
                 pricing.get("revision") or "saved-connection:v1"
             ),
@@ -929,7 +957,7 @@ def _require_current_provider_connection(
     connection_id: str,
     *,
     streaming: bool,
-) -> None:
+) -> dict[str, Any]:
     """Require one current enabled opaque Provider connection identity."""
     operation = (
         PROVIDER_REGISTRY_STREAM_OPERATION
@@ -975,6 +1003,70 @@ def _require_current_provider_connection(
             "unresolved_profile",
             "saved Provider connection is unavailable",
         )
+    return dict(matches[0])
+
+
+def _saved_connection_catalog_pricing(
+    catalog_models: list[dict[str, Any]],
+    catalog_inventory: Mapping[str, Mapping[str, Mapping[str, Any]]],
+    connection: Mapping[str, Any],
+    provider_model_id: str,
+) -> dict[str, Any]:
+    """Return exact reviewed catalog pricing for one saved connection route."""
+
+    route = _SAVED_CONNECTION_CATALOG_ROUTES.get(
+        (
+            str(connection.get("adapter_id") or ""),
+            str(connection.get("endpoint") or ""),
+        )
+    )
+    if route is None:
+        return {}
+    provider_id, reviewed_models, reviewed_currency = route
+    if provider_model_id not in reviewed_models:
+        return {}
+    matches = [
+        item
+        for item in catalog_models
+        if item.get("provider_id") == provider_id
+        and item.get("provider_model_id") == provider_model_id
+    ]
+    if len(matches) != 1:
+        return {}
+    descriptor = matches[0]
+    owner_id = str(descriptor.get("catalog_provider_instance_id") or "")
+    owner_inventory = catalog_inventory.get(owner_id)
+    inventory = (
+        owner_inventory.get(provider_id)
+        if isinstance(owner_inventory, Mapping)
+        else None
+    )
+    if (
+        not isinstance(inventory, Mapping)
+        or inventory.get("stale") is not False
+        or inventory.get("source") not in {"live", "last_known_good"}
+    ):
+        return {}
+    currency = str(descriptor.get("currency") or reviewed_currency).upper()
+    rates = (
+        _optional_float(descriptor.get("input_cost")),
+        _optional_float(descriptor.get("output_cost")),
+    )
+    if (
+        currency != reviewed_currency
+        or any(
+            rate is None or not math.isfinite(rate) or rate < 0
+            for rate in rates
+        )
+    ):
+        return {}
+    return {
+        "provider_id": provider_id,
+        "input": rates[0],
+        "output": rates[1],
+        "currency": currency,
+        "revision": str(descriptor.get("catalog_revision") or ""),
+    }
 
 
 def _append_explicit_live_model(
