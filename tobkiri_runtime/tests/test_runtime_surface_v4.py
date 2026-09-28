@@ -1258,7 +1258,9 @@ def test_profile_ceremony_is_ordered_digest_bound_and_one_shot(
         "approval_id": approved["approval_id"],
         "approval_digest": approved["approval_digest"],
     }
-    with pytest.raises(RuntimeSurfaceError):
+    from core_runtime.pack_control_v4 import PackControlOutcomeUnknown
+
+    with pytest.raises(PackControlOutcomeUnknown):
         ceremony.activate(activation_request, session_id="session-a")
     result = ceremony.activate(activation_request, session_id="session-a")
 
@@ -1639,9 +1641,10 @@ def test_profile_activation_recovers_commit_before_receipt_across_restart(
         raise OSError("simulated crash after activation commit")
 
     monkeypatch.setattr(ceremony._store, "mark_activated", lose_activation_receipt)
-    with pytest.raises(RuntimeSurfaceError) as lost:
+    from core_runtime.pack_control_v4 import PackControlOutcomeUnknown
+
+    with pytest.raises(PackControlOutcomeUnknown):
         ceremony.activate(request, session_id="session-commit-recovery")
-    assert lost.value.code is RuntimeSurfaceErrorCode.UNAPPROVED
 
     committed = capture_default_profile()
     assert committed.activation["activation_id"].startswith(

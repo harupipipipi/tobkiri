@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from core_runtime.pack_control_v4 import (
+    CONTROL_PRESENTATION_CONTRACT,
     PACK_CONTROL_CONTRACT,
     PackControlDenied,
     PackControlOutcomeUnknown,
@@ -283,6 +284,81 @@ def test_committed_enable_with_failed_recapture_is_never_a_definite_failure(
     active = capture_default_profile()
     assert active.activation["activation_id"] != before
     assert TARGET_PACK in {item["pack_id"] for item in active.resolved.profile["packs"]}
+
+
+def test_committed_approval_with_failed_recapture_is_indeterminate(
+    captured_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session, _state_path, user_data = captured_session
+    _invoke(session, "pack.install", {"pack_id": TARGET_PACK})
+    candidate = _invoke(session, "approval.candidate", {"pack_id": TARGET_PACK})
+
+    def fail_recapture() -> None:
+        raise OSError("read-back unavailable")
+
+    monkeypatch.setattr(session, "_recapture", fail_recapture)
+    with pytest.raises(PackControlOutcomeUnknown):
+        _invoke(
+            session,
+            "approval.approve",
+            {"pack_id": TARGET_PACK, "candidate_id": candidate["candidate_id"]},
+        )
+
+    approval_path = (
+        user_data / "pack_control" / "approvals" / "defaults" / f"{TARGET_PACK}.json"
+    )
+    assert approval_path.is_file()
+    assert _invoke(
+        _capture_control_session(), "pack.status", {"pack_id": TARGET_PACK}
+    )["approved"] is True
+
+
+def test_committed_revocation_with_failed_recapture_is_indeterminate(
+    captured_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session, _state_path, user_data = captured_session
+    _approve_target(session)
+    _invoke(session, "pack.enable", {"pack_id": TARGET_PACK})
+
+    def fail_recapture() -> None:
+        raise OSError("read-back unavailable")
+
+    monkeypatch.setattr(session, "_recapture", fail_recapture)
+    with pytest.raises(PackControlOutcomeUnknown):
+        _invoke(session, "approval.revoke", {"pack_id": TARGET_PACK})
+
+    approval_path = (
+        user_data / "pack_control" / "approvals" / "defaults" / f"{TARGET_PACK}.json"
+    )
+    assert json.loads(approval_path.read_text(encoding="utf-8"))["revoked"] is True
+    status = _invoke(_capture_control_session(), "pack.status", {"pack_id": TARGET_PACK})
+    assert status["approved"] is False
+    assert status["enabled"] is False
+
+
+def test_profile_activation_readback_failure_is_indeterminate(
+    captured_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session, _state_path, _user_data = captured_session
+    monkeypatch.setattr(
+        session._profile_changes,
+        "activate",
+        lambda *_args, **_kwargs: {"state": "active", "activation_id": "activation:test"},
+    )
+
+    def fail_recapture() -> None:
+        raise OSError("read-back unavailable")
+
+    monkeypatch.setattr(session, "_recapture", fail_recapture)
+    with pytest.raises(PackControlOutcomeUnknown):
+        session.invoke(
+            CONTROL_PRESENTATION_CONTRACT,
+            "profile.change.activate",
+            {"_session_id": "a" * 64 + "." + "b" * 24 + ".1"},
+        )
 
 
 def test_scheduler_enable_projects_signed_dependency_edges(captured_session) -> None:

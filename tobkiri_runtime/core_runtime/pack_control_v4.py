@@ -783,11 +783,16 @@ class CapturedPackControlSession:
             handler = getattr(self._profile_changes, action)
             result = handler(arguments, session_id=_panel_session_root(session_id))
             if action == "activate":
-                self._recapture()
-                result = {
-                    **result,
-                    "authoritative_snapshot": self._runtime_surface.read_profile(),
-                }
+                try:
+                    self._recapture()
+                    result = {
+                        **result,
+                        "authoritative_snapshot": self._runtime_surface.read_profile(),
+                    }
+                except Exception as error:
+                    raise PackControlOutcomeUnknown(
+                        "Profile activation committed but read-back is unavailable"
+                    ) from error
             return result
         except Exception as error:
             as_dict = getattr(error, "as_dict", None)
@@ -913,13 +918,18 @@ class CapturedPackControlSession:
         current_digest = _pack_snapshot(pack_id, resolve_pack_root(pack_id))
         if not hmac.compare_digest(current_digest, candidate.snapshot_digest):
             raise PackControlDigestMismatch("Pack contents changed after approval was requested")
-        _persist_approval(
-            pack_id,
-            current_digest,
-            self._binding,
-            approval_nonce=candidate.candidate_id,
-        )
-        self._recapture()
+        try:
+            _persist_approval(
+                pack_id,
+                current_digest,
+                self._binding,
+                approval_nonce=candidate.candidate_id,
+            )
+            self._recapture()
+        except Exception as error:
+            raise PackControlOutcomeUnknown(
+                "Pack approval outcome requires reconciliation"
+            ) from error
         return {
             "pack_id": pack_id,
             "approved": True,
@@ -955,22 +965,20 @@ class CapturedPackControlSession:
         except Exception as error:
             raise PackControlUnavailable("Pack approval revocation was not committed") from error
 
-        if pack_id in active_pack_ids:
-            active_pack_ids.remove(pack_id)
-            try:
+        try:
+            if pack_id in active_pack_ids:
+                active_pack_ids.remove(pack_id)
                 _activate_pack_set(state, active_pack_ids)
-            except PackControlDenied:
-                raise
-            except Exception as error:
-                raise PackControlUnavailable(
-                    "Pack approval was fenced but Profile deactivation failed"
-                ) from error
-        _persist_revoked_approval(
-            pack_id,
-            approval,
-            revocation_id=revocation_id,
-        )
-        self._recapture()
+            _persist_revoked_approval(
+                pack_id,
+                approval,
+                revocation_id=revocation_id,
+            )
+            self._recapture()
+        except Exception as error:
+            raise PackControlOutcomeUnknown(
+                "Pack revocation committed but Profile outcome requires reconciliation"
+            ) from error
         return {
             "pack_id": pack_id,
             "approved": False,
