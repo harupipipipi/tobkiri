@@ -14,6 +14,22 @@ from tobkiri_host.artifact_compiler import compile_pack_root
 from tobkiri_host.models import ExecutionKind, PackageKind
 
 
+def test_migration_proof_bytes_use_lf_on_every_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The source closure seals identical evidence bytes on Windows and Unix."""
+
+    monkeypatch.setattr(
+        proof_generator,
+        "build_proof",
+        lambda **_kwargs: {"source": {"unproved_pack_count": 0}, "packs": {}},
+    )
+    output = tmp_path / "proof.json"
+    proof_generator.write_proof(output)
+    assert output.read_bytes().endswith(b"\n")
+    assert b"\r\n" not in output.read_bytes()
+
+
 def test_profile_transaction_receipt_is_checkout_path_independent(
     tmp_path: Path,
 ) -> None:

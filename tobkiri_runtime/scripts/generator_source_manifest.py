@@ -817,7 +817,8 @@ def write_source_manifest(root: Path = _ROOT) -> None:
     destination_was_readonly = False
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=root, prefix=f".{path.name}.", delete=False
+            mode="w", encoding="utf-8", newline="\n", dir=root,
+            prefix=f".{path.name}.", delete=False
         ) as output:
             temporary = Path(output.name)
             output.write(payload)

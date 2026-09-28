@@ -18,6 +18,22 @@ COMMIT = "0123456789abcdef0123456789abcdef01234567"
 TREE = "89abcdef0123456789abcdef0123456789abcdef"
 
 
+def test_source_manifest_bytes_use_lf_on_every_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Windows regeneration must retain the packaged LF byte contract."""
+
+    monkeypatch.setattr(
+        generator_source_manifest,
+        "build_source_manifest",
+        lambda _root: {"files": [], "version": 1},
+    )
+    generator_source_manifest.write_source_manifest(tmp_path)
+    output = tmp_path / generator_source_manifest.SOURCE_MANIFEST_FILENAME
+    assert output.read_bytes().endswith(b"\n")
+    assert b"\r\n" not in output.read_bytes()
+
+
 def test_packaged_source_contains_every_declared_pack_artifact() -> None:
     """Sparse relocated packaging retains the exact data sealed by the Pack."""
     root = Path(__file__).resolve().parents[1]

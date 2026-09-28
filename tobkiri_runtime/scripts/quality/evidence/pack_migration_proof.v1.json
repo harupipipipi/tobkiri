@@ -15825,7 +15825,7 @@
   "source": {
     "attestation": "none",
     "authority": "evidence-only",
-    "content_digest": "sha256:a55c07b1f22915dfc859f65f3c3c9cb60fabfa3965e64a2ae7214c954ab2f7b6",
+    "content_digest": "sha256:66d81b786c46f6160c44ce2f0311d19993994443fa9cb106aae7093d41472099",
     "feasibility_audit": {
       "semantically_reviewed": {
         "count": 75,
@@ -16067,7 +16067,7 @@
     "freshness_basis": "exact-input-digests-and-deterministic-recomputation",
     "generator_id": "tobkiri.quality.migration-proof-generator",
     "generator_version": "2.1.0",
-    "input_digest": "sha256:b280af091bc04a6203187dc7dd3d5c10df49560362f8c32e749a505ccbf20948",
+    "input_digest": "sha256:1075ec35c0b523808fb9f0350efcf9a727f423c5b7763af248bb6a289036b6cf",
     "input_paths": [
       "tobkiri_runtime/core_runtime/profile_definition_store_v4.py",
       "tobkiri_runtime/ecosystem/defaultspack/artifact-index.v4.json",
@@ -22904,7 +22904,7 @@
         "path": "tobkiri_runtime/schemas/executable_sources.v1.json"
       },
       {
-        "digest": "sha256:760df8b9a78230b85af9ad538f43df48d1a4e3949c128b363c65199ef952440b",
+        "digest": "sha256:2e6f6fa309f5186d695b8444331326ffb7e696738104c0636d8dcee8e9d762bf",
         "kind": "proof-algorithm",
         "path": "tobkiri_runtime/scripts/quality/run_independent_migration_proof.py"
       },
@@ -22960,7 +22960,7 @@
       "release-verified": 0,
       "semantically-reviewed": 75
     },
-    "observed_head_sha": "9d1b4cd7aa566ad77945208474d03fd8b4ed6b11",
+    "observed_head_sha": "fc9485c09f3ad777988fc323d263cb160ec7893e",
     "pack_count": 141,
     "profile_collection_proof": {
       "identity_proof": {

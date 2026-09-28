@@ -1196,7 +1196,8 @@ def write_proof(
             raise IndependentMigrationProofError(f"migration proof drift: {output}")
     else:
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(text, encoding="utf-8")
+        # Keep the sealed input bytes identical on Windows and Unix hosts.
+        output.write_bytes(text.encode("utf-8"))
     return proof
 
 
