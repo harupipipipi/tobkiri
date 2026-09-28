@@ -228,7 +228,7 @@ test('generated Contract Map is pinned to the canonical raw artifact and include
     GENERATED_FRONTEND_CONTRACT_MAP.artifact_digest,
     PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST,
   );
-  assert.equal(GENERATED_FRONTEND_CONTRACT_MAP.routes.length, 62);
+  assert.equal(GENERATED_FRONTEND_CONTRACT_MAP.routes.length, 63);
   for (const path of ['/api/ai/provider-key', '/api/ai/profiles', '/api/chat/turn/stop']) {
     assert.ok(GENERATED_FRONTEND_CONTRACT_MAP.routes.some(
       (route) => route.method === 'POST' && route.path === path,
@@ -249,8 +249,12 @@ test('generated Contract Map is pinned to the canonical raw artifact and include
     function_id: 'rumi_tool_registry_pack.tool-registry.definition',
     allowed_payload_keys: [],
   }]);
-  // The model-search route raised the map to 62 entries; pin its exact broker
-  // binding so the installer-facing contract cannot silently drop it again.
+  const strategies = GENERATED_FRONTEND_CONTRACT_MAP.routes.find(
+    (route) => route.method === 'GET' && route.path === '/api/ai/strategies',
+  );
+  assert.equal(strategies?.targets[0]?.contract_id, 'tobkiri.resource.ai.strategy.catalog.v1');
+  // Pin model search's exact broker binding so the installer-facing contract
+  // cannot silently drop it again.
   const modelSearch = GENERATED_FRONTEND_CONTRACT_MAP.routes.find(
     (route) => route.method === 'POST' && route.path === '/api/ai/models/search',
   );
