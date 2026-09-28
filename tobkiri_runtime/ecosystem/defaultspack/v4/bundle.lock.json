@@ -819,12 +819,12 @@
     {
       "path": "packs/rumi_media_inspect_service_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:ab704b161a7486c49c22ca96bf06ce33421245da6bbd2d2e358e36df1da61467"
+      "digest": "sha256:cc8230c30862c185dcda7b87c9df92e84f97785dce1ab2eaf4d14e1fd3e1803d"
     },
     {
       "path": "packs/rumi_media_inspect_service_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:3bb476c2440763be7eac321aacc4f3d92a001931f0f769db2e15760889988b0a"
+      "digest": "sha256:b70bcc35ff27d1431665b4e588961e24c1c793edd0378aca4fae72707cdffb4c"
     },
     {
       "path": "packs/rumi_meeting_intelligence_pack.executables.v4.json",

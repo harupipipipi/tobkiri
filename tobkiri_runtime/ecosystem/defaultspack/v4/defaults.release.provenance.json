@@ -670,11 +670,11 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_media_inspect_service_pack.executables.v4.json",
-      "digest": "sha256:ab704b161a7486c49c22ca96bf06ce33421245da6bbd2d2e358e36df1da61467"
+      "digest": "sha256:cc8230c30862c185dcda7b87c9df92e84f97785dce1ab2eaf4d14e1fd3e1803d"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_media_inspect_service_pack.pack.v4.json",
-      "digest": "sha256:3bb476c2440763be7eac321aacc4f3d92a001931f0f769db2e15760889988b0a"
+      "digest": "sha256:b70bcc35ff27d1431665b4e588961e24c1c793edd0378aca4fae72707cdffb4c"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_meeting_intelligence_pack.executables.v4.json",
@@ -1254,7 +1254,7 @@
     },
     {
       "path": "tobkiri_protocol/schemas/pack_manifest_v4.schema.json",
-      "digest": "sha256:98e039485400b9cc8e5dbc8b163ce1b91929e87e42847e88529a4355b9f18606"
+      "digest": "sha256:9c6851d40f5f034432acca0d7bc48a9d8489d0522c9b032cfb211749c670a760"
     },
     {
       "path": "tobkiri_protocol/schemas/profile_artifact_lock_v1.schema.json",
@@ -1337,7 +1337,7 @@
   },
   "catalog": {
     "bundle_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
-    "bundle_digest": "sha256:f8564d2c3a7a1e9ca2af289e1a9255988eeb5f20547605e6852ecebd835ef547",
+    "bundle_digest": "sha256:138827d85fa3f608d97b4d2236722dee569dc9578654db3f4f4351aea67910e5",
     "catalog_revision": "sha256:8c7e50beb9e86f8c62abbeaed8bea67fb91140ce018a767fc8cbd272984ab76f",
     "closure_digest": "sha256:e69de0a5287c14f1ec87d3facb656de553a882f75848fc21c47e4678c299dcca"
   },
@@ -1348,8 +1348,8 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
-      "digest": "sha256:3fd0be79b847a865fe73c4da86209ee77323d78f9f2b3cce6519be0a3970e0e3"
+      "digest": "sha256:2913a9c0dc1e8ba3d86ac325469712d369adbb57911927dbb323dc67cdc56a9b"
     }
   ],
-  "release_digest": "sha256:17c5e66dfdbc4e75f877a506c6d76625a605583db36744217d65610d173f8f2c"
+  "release_digest": "sha256:1faee00df9d70a24fac3b8ff9f836a3dd6f433bb7d216243cad6c4bf5c18b42d"
 }
