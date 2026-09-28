@@ -105,9 +105,6 @@ the per-operation boundary described above.
 Windows PowerShell:
 
 ```powershell
-Windows PowerShell:
-
-```powershell
 git clone https://github.com/harupipipipi/tobkiri.git
 cd tobkiri
 
