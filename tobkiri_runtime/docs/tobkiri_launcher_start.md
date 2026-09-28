@@ -1,6 +1,7 @@
 # Tobkiri Launcher start guide
 
-Tobkiri Launcher is the desktop shell for the Tobkiri runtime. In a checkout,
+Tobkiri Launcher is the desktop shell for the Tobkiri runtime. The packaged
+macOS app can be opened from Finder. For source development in a checkout,
 start it from `tobkiri_launcher/frontend` so the shell can find and launch the
 local runtime kernel.
 
@@ -19,6 +20,41 @@ without a terminal:
 
 The executable exists only after the Windows development build has completed.
 For a normal installed copy, open **Tobkiri Launcher** from the Start menu.
+
+## Open a packaged Launcher on Apple Silicon macOS
+
+Use a completed macOS DMG installer. The ordinary release DMG contains
+**Tobkiri Launcher.app**. A DMG downloaded from the **Desktop Installers**
+workflow contains **Tobkiri Launcher CI E2E.app** and is marked
+non-publishable; use it only to test that workflow's build. These packaged apps
+include the signed PackVM helper and its provisioning manifests. A locally
+built **Tobkiri Launcher Developer.app** does not gain those files merely by
+opening it in Finder.
+
+1. In Finder, double-click the DMG, then drag the app onto its **Applications**
+   shortcut. Open **Applications** in Finder and double-click the copied app.
+   This distribution is ad-hoc signed and not notarized. If macOS blocks the
+   first open, and you trust the copy you downloaded, use **System Settings** →
+   **Privacy & Security** → **Open Anyway**, then confirm **Open**. See
+   [Apple's instructions](https://support.apple.com/en-us/102445).
+2. In the Launcher, choose **Open Setup**. Review the Defaults Profile, select
+   its confirmation checkbox, and choose **Activate Defaults Profile**. If
+   prompted, choose **Verify activation**.
+3. Open **Packs** and find **PackVM lifecycle**. On Apple Silicon, choose
+   **Prepare plan** if the doctor says **Not ready**. Review the displayed image
+   source, size, digests, and required free space. The guest image is not in
+   the DMG; first-time provisioning may download the pinned 3 GiB image.
+4. If the plan is available and you agree with those facts, select its approval
+   checkbox, choose **Record explicit consent**, then **Provision PackVM**.
+   Wait for provisioning to finish and for the doctor to show
+   **Healthy and attested**. If it remains **Not ready**, read the displayed
+   reason before trying again.
+5. Return to **Home** and choose **Launch Defaults Profile** to open the
+   Defaultspack interface.
+
+The installer workflow checks the packaged helper and Launcher startup, but a
+successful workflow does not by itself show that a PackVM guest can boot on
+your Mac. Follow the in-app status for that device.
 
 ## Build and start from source
 
