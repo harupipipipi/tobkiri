@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "8cb446a45f54f65c7b832271e899bc2e6067bfb93ee6cede8e6686d8465bd644",
+    "digest": "7fc507a4574ab45f2c95c440f37d5f6c3b564ea446a2af203e3c6fb04afe5753",
     "entries": [
       {
         "path": "index.html",
@@ -865,8 +865,8 @@
       },
       {
         "path": "src/features/models/ModelSearchPicker.tsx",
-        "size": 16241,
-        "sha256": "2d07d32e19ab21eb43386ed901120a777d6d45f3d1448d34a61925bb02a74f66"
+        "size": 17661,
+        "sha256": "28eedd863110b0a52253fc2b3973e36b4d6ac060921a5867b21bd2544905c506"
       },
       {
         "path": "src/features/models/index.ts",
@@ -895,8 +895,13 @@
       },
       {
         "path": "src/features/models/resources/modelSearchResources.ts",
-        "size": 936,
-        "sha256": "65551a30617b11a59873d6d11f10d5b386805546f76402ca8f2db07c17f4d3cc"
+        "size": 1077,
+        "sha256": "c1ce0ba560dc1810809682df832784eecd15ba98cbb2c8e49771a2feb0c778a4"
+      },
+      {
+        "path": "src/features/models/useModelSearchPages.ts",
+        "size": 3482,
+        "sha256": "f0af4c07f7d8c3b036bea8064690dce585d8277cc1cdc8d5f520c33f90591ea9"
       },
       {
         "path": "src/features/projects/ProjectPicker.tsx",
@@ -985,8 +990,8 @@
       },
       {
         "path": "src/features/settings/resources/settingsApiResources.ts",
-        "size": 3649,
-        "sha256": "457d967032dec488d556a98b6d15e8481519294578206d7ecee66a9693381039"
+        "size": 3666,
+        "sha256": "bc7d6cb6e0a674428e87029d910bc4ea17498f0e050c8e53f9f3843029029bbe"
       },
       {
         "path": "src/features/settings/resources/settingsFeatureResources.ts",
@@ -1135,8 +1140,8 @@
       },
       {
         "path": "src/lib/api.ts",
-        "size": 212912,
-        "sha256": "fc59561b00d9cecf4269819e0d3dfe9ec8248b4e67afdba9ece19b405410da52"
+        "size": 212952,
+        "sha256": "359a6a510d8ee930de7e82e8908288d4c20389cbe9ddabe4a3378684550a3c77"
       },
       {
         "path": "src/lib/appLoadFailures.test.ts",
@@ -1780,8 +1785,8 @@
       },
       {
         "path": "src/renderers/SettingsModalRenderer.tsx",
-        "size": 275123,
-        "sha256": "130e6c0bc23c0f8efb275777e7bffc531763350fedfb2975ba4b7d228f9022d3"
+        "size": 273623,
+        "sha256": "1859d4b19f3e76331e3cded7301e1821b214db57bad45c1e7a66a27965d84252"
       },
       {
         "path": "src/renderers/TitleBarRenderer.tsx",
@@ -1840,8 +1845,8 @@
       },
       {
         "path": "src/renderers/settings/renderers/modelSelectField.tsx",
-        "size": 9759,
-        "sha256": "51f9f8ed570139c1c9db700c31490f2daa3b7d1eea070610f739d587fdbe9189"
+        "size": 8038,
+        "sha256": "cdd7f69962a265079e77d854eae5322422c91155cdb11a4e33ab266601cc8b2b"
       },
       {
         "path": "src/renderers/settings/renderers/promptProfileField.tsx",
@@ -1981,7 +1986,7 @@
     ]
   },
   "bundle": {
-    "digest": "3a612b5e0a8122b9ffd262e878538755487259d5832da97db60b7da269c8cefd",
+    "digest": "4311a3c529e71d337a58a1cb8df0998607d2b29db7bffac390209673a8762850",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1995,8 +2000,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2256699,
-        "sha256": "97dc8c45d746005f7c92c8ffc96f198606c88ec58efb0231d55f239c6f455e02"
+        "size": 2258066,
+        "sha256": "26422d72b326b1a7cc68acf12b2ef219fb1a63c8f85d687aba6800c1125ce3c4"
       },
       {
         "path": "shell-rolldown-runtime.js",
