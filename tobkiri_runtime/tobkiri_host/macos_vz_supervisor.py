@@ -64,6 +64,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from tobkiri_protocol.canonical import canonical_digest, canonical_json
 from tobkiri_protocol.saved_conversation import (
     MAX_SAVED_CHAIN_BYTES,
+    MAX_SAVED_TURN_LIFETIME_SECONDS,
     validate_saved_conversation_input,
 )
 
@@ -613,6 +614,7 @@ class MacOSVZSupervisorDriver:
         self._saved_chains = ContinuationChains(
             max_hops=MAX_SAVED_TOOL_HOPS,
             max_bytes=MAX_SAVED_CHAIN_BYTES,
+            max_lifetime=MAX_SAVED_TURN_LIFETIME_SECONDS,
         )
         self._compromised_reason: str | None = None
         self._lock = threading.RLock()
@@ -1133,8 +1135,15 @@ class MacOSVZSupervisorDriver:
         _, request_id, request_digest = _request_identity(request)
         deadline = self._require_saved_budget(request, active)
         exchange = SavedHostExchange(
-            ChainIdentity(domain_id, request_id, canonical_digest(session.binding_digests),
-                          min(deadline, time.monotonic() + 60)),
+            ChainIdentity(
+                domain_id,
+                request_id,
+                canonical_digest(session.binding_digests),
+                min(
+                    deadline,
+                    time.monotonic() + MAX_SAVED_TURN_LIFETIME_SECONDS,
+                ),
+            ),
             request_digest=request_digest, artifact_identity=session.attestation.guest_artifact_identity,
             deadline_text=_deadline_value(deadline) or "", chains=self._saved_chains,
             request=getattr(request, "payload", {}).get("request"),

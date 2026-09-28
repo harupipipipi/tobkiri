@@ -27,6 +27,10 @@ MAX_SAVED_IMAGE_BASE64_CHARS = ((MAX_SAVED_IMAGE_BYTES + 2) // 3) * 4
 MAX_SAVED_INPUT_BYTES = 3 * 1024 * 1024
 MAX_SAVED_FRAME_BYTES = 4 * 1024 * 1024
 MAX_SAVED_CHAIN_BYTES = 16 * 1024 * 1024
+# A saved turn can broker an admitted strategy or bounded tool chain. This is
+# the common end-to-end ceiling, not a strategy- or Pack-specific allowance.
+MAX_SAVED_TURN_TIMEOUT_MS = 300_000
+MAX_SAVED_TURN_LIFETIME_SECONDS = MAX_SAVED_TURN_TIMEOUT_MS / 1000
 
 
 def _matches_saved_image_type(media_type: str, decoded: bytes) -> bool:

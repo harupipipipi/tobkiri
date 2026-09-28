@@ -13,6 +13,7 @@ from tobkiri_protocol.saved_conversation import (
     MAX_SAVED_CHAIN_BYTES,
     MAX_SAVED_FRAME_BYTES,
     MAX_SAVED_INPUT_BYTES,
+    MAX_SAVED_TURN_LIFETIME_SECONDS,
     validate_saved_conversation_input,
 )
 from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_HOPS
@@ -61,6 +62,7 @@ class SavedGuestTurns:
             clock=clock,
             max_hops=MAX_SAVED_TOOL_HOPS,
             max_bytes=MAX_SAVED_CHAIN_BYTES,
+            max_lifetime=MAX_SAVED_TURN_LIFETIME_SECONDS,
         )
         self._turns: dict[tuple[str, str], _Turn] = {}
         self._cancelled: dict[tuple[str, str], float] = {}
@@ -83,7 +85,7 @@ class SavedGuestTurns:
                 raise ValueError("saved guest request identity is unavailable")
             if len(self._turns) >= 64:
                 raise ValueError("saved guest request capacity is exhausted")
-            deadline = now + 60
+            deadline = now + MAX_SAVED_TURN_LIFETIME_SECONDS
             identity = ChainIdentity(key[0], key[1], binding_digest, deadline)
             plan = SavedTurnPlan(request["payload"]["request"])
             tool_plan = (
@@ -170,7 +172,7 @@ class SavedGuestTurns:
             cancelled = turn is not None and not turn.terminal
             if turn is not None:
                 self._fail(turn)
-            expiry = self._clock() + 60
+            expiry = self._clock() + MAX_SAVED_TURN_LIFETIME_SECONDS
             if key not in self._cancelled and len(self._cancelled) >= 64:
                 self._fence = max(self._fence, expiry)
             else:

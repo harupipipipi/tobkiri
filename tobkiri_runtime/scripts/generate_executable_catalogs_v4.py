@@ -29,10 +29,11 @@ _DEFAULT_TIMEOUT_MS = 30_000
 _HARD_TIMEOUT_MAX_MS = 300_000
 
 # The conversation bridge performs a cold PackVM launch before entering the
-# Host-owned AI gateway.  That gateway gives its credentialed provider request
-# a 60-second deadline, so every enclosing Broker operation must outlive both
-# the provider deadline and the PackVM startup budget.  Keep the override
-# finite and identity-specific; unrelated Pack operations retain the shorter
+# Host-owned AI gateway. Enclosing Broker operations must outlive both the
+# provider deadline and the PackVM startup budget. Saved turns additionally
+# contain a bounded, admitted strategy or tool chain, so their shared 300-second
+# ceiling encloses the complete saved exchange. Keep every override finite and
+# identity-specific; unrelated direct gateway operations retain their 120-second
 # default.
 _LONG_RUNNING_OPERATION_TIMEOUTS_MS = {
     # These startup reads can enter the selected presentation Pack through a
@@ -83,12 +84,12 @@ _LONG_RUNNING_OPERATION_TIMEOUTS_MS = {
         "defaultspack",
         "defaultspack.conversation.saved",
         "saved_complete",
-    ): 120_000,
+    ): 300_000,
     (
         "rumi_turn_runtime_pack",
         "rumi_turn_runtime_pack.turn-runtime.saved",
         "rumi_turn_runtime_pack.turn-saved",
-    ): 120_000,
+    ): 300_000,
     (
         "rumi_ai_gateway_pack",
         "rumi_ai_gateway_pack.ai-gateway.generate",

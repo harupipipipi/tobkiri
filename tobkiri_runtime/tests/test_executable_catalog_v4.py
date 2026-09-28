@@ -164,7 +164,7 @@ def test_saved_turn_exchange_outlives_cold_packvm_start(
     function_id: str,
     operation_id: str,
 ) -> None:
-    """The saved exchange encloses cold PackVM launch and provider work."""
+    """The saved exchange encloses cold start and a bounded generic chain."""
 
     catalog = json.loads(
         (ROOT / "ecosystem" / pack_id / "executables.v4.json").read_text(
@@ -180,7 +180,7 @@ def test_saved_turn_exchange_outlives_cold_packvm_start(
         if item["operation_id"] == operation_id
     )
 
-    assert operation["timeout_default_ms"] == 120_000
+    assert operation["timeout_default_ms"] == 300_000
     assert operation["timeout_hard_max_ms"] == 300_000
 
 

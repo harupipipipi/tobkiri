@@ -267,6 +267,7 @@ class _SavedToolPackVmBackend(_SavedPackVmBackend):
         from tobkiri_host.continuation_chain import ChainIdentity, ContinuationChains
         from tobkiri_host.saved_guest_dispatch import SavedGuestTurns, INVOKE_RESULT
         from tobkiri_host.saved_host_exchange import SavedHostExchange
+        from tobkiri_protocol.saved_conversation import MAX_SAVED_TURN_LIFETIME_SECONDS
 
         assert isinstance(request, RequestEnvelope)
         assert request.target_domain.value == self._target_domain_id
@@ -297,12 +298,18 @@ class _SavedToolPackVmBackend(_SavedPackVmBackend):
                 domain,
                 request_id,
                 binding,
-                min(request.deadline_monotonic, time.monotonic() + 60),
+                min(
+                    request.deadline_monotonic,
+                    time.monotonic() + MAX_SAVED_TURN_LIFETIME_SECONDS,
+                ),
             ),
             request_digest=transport["request_digest"],
             artifact_identity=transport["guest_artifact_identity"],
             deadline_text=transport["deadline_monotonic"],
-            chains=ContinuationChains(max_hops=20),
+            chains=ContinuationChains(
+                max_hops=20,
+                max_lifetime=MAX_SAVED_TURN_LIFETIME_SECONDS,
+            ),
             request=payload["request"],
         )
         guest = SavedGuestTurns()

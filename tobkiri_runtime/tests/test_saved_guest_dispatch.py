@@ -7,6 +7,7 @@ import pytest
 
 from tobkiri_host.saved_guest_dispatch import SavedGuestTurns, TARGETS
 from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.saved_conversation import MAX_SAVED_TURN_LIFETIME_SECONDS
 
 
 def request() -> dict:
@@ -72,9 +73,9 @@ def test_expiry_rejects_late_first_intent_without_renewing_budget() -> None:
     now = [10.0]
     ledger = SavedGuestTurns(clock=lambda: now[0])
     def delayed(*args: Any) -> dict:
-        assert args[2] == 70
+        assert args[2] == 10 + MAX_SAVED_TURN_LIFETIME_SECONDS
         value = initial(*args)
-        now[0] = 70
+        now[0] = 10 + MAX_SAVED_TURN_LIFETIME_SECONDS
         return value
     with pytest.raises(ValueError, match="expired"):
         ledger.begin(request(), "sha256:" + "c" * 64, delayed)
@@ -100,3 +101,26 @@ def test_wrong_initial_target_cannot_be_sealed_or_retried() -> None:
         ledger.begin(request(), "sha256:" + "c" * 64, wrong)
     with pytest.raises(ValueError, match="unavailable"):
         ledger.begin(request(), "sha256:" + "c" * 64, initial)
+
+
+def test_saved_guest_retains_pending_strategy_roundtrip_for_shared_budget() -> None:
+    """A generic strategy response can arrive after the former 60-second cap."""
+    now = [10.0]
+    ledger = SavedGuestTurns(clock=lambda: now[0])
+    pending = ledger.begin(request(), "sha256:" + "c" * 64, initial)
+
+    def next_action(*args: Any) -> dict:
+        args[3]()
+        return {
+            "kind": "tobkiri.packvm.continuation.intent.v2",
+            "hop": 1,
+            "target": dict(zip(("contract_id", "operation_id"), TARGETS[1])),
+            "payload": {},
+            "state": {"hop": 1},
+        }
+
+    now[0] = 10 + 120
+    resumed = ledger.resume("domain", "turn", result(pending), next_action)
+
+    assert resumed["state"] == "pending"
+    assert ledger.contains("domain", "turn") is True

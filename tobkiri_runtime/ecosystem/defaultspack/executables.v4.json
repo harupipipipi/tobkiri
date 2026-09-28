@@ -1,6 +1,6 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:03f72c4d6b9ff75cfeb26211801f0a2aebc990eccebd8716eab9132a6ac99ac2",
+  "catalog_digest": "sha256:78b73d523312b991ee5c38b343c6f7e07bcf6f7c68ffdfd83bf6ce45a11e1e52",
   "pack_id": "defaultspack",
   "source_identity": "sha256:befecec777dfa779bd1d1465d212455861899f89777244d14813f3472945a090",
   "variants": [
@@ -477,7 +477,7 @@
             "type": "object"
           },
           "revision_digest": "sha256:591f3491dbec2c659f2006ca1dbc3e883ef5c0f5ef0704f71b5f5c6b56cb5976",
-          "timeout_default_ms": 120000,
+          "timeout_default_ms": 300000,
           "timeout_hard_max_ms": 300000
         }
       ],
