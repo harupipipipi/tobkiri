@@ -24,7 +24,7 @@
     {
       "path": "packs/rumi-file-inspect.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:06a56c37d642a08c6a2dd686cc47bc60a40d4bda9c980a49a737a5832effa502"
+      "digest": "sha256:335b331f0d90b8a42eac6939c9d9313bd85b669bcf22d74b69b92810e7b27dc6"
     },
     {
       "path": "packs/rumi-host-authority-bridge.pack.v4.json",
@@ -89,12 +89,12 @@
     {
       "path": "packs/rumi_ai_gateway_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:743e7d1fc25cfee128701143924fe4123594c5c4721c3fd94bfe44bd09a195d3"
+      "digest": "sha256:284b10e5daded82c7d0ab9527d13aebb39e61b6cff3eb8868ad277a8b6cdc736"
     },
     {
       "path": "packs/rumi_ai_gateway_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:674395cbf2a95c523cbb496d4f8b201585cb6cf728f0771b3d44f7d5ac835300"
+      "digest": "sha256:649a41cf874c6a965dda163bfb6e9725b8d7643b51d7fe3c6a04be47c08d636d"
     },
     {
       "path": "packs/rumi_ai_modality_pack.executables.v4.json",
@@ -579,7 +579,7 @@
     {
       "path": "packs/rumi_file_inspect_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:388d2afd9a6d828a679a7498fc2b446ff37ab529974137780d4bd94ac3db77ed"
+      "digest": "sha256:56bf685e08c3794cf37e5a7991d66c59c0d313c5cd1bc7f531f0befdf1464013"
     },
     {
       "path": "packs/rumi_file_mutation_pack.executables.v4.json",
@@ -1454,7 +1454,7 @@
     {
       "path": "defaults.profile.v5.json",
       "kind": "profile",
-      "digest": "sha256:ff3e74b2504c2be851a6dd0dbd73e556e22050509a8955ff4628a7174b781e19"
+      "digest": "sha256:5ed50530702800e7fe4f8f5ed612b9b4a5c317949cd46bbfe06176c9533994da"
     }
   ]
 }

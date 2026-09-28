@@ -8051,12 +8051,12 @@
             {
               "entrypoint_id": "file-inspect",
               "id": "rumi_file_inspect_pack.file-inspect",
-              "implementation_digest": "sha256:8fb786fa4c4339b5c6d9e94e66e1d4a5677b101df7f83a3a5f1694c3bbfd1c56"
+              "implementation_digest": "sha256:2af189c171fc6a37ff1c486f6ee234e06678121ae97396d559bdb38d3cff915d"
             },
             {
               "entrypoint_id": "file-inspect-for-media",
               "id": "rumi_file_inspect_pack.file-inspect.for-media",
-              "implementation_digest": "sha256:8fb786fa4c4339b5c6d9e94e66e1d4a5677b101df7f83a3a5f1694c3bbfd1c56"
+              "implementation_digest": "sha256:2af189c171fc6a37ff1c486f6ee234e06678121ae97396d559bdb38d3cff915d"
             }
           ],
           "owner": "rumi_file_inspect_pack",
@@ -8160,7 +8160,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:8fb786fa4c4339b5c6d9e94e66e1d4a5677b101df7f83a3a5f1694c3bbfd1c56",
+          "digest": "sha256:2af189c171fc6a37ff1c486f6ee234e06678121ae97396d559bdb38d3cff915d",
           "kind": "executable",
           "path": "runtime/inspect.py"
         }
