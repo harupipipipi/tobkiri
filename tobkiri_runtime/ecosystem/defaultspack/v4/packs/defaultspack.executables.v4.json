@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:f7730f415b6feaa6c06788d030a75030611ae72a3644645fb21c9e7863621b70",
+  "source_identity": "sha256:3ee6e15bdcfa5db5074f0551d01f3c89f089ac282bba3780bb0560ac08f9ad0e",
   "variants": [
     {
       "variant_id": "defaultspack.application-presentation.python",
@@ -177,7 +177,7 @@
       "variant_id": "defaultspack.conversation.saved.python",
       "function_id": "defaultspack.conversation.saved",
       "implementation_path": "runtime/saved_conversation.py",
-      "implementation_digest": "sha256:837c0e811afeeab8d4ad29a2d25aa6e2611d20d5898548adbca5e2db4130c029",
+      "implementation_digest": "sha256:9b1595eedfd8bc22199cd4211a19a58baf7b837c3608dd2704a443e8efd7a341",
       "execution_kind": "pack_vm",
       "platform": "any",
       "architecture": "any",
@@ -414,6 +414,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:42496e530793ec3743aa47418e6b8482090a8f55506b8ca75ed3a09e6479ee51",
-  "catalog_digest": "sha256:85fdaa7d54ccf9d2d20598c63a404bd900ee753936aad7df7343edd03cb1e3ba"
+  "materialization_catalog_digest": "sha256:ad7a8f6d41cbc08038b1e9da66342bb4e2491b9e9bb8647eaabd4543736f0b6a",
+  "catalog_digest": "sha256:5e7ca3734ab7e3c29573e15b4e2ba30881cacf49611736c2486e352a30b214e4"
 }
