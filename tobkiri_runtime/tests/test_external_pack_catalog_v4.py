@@ -38,6 +38,7 @@ FIXTURE = RUNTIME_ROOT / "tests" / "fixtures" / "conformance_minimal_echo_pack"
 PACK_ID = "conformance.minimal.echo"
 CONTRACT_ID = "io.tobkiri.conformance.echo.v1"
 OPERATION_ID = "echo"
+SESSION_ID = f"{'a' * 64}.{'b' * 24}.1"
 
 
 def _capture_control_session(**kwargs):
@@ -236,7 +237,7 @@ def _invoke(session, operation: str, payload: dict | None = None) -> dict:
         session.invoke(
             PACK_CONTROL_CONTRACT,
             operation,
-            {**(payload or {}), "_session_id": "external-pack-session"},
+            {**(payload or {}), "_session_id": SESSION_ID},
         )
     )
 
@@ -245,7 +246,7 @@ def _present(session, operation: str, payload: dict | None = None) -> dict:
     return dict(session.invoke(
         CONTROL_PRESENTATION_CONTRACT,
         operation,
-        {**(payload or {}), "_session_id": "external-pack-session"},
+        {**(payload or {}), "_session_id": SESSION_ID},
     ))
 
 
