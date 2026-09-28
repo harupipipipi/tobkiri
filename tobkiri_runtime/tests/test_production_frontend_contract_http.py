@@ -3144,6 +3144,17 @@ def test_model_search_map_route_and_profile_edges_are_exact() -> None:
         and edge["operation_id"] == "rumi_model_registry_pack.model-profile-resource"
     ]
     assert len(nested_edges) == 1
+    catalog_edges = [
+        edge
+        for edge in intent["requested_edges"]
+        if edge["caller_function_id"] == "tobkiri.ui.model-search.read"
+        and edge["target_provider_id"]
+        == "rumi_model_catalog_pack.model-catalog.bundled"
+        and edge["contract_id"] == "tobkiri.resource.ai.model.catalog.v1"
+        and edge["operation_id"]
+        == "rumi_model_catalog_pack.bundled-model-catalog"
+    ]
+    assert len(catalog_edges) == 1
 
 
 def test_model_search_uses_captured_provider_and_nested_profile_edge(
@@ -3151,8 +3162,29 @@ def test_model_search_uses_captured_provider_and_nested_profile_edge(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Search crosses real HTTP/Broker; the registry read uses the nested edge."""
+    """Search crosses real HTTP/Broker with registry and catalog owner edges."""
     from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+    from ecosystem.rumi_model_catalog_pack.runtime import catalog as catalog_module
+
+    live_models = [
+        catalog_module._normalize_openrouter_model({
+            "id": f"fixture/model-{index:03d}",
+            "name": f"Fixture Model {index:03d}",
+            "context_length": 8192,
+            "architecture": {
+                "input_modalities": ["text"],
+                "output_modalities": ["text"],
+            },
+        })
+        for index in range(125)
+    ]
+    assert all(model is not None for model in live_models)
+    monkeypatch.setattr(catalog_module, "_OPENROUTER_MEMORY_INVENTORY", None)
+    monkeypatch.setattr(
+        catalog_module,
+        "_fetch_openrouter_inventory",
+        lambda: [model for model in live_models if model is not None],
+    )
 
     registry = ModelRegistry("defaults", user_data_root=tmp_path / "user-data")
     registry.save(
@@ -3193,15 +3225,21 @@ def test_model_search_uses_captured_provider_and_nested_profile_edge(
 
     status, payload, _ = post({"query": "fixture-chat", "max_results": 30, "offset": 0})
     assert status == 200, payload
-    assert len(observed) == 2
-    outer, nested = observed
+    assert len(observed) == 3
+    outer, nested, catalog_read = observed
     assert outer.operation_id == "tobkiri_ui_settings_pack.model-search"
     assert outer.context.profile_id == "defaults"
     assert nested.operation_id == "rumi_model_registry_pack.model-profile-resource"
     assert nested.context.profile_id == "defaults"
+    assert catalog_read.operation_id == "rumi_model_catalog_pack.bundled-model-catalog"
+    assert catalog_read.context.profile_id == "defaults"
     assert (
         nested.cancellation_requested is outer.cancellation_requested
         and nested.deadline_monotonic <= outer.deadline_monotonic
+    )
+    assert (
+        catalog_read.cancellation_requested is outer.cancellation_requested
+        and catalog_read.deadline_monotonic <= outer.deadline_monotonic
     )
     data = payload["data"]
     models = data["models"]
@@ -3232,6 +3270,51 @@ def test_model_search_uses_captured_provider_and_nested_profile_edge(
     status, payload, _ = post({"provider_id": "provider.other"})
     assert status == 200, payload
     assert payload["data"]["models"] == []
+
+    # The catalog owner's records carry a qualified `model_id`, but no `id`.
+    # An unsaved, non-OpenRouter bundled chat model must survive projection.
+    status, payload, _ = post({
+        "provider_id": "cerebras", "query": "gpt-oss-120b",
+    })
+    assert status == 200, payload
+    bundled = [
+        model for model in payload["data"]["models"]
+        if model["profile_id"] == "cerebras/gpt-oss-120b"
+    ]
+    assert len(bundled) == 1
+    assert bundled[0]["model_id"] == "gpt-oss-120b"
+    assert bundled[0]["provider_id"] == "cerebras"
+    assert bundled[0]["max_context"] > 0
+
+    status, payload, _ = post({
+        "provider_id": "openai", "model_type": "embedding",
+        "query": "text-embedding-3-large",
+    })
+    assert status == 200, payload
+    embeddings = [
+        model for model in payload["data"]["models"]
+        if model["profile_id"] == "openai/text-embedding-3-large"
+    ]
+    assert len(embeddings) == 1
+    assert embeddings[0]["type"] == "embedding"
+
+    selected_ids: list[str] = []
+    for offset, expected_count in ((0, 50), (50, 50), (100, 25)):
+        status, payload, _ = post({
+            "provider_id": "openrouter", "query": "fixture/model",
+            "max_results": 50, "offset": offset,
+        })
+        assert status == 200, payload
+        data = payload["data"]
+        assert data["total"] == 125
+        assert len(data["models"]) == expected_count
+        assert all(item["max_context"] == 8192 for item in data["models"])
+        assert data["has_more"] is (offset + expected_count < 125)
+        selected_ids.extend(item["profile_id"] for item in data["models"])
+    assert len(selected_ids) == len(set(selected_ids)) == 125
+    assert set(selected_ids) == {
+        f"openrouter/fixture/model-{index:03d}" for index in range(125)
+    }
 
 
 def test_model_search_projects_float_metadata_into_canonical_json(
@@ -3365,13 +3448,16 @@ def test_model_search_controller_fails_closed_on_invalid_composition() -> None:
     from tobkiri_host.ports import ModelSearchCommand
 
     controller = ModelSearchController(
-        search_models=lambda _filters, _profiles, _settings: {"unexpected": True}
+        search_models=lambda _filters, _profiles, _catalog, _settings: {
+            "unexpected": True
+        }
     )
     command = ModelSearchCommand(
         context=None,  # type: ignore[arg-type]
         profile_id="defaults",
         filters={},
         profiles=(),
+        catalog_models=(),
         runtime_settings={},
     )
     with pytest.raises(PermissionError, match="model search is unavailable"):

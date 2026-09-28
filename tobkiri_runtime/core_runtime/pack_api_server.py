@@ -375,6 +375,7 @@ class RuntimeCaptureInputs:
             [
                 Mapping[str, object],
                 list[Mapping[str, object]],
+                list[Mapping[str, object]],
                 Mapping[str, object],
             ],
             Mapping[str, object],

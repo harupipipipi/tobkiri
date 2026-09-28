@@ -16,7 +16,8 @@ class ModelSearchController:
 
     The controller holds no catalog or owner capability: the verified
     Provider supplies the captured Profile identity, validated filter fields,
-    registry snapshot, and a non-secret runtime-settings projection.  The
+    registry and catalog-owner snapshots, and a non-secret runtime-settings
+    projection. The
     composition callback owns catalog assembly.  Its bounded result echoes
     only the projected models and applied-filter metadata the operation schema
     admits.
@@ -28,6 +29,7 @@ class ModelSearchController:
         search_models: Callable[
             [
                 Mapping[str, Any],
+                list[Mapping[str, Any]],
                 list[Mapping[str, Any]],
                 Mapping[str, Any],
             ],
@@ -42,6 +44,7 @@ class ModelSearchController:
         result = self._search(
             dict(command.filters),
             [dict(profile) for profile in command.profiles],
+            [dict(model) for model in command.catalog_models],
             dict(command.runtime_settings),
         )
         if (

@@ -1471,6 +1471,7 @@ def capture_production_dispatch(
             [
                 Mapping[str, Any],
                 list[Mapping[str, Any]],
+                list[Mapping[str, Any]],
                 Mapping[str, Any],
             ],
             Mapping[str, Any],

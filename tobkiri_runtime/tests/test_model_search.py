@@ -186,3 +186,38 @@ def test_profile_catalog_unions_live_openrouter_chat_and_reasoning_models(monkey
     assert "openrouter/acme/vector" not in {
         profile["profile_id"] for profile in profiles
     }
+
+
+def test_captured_catalog_snapshot_reaches_picker_without_ambient_owner(monkeypatch):
+    from ecosystem.defaultspack.backend.ai_client import provider_catalog
+    from domain.ai_client import model_search
+
+    def reject_ambient(_provider):
+        raise AssertionError("captured search must use its declared catalog edge")
+
+    monkeypatch.setattr(provider_catalog, "_selected_catalog_fallback", reject_ambient)
+    catalog_models = [
+        {
+            "model_id": f"openrouter/fixture/model-{index:03d}",
+            "provider_model_id": f"fixture/model-{index:03d}",
+            "provider_id": "openrouter",
+            "display_name": f"Fixture Model {index:03d}",
+            "type": "chat",
+            "capabilities": ["chat", "text_input", "text_output"],
+            "available": True,
+        }
+        for index in range(125)
+    ]
+    profiles = model_search.get_profile_catalog(
+        settings={}, registry_profiles=[], catalog_models=catalog_models,
+    )
+    selected_ids = []
+    for offset, count in ((0, 50), (50, 50), (100, 25)):
+        result = model_search.search_models(
+            {"provider_id": "openrouter", "max_results": 50, "offset": offset},
+            profiles=profiles,
+        )
+        assert result["total"] == 125
+        assert len(result["models"]) == count
+        selected_ids.extend(item["profile_id"] for item in result["models"])
+    assert len(selected_ids) == len(set(selected_ids)) == 125

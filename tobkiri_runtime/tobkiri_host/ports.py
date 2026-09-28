@@ -356,7 +356,9 @@ class ModelSearchCommand:
     carries only the bounded filter fields admitted by the operation schema;
     it contains no authority, credential, or settings-owner material.
     ``profiles`` is the model-registry snapshot the verified Provider read
-    through its declared nested contract edge.  ``runtime_settings`` is a
+    through its declared nested contract edge. ``catalog_models`` is the
+    selected catalog owner's snapshot read through a second declared edge.
+    ``runtime_settings`` is a
     non-secret projection of owner-read model settings supplied by the
     settings Pack; it contains no owner object, path, credentials, or
     authority material.
@@ -366,6 +368,7 @@ class ModelSearchCommand:
     profile_id: str
     filters: Mapping[str, Any]
     profiles: tuple[Mapping[str, Any], ...]
+    catalog_models: tuple[Mapping[str, Any], ...]
     runtime_settings: Mapping[str, Any]
 
 

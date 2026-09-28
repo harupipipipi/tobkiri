@@ -152,15 +152,20 @@ def get_profile_catalog(
     *,
     settings: dict[str, Any] | None = None,
     registry_profiles: list[dict[str, Any]] | None = None,
+    catalog_models: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Return the resolved model profile catalog for one runtime operation.
 
     When ``registry_profiles`` is supplied the captured model-profile snapshot
     replaces the ambient contract read, which a verified Provider invocation
-    cannot reach; the selected catalog fallback still supplies models that
-    have no saved profile, matching the ambient degradation path.
+    cannot reach. ``catalog_models`` likewise carries the selected catalog
+    owner's snapshot through a declared nested edge.
     """
-    return _profile_catalog(settings=settings, registry_profiles=registry_profiles)
+    return _profile_catalog(
+        settings=settings,
+        registry_profiles=registry_profiles,
+        catalog_models=catalog_models,
+    )
 
 
 def recommend_model(
@@ -255,9 +260,12 @@ def _profile_catalog(
     *,
     settings: dict[str, Any] | None = None,
     registry_profiles: list[dict[str, Any]] | None = None,
+    catalog_models: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     if registry_profiles is not None:
-        return _captured_profile_catalog(registry_profiles, settings=settings)
+        return _captured_profile_catalog(
+            registry_profiles, settings=settings, catalog_models=catalog_models
+        )
     profiles: list[dict[str, Any]] = []
     try:
         from ecosystem.defaultspack.backend.ai_client.provider_catalog import list_profile_catalog
@@ -288,39 +296,70 @@ def _captured_profile_catalog(
     registry_profiles: list[dict[str, Any]],
     *,
     settings: dict[str, Any] | None = None,
+    catalog_models: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Assemble the picker catalog from a contract-captured registry snapshot.
 
     A verified Provider invocation cannot use the ambient dispatch session,
     so the captured registry snapshot arrives through the declared nested
-    edge.  The bundled catalog contribution uses the same selected-Pack
-    fallback ``list_model_catalog`` already degrades to when global contract
-    dispatch is unavailable.
+    edge. The selected catalog owner's snapshot arrives through its own
+    declared nested edge; a captured invocation never borrows ambient dispatch.
     """
     try:
         from ecosystem.defaultspack.backend.ai_client.provider_catalog import (
             _merge_model_profiles,
             _selected_catalog_fallback,
+            _with_legacy_model_fields,
         )
     except ModuleNotFoundError:
         from backend.ai_client.provider_catalog import (
             _merge_model_profiles,
             _selected_catalog_fallback,
+            _with_legacy_model_fields,
         )
-    try:
-        catalog_models = _selected_catalog_fallback("")
-    except Exception:
-        catalog_models = []
-    try:
-        openrouter_models = _selected_catalog_fallback("openrouter")
-    except Exception:
-        openrouter_models = []
+    if catalog_models is None:
+        # Compatibility for non-Host callers that do not have a captured owner
+        # result. Production HTTP search always supplies an explicit snapshot.
+        try:
+            catalog_models = _selected_catalog_fallback("")
+        except Exception:
+            catalog_models = []
+    else:
+        normalized_models: list[dict[str, Any]] = []
+        for model in catalog_models:
+            if not isinstance(model, dict):
+                continue
+            item = dict(model)
+            provider_id = str(item.get("provider_id") or "").strip()
+            qualified_id = str(
+                item.get("qualified_model_id")
+                or item.get("id")
+                or item.get("model_id")
+                or ""
+            ).strip()
+            provider_model_id = str(item.get("provider_model_id") or "").strip()
+            if not provider_model_id and provider_id and qualified_id.startswith(
+                f"{provider_id}/"
+            ):
+                provider_model_id = qualified_id[len(provider_id) + 1 :]
+            if not qualified_id or not provider_id or not provider_model_id:
+                continue
+            # The catalog owner names `model_id` with its qualified ID while
+            # the picker merger expects `id` to be qualified and `model_id`
+            # to be provider-native. Keep both identities explicit.
+            item["id"] = qualified_id
+            item["qualified_model_id"] = qualified_id
+            item["model_id"] = provider_model_id
+            if "context_window" not in item and item.get("context_length") is not None:
+                item["context_window"] = item["context_length"]
+            normalized_models.append(_with_legacy_model_fields(item))
+        catalog_models = normalized_models
     profiles = _merge_model_profiles(
         _normalize_registry_profiles(registry_profiles),
         catalog_models,
     )
     profiles.extend(_embedding_profiles_from_models(catalog_models))
-    profiles.extend(_openrouter_chat_reasoning_profiles(openrouter_models))
+    profiles.extend(_openrouter_chat_reasoning_profiles(catalog_models))
     if isinstance(settings, dict):
         profiles.extend(_runtime_defined_profiles(settings))
     return _dedupe_profiles(profiles)

@@ -44,6 +44,7 @@ def create_model_catalog_operation(client: Any):
             "list",
             "get",
             "providers",
+            "rumi_model_catalog_pack.bundled-model-catalog",
             "rumi_model_catalog_pack.bundled-model-catalog.generate",
             "rumi_model_catalog_pack.bundled-model-catalog.stream",
         }:
@@ -224,6 +225,7 @@ def _model(
         "execution_provider_instance_id": "provider.compatibility",
         "health_provider_instance_id": f"provider.{provider_id}",
         "display_name": str(value.get("display_name") or raw_model_id),
+        "type": str(value.get("type") or "chat").strip().lower() or "chat",
         "capabilities": capabilities,
         "modalities": modalities,
         "context_length": _integer(context_length),

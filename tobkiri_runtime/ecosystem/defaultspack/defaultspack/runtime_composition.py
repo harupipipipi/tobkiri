@@ -110,6 +110,7 @@ def _canonical_result_projection(value: object, depth: int = 0) -> object:
 def _model_search(
     filters: Mapping[str, object],
     profiles: list[Mapping[str, object]],
+    catalog_models: list[Mapping[str, object]],
     runtime_settings: Mapping[str, object],
 ) -> Mapping[str, object]:
     """Resolve the Defaultspack-owned model search at invocation time.
@@ -147,6 +148,9 @@ def _model_search(
         settings=settings,
         registry_profiles=[
             dict(profile) for profile in profiles if isinstance(profile, Mapping)
+        ],
+        catalog_models=[
+            dict(model) for model in catalog_models if isinstance(model, Mapping)
         ],
     )
     result = search_models(dict(filters), profiles=catalog, settings=settings)
@@ -279,6 +283,7 @@ class DefaultspackDispatchDelegates:
     model_search: Callable[
         [
             Mapping[str, object],
+            list[Mapping[str, object]],
             list[Mapping[str, object]],
             Mapping[str, object],
         ],

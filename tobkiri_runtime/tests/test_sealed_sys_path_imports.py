@@ -195,7 +195,7 @@ def _scenario_typed_role_model_search_invocation() -> None:
         _model_search,
     )
 
-    result = _model_search({}, [], {})
+    result = _model_search({}, [], [], {})
     assert isinstance(result.get("models"), list)
     assert isinstance(result.get("filters_applied"), dict)
 

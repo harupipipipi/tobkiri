@@ -21,6 +21,9 @@ CONTRACT_ID = "tobkiri.resource.ui.model-search.v1"
 OPERATION_ID = "tobkiri_ui_settings_pack.model-search"
 MODEL_PROFILE_CONTRACT = "tobkiri.resource.ai.model.profile.v1"
 MODEL_PROFILE_OPERATION = "rumi_model_registry_pack.model-profile-resource"
+MODEL_CATALOG_CONTRACT = "tobkiri.resource.ai.model.catalog.v1"
+MODEL_CATALOG_OPERATION = "rumi_model_catalog_pack.bundled-model-catalog"
+MODEL_CATALOG_PROVIDER = "model-catalog.bundled"
 
 # Only these client-supplied filter fields may reach the Host port.  The
 # captured Profile identity is injected by the canonical presentation layer;
@@ -112,7 +115,10 @@ class ModelSearchHostFactoryV4:
                 raise PermissionError("model search request is invalid")
             invocation.assert_current()
             client = invocation.contract_client(
-                allowed_contract_ids=frozenset({MODEL_PROFILE_CONTRACT}),
+                allowed_contract_ids=frozenset({
+                    MODEL_PROFILE_CONTRACT,
+                    MODEL_CATALOG_CONTRACT,
+                }),
                 consumer_pack_id=PACK_ID,
                 include_credentials=False,
             )
@@ -129,6 +135,20 @@ class ModelSearchHostFactoryV4:
                 not isinstance(profile, Mapping) for profile in profiles
             ):
                 raise PermissionError("model profile snapshot is invalid")
+            catalog = client.invoke(
+                MODEL_CATALOG_CONTRACT,
+                MODEL_CATALOG_OPERATION,
+                {},
+                provider_instance_id=MODEL_CATALOG_PROVIDER,
+            )
+            invocation.assert_current()
+            if not isinstance(catalog, Mapping):
+                raise PermissionError("model catalog snapshot is invalid")
+            catalog_models = catalog.get("models")
+            if not isinstance(catalog_models, list) or any(
+                not isinstance(model, Mapping) for model in catalog_models
+            ):
+                raise PermissionError("model catalog snapshot is invalid")
             settings_path = (
                 context.user_data_root
                 / "defaultspack"
@@ -154,6 +174,7 @@ class ModelSearchHostFactoryV4:
                         if key != "profile_id"
                     },
                     profiles=tuple(profiles),
+                    catalog_models=tuple(catalog_models),
                     runtime_settings=runtime_settings,
                 )
             )
