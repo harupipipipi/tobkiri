@@ -15,8 +15,16 @@ without a terminal:
 2. Double-click `tobkiri-launcher.exe`.
 3. In the Launcher, choose **Open Setup**, review the listed Defaults Profile,
    select its confirmation checkbox, and choose **Activate Defaults Profile**.
-   If verification is requested, choose **Verify activation**. Then use
-   **Open Defaultspack** from Home.
+   Submit it only once. Verification can take several minutes while the Host
+   restarts; if **Verify activation** becomes available, choose it. Do not
+   submit the Profile again while verification is pending.
+
+The current Windows build can activate a Profile but cannot provision the
+PackVM needed to launch Defaultspack Chat and Pack functions. Home disables
+**Launch** and links to [Windows PackVM support issue #1494](https://github.com/harupipipipi/tobkiri/issues/1494).
+Docker Desktop exposing `/dev/kvm` to Linux containers does not provide this
+Launcher with a Windows PackVM backend. Use the Apple Silicon macOS package
+below for a complete GUI and PackVM test until Windows support is implemented.
 
 The executable exists only after the Windows development build has completed.
 For a normal installed copy, open **Tobkiri Launcher** from the Start menu.

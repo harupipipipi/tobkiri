@@ -284,11 +284,107 @@ fn stage_local_development_authority() -> io::Result<()> {
     .canonicalize()?;
     let (staged_root, manifest_sha256) =
         capture_local_development_authority(&project_dir, repo_root, &output_root)?;
+    sync_local_development_catalog(&staged_root, &repo_root.join(APP_SOURCE_DIR))?;
     println!(
         "cargo:rustc-env=TOBKIRI_LOCAL_DEV_AUTHORITY_STAGE={}",
         staged_root.display()
     );
     println!("cargo:rustc-env=TOBKIRI_LOCAL_DEV_AUTHORITY_MANIFEST_SHA256={manifest_sha256}");
+    Ok(())
+}
+
+/// The debug Launcher intentionally runs the checkout Host. Keep its ignored
+/// catalog identical to the catalog captured in this build's authority stage;
+/// an earlier preparation run may have left a different Pack digest there.
+fn sync_local_development_catalog(staged_root: &Path, runtime_root: &Path) -> io::Result<()> {
+    let staged_catalog = staged_root
+        .join("bundled")
+        .join(PRESENTATION_CATALOG_FILENAME);
+    let catalog_bytes = read_regular_file(&staged_catalog, "staged development catalog")?;
+    let catalog: serde_json::Value = serde_json::from_slice(&catalog_bytes).map_err(|error| {
+        invalid_release(format!("staged development catalog is malformed: {error}"))
+    })?;
+    verify_development_catalog_pack_bindings(
+        &catalog,
+        &staged_root.join("bundled/dev-defaults/v4"),
+    )?;
+
+    require_directory(runtime_root, "checkout runtime")?;
+    let bundled_root = runtime_root.join("bundled");
+    fs::create_dir_all(&bundled_root)?;
+    require_directory(&bundled_root, "checkout runtime bundled directory")?;
+    let runtime_catalog = bundled_root.join(PRESENTATION_CATALOG_FILENAME);
+    match fs::symlink_metadata(&runtime_catalog) {
+        Ok(_) => require_regular_file(&runtime_catalog, "checkout runtime catalog")?,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    if fs::read(&runtime_catalog).ok().as_deref() != Some(catalog_bytes.as_slice()) {
+        fs::write(&runtime_catalog, &catalog_bytes)?;
+    }
+    verify_staged_catalog(&staged_catalog, &runtime_catalog)
+}
+
+/// The development Shell and Application Packs acquire artifact digests during
+/// preparation. All other selected Pack digests must still match the catalog.
+fn verify_development_catalog_pack_bindings(
+    catalog: &serde_json::Value,
+    bundle_root: &Path,
+) -> io::Result<()> {
+    let selected = catalog
+        .get("source_manifest_digests")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| invalid_release("development catalog selected Pack set is missing"))?;
+    if selected.is_empty() {
+        return Err(invalid_release(
+            "development catalog selected Pack set is empty",
+        ));
+    }
+    let expected = selected_source_manifest_digests_from_lock(
+        &bundle_root.join("bundle.lock.json"),
+        selected,
+    )?;
+    let profile: serde_json::Value = serde_json::from_slice(&read_regular_file(
+        &bundle_root.join("defaults.profile.v5.json"),
+        "prepared development Profile",
+    )?)
+    .map_err(|error| {
+        invalid_release(format!(
+            "prepared development Profile is malformed: {error}"
+        ))
+    })?;
+    let application_ids = profile
+        .get("packs")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| invalid_release("prepared development Profile Packs are missing"))?
+        .iter()
+        .filter(|pack| pack.get("role").and_then(serde_json::Value::as_str) == Some("application"))
+        .filter_map(|pack| pack.get("pack_id").and_then(serde_json::Value::as_str))
+        .collect::<Vec<_>>();
+    if application_ids.len() != 1 {
+        return Err(invalid_release(
+            "prepared development Profile must select one Application Pack",
+        ));
+    }
+    let shell_id = profile
+        .pointer("/shell/pack_id")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| invalid_release("prepared development Profile Shell Pack is missing"))?;
+    if !selected.contains_key(application_ids[0]) || !selected.contains_key(shell_id) {
+        return Err(invalid_release(
+            "development catalog is missing its generated Application or Shell Pack",
+        ));
+    }
+    for (pack_id, digest) in selected {
+        if pack_id.as_str() != application_ids[0]
+            && pack_id.as_str() != shell_id
+            && expected.get(pack_id) != Some(digest)
+        {
+            return Err(invalid_release(format!(
+                "development catalog selected Pack digest differs from the Defaults lock: {pack_id}"
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -371,6 +467,13 @@ fn verify_prepared_defaults_source_artifacts(
         else {
             continue;
         };
+        let prepared: serde_json::Value = serde_json::from_slice(&fs::read(entry.path())?)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        verify_prepared_host_assets(
+            &prepared,
+            pack_id,
+            &runtime_root.join("ecosystem/defaultspack"),
+        )?;
         let source = runtime_root
             .join("ecosystem")
             .join(pack_id)
@@ -378,8 +481,6 @@ fn verify_prepared_defaults_source_artifacts(
         if !source.is_file() {
             continue;
         }
-        let prepared: serde_json::Value = serde_json::from_slice(&fs::read(entry.path())?)
-            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
         let current: serde_json::Value = serde_json::from_slice(&fs::read(source)?)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
         let prepared_pack = &prepared["pack"];
@@ -393,6 +494,41 @@ fn verify_prepared_defaults_source_artifacts(
         {
             return Err(invalid_release(format!(
                 "prepared development Defaults Pack {pack_id} is stale; rerun the Tauri dev preparation hook or prepare_viewer_runtime.py --mode dev"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn verify_prepared_host_assets(
+    prepared: &serde_json::Value,
+    pack_id: &str,
+    materialized_root: &Path,
+) -> io::Result<()> {
+    let Some(artifacts) = prepared
+        .get("artifacts")
+        .and_then(serde_json::Value::as_array)
+    else {
+        return Ok(());
+    };
+    for asset in artifacts {
+        if asset.get("kind").and_then(serde_json::Value::as_str) != Some("asset")
+            || asset.get("platform").and_then(serde_json::Value::as_str) != Some("host")
+        {
+            continue;
+        }
+        let object = asset.as_object().ok_or_else(|| {
+            invalid_release(format!(
+                "prepared development Defaults Pack {pack_id} has an invalid Host asset"
+            ))
+        })?;
+        let path = text_field(object, "path", "prepared Host asset")?;
+        let expected = digest_field(object, "digest", "prepared Host asset")?;
+        let source = require_release_path(materialized_root, &path, "prepared Host asset")?;
+        require_regular_file(&source, "prepared Host asset")?;
+        if byte_digest(&fs::read(&source)?) != expected {
+            return Err(invalid_release(format!(
+                "prepared development Defaults Pack {pack_id} Host asset {path} is stale; rerun the Tauri dev preparation hook or prepare_viewer_runtime.py --mode dev"
             )));
         }
     }
@@ -994,6 +1130,8 @@ fn stage_development_runtime_bundle(
     if development_defaults.join("v4/bundle.lock.json").is_file()
         && development_defaults.join("platform-artifacts").is_dir()
     {
+        verify_prepared_defaults_source_artifacts(&development_defaults, runtime_root)
+            .map_err(|error| stage_error("verify development Defaults bundle", error))?;
         copy_dir_recursive(
             &development_defaults,
             &staged_root.join("bundled/dev-defaults"),
@@ -6312,6 +6450,80 @@ mod tests {
         );
     }
 
+    #[test]
+    fn local_debug_catalog_sync_replaces_stale_runtime_only_after_lock_verification() {
+        let tree = TestTree::new("local-debug-catalog-sync");
+        let staged_root = tree.path().join("stage");
+        let bundle_root = staged_root.join("bundled/dev-defaults/v4");
+        let mut entries = Vec::new();
+        let mut selected = serde_json::Map::new();
+        for pack_id in [
+            "defaultspack",
+            "runtime.tauri.application.default",
+            "shell.tauri.default",
+        ] {
+            let relative = format!("packs/{pack_id}.pack.v4.json");
+            let pack_path = bundle_root.join(&relative);
+            fs::create_dir_all(pack_path.parent().unwrap()).unwrap();
+            let pack_bytes = serde_json::to_vec(&serde_json::json!({
+                "pack_api_version": "io.tobkiri.pack.v4", "pack": {"id": pack_id}
+            }))
+            .unwrap();
+            fs::write(&pack_path, &pack_bytes).unwrap();
+            let digest = byte_digest(&pack_bytes);
+            entries.push(serde_json::json!({
+                "kind": "pack", "path": relative, "digest": digest
+            }));
+            let source_digest = if pack_id == "defaultspack" {
+                digest
+            } else {
+                format!("sha256:{}", "0".repeat(64))
+            };
+            selected.insert(pack_id.to_owned(), serde_json::Value::String(source_digest));
+        }
+        write_canonical_json(
+            &bundle_root.join("bundle.lock.json"),
+            &serde_json::json!({"entries": entries}),
+        )
+        .unwrap();
+        write_canonical_json(
+            &bundle_root.join("defaults.profile.v5.json"),
+            &serde_json::json!({
+                "packs": [{"role": "application", "pack_id": "runtime.tauri.application.default"}],
+                "shell": {"pack_id": "shell.tauri.default"}
+            }),
+        )
+        .unwrap();
+        let staged_catalog = staged_root.join("bundled/presentation_catalog.json");
+        let valid_catalog = serde_json::json!({"source_manifest_digests": selected});
+        write_canonical_json(&staged_catalog, &valid_catalog).unwrap();
+
+        let runtime_root = tree.path().join("runtime");
+        let runtime_catalog = runtime_root.join("bundled/presentation_catalog.json");
+        fs::create_dir_all(runtime_catalog.parent().unwrap()).unwrap();
+        fs::write(&runtime_catalog, b"stale catalog").unwrap();
+        sync_local_development_catalog(&staged_root, &runtime_root)
+            .expect("the verified stage should replace the stale checkout catalog");
+        assert_eq!(
+            fs::read(&runtime_catalog).unwrap(),
+            fs::read(&staged_catalog).unwrap()
+        );
+
+        let mut invalid_catalog = valid_catalog;
+        invalid_catalog["source_manifest_digests"]["defaultspack"] =
+            serde_json::Value::String(format!("sha256:{}", "0".repeat(64)));
+        write_canonical_json(&staged_catalog, &invalid_catalog).unwrap();
+        let error = sync_local_development_catalog(&staged_root, &runtime_root)
+            .expect_err("an invalid stage must not replace the runtime catalog");
+        assert!(error
+            .to_string()
+            .contains("development catalog selected Pack digest differs"));
+        assert_ne!(
+            fs::read(&runtime_catalog).unwrap(),
+            fs::read(&staged_catalog).unwrap()
+        );
+    }
+
     #[cfg(target_os = "windows")]
     #[test]
     fn windows_debug_resource_reset_removes_only_the_selected_tauri_copy() {
@@ -6503,6 +6715,44 @@ mod tests {
         let error = capture_local_development_authority(&project_dir, repo_root, &output)
             .expect_err("stale prepared Pack must not become active Profile authority");
         assert!(error.to_string().contains("rumi_ai_gateway_pack is stale"));
+    }
+
+    #[test]
+    fn prepared_defaults_rejects_stale_host_asset_even_without_source_pack() {
+        let tree = TestTree::new("local-authority-stale-host-asset");
+        let defaults = tree.path().join("target/dev-defaults");
+        let runtime = tree.path().join("tobkiri_runtime");
+        let source_root = runtime.join("ecosystem/defaultspack");
+        let source = source_root.join("defaultspack/frontend_contract_map.v4.json");
+        fs::create_dir_all(defaults.join("v4/packs")).unwrap();
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, b"original frontend map").unwrap();
+        let prepared = serde_json::json!({
+            "pack": {"id": "runtime.tauri.application.default"},
+            "artifacts": [{
+                "kind": "asset",
+                "platform": "host",
+                "path": "defaultspack/frontend_contract_map.v4.json",
+                "digest": byte_digest(b"original frontend map"),
+            }],
+        });
+        fs::write(
+            defaults.join("v4/packs/runtime.tauri.application.default.pack.v4.json"),
+            serde_json::to_vec(&prepared).unwrap(),
+        )
+        .unwrap();
+        verify_prepared_defaults_source_artifacts(&defaults, &runtime)
+            .expect("matching prepared Host asset must be accepted");
+
+        fs::write(&source, b"changed frontend map").unwrap();
+        let error = verify_prepared_defaults_source_artifacts(&defaults, &runtime)
+            .expect_err("stale Host asset must fail before the Launcher is built");
+        assert!(error
+            .to_string()
+            .contains("Host asset defaultspack/frontend_contract_map.v4.json is stale"));
+        assert!(error
+            .to_string()
+            .contains("prepare_viewer_runtime.py --mode dev"));
     }
 
     #[test]
