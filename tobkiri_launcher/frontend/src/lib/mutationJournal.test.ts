@@ -1,15 +1,49 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
+import {ApiContractError} from './apiTransport.ts';
 
 import {
   beginMutation,
   completeMutation,
   isLegacyAdoptedMutation,
+  isMutationResultUnknown,
   listMutationJournal,
   markMutationUnknown,
   MutationBlockedError,
   mutationRequestId,
 } from './mutationJournal.ts';
+
+test('explicit indeterminate API response retains the request for reconciliation', () => {
+  const key = `test:indeterminate:${Date.now()}:${Math.random()}`;
+  const requestId = '66666666-6666-4666-8666-666666666666';
+  const record = beginMutation(key, {kind: 'pack.toggle'}, {primary: requestId});
+  try {
+    const error = new ApiContractError(
+      'Control operation outcome requires reconciliation',
+      {
+        state: 'indeterminate',
+        code: 'operation_reconciliation_required',
+        request_id: requestId,
+        retryable: false,
+        write_set: [],
+      },
+    );
+    assert.equal(isMutationResultUnknown(error), true);
+    const unknown = markMutationUnknown(key, record.requestId);
+    assert.equal(unknown.requestId, requestId);
+    assert.equal(unknown.state, 'unknown');
+    assert.throws(() => beginMutation(key), MutationBlockedError);
+
+    assert.equal(isMutationResultUnknown(new ApiContractError('denied', {
+      state: 'error', code: 'UNAPPROVED', retryable: false,
+    })), false);
+    assert.equal(isMutationResultUnknown(new ApiContractError('untrusted shape', {
+      state: 'indeterminate', code: 'operation_reconciliation_required', retryable: true,
+    })), false);
+  } finally {
+    completeMutation(key, requestId);
+  }
+});
 
 test('a logical mutation retains its identity and blocks a second submit while unknown', () => {
   const key = `test:mutation:${Date.now()}:${Math.random()}`;

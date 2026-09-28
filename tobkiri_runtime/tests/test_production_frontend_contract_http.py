@@ -5143,7 +5143,7 @@ def test_ambiguous_pack_enable_is_not_journaled_as_failed_or_retryable(
         calls += 1
         raise AmbiguousEffectError("host-control-reconciliation")
 
-    monkeypatch.setattr(session, "invoke", uncertain_invoke)
+    monkeypatch.setattr(type(session), "invoke", uncertain_invoke)
     status, payload, _ = _request(
         server,
         "POST",
