@@ -11328,6 +11328,9 @@
         {
           "cardinality": "one",
           "contract_id": "tobkiri.service.file.inspect.v1",
+          "operations": [
+            "rumi_file_inspect_pack.file-inspect.for-media"
+          ],
           "optional": false,
           "version_range": ">=1.0.0 <2.0.0"
         }
