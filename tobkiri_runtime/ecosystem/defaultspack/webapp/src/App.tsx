@@ -119,7 +119,7 @@ import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/de
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
-import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
+import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnConfirmationPendingNotice, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
 import { reportClientDiagnostic } from "./lib/clientDiagnostics";
 import {
@@ -4222,7 +4222,7 @@ export function ChatApp() {
       void (async () => {
         if (disposed) return;
         if (pendingRequest?.savedTurn) {
-          if (!pendingRequest.operationId) throw new Error("送信IDが未確認です。自動再送せず確認を待ちます。");
+          if (!pendingRequest.operationId) throw new Error(savedTurnConfirmationPendingNotice());
           let turn = (
             await api.getSavedTurnEvents(
               pendingRequest.operationId,
@@ -4281,7 +4281,7 @@ export function ChatApp() {
           if (disposed) return;
           const state = savedTurnSnapshotState(turn, conversation, activeConversationId, pendingRequest.operationId);
           if (state === "pending") {
-            throw new Error("保存結果と現在の会話を照合できません。自動再送はしません。");
+            throw new Error(savedTurnConfirmationPendingNotice());
           }
           setActiveConversation(conversation);
           setError(savedTurnSnapshotNotice(state));
@@ -4313,7 +4313,9 @@ export function ChatApp() {
         }
         updatePendingRequests((current) => {
           const existing = current[activeConversationId];
-          const status = existing?.savedTurn ? "接続を待っています。自動再送せず照合します" : "接続を待っています。同じ送信として再試行できます";
+          const status = existing?.savedTurn
+            ? savedTurnConfirmationPendingNotice()
+            : "接続を待っています。同じ送信として再試行できます";
           if (existing?.status === status) return current;
           return existing ? {
             ...current,
@@ -4324,7 +4326,7 @@ export function ChatApp() {
           } : current;
         });
         setBackendConnectionState("degraded");
-        setBackendConnectionNote("送信結果を確認できません。operation IDを保持して接続回復を待っています。");
+        setBackendConnectionNote("送信の完了を確認できません。接続が戻ったら、同じ内容を送信し直さずに確認します。");
       }).finally(() => { polling = false; });
     };
     pollPendingConversation();
@@ -6643,7 +6645,7 @@ export function ChatApp() {
   const handleSubmit = async (event?: FormEvent, override?: SubmitOverride) => {
     event?.preventDefault();
     if (activeConversationId && pendingRequests[activeConversationId]?.savedTurn) {
-      setError("前の送信結果を確認中です。新しいturnとして再送しません。");
+      setError("前の送信の完了を確認しています。確認が終わるまで、新しいメッセージは送れません。");
       return;
     }
     if (activeConversation?.metadata?.shared_read_only === true) {
@@ -6874,20 +6876,33 @@ export function ChatApp() {
           : undefined,
       });
       if (result.turn.status !== "completed" || !result.turn.result_reference) {
-        const structured = result.turn.error;
-        if (result.turn.status === "failed" && structured && typeof structured === "object") {
-          const parts = [structured.message, structured.cause, structured.fix]
-            .filter((item): item is string => typeof item === "string" && Boolean(item.trim()));
-          if (parts.length) {
-            throw new Error(`${parts.join(" — ")} 自動再送はしません。`);
+        const terminalNotice = savedTurnTerminalNotice(result.turn, conversation.id, operationId);
+        if (terminalNotice) {
+          setError(terminalNotice);
+          forgetPendingRequest(conversation.id);
+          replaceChatIdInUrl(conversation.id, false);
+          setInput(inputForSubmit);
+          setAttachedFiles(submittedAttachments);
+          setDroppedWidgets(droppedWidgetsForSubmit);
+          if (result.turn.status === "failed") {
+            setRetryableSubmission({
+              input: inputForSubmit,
+              attachments: submittedAttachments,
+              droppedWidgets: droppedWidgetsForSubmit,
+              toolSelectionRequest,
+              skipReview: true,
+              errorMessage: terminalNotice,
+            });
           }
+          void refreshConversations(conversation.id);
+          return;
         }
-        throw new Error("送信結果の照合が必要です。自動再送はしません。");
+        throw new Error(savedTurnConfirmationPendingNotice());
       }
       const snapshot = await api.getConversation(conversation.id);
       const snapshotState = savedTurnSnapshotState(result.turn, snapshot, conversation.id, operationId);
       if (snapshotState === "pending") {
-        throw new Error("保存された応答をまだ確認できません。再送せず照合を待ちます。");
+        throw new Error(savedTurnConfirmationPendingNotice());
       }
       const readinessReport = result.turn.result_reference.deepthink;
       const readinessNotice = readinessReport?.member_models?.length
@@ -6912,10 +6927,12 @@ export function ChatApp() {
       console.error("Chat error:", submitError);
       if (savedSubmissionStarted && submittedConversationId) {
         setRetryableSubmission(null);
-        setError(submitError instanceof Error ? submitError.message : "送信結果を確認できません。再送せず照合を待ちます。");
+        setError(savedTurnConfirmationPendingNotice());
         updatePendingRequests((current) => {
           const entry = current[submittedConversationId!];
-          return entry ? { ...current, [submittedConversationId!]: { ...entry, status: "送信結果を照合中（自動再送なし）" } } : current;
+          return entry
+            ? { ...current, [submittedConversationId!]: { ...entry, status: savedTurnConfirmationPendingNotice() } }
+            : current;
         });
         return;
       }

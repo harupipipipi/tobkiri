@@ -5,6 +5,7 @@ import type { ChatMessage, SavedTurnResult } from "./api";
 import {
   PENDING_USER_ONLY_GRACE_MS,
   chatContinuationPacketMatchesTurn,
+  savedTurnConfirmationPendingNotice,
   savedTurnSnapshotState,
   savedTurnSnapshotNotice,
   savedTurnProgressNotice,
@@ -187,7 +188,16 @@ test("pending saved turn distinguishes owner message persistence without authori
   assert.match(savedTurnProgressNotice("user_saved"), /AIの返答を確認中/);
   assert.match(savedTurnProgressNotice("all_messages_saved_unconfirmed"), /完了確認中/);
   assert.match(savedTurnProgressNotice("conversation_unavailable"), /取得できず/);
-  assert.match(savedTurnProgressNotice("ledger_only"), /重複実行を防ぐため/);
+  assert.match(savedTurnProgressNotice("ledger_only"), /重複を防ぐため/);
+});
+
+test("indeterminate saved turns use clear copy without implementation terms", () => {
+  const notice = savedTurnConfirmationPendingNotice();
+
+  assert.match(notice, /送信の完了を確認/);
+  assert.match(notice, /同じ内容を送信し直さず/);
+  assert.doesNotMatch(notice, /(?:turn|ledger|台帳|operation)/i);
+  assert.equal(savedTurnProgressNotice("ledger_only"), notice);
 });
 
 test("only matching terminal saved turns stop reconciliation", () => {
@@ -195,6 +205,15 @@ test("only matching terminal saved turns stop reconciliation", () => {
     id: "turn-1", conversation_id: "c1", status: "failed", revision: 4,
   };
   assert.match(savedTurnTerminalNotice(turn, "c1", "turn-1")!, /失敗で終了/);
+  const genericFailureNotice = savedTurnTerminalNotice({
+    ...turn,
+    error: {
+      message: "turn ledger is incomplete",
+      cause: "Saved conversation did not complete.",
+    },
+  }, "c1", "turn-1")!;
+  assert.match(genericFailureNotice, /失敗で終了/);
+  assert.doesNotMatch(genericFailureNotice, /(?:turn|ledger|台帳)/i);
   assert.match(savedTurnTerminalNotice({ ...turn, status: "cancelled" }, "c1", "turn-1")!, /停止を確認/);
   for (const candidate of [
     { ...turn, status: "running" },

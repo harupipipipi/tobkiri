@@ -1,6 +1,7 @@
 import type { ChatContinuationPacket, ChatMessage, Conversation, SavedTurnResult } from "./api";
 
 const STABLE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+const GENERIC_SAVED_TURN_FAILURE_DETAIL = /(?:turn\s*(?:ledger|台帳)|ledger\s*(?:is\s*)?(?:incomplete|未完了)|saved\s+conversation\s+did\s+not\s+complete|saved\s+(?:conversation\s+)?outcome\s+is\s+unconfirmed)/i;
 
 /**
  * Fail-closed identity check for a Host-bound approval-continuation packet.
@@ -64,6 +65,14 @@ export function savedTurnSnapshotNotice(state: ReturnType<typeof savedTurnSnapsh
   return null;
 }
 
+/**
+ * Explain an indeterminate saved send without exposing transport or storage
+ * implementation details. This state is not a confirmed failure.
+ */
+export function savedTurnConfirmationPendingNotice(): string {
+  return "送信の完了を確認しています。重複を防ぐため、同じ内容を送信し直さずに確認を続けます。";
+}
+
 export type SavedTurnProgressState =
   | "ledger_only"
   | "user_saved"
@@ -114,7 +123,7 @@ export function savedTurnProgressNotice(state: SavedTurnProgressState): string {
   if (state === "conversation_unavailable") {
     return "会話を取得できず、前の処理の完了も確認できません。重複実行を防ぐため、自動再送せずに保存結果を確認します。";
   }
-  return "前の処理が完了したか確認できません。重複実行を防ぐため、自動再送せずに保存結果を確認しています。";
+  return savedTurnConfirmationPendingNotice();
 }
 
 export function savedTurnTerminalNotice(
@@ -130,12 +139,16 @@ export function savedTurnTerminalNotice(
     const structured = turn.error;
     if (structured && typeof structured === "object") {
       const parts = [structured.message, structured.cause, structured.fix]
-        .filter((item): item is string => typeof item === "string" && Boolean(item.trim()));
+        .filter((item): item is string => (
+          typeof item === "string"
+          && Boolean(item.trim())
+          && !GENERIC_SAVED_TURN_FAILURE_DETAIL.test(item)
+        ));
       if (parts.length) {
         return `送信は失敗で終了しました。${parts.join(" — ")} 自動再送はしません。`;
       }
     }
-    return "送信は失敗で終了しました。保存済みメッセージを表示し、自動再送はしません。";
+    return "送信は失敗で終了しました。自動では送信し直しません。必要なら内容を確認して、もう一度送信してください。";
   }
   return null;
 }
