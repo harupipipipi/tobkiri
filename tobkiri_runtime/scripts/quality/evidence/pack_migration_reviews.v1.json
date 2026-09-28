@@ -413,7 +413,7 @@
     },
     "rumi_ai_gateway_pack": {
       "pack_id": "rumi_ai_gateway_pack",
-      "review_attestation_digest": "sha256:b49f038a17535436129a641f373123dea4733c66c55cfef7fce706b645ed55a4",
+      "review_attestation_digest": "sha256:621d436af1b5754106497141b31617c3f1d5f93c3e3e551a2fcd612256d33456",
       "review_basis": {
         "evidence_paths": [
           "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/pack.v4.json",
@@ -429,7 +429,8 @@
           "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/deepthink.py",
           "tobkiri_runtime/tests/test_ai_gateway_host_provider_v4.py",
           "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/preflight.py",
-          "tobkiri_runtime/tests/test_saved_bridge_tool_requirement.py"
+          "tobkiri_runtime/tests/test_saved_bridge_tool_requirement.py",
+          "tobkiri_runtime/tests/test_model_catalog_v4_routing.py"
         ],
         "excluded_claims": [
           "runtime admission",
@@ -445,13 +446,14 @@
           "target artifact bound by exact digest",
           "parameter schema divergence accepted for rumi_ai_gateway_pack.ai-gateway.preflight (product-owner decision 2026-09-26)",
           "four operation identities, input/output schemas, and fail-closed contract metadata remain unchanged after the Gateway runtime update",
-          "legacy v3 and v4 generation and stream entrypoints share the updated Gateway implementation; DeepThink runs only for non-stream generation and DeepThink stream requests fail closed before provider invocation",
-          "saved connection pricing uses an exact reviewed adapter, endpoint, model, and current catalog owner inventory; unmatched or stale evidence leaves the route unpriced",
+          "legacy v3 and v4 generation and stream entrypoints bind the same current Gateway runtime bytes; DeepThink runs only for non-stream generation and DeepThink stream requests fail closed before provider invocation",
+          "saved connection catalog lookup requires an exact reviewed adapter, endpoint, and model and sends a bundled_approved source query; an unmatched saved route skips catalog enumeration",
+          "saved connection pricing requires one matching bundled_approved descriptor and owner inventory, reviewed currency, and finite nonnegative rates; unmatched evidence leaves the route unpriced",
           "DeepThink preflight rejects unavailable pricing before provider execution with a bounded error; ordinary saved routes remain available without DeepThink pricing"
         ]
       },
-      "reviewed_at": "2026-09-28T18:08:42+09:00",
-      "reviewer_id": "codex:independent-semantic-review:v3",
+      "reviewed_at": "2026-09-28T19:43:50+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v4",
       "semantic_record": {
         "accepted_divergences": [
           "function_mapping",
@@ -683,9 +685,9 @@
         "status": "verified"
       },
       "semantic_record_digest": "sha256:5dbf3802ba8dad2b404c3d2f44e798f8bd76f027ed156ebdb8c6921a6100eee8",
-      "source_digest": "sha256:0839b04e688229f349af7facea13578f9f929d32e7a124adf89a7eec407f4c13",
+      "source_digest": "sha256:495e283f17b012b6772021d2d7aaee3b4fa2271cc1997871eddb3316fbba41a0",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:dc8977652ecf4dee5fe14d7621b036db7f6e9d82d57fd39fbc7d6f0bd9b01ba8"
+      "target_digest": "sha256:a78c7030af3decdb725427c63b85c6fe9ac196a0ad58322bd16a56d5ff147744"
     },
     "rumi_ai_modality_pack": {
       "pack_id": "rumi_ai_modality_pack",
@@ -5482,7 +5484,7 @@
     },
     "rumi_model_catalog_pack": {
       "pack_id": "rumi_model_catalog_pack",
-      "review_attestation_digest": "sha256:95e5cb02ac7c8b33be4293c23439d9d4bd5cd416c98e69aee904902d7144ae63",
+      "review_attestation_digest": "sha256:0a958420627f96f0c6461fef205f89b3974d4c8a71c23f86efccb671a577df25",
       "review_basis": {
         "evidence_paths": [
           "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/runtime/catalog.py",
@@ -5495,7 +5497,9 @@
           "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/artifact-index.v4.json",
           "tobkiri_runtime/schemas/executable_sources.v1.json",
           "tobkiri_runtime/ecosystem/defaultspack/backend/ai_client/provider_catalog.py",
-          "tobkiri_runtime/tests/test_model_catalog_contract.py"
+          "tobkiri_runtime/tests/test_model_catalog_contract.py",
+          "tobkiri_runtime/tests/test_model_catalog_v4_routing.py",
+          "tobkiri_runtime/tests/test_saved_bridge_tool_requirement.py"
         ],
         "excluded_claims": [
           "runtime admission",
@@ -5509,19 +5513,21 @@
         "method": "independent-file-by-file-review.v1",
         "verified_claims": [
           "three legacy catalog operations map one-to-one to the same v4 runtime artifact and object input/output schemas",
-          "legacy runtime artifact and v4 executable bind the exact runtime/catalog.py digest",
+          "legacy runtime artifact and v4 executable bind the exact current runtime/catalog.py digest",
           "provider cardinality, failure, isolation, lifecycle, security, and required capability fields are preserved",
           "unfiltered catalog listing retains other providers while merging the bounded OpenRouter public inventory",
           "OpenRouter inventory requests all output modalities without forwarding a credential",
-          "without live or last-known-good inventory, OpenRouter has no selectable models, including the Defaults fallback"
+          "without live or last-known-good inventory, unfiltered OpenRouter listing has no selectable models, including the Defaults fallback",
+          "the bundled_approved lookup requires exact provider and model IDs, reads only the static catalog, and rejects unknown input fields or catalog sources",
+          "static catalog pricing accepts input/output and prompt/completion fields and marks the model as bundled_approved for exact saved-route pricing"
         ]
       },
-      "reviewed_at": "2026-09-28T04:09:02+09:00",
-      "reviewer_id": "codex:independent-semantic-review:v1",
+      "reviewed_at": "2026-09-28T19:43:50+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v2",
       "semantic_record_digest": "sha256:fc3fbd3730136ba5318b695f094b42b82c54fa10c5296a499d91953fff2450f1",
-      "source_digest": "sha256:9bf174c58b348c1b94767fb728623c6fd83564922366ef4340c745ef4f6b9395",
+      "source_digest": "sha256:e43eec91fc0d7d90eff0abd203880425fd2eb0e7fadd20b16abb74d51ba66b0c",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:820de090f3f7ff88f5b53f556dbf0b0724e03d1fef3984d4c9ab1361a944a702"
+      "target_digest": "sha256:e41b1c3db8c7dfa70585c019d05ab200726283d394597d33ff68641e11ec0204"
     },
     "rumi_model_evals_pack": {
       "pack_id": "rumi_model_evals_pack",
