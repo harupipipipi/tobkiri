@@ -36,7 +36,7 @@
       "definitions": [],
       "filename": "pack_manifest_v4.schema.json",
       "schema_id": "https://schemas.tobkiri.local/io.tobkiri/pack-manifest.v4.schema.json",
-      "sha256": "9c6851d40f5f034432acca0d7bc48a9d8489d0522c9b032cfb211749c670a760"
+      "sha256": "97a013899e48a39bbbe4d650c281edc33284b6970b606ed14428fcbdd85e27b7"
     }
   ]
 }
