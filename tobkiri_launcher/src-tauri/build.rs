@@ -371,6 +371,13 @@ fn verify_prepared_defaults_source_artifacts(
         else {
             continue;
         };
+        let prepared: serde_json::Value = serde_json::from_slice(&fs::read(entry.path())?)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        verify_prepared_host_assets(
+            &prepared,
+            pack_id,
+            &runtime_root.join("ecosystem/defaultspack"),
+        )?;
         let source = runtime_root
             .join("ecosystem")
             .join(pack_id)
@@ -378,8 +385,6 @@ fn verify_prepared_defaults_source_artifacts(
         if !source.is_file() {
             continue;
         }
-        let prepared: serde_json::Value = serde_json::from_slice(&fs::read(entry.path())?)
-            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
         let current: serde_json::Value = serde_json::from_slice(&fs::read(source)?)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
         let prepared_pack = &prepared["pack"];
@@ -393,6 +398,41 @@ fn verify_prepared_defaults_source_artifacts(
         {
             return Err(invalid_release(format!(
                 "prepared development Defaults Pack {pack_id} is stale; rerun the Tauri dev preparation hook or prepare_viewer_runtime.py --mode dev"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn verify_prepared_host_assets(
+    prepared: &serde_json::Value,
+    pack_id: &str,
+    materialized_root: &Path,
+) -> io::Result<()> {
+    let Some(artifacts) = prepared
+        .get("artifacts")
+        .and_then(serde_json::Value::as_array)
+    else {
+        return Ok(());
+    };
+    for asset in artifacts {
+        if asset.get("kind").and_then(serde_json::Value::as_str) != Some("asset")
+            || asset.get("platform").and_then(serde_json::Value::as_str) != Some("host")
+        {
+            continue;
+        }
+        let object = asset.as_object().ok_or_else(|| {
+            invalid_release(format!(
+                "prepared development Defaults Pack {pack_id} has an invalid Host asset"
+            ))
+        })?;
+        let path = text_field(object, "path", "prepared Host asset")?;
+        let expected = digest_field(object, "digest", "prepared Host asset")?;
+        let source = require_release_path(materialized_root, &path, "prepared Host asset")?;
+        require_regular_file(&source, "prepared Host asset")?;
+        if byte_digest(&fs::read(&source)?) != expected {
+            return Err(invalid_release(format!(
+                "prepared development Defaults Pack {pack_id} Host asset {path} is stale; rerun the Tauri dev preparation hook or prepare_viewer_runtime.py --mode dev"
             )));
         }
     }
@@ -994,6 +1034,8 @@ fn stage_development_runtime_bundle(
     if development_defaults.join("v4/bundle.lock.json").is_file()
         && development_defaults.join("platform-artifacts").is_dir()
     {
+        verify_prepared_defaults_source_artifacts(&development_defaults, runtime_root)
+            .map_err(|error| stage_error("verify development Defaults bundle", error))?;
         copy_dir_recursive(
             &development_defaults,
             &staged_root.join("bundled/dev-defaults"),
@@ -6503,6 +6545,44 @@ mod tests {
         let error = capture_local_development_authority(&project_dir, repo_root, &output)
             .expect_err("stale prepared Pack must not become active Profile authority");
         assert!(error.to_string().contains("rumi_ai_gateway_pack is stale"));
+    }
+
+    #[test]
+    fn prepared_defaults_rejects_stale_host_asset_even_without_source_pack() {
+        let tree = TestTree::new("local-authority-stale-host-asset");
+        let defaults = tree.path().join("target/dev-defaults");
+        let runtime = tree.path().join("tobkiri_runtime");
+        let source_root = runtime.join("ecosystem/defaultspack");
+        let source = source_root.join("defaultspack/frontend_contract_map.v4.json");
+        fs::create_dir_all(defaults.join("v4/packs")).unwrap();
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, b"original frontend map").unwrap();
+        let prepared = serde_json::json!({
+            "pack": {"id": "runtime.tauri.application.default"},
+            "artifacts": [{
+                "kind": "asset",
+                "platform": "host",
+                "path": "defaultspack/frontend_contract_map.v4.json",
+                "digest": byte_digest(b"original frontend map"),
+            }],
+        });
+        fs::write(
+            defaults.join("v4/packs/runtime.tauri.application.default.pack.v4.json"),
+            serde_json::to_vec(&prepared).unwrap(),
+        )
+        .unwrap();
+        verify_prepared_defaults_source_artifacts(&defaults, &runtime)
+            .expect("matching prepared Host asset must be accepted");
+
+        fs::write(&source, b"changed frontend map").unwrap();
+        let error = verify_prepared_defaults_source_artifacts(&defaults, &runtime)
+            .expect_err("stale Host asset must fail before the Launcher is built");
+        assert!(error
+            .to_string()
+            .contains("Host asset defaultspack/frontend_contract_map.v4.json is stale"));
+        assert!(error
+            .to_string()
+            .contains("prepare_viewer_runtime.py --mode dev"));
     }
 
     #[test]
