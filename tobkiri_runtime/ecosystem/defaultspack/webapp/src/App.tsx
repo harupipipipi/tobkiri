@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { Cloud, Copy, Download, Hand, Link, Loader2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { Cloud, Copy, Download, Hand, Link, Loader2, RefreshCw, X } from "lucide-react";
 
 import {
   CompanyWorkspacePanel,
@@ -2515,6 +2515,70 @@ function modelCommandInputQuery(value: string): string | null {
   return String(match[1] ?? "").trim();
 }
 
+type NewConversationStageProps = {
+  composerHomeTitle: string;
+  error: string | null;
+  isLaunching: boolean;
+  onDismissError: () => void;
+  onRetry?: () => void;
+  renderComposer: (isCentered: boolean) => ReactNode;
+};
+
+/** Renders the centered composer without hiding a failed first saved turn. */
+export function NewConversationStage({
+  composerHomeTitle,
+  error,
+  isLaunching,
+  onDismissError,
+  onRetry,
+  renderComposer,
+}: NewConversationStageProps): ReactNode {
+  return (
+    <div className={cn("rumi-new-chat-stage rumi-layer-local-popover flex flex-1 items-center justify-center px-5 pb-[10vh]", isLaunching && "is-launching")}>
+      <div className="w-full">
+        {error ? (
+          <ErrorNotice
+            className="rumi-chat-error mx-auto mb-4 max-w-[720px] rounded-xl border-red-400/25 bg-red-500/[0.09] px-3.5 py-3 text-red-100"
+            copyLabel="チャットエラーをコピー"
+            errorIcon="chat"
+            message={error}
+            messageClassName="mt-1 whitespace-pre-wrap text-[12px] leading-5 text-red-100/80"
+            title="処理を完了できませんでした"
+            titleClassName="text-[12px] text-red-100"
+            trailing={(
+              <button
+                aria-label="エラーを閉じる"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-red-200/70 hover:bg-red-100/10 hover:text-red-50"
+                onClick={onDismissError}
+                title="閉じる"
+                type="button"
+              >
+                <X aria-hidden="true" size={15} />
+              </button>
+            )}
+          >
+            {onRetry ? (
+              <button
+                className="mt-2.5 inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-red-200/25 bg-red-100/[0.06] px-3 text-[12px] font-semibold text-red-50 hover:bg-red-100/[0.11]"
+                onClick={onRetry}
+                type="button"
+              >
+                <RefreshCw aria-hidden="true" size={13} />
+                再試行
+              </button>
+            ) : null}
+          </ErrorNotice>
+        ) : (
+          <h1 className="rumi-greeting mx-auto mb-7 max-w-[720px] px-4 text-center text-[clamp(24px,3.2vw,44px)] font-medium leading-tight text-zinc-200">
+            {composerHomeTitle}
+          </h1>
+        )}
+        {renderComposer(true)}
+      </div>
+    </div>
+  );
+}
+
 export function ChatApp() {
   const [catalog, setCatalog] = useState<UICatalog | null>(null);
   const [modelProfiles, setModelProfiles] = useState<ModelProfile[]>([]);
@@ -2524,6 +2588,7 @@ export function ChatApp() {
       void api.listModelProfiles().then((result) => {
         if (!disposed) setModelProfiles(result.profiles);
       }).catch(() => { /* Keep the last confirmed list on a read failure. */ });
+      void refreshCatalog().catch(console.error);
     };
     window.addEventListener("tobkiri-model-profiles-changed", refreshModels);
     return () => {
@@ -7349,14 +7414,16 @@ export function ChatApp() {
                 }}
               />
             ) : isNewConversation && !isLoading ? (
-              <div className={cn("rumi-new-chat-stage rumi-layer-local-popover flex flex-1 items-center justify-center px-5 pb-[10vh]", isNewChatLaunching && "is-launching")}>
-                <div className="w-full">
-                  <h1 className="rumi-greeting mx-auto mb-7 max-w-[720px] px-4 text-center text-[clamp(24px,3.2vw,44px)] font-medium leading-tight text-zinc-200">
-                    {composerHomeTitle}
-                  </h1>
-                  {renderComposer(true)}
-                </div>
-              </div>
+              <NewConversationStage
+                composerHomeTitle={composerHomeTitle}
+                error={error}
+                isLaunching={isNewChatLaunching}
+                onDismissError={dismissChatError}
+                onRetry={retryableSubmission && error === retryableSubmission.errorMessage
+                  ? handleRetryLastFailedSubmission
+                  : undefined}
+                renderComposer={renderComposer}
+              />
             ) : (
               <Renderers.chatMessages
                 error={error}
