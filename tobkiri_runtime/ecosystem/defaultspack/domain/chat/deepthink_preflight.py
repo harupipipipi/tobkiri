@@ -915,14 +915,36 @@ def saved_deepthink_preflight_report(
     raises ``DeepThinkPreflightError``/``DeepThinkReadinessError`` with the
     structured ``to_dict()`` payload.
     """
-    report_holder = _enforce_deepthink_preflight(
-        str(model or ""),
-        {"deepthink_enabled": True},
-        {},
-        settings_owner=settings_owner,
-        messages=messages,
-        tools=tools,
-    )
+    model_id = str(model or "")
+    try:
+        report_holder = _enforce_deepthink_preflight(
+            model_id,
+            {"deepthink_enabled": True},
+            {},
+            settings_owner=settings_owner,
+            messages=messages,
+            tools=tools,
+        )
+    except DeepThinkPreflightError as error:
+        if error.cause != f"selected model {model_id!r} is not chain-capable":
+            raise
+        # Saved turns execute DeepThink in the Pack v4 Gateway, which can use
+        # one resolved model for both drafting and review. The ordinary chat
+        # path still requires a legacy review_chain composite. AI Gateway
+        # preflight has already resolved the owner-selected profile and exact
+        # captured provider before this local report is requested.
+        return {
+            "ok": True,
+            "chain_id": model_id,
+            "chain_source": "pack_v4_gateway",
+            "member_models": [model_id],
+            "budget": {
+                "maximum_calls": 5,
+                "maximum_output_tokens_per_call": 1024,
+                "maximum_cost_usd": 0.05,
+            },
+            "problems": [],
+        }
     report = (report_holder or {}).get("deepthink")
     if not isinstance(report, dict):
         raise DeepThinkPreflightError(

@@ -29,6 +29,7 @@ from ecosystem.rumi_ai_gateway_pack.runtime.gateway import (
     TOOL_BRIDGE_CONTRACT,
     USAGE_CONTRACT,
 )
+from ecosystem.rumi_ai_gateway_pack.runtime import gateway
 from tobkiri_host.models import OpaqueAuthorityRef
 
 
@@ -109,6 +110,103 @@ class _CapturedDispatch:
         }:
             raise AssertionError(f"unexpected Gateway dependency: {contract_id}")
         raise AssertionError(f"undeclared Gateway dispatch: {contract_id}")
+
+
+class _DeepThinkDispatch(_CapturedDispatch):
+    """Captured dependency graph returning deterministic DeepThink phases."""
+
+    def invoke(
+        self,
+        contract_id: str,
+        operation_id: str,
+        payload: Mapping[str, Any],
+        *,
+        version_range: str | None = None,
+    ) -> Mapping[str, Any]:
+        if contract_id == ROUTING_CONTRACT:
+            result = dict(
+                super().invoke(
+                    contract_id,
+                    operation_id,
+                    payload,
+                    version_range=version_range,
+                )
+            )
+            result["candidates"][0]["input_cost"] = 0.000001
+            result["candidates"][0]["output_cost"] = 0.000001
+            return result
+        if contract_id == GENERATE_PROVIDER_CONTRACT:
+            self.calls.append((contract_id, operation_id, dict(payload)))
+            instruction = str(
+                (payload.get("messages") or [{}])[0].get("content") or ""
+            )
+            if "Create a concise plan" in instruction:
+                output = "Check the facts, then answer directly."
+            elif "Review the candidate answer" in instruction:
+                output = '{"approved": true, "feedback": "ok"}'
+            else:
+                output = "A reviewed answer."
+            return {
+                "status": "ok",
+                "output": output,
+                "finish_reason": "stop",
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+            }
+        if contract_id == USAGE_CONTRACT:
+            self.calls.append((contract_id, operation_id, dict(payload)))
+            return {
+                "cost": 0.01,
+                "currency": "USD",
+                "known": True,
+                "usage_provenance": "provider_reported",
+            }
+        return super().invoke(
+            contract_id,
+            operation_id,
+            payload,
+            version_range=version_range,
+        )
+
+
+class _ToolDeepThinkDispatch(_DeepThinkDispatch):
+    """DeepThink fixture whose draft defers one normalized tool intent."""
+
+    def invoke(
+        self,
+        contract_id: str,
+        operation_id: str,
+        payload: Mapping[str, Any],
+        *,
+        version_range: str | None = None,
+    ) -> Mapping[str, Any]:
+        if contract_id == GENERATE_PROVIDER_CONTRACT:
+            instruction = str(
+                (payload.get("messages") or [{}])[0].get("content") or ""
+            )
+            if "Create a concise plan" not in instruction:
+                self.calls.append((contract_id, operation_id, dict(payload)))
+                return {
+                    "status": "ok",
+                    "output": "",
+                    "finish_reason": "tool_calls",
+                    "tool_intents": [
+                        {
+                            "intent_id": "call-1",
+                            "operation": "fixture.lookup",
+                            "arguments": {"q": "hello"},
+                        }
+                    ],
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                }
+        if contract_id == TOOL_BRIDGE_CONTRACT:
+            self.calls.append((contract_id, operation_id, dict(payload)))
+            return {"intents": list(payload.get("intents") or [])}
+        return super().invoke(
+            contract_id,
+            operation_id,
+            payload,
+            version_range=version_range,
+        )
 
 
 class _Invocation:
@@ -373,6 +471,165 @@ def test_gateway_host_factory_dispatches_only_through_the_captured_client() -> N
         (TOOL_BRIDGE_CONTRACT, "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate"),
         (USAGE_CONTRACT, "rumi_ai_usage_pack.ai-usage-cost.generate"),
     ]
+
+
+def test_gateway_runs_bounded_deepthink_through_captured_provider() -> None:
+    """DeepThink phases retain the exact captured provider authority."""
+
+    contribution, _binding_value = _captured_provider()
+    dispatch = _DeepThinkDispatch(configured_provider=True)
+    result = contribution.invoke(
+        _OPERATION_ID,
+        {
+            "messages": [{"role": "user", "content": "hello"}],
+            "requirements": {
+                "request_surface": "conversation.saved",
+                "deepthink": True,
+            },
+        },
+        _Invocation(dispatch),
+    )
+
+    assert result["output"] == "A reviewed answer."
+    assert result["usage"] == {"input_tokens": 30, "output_tokens": 15}
+    assert result["usage_cost"]["cost"] == pytest.approx(0.03)
+    assert result["deepthink_runtime"] == {
+        "version": "gateway-v1",
+        "approved": True,
+        "tool_deferred": False,
+        "calls": 3,
+        "maximum_calls": 5,
+        "maximum_cost_usd": 0.05,
+        "used_cost_usd": pytest.approx(0.03),
+        "phases": [
+            {"phase": "plan", "cost_usd": 0.01},
+            {"phase": "draft", "cost_usd": 0.01},
+            {"phase": "review", "cost_usd": 0.01},
+        ],
+    }
+    provider_calls = [
+        item
+        for item in dispatch.calls
+        if item[0] == GENERATE_PROVIDER_CONTRACT
+    ]
+    assert len(provider_calls) == 3
+    assert all(
+        item[2]["parameters"]["max_tokens"] == 1024
+        for item in provider_calls
+    )
+
+
+def test_gateway_deepthink_stops_when_cumulative_cost_exceeds_limit() -> None:
+    contribution, _binding_value = _captured_provider()
+    dispatch = _DeepThinkDispatch(configured_provider=True)
+
+    with pytest.raises(GlobalContractInvocationError) as captured:
+        contribution.invoke(
+            _OPERATION_ID,
+            {
+                "messages": [{"role": "user", "content": "hello"}],
+                "requirements": {
+                    "request_surface": "conversation.saved",
+                    "deepthink": True,
+                    "maximum_cost": 0.015,
+                },
+            },
+            _Invocation(dispatch),
+        )
+
+    assert captured.value.code == "deepthink_budget"
+    assert "cost budget exceeded" in str(captured.value)
+    assert len(
+        [
+            item
+            for item in dispatch.calls
+            if item[0] == GENERATE_PROVIDER_CONTRACT
+        ]
+    ) == 2
+
+
+def test_gateway_deepthink_defers_tool_after_plan_without_hidden_review() -> None:
+    contribution, _binding_value = _captured_provider()
+    dispatch = _ToolDeepThinkDispatch(configured_provider=True)
+    result = contribution.invoke(
+        _OPERATION_ID,
+        {
+            "messages": [{"role": "user", "content": "hello"}],
+            "tools": [{"name": "fixture.lookup"}],
+            "requirements": {"deepthink": True, "tool_calling": True},
+        },
+        _Invocation(dispatch),
+    )
+
+    assert result["tool_intents"][0]["intent_id"] == "call-1"
+    assert result["deepthink_runtime"]["tool_deferred"] is True
+    assert result["deepthink_runtime"]["calls"] == 2
+    assert [
+        item[2]["request_id"]
+        for item in dispatch.calls
+        if item[0] == GENERATE_PROVIDER_CONTRACT
+    ] == [
+        "request.gateway-host-provider:plan",
+        "request.gateway-host-provider:draft",
+    ]
+
+
+def test_gateway_deepthink_fails_before_generation_without_pricing() -> None:
+    contribution, _binding_value = _captured_provider()
+    dispatch = _CapturedDispatch(configured_provider=True)
+
+    with pytest.raises(GlobalContractInvocationError) as captured:
+        contribution.invoke(
+            _OPERATION_ID,
+            {
+                "messages": [{"role": "user", "content": "hello"}],
+                "requirements": {"deepthink": True},
+            },
+            _Invocation(dispatch),
+        )
+
+    assert captured.value.code == "deepthink_budget"
+    assert "pricing is unavailable" in str(captured.value)
+    assert not any(
+        item[0] == GENERATE_PROVIDER_CONTRACT for item in dispatch.calls
+    )
+
+
+def test_gateway_streaming_deepthink_fails_closed_before_provider_call() -> None:
+    class StreamDispatch(_DeepThinkDispatch):
+        def provider_metadata(
+            self, contract_id: str
+        ) -> tuple[Mapping[str, Any], ...]:
+            if contract_id == gateway.STREAM_PROVIDER_CONTRACT:
+                return (
+                    {
+                        "provider_instance_id": "provider.fixture",
+                        "operation_id": gateway.STREAM_PROVIDER_OPERATION,
+                    },
+                )
+            return super().provider_metadata(contract_id)
+
+    dispatch = StreamDispatch(configured_provider=True)
+    client = GlobalContractClient(
+        session=dispatch,
+        allowed_contract_ids=gateway._STREAM_ALLOWED_CONTRACTS,
+        consumer_pack_id="rumi_ai_gateway_pack",
+    )
+
+    with pytest.raises(GlobalContractInvocationError) as captured:
+        gateway._invoke(
+            client,
+            {
+                "messages": [{"role": "user", "content": "hello"}],
+                "requirements": {"deepthink": True},
+            },
+            streaming=True,
+        )
+
+    assert captured.value.code == "deepthink_stream_unsupported"
+    assert not any(
+        item[0] == gateway.STREAM_PROVIDER_CONTRACT for item in dispatch.calls
+    )
 
 
 def test_gateway_host_factory_leaves_an_unconfigured_provider_unavailable() -> None:

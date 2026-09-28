@@ -25,6 +25,7 @@ from core_runtime.bootstrap.saved_bridge import (  # noqa: E402
 from domain.chat.deepthink_preflight import (  # noqa: E402
     DeepThinkPreflightError,
     DeepThinkReadinessError,
+    saved_deepthink_preflight_report,
 )
 from ecosystem.defaultspack.runtime import saved_conversation as saved  # noqa: E402
 from tests.test_saved_bridge_callbacks import _setup as _bridge_setup  # noqa: E402
@@ -61,6 +62,65 @@ def _gate(report: dict[str, Any] = _REPORT, calls: list | None = None):
         return dict(report)
 
     return run
+
+
+def test_saved_preflight_uses_gateway_budget_for_single_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A saved single-model profile is eligible for Gateway DeepThink."""
+
+    import domain.chat.deepthink_preflight as preflight
+
+    def reject_legacy_chain(*_args: Any, **_kwargs: Any) -> None:
+        raise DeepThinkPreflightError(
+            model="profile/mimo",
+            cause="selected model 'profile/mimo' is not chain-capable",
+            fix="select a review chain",
+        )
+
+    monkeypatch.setattr(
+        preflight,
+        "_enforce_deepthink_preflight",
+        reject_legacy_chain,
+    )
+    assert saved_deepthink_preflight_report("profile/mimo") == {
+        "ok": True,
+        "chain_id": "profile/mimo",
+        "chain_source": "pack_v4_gateway",
+        "member_models": ["profile/mimo"],
+        "budget": {
+            "maximum_calls": 5,
+            "maximum_output_tokens_per_call": 1024,
+            "maximum_cost_usd": 0.05,
+        },
+        "problems": [],
+    }
+
+
+def test_saved_preflight_preserves_non_selection_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Gateway fallback never hides registry or configuration failures."""
+
+    import domain.chat.deepthink_preflight as preflight
+
+    def reject_registry(*_args: Any, **_kwargs: Any) -> None:
+        raise DeepThinkPreflightError(
+            model="profile/mimo",
+            cause="could not inspect the local provider registry",
+            fix="repair the registry",
+        )
+
+    monkeypatch.setattr(
+        preflight,
+        "_enforce_deepthink_preflight",
+        reject_registry,
+    )
+    with pytest.raises(
+        DeepThinkPreflightError,
+        match="could not inspect the local provider registry",
+    ):
+        saved_deepthink_preflight_report("profile/mimo")
 
 
 def test_input_contract_accepts_flag_and_rejects_non_bool() -> None:

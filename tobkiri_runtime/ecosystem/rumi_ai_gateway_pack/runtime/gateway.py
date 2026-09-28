@@ -19,6 +19,10 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
 )
+from ecosystem.rumi_ai_gateway_pack.runtime.deepthink import (
+    DeepThinkBudgetError,
+    run_deepthink,
+)
 
 CATALOG_CONTRACT = "tobkiri.resource.ai.model.catalog.v1"
 CATALOG_GENERATE_OPERATION = (
@@ -323,6 +327,19 @@ def _invoke(
     streaming: bool,
 ) -> dict[str, Any]:
     resolve_only = bool(payload.get("resolve_only"))
+    decision_time = time.time()
+    raw_requirements = payload.get("requirements")
+    deepthink_requested = (
+        isinstance(raw_requirements, Mapping)
+        and raw_requirements.get("deepthink") is True
+    )
+    prepared_payload = {
+        **dict(payload),
+        "request_id": str(payload.get("request_id") or uuid.uuid4()),
+        "decision_time": decision_time,
+    }
+    if deepthink_requested and payload.get("deadline") is None:
+        prepared_payload["deadline"] = decision_time + 300.0
     prepared = client.invoke(
         REQUEST_PREPARE_CONTRACT,
         (
@@ -330,11 +347,7 @@ def _invoke(
             if streaming
             else REQUEST_PREPARE_GENERATE_OPERATION
         ),
-        {
-            **dict(payload),
-            "request_id": str(payload.get("request_id") or uuid.uuid4()),
-            "decision_time": time.time(),
-        },
+        prepared_payload,
     )
     if not isinstance(prepared, Mapping):
         raise GlobalContractInvocationError(
@@ -450,6 +463,37 @@ def _invoke(
     provider_connection_id = selected.raw.get("provider_connection_id")
     if provider_connection_id is not None:
         invocation["provider_connection_id"] = provider_connection_id
+    if requirement.deepthink and streaming:
+        raise GlobalContractInvocationError(
+            "deepthink_stream_unsupported",
+            "DeepThink requires the bounded non-streaming Gateway operation",
+        )
+    if requirement.deepthink:
+        try:
+            return run_deepthink(
+                messages=[dict(item) for item in invocation["messages"]],
+                tools=[dict(item) for item in invocation["tools"]],
+                parameters=invocation["parameters"],
+                deadline=deadline,
+                maximum_cost_usd=requirement.maximum_cost,
+                input_cost_per_token=selected.input_cost,
+                output_cost_per_token=selected.output_cost,
+                complete=lambda phase, messages, tools, parameters: (
+                    _invoke_deepthink_phase(
+                        client,
+                        invocation,
+                        selected,
+                        phase=phase,
+                        messages=messages,
+                        tools=tools,
+                        parameters=parameters,
+                    )
+                ),
+            )
+        except DeepThinkBudgetError as exc:
+            raise GlobalContractInvocationError(
+                "deepthink_budget", str(exc)
+            ) from exc
     attempts: list[dict[str, Any]] = []
     for attempt_number, attempt_candidate in enumerate(ordered, 1):
         invocation["attempt"] = attempt_number
@@ -547,6 +591,57 @@ def _invoke(
         "provider_unavailable",
         "all selected providers failed",
     )
+
+
+def _invoke_deepthink_phase(
+    client: GlobalContractClient,
+    base_invocation: Mapping[str, Any],
+    selected: Candidate,
+    *,
+    phase: str,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    parameters: dict[str, Any],
+) -> dict[str, Any]:
+    """Invoke one DeepThink phase through the already captured provider."""
+
+    invocation = {
+        **dict(base_invocation),
+        "request_id": f"{base_invocation['request_id']}:{phase}",
+        "attempt": 1,
+        "messages": messages,
+        "tools": tools,
+        "parameters": parameters,
+    }
+    idempotency_key = base_invocation.get("idempotency_key")
+    if idempotency_key:
+        invocation["idempotency_key"] = f"{idempotency_key}:{phase}"
+    value = client.invoke(
+        GENERATE_PROVIDER_CONTRACT,
+        GENERATE_PROVIDER_OPERATION,
+        invocation,
+        provider_instance_id=selected.provider_instance_id,
+    )
+    result = _normalize_result(
+        value,
+        str(base_invocation["request_id"]),
+        selected,
+    )
+    result["tool_intents"] = _tool_intents(
+        client,
+        result["tool_intents"],
+        str(base_invocation["request_id"]),
+        streaming=False,
+    )
+    result["usage_cost"] = _usage_cost(
+        client,
+        result["usage"],
+        selected,
+        result["usage_provenance"],
+        streaming=False,
+    )
+    result["attempts"] = []
+    return result
 
 
 def _requirement(request: Mapping[str, Any]) -> RouteRequirement:
