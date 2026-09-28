@@ -153,7 +153,7 @@ def test_factory_captures_selected_operation_subset(tmp_path: Path) -> None:
 def test_factory_dispatches_through_canonical_workspace_contract(
     tmp_path: Path,
 ) -> None:
-    (tmp_path / "proof.txt").write_text("verified\n", encoding="utf-8")
+    (tmp_path / "proof.txt").write_bytes(b"verified\n")
     binding = _binding("rumi_file_inspect_pack.file-inspect.for-media")
     context = _context(tmp_path, (binding,))
     captured = inspect.HOST_PROVIDER_FACTORY.capture(context)
@@ -225,6 +225,13 @@ def _service_payload(root: Path, **values: object) -> dict[str, object]:
     }
 
 
+def _open_test_directory(path: Path) -> int:
+    """Open a test directory with the provider's native no-follow primitive."""
+    if os.name == "nt":
+        return inspect._create_file_windows_no_follow(path)
+    return os.open(path, os.O_RDONLY)
+
+
 @pytest.mark.parametrize("name", ["stat", "list", "search"])
 def test_path_operations_stay_bound_to_opened_root_during_swap_back_race(
     tmp_path: Path,
@@ -239,16 +246,20 @@ def test_path_operations_stay_bound_to_opened_root_during_swap_back_race(
     (root / "proof.txt").write_text("authorized", encoding="utf-8")
     (replacement / "intruder.txt").write_text("unauthorized", encoding="utf-8")
     original_open = inspect._open_relative_fd
-    swapped = False
+    race_attempted = False
 
     def swap_around_open(
         opened_root: Path,
         root_fd: int,
         relative: Path,
     ) -> int:
-        nonlocal swapped
-        if not swapped:
-            swapped = True
+        nonlocal race_attempted
+        if not race_attempted:
+            race_attempted = True
+            if os.name == "nt":
+                with pytest.raises(PermissionError):
+                    root.rename(parked)
+                return original_open(opened_root, root_fd, relative)
             root.rename(parked)
             replacement.rename(root)
             try:
@@ -272,7 +283,7 @@ def test_path_operations_stay_bound_to_opened_root_during_swap_back_race(
         _service_payload(root, **payload_values),
     )
 
-    assert swapped
+    assert race_attempted
     if name == "stat":
         assert result["size"] == len("authorized")
     elif name == "search":
@@ -320,14 +331,11 @@ def test_file_inspect_fails_closed_without_descriptor_relative_primitives(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    (tmp_path / "proof.txt").write_text("authorized", encoding="utf-8")
+    monkeypatch.setattr(inspect, "_is_windows_host", lambda: False)
     monkeypatch.setattr(inspect.os, "supports_dir_fd", set())
 
     with pytest.raises(PermissionError, match="descriptor-relative"):
-        inspect.FileInspectService(_WorkspaceClient(tmp_path)).invoke(
-            "stat",
-            _service_payload(tmp_path, path="proof.txt"),
-        )
+        inspect._require_descriptor_support()
 
 
 def _mock_windows_relative_open(
@@ -337,7 +345,7 @@ def _mock_windows_relative_open(
     final_path: str,
     reparse: bool = False,
 ) -> tuple[int, list[tuple[str, bool | None]]]:
-    root_fd = os.open(tmp_path, os.O_RDONLY)
+    root_fd = _open_test_directory(tmp_path)
     opened: list[tuple[str, bool | None]] = []
     root_final = r"\\?\Volume{test}\workspace"
 
@@ -348,7 +356,12 @@ def _mock_windows_relative_open(
         directory: bool | None,
     ) -> int:
         opened.append((name, directory))
-        return os.open(tmp_path / name, os.O_RDONLY)
+        target = tmp_path / name
+        return (
+            _open_test_directory(target)
+            if target.is_dir()
+            else os.open(target, os.O_RDONLY)
+        )
 
     def handle_path(descriptor: int) -> str:
         metadata = os.fstat(descriptor)
@@ -463,9 +476,14 @@ def test_windows_root_open_rejects_identity_mismatch_and_closes_handle(
     root.mkdir()
     replacement.mkdir()
     opened: list[int] = []
+    native_open_directory = inspect._create_file_windows_no_follow
 
     def open_replacement(_path: Path) -> int:
-        descriptor = os.open(replacement, os.O_RDONLY)
+        descriptor = (
+            native_open_directory(replacement)
+            if os.name == "nt"
+            else os.open(replacement, os.O_RDONLY)
+        )
         opened.append(descriptor)
         return descriptor
 
@@ -494,7 +512,7 @@ def test_windows_intermediate_reparse_is_rejected_before_final_open(
     folder = tmp_path / "folder"
     folder.mkdir()
     (folder / "proof.txt").write_text("untrusted", encoding="utf-8")
-    root_fd = os.open(tmp_path, os.O_RDONLY)
+    root_fd = _open_test_directory(tmp_path)
     opened: list[str] = []
     root_final = r"\\?\volume{test}\workspace"
 
@@ -506,7 +524,11 @@ def test_windows_intermediate_reparse_is_rejected_before_final_open(
     ) -> int:
         opened.append(name)
         target = folder if name == "folder" else folder / name
-        return os.open(target, os.O_RDONLY)
+        return (
+            _open_test_directory(target)
+            if target.is_dir()
+            else os.open(target, os.O_RDONLY)
+        )
 
     def handle_path(descriptor: int) -> str:
         metadata = os.fstat(descriptor)
@@ -538,7 +560,7 @@ def test_windows_missing_native_relative_open_fails_closed_and_closes_parent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    root_fd = os.open(tmp_path, os.O_RDONLY)
+    root_fd = _open_test_directory(tmp_path)
     duplicated: list[int] = []
     original_dup = os.dup
 
@@ -580,7 +602,7 @@ def test_windows_tracked_only_reauthorizes_every_git_candidate(
 ) -> None:
     proof = tmp_path / "proof.txt"
     proof.write_text("verified", encoding="utf-8")
-    root_fd = os.open(tmp_path, os.O_RDONLY)
+    root_fd = _open_test_directory(tmp_path)
     checked: list[Path] = []
 
     def verified_open(_root: Path, _root_fd: int, relative: Path) -> int:
