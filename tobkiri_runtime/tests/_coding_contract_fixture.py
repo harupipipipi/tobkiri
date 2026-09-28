@@ -55,6 +55,7 @@ from domain.coding.contract_adapter import (
 # ``rumi`` contract id, so the conformance double must serve both names while
 # exercising the same selected mount.
 _HOST_WORKSPACE_RESOURCE = "tobkiri.resource.workspace.v1"
+_HOST_WORKSPACE_OPERATION = "rumi_workspace_mount_pack.workspace-resource"
 _HOST_GIT_READ = "tobkiri.service.git.read.v1"
 
 
@@ -134,14 +135,19 @@ class VerifiedCodingContracts:
         request = dict(payload)
         request["profile_id"] = self.profile_id
         if contract_id in {WORKSPACE_RESOURCE, _HOST_WORKSPACE_RESOURCE}:
-            if operation == "list":
+            resource_operation = (
+                str(request.get("operation") or "")
+                if operation == _HOST_WORKSPACE_OPERATION
+                else operation
+            )
+            if resource_operation == "list":
                 return {
                     "selected_workspace_id": self.selected_workspace_id,
                     "revision": self.revision,
                     "mounts": [self._mount()],
                     "workspaces": [self._mount()],
                 }
-            if operation == "get":
+            if resource_operation == "get":
                 if str(request.get("workspace_id") or "") != self.workspace_id:
                     raise KeyError("workspace mount is unknown")
                 return self._mount()
@@ -244,7 +250,7 @@ class VerifiedCodingContracts:
         binding = {
             "workspace_id": self.workspace_id,
             "access": "read_only",
-            "mount_revision": str(self.mount_revision),
+            "mount_revision": self.mount_revision,
             "canonical_root": str(self.root),
             "root_st_dev": int(stat.st_dev),
             "root_st_ino": int(stat.st_ino),

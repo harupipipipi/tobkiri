@@ -9,12 +9,12 @@
     {
       "path": "packs/defaultspack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:253f63e4a1dd85893c1a47361ab045ef42dc476adb0c58c6ea358edf272d256e"
+      "digest": "sha256:60493b36bcca25aa44f393574677310ba661d1d4465f45e18a8a75c838b9418f"
     },
     {
       "path": "packs/defaultspack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:222d1095f03f21c02aff20b615521727f4fc133c4c6bd5628e3184910e131767"
+      "digest": "sha256:c3241f0241cb4cb6038655ad952297cbb6b145044215160e6f03d0359a9a4ea5"
     },
     {
       "path": "packs/dev.tauri.toolchain.default.pack.v4.json",
@@ -24,7 +24,7 @@
     {
       "path": "packs/rumi-file-inspect.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:c930dddc44e644cff6e82d8724ca96f23d549ace6eb4c415541d3165714393ab"
+      "digest": "sha256:06a56c37d642a08c6a2dd686cc47bc60a40d4bda9c980a49a737a5832effa502"
     },
     {
       "path": "packs/rumi-host-authority-bridge.pack.v4.json",
@@ -89,12 +89,12 @@
     {
       "path": "packs/rumi_ai_gateway_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:6a1b69c6e28c9097ee0d4fae201d7e2a26b64bf191d9087e3c02a8138e048230"
+      "digest": "sha256:743e7d1fc25cfee128701143924fe4123594c5c4721c3fd94bfe44bd09a195d3"
     },
     {
       "path": "packs/rumi_ai_gateway_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:da667c612330b4df3039cd9791be45928edc866fb67dcadc8c22d571febc3725"
+      "digest": "sha256:674395cbf2a95c523cbb496d4f8b201585cb6cf728f0771b3d44f7d5ac835300"
     },
     {
       "path": "packs/rumi_ai_modality_pack.executables.v4.json",
@@ -579,7 +579,7 @@
     {
       "path": "packs/rumi_file_inspect_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:606c4d6bc10b4129ef89a3c5795ca441b50978a93d8ed8e9e99fe87e99ad477d"
+      "digest": "sha256:388d2afd9a6d828a679a7498fc2b446ff37ab529974137780d4bd94ac3db77ed"
     },
     {
       "path": "packs/rumi_file_mutation_pack.executables.v4.json",
@@ -1454,7 +1454,7 @@
     {
       "path": "defaults.profile.v5.json",
       "kind": "profile",
-      "digest": "sha256:f86ac3dcf15201453900944acd77caff9c7ce643d9811c9b10d793e4121bf3d4"
+      "digest": "sha256:51fc5f48f941b5733b32609c3d32b841a049edc18e78f982fbed7f21c8220d85"
     }
   ]
 }

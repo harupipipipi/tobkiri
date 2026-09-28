@@ -8,11 +8,31 @@ import json
 import os
 import stat
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-WORKSPACE = "rumi.resource.workspace.v1"
+from core_runtime.host_provider_backend_v4 import (
+    CapturedHostProviderV4,
+    HostProviderCaptureContextV4,
+    HostProviderContributionV4,
+    HostProviderInvocationContextV4,
+)
+from tobkiri_protocol.canonical import canonical_digest
+
+PACK_ID = "rumi_file_inspect_pack"
+FUNCTION_ID = "rumi_file_inspect_pack.file-inspect.service"
+CONTRACT_ID = "tobkiri.service.file.inspect.v1"
+CONTRACT_VERSION = "1.0.0"
+WORKSPACE = "tobkiri.resource.workspace.v1"
+WORKSPACE_OPERATION = "rumi_workspace_mount_pack.workspace-resource"
+OPERATIONS = frozenset(
+    {
+        "rumi_file_inspect_pack.file-inspect",
+        "rumi_file_inspect_pack.file-inspect.for-media",
+    }
+)
 _MAX_READ_BYTES = 4 * 1024 * 1024
 _MAX_RESULTS = 10_000
 _PROTECTED_PARTS = frozenset({".git", ".rumi_snapshots"})
@@ -48,11 +68,18 @@ _SAFE_ENV_SUFFIXES = (".example", ".sample", ".template")
 class FileInspectService:
     """Inspect files under an exact selected workspace mount."""
 
-    def __init__(self, client: Any) -> None:
+    def __init__(
+        self,
+        client: Any,
+        *,
+        guard: Callable[[], None] | None = None,
+    ) -> None:
         self.client = client
+        self._guard = guard or (lambda: None)
 
     def invoke(self, name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Dispatch one read-only file operation."""
+        self._guard()
         _check_lifecycle(payload)
         root, root_fd, binding = self._workspace(payload)
         try:
@@ -84,11 +111,17 @@ class FileInspectService:
                 raise PermissionError(
                     "workspace is not the selected Host binding"
                 )
+        self._guard()
         mount = self.client.invoke(
             WORKSPACE,
-            "get",
-            {"profile_id": _profile(payload), "workspace_id": workspace_id},
+            WORKSPACE_OPERATION,
+            {
+                "operation": "get",
+                "profile_id": _profile(payload),
+                "workspace_id": workspace_id,
+            },
         )
+        self._guard()
         if not isinstance(mount, Mapping):
             raise KeyError("workspace mount is unknown")
         root = Path(str(mount.get("root_path") or "")).resolve(strict=True)
@@ -136,12 +169,7 @@ class FileInspectService:
         actual = {
             "workspace_id": workspace_id,
             "access": "read_only",
-            "mount_revision": str(
-                mount.get("revision")
-                or mount.get("updated_at_ms")
-                or mount.get("updated_at")
-                or ""
-            ),
+            "mount_revision": int(mount.get("mount_revision") or 0),
             "canonical_root": str(root),
             "root_st_dev": int(root_stat.st_dev),
             "root_st_ino": int(root_stat.st_ino),
@@ -182,11 +210,13 @@ class FileInspectService:
         self,
         payload: Mapping[str, Any],
     ) -> str:
+        self._guard()
         snapshot = self.client.invoke(
             WORKSPACE,
-            "list",
-            {"profile_id": _profile(payload)},
+            WORKSPACE_OPERATION,
+            {"operation": "list", "profile_id": _profile(payload)},
         )
+        self._guard()
         return (
             str(snapshot.get("selected_workspace_id") or "").strip()
             if isinstance(snapshot, Mapping)
@@ -203,7 +233,13 @@ class FileInspectService:
         path = _jailed(root, payload.get("path"), must_exist=True)
         if not path.is_file():
             raise FileNotFoundError("file is unavailable")
-        max_bytes = max(1, min(_MAX_READ_BYTES, int(payload.get("max_bytes") or _MAX_READ_BYTES)))
+        max_bytes = max(
+            1,
+            min(
+                _MAX_READ_BYTES,
+                int(payload.get("max_bytes") or _MAX_READ_BYTES),
+            ),
+        )
         content, size = _read_text_no_follow(
             root,
             path.relative_to(root),
@@ -261,6 +297,7 @@ class FileInspectService:
             )
         items = []
         for candidate in iterator:
+            self._guard()
             try:
                 resolved = candidate.resolve(strict=True)
             except (FileNotFoundError, OSError, RuntimeError):
@@ -297,6 +334,7 @@ class FileInspectService:
         directory = _jailed(root, payload.get("directory") or ".", must_exist=True)
         matches = []
         for candidate in directory.rglob("*"):
+            self._guard()
             resolved = candidate.resolve(strict=True)
             if not _within(root, resolved):
                 continue
@@ -322,6 +360,113 @@ def create_file_inspect_operation(
     """Create read-only file operations."""
     service = FileInspectService(client)
     return service.invoke
+
+
+class FileInspectHostFactoryV4:
+    """Bind file inspection to exact verified Host dispatch edges."""
+
+    function_id = FUNCTION_ID
+
+    def capture(
+        self,
+        context: HostProviderCaptureContextV4,
+    ) -> CapturedHostProviderV4:
+        """Capture the selected subset of the Function's two operations."""
+        bindings = context.provider_bindings
+        if not bindings:
+            raise PermissionError("file inspect bindings are unavailable")
+        contribution_fields: list[dict[str, Any]] = []
+        captured: dict[str, tuple[str, str]] = {}
+        for binding in bindings:
+            operation_id = binding.operation.operation_id
+            key = (
+                binding.operation.contract_id,
+                operation_id,
+                binding.principal_ref.value,
+            )
+            if (
+                binding.function.function_id != self.function_id
+                or binding.operation.contract_id != CONTRACT_ID
+                or binding.operation.contract_version != CONTRACT_VERSION
+                or operation_id not in OPERATIONS
+                or operation_id in captured
+                or key not in context.domain_ids
+            ):
+                raise PermissionError("file inspect bindings are incomplete")
+            captured[operation_id] = (
+                binding.principal_ref.value,
+                context.domain_ids[key],
+            )
+            contribution_fields.append(
+                {
+                    "contract_id": CONTRACT_ID,
+                    "contract_version": CONTRACT_VERSION,
+                    "operation_id": operation_id,
+                    "principal_id": binding.principal_ref.value,
+                    "artifact_digest": binding.artifact.digest,
+                    "implementation_digest": (
+                        binding.function.implementation_digest
+                    ),
+                    "domain_id": context.domain_ids[key],
+                }
+            )
+
+        closed = threading.Event()
+        activation_id = str(context.activation.get("activation_id") or "")
+        activation_digest = canonical_digest(dict(context.activation))
+
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            invocation.assert_current()
+            if closed.is_set() or operation_id not in captured:
+                raise PermissionError("file inspect capture is unavailable")
+            principal_id, domain_id = captured[operation_id]
+            envelope = invocation.envelope
+            request = envelope.context
+            if (
+                envelope.contract_id != CONTRACT_ID
+                or envelope.contract_version != CONTRACT_VERSION
+                or envelope.operation_id != operation_id
+                or envelope.target_principal.value != principal_id
+                or envelope.target_domain.value != domain_id
+                or dict(envelope.payload) != dict(payload)
+                or request.profile_id != context.profile_id
+                or request.activation_id != activation_id
+                or request.activation_digest != activation_digest
+                or request.plan_digest != context.plan_digest
+                or request.security_epoch != context.security_epoch
+            ):
+                raise PermissionError("file inspect invocation changed")
+            if payload.get("profile_id") != context.profile_id:
+                raise PermissionError("file inspect profile changed")
+            name = payload.get("name")
+            if name not in {"read", "stat", "list", "search"}:
+                raise ValueError("file inspect operation is invalid")
+            client = invocation.contract_client(
+                allowed_contract_ids=frozenset({WORKSPACE}),
+                consumer_pack_id=PACK_ID,
+                include_credentials=False,
+            )
+            result = FileInspectService(
+                client,
+                guard=invocation.assert_current,
+            ).invoke(str(name), payload)
+            invocation.assert_current()
+            if closed.is_set():
+                raise PermissionError("file inspect capture is unavailable")
+            return result
+
+        contributions = tuple(
+            HostProviderContributionV4(**fields, invoke=invoke)
+            for fields in contribution_fields
+        )
+        return CapturedHostProviderV4(contributions, closed.set)
+
+
+HOST_PROVIDER_FACTORY = FileInspectHostFactoryV4()
 
 
 def _jailed(root: Path, value: Any, *, must_exist: bool) -> Path:

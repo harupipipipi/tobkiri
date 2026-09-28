@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.profile-release-provenance.v1",
   "profile_id": "defaults",
-  "profile_revision": "sha256:c107093464573bbf56dd0e6b7ab43c4a35443a26751269b0d4dc1c22c911dbe1",
+  "profile_revision": "sha256:5bf805007690a29615c63b00aa105ca2942a90049077ede0699d6512fff482d0",
   "profile_definition_digest": "sha256:fe8148694dba7c2ad887ace011ac51b3b09a749c2ba719e871198943e9ec5a7c",
   "source_inputs": [
     {
@@ -22,11 +22,11 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/defaultspack.executables.v4.json",
-      "digest": "sha256:253f63e4a1dd85893c1a47361ab045ef42dc476adb0c58c6ea358edf272d256e"
+      "digest": "sha256:60493b36bcca25aa44f393574677310ba661d1d4465f45e18a8a75c838b9418f"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/defaultspack.pack.v4.json",
-      "digest": "sha256:222d1095f03f21c02aff20b615521727f4fc133c4c6bd5628e3184910e131767"
+      "digest": "sha256:c3241f0241cb4cb6038655ad952297cbb6b145044215160e6f03d0359a9a4ea5"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/dev.tauri.toolchain.default.pack.v4.json",
@@ -34,7 +34,7 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi-file-inspect.pack.v4.json",
-      "digest": "sha256:c930dddc44e644cff6e82d8724ca96f23d549ace6eb4c415541d3165714393ab"
+      "digest": "sha256:06a56c37d642a08c6a2dd686cc47bc60a40d4bda9c980a49a737a5832effa502"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi-host-authority-bridge.pack.v4.json",
@@ -86,11 +86,11 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_ai_gateway_pack.executables.v4.json",
-      "digest": "sha256:6a1b69c6e28c9097ee0d4fae201d7e2a26b64bf191d9087e3c02a8138e048230"
+      "digest": "sha256:743e7d1fc25cfee128701143924fe4123594c5c4721c3fd94bfe44bd09a195d3"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_ai_gateway_pack.pack.v4.json",
-      "digest": "sha256:da667c612330b4df3039cd9791be45928edc866fb67dcadc8c22d571febc3725"
+      "digest": "sha256:674395cbf2a95c523cbb496d4f8b201585cb6cf728f0771b3d44f7d5ac835300"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_ai_modality_pack.executables.v4.json",
@@ -478,7 +478,7 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_file_inspect_pack.executables.v4.json",
-      "digest": "sha256:606c4d6bc10b4129ef89a3c5795ca441b50978a93d8ed8e9e99fe87e99ad477d"
+      "digest": "sha256:388d2afd9a6d828a679a7498fc2b446ff37ab529974137780d4bd94ac3db77ed"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_file_mutation_pack.executables.v4.json",
@@ -1314,7 +1314,7 @@
     },
     {
       "path": "tobkiri_protocol/schemas/saved_conversation_input_v1.schema.json",
-      "digest": "sha256:95e7455a1556acfa73f1d1b2ac0c59a6bd3e8cca994b97d19d983624b6cb5a46"
+      "digest": "sha256:268b645c6664fb2db32e2cb4bab73fd4701bb70ced0a1ac2cedc934ff6e37ef2"
     },
     {
       "path": "tobkiri_protocol/schemas/shell_definition_v4.schema.json",
@@ -1337,19 +1337,19 @@
   },
   "catalog": {
     "bundle_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
-    "bundle_digest": "sha256:dbc909856f9e6329ea9eb058961a4f04e3bdf25c9323f10f00a682c05c5d2c39",
-    "catalog_revision": "sha256:a17dddc2cec6c7d0991055cfba9656154196d072166689f9570993636abdad31",
-    "closure_digest": "sha256:3c83b4e649bf15a1a0baf836ef22f51a97c70ad80decb60bd259d74efcfbb331"
+    "bundle_digest": "sha256:f8564d2c3a7a1e9ca2af289e1a9255988eeb5f20547605e6852ecebd835ef547",
+    "catalog_revision": "sha256:8c7e50beb9e86f8c62abbeaed8bea67fb91140ce018a767fc8cbd272984ab76f",
+    "closure_digest": "sha256:e69de0a5287c14f1ec87d3facb656de553a882f75848fc21c47e4678c299dcca"
   },
   "outputs": [
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
-      "digest": "sha256:f86ac3dcf15201453900944acd77caff9c7ce643d9811c9b10d793e4121bf3d4"
+      "digest": "sha256:51fc5f48f941b5733b32609c3d32b841a049edc18e78f982fbed7f21c8220d85"
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
-      "digest": "sha256:898a8b69207f58cd83f24f089367cd5a51c677f0e056712ff378ec2f13119af9"
+      "digest": "sha256:3fd0be79b847a865fe73c4da86209ee77323d78f9f2b3cce6519be0a3970e0e3"
     }
   ],
-  "release_digest": "sha256:eec63efcabf331a5f9352cef1ceb1529732be8c2eb605b7bbf28f14011df03e3"
+  "release_digest": "sha256:17c5e66dfdbc4e75f877a506c6d76625a605583db36744217d65610d173f8f2c"
 }

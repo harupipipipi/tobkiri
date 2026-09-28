@@ -54,7 +54,7 @@ import { ConversationShareLanding, ImportedConversationNotice } from "./pages/Co
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "./components/HistoryBoard";
 import type { ToolPreviewItem, ToolPreviewMode } from "./components/ToolPreview";
 import { buildToolPreviewDisplayItems, hasCanvasItems } from "./components/ToolPreview";
-import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, isDefaultspackContractOperationUnknownError, mergeComposerCommands, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
+import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, isDefaultspackContractOperationUnknownError, mergeComposerCommands, savedTurnContentFromAttachments, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
 import { modelStateWriteForSettingsField } from "./lib/modelSettingsWrite";
 import { applyCommandStateSnapshots, createCommandInvocationId } from "./lib/commandState";
 import type { ActionApprovalMode } from "./features/tools/ActionApprovalControl";
@@ -119,7 +119,7 @@ import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/de
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
-import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
+import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnConfirmationPendingNotice, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
 import { reportClientDiagnostic } from "./lib/clientDiagnostics";
 import {
@@ -2245,6 +2245,11 @@ export function composerExtensionItems(items: SidebarItem[]): ComposerExtensionI
       category: item.category,
       description: item.description,
       tags: item.tags ?? [],
+      sourcePackId: item.tool_info?.source_pack_id,
+      originKind: item.origin?.kind,
+      serviceId: item.origin?.kind === "profile_tool_catalog"
+        ? item.ui?.group_id
+        : undefined,
       ui: item.ui,
     }));
 }
@@ -4217,7 +4222,7 @@ export function ChatApp() {
       void (async () => {
         if (disposed) return;
         if (pendingRequest?.savedTurn) {
-          if (!pendingRequest.operationId) throw new Error("送信IDが未確認です。自動再送せず確認を待ちます。");
+          if (!pendingRequest.operationId) throw new Error(savedTurnConfirmationPendingNotice());
           let turn = (
             await api.getSavedTurnEvents(
               pendingRequest.operationId,
@@ -4276,7 +4281,7 @@ export function ChatApp() {
           if (disposed) return;
           const state = savedTurnSnapshotState(turn, conversation, activeConversationId, pendingRequest.operationId);
           if (state === "pending") {
-            throw new Error("保存結果と現在の会話を照合できません。自動再送はしません。");
+            throw new Error(savedTurnConfirmationPendingNotice());
           }
           setActiveConversation(conversation);
           setError(savedTurnSnapshotNotice(state));
@@ -4308,7 +4313,9 @@ export function ChatApp() {
         }
         updatePendingRequests((current) => {
           const existing = current[activeConversationId];
-          const status = existing?.savedTurn ? "接続を待っています。自動再送せず照合します" : "接続を待っています。同じ送信として再試行できます";
+          const status = existing?.savedTurn
+            ? savedTurnConfirmationPendingNotice()
+            : "接続を待っています。同じ送信として再試行できます";
           if (existing?.status === status) return current;
           return existing ? {
             ...current,
@@ -4319,7 +4326,7 @@ export function ChatApp() {
           } : current;
         });
         setBackendConnectionState("degraded");
-        setBackendConnectionNote("送信結果を確認できません。operation IDを保持して接続回復を待っています。");
+        setBackendConnectionNote("送信の完了を確認できません。接続が戻ったら、同じ内容を送信し直さずに確認します。");
       }).finally(() => { polling = false; });
     };
     pollPendingConversation();
@@ -6638,7 +6645,7 @@ export function ChatApp() {
   const handleSubmit = async (event?: FormEvent, override?: SubmitOverride) => {
     event?.preventDefault();
     if (activeConversationId && pendingRequests[activeConversationId]?.savedTurn) {
-      setError("前の送信結果を確認中です。新しいturnとして再送しません。");
+      setError("前の送信の完了を確認しています。確認が終わるまで、新しいメッセージは送れません。");
       return;
     }
     if (activeConversation?.metadata?.shared_read_only === true) {
@@ -6778,14 +6785,15 @@ export function ChatApp() {
     let savedSubmissionStarted = false;
 
     try {
-      if (submittedAttachments.length || submittedSkillIds.length
+      const savedTurnContent = savedTurnContentFromAttachments(userText, submittedAttachments);
+      if (submittedSkillIds.length
         || submittedDroppedWidgets.some((widget) => widget.type !== "tool" || widget.widgetKind !== "tool_toggle") || isCodingWorkspaceSubmit
         || groupIdForSubmit || rumiDataPathForSubmit
         || Object.keys(templateAiInputParams).length || Object.keys(effectiveStructuredComposerValues).length
         || Object.keys(templatePolicyReferencePayload).length || composerInputMetadata?.id
         || toolSelectionRequest.mode === "review"
         || isOperationsConversation(activeConversation) || isMimoCodingConversation(activeConversation)) {
-        throw new Error("添付・スキル・特殊contextは保存付き送信に未対応のため、保存前に停止しました。");
+        throw new Error("スキルまたは特殊な会話コンテキストは保存付き送信に未対応のため、送信前に停止しました。");
       }
       let conversation = activeConversation;
       if (!conversation) {
@@ -6821,13 +6829,16 @@ export function ChatApp() {
         must_use: toolSelectionRequest.must_use ?? false,
       };
       const requestStartedAt = Date.now();
-      const requestFingerprint = JSON.stringify({
-        text: userText,
+      const requestFingerprintInput = JSON.stringify({
+        content: savedTurnContent,
         tool_selection: savedToolSelection,
-        attachments: submittedAttachments.map(({ name, size, type, source, sourcePath }) => (
-          { name, size, type, source, sourcePath }
-        )),
       });
+      const requestFingerprintBytes = await globalThis.crypto?.subtle?.digest(
+        "SHA-256", new TextEncoder().encode(requestFingerprintInput),
+      );
+      const requestFingerprint = requestFingerprintBytes
+        ? `sha256:${Array.from(new Uint8Array(requestFingerprintBytes), (byte) => byte.toString(16).padStart(2, "0")).join("")}`
+        : `unavailable:${requestStartedAt}`;
       const recoverablePending = pendingRequests[conversation.id];
       if (!Number.isSafeInteger(conversation.conversation_revision) || (conversation.conversation_revision ?? 0) < 1) {
         throw new Error("会話のrevisionが未確認です。会話を開き直してください。");
@@ -6857,7 +6868,7 @@ export function ChatApp() {
         turn_id: operationId,
         conversation_id: conversation.id,
         conversation_revision: conversation.conversation_revision!,
-        content: userText,
+        content: savedTurnContent,
         tool_selection: savedToolSelection,
         deepthink_enabled: deepthinkEnabled ? true : undefined,
         thinking_level: activeProfile?.supports_thinking
@@ -6865,20 +6876,26 @@ export function ChatApp() {
           : undefined,
       });
       if (result.turn.status !== "completed" || !result.turn.result_reference) {
-        const structured = result.turn.error;
-        if (result.turn.status === "failed" && structured && typeof structured === "object") {
-          const parts = [structured.message, structured.cause, structured.fix]
-            .filter((item): item is string => typeof item === "string" && Boolean(item.trim()));
-          if (parts.length) {
-            throw new Error(`${parts.join(" — ")} 自動再送はしません。`);
-          }
+        const terminalNotice = savedTurnTerminalNotice(result.turn, conversation.id, operationId);
+        if (terminalNotice) {
+          setError(terminalNotice);
+          forgetPendingRequest(conversation.id);
+          replaceChatIdInUrl(conversation.id, false);
+          setInput(inputForSubmit);
+          setAttachedFiles(submittedAttachments);
+          setDroppedWidgets(droppedWidgetsForSubmit);
+          // A terminal result does not prove that the user message was not
+          // saved. Restore the draft, but do not offer a retry until the user
+          // has checked the refreshed conversation.
+          void refreshConversations(conversation.id);
+          return;
         }
-        throw new Error("送信結果の照合が必要です。自動再送はしません。");
+        throw new Error(savedTurnConfirmationPendingNotice());
       }
       const snapshot = await api.getConversation(conversation.id);
       const snapshotState = savedTurnSnapshotState(result.turn, snapshot, conversation.id, operationId);
       if (snapshotState === "pending") {
-        throw new Error("保存された応答をまだ確認できません。再送せず照合を待ちます。");
+        throw new Error(savedTurnConfirmationPendingNotice());
       }
       const readinessReport = result.turn.result_reference.deepthink;
       const readinessNotice = readinessReport?.member_models?.length
@@ -6903,10 +6920,12 @@ export function ChatApp() {
       console.error("Chat error:", submitError);
       if (savedSubmissionStarted && submittedConversationId) {
         setRetryableSubmission(null);
-        setError(submitError instanceof Error ? submitError.message : "送信結果を確認できません。再送せず照合を待ちます。");
+        setError(savedTurnConfirmationPendingNotice());
         updatePendingRequests((current) => {
           const entry = current[submittedConversationId!];
-          return entry ? { ...current, [submittedConversationId!]: { ...entry, status: "送信結果を照合中（自動再送なし）" } } : current;
+          return entry
+            ? { ...current, [submittedConversationId!]: { ...entry, status: savedTurnConfirmationPendingNotice() } }
+            : current;
         });
         return;
       }

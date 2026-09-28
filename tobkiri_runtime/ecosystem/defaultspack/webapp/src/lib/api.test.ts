@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, isDefaultspackContractOperationUnknownError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, usesBrowserComputerApprovalEndpoint } from "./api";
+import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, isDefaultspackContractOperationUnknownError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, usesBrowserComputerApprovalEndpoint, validSavedTurnContent } from "./api";
 import type { ComposerCommandItem } from "./api";
 import { authorityApprovalRuntimeContent } from "./authorityApproval";
 import { deleteCalendarScheduleBeforeLocalChange } from "./calendarScheduleDeletion";
@@ -211,6 +211,33 @@ test("saved turn rejects unsupported fields and invalid revisions before sending
     await assert.rejects(api.startSavedTurn({ ...input, ...patch } as Parameters<typeof api.startSavedTurn>[0]), /invalid|unsupported/);
   }
   assert.equal(calls, 0);
+});
+
+test("saved turn content validator rejects malformed image blocks without throwing", () => {
+  assert.equal(validSavedTurnContent([
+    { type: "text", text: "Inspect this" },
+    null,
+  ]), false);
+  assert.equal(validSavedTurnContent([
+    { type: "text", text: "Inspect this" },
+    { type: "image_url", image_url: { url: "https://example.test/image.png" } },
+  ]), false);
+  assert.equal(validSavedTurnContent([
+    { type: "text", text: "Inspect this" },
+    { type: "image_url", image_url: { url: "data:image/png;base64,AAE=" } },
+  ]), false);
+  assert.equal(validSavedTurnContent([
+    { type: "text", text: "Inspect this" },
+    { type: "image_url", image_url: {
+      url: "data:image/jpeg;base64,iVBORw0KGgo=",
+    } },
+  ]), false);
+  assert.equal(validSavedTurnContent([
+    { type: "text", text: "Inspect this" },
+    { type: "image_url", image_url: {
+      url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/axR4xUAAAAASUVORK5CYII=",
+    } },
+  ]), true);
 });
 
 test("saved turn rejects another conversation outcome without replay", async (context) => {
@@ -1613,7 +1640,10 @@ test("uiCatalog accepts the canonical Pack v4 response envelope", async () => {
     assert.deepEqual(catalog.sidebar.items.map((item) => item.id), ["web_search", "calculator"]);
     assert.equal(catalog.sidebar.items[0]?.ui?.composer_label, "Web Search");
     assert.equal(catalog.sidebar.items[0]?.badge, "Unavailable");
-    assert.deepEqual(composerExtensionItems(catalog.sidebar.items).map((item) => item.id), ["calculator"]);
+    const mentionableTools = composerExtensionItems(catalog.sidebar.items);
+    assert.deepEqual(mentionableTools.map((item) => item.id), ["calculator"]);
+    assert.equal(mentionableTools[0]?.originKind, "profile_tool_catalog");
+    assert.equal(mentionableTools[0]?.serviceId, "other");
   } finally {
     globalThis.fetch = originalFetch;
   }

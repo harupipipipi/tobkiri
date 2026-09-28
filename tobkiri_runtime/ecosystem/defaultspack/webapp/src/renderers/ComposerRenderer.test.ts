@@ -9,6 +9,8 @@ import {
   atMentionMenuKeyAction,
   atomicComposerMentionEdit,
   atMentionPalettePayload,
+  composerMentionSectionForTool,
+  composerMentionSectionForToolGroup,
   composerMentionSkills,
   commandPalettePayload,
   commandArgumentPalettePayload,
@@ -45,6 +47,7 @@ import {
   composerInlineMentionParts,
   isDuplicateComposerSubmission,
   isComposerImeEvent,
+  orderComposerAtMentionCandidates,
   commandShowsToggleState,
   commandArgumentEntryPrefix,
   commandArgumentGuideForInput,
@@ -54,6 +57,8 @@ import {
 } from "./ComposerRenderer";
 import { COMPOSER_BUTTON_DROP, COMPOSER_PANEL_DROP, COMPOSER_SELECTOR_DROP, COMPOSER_TOGGLE_DROP } from "../lib/toolUi";
 import type { ComposerCommandItem } from "../lib/api";
+import type { ComposerAtMentionCandidate } from "./ComposerRenderer";
+import type { ComposerExtensionItem } from "./types";
 
 test("composer file mention filters string context files", () => {
   const files = ["README.md", "src/App.tsx", "docs/context.md"];
@@ -68,6 +73,78 @@ test("composer offers Settings when the host skill catalog is empty", () => {
   assert.equal(matches.length, 1);
   assert.equal(matches[0]?.label, "Settings");
   assert.equal(matches[0]?.id, "settings_assistant");
+});
+
+test("composer mention palette separates tools by catalog provenance", () => {
+  const plugin: ComposerExtensionItem = {
+    id: "cloudflare.workers",
+    label: "Cloudflare Workers",
+    sourcePackId: "cloudflare",
+  };
+  const builtin: ComposerExtensionItem = {
+    id: "calculator",
+    label: "Calculator",
+    sourcePackId: "defaultspack",
+  };
+  const other: ComposerExtensionItem = {
+    id: "custom.helper",
+    label: "Other helper",
+    sourcePackId: "user_dynamic",
+  };
+  const github: ComposerExtensionItem = {
+    id: "github.issue_search",
+    label: "GitHub Issues",
+    originKind: "profile_tool_catalog",
+    serviceId: "github",
+  };
+
+  assert.equal(composerMentionSectionForTool(plugin).id, "plugin");
+  assert.equal(composerMentionSectionForTool(github).id, "plugin");
+  assert.equal(composerMentionSectionForTool(builtin).id, "builtin-tool");
+  assert.equal(composerMentionSectionForTool(other).id, "other-tool");
+  assert.equal(composerMentionSectionForToolGroup([plugin, github]).id, "plugin");
+  assert.equal(composerMentionSectionForToolGroup([plugin, builtin]).id, "service");
+
+  const candidates: ComposerAtMentionCandidate[] = [other, builtin, github, plugin].map((item) => ({
+    kind: "tool",
+    id: `tool:${item.id}`,
+    label: item.label,
+    item,
+    section: composerMentionSectionForTool(item),
+  }));
+  const ordered = orderComposerAtMentionCandidates(candidates);
+  assert.deepEqual(ordered.map((candidate) => candidate.id), [
+    "tool:github.issue_search",
+    "tool:cloudflare.workers",
+    "tool:calculator",
+    "tool:custom.helper",
+  ]);
+
+  const payload = atMentionPalettePayload(ordered);
+  assert.deepEqual(payload.items.map((item) => item.section?.id), [
+    "plugin",
+    "plugin",
+    "builtin-tool",
+    "other-tool",
+  ]);
+  assert.deepEqual(payload.items.map((item) => item.badges?.[0]?.label), ["接続", "接続", "内蔵", "その他"]);
+  assert.deepEqual(atMentionMenuKeyAction("ArrowDown", false, 1, ordered.length), {
+    handled: true,
+    type: "move",
+    nextIndex: 2,
+  });
+
+  const html = renderToStaticMarkup(createElement(JsonListPanel, {
+    payload,
+    activeIndex: 2,
+    onActiveIndexChange: () => undefined,
+    onSelect: () => undefined,
+  }));
+  assert.match(html, /プラグイン・接続/);
+  assert.match(html, /内蔵ツール/);
+  assert.match(html, /その他のツール/);
+  assert.match(html, /composer-at-mention-option-2/);
+  assert.equal((html.match(/role="option"/g) ?? []).length, 4);
 });
 
 test("composer file mention insertion keeps @ text for workspace attachment flow", () => {

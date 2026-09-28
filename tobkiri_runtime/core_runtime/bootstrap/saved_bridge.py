@@ -9,11 +9,15 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 from tobkiri_host.saved_turn_plan import TARGETS, TOOL, SavedToolFrame
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
 from tobkiri_protocol.saved_conversation import (
+    MAX_SAVED_IMAGE_COUNT,
+    MAX_SAVED_INPUT_BYTES,
+    is_saved_user_content,
+    saved_user_text,
     validate_saved_conversation_context,
     validate_saved_conversation_input,
 )
@@ -93,6 +97,18 @@ def _require_resolved_context(conversation: Mapping[str, Any]) -> None:
         raise AuthorityDenied(str(error)) from error
 
 
+def _contains_inline_images(messages: Sequence[Mapping[str, Any]]) -> bool:
+    """Return whether owner-built messages retain saved inline image blocks."""
+    return any(
+        isinstance(message.get("content"), list)
+        and any(
+            isinstance(block, Mapping) and block.get("type") == "image_url"
+            for block in message["content"]
+        )
+        for message in messages
+    )
+
+
 def _messages(
     conversation: Mapping[str, Any],
     *,
@@ -156,10 +172,13 @@ def _messages(
                 for part in content
             )
         )
+        bounded_user_content = (
+            message.get("role") == "user" and is_saved_user_content(content)
+        )
         if (
             message.get("role") not in {"system", "user", "assistant"}
             or message.get("status") != "complete"
-            or not text_only
+            or not (text_only or bounded_user_content)
             or message.get("parts")
             or message.get("widget")
         ):
@@ -181,10 +200,83 @@ def _messages(
             result.extend(trace)
         # Retain the owner's exact text blocks for guest equality checks and
         # generation. Only the text-only readiness API receives joined text.
-        if flatten_text_blocks and isinstance(content, list):
+        if flatten_text_blocks and bounded_user_content:
+            content = saved_user_text(content)
+        elif flatten_text_blocks and isinstance(content, list):
             content = "".join(part["text"] for part in content)
         result.append({"role": message["role"], "content": content})
-    return result
+    if flatten_text_blocks:
+        return result
+    return _bounded_inline_image_history(result)
+
+
+def _bounded_inline_image_history(
+    messages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Keep only the newest bounded saved image set in owner generation context."""
+    images: list[tuple[int, int]] = []
+    for message_index, message in enumerate(messages):
+        content = message.get("content")
+        if isinstance(content, list):
+            images.extend(
+                (message_index, block_index)
+                for block_index, block in enumerate(content)
+                if isinstance(block, Mapping) and block.get("type") == "image_url"
+            )
+    retained = set(images[-MAX_SAVED_IMAGE_COUNT:])
+    if len(retained) == len(images):
+        return messages
+    bounded: list[dict[str, Any]] = []
+    for message_index, message in enumerate(messages):
+        content = message.get("content")
+        if not isinstance(content, list):
+            bounded.append(message)
+            continue
+        omitted = 0
+        blocks: list[dict[str, Any]] = []
+        for block_index, block in enumerate(content):
+            if (
+                isinstance(block, Mapping)
+                and block.get("type") == "image_url"
+                and (message_index, block_index) not in retained
+            ):
+                omitted += 1
+                continue
+            blocks.append(dict(block))
+        if omitted:
+            blocks.append(
+                {
+                    "type": "text",
+                    "text": (
+                        "[Earlier inline image omitted from this saved-turn context "
+                        "because of the bounded image limit.]"
+                    ),
+                }
+            )
+        bounded.append({**message, "content": blocks})
+    return bounded
+
+
+def _saved_read_projection(conversation: Mapping[str, Any]) -> dict[str, Any]:
+    """Return only guest state needed to detect duplicate saved appends."""
+    messages = conversation.get("messages")
+    if not isinstance(messages, list) or len(messages) > 200:
+        raise AuthorityDenied("saved bridge owner history is invalid")
+    identifiers: list[dict[str, str]] = []
+    for message in messages:
+        identifier = message.get("id") if isinstance(message, Mapping) else None
+        if not isinstance(identifier, str) or not identifier:
+            raise AuthorityDenied("saved bridge owner message identity is invalid")
+        identifiers.append({"id": identifier})
+    return {
+        "id": conversation.get("id"),
+        "conversation_revision": conversation.get("conversation_revision"),
+        "model_reference": conversation.get("model_reference"),
+        "current_node_id": conversation.get("current_node_id"),
+        "agent_id": conversation.get("agent_id"),
+        "system_prompt_id": conversation.get("system_prompt_id"),
+        "messages": identifiers,
+    }
 
 
 def _requires_tool_calling(request: Mapping[str, Any]) -> bool:
@@ -342,18 +434,26 @@ class SavedBridgeCallbacks:
         model = conversation.get("model_reference")
         if not isinstance(model, str) or not model.strip():
             raise AuthorityDenied("saved bridge owned model is unavailable")
+        owner_messages = _messages(conversation, system_prompt=prompt)
+        requires_image_input = _contains_inline_images(
+            owner_messages
+        ) or _contains_inline_images(
+            [{"role": "user", "content": request["content"]}]
+        )
         payload: dict[str, Any] = {
             "model_profile_id": model,
             "messages": [
                 *_messages(conversation, flatten_text_blocks=True, system_prompt=prompt),
-                {"role": "user", "content": request["content"]},
+                {"role": "user", "content": saved_user_text(request["content"])},
             ],
         }
+        if requires_image_input:
+            payload["modalities"] = ["image", "text"]
         if tools["tools"] and _requires_tool_calling(request):
             payload["tool_calling"] = True
         if request.get("deepthink_enabled") is True:
             payload["deepthink"] = True
-        if len(canonical_json(payload)) > 60 * 1024:
+        if len(canonical_json(payload)) > MAX_SAVED_INPUT_BYTES:
             raise AuthorityDenied("saved bridge readiness input exceeds budget")
         outcome = self._dispatch(outer, READINESS, payload)
         value = outcome.get("value")
@@ -387,19 +487,24 @@ class SavedBridgeCallbacks:
         request = _request(outer)
         enabled = request.get("tool_selection", {}).get("mode", "none") != "none"
         trace: list[dict[str, Any]] = []
-        if enabled:
-            if not isinstance(frame, SavedToolFrame) or frame.initial_digest != canonical_digest(
-                {"request": request}
-            ):
-                raise AuthorityDenied("saved bridge requires Host-checked tool scope")
+        owner_revision: int | None = None
+        owner_current_node_id: str | None = None
+        if isinstance(frame, SavedToolFrame):
+            owner_revision = frame.expected_conversation_revision
+            owner_current_node_id = frame.expected_current_node_id
             stage = frame.stage
-            # Tool-stage scope may contain assistant calls awaiting their results.
-            trace = strict_loads(frame.tool_messages, max_bytes=40 * 1024, max_depth=12)
-            if stage != "tool":
-                trace = saved_tool_messages(trace)
+            if enabled:
+                if frame.initial_digest != canonical_digest({"request": request}):
+                    raise AuthorityDenied("saved bridge requires Host-checked tool scope")
+                # Tool-stage scope may contain assistant calls awaiting their results.
+                trace = strict_loads(
+                    frame.tool_messages, max_bytes=40 * 1024, max_depth=12
+                )
+                if stage != "tool":
+                    trace = saved_tool_messages(trace)
             frame = frame.frame
-        elif isinstance(frame, SavedToolFrame):
-            raise AuthorityDenied("saved bridge unexpected tool scope")
+        elif enabled:
+            raise AuthorityDenied("saved bridge requires Host-checked tool scope")
         else:
             hop = frame.get("hop")
             if type(hop) is not int or not 0 <= hop < len(TARGETS):
@@ -430,16 +535,21 @@ class SavedBridgeCallbacks:
             raise AuthorityDenied("saved bridge stage target is invalid")
         self._require_targets(outer, REQUIRED_TARGETS)
         payload = frame.get("payload")
-        if not isinstance(payload, Mapping) or len(canonical_json(dict(payload))) > 60 * 1024:
+        if (
+            not isinstance(payload, Mapping)
+            or len(canonical_json(dict(payload))) > MAX_SAVED_INPUT_BYTES
+        ):
             raise AuthorityDenied("saved bridge payload is invalid")
         if stage == "read":
             if dict(payload) != {"operation": "get", "conversation_id": request["conversation_id"]}:
                 raise AuthorityDenied("saved bridge conversation read is out of scope")
             conversation = self._conversation(outer, request)
-            value: dict[str, Any] = {"conversation": conversation}
+            value: dict[str, Any] = {
+                "conversation": _saved_read_projection(conversation)
+            }
             prompt = self._system_prompt(outer, conversation)
             if prompt is not None:
-                value["system_prompt"] = prompt
+                value["system_prompt_digest"] = saved_prompt_digest(prompt)
             return {"status": "ok", "value": value}
         elif stage in {"user", "assistant"}:
             self._check_append(
@@ -463,8 +573,11 @@ class SavedBridgeCallbacks:
                 }
         elif stage == "ai":
             conversation = self._conversation(outer, request)
+            self._require_acknowledged_branch(
+                conversation, owner_revision, owner_current_node_id
+            )
             prompt = self._system_prompt(outer, conversation)
-            expected_fields = {"messages", "model_reference", "requirements"}
+            expected_fields = {"model_reference", "requirements"}
             if prompt is not None:
                 expected_fields.add("system_prompt_digest")
             deepthink = request.get("deepthink_enabled") is True
@@ -477,8 +590,6 @@ class SavedBridgeCallbacks:
                 set(payload) != expected_fields
                 or payload.get("system_prompt_digest") != saved_prompt_digest(prompt)
                 or payload["model_reference"] != conversation.get("model_reference")
-                or canonical_json(payload["messages"])
-                != canonical_json([*_messages(conversation, system_prompt=prompt), *trace])
                 or payload["requirements"] != expected_requirements
             ):
                 raise AuthorityDenied("saved bridge AI input differs from the owner")
@@ -486,6 +597,14 @@ class SavedBridgeCallbacks:
             arguments = {
                 key: value for key, value in payload.items() if key != "system_prompt_digest"
             }
+            arguments["messages"] = [
+                *_messages(conversation, system_prompt=prompt),
+                *trace,
+            ]
+            requirements = dict(payload["requirements"])
+            if _contains_inline_images(arguments["messages"]):
+                requirements["modalities"] = ["image", "text"]
+            arguments["requirements"] = requirements
             if "thinking_level" in request:
                 # The selected level comes from the validated initial request,
                 # never from the guest's AI intent or a resumed frame.
@@ -493,7 +612,6 @@ class SavedBridgeCallbacks:
                     "thinking_level": request["thinking_level"]
                 }
             if selected["tools"]:
-                requirements = dict(payload["requirements"])
                 if _requires_tool_calling(request):
                     requirements["tool_calling"] = True
                 parameters = dict(arguments.get("parameters") or {})
@@ -539,6 +657,8 @@ class SavedBridgeCallbacks:
                     except Exception:
                         pass
                     raise
+            if len(canonical_json(arguments)) > MAX_SAVED_INPUT_BYTES:
+                raise AuthorityDenied("saved bridge AI input exceeds budget")
             outcome = self._dispatch(outer, target, arguments)
             additions: dict[str, Any] = {}
             if (
@@ -563,8 +683,35 @@ class SavedBridgeCallbacks:
                 "expected_definition_hash",
             }:
                 raise AuthorityDenied("saved bridge tool invocation is out of scope")
+            conversation = self._conversation(outer, request)
+            self._require_acknowledged_branch(
+                conversation, owner_revision, owner_current_node_id
+            )
             self._require_targets(outer, TOOL_TARGETS)
         return self._dispatch(outer, target, payload)
+
+    @staticmethod
+    def _require_acknowledged_branch(
+        conversation: Mapping[str, Any],
+        revision: int | None,
+        current_node_id: str | None,
+    ) -> None:
+        """Fence provider and tool effects to the Host-acknowledged user node."""
+        if revision is None and current_node_id is None:
+            # Direct unit callbacks do not model the Host's local wrapper. The
+            # production supervisor always supplies one through SavedHostExchange.
+            return
+        if (
+            type(revision) is not int
+            or revision < 1
+            or not isinstance(current_node_id, str)
+            or not current_node_id
+            or conversation.get("conversation_revision") != revision
+            or conversation.get("current_node_id") != current_node_id
+        ):
+            raise AuthorityDenied(
+                "saved bridge acknowledged branch changed before execution"
+            )
 
     @staticmethod
     def _check_append(

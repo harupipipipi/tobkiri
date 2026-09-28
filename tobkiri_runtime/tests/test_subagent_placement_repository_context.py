@@ -1220,14 +1220,15 @@ class _WorkspaceClient:
         operation: str,
         payload: Mapping[str, Any],
     ) -> dict[str, Any]:
-        assert contract_id == "rumi.resource.workspace.v1"
-        if operation == "list":
+        assert contract_id == "tobkiri.resource.workspace.v1"
+        assert operation == "rumi_workspace_mount_pack.workspace-resource"
+        if payload["operation"] == "list":
             return {"selected_workspace_id": self.selected}
-        if operation == "get":
+        if payload["operation"] == "get":
             return {
                 "workspace_id": payload["workspace_id"],
                 "root_path": str(self.root),
-                "revision": "mount-test-v1",
+                "mount_revision": 1,
             }
         raise AssertionError(operation)
 
@@ -1238,7 +1239,7 @@ def _workspace_binding(root: Path) -> dict[str, Any]:
     binding = {
         "workspace_id": "workspace-test",
         "access": "read_only",
-        "mount_revision": "mount-test-v1",
+        "mount_revision": 1,
         "canonical_root": str(resolved),
         "root_st_dev": int(root_stat.st_dev),
         "root_st_ino": int(root_stat.st_ino),

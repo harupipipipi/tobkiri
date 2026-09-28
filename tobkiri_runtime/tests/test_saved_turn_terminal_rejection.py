@@ -22,6 +22,7 @@ from tests.test_saved_turn_coordinator import _Session, _run
 from tobkiri_host.errors import (
     BackendUnavailableError,
     ProviderExecutionError,
+    ResolutionError,
     SavedTurnRejectedError,
 )
 from tobkiri_protocol.saved_conversation import (
@@ -186,6 +187,25 @@ def test_supervisor_marks_terminal_preflight_denial(tmp_path: Path) -> None:
     assert isinstance(raised.value, BackendUnavailableError)
     assert isinstance(raised.value.__cause__, AuthorityDenied)
     # The invoke envelope never reached the guest.
+    assert [item["operation"] for item in transport.requests] == ["launch"]
+
+
+def test_supervisor_marks_preflight_schema_rejection_terminal(
+    tmp_path: Path,
+) -> None:
+    """A catalog input-schema rejection cannot have reached the guest."""
+    driver, allocator = _driver(tmp_path)
+
+    def preflight(_outer: object) -> None:
+        raise ResolutionError("operation input schema validation failed")
+
+    driver.bind_saved_capability_bridge(lambda _outer, _frame: {}, preflight)
+    _launch(driver)
+    transport = allocator.transports["domain.provider.conversation"]
+    with pytest.raises(SavedTurnRejectedError) as raised:
+        driver.invoke(_saved_request())
+    assert raised.value.saved_terminal_error_code == "resolution_failed"
+    assert isinstance(raised.value.__cause__, ResolutionError)
     assert [item["operation"] for item in transport.requests] == ["launch"]
 
 

@@ -68,7 +68,7 @@ def create_preflight_operation(
     def operation(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         if name != FUNCTION_ID:
             raise ValueError("AI preflight operation is invalid")
-        if set(payload) - {"tool_calling", "deepthink"} != {
+        if set(payload) - {"tool_calling", "deepthink", "modalities"} != {
             "model_profile_id",
             "messages",
         }:
@@ -77,6 +77,8 @@ def create_preflight_operation(
             raise ValueError("AI preflight tool requirement is invalid")
         if type(payload.get("deepthink", False)) is not bool:
             raise ValueError("AI preflight DeepThink requirement is invalid")
+        if "modalities" in payload and payload["modalities"] != ["image", "text"]:
+            raise ValueError("AI preflight modality requirement is invalid")
         identifier = payload["model_profile_id"]
         messages = payload["messages"]
         if (not isinstance(identifier, str) or not identifier.strip() or len(identifier) > 256
@@ -84,13 +86,15 @@ def create_preflight_operation(
                 or any(not isinstance(message, dict) or set(message) != {"role", "content"}
                        or message["role"] not in ("system", "user", "assistant")
                        or not isinstance(message["content"], str) for message in messages)
-                or len(canonical_json(dict(payload))) > 60 * 1024):
+                or len(canonical_json(dict(payload))) > 3 * 1024 * 1024):
             raise ValueError("AI preflight input is invalid")
         requirements = {
             key: True
             for key in ("tool_calling", "deepthink")
             if payload.get(key)
         }
+        if "modalities" in payload:
+            requirements["modalities"] = list(payload["modalities"])
         resolved = resolve("resolve", {
             "model_profile_id": identifier, "messages": messages,
             **({"requirements": requirements} if requirements else {}),

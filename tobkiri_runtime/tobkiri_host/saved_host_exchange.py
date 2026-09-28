@@ -17,7 +17,9 @@ from .continuation_envelope import (
 from .saved_guest_dispatch import PROTOCOL, TARGETS
 from .saved_turn_plan import SavedToolFrame, SavedTurnPlan
 from tobkiri_protocol.saved_conversation import (
-    is_saved_text_content, validate_saved_conversation_input,
+    MAX_SAVED_FRAME_BYTES,
+    is_saved_text_content,
+    validate_saved_conversation_input,
 )
 from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_HOPS
 
@@ -41,11 +43,13 @@ class SavedHostExchange:
         self._pending: ValidatedContinuation | None = None
         self._failed = False
         self._user_revision: int | None = None
+        self._user_current_node_id: str | None = None
         self._ai_output_digest: str | None = None
         self._completion_digest: str | None = None
         self._tool_plan: SavedTurnPlan | None = None
         self._deepthink: Any = None
         self._deepthink_enabled = False
+        self._max_frame_bytes = 64 * 1024
         if request is not None:
             initial = validate_saved_conversation_input({"request": dict(request)})
             self._deepthink_enabled = (
@@ -53,20 +57,26 @@ class SavedHostExchange:
             )
             plan = SavedTurnPlan(initial["request"])
             self._tool_plan = plan if plan.enabled else None
+            self._max_frame_bytes = MAX_SAVED_FRAME_BYTES
 
     @property
     def maximum_hops(self) -> int:
         """Return the Host-owned finite bound for this initial request."""
         return MAX_SAVED_TOOL_HOPS if self._tool_plan else len(TARGETS)
 
-    def callback_frame(self, frame: ValidatedContinuation) -> Mapping[str, Any] | SavedToolFrame:
-        """Pass checked tool scope locally, never in a guest-controlled JSON field."""
+    def callback_frame(self, frame: ValidatedContinuation) -> SavedToolFrame:
+        """Pass Host-bound branch and tool scope without serializing either claim."""
         value = strict_loads(frame.frame)
-        if self._tool_plan is None:
-            return value
+        stage = self._tool_plan.stage if self._tool_plan else (
+            "read", "user", "ai", "assistant"
+        )[self._hop]
         return SavedToolFrame(
-            value, self._tool_plan.initial_digest,
-            canonical_json(self._tool_plan.messages), self._tool_plan.stage,
+            value,
+            self._tool_plan.initial_digest if self._tool_plan else None,
+            canonical_json(self._tool_plan.messages) if self._tool_plan else b"[]",
+            stage,
+            self._user_revision,
+            self._user_current_node_id,
         )
 
     def accept(self, wrapper: Mapping[str, Any]) -> ValidatedContinuation:
@@ -85,6 +95,7 @@ class SavedHostExchange:
             hop=self._hop, previous_digest=self._previous,
             target=self._tool_plan.target if self._tool_plan else TARGETS[self._hop],
             max_hops=self.maximum_hops,
+            max_frame_bytes=self._max_frame_bytes,
         )
         if frame.digest != wrapper["bridge_request_digest"]:
             raise ValueError("saved Host guest frame digest is invalid")
@@ -120,7 +131,10 @@ class SavedHostExchange:
             "kind": "tobkiri.packvm.continuation.result.v2", "version": 2,
             "request_digest": frame.digest, "outcome": dict(outcome),
         }
-        checked = validate_continuation_result(canonical_json(value), request=frame)
+        checked = validate_continuation_result(
+            canonical_json(value), request=frame,
+            max_result_bytes=self._max_frame_bytes,
+        )
         # Bind completion and the bounded tool transcript to Host results before
         # exposing those results to the guest.
         owned = strict_loads(checked.frame)["outcome"].get("value", {})
@@ -168,6 +182,7 @@ class SavedHostExchange:
             ):
                 if stage == "user":
                     self._user_revision = revision
+                    self._user_current_node_id = message.get("id")
                 else:
                     completion = {
                         "status": "ok", "turn_id": message["metadata"]["turn_id"],

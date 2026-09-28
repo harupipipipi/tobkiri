@@ -244,6 +244,30 @@ def test_cancel_after_ai_prevents_tool_dispatch_and_resume_replay(tmp_path):
     assert not any(target == TOOL for target, _ in turn.calls)
 
 
+@pytest.mark.parametrize("after_stage", ["user", "ai"])
+def test_concurrent_append_fences_ai_and_tool_effects(tmp_path, after_stage):
+    """A later branch append must stop provider and tool effects before dispatch."""
+    turn = ToolTurn(tmp_path, rounds=1)
+    turn.start()
+    turn.step()  # owner read
+    turn.step()  # owner user append; the Host now captures its revision and node
+    if after_stage == "ai":
+        turn.step()  # provider selects the first tool
+    turn.store.append_message(
+        "conversation-1",
+        {"id": "other-turn", "role": "user", "content": "Other branch"},
+        expected_conversation_revision=turn.store.get("conversation-1")[
+            "conversation_revision"
+        ],
+    )
+    calls = len(turn.calls)
+    with pytest.raises(AuthorityDenied, match="acknowledged branch changed"):
+        turn.step()
+    # The owner read used to detect the drift is harmless; no provider or tool
+    # effect can follow it.
+    assert all(target == READ for target, _ in turn.calls[calls:])
+
+
 def test_serialized_frame_is_not_host_checked_tool_scope(tmp_path):
     turn = ToolTurn(tmp_path)
     turn.start()

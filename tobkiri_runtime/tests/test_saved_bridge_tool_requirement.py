@@ -455,6 +455,8 @@ def _tool_frame(
         initial_digest=canonical_digest({"request": request}),
         tool_messages=canonical_json(state["tool_messages"]),
         stage=state["stage"],
+        expected_conversation_revision=None,
+        expected_current_node_id=None,
     )
 
 

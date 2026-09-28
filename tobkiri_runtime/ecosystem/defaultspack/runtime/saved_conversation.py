@@ -7,6 +7,7 @@ Intents are not authority; registration and the captured Broker remain required.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import re
@@ -20,6 +21,13 @@ TARGETS = (
 )
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,255}\Z")
 _REQUEST_FIELDS = {"turn_id", "conversation_id", "conversation_revision", "content"}
+_MAX_SAVED_TEXT_BYTES = 60 * 1024
+_MAX_SAVED_IMAGE_COUNT = 2
+_MAX_SAVED_IMAGE_BYTES = 1024 * 1024
+_MAX_SAVED_IMAGE_BASE64_CHARS = ((_MAX_SAVED_IMAGE_BYTES + 2) // 3) * 4
+_SAVED_IMAGE_URL = re.compile(
+    r"data:(image/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/]+={0,2})\Z"
+)
 _TOOL_TARGET = ("tobkiri.service.tool.invoke.v1", "rumi_tool_broker_pack.tool-invoke")
 _MAX_TOOL_CALLS = 8
 _STAGE_TARGETS = {
@@ -32,7 +40,6 @@ _STAGE_TARGETS = {
 _STATE_FIELDS = {
     "hop",
     "request",
-    "history",
     "model_reference",
     "revision",
     "parent_id",
@@ -44,10 +51,12 @@ _STATE_FIELDS = {
     "seen_tools",
     "system_prompt_digest",
     "deepthink",
+    "user_content",
+    "user_content_digest",
 }
 
 
-def _json(value: Any, *, limit: int = 60 * 1024) -> bytes:
+def _json(value: Any, *, limit: int = 4 * 1024 * 1024) -> bytes:
     def validate(item: Any, depth: int = 0) -> None:
         if depth > 12:
             raise ValueError("saved conversation nesting exceeds limit")
@@ -86,6 +95,67 @@ def _revision(value: Any) -> int:
     return value
 
 
+def _saved_image_url(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    match = _SAVED_IMAGE_URL.fullmatch(value)
+    if (
+        match is None
+        or len(match.group(2)) % 4
+        or len(match.group(2)) > _MAX_SAVED_IMAGE_BASE64_CHARS
+    ):
+        return False
+    try:
+        decoded = base64.b64decode(match.group(2), validate=True)
+    except (TypeError, ValueError):
+        return False
+    if not 0 < len(decoded) <= _MAX_SAVED_IMAGE_BYTES:
+        return False
+    media_type = match.group(1)
+    if media_type == "image/png":
+        return decoded.startswith(b"\x89PNG\r\n\x1a\n")
+    if media_type == "image/jpeg":
+        return decoded.startswith(b"\xff\xd8\xff")
+    if media_type == "image/gif":
+        return decoded.startswith((b"GIF87a", b"GIF89a"))
+    return (
+        media_type == "image/webp"
+        and len(decoded) >= 12
+        and decoded[:4] == b"RIFF"
+        and decoded[8:12] == b"WEBP"
+    )
+
+
+def _saved_user_content(value: Any) -> bool:
+    if (
+        isinstance(value, str)
+        and bool(value.strip())
+        and len(value.encode("utf-8")) <= _MAX_SAVED_TEXT_BYTES
+    ):
+        return True
+    if not isinstance(value, list) or not 1 <= len(value) <= 1 + _MAX_SAVED_IMAGE_COUNT:
+        return False
+    text = value[0]
+    if (
+        not isinstance(text, dict)
+        or set(text) != {"type", "text"}
+        or text.get("type") != "text"
+        or not isinstance(text.get("text"), str)
+        or not text["text"].strip()
+        or len(text["text"].encode("utf-8")) > _MAX_SAVED_TEXT_BYTES
+    ):
+        return False
+    return all(
+        isinstance(part, dict)
+        and set(part) == {"type", "image_url"}
+        and part.get("type") == "image_url"
+        and isinstance(part.get("image_url"), dict)
+        and set(part["image_url"]) == {"url"}
+        and _saved_image_url(part["image_url"].get("url"))
+        for part in value[1:]
+    )
+
+
 def _request(value: Any) -> dict[str, Any]:
     if type(value) is not dict or set(value) - {
         "tool_selection",
@@ -105,8 +175,8 @@ def _request(value: Any) -> dict[str, Any]:
     _identifier(value["turn_id"])
     _identifier(value["conversation_id"])
     _revision(value["conversation_revision"])
-    if not isinstance(value["content"], str) or not value["content"].strip():
-        raise ValueError("saved conversation requires nonempty user text")
+    if not _saved_user_content(value["content"]):
+        raise ValueError("saved conversation user content is invalid")
     selection = value.get("tool_selection", {})
     if "tool_selection" in value:
         if (
@@ -135,7 +205,27 @@ def _request(value: Any) -> dict[str, Any]:
                     raise ValueError("saved tool target is invalid")
         if selection["mode"] == "none" and (selection.get("include") or selection.get("must_use")):
             raise ValueError("disabled saved tools cannot be required")
-    _json(value)
+    _json(value, limit=3 * 1024 * 1024)
+    return value
+
+
+def _state_request(value: Any) -> dict[str, Any]:
+    """Validate compact request identity retained after the user append."""
+    fields = {"turn_id", "conversation_id", "conversation_revision"}
+    optional = {"tool_selection", "deepthink_enabled", "thinking_level"}
+    if type(value) is not dict or set(value) - optional != fields:
+        raise ValueError("saved continuation request fields are invalid")
+    _identifier(value["turn_id"])
+    _identifier(value["conversation_id"])
+    _revision(value["conversation_revision"])
+    if type(value.get("deepthink_enabled", False)) is not bool:
+        raise ValueError("saved conversation deepthink flag is invalid")
+    if "thinking_level" in value and value["thinking_level"] not in {
+        "none", "low", "medium", "high", "xhigh"
+    }:
+        raise ValueError("saved conversation thinking level is invalid")
+    if "tool_selection" in value:
+        _request({**value, "content": "saved content"})
     return value
 
 
@@ -163,12 +253,19 @@ def _tool_logs(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return logs
 
 
-def _message(state: dict[str, Any], role: str) -> dict[str, Any]:
+def _message(
+    state: dict[str, Any], role: str, *, user_content: Any | None = None,
+) -> dict[str, Any]:
     request = state["request"]
+    content = state["assistant"]
+    if role == "user":
+        content = state["user_content"] if user_content is None else user_content
+        if not _saved_user_content(content):
+            raise ValueError("saved conversation user content is unavailable")
     message = {
         "id": _message_id(request, role),
         "role": role,
-        "content": request["content"] if role == "user" else state["assistant"],
+        "content": content,
         "parent_id": state["parent_id"] if role == "user" else _message_id(request, "user"),
         "metadata": {"turn_id": request["turn_id"]},
         "status": "complete",
@@ -179,7 +276,9 @@ def _message(state: dict[str, Any], role: str) -> dict[str, Any]:
     return message
 
 
-def _intent(state: dict[str, Any]) -> dict[str, Any]:
+def _intent(
+    state: dict[str, Any], *, user_content: Any | None = None,
+) -> dict[str, Any]:
     stage, request = state["stage"], state["request"]
     prompt_digest = state["system_prompt_digest"]
     if prompt_digest is not None and (
@@ -194,7 +293,7 @@ def _intent(state: dict[str, Any]) -> dict[str, Any]:
             "operation": "append",
             "conversation_id": request["conversation_id"],
             "expected_conversation_revision": state["revision"],
-            "message": _message(state, stage),
+            "message": _message(state, stage, user_content=user_content),
         }
     elif stage == "tool":
         payload = state["pending_tools"][0]
@@ -203,11 +302,6 @@ def _intent(state: dict[str, Any]) -> dict[str, Any]:
         if request.get("deepthink_enabled") is True:
             requirements["deepthink"] = True
         payload = {
-            "messages": [
-                *state["history"],
-                {"role": "user", "content": request["content"]},
-                *state["tool_messages"],
-            ],
             "model_reference": state["model_reference"],
             "requirements": requirements,
         }
@@ -294,12 +388,12 @@ def _history(conversation: dict[str, Any]) -> tuple[list[dict[str, Any]], str | 
 
 def start(payload: dict[str, Any]) -> dict[str, Any]:
     """Request the exact owned conversation before attempting any write."""
-    request = json.loads(_json(_request(payload)))
+    request = json.loads(_json(_request(payload), limit=3 * 1024 * 1024))
+    user_content = request.pop("content")
     return _intent(
         {
             "hop": 0,
             "request": request,
-            "history": [],
             "model_reference": None,
             "revision": request["conversation_revision"],
             "parent_id": None,
@@ -311,6 +405,8 @@ def start(payload: dict[str, Any]) -> dict[str, Any]:
             "seen_tools": [],
             "system_prompt_digest": None,
             "deepthink": None,
+            "user_content": user_content,
+            "user_content_digest": None,
         }
     )
 
@@ -321,7 +417,7 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
     if type(state) is not dict or set(state) != _STATE_FIELDS:
         raise ValueError("saved continuation fields are invalid")
     state = json.loads(_json(state))
-    request = _request(state["request"])
+    request = _state_request(state["request"])
     stage, hop = state["stage"], state["hop"]
     if stage not in _STAGE_TARGETS or type(hop) is not int or not 0 <= hop < 20:
         raise ValueError("saved continuation hop is invalid")
@@ -335,15 +431,24 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
     acknowledged = False
     try:
         value = outcome["value"]
-        _json(value, limit=512 * 1024)
+        _json(
+            value,
+            limit=(
+                3 * 1024 * 1024
+                if stage == "user"
+                else _MAX_SAVED_TEXT_BYTES if stage == "ai" else 512 * 1024
+            ),
+        )
         if not isinstance(value, dict):
             raise ValueError("owner response must be an object")
         if stage == "read":
             conversation = value["conversation"]
             if conversation["id"] != request["conversation_id"]:
                 raise ValueError("conversation identity mismatch")
-            if any(
-                item["id"] in {_message_id(request, "user"), _message_id(request, "assistant")}
+            if not isinstance(conversation.get("messages"), list) or any(
+                not isinstance(item, dict) or item.get("id") in {
+                    _message_id(request, "user"), _message_id(request, "assistant")
+                }
                 for item in conversation["messages"]
             ):
                 return _failure(state, "TURN_RECONCILIATION_REQUIRED")
@@ -354,39 +459,58 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
             model = conversation.get("model_reference")
             if not isinstance(model, str) or not model.strip():
                 return _failure(state, "MODEL_REFERENCE_REQUIRED")
-            state["history"], state["parent_id"] = _history(conversation)
+            state["parent_id"] = conversation.get("current_node_id")
+            if state["parent_id"] is not None:
+                _identifier(state["parent_id"])
             prompt_id = conversation.get("system_prompt_id")
             if prompt_id:
-                prompt = value.get("system_prompt")
+                prompt_digest = value.get("system_prompt_digest")
                 if (
-                    not isinstance(prompt, dict)
-                    or set(prompt) != {"prompt_id", "body", "body_hash"}
-                    or prompt["prompt_id"] != prompt_id
-                    or not isinstance(prompt["body"], str)
-                    or prompt["body_hash"]
-                    != "sha256:" + hashlib.sha256(prompt["body"].encode("utf-8")).hexdigest()
+                    not isinstance(prompt_digest, str)
+                    or re.fullmatch(r"sha256:[0-9a-f]{64}", prompt_digest) is None
                 ):
                     return _failure(state, "CONTEXT_RESOLUTION_REQUIRED")
-                state["system_prompt_digest"] = (
-                    "sha256:"
-                    + hashlib.sha256(
-                        _json({key: prompt[key] for key in ("prompt_id", "body_hash")})
-                    ).hexdigest()
-                )
-                if prompt["body"]:
-                    state["history"].insert(0, {"role": "system", "content": prompt["body"]})
-            elif "system_prompt" in value:
+                state["system_prompt_digest"] = prompt_digest
+            elif "system_prompt_digest" in value:
                 raise ValueError("unexpected saved system prompt")
             state["model_reference"] = model
-            _intent({**state, "hop": 2, "stage": "ai"})
+            user_content = state["user_content"]
+            if (
+                not _saved_user_content(user_content)
+                or state["user_content_digest"] is not None
+            ):
+                raise ValueError("saved conversation user content is unavailable")
+            state["user_content"] = None
+            state["user_content_digest"] = "sha256:" + hashlib.sha256(
+                _json(user_content, limit=3 * 1024 * 1024)
+            ).hexdigest()
             state["stage"] = "user"
+            return _intent({**state, "hop": hop + 1}, user_content=user_content)
         elif stage in {"user", "assistant"}:
-            expected = _message(state, stage)
             message = value["message"]
+            expected = _message(state, stage) if stage == "assistant" else None
             if (
                 not isinstance(message, dict)
                 or value.get("action") != "message_appended"
-                or any(message.get(key) != item for key, item in expected.items())
+                or (
+                    stage == "user"
+                    and (
+                        message.get("id") != _message_id(request, "user")
+                        or message.get("role") != "user"
+                        or message.get("parent_id") != state["parent_id"]
+                        or message.get("metadata") != {"turn_id": request["turn_id"]}
+                        or message.get("status") != "complete"
+                        or not _saved_user_content(message.get("content"))
+                        or "sha256:" + hashlib.sha256(
+                            _json(message.get("content"), limit=3 * 1024 * 1024)
+                        ).hexdigest()
+                        != state["user_content_digest"]
+                    )
+                )
+                or (
+                    stage == "assistant"
+                    and any(message.get(key) != item for key, item in expected.items())
+                )
             ):
                 raise ValueError("message owner acknowledgement mismatch")
             revision = _revision(value["conversation_revision"])
@@ -492,7 +616,7 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
                     return _failure(state, "REQUIRED_TOOL_NOT_USED")
                 if not isinstance(output, (str, list)) or not output:
                     raise ValueError("AI output is invalid")
-                state["assistant"], state["history"] = output, []
+                state["assistant"] = output
                 state["stage"] = "assistant"
         return _intent({**state, "hop": hop + 1})
     except (KeyError, TypeError, ValueError, UnicodeError):
