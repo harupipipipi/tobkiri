@@ -3115,18 +3115,26 @@
     },
     "rumi_file_inspect_pack": {
       "pack_id": "rumi_file_inspect_pack",
-      "review_attestation_digest": "sha256:bf8598dfc30b63bd7aecde5886e61a37c4d06f180b335459b01f798956cf6f88",
+      "review_attestation_digest": "sha256:6d63de628d3992f247d1d33650ed7e9e6ca6a24c8de959a8786196ef58410d2b",
       "review_basis": {
         "evidence_paths": [
           "tobkiri_runtime/ecosystem/rumi_file_inspect_pack/pack.v4.json",
           "tobkiri_runtime/ecosystem/rumi_file_inspect_pack/contracts.v4.json",
           "tobkiri_runtime/ecosystem/rumi_file_inspect_pack/executables.v4.json",
           "tobkiri_runtime/ecosystem/rumi_file_inspect_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_file_inspect_pack/runtime/inspect.py",
+          "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/runtime/mounts.py",
+          "tobkiri_runtime/core_runtime/host_provider_hooks_v4.py",
+          "tobkiri_runtime/core_runtime/host_provider_backend_v4.py",
+          "tobkiri_runtime/ecosystem/defaultspack/domain/runtime_v4/service.py",
           "tobkiri_runtime/schemas/executable_sources.v1.json",
           "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json",
           "tobkiri_runtime/ecosystem/rumi_file_inspect_pack/rumi.pack.v3.json",
           "tobkiri_runtime/ecosystem/rumi_file_inspect_pack/artifact-manifest.json",
-          "tobkiri_runtime/ecosystem/rumi_file_inspect_pack/ecosystem.json"
+          "tobkiri_runtime/ecosystem/rumi_file_inspect_pack/ecosystem.json",
+          "tobkiri_runtime/tests/test_file_inspect_host_provider_v4.py",
+          "tobkiri_runtime/tests/test_file_inspect_profile_activation.py",
+          "tobkiri_runtime/tests/test_dynamic_profile_edge_callers.py"
         ],
         "excluded_claims": [
           "runtime admission",
@@ -3140,11 +3148,18 @@
           "v4 contract and provider identity recorded per operation",
           "legacy source record bound by exact digest",
           "target artifact bound by exact digest",
-          "parameter schema divergence accepted for rumi_file_inspect_pack.file-inspect, rumi_file_inspect_pack.file-inspect.for-media (product-owner decision 2026-09-26)"
+          "parameter schema divergence accepted for rumi_file_inspect_pack.file-inspect, rumi_file_inspect_pack.file-inspect.for-media (product-owner decision 2026-09-26)",
+          "Host Provider invocation is bound to exact activation, plan, security epoch, profile, principal, domain, contract, and operation",
+          "workspace access uses the exact canonical Workspace operation with credentials excluded and revalidates mount revision, root identity, and selected workspace before return",
+          "POSIX inspection walks from a pinned root descriptor with component-wise no-follow opens; list, search, and tracked-only candidates are descriptor-reopened before use",
+          "Windows inspection pins root and ancestor handles without delete sharing, rejects reparse tags and path-identity changes, and enumerates verified directory handles through NtQueryDirectoryFile",
+          "native Windows smoke on PR HEAD 029ec820 passed root and child junction rejection, pinned rename/delete denial, relative read, service read/stat/list/search, and 700-entry multi-buffer enumeration",
+          "static conversation and dynamic media callers resolve only their exact File Inspect operations, including the for-media-only authority edge",
+          "the provider declares no network domains, ports, or secrets"
         ]
       },
-      "reviewed_at": "2026-09-26T15:40:00+09:00",
-      "reviewer_id": "devin:independent-semantic-review:v1",
+      "reviewed_at": "2026-09-28T22:26:58+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
       "semantic_record": {
         "accepted_divergences": [
           "parameter_schema_mapping_mismatch"
@@ -3276,9 +3291,9 @@
         "status": "verified"
       },
       "semantic_record_digest": "sha256:0d3c2a6892a8406c8c855daa179ad250335fee7d6b38b8cfa352c3bb66a0a332",
-      "source_digest": "sha256:be5f4295d07c4bb0f026eaf96b2cfc35c202386fce50ce886bb5a590c1e0daec",
+      "source_digest": "sha256:8f9ee12486880da391752b66691ddd53673f30743a59b75277777a8d7fce5d52",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:88f28f0b08f22b9b63940829b04a5f24d4e55cf63b4a852ab1ffa0b21cd4cc95"
+      "target_digest": "sha256:9cbcde39c077633de616677b60752497c22c75ec56ab821246c60fd75a48ad85"
     },
     "rumi_file_mutation_pack": {
       "pack_id": "rumi_file_mutation_pack",
