@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ChatStreamInterruptedError, admittedStrategyContributions, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, isDefaultspackContractOperationUnknownError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, usesBrowserComputerApprovalEndpoint, validSavedTurnContent } from "./api";
+import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, usesBrowserComputerApprovalEndpoint, validSavedTurnContent } from "./api";
 import type { ComposerCommandItem } from "./api";
 import { authorityApprovalRuntimeContent } from "./authorityApproval";
 import { deleteCalendarScheduleBeforeLocalChange } from "./calendarScheduleDeletion";
@@ -14,7 +14,6 @@ import {
   MIMO_CODING_DEFAULT_MODEL,
   MIMO_CODING_DEFAULT_VISION_MODEL,
   commandSupportsMode,
-  composerExtensionItems,
   frontendCommandArgs,
   keepSelectedToolsAfterSend,
   parseCommandBoolean,
@@ -163,41 +162,6 @@ test("saved reconciliation posts only an existing turn ID, never the original in
   assert.equal(calls, 3);
 });
 
-test("strategy catalog accepts only host-admitted contribution records", () => {
-  assert.deepEqual(
-    admittedStrategyContributions([
-      {
-        strategy_reference: "provider:deepthink",
-        label: "DeepThink",
-        description: "Multi-step reasoning",
-        signature_verified: true,
-        plan_admitted: true,
-        available: true,
-      },
-      {
-        strategy_reference: "provider:disabled",
-        label: "Disabled",
-        signature_verified: true,
-        plan_admitted: true,
-        available: false,
-      },
-      {
-        strategy_reference: "provider:unsigned",
-        label: "Unsigned",
-        signature_verified: false,
-        plan_admitted: true,
-        available: true,
-      },
-    ]),
-    [{
-      reference: "provider:deepthink",
-      label: "DeepThink",
-      description: "Multi-step reasoning",
-    }],
-  );
-  assert.deepEqual(admittedStrategyContributions({ strategies: [] }), []);
-});
-
 test("saved turn uses exact canonical transport and never retries an uncertain outcome", async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });
@@ -218,32 +182,15 @@ test("saved turn uses exact canonical transport and never retries an uncertain o
   assert.equal(calls, 2);
 });
 
-test("saved turn sends the selected admitted strategy reference", async (context) => {
-  const originalFetch = globalThis.fetch;
-  context.after(() => { globalThis.fetch = originalFetch; });
-  const input = {
-    turn_id: "turn-1", conversation_id: "conversation-1",
-    conversation_revision: 7, content: "hello",
-    strategy_reference: "provider:deepthink", thinking_level: "high" as const,
-  };
-  globalThis.fetch = async (_url, init) => {
-    assert.deepEqual(JSON.parse(String(init?.body)), { request: input });
-    return new Response(JSON.stringify({ success: true, data: {
-      status: "completed", turn: { id: input.turn_id, conversation_id: input.conversation_id },
-    } }));
-  };
-  await api.startSavedTurn(input);
-});
-
 test("saved turn rejects unsupported fields and invalid revisions before sending", async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });
   let calls = 0;
   globalThis.fetch = async () => { calls += 1; throw new Error("must not send"); };
   const input = { turn_id: "turn-1", conversation_id: "conversation-1", conversation_revision: 7, content: "hello" };
-  for (const patch of [{ approved: true }, { state: {} }, { attachments: [] }, { thinking_level: "ultra" }, { thinking_level: true }, { strategy_reference: "" }, { strategy_reference: "x".repeat(257) }, { conversation_revision: 0 },
+  for (const patch of [{ approved: true }, { state: {} }, { attachments: [] }, { conversation_revision: 0 },
     { conversation_revision: Number.MAX_SAFE_INTEGER + 1 }, { turn_id: "../escape" }, { content: " " }, { content: "あ".repeat(22000) }]) {
-    await assert.rejects(api.startSavedTurn({ ...input, ...patch } as Parameters<typeof api.startSavedTurn>[0]), /invalid|unsupported/);
+    await assert.rejects(api.startSavedTurn({ ...input, ...patch }), /invalid|unsupported/);
   }
   assert.equal(calls, 0);
 });
@@ -257,22 +204,6 @@ test("saved turn content validator rejects malformed image blocks without throwi
     { type: "text", text: "Inspect this" },
     { type: "image_url", image_url: { url: "https://example.test/image.png" } },
   ]), false);
-  assert.equal(validSavedTurnContent([
-    { type: "text", text: "Inspect this" },
-    { type: "image_url", image_url: { url: "data:image/png;base64,AAE=" } },
-  ]), false);
-  assert.equal(validSavedTurnContent([
-    { type: "text", text: "Inspect this" },
-    { type: "image_url", image_url: {
-      url: "data:image/jpeg;base64,iVBORw0KGgo=",
-    } },
-  ]), false);
-  assert.equal(validSavedTurnContent([
-    { type: "text", text: "Inspect this" },
-    { type: "image_url", image_url: {
-      url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/axR4xUAAAAASUVORK5CYII=",
-    } },
-  ]), true);
 });
 
 test("saved turn rejects another conversation outcome without replay", async (context) => {
@@ -1115,29 +1046,57 @@ test("composer command feedback surfaces pack block result messages and paths", 
   );
 });
 
-test("generic state changes do not alter command feedback severity", () => {
+test("deepthink command feedback uses warning only while the mode is enabled", () => {
   assert.equal(
     composerCommandFeedbackTone({
       command: {
-        id: "strategy",
-        name: "strategy",
-        label: "Strategy",
+        id: "deepthink",
+        name: "deepthink",
+        label: "DeepThink",
         category: "model",
         visibility: "default",
         risk: "medium",
-        execution: { type: "settings_patch", section: "models", field: "strategy_reference" },
+        execution: {
+          type: "rumi_function",
+          qualified_name: "defaultspack:ai_set_deepthink_enabled",
+        },
       },
       executed: true,
       operation_status: "succeeded",
       state_changes: [{
-        state_ref: "defaultspack:models.strategy_reference",
-        value: "provider:strategy",
+        state_ref: "defaultspack:models.deepthink_enabled",
+        value: true,
         revision: 1,
+      }],
+    }),
+    "warning",
+  );
+  assert.equal(
+    composerCommandFeedbackTone({
+      command: {
+        id: "deepthink",
+        name: "deepthink",
+        label: "DeepThink",
+        category: "model",
+        visibility: "default",
+        risk: "medium",
+        execution: {
+          type: "rumi_function",
+          qualified_name: "defaultspack:ai_set_deepthink_enabled",
+        },
+      },
+      executed: true,
+      operation_status: "succeeded",
+      state_changes: [{
+        state_ref: "defaultspack:models.deepthink_enabled",
+        value: false,
+        revision: 2,
       }],
     }),
     "success",
   );
 });
+
 test("template ai input selects composer and tool policy metadata", () => {
   const catalog = {
     ai_inputs: [
@@ -1361,13 +1320,13 @@ test("command protocol catalog is authoritative and invocation preserves its env
   const originalFetch = globalThis.fetch;
   const requests: string[] = [];
   const legacyCommand = {
-    id: "strategy",
-    name: "strategy",
-    label: "Strategy",
+    id: "deepthink",
+    name: "deepthink",
+    label: "DeepThink",
     category: "model",
     visibility: "default",
     risk: "medium",
-    execution: { type: "rumi_function", qualified_name: "defaultspack:ai_set_strategy_enabled" },
+    execution: { type: "rumi_function", qualified_name: "defaultspack:ai_set_deepthink_enabled" },
   };
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = requestTarget(input);
@@ -1378,20 +1337,20 @@ test("command protocol catalog is authoritative and invocation preserves its env
           kind: "ResolvedCommandCatalog",
           catalog_revision: "revision-1",
           commands: [{
-            canonical_id: "defaultspack:strategy",
+            canonical_id: "defaultspack:deepthink",
             pack_id: "defaultspack",
             pack_generation: 1,
             command_version: "1.0.0",
-            identity: { id: "strategy", name: "strategy", version: "1.0.0" },
+            identity: { id: "deepthink", name: "deepthink", version: "1.0.0" },
             presentation: {
-              label: { fallback: "Strategy" },
+              label: { fallback: "DeepThink" },
               category: "model",
               visibility: "default",
-              icon: "strategy",
-              input: { kind: "toggle", state_ref: "defaultspack:models.strategy_enabled" },
+              icon: "deepthink",
+              input: { kind: "toggle", state_ref: "defaultspack:models.deepthink_enabled" },
               mounts: [],
             },
-            execution: { kind: "state_mutation", state_ref: "defaultspack:models.strategy_enabled" },
+            execution: { kind: "state_mutation", state_ref: "defaultspack:models.deepthink_enabled" },
             availability: { status: "available" },
             legacy: legacyCommand,
           }],
@@ -1402,9 +1361,9 @@ test("command protocol catalog is authoritative and invocation preserves its env
           api_version: "tobkiri.commands/v1",
           operation_id: "operation-1",
           status: "succeeded",
-          command_ref: "defaultspack:strategy",
+          command_ref: "defaultspack:deepthink",
           state_changes: [{
-            state_ref: "defaultspack:models.strategy_enabled",
+            state_ref: "defaultspack:models.deepthink_enabled",
             value: true,
             revision: 1,
             freshness: "authoritative",
@@ -1517,6 +1476,35 @@ test("updateUiSettingsPatches sends field-scoped settings mutations", async () =
   });
 });
 
+test("settings patches confirm nested model preferences after a JSON round trip", async () => {
+  const originalFetch = globalThis.fetch;
+  const submitted = { first: "high", second: "low", nested: [null, { enabled: true }] };
+  try {
+    for (const [acknowledged, valid] of [
+      [{ nested: [null, { enabled: true }], second: "low", first: "high" }, true],
+      [{ ...submitted, first: "low" }, false],
+      [{ ...submitted, extra: "high" }, false],
+      [{ ...submitted, nested: [{ enabled: true }, null] }, false],
+    ] as const) {
+      let calls = 0;
+      globalThis.fetch = (async () => {
+        calls += 1;
+        return new Response(JSON.stringify({ status: "ok", data: {
+          values: { models: { thinking_level_by_profile: acknowledged } }, document_revision: 8,
+        } }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }) as typeof fetch;
+      const save = api.updateUiSettingsPatches([
+        { section: "models", field: "thinking_level_by_profile", value: submitted },
+      ], 7);
+      if (valid) await save;
+      else await assert.rejects(save);
+      assert.equal(calls, 1);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("settings patches reject malformed or unrelated acknowledgements without resending", async () => {
   const originalFetch = globalThis.fetch;
   const changes = { general: { composer_placeholder: "Hello" } };
@@ -1590,52 +1578,6 @@ const validUiCatalogFixture = {
   extension_points: [],
 };
 
-const strategyCatalogFixture = {
-  api_version: "tobkiri.ai.strategy.catalog/v1",
-  strategies: [{
-    strategy_reference: "rumi_deepthink_pack.deepthink.execute",
-    label: "DeepThink",
-    description: "Multi-step reasoning",
-    command: {
-      name: "deepthink",
-      label: "DeepThink",
-      description: "Use this strategy for the request.",
-      aliases: ["dt"],
-    },
-    signature_verified: true,
-    plan_admitted: true,
-    available: true,
-  }],
-  count: 1,
-  catalog_revision: "strategy-revision-1",
-  diagnostics: [],
-  quarantined_pack_ids: [],
-};
-
-const selectedToolCatalogFixture = {
-  services: [{ service_id: "web", label: "Web検索" }],
-  tools: [{
-    tool_id: "web_search",
-    service_id: "web",
-    service_label: "Web検索",
-    name: "Web Search",
-    summary: "Search the web",
-    action_class: "search",
-    connection_status: "unavailable",
-    tags: ["web"],
-  }, {
-    tool_id: "calculator",
-    service_id: "other",
-    service_label: "Other",
-    name: "Calculator",
-    summary: "Basic arithmetic helper.",
-    action_class: "read",
-    connection_status: "connected",
-    tags: ["math"],
-  }],
-  count: 2,
-};
-
 async function assertUiCatalogResponseRejected(payload: unknown): Promise<void> {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => new Response(JSON.stringify(payload), {
@@ -1651,48 +1593,14 @@ async function assertUiCatalogResponseRejected(payload: unknown): Promise<void> 
 
 test("uiCatalog accepts the canonical Pack v4 response envelope", async () => {
   const originalFetch = globalThis.fetch;
-  const paths: string[] = [];
-  globalThis.fetch = (async (input) => {
-    const path = requestTarget(input);
-    paths.push(path);
-    return new Response(JSON.stringify({
-      status: "ok",
-      data: path === routeKey("api/ui/full-catalog")
-        ? validUiCatalogFixture
-        : path === routeKey("api/ai/strategies")
-          ? strategyCatalogFixture
-          : selectedToolCatalogFixture,
-    }), { status: 200, headers: { "Content-Type": "application/json" } });
-  }) as typeof fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    status: "ok",
+    data: validUiCatalogFixture,
+  }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
   try {
     const catalog = await api.uiCatalog();
     assert.equal(catalog.app?.id, "defaultspack");
-    assert.deepEqual(paths, [routeKey("api/ui/full-catalog"), routeKey("api/tools/catalog"), routeKey("api/ai/strategies")]);
-    assert.deepEqual(catalog.sidebar.items.map((item) => item.id), ["web_search", "calculator"]);
-    assert.equal(catalog.sidebar.items[0]?.ui?.composer_label, "Web Search");
-    assert.equal(catalog.sidebar.items[0]?.badge, "Unavailable");
-    assert.deepEqual(catalog.strategy_contributions, strategyCatalogFixture.strategies);
-    const mentionableTools = composerExtensionItems(catalog.sidebar.items);
-    assert.deepEqual(mentionableTools.map((item) => item.id), ["calculator"]);
-    assert.equal(mentionableTools[0]?.originKind, "profile_tool_catalog");
-    assert.equal(mentionableTools[0]?.serviceId, "other");
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test("uiCatalog rejects a broken selected tool projection instead of showing an empty @ palette", async () => {
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async (input) => new Response(JSON.stringify({
-    status: "ok",
-    data: requestTarget(input) === routeKey("api/ui/full-catalog")
-      ? validUiCatalogFixture
-      : requestTarget(input) === routeKey("api/ai/strategies")
-        ? strategyCatalogFixture
-        : { ...selectedToolCatalogFixture, count: 3 },
-  }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
-  try {
-    await assert.rejects(api.uiCatalog(), /endpoint schema/);
+    assert.deepEqual(catalog.sidebar.items, []);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -1760,161 +1668,6 @@ test("authority ui operator unavailable errors explain the viewer signing secret
   assert.match(message, /AUTHORITY_UI_OPERATOR_UNAVAILABLE/);
   assert.match(message, /署名secret/);
   assert.match(message, /RUMI_PANEL_BOOTSTRAP_SECRET/);
-});
-
-test("unregistered contract operations surface an identifiable unknown-operation error", async (context) => {
-  const originalFetch = globalThis.fetch;
-  context.after(() => { globalThis.fetch = originalFetch; });
-  globalThis.fetch = async (url, init) => {
-    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent("POST /api/chat/steer")}`);
-    assert.equal(init?.method, "POST");
-    return new Response(JSON.stringify({
-      success: false,
-      data: { state: "contract_dispatch_denied", code: "CONTRACT_OPERATION_UNKNOWN" },
-      error: "Unknown contract operation",
-    }), { status: 404, statusText: "Not Found" });
-  };
-
-  const failure = await api.conversationSteer({ action: "list", conversation_id: "c-1" }).then(
-    () => { throw new Error("expected the steer request to fail"); },
-    (error: unknown) => error,
-  );
-  assert.ok(failure instanceof Error);
-  assert.match(failure.message, /HTTP 404 Not Found/);
-  assert.ok(isDefaultspackContractOperationUnknownError(failure));
-});
-
-test("other API failures are not mistaken for an unregistered contract operation", () => {
-  assert.equal(isDefaultspackContractOperationUnknownError(new Error("HTTP 500")), false);
-  assert.equal(isDefaultspackContractOperationUnknownError("CONTRACT_OPERATION_UNKNOWN"), false);
-  const coded = Object.assign(new Error("HTTP 403 Forbidden"), { code: "FORBIDDEN" });
-  assert.equal(isDefaultspackContractOperationUnknownError(coded), false);
-  const legacy = new Error("HTTP 404 Not Found\n詳細: Unknown contract operation");
-  assert.equal(isDefaultspackContractOperationUnknownError(legacy), true);
-});
-
-test("conversation tool preferences read through the canonical conversation record route", async (context) => {
-  const originalFetch = globalThis.fetch;
-  context.after(() => { globalThis.fetch = originalFetch; });
-  const requests: Array<{ url: string; method: string; body?: unknown }> = [];
-  globalThis.fetch = async (url, init) => {
-    requests.push({
-      url: String(url),
-      method: String(init?.method ?? "GET"),
-      body: init?.body ? JSON.parse(String(init.body)) : undefined,
-    });
-    return new Response(JSON.stringify({
-      success: true,
-      data: {
-        id: "conv-1",
-        conversation_revision: 7,
-        title: "t",
-        model: "m",
-        tags: [],
-        is_starred: false,
-        is_archived: false,
-        created_at: 1,
-        updated_at: 1,
-        messages: [],
-        metadata: {
-          ui_state: { theme: "dark" },
-          tool_preferences: { mode: "manual", include: [{ kind: "service", id: "svc-1" }] },
-        },
-      },
-      error: null,
-    }));
-  };
-
-  const result = await api.getConversationToolPreferences("conv-1");
-  assert.deepEqual(result, {
-    conversation_id: "conv-1",
-    preferences: { mode: "manual", include: [{ kind: "service", id: "svc-1" }] },
-  });
-  assert.equal(requests.length, 1);
-  assert.equal(
-    requests[0].url,
-    `/api/contracts/defaultspack/${encodeURIComponent("GET /api/chat/conversation?conversation_id=conv-1")}`,
-  );
-});
-
-test("conversation tool preferences write merges metadata through the canonical update route", async (context) => {
-  const originalFetch = globalThis.fetch;
-  context.after(() => { globalThis.fetch = originalFetch; });
-  const requests: Array<{ url: string; method: string; body?: Record<string, unknown> }> = [];
-  const record = (metadata: Record<string, unknown>) => ({
-    id: "conv-1",
-    conversation_revision: 8,
-    title: "t",
-    model: "m",
-    tags: [],
-    is_starred: false,
-    is_archived: false,
-    created_at: 1,
-    updated_at: 1,
-    messages: [],
-    metadata,
-  });
-  globalThis.fetch = async (url, init) => {
-    const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined;
-    requests.push({ url: String(url), method: String(init?.method ?? "GET"), body });
-    const updates = body && typeof body.updates === "object" && body.updates !== null
-      ? body.updates as Record<string, unknown>
-      : {};
-    const metadata = updates.metadata && typeof updates.metadata === "object"
-      ? updates.metadata as Record<string, unknown>
-      : { ui_state: { theme: "dark" } };
-    return new Response(JSON.stringify({ success: true, data: record(metadata), error: null }));
-  };
-
-  const result = await api.updateConversationToolPreferences("conv-1", {
-    mode: "manual",
-    include: [{ kind: "service", id: "svc-1" }, "tool-extra", { kind: "bogus", id: "skip" }],
-  });
-  assert.deepEqual(requests.map((entry) => entry.method), ["GET", "PUT"]);
-  assert.equal(
-    requests[1].url,
-    `/api/contracts/defaultspack/${encodeURIComponent("PUT /api/chat/conversation")}`,
-  );
-  assert.deepEqual(requests[1].body, {
-    conversation_id: "conv-1",
-    updates: {
-      metadata: {
-        ui_state: { theme: "dark" },
-        tool_preferences: {
-          mode: "manual",
-          include: [{ kind: "service", id: "svc-1" }, { kind: "tool", id: "tool-extra" }],
-          exclude: [],
-          scope: "conversation",
-          strategy: null,
-          must_use: false,
-          review: false,
-          preview_id: null,
-        },
-      },
-    },
-    expected_conversation_revision: 8,
-  });
-  assert.equal(result.conversation_id, "conv-1");
-  assert.equal((result.preferences as Record<string, unknown>).mode, "manual");
-});
-
-test("command event stream surfaces the Host contract error code", async (context) => {
-  const originalFetch = globalThis.fetch;
-  context.after(() => { globalThis.fetch = originalFetch; });
-  globalThis.fetch = async () => new Response(JSON.stringify({
-    success: false,
-    data: { state: "contract_dispatch_denied", code: "CONTRACT_OPERATION_UNKNOWN" },
-    error: "Unknown frontend contract operation",
-  }), { status: 404, statusText: "Not Found" });
-
-  const events = streamCommandInvocationEvents("inv-1", { waitSeconds: 0 });
-  const failure = await events.next().then(
-    () => null,
-    (error: unknown) => error,
-  );
-  assert.ok(failure instanceof Error);
-  assert.match(failure.message, /CONTRACT_OPERATION_UNKNOWN/);
-  assert.ok(isDefaultspackContractOperationUnknownError(failure));
 });
 
 test("selected tools are cleared after send unless settings opt in", () => {
@@ -2429,54 +2182,32 @@ test("saveProviderApiKey sends canonical preparation and returns success only af
   }
 });
 
-test("saveProviderApiKey applies the OpenRouter preset when no endpoint override is supplied", async () => {
+test("saveProviderApiKey fills a known provider endpoint before the approved configure flow", async () => {
+  const f = providerConfigurationFixture();
+  f.configuration.endpoint = "https://api.openai.com/v1";
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   const originalFetch = globalThis.fetch;
   const bodies: Record<string, unknown>[] = [];
   Object.defineProperty(globalThis, "window", {
     configurable: true,
-    value: {
-      sessionStorage: {
-        getItem: () => null,
-        setItem: () => undefined,
-        removeItem: () => undefined,
-      },
-      location: { hash: "" },
-    },
+    value: { sessionStorage: f.ports.storage, location: { hash: "" } },
   });
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body ?? "{}"));
     bodies.push(body);
-    const path = requestTarget(input);
-    const data = path.includes("interactive-approval")
+    const data = requestTarget(input).includes("interactive-approval")
       ? { request_id: "approval-1", state: "approved" }
-      : {
-        effect_id: "effect-1",
-        approval_request_id: "approval-1",
-        state: body.phase === "resume" ? "succeeded" : "approval_pending",
-      };
+      : f.status(body.phase === "resume" ? "succeeded" : "approval_pending");
     return new Response(JSON.stringify({ status: "ok", data }), {
-      status: 200, headers: { "Content-Type": "application/json" },
+      status: 200,
+      headers: { "Content-Type": "application/json" },
     });
   }) as typeof fetch;
-
   try {
-    const result = await api.saveProviderApiKey("openrouter", "fixture-private-key", {
-      apiId: "main",
-    });
-    assert.equal(result.configured, true);
-    assert.deepEqual(bodies[0], {
-      phase: "prepare",
-      effect_kind: "provider_configure",
-      request: {
-        connection_name: "openrouter.main",
-        protocol: "openai-compatible",
-        endpoint: "https://openrouter.ai/api/v1",
-        key_value: "fixture-private-key",
-      },
-      correlation_id: bodies[0].correlation_id,
-    });
-    assert.doesNotMatch(JSON.stringify(bodies.slice(1)), /fixture-private-key|openrouter\.ai/);
+    await api.saveProviderApiKey("openai", "fixture-private-key", { apiId: "main" });
+    assert.deepEqual(bodies[0].request, f.configuration);
+    assert.equal(bodies[0].effect_kind, "provider_configure");
+    assert.doesNotMatch(JSON.stringify(bodies.slice(1)), /fixture-private-key|https:/);
   } finally {
     globalThis.fetch = originalFetch;
     if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
@@ -2484,12 +2215,11 @@ test("saveProviderApiKey applies the OpenRouter preset when no endpoint override
   }
 });
 
-test("saveProviderApiKey requires an explicit HTTPS endpoint for Custom", async () => {
-  await assert.rejects(api.saveProviderApiKey("openai_compatible", "fixture-private-key", {
-    apiId: "main",
-    kind: "llm",
-    protocol: "openai-compatible",
-  }), /HTTPSのProvider接続先URLを入力してください/);
+test("saveProviderApiKey keeps Custom endpoints explicit", async () => {
+  await assert.rejects(
+    api.saveProviderApiKey("openai_compatible", "fixture-private-key", { apiId: "main", protocol: "openai-compatible" }),
+    /Custom ProviderにはHTTPSの接続先URL/,
+  );
 });
 
 test("saveProviderApiKey forwards an explicit custom LLM protocol unchanged", async () => {

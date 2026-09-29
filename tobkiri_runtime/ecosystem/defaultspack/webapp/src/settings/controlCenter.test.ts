@@ -20,6 +20,7 @@ test("settings control center keeps the required section order", () => {
     "AI Assistant",
     "Models",
     "Display & Input",
+    "Calendar",
     "Connections",
     "Features",
     "Tools",
@@ -64,7 +65,7 @@ test("AI API setup is shared with models while connections keeps the source fiel
   assert.deepEqual(connections?.fields.map((field) => field.id), ["api_keys"]);
 });
 
-test("Strategy selection follows the model choice and precedes AI API setup", () => {
+test("DeepThink follows the model choice and precedes AI API setup", () => {
   const sections = buildControlCenterSections([
     {
       id: "models",
@@ -72,7 +73,7 @@ test("Strategy selection follows the model choice and precedes AI API setup", ()
       fields: [
         { id: "main_model", label: "Main model", type: "model_select" },
         { id: "lightweight_model", label: "Lightweight model", type: "model_select" },
-        { id: "strategy_reference", label: "Strategy", type: "select" },
+        { id: "deepthink_enabled", label: "DeepThink", type: "toggle" },
         { id: "preferred_model_group", label: "Model group", type: "select" },
       ],
     },
@@ -85,7 +86,7 @@ test("Strategy selection follows the model choice and precedes AI API setup", ()
 
   assert.deepEqual(
     sections.find((section) => section.id === "models_api")?.fields.map((field) => field.id),
-    ["main_model", "lightweight_model", "strategy_reference", "preferred_model_group", "api_keys"],
+    ["main_model", "lightweight_model", "deepthink_enabled", "preferred_model_group", "api_keys"],
   );
 });
 
@@ -106,7 +107,7 @@ test("pack-owned model and tool choices use their user-facing destinations", () 
   );
 });
 
-test("feature-owned model choices stay with their feature instead of the global model page", () => {
+test("calendar model choices stay with Calendar instead of the global model page", () => {
   const calendar = {
     id: "calendar",
     label: "Calendar",
@@ -115,7 +116,7 @@ test("feature-owned model choices stay with their feature instead of the global 
 
   assert.equal(
     controlCenterSectionForField(calendar, { id: "agent_model", label: "Agent model", type: "select" }),
-    "features",
+    "calendar",
   );
 });
 
@@ -220,7 +221,7 @@ test("response guidance belongs to the AI assistant section", () => {
   assert.equal(assistant?.fields[0]?.label, "応答の方針");
 });
 
-test("subagent settings lead automation extension fields", () => {
+test("subagent settings appear with models while automation keeps its extension fields", () => {
   const sections = buildControlCenterSections([
     {
       id: "continuity",
@@ -230,14 +231,27 @@ test("subagent settings lead automation extension fields", () => {
     {
       id: "automation",
       label: "Automation",
-      fields: [{ id: "subagent_teams_enabled", label: "Use subagents", type: "toggle" }],
+      fields: [{ id: "subagent_teams_enabled", label: "Use subagents", type: "toggle", control_center_section: "automation" } as SettingsSection["fields"][number]],
     },
   ] as SettingsSection[]);
 
   assert.deepEqual(
     sections.find((section) => section.id === "computer_automation")?.fields.map((field) => field.id),
-    ["subagent_teams_enabled", "cloud_handoff_enabled"],
+    ["cloud_handoff_enabled"],
   );
+  assert.deepEqual(
+    sections.find((section) => section.id === "models_api")?.fields.map((field) => field.id),
+    ["subagent_teams_enabled"],
+  );
+});
+
+test("Computer Use appearance is omitted from settings navigation", () => {
+  const sections = buildControlCenterSections([{ id: "computer_use_haze", label: "Computer Use", fields: [
+    { id: "preset", label: "Preset", type: "select" },
+    { id: "start_color", label: "Start Color", type: "text" },
+  ] }]);
+
+  assert.equal(sections.flatMap((section) => section.fields).some((field) => field.sourceSectionId === "computer_use_haze"), false);
 });
 
 test("MCP management leads other tool controls", () => {

@@ -49,6 +49,35 @@ export function modelSupportsAudioInput(profile: ModelProfile | null | undefined
   return explicitAudioCapability(profile) === true;
 }
 
+/**
+ * Decide whether a microphone recording must use the transcription endpoint.
+ *
+ * AI dictation is an explicit request for text, even when the selected chat
+ * model can accept an audio attachment.  Keeping that distinction here avoids
+ * accidentally treating dictated words as a chat instruction or sending them
+ * before the person has reviewed the text.
+ */
+export function shouldTranscribeVoiceInput(
+  profile: ModelProfile | null | undefined,
+  useAiTranscription: boolean,
+): boolean {
+  return useAiTranscription || !modelSupportsAudioInput(profile);
+}
+
+/**
+ * Add a completed dictation to the draft without changing its meaning.
+ *
+ * The composer owns sending, so this deliberately only returns draft text and
+ * never submits it.  In particular, it must not add an instruction such as
+ * "文字起こしして:" before the recognized words.
+ */
+export function appendVoiceTranscript(input: string, transcript: string): string {
+  const spokenText = transcript.trim();
+  if (!spokenText) return input;
+  const draft = input.trimEnd();
+  return `${draft}${draft ? "\n" : ""}${spokenText}`;
+}
+
 export function isAudioAttachment(file: Pick<AttachedFile, "name" | "type">): boolean {
   if (String(file.type ?? "").toLowerCase().startsWith("audio/")) return true;
   return /\.(?:aac|aif|aiff|flac|m4a|mp3|oga|ogg|opus|wav|webm)$/i.test(file.name);

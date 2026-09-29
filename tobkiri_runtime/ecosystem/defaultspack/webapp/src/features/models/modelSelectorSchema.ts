@@ -1,5 +1,5 @@
 import type { ModelProfile, UICatalog } from "../../lib/api";
-import type { ModelSelectOption } from "./modelSelect";
+import { modelOptionProviderIds, type ModelSelectOption } from "./modelSelect";
 
 export type ModelSelectorSurface = "composer" | "settings";
 
@@ -265,7 +265,7 @@ function selectableProfile(profile: ModelProfile): SelectableModel {
 
 function selectableOption(option: ModelSelectOption): SelectableModel {
   return {
-    providerIds: [option.provider_id, option.provider_display_name].map(normalized).filter(Boolean),
+    providerIds: modelOptionProviderIds(option).map(normalized).filter(Boolean),
     modelIds: [option.value, option.qualified_model_id, option.model_id].map(normalized).filter(Boolean),
     tags: [
       ...(option.capability_tags ?? []),

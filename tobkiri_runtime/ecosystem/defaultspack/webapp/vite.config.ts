@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 const compatibilitySurfacePath = normalizePath(path.resolve(__dirname, "src/App.tsx"));
+const localRuntimeTarget = process.env.DEFAULTSPACK_API_TARGET || "http://127.0.0.1:8766";
 
 function staticShellChunkUrls(): Plugin {
   return {
@@ -29,7 +30,11 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: process.env.DEFAULTSPACK_API_TARGET || "http://127.0.0.1:8766",
+        target: localRuntimeTarget,
+        changeOrigin: true,
+      },
+      "/health": {
+        target: localRuntimeTarget,
         changeOrigin: true,
       },
     },

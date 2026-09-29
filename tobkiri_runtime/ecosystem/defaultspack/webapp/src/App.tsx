@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { Cloud, Copy, Download, Hand, Link, Loader2, RefreshCw, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { Cloud, Copy, Download, Hand, Link, Loader2, X } from "lucide-react";
 
 import {
   CompanyWorkspacePanel,
@@ -27,6 +27,7 @@ import {
   type TransientAlertTone,
 } from "./components/TransientAlert";
 import { WarmActionIcon } from "./components/WarmActionIcon";
+import { useExitPresence } from "./ui/motion/useExitPresence";
 import {
   TobkiriLoadingScreen,
   type TobkiriLoadingStep,
@@ -54,8 +55,7 @@ import { ConversationShareLanding, ImportedConversationNotice } from "./pages/Co
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "./components/HistoryBoard";
 import type { ToolPreviewItem, ToolPreviewMode } from "./components/ToolPreview";
 import { buildToolPreviewDisplayItems, hasCanvasItems } from "./components/ToolPreview";
-import { ChatStreamInterruptedError, admittedStrategyContributions, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, isDefaultspackContractOperationUnknownError, mergeComposerCommands, savedTurnContentFromAttachments, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
-import { modelStateWriteForSettingsField } from "./lib/modelSettingsWrite";
+import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, mergeComposerCommands, savedTurnContentFromAttachments, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
 import { applyCommandStateSnapshots, createCommandInvocationId } from "./lib/commandState";
 import type { ActionApprovalMode } from "./features/tools/ActionApprovalControl";
 import {
@@ -107,7 +107,6 @@ import {
   beginHighRiskAttempt,
   highRiskCommandRef,
   highRiskPrepareArguments,
-  highRiskResumeDisposition,
   releaseHighRiskAttempt,
 } from "./lib/highRiskCommand";
 import { fileToAttachment } from "./lib/attachments";
@@ -119,7 +118,7 @@ import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/de
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
-import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnConfirmationPendingNotice, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
+import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
 import { reportClientDiagnostic } from "./lib/clientDiagnostics";
 import {
@@ -128,6 +127,7 @@ import {
   normalizeComposerHomeTitle,
   resolveComposerHomeTitle,
   resolveSettingsAssistantSkill,
+  withSettingsAssistantSkill,
 } from "./lib/settingsMode";
 import { isRegisteredSlashCommand, mergeRegisteredSlashCommands, registeredSlashCommandsFromSettings } from "./lib/registeredSlashCommands";
 import { selectTemplateAiInput, selectTemplateComposerInput, selectTemplateToolPolicy, templateAiInputParamsPayload, templateComposerWidgetsForInput, templateFeatureFlagEnabled, templateToolPolicyReferencePayload, templateToolPolicySettings } from "./lib/templateAiInput";
@@ -1648,7 +1648,7 @@ function CanvasPeek({
     <button
       type="button"
       onClick={onOpen}
-      className="mx-auto mb-2 flex w-[min(620px,calc(100%_-_40px))] items-center justify-between gap-3 rounded-xl border border-zinc-800/90 bg-zinc-950/85 px-3 py-2 text-left shadow-[0_14px_38px_rgba(0,0,0,0.24)] transition-colors hover:border-zinc-700 hover:bg-zinc-900/90"
+      className="rumi-composer-companion mx-auto mb-2 flex items-center justify-between gap-3 rounded-xl border border-zinc-800/90 bg-zinc-950/85 px-3 py-2 text-left shadow-[0_14px_38px_rgba(0,0,0,0.24)] transition-colors hover:border-zinc-700 hover:bg-zinc-900/90"
       title="Canvas を開く"
     >
       <span className="flex min-w-0 items-center gap-3">
@@ -2232,13 +2232,9 @@ function contextUsageFor(conversation: Conversation | null, profile: ModelProfil
   return { usedTokens, maxContext, ratio, label: `${Math.round(ratio * 100)}%` };
 }
 
-export function composerExtensionItems(items: SidebarItem[]): ComposerExtensionItem[] {
+function composerExtensionItems(items: SidebarItem[]): ComposerExtensionItem[] {
   return items
     .filter((item) => item.category === "tool" || item.category === "capability")
-    // The selected Registry exposes descriptors before their exact executor
-    // route is ready. Keep them visible in Tools, but never offer an @ mention
-    // that would imply the unavailable operation can run.
-    .filter((item) => item.origin?.kind !== "profile_tool_catalog" || item.tool_info?.setup_state?.status === "ok")
     .map((item) => ({
       id: item.id,
       label: item.label,
@@ -2246,10 +2242,7 @@ export function composerExtensionItems(items: SidebarItem[]): ComposerExtensionI
       description: item.description,
       tags: item.tags ?? [],
       sourcePackId: item.tool_info?.source_pack_id,
-      originKind: item.origin?.kind,
-      serviceId: item.origin?.kind === "profile_tool_catalog"
-        ? item.ui?.group_id
-        : undefined,
+      serviceId: item.tool_info?.service_id ?? item.ui?.service_id,
       ui: item.ui,
     }));
 }
@@ -2520,70 +2513,6 @@ function modelCommandInputQuery(value: string): string | null {
   return String(match[1] ?? "").trim();
 }
 
-type NewConversationStageProps = {
-  composerHomeTitle: string;
-  error: string | null;
-  isLaunching: boolean;
-  onDismissError: () => void;
-  onRetry?: () => void;
-  renderComposer: (isCentered: boolean) => ReactNode;
-};
-
-/** Renders the centered composer without hiding a failed first saved turn. */
-export function NewConversationStage({
-  composerHomeTitle,
-  error,
-  isLaunching,
-  onDismissError,
-  onRetry,
-  renderComposer,
-}: NewConversationStageProps): ReactNode {
-  return (
-    <div className={cn("rumi-new-chat-stage rumi-layer-local-popover flex flex-1 items-center justify-center px-5 pb-[10vh]", isLaunching && "is-launching")}>
-      <div className="w-full">
-        {error ? (
-          <ErrorNotice
-            className="rumi-chat-error mx-auto mb-4 max-w-[720px] rounded-xl border-red-400/25 bg-red-500/[0.09] px-3.5 py-3 text-red-100"
-            copyLabel="チャットエラーをコピー"
-            errorIcon="chat"
-            message={error}
-            messageClassName="mt-1 whitespace-pre-wrap text-[12px] leading-5 text-red-100/80"
-            title="処理を完了できませんでした"
-            titleClassName="text-[12px] text-red-100"
-            trailing={(
-              <button
-                aria-label="エラーを閉じる"
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-red-200/70 hover:bg-red-100/10 hover:text-red-50"
-                onClick={onDismissError}
-                title="閉じる"
-                type="button"
-              >
-                <X aria-hidden="true" size={15} />
-              </button>
-            )}
-          >
-            {onRetry ? (
-              <button
-                className="mt-2.5 inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-red-200/25 bg-red-100/[0.06] px-3 text-[12px] font-semibold text-red-50 hover:bg-red-100/[0.11]"
-                onClick={onRetry}
-                type="button"
-              >
-                <RefreshCw aria-hidden="true" size={13} />
-                再試行
-              </button>
-            ) : null}
-          </ErrorNotice>
-        ) : (
-          <h1 className="rumi-greeting mx-auto mb-7 max-w-[720px] px-4 text-center text-[clamp(24px,3.2vw,44px)] font-medium leading-tight text-zinc-200">
-            {composerHomeTitle}
-          </h1>
-        )}
-        {renderComposer(true)}
-      </div>
-    </div>
-  );
-}
-
 export function ChatApp() {
   const [catalog, setCatalog] = useState<UICatalog | null>(null);
   const [modelProfiles, setModelProfiles] = useState<ModelProfile[]>([]);
@@ -2593,7 +2522,6 @@ export function ChatApp() {
       void api.listModelProfiles().then((result) => {
         if (!disposed) setModelProfiles(result.profiles);
       }).catch(() => { /* Keep the last confirmed list on a read failure. */ });
-      void refreshCatalog().catch(console.error);
     };
     window.addEventListener("tobkiri-model-profiles-changed", refreshModels);
     return () => {
@@ -2675,15 +2603,6 @@ export function ChatApp() {
   const [modelSteerStatus, setModelSteerStatus] = useState<ComposerSteerStatus | null>(null);
   const [modelSteerBusy, setModelSteerBusy] = useState(false);
   const [steerItems, setSteerItems] = useState<ConversationSteerItem[]>([]);
-  // The steer HTTP operation only exists when the active frontend contract map
-  // registers it; latch this off on CONTRACT_OPERATION_UNKNOWN instead of
-  // surfacing a 404 for every conversation.
-  const [steerSupported, setSteerSupported] = useState(true);
-  // The conversation preview and command-invocation event HTTP operations only
-  // exist when the active frontend contract map registers them; latch each off
-  // on CONTRACT_OPERATION_UNKNOWN instead of repeating a 404 on every render.
-  const [conversationPreviewSupported, setConversationPreviewSupported] = useState(true);
-  const [commandInvocationEventsSupported, setCommandInvocationEventsSupported] = useState(true);
   const [previewMode, setPreviewMode] = useLocalStorage<ToolPreviewMode>("rumi-preview-mode", "auto");
   const [activityPreviewWidth, setActivityPreviewWidth] = useLocalStorage("rumi-activity-preview-width", 340);
   const [canvasMemo, setCanvasMemo] = useLocalStorage("rumi-canvas-memo", "");
@@ -2886,6 +2805,14 @@ export function ChatApp() {
   const placeholder = String(settingsValues.general?.composer_placeholder ?? "メッセージを入力...");
   const locale = normalizeLocale(settingsValues.general?.language);
   const keyboardButtonNavigation = parseCommandBoolean(settingsValues.general?.keyboard_button_navigation, true);
+  const workspaceTabsEnabled = parseCommandBoolean(settingsValues.general?.workspace_tabs_enabled, true);
+  const subagentTeamsEnabled = parseCommandBoolean(settingsValues.automation?.subagent_teams_enabled, true);
+  const workspaceTabCreateOptions = useMemo(
+    () => WORKSPACE_TAB_CREATE_OPTIONS.filter((option) => (
+      option.kind !== "subagents" || subagentTeamsEnabled
+    )),
+    [subagentTeamsEnabled],
+  );
   const spotlightShortcut = String(settingsValues.general?.spotlight_shortcut ?? "Ctrl+K").trim() || "Ctrl+K";
   const spotlightShortcutEnabled = parseCommandBoolean(settingsValues.general?.spotlight_shortcut_enabled, true);
   const spotlightShortcutTextInput = parseCommandBoolean(settingsValues.general?.spotlight_shortcut_text_input, true);
@@ -2971,24 +2898,17 @@ export function ChatApp() {
     ?? activeProfile?.default_thinking_level
     ?? "medium",
   );
-  const strategyReference = typeof settingsValues.models?.strategy_reference === "string"
-    && settingsValues.models.strategy_reference.trim()
-    ? settingsValues.models.strategy_reference.trim()
-    : undefined;
-  const strategyContributions = useMemo(
-    () => admittedStrategyContributions(catalog?.strategy_contributions),
-    [catalog],
-  );
-  const selectedStrategyContribution = strategyReference
-    ? strategyContributions.find((strategy) => strategy.reference === strategyReference)
-    : undefined;
-  // A persisted selection is never silently downgraded when its Pack becomes
-  // unavailable. The user must explicitly choose Direct or another admitted strategy.
-  const strategySelectionInvalid = Boolean(
-    catalog && strategyReference && !selectedStrategyContribution,
-  );
+  const deepthinkEnabled = parseCommandBoolean(settingsValues.models?.deepthink_enabled, false);
   const commandStateRevisionsRef = useRef<Record<string, number>>({});
+  const deepthinkMutationQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const deepthinkDesiredStateRef = useRef(deepthinkEnabled);
+  const deepthinkPendingCountRef = useRef(0);
   const commandClientSequenceRef = useRef(0);
+  useEffect(() => {
+    if (deepthinkPendingCountRef.current === 0) {
+      deepthinkDesiredStateRef.current = deepthinkEnabled;
+    }
+  }, [deepthinkEnabled]);
   const contextUsage = contextUsageFor(activeConversation, activeProfile);
   const composerExtensions = useMemo(
     () => composerExtensionItems(sidebarItems)
@@ -3007,7 +2927,7 @@ export function ChatApp() {
     return Array.from(byId.values());
   }, [droppedWidgets, templateComposerWidgets]);
   const composerSkills = useMemo<ComposerSkillItem[]>(() => (
-    (catalog?.skills ?? []).map((skill) => ({
+    withSettingsAssistantSkill((catalog?.skills ?? []).map((skill) => ({
       id: skill.id,
       label: skill.label ?? skill.id,
       description: skill.description,
@@ -3015,7 +2935,7 @@ export function ChatApp() {
       appliesToTools: skill.applies_to_tools ?? [],
       aliases: skill.aliases ?? [],
       metadata: skill.metadata,
-    }))
+    })))
   ), [catalog?.skills]);
   const settingsAssistantSkill = useMemo<ComposerSkillItem>(() => (
     resolveSettingsAssistantSkill(composerSkills)
@@ -3163,12 +3083,7 @@ export function ChatApp() {
   ), [commandCatalog, settingsValues.commands?.registered_slash_commands, usesResolvedCommandProtocol]);
 
   useEffect(() => {
-    if (
-      !usesResolvedCommandProtocol
-      || pendingCommandApproval
-      || effectiveCommandCatalog.length === 0
-      || !commandInvocationEventsSupported
-    ) return;
+    if (!usesResolvedCommandProtocol || pendingCommandApproval || effectiveCommandCatalog.length === 0) return;
     let cancelled = false;
     void api.pendingCommandApprovals()
       .then(({ pending_approvals: approvals }) => {
@@ -3204,22 +3119,12 @@ export function ChatApp() {
         });
       })
       .catch((restoreError) => {
-        if (isDefaultspackContractOperationUnknownError(restoreError)) {
-          setCommandInvocationEventsSupported(false);
-          return;
-        }
         if (!cancelled) console.error("Failed to restore pending command approval", restoreError);
       });
     return () => {
       cancelled = true;
     };
-  }, [
-    commandInvocationEventsSupported,
-    effectiveCommandCatalog,
-    mode,
-    pendingCommandApproval,
-    usesResolvedCommandProtocol,
-  ]);
+  }, [effectiveCommandCatalog, mode, pendingCommandApproval, usesResolvedCommandProtocol]);
 
   useEffect(() => {
     if (!pendingHighRiskCommand) return;
@@ -3285,10 +3190,7 @@ export function ChatApp() {
           return;
         }
         if (approval.state === "approved" && invocation.state === "approved") {
-          if (!beginHighRiskAttempt(highRiskResumeStartedRef.current, pending.invocationId)) {
-            schedulePoll();
-            return;
-          }
+          if (!beginHighRiskAttempt(highRiskResumeStartedRef.current, pending.invocationId)) return;
           let resumed: Awaited<ReturnType<typeof api.resumeHighRiskCommand>>;
           try {
             resumed = await api.resumeHighRiskCommand(pending.invocationId);
@@ -3304,16 +3206,8 @@ export function ChatApp() {
             releaseHighRiskAttempt(highRiskResumeStartedRef.current, pending.invocationId);
             throw new Error("高リスク操作の再開状態が一致しません。");
           }
-          const resumeDisposition = highRiskResumeDisposition(resumed.state);
-          if (resumeDisposition === "pending") {
-            // Resume is one-shot. Keep the pending receipt and observe the
-            // durable worker to a terminal state instead of resubmitting it
-            // or reporting an in-flight operation as failed.
-            schedulePoll();
-            return;
-          }
           clearPending();
-          if (resumeDisposition === "succeeded") {
+          if (resumed.state === "succeeded") {
             transientAlertSequenceRef.current += 1;
             setTransientAlert({
               id: `high-risk-succeeded-${transientAlertSequenceRef.current}`,
@@ -3416,14 +3310,18 @@ export function ChatApp() {
         const stateRef = protocolCommandStateRef(command);
         const protocolState = stateRef === "host:approval.full_access"
           ? ultraYoloMode
-          : settingsStateRefValue(stateRef, settingsValues);
+          : stateRef === "defaultspack:models.deepthink_enabled"
+            ? deepthinkEnabled
+            : settingsStateRefValue(stateRef, settingsValues);
         const legacyState = command.id === "yolo" || command.id === "ultra_yolo"
           ? ultraYoloMode
-          : command.id === mode;
+          : command.id === "deepthink"
+            ? deepthinkEnabled
+            : command.id === mode;
         const active = protocolState ?? legacyState;
         return { ...command, active, enabled: active };
       });
-  }, [activeProfile, effectiveCommandCatalog, mode, selectableModelProfiles, settingsValues, slashCommandsEnabled, ultraYoloMode]);
+  }, [activeProfile, deepthinkEnabled, effectiveCommandCatalog, mode, selectableModelProfiles, settingsValues, slashCommandsEnabled, ultraYoloMode]);
   const modelCommandCandidates = composerCandidateMenu?.mode === "model" ? composerCandidateMenu.candidates : [];
   const unknownBlockStrategy = String(settingsValues.chat_rendering?.unknown_block_strategy ?? "placeholder");
   const showWidgets = settingsValues.chat_rendering?.show_widgets !== false;
@@ -3435,6 +3333,7 @@ export function ChatApp() {
     !isCanvasWorkspace &&
     !isDesktopsWorkspace &&
     !isSubagentWorkspace;
+  const isActivityPreviewPresent = useExitPresence(isActivityPreviewVisible, 240);
   const activityPreviewWidthPx = clampNumber(activityPreviewWidth, 220, 720, 340);
   const operationsProfileAvailable = hasOperationsProfile(catalog);
   const mimoCodingProfileAvailable = hasMimoCodingProfile(catalog);
@@ -3934,7 +3833,7 @@ export function ChatApp() {
   }
 
   async function refreshPreview(conversationId: string | null) {
-    if (!conversationId || !conversationPreviewSupported) {
+    if (!conversationId) {
       setPreviews([]);
       setActivePreviewId(null);
       return;
@@ -3949,11 +3848,7 @@ export function ChatApp() {
         setShowPreview(true);
       }
     } catch (previewError) {
-      if (isDefaultspackContractOperationUnknownError(previewError)) {
-        setConversationPreviewSupported(false);
-      } else {
-        console.error(previewError);
-      }
+      console.error(previewError);
       setPreviews([]);
       setActivePreviewId(null);
     }
@@ -4215,26 +4110,17 @@ export function ChatApp() {
       setIsGenerating(false);
       return;
     }
-    // A saved turn has a stable operation ID before its POST begins. Keep
-    // reading that turn's ledger even if the POST response remains in flight;
-    // the Host may have completed and saved the answer already.
-    if (streamingConversationIdRef.current === activeConversationId && !pendingRequest?.savedTurn) return;
+    if (streamingConversationIdRef.current === activeConversationId) return;
     setIsGenerating(true);
     let disposed = false;
     let polling = false;
     const pollPendingConversation = () => {
       if (disposed || polling) return;
-      // Give the initial POST time to create its ledger entry. While that
-      // request is in flight, polling stays read-only and never reconciles a
-      // running turn against its active writer.
-      if (pendingRequest?.savedTurn
-        && streamingConversationIdRef.current === activeConversationId
-        && Date.now() - pendingRequest.startedAt < 3000) return;
       polling = true;
       void (async () => {
         if (disposed) return;
         if (pendingRequest?.savedTurn) {
-          if (!pendingRequest.operationId) throw new Error(savedTurnConfirmationPendingNotice());
+          if (!pendingRequest.operationId) throw new Error("送信IDが未確認です。自動再送せず確認を待ちます。");
           let turn = (
             await api.getSavedTurnEvents(
               pendingRequest.operationId,
@@ -4242,8 +4128,7 @@ export function ChatApp() {
             )
           ).turn;
           if (disposed) return;
-          if ((turn.status === "running" || turn.status === "waiting")
-            && streamingConversationIdRef.current !== activeConversationId) {
+          if (turn.status === "running" || turn.status === "waiting") {
             turn = await api.reconcileSavedTurn(pendingRequest.operationId, activeConversationId);
             if (disposed) return;
           }
@@ -4294,7 +4179,7 @@ export function ChatApp() {
           if (disposed) return;
           const state = savedTurnSnapshotState(turn, conversation, activeConversationId, pendingRequest.operationId);
           if (state === "pending") {
-            throw new Error(savedTurnConfirmationPendingNotice());
+            throw new Error("保存結果と現在の会話を照合できません。自動再送はしません。");
           }
           setActiveConversation(conversation);
           setError(savedTurnSnapshotNotice(state));
@@ -4326,9 +4211,7 @@ export function ChatApp() {
         }
         updatePendingRequests((current) => {
           const existing = current[activeConversationId];
-          const status = existing?.savedTurn
-            ? savedTurnConfirmationPendingNotice()
-            : "接続を待っています。同じ送信として再試行できます";
+          const status = existing?.savedTurn ? "接続を待っています。自動再送せず照合します" : "接続を待っています。同じ送信として再試行できます";
           if (existing?.status === status) return current;
           return existing ? {
             ...current,
@@ -4339,7 +4222,7 @@ export function ChatApp() {
           } : current;
         });
         setBackendConnectionState("degraded");
-        setBackendConnectionNote("送信の完了を確認できません。接続が戻ったら、同じ内容を送信し直さずに確認します。");
+        setBackendConnectionNote("送信結果を確認できません。operation IDを保持して接続回復を待っています。");
       }).finally(() => { polling = false; });
     };
     pollPendingConversation();
@@ -4366,8 +4249,15 @@ export function ChatApp() {
   const handleNewTask = (options?: HistoryBoardNewTaskOptions) => {
     const nextContext = workspaceContextFromHistoryOptions(options);
     const nextTab = createWorkspaceTab("chat", { title: "New Conversation" });
-    setWorkspaceTabs((current) => [...current, nextTab]);
-    setActiveWorkspaceTabId(nextTab.id);
+    if (workspaceTabsEnabled) {
+      setWorkspaceTabs((current) => [...current, nextTab]);
+      setActiveWorkspaceTabId(nextTab.id);
+    } else {
+      setWorkspaceTabs((current) => current.map((tab) => (
+        tab.id === activeWorkspaceTabId ? nextTab : tab
+      )));
+      setActiveWorkspaceTabId(nextTab.id);
+    }
     setPendingNewTaskContext(nextContext);
     if (nextContext?.workspaceId) {
       setMode("coding");
@@ -4433,7 +4323,11 @@ export function ChatApp() {
     setPendingNewTaskContext(null);
     setActiveHistoryCompanyId(null);
     const activeTab = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId);
-    if (activeTab?.kind === "chat") {
+    if (!workspaceTabsEnabled) {
+      setWorkspaceTabs((current) => current.map((tab) => tab.id === activeWorkspaceTabId
+        ? { ...tab, kind: "chat", title: "AI Chat", conversationId }
+        : tab));
+    } else if (activeTab?.kind === "chat") {
       setWorkspaceTabs((current) => current.map((tab) => tab.id === activeWorkspaceTabId ? { ...tab, conversationId } : tab));
     } else {
       const nextTab = createWorkspaceTab("chat", { conversationId, title: "AI Chat" });
@@ -4635,11 +4529,10 @@ export function ChatApp() {
         ...(current[sectionId] ?? {}),
         [fieldId]: fieldType === "secret" || fieldType === "api_keys" || fieldType === "api_key_setup" || fieldType === "external_tokens" ? "" : value,
       };
-      if (sectionId === "models" && (fieldId === "preferred_model" || fieldId === "main_model")) {
+      if (sectionId === "models" && fieldId === "preferred_model") {
         const preferredModel = String(value ?? "").trim();
-        sectionPatch.preferred_model = preferredModel;
-        sectionPatch.main_model = preferredModel;
         if (preferredModel) {
+          sectionPatch.main_model = preferredModel;
           sectionPatch.model_slots = {
             ...((current.models?.model_slots as Record<string, unknown> | undefined) ?? {}),
             main: preferredModel,
@@ -4814,11 +4707,10 @@ export function ChatApp() {
         const changedPatches = Object.entries(sectionPatch)
           .filter(([field, nextValue]) => currentSection[field] !== nextValue)
           .map(([field, nextValue]) => ({ section: sectionId, field, value: nextValue }));
-        const modelStateWrite = modelStateWriteForSettingsField(sectionId, fieldId, value);
-        if (modelStateWrite) {
+        if (sectionId === "models" && ["preferred_model", "thinking_level", "deepthink_enabled"].includes(fieldId)) {
           void api.updateModelState(
-            modelStateWrite.kind,
-            modelStateWrite.value,
+            fieldId as "preferred_model" | "thinking_level" | "deepthink_enabled",
+            sectionPatch[fieldId],
           ).catch((modelError) => {
             setError(settingsErrorMessage(modelError, "Failed to save model state."));
           });
@@ -4859,8 +4751,8 @@ export function ChatApp() {
       ? ["preferred_model", preferredModelUpdate] as const
       : Object.prototype.hasOwnProperty.call(normalizedUpdates, "thinking_level")
         ? ["thinking_level", normalizedUpdates.thinking_level] as const
-        : Object.prototype.hasOwnProperty.call(normalizedUpdates, "strategy_reference")
-          ? ["strategy_reference", normalizedUpdates.strategy_reference] as const
+        : Object.prototype.hasOwnProperty.call(normalizedUpdates, "deepthink_enabled")
+          ? ["deepthink_enabled", normalizedUpdates.deepthink_enabled] as const
           : null;
     if (modelMutation) {
       void api.updateModelState(modelMutation[0], modelMutation[1]).catch((modelError) => {
@@ -4898,10 +4790,6 @@ export function ChatApp() {
         [key]: level,
       },
     });
-  };
-
-  const handleStrategyReferenceChange = (reference: string | null) => {
-    updateModelSettings({ strategy_reference: reference || null });
   };
 
   const openSettingsSection = useCallback((sectionId: string) => {
@@ -4950,7 +4838,7 @@ export function ChatApp() {
 
   const refreshSteerQueue = useCallback(async (conversationIdOverride?: string) => {
     const conversationId = conversationIdOverride ?? activeConversationId;
-    if (!conversationId || !steerSupported) {
+    if (!conversationId) {
       setSteerItems([]);
       return;
     }
@@ -4968,24 +4856,18 @@ export function ChatApp() {
         message: `${queuedCount}件のステアが待機中`,
       } : null);
     } catch (steerError) {
-      if (isDefaultspackContractOperationUnknownError(steerError)) {
-        setSteerSupported(false);
-        setSteerItems([]);
-        setModelSteerStatus(null);
-      } else {
-        setModelSteerStatus({
-          kind: "error",
-          message: steerError instanceof Error ? steerError.message : "Steer refresh failed",
-        });
-      }
+      setModelSteerStatus({
+        kind: "error",
+        message: steerError instanceof Error ? steerError.message : "Steer refresh failed",
+      });
     } finally {
       setModelSteerBusy(false);
     }
-  }, [activeConversationId, steerSupported]);
+  }, [activeConversationId]);
 
   const queueConversationSteer = useCallback(async (promptOverride?: string) => {
     const prompt = String(promptOverride ?? input).trim();
-    if (!activeConversationId || !prompt || !steerSupported) return;
+    if (!activeConversationId || !prompt) return;
     setModelSteerBusy(true);
     try {
       await api.conversationSteer({
@@ -5008,20 +4890,14 @@ export function ChatApp() {
       });
       await refreshSteerQueue();
     } catch (steerError) {
-      if (isDefaultspackContractOperationUnknownError(steerError)) {
-        setSteerSupported(false);
-        setSteerItems([]);
-        setModelSteerStatus(null);
-      } else {
-        setModelSteerStatus({
-          kind: "error",
-          message: steerError instanceof Error ? steerError.message : "Steer queue failed",
-        });
-      }
+      setModelSteerStatus({
+        kind: "error",
+        message: steerError instanceof Error ? steerError.message : "Steer queue failed",
+      });
     } finally {
       setModelSteerBusy(false);
     }
-  }, [activeConversationId, input, isConversationPending, isGenerating, refreshSteerQueue, setInput, steerSupported]);
+  }, [activeConversationId, input, isConversationPending, isGenerating, refreshSteerQueue, setInput]);
 
   useEffect(() => {
     if (!activeConversationId) return;
@@ -5192,7 +5068,7 @@ export function ChatApp() {
       }
       case "show_status":
         setError(
-          `status: mode=${mode}, model=${activeProfile?.display_name ?? preferredModel}, thinking=${selectedThinkingLevel}, strategy=${strategyReference ?? "direct"}, yolo=${yoloMode ? "on" : "off"}, ultra_yolo=${ultraYoloMode ? "on" : "off"}, tools=${selectedTools.length}`,
+          `status: mode=${mode}, model=${activeProfile?.display_name ?? preferredModel}, thinking=${selectedThinkingLevel}, deepthink=${deepthinkEnabled ? "on" : "off"}, yolo=${yoloMode ? "on" : "off"}, ultra_yolo=${ultraYoloMode ? "on" : "off"}, tools=${selectedTools.length}`,
         );
         return;
       case "open_context_viewer":
@@ -5399,17 +5275,12 @@ export function ChatApp() {
   };
 
   const followCommandProgress = async (invocationId: string) => {
-    if (!commandInvocationEventsSupported) return;
     try {
       for await (const event of api.streamCommandInvocationEvents(invocationId)) {
         setCommandProgressEvents((current) => [...current, event].slice(-12));
       }
     } catch (streamError) {
       if (streamError instanceof DOMException && streamError.name === "AbortError") return;
-      if (isDefaultspackContractOperationUnknownError(streamError)) {
-        setCommandInvocationEventsSupported(false);
-        return;
-      }
       setError(streamError instanceof Error ? streamError.message : "Command progress stream failed.");
     }
   };
@@ -5484,17 +5355,56 @@ export function ChatApp() {
         commandArgs.scope = "profile";
         commandArgs.profile_id = profileKey(activeProfile, preferredModel);
       }
+      const isDeepthinkMutation = parsed.command.protocol_execution?.kind === "state_mutation"
+        ? parsed.command.protocol_execution.state_ref === "defaultspack:models.deepthink_enabled"
+        : parsed.command.id === "deepthink" && parsed.command.execution.type === "rumi_function";
       const resolvedCommandName = parsed.command.canonical_id ?? parsed.command.name ?? parsed.command.id;
       let result: ComposerCommandExecuteResult;
-      const invocationId = createCommandInvocationId(parsed.command.id);
-      void followCommandProgress(invocationId);
-      result = await api.executeResolvedUiCommand({
-        command: resolvedCommandName,
-        args: commandArgs,
-        conversation_id: activeConversationId,
-        mode: mode as ComposerCommandMode,
-        invocation_id: invocationId,
-      });
+      if (isDeepthinkMutation) {
+        const desired = Object.prototype.hasOwnProperty.call(commandArgs, "enabled")
+          ? parseCommandBoolean(commandArgs.enabled, !deepthinkDesiredStateRef.current)
+          : !deepthinkDesiredStateRef.current;
+        deepthinkDesiredStateRef.current = desired;
+        commandArgs.enabled = desired;
+        const invocationId = createCommandInvocationId("deepthink");
+        void followCommandProgress(invocationId);
+        const clientSequence = ++commandClientSequenceRef.current;
+        deepthinkPendingCountRef.current += 1;
+        const executeMutation = () => {
+          const expectedRevision = commandStateRevisionsRef.current[
+            "defaultspack:models.deepthink_enabled"
+          ];
+          return api.executeResolvedUiCommand({
+            command: resolvedCommandName,
+            args: commandArgs,
+            conversation_id: activeConversationId,
+            mode: mode as ComposerCommandMode,
+            invocation_id: invocationId,
+            idempotency_key: invocationId,
+            client_sequence: clientSequence,
+            expected_revision: Number.isInteger(expectedRevision) ? expectedRevision : undefined,
+          });
+        };
+        const queued = deepthinkMutationQueueRef.current
+          .catch(() => undefined)
+          .then(executeMutation);
+        deepthinkMutationQueueRef.current = queued.then(() => undefined, () => undefined);
+        try {
+          result = await queued;
+        } finally {
+          deepthinkPendingCountRef.current = Math.max(0, deepthinkPendingCountRef.current - 1);
+        }
+      } else {
+        const invocationId = createCommandInvocationId(parsed.command.id);
+        void followCommandProgress(invocationId);
+        result = await api.executeResolvedUiCommand({
+          command: resolvedCommandName,
+          args: commandArgs,
+          conversation_id: activeConversationId,
+          mode: mode as ComposerCommandMode,
+          invocation_id: invocationId,
+        });
+      }
       const appliedStatePaths = applyAuthoritativeCommandState(result);
       const feedbackMessage = composerCommandResultMessage(result);
       if (result.requires_approval) {
@@ -5662,11 +5572,18 @@ export function ChatApp() {
   };
 
   const handleWorkspaceTabCreate = (kind: WorkspaceTabKind) => {
-    const option = WORKSPACE_TAB_CREATE_OPTIONS.find((candidate) => candidate.kind === kind);
-    if (option?.disabled) return;
+    const option = workspaceTabCreateOptions.find((candidate) => candidate.kind === kind);
+    if (!option || option.disabled) return;
     const tab = createWorkspaceTab(kind, {
       title: kind === "chat" ? "New Conversation" : option?.label,
     });
+    if (!workspaceTabsEnabled) {
+      setWorkspaceTabs((current) => current.map((currentTab) => (
+        currentTab.id === activeWorkspaceTabId ? tab : currentTab
+      )));
+      activateWorkspaceTab(tab);
+      return;
+    }
     setWorkspaceTabs((current) => [...current, tab]);
     activateWorkspaceTab(tab);
   };
@@ -6623,15 +6540,11 @@ export function ChatApp() {
   const handleSubmit = async (event?: FormEvent, override?: SubmitOverride) => {
     event?.preventDefault();
     if (activeConversationId && pendingRequests[activeConversationId]?.savedTurn) {
-      setError("前の送信の完了を確認しています。確認が終わるまで、新しいメッセージは送れません。");
+      setError("前の送信結果を確認中です。新しいturnとして再送しません。");
       return;
     }
     if (activeConversation?.metadata?.shared_read_only === true) {
       setError("This imported conversation is read-only. Import a continue copy to send messages.");
-      return;
-    }
-    if (strategySelectionInvalid) {
-      setError("選択した Strategy は現在の Plan で利用できません。Direct または利用可能な Strategy を選択してください。");
       return;
     }
     if (pendingMentionAttachmentRequestsRef.current.size > 0) {
@@ -6770,7 +6683,7 @@ export function ChatApp() {
       const savedTurnContent = savedTurnContentFromAttachments(userText, submittedAttachments);
       if (submittedSkillIds.length
         || submittedDroppedWidgets.some((widget) => widget.type !== "tool" || widget.widgetKind !== "tool_toggle") || isCodingWorkspaceSubmit
-        || groupIdForSubmit || rumiDataPathForSubmit
+        || groupIdForSubmit || rumiDataPathForSubmit || deepthinkEnabled
         || Object.keys(templateAiInputParams).length || Object.keys(effectiveStructuredComposerValues).length
         || Object.keys(templatePolicyReferencePayload).length || composerInputMetadata?.id
         || toolSelectionRequest.mode === "review"
@@ -6781,6 +6694,9 @@ export function ChatApp() {
       if (!conversation) {
         conversation = await api.createConversation({
           model: preferredModel || "stub/default",
+          system_prompt_id: cleanOptionalString(
+            settingsValues.personalization?.default_system_prompt_id,
+          ) ?? undefined,
           conversation_kind: isCodingWorkspaceSubmit ? "coding" : null,
           group_id: groupIdForSubmit ?? null,
           tags: isCodingWorkspaceSubmit ? ["coding"] : undefined,
@@ -6852,37 +6768,16 @@ export function ChatApp() {
         conversation_revision: conversation.conversation_revision!,
         content: savedTurnContent,
         tool_selection: savedToolSelection,
-        strategy_reference: strategyReference,
-        thinking_level: activeProfile?.supports_thinking
-          ? selectedThinkingLevel as "none" | "low" | "medium" | "high" | "xhigh"
-          : undefined,
       });
       if (result.turn.status !== "completed" || !result.turn.result_reference) {
-        const terminalNotice = savedTurnTerminalNotice(result.turn, conversation.id, operationId);
-        if (terminalNotice) {
-          setError(terminalNotice);
-          forgetPendingRequest(conversation.id);
-          replaceChatIdInUrl(conversation.id, false);
-          setInput(inputForSubmit);
-          setAttachedFiles(submittedAttachments);
-          setDroppedWidgets(droppedWidgetsForSubmit);
-          // A terminal result does not prove that the user message was not
-          // saved. Restore the draft, but do not offer a retry until the user
-          // has checked the refreshed conversation.
-          void refreshConversations(conversation.id);
-          return;
-        }
-        throw new Error(savedTurnConfirmationPendingNotice());
+        throw new Error("送信結果の照合が必要です。自動再送はしません。");
       }
       const snapshot = await api.getConversation(conversation.id);
       const snapshotState = savedTurnSnapshotState(result.turn, snapshot, conversation.id, operationId);
       if (snapshotState === "pending") {
-        throw new Error(savedTurnConfirmationPendingNotice());
+        throw new Error("保存された応答をまだ確認できません。再送せず照合を待ちます。");
       }
-      const snapshotNotice = savedTurnSnapshotNotice(snapshotState);
-      setError(
-        snapshotNotice || null,
-      );
+      setError(savedTurnSnapshotNotice(snapshotState));
       setActiveConversation((current) => current?.id === snapshot.id ? snapshot : current);
       setConversations((current) => [
         { ...snapshot, messages: [] }, ...current.filter((item) => item.id !== snapshot.id),
@@ -6898,12 +6793,10 @@ export function ChatApp() {
       console.error("Chat error:", submitError);
       if (savedSubmissionStarted && submittedConversationId) {
         setRetryableSubmission(null);
-        setError(savedTurnConfirmationPendingNotice());
+        setError(submitError instanceof Error ? submitError.message : "送信結果を確認できません。再送せず照合を待ちます。");
         updatePendingRequests((current) => {
           const entry = current[submittedConversationId!];
-          return entry
-            ? { ...current, [submittedConversationId!]: { ...entry, status: savedTurnConfirmationPendingNotice() } }
-            : current;
+          return entry ? { ...current, [submittedConversationId!]: { ...entry, status: "送信結果を照合中（自動再送なし）" } } : current;
         });
         return;
       }
@@ -7060,6 +6953,10 @@ export function ChatApp() {
   });
   const activeCompanyWorkspaceHint = activeConversationCompanyId ?? activeHistoryCompanyId;
   const handleCalendarModeToggle = () => {
+    if (!workspaceTabsEnabled) {
+      handleWorkspaceTabCreate("calendar");
+      return;
+    }
     const existingCalendarTab = workspaceTabs.find((tab) => tab.kind === "calendar");
     if (existingCalendarTab) {
       activateWorkspaceTab(existingCalendarTab);
@@ -7072,6 +6969,18 @@ export function ChatApp() {
     scope: KanbanBoardScope = { type: "global", id: "default" },
     label = "All Rumi Runs",
   ) => {
+    if (!workspaceTabsEnabled) {
+      const tab = createWorkspaceTab("kanban", {
+        title: label || "Kanban",
+        kanbanScope: scope,
+        kanbanScopeLabel: label || "Kanban",
+      });
+      setWorkspaceTabs((current) => current.map((currentTab) => (
+        currentTab.id === activeWorkspaceTabId ? tab : currentTab
+      )));
+      activateWorkspaceTab(tab);
+      return;
+    }
     const existingTab = workspaceTabs.find((tab) => (
       tab.kind === "kanban"
       && (tab.kanbanScope?.type ?? "global") === scope.type
@@ -7095,6 +7004,10 @@ export function ChatApp() {
   };
 
   const handleDesktopsModeOpen = () => {
+    if (!workspaceTabsEnabled) {
+      handleWorkspaceTabCreate("desktops");
+      return;
+    }
     const existingDesktopsTab = workspaceTabs.find((tab) => tab.kind === "desktops");
     if (existingDesktopsTab) {
       activateWorkspaceTab(existingDesktopsTab);
@@ -7122,9 +7035,6 @@ export function ChatApp() {
       modelProfiles={selectableModelProfiles}
       modelSelectorSchema={modelSelectorSchema}
       thinkingLevel={activeProfile?.supports_thinking ? selectedThinkingLevel : null}
-      strategyContributions={strategyContributions}
-      strategyReference={strategyReference ?? null}
-      strategySelectionInvalid={strategySelectionInvalid}
       contextUsage={contextUsage}
       inlineExtensions={composerExtensions}
       belowExtensions={[]}
@@ -7157,7 +7067,6 @@ export function ChatApp() {
       steerBusy={modelSteerBusy}
       steerQueuedCount={steerItems.filter((item) => item.status === "queued").length}
       steerPreviewItems={isCentered ? [] : activeComposerSteerItems(steerItems, isGenerating || isConversationPending)}
-      steerEnabled={steerSupported}
       suppressPopovers={Boolean(visibleBrowserApproval || authorityApproval || runtimeApproval || staleRuntimeApprovalNotice)}
       onOpenModelManager={() => openSettingsSection("models")}
       onOpenToolSettings={() => openSettingsSection("tools")}
@@ -7175,7 +7084,6 @@ export function ChatApp() {
       onModelProfileSelect={handleModelProfileSelect}
       onProviderApiKeySave={handleProviderApiKeySave}
       onThinkingLevelChange={handleThinkingLevelChange}
-      onStrategyReferenceChange={handleStrategyReferenceChange}
       onInputChange={handleComposerInputChange}
       onStructuredInputChange={setStructuredComposerValues}
       onSubmit={handleSubmit}
@@ -7215,12 +7123,15 @@ export function ChatApp() {
 
   return (
     <RendererBoundary>
-    <div className="rumi-app-shell flex h-screen min-h-0 w-full flex-col overflow-hidden bg-[#09090b] font-sans text-zinc-300 selection:bg-zinc-800">
+    <div className="rumi-app-shell flex h-screen min-h-0 w-full flex-col overflow-hidden bg-[var(--rumi-surface-base)] font-sans text-zinc-300 selection:bg-zinc-800">
       {showRegion("title_bar") && <Renderers.titleBar appName={composerHomeTitle || catalog?.app?.name} appIcon={catalog?.app?.icon} />}
 
       <div className="rumi-shell-body flex min-h-0 flex-1">
-        {showRegion("history") && !isHistoryMinimized && (
-          <div className="rumi-history-pane rumi-layer-panel w-[286px] max-w-[30vw] min-w-[240px] flex-shrink-0 overflow-hidden border-r border-zinc-800/60 animate-in slide-in-from-left-2 fade-in duration-200 ease-out max-[900px]:w-[260px] rumi-anim-fade-left">
+        {showRegion("history") && (
+          <div className={cn(
+            "rumi-history-sidebar flex-shrink-0 border-r border-zinc-800/60",
+            isHistoryMinimized ? "rumi-history-rail is-compact" : "rumi-history-pane rumi-layer-panel",
+          )}>
             <Renderers.historyBoard
               activeChatId={activeConversationId}
               chatItems={chatItems}
@@ -7245,45 +7156,16 @@ export function ChatApp() {
               isDesktopsActive={isDesktopsWorkspace}
               onSettingsClick={openSettingsHome}
               onChatMetadataChange={handleHistoryMetadataChange}
+              onSearchOpen={() => { setIsSpotlightOpen(true); setSpotlightSelectedIndex(0); }}
               onMinimize={() => setIsHistoryMinimized(true)}
-            />
-          </div>
-        )}
-
-        {showRegion("history") && isHistoryMinimized && (
-          <div className="rumi-history-rail w-14 flex-shrink-0 overflow-visible border-r border-zinc-800/60 animate-in slide-in-from-left-1 fade-in duration-150 ease-out rumi-anim-fade-left">
-            <Renderers.historyBoard
-              activeChatId={activeConversationId}
-              chatItems={chatItems}
-              account={catalog?.app?.account}
-              onChatSelect={handleHistoryClick}
-              onNewTask={handleNewTask}
-              codingWorkspaces={codingWorkspaces}
-              selectedCodingWorkspaceId={effectiveWorkspaceId}
-              onCodingWorkspaceCreate={handleCodingWorkspaceCreate}
-              onDirectorySelect={handleDirectorySelect}
-              onGroupDataPathPrepare={handlePrepareChatGroupStorage}
-              onCodingWorkspacesRefresh={async () => {
-                await loadCodingWorkspaces();
-              }}
-              onCalendarOpen={handleCalendarModeToggle}
-              isCalendarActive={isCalendarMode}
-              onKanbanOpen={handleKanbanModeToggle}
-              onGroupKanbanOpen={handleHistoryGroupKanbanOpen}
-              onGroupSelect={handleHistoryGroupSelect}
-              isKanbanActive={isKanbanMode}
-              onDesktopsOpen={handleDesktopsModeOpen}
-              isDesktopsActive={isDesktopsWorkspace}
-              onSettingsClick={openSettingsHome}
-              onChatMetadataChange={handleHistoryMetadataChange}
               onRestore={() => setIsHistoryMinimized(false)}
-              isCompact
+              isCompact={isHistoryMinimized}
             />
           </div>
         )}
 
         <main
-          className={cn("rumi-workspace-main relative flex min-h-0 min-w-0 flex-1 bg-[#09090b]", isActivityPreviewVisible && "has-activity-preview")}
+          className={cn("rumi-workspace-main relative flex min-h-0 min-w-0 flex-1 bg-[var(--rumi-surface-base)]", isActivityPreviewPresent && "has-activity-preview", isActivityPreviewPresent && !isActivityPreviewVisible && "is-closing-preview")}
           style={{ "--rumi-activity-preview-width": `${activityPreviewWidthPx}px` } as CSSProperties}
           onDragEnter={handleWorkspaceFileDragEnter}
           onDragOver={handleWorkspaceFileDragOver}
@@ -7304,13 +7186,16 @@ export function ChatApp() {
             </div>
           )}
           <div className={cn("rumi-chat-pane flex min-h-0 min-w-0 flex-1 flex-col rumi-anim-fade-up", isActivityPreviewVisible && "border-r border-zinc-800/40")}>
-            <WorkspaceTabBar
-              tabs={workspaceTabs}
-              activeTabId={activeWorkspaceTabId}
-              onSelect={handleWorkspaceTabSelect}
-              onClose={handleWorkspaceTabClose}
-              onCreate={handleWorkspaceTabCreate}
-            />
+            {workspaceTabsEnabled && (
+              <WorkspaceTabBar
+                tabs={workspaceTabs}
+                activeTabId={activeWorkspaceTabId}
+                createOptions={workspaceTabCreateOptions}
+                onSelect={handleWorkspaceTabSelect}
+                onClose={handleWorkspaceTabClose}
+                onCreate={handleWorkspaceTabCreate}
+              />
+            )}
 
             {showRegion("chat_header") && isChatWorkspace && !isCalendarMode && !isKanbanMode && (
               <Renderers.chatHeader
@@ -7382,9 +7267,16 @@ export function ChatApp() {
                   onWorkspacesRefresh={refreshCodingWorkspaces}
                 />
               </div>
-            ) : isSubagentWorkspace ? (
+            ) : isSubagentWorkspace && subagentTeamsEnabled ? (
               <div className="flex min-h-0 flex-1">
                 <SubagentTeamWorkspace activeConversationId={activeConversationId} activeConversationTitle={activeChatTitle} />
+              </div>
+            ) : isSubagentWorkspace ? (
+              <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+                <div className="max-w-sm rounded-xl border border-zinc-800 bg-zinc-950/45 p-5 text-center">
+                  <p className="text-sm font-medium text-zinc-200">サブエージェントは無効です</p>
+                  <p className="mt-2 text-xs leading-5 text-zinc-500">設定の「サブエージェントを使う」を有効にすると、チーム画面を開けます。</p>
+                </div>
               </div>
             ) : isCanvasWorkspace ? (
               <div className="flex min-h-0 flex-1 p-1.5">
@@ -7407,6 +7299,7 @@ export function ChatApp() {
               </div>
             ) : isToolsWorkspace ? (
               <WorkspaceLaunchpad
+                createOptions={workspaceTabCreateOptions}
                 sidebarItems={sidebarItems}
                 onCreate={handleWorkspaceTabCreate}
                 onOpenSidebarItem={(itemId) => {
@@ -7415,16 +7308,14 @@ export function ChatApp() {
                 }}
               />
             ) : isNewConversation && !isLoading ? (
-              <NewConversationStage
-                composerHomeTitle={composerHomeTitle}
-                error={error}
-                isLaunching={isNewChatLaunching}
-                onDismissError={dismissChatError}
-                onRetry={retryableSubmission && error === retryableSubmission.errorMessage
-                  ? handleRetryLastFailedSubmission
-                  : undefined}
-                renderComposer={renderComposer}
-              />
+              <div className={cn("rumi-new-chat-stage rumi-layer-local-popover flex flex-1 items-center justify-center px-5 pb-[10vh]", isNewChatLaunching && "is-launching")}>
+                <div className="w-full">
+                  <h1 className="rumi-greeting mx-auto mb-7 max-w-[720px] px-4 text-center text-[clamp(24px,3.2vw,44px)] font-medium leading-tight text-zinc-200">
+                    {composerHomeTitle}
+                  </h1>
+                  {renderComposer(true)}
+                </div>
+              </div>
             ) : (
               <Renderers.chatMessages
                 error={error}
@@ -7447,7 +7338,7 @@ export function ChatApp() {
                 onSuggestionClick={(text) => setInput(text)}
                 onOpenToolPreview={(previewId) => {
                   setActivePreviewId(previewId);
-                  setShowPreview(true);
+                  setShowPreview(!(effectiveShowPreview && activePreviewId === previewId));
                 }}
                 onLoadPromptTrace={promptResources.getTraceUsage}
                 onRetry={retryableSubmission && error === retryableSubmission.errorMessage ? handleRetryLastFailedSubmission : undefined}
@@ -7512,7 +7403,7 @@ export function ChatApp() {
                   </section>
                 )}
                 {commandProtocolInfo && (
-                  <details className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+                  <details className="rumi-composer-companion mx-auto rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
                     <summary className="cursor-pointer text-xs font-semibold text-zinc-300">
                       Command catalog inspector · {commandProtocolInfo.commands.length} commands
                     </summary>
@@ -7572,8 +7463,10 @@ export function ChatApp() {
             )}
           </div>
 
-          {isActivityPreviewVisible && (
+          {isActivityPreviewPresent && (
             <div
+              aria-hidden={!isActivityPreviewVisible}
+              inert={!isActivityPreviewVisible}
               role="separator"
               aria-label="Canvas幅を変更"
               title="Canvas幅を変更"
@@ -7582,12 +7475,12 @@ export function ChatApp() {
             />
           )}
 
-          {isActivityPreviewVisible && (
-            <aside className="rumi-activity-preview-pane rumi-anim-fade-right" aria-label="Activity preview">
+          {isActivityPreviewPresent && (
+            <aside className="rumi-activity-preview-pane" aria-label="Activity preview" aria-hidden={!isActivityPreviewVisible} inert={!isActivityPreviewVisible}>
               <Renderers.toolPreviewPanel
                 widgetContext={widgetContext}
                 previews={canvasPreviews}
-                showPreview={effectiveShowPreview}
+                showPreview={isActivityPreviewPresent}
                 onClose={() => setShowPreview(false)}
                 previewMode={previewMode}
                 onModeChange={setPreviewMode}
@@ -7630,6 +7523,8 @@ export function ChatApp() {
             onToggleChatPromptUsage={setShowPromptUsageInMessages}
             yoloMode={ultraYoloMode}
             workspaceTabs={workspaceTabs}
+            workspaceTabsEnabled={workspaceTabsEnabled}
+            workspaceTabCreateOptions={workspaceTabCreateOptions}
             activeWorkspaceTabId={activeWorkspaceTabId}
             activeConversationId={activeConversationId}
             onSettingChange={handleSettingChange}
@@ -7836,7 +7731,7 @@ export default function App() {
     return <ChatApp />;
   }
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#09090b] px-6 py-10">
+    <main className="flex min-h-screen items-center justify-center bg-[var(--rumi-surface-base)] px-6 py-10">
       <ErrorNotice
         className="w-full max-w-xl"
         copyLabel="Copy unavailable screen error"

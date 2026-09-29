@@ -5,6 +5,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { buildVisibleModelOptions, SettingsModalRenderer, sectionPreludeIsVisible, settingsCloseRequiresConfirmation, toggleSettingsRowSelection } from "./SettingsModalRenderer";
 import { CredentialTransferModal, credentialTransferCanClose, credentialTransferFocusTarget } from "../components/CredentialTransferModal";
+import { ToolExperienceSettingsPanel } from "../components/ToolExperienceSettingsPanel";
+import { PromptProfileField } from "./settings/renderers/promptProfileField";
+import { buildControlCenterSections } from "../settings/controlCenter";
 import { createSettingsFieldRendererRegistry, SettingsFieldRendererHost } from "./settings/fieldRendererRegistry";
 import { builtinSettingsFieldRendererEntries } from "./settings/builtinSettingsFieldRenderers";
 import {
@@ -995,8 +998,6 @@ test("Models places AI API registration before model API connections", () => {
   );
 
   assert.match(html, /data-provider-scope="llm"/);
-  assert.match(html, /モデルルート作成（キー保存とは別操作）/);
-  assert.match(html, /Provider connection ID/);
   assert.match(html, /openai:main:\*\*\*/);
   assert.doesNotMatch(html, /line:channel:\*\*\*/);
   assert.ok(
@@ -1241,9 +1242,86 @@ test("Settings > Tools keeps selector internals out of standard mode", () => {
   assert.doesNotMatch(html, /高度な設定/);
   assert.match(html, /既定の使い方/);
   assert.match(html, /自動で選ぶ/);
-  assert.match(html, /MCPサーバーを追加/);
-  assert.ok(html.indexOf("MCPサーバーを追加") < html.indexOf("既定の使い方"));
+  assert.ok(html.indexOf(">基本<") < html.indexOf("既定の使い方"));
+  assert.doesNotMatch(html, /MCPサーバーを追加/);
   assert.equal([...html.matchAll(/既定の使い方/g)].length, 1);
+  assert.equal([...html.matchAll(/送信後も選んだ機能を保持/g)].length, 1);
+});
+
+test("Tools connection tab contains connection controls and keeps the basic editor hidden", () => {
+  const html = renderToStaticMarkup(createElement(ToolExperienceSettingsPanel, {
+    tools: [],
+    settingsValues: { tools: { default_mode: "review" } },
+    onSettingChange: () => undefined,
+    requestedTab: { id: "connections", version: 1 },
+    connectionSettings: createElement("div", null, "MCPサーバー管理", "Codex App Server"),
+  }));
+
+  assert.ok(html.indexOf(">接続<") < html.indexOf("MCPサーバー管理"));
+  assert.match(html, /Codex App Server/);
+  assert.doesNotMatch(html, /既定の使い方/);
+});
+
+test("Connections groups reply choices and keeps paths and empty sources separate", () => {
+  const fields: SettingsSection["fields"] = [
+    { id: "input_provider", label: "Input Provider", type: "select", default: "line", options: [{ value: "line", label: "LINE" }] },
+    { id: "provider_route_copy", label: "Route Paths", type: "readonly", default: "Discord: /api/integrations/discord/events" },
+    { id: "default_response_mode", label: "Default Response", type: "select", default: "same_response", options: [{ value: "same_response", label: "Reply" }] },
+    { id: "saved_sources_summary", label: "Saved Sources", type: "readonly", default: "No saved sources" },
+    { id: "input_response_preset", label: "Response Preset", type: "select", default: "same_source_reply", options: [{ value: "same_source_reply", label: "Reply" }] },
+  ];
+  const connections = buildControlCenterSections([{ id: "external_input", label: "External Input", fields }], "ja")
+    .find((section) => section.id === "accounts_connections");
+  const inputIds = connections?.fields
+    .filter((field) => field.sourceSectionId === "external_input")
+    .map((field) => field.id);
+  assert.deepEqual(inputIds, [
+    "input_provider",
+    "default_response_mode",
+    "input_response_preset",
+    "provider_route_copy",
+    "saved_sources_summary",
+  ]);
+});
+
+test("Response guidance keeps selection and editing in one card without an editability badge", () => {
+  const html = renderToStaticMarkup(createElement(PromptProfileField, {
+    sectionId: "personalization",
+    field: { id: "default_system_prompt_id", label: "応答の方針", type: "prompt_profile" },
+    value: "",
+    onChange: () => undefined,
+  }));
+
+  assert.equal([...html.matchAll(/rounded-xl border border-zinc-800/g)].length, 1);
+  assert.match(html, /<select/);
+  assert.doesNotMatch(html, /新しい会話の応答の方針|編集できます/);
+});
+
+test("Calendar toggles use compact side-by-side rows under one source heading", () => {
+  const html = renderToStaticMarkup(createElement(SettingsModalRenderer, {
+    isOpen: true,
+    activeSectionId: "calendar",
+    locale: "ja",
+    catalog: { sidebar: { filters: [], items: [] }, settings: { sections: [], values: {} }, chat_rendering: { renderers: [] }, extension_points: [] },
+    health: null,
+    previewsCount: 0,
+    settingsSections: [{ id: "calendar", label: "Calendar", fields: [
+      { id: "quick_add_enabled", label: "Quick Add", type: "toggle", default: true, help: "日付から追加します。" },
+      { id: "dim_weekends", label: "Dim Weekends", type: "toggle", default: false, help: "週末を控えめに表示します。" },
+    ] }],
+    settingsValues: {},
+    onClose: () => undefined,
+    onSettingChange: () => undefined,
+  }));
+  const main = html.slice(html.indexOf('<main class="min-w-0 space-y-7'));
+  const nav = html.slice(html.indexOf('<nav '), html.indexOf('</nav>'));
+  assert.ok(nav.indexOf("Tobkiri共通") < nav.indexOf("Defaultspack"));
+  assert.match(nav, />カレンダー<\/span>/);
+  assert.match(main, />カレンダー<\/h3>/);
+  assert.equal([...main.matchAll(/>カレンダー<\/h4>/g)].length, 0);
+  assert.match(main, /data-settings-field="calendar.quick_add_enabled"[^>]*py-3/);
+  assert.match(main, /flex min-w-0 items-center justify-between gap-4/);
+  assert.match(main, /日付から追加します。/);
 });
 
 test("Settings > Tools defaults to the tool experience overview", () => {
@@ -1443,145 +1521,29 @@ test("MiMo model allowlist also uses the catalog picker instead of raw model IDs
   assert.doesNotMatch(html, /<textarea[^>]*>xiaomi-token-plan-sgp/);
 });
 
-test("settings system info renders viewer version and macOS permissions", () => {
-  const html = renderToStaticMarkup(
-    createElement(SettingsModalRenderer, {
-      isOpen: true,
-      activeSectionId: "system_info",
-      catalog: {
-        sidebar: { filters: [], items: [] },
-        settings: { sections: [], values: {} },
-        chat_rendering: { renderers: [] },
-        extension_points: [],
-      },
-      health: null,
-      previewsCount: 0,
-      settingsSections: [
-        { id: "system_info", label: "System Info", description: "Version and permission status", fields: [] },
-      ],
-      settingsValues: {},
-      desktopSystemInfo: {
-        source: "viewer_tauri",
-        reliable: true,
-        app_name: "Tobkiri",
-        display_version: "beta 1.0.0",
-        viewer_version: "1.0.0-beta.1",
-        build_channel: "beta",
-        platform: "macos",
-        platform_release: "15.0",
-        permission_subject: "Tobkiri Launcher",
-        host_broker: {
-          enabled: true,
-          available: true,
-          status: "running",
-        },
-        permissions: [
-          {
-            id: "screen_recording",
-            label: "Screen Recording",
-            status: "missing",
-            granted: false,
-            detail: "Allows screen capture.",
-            settings_hint: "System Settings > Privacy & Security > Screen Recording",
-          },
-        ],
-      },
-      onClose: () => undefined,
-      onOpenSection: () => undefined,
-      onSettingChange: () => undefined,
-    }),
-  );
+test("Automation settings omit Computer Use display controls and host permission panels", () => {
+  const html = renderToStaticMarkup(createElement(SettingsModalRenderer, {
+    isOpen: true,
+    activeSectionId: "computer_automation",
+    locale: "ja",
+    catalog: { sidebar: { filters: [], items: [] }, settings: { sections: [], values: {} }, chat_rendering: { renderers: [] }, extension_points: [] },
+    health: null,
+    previewsCount: 0,
+    settingsSections: [
+      { id: "computer_use_haze", label: "Computer Use", fields: [
+        { id: "preset", label: "Preset", type: "select", options: [{ value: "aurora", label: "Aurora" }] },
+        { id: "start_color", label: "Start Color", type: "text" },
+      ] },
+      { id: "continuity", label: "Continuity", fields: [{ id: "cloud_handoff_enabled", label: "Cloud Handoff", type: "toggle" }] },
+    ],
+    settingsValues: { computer_use_haze: { preset: "aurora", start_color: "#6EE7F9" } },
+    onClose: () => undefined,
+    onSettingChange: () => undefined,
+  }));
 
-  assert.match(html, /beta 1\.0\.0/);
-  assert.match(html, /1\.0\.0-beta\.1/);
-  assert.match(html, /macOSの承認対象は Tobkiri Launcher です/);
-  assert.match(html, /macOS Permissions/);
-  assert.match(html, /Screen Recording/);
-  assert.match(html, /Missing/);
-});
-
-test("settings system info does not show missing permissions when viewer state is unreliable", () => {
-  const html = renderToStaticMarkup(
-    createElement(SettingsModalRenderer, {
-      isOpen: true,
-      activeSectionId: "system_info",
-      catalog: {
-        sidebar: { filters: [], items: [] },
-        settings: { sections: [], values: {} },
-        chat_rendering: { renderers: [] },
-        extension_points: [],
-      },
-      health: null,
-      previewsCount: 0,
-      settingsSections: [
-        { id: "system_info", label: "System Info", description: "Version and permission status", fields: [] },
-      ],
-      settingsValues: {},
-      desktopSystemInfo: {
-        source: "fallback",
-        reliable: false,
-        app_name: "Tobkiri",
-        display_version: "",
-        viewer_version: "",
-        build_channel: "beta",
-        platform: "darwin",
-        platform_release: "15.0",
-        permission_subject: "Tobkiri Launcher",
-        host_broker: {
-          enabled: false,
-          available: false,
-          status: "unavailable",
-        },
-        permissions: [
-          {
-            id: "viewer_host",
-            label: "Tobkiri Launcher",
-            status: "missing",
-            granted: false,
-            detail: "Fallback row should not be rendered.",
-            settings_hint: "Open Tobkiri Launcher.",
-          },
-        ],
-      },
-      onClose: () => undefined,
-      onOpenSection: () => undefined,
-      onSettingChange: () => undefined,
-    }),
-  );
-
-  assert.match(html, /Viewer permission status is unverified/);
-  assert.doesNotMatch(html, /macOS Permissions/);
-  assert.doesNotMatch(html, /Missing/);
-  assert.doesNotMatch(html, /Fallback row should not be rendered/);
-});
-
-test("settings system info shows browser context message when info is null", () => {
-  const html = renderToStaticMarkup(
-    createElement(SettingsModalRenderer, {
-      isOpen: true,
-      activeSectionId: "system_info",
-      catalog: {
-        sidebar: { filters: [], items: [] },
-        settings: { sections: [], values: {} },
-        chat_rendering: { renderers: [] },
-        extension_points: [],
-      },
-      health: null,
-      previewsCount: 0,
-      settingsSections: [
-        { id: "system_info", label: "System Info", description: "Version and permission status", fields: [] },
-      ],
-      settingsValues: {},
-      desktopSystemInfo: null,
-      onClose: () => undefined,
-      onOpenSection: () => undefined,
-      onSettingChange: () => undefined,
-    }),
-  );
-
-  assert.match(html, /権限状態を取得できませんでした/);
-  assert.match(html, /Tobkiri Launcherを起動し/);
-  assert.doesNotMatch(html, /Rumi Defaultspack\.app/);
+  assert.match(html, /cloud_handoff_enabled/);
+  assert.doesNotMatch(html, /settings-field-computer_use_haze/);
+  assert.doesNotMatch(html, /Computer actions are high-impact|Permission Host|macOS Permissions/);
 });
 
 test("settings accounts prelude renders actionable Google and disabled Cloudflare states", () => {

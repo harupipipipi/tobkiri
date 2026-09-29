@@ -92,11 +92,8 @@ export function modelFieldOptionToModelSelectOption(option: SettingsFieldOption)
     supports_tool_calling: option.supports_tool_calling,
     supports_thinking: option.supports_thinking,
     supports_fast: option.supports_fast,
-    thinking_levels: Array.isArray(optionRecord.thinking_levels)
-      ? optionRecord.thinking_levels.filter((level): level is string => typeof level === "string")
-      : undefined,
-    default_thinking_level: typeof optionRecord.default_thinking_level === "string"
-      ? optionRecord.default_thinking_level : undefined,
+    thinking_levels: option.thinking_levels,
+    default_thinking_level: option.default_thinking_level,
     speed_tier: option.speed_tier,
     quality_tier: option.quality_tier,
     cost_tier: option.cost_tier,
@@ -179,11 +176,8 @@ export function modelSearchItemToModelSelectOption(item: ModelSearchItem): Model
     supports_tool_calling: item.supports_tool_calling,
     supports_thinking: item.supports_thinking,
     supports_fast: item.supports_fast,
-    thinking_levels: Array.isArray(item.thinking_levels)
-      ? item.thinking_levels.filter((level): level is string => typeof level === "string")
-      : undefined,
-    default_thinking_level: typeof item.default_thinking_level === "string"
-      ? item.default_thinking_level : undefined,
+    thinking_levels: item.thinking_levels,
+    default_thinking_level: item.default_thinking_level,
     speed_tier: item.speed_tier,
     quality_tier: item.quality_tier,
     cost_tier: item.cost_tier,

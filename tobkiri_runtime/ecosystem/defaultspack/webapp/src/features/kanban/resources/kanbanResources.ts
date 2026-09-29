@@ -61,6 +61,58 @@ function normalizeBoardResponse(value: unknown): KanbanBoardResponse {
   };
 }
 
+function boardId(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const board = value as Record<string, unknown>;
+  return String(board.board_id ?? board.id ?? "").trim();
+}
+
+function boardMatchesScope(value: unknown, scope: KanbanBoardScope): boolean {
+  if (!value || typeof value !== "object") return false;
+  const board = value as Record<string, unknown>;
+  const nestedScope = board.scope;
+  const nested = nestedScope && typeof nestedScope === "object"
+    ? nestedScope as Record<string, unknown>
+    : {};
+  return String(board.scope_type ?? nested.type ?? "").trim() === scope.type
+    && String(board.scope_id ?? nested.id ?? "").trim() === scope.id;
+}
+
+function snapshotForScope(value: unknown, scope: KanbanBoardScope): KanbanBoardResponse | null {
+  const payload = unwrapPayload<Record<string, unknown>>(value);
+  if (!payload || typeof payload !== "object") return null;
+  if (payload.board && typeof payload.board === "object") {
+    const board = payload.board as Record<string, unknown>;
+    if (boardMatchesScope(board, scope)) return normalizeBoardResponse(payload);
+  }
+  const boards = Array.isArray(payload.boards) ? payload.boards : [];
+  for (const candidate of boards) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const snapshot = candidate as Record<string, unknown>;
+    const board = snapshot.board;
+    if (board && typeof board === "object" && boardMatchesScope(board, scope)) {
+      return normalizeBoardResponse(snapshot);
+    }
+  }
+  return null;
+}
+
+function boardSummaryForScope(value: unknown, scope: KanbanBoardScope): Record<string, unknown> | null {
+  const payload = unwrapPayload<Record<string, unknown>>(value);
+  if (!payload || typeof payload !== "object") return null;
+  const boards = Array.isArray(payload.boards) ? payload.boards : [];
+  for (const candidate of boards) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const board = candidate as Record<string, unknown>;
+    if (boardMatchesScope(board, scope)) return board;
+    if (board.board && typeof board.board === "object"
+      && boardMatchesScope(board.board, scope)) {
+      return board.board as Record<string, unknown>;
+    }
+  }
+  return null;
+}
+
 async function requestCandidates<T>(candidates: RequestCandidate[]): Promise<T> {
   let lastError: KanbanApiError | null = null;
   for (const candidate of candidates) {
@@ -119,18 +171,27 @@ export type KanbanDataSource = {
 
 export const kanbanResources: KanbanDataSource = {
   async loadBoard(scope) {
-    const query = boardQuery(scope);
     const payload = await requestCandidates<unknown>([
-      { path: defaultspackContractRoute(`api/kanban/boards?${query}`) },
-      { path: defaultspackContractRoute(`api/kanban/board?${query}`) },
-      { path: defaultspackContractRoute(`api/kanban?${query}`) },
+      { path: defaultspackContractRoute(`api/kanban/boards?${boardQuery(scope)}`) },
+      { path: defaultspackContractRoute(`api/kanban/board?${boardQuery(scope)}`) },
+      { path: defaultspackContractRoute(`api/kanban?${boardQuery(scope)}`) },
     ]);
-    return normalizeBoardResponse(payload);
+    const snapshot = snapshotForScope(payload, scope);
+    if (snapshot) return snapshot;
+
+    const summary = boardSummaryForScope(payload, scope);
+    const id = boardId(summary);
+    if (!id) throw new KanbanApiError(404, "Kanban board was not found.");
+    const board = await requestCandidates<unknown>([
+      { path: defaultspackContractRoute(`api/kanban/boards/${encode(id)}`) },
+    ]);
+    return normalizeBoardResponse(board);
   },
 
   async ensureBoard(scope, title) {
     const body = { scope_type: scope.type, scope_id: scope.id, title };
     const payload = await requestCandidates<unknown>([
+      { path: defaultspackContractRoute("api/kanban/boards/bootstrap"), method: "POST", body },
       { path: defaultspackContractRoute("api/kanban/boards"), method: "POST", body },
       { path: defaultspackContractRoute("api/kanban/board"), method: "POST", body },
       { path: defaultspackContractRoute("api/kanban"), method: "POST", body: { action: "ensure", ...body } },

@@ -313,7 +313,7 @@ test("HistoryBoard places Desktops directly below Kanban in full layout", () => 
   assert.match(html, /aria-current="page"/);
 });
 
-test("HistoryBoard replaces New Group with an accessible Projects creation header", () => {
+test("HistoryBoard exposes project creation alongside the main navigation", () => {
   const html = renderToStaticMarkup(createElement(HistoryBoard, {
     activeChatId: null,
     chatItems: [],
@@ -324,8 +324,21 @@ test("HistoryBoard replaces New Group with an accessible Projects creation heade
 
   assert.match(html, />Projects</);
   assert.match(html, /aria-label="New Project"/);
-  assert.match(html, /class="[^"]*h-8 w-8[^"]*"[^>]*aria-label="New Project"/);
+  assert.ok(html.indexOf('aria-label="New Project"') < html.indexOf('aria-label="Calendar"'));
   assert.doesNotMatch(html, /New Group/);
+});
+
+test("HistoryBoard places Settings after the account identity in the full sidebar", () => {
+  const html = renderToStaticMarkup(createElement(HistoryBoard, {
+    activeChatId: null,
+    chatItems: [],
+    account: { display_name: "Smoke User", plan_label: "Local" },
+    onChatSelect: () => undefined,
+    onNewTask: () => undefined,
+    onSettingsClick: () => undefined,
+  }));
+
+  assert.ok(html.indexOf("Smoke User") < html.indexOf('aria-label="Settings"'));
 });
 
 test("HistoryBoard places Desktops directly below Kanban in compact rail", () => {

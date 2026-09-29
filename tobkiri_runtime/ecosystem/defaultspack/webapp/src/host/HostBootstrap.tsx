@@ -13,7 +13,6 @@ import {
   DynamicFrontendHost,
   contributionsForRoute,
 } from "./DynamicFrontendHost";
-import { PackRouteNavigation } from "./PackRouteNavigation";
 import type {
   CapturedCapabilityInvocation,
   FrontendCapabilityInvoker,
@@ -260,19 +259,12 @@ export function HostBootstrap({
   }
   const route = resolution.route;
   return (
-    <>
-      <DynamicFrontendHost
-        catalog={catalog}
-        route={route}
-        activePlanHash={catalog.plan_hash}
-        capabilities={capabilities}
-      />
-      <PackRouteNavigation
-        catalog={catalog}
-        route={route}
-        activePlanHash={catalog.plan_hash}
-      />
-    </>
+    <DynamicFrontendHost
+      catalog={catalog}
+      route={route}
+      activePlanHash={catalog.plan_hash}
+      capabilities={capabilities}
+    />
   );
 }
 

@@ -1,5 +1,5 @@
 import { Check, ChevronDown, FolderOpen, Link2, Loader2, Plus, Search, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import type { CodingWorkspaceRecord } from "../../lib/api";
 import { ErrorNotice } from "../../components/ErrorNotice";
@@ -37,9 +37,27 @@ export function ProjectPicker({
   const [folderPath, setFolderPath] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties>();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
   const visibleProjects = useMemo(() => filterProjects(projects, query), [projects, query]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const positionMenu = () => {
+      const root = rootRef.current;
+      if (!root) return;
+      const anchor = root.getBoundingClientRect();
+      // Keep the menu inside the workspace, including beside the narrow rail.
+      const workspaceLeft = root.closest(".rumi-workspace-main")?.getBoundingClientRect().left ?? 0;
+      const width = Math.min(272, Math.max(0, window.innerWidth - workspaceLeft - 24));
+      const left = Math.min(Math.max(anchor.left, workspaceLeft + 12), window.innerWidth - width - 12);
+      setMenuStyle({ width, left: left - anchor.left });
+    };
+    positionMenu();
+    window.addEventListener("resize", positionMenu);
+    return () => window.removeEventListener("resize", positionMenu);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -123,17 +141,17 @@ export function ProjectPicker({
         type="button"
         disabled={disabled}
         onClick={() => setOpen((value) => !value)}
-        aria-label={`Project: ${selectedProject?.title ?? "None"}`}
+        aria-label={`Project: ${selectedProject?.title ?? "Select project"}`}
         aria-expanded={open}
-        className="flex h-11 min-h-11 min-w-0 items-center gap-1.5 rounded-xl border border-white/[0.09] bg-white/[0.045] px-3 text-[11px] font-medium text-zinc-300 transition-colors hover:border-white/[0.15] hover:bg-white/[0.07] hover:text-zinc-100 disabled:opacity-50"
+        className="flex h-11 min-h-11 min-w-0 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.05] hover:text-zinc-100 disabled:opacity-50"
       >
-        <FolderOpen size={14} className="shrink-0 text-emerald-300" aria-hidden="true" />
-        <span className="truncate">{selectedProject?.title ?? "Project"}</span>
+        <FolderOpen size={14} className="shrink-0 text-zinc-300" aria-hidden="true" />
+        <span className="truncate">{selectedProject?.title ?? "Select project"}</span>
         <ChevronDown size={12} className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 rumi-layer-local-popover mb-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-white/[0.1] bg-[#15161a]/98 p-2 shadow-2xl backdrop-blur-xl">
+        <div style={menuStyle} className="absolute bottom-full left-0 rumi-layer-local-popover rumi-project-menu mb-2 w-[min(17rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-white/[0.1] bg-[var(--rumi-surface-overlay)] p-1.5 shadow-2xl backdrop-blur-xl">
           {creating ? (
             <div className="space-y-2 p-1">
               <div className="flex min-h-9 items-center justify-between">
@@ -150,7 +168,7 @@ export function ProjectPicker({
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder="Project name"
-                className="h-11 w-full rounded-xl border border-zinc-800 bg-black/25 px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-emerald-500/50"
+                className="h-11 w-full rounded-xl border border-zinc-800 bg-black/25 px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-zinc-500"
               />
               <button
                 type="button"
@@ -183,7 +201,7 @@ export function ProjectPicker({
             </div>
           ) : (
             <>
-              <label className="flex h-11 items-center gap-2 rounded-xl border border-zinc-800 bg-black/25 px-3">
+              <label className="flex h-9 items-center gap-2 rounded-lg px-2">
                 <Search size={14} className="shrink-0 text-zinc-500" aria-hidden="true" />
                 <input
                   autoFocus
@@ -194,14 +212,14 @@ export function ProjectPicker({
                   className="min-w-0 flex-1 bg-transparent text-xs text-zinc-100 outline-none placeholder:text-zinc-600"
                 />
               </label>
-              <div className="mt-2 max-h-56 overflow-y-auto">
+              <div className="mt-1 max-h-48 overflow-y-auto">
                 <button
                   type="button"
                   onClick={() => {
                     onSelect(null);
                     setOpen(false);
                   }}
-                  className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-100"
+                  className="flex min-h-9 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-100"
                 >
                   <span className="w-4">{!selectedProject && <Check size={14} />}</span>
                   No project
@@ -214,9 +232,9 @@ export function ProjectPicker({
                       onSelect(project);
                       setOpen(false);
                     }}
-                    className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left hover:bg-white/[0.05]"
+                    className="flex min-h-9 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/[0.05]"
                   >
-                    <span className="w-4 shrink-0 text-emerald-300">{selectedProject?.id === project.id && <Check size={14} />}</span>
+                    <span className="w-4 shrink-0 text-zinc-300">{selectedProject?.id === project.id && <Check size={14} />}</span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-xs font-medium text-zinc-200">{project.title}</span>
                       {(project.workspaceLabel || project.workspaceRoot) && (
@@ -233,7 +251,7 @@ export function ProjectPicker({
                   setError(null);
                   setCreating(true);
                 }}
-                className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 text-xs font-semibold text-emerald-200 hover:border-emerald-500/45 hover:bg-emerald-500/15"
+                className="mt-1 flex h-9 w-full items-center gap-2 rounded-lg px-2 text-xs font-medium text-zinc-300 hover:bg-white/[0.05] hover:text-zinc-100"
               >
                 <Plus size={15} aria-hidden="true" />
                 New Project

@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { KanbanWorkspacePanel, kanbanPriorityLabel } from "./KanbanWorkspacePanel";
+import {
+  KanbanWorkspacePanel,
+  kanbanCardIsInColumn,
+  kanbanPriorityLabel,
+} from "./KanbanWorkspacePanel";
 import type { KanbanBoardResponse } from "../../lib/api";
 
 const board: KanbanBoardResponse = {
@@ -35,10 +39,18 @@ test("Kanban workspace renders host board data and history drop targets", () => 
   assert.match(html, /Move Fix composer right/);
   assert.match(html, /Delete Fix composer/);
   assert.match(html, /Drag conversations from History/);
+  assert.doesNotMatch(html, /role="status"/);
+  assert.doesNotMatch(html, /Moved “Fix composer”/);
 });
 
 test("Kanban priority labels remain readable for known and custom priorities", () => {
   assert.equal(kanbanPriorityLabel("urgent"), "Urgent");
   assert.equal(kanbanPriorityLabel("normal"), "Normal");
   assert.equal(kanbanPriorityLabel("customer-blocked"), "customer-blocked");
+});
+
+test("Kanban move verification requires the card in its requested column", () => {
+  assert.equal(kanbanCardIsInColumn(board, "card-1", "todo"), true);
+  assert.equal(kanbanCardIsInColumn(board, "card-1", "done"), false);
+  assert.equal(kanbanCardIsInColumn(board, "missing-card", "todo"), false);
 });

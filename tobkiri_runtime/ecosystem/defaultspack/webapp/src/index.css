@@ -2,8 +2,20 @@
 @import "./ui/layers/layers.css";
 @import "./ui/motion/luxeMotion.css";
 @import "./styles/rumi-liquid-mobile.css";
+@import "./styles/defaults-theme.css";
 
 @theme {
+  --color-zinc-50: #fafafa;
+  --color-zinc-100: #f1f1f1;
+  --color-zinc-200: #dddddd;
+  --color-zinc-300: #c3c3c3;
+  --color-zinc-400: #a0a0a0;
+  --color-zinc-500: #808080;
+  --color-zinc-600: #626262;
+  --color-zinc-700: #454545;
+  --color-zinc-800: #303030;
+  --color-zinc-900: #202020;
+  --color-zinc-950: #111111;
   --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", "Noto Sans JP", sans-serif;
   --font-display: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", "Noto Sans JP", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
@@ -348,23 +360,16 @@ body {
     box-shadow 220ms ease;
 }
 
-.rumi-composer-model-dock {
-  filter: drop-shadow(0 16px 38px rgba(0, 0, 0, 0.32));
-}
-
 .rumi-composer-dock-control {
   overflow: visible;
 }
 
 .rumi-composer-control-surface {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.035),
-    0 10px 30px rgba(0, 0, 0, 0.18);
-  transition:
-    border-color 180ms ease,
-    background-color 180ms ease,
-    box-shadow 220ms ease,
-    transform 220ms ease;
+  transition: background-color 180ms ease;
+}
+
+.rumi-composer-control-surface:hover {
+  background-color: rgba(255, 255, 255, 0.04);
 }
 
 /* Shared floating surface for composer menus, dropdowns and prompt popovers. */
@@ -396,14 +401,19 @@ body {
     transform 150ms ease;
 }
 
+.rumi-icon-button.rumi-attachment-button {
+  min-height: 32px;
+  min-width: 32px;
+  height: 32px;
+  width: 32px;
+  align-self: center;
+}
+
 .rumi-icon-button:hover:not(:disabled) {
   color: #f4f4f5;
   background: rgba(255, 255, 255, 0.06);
 }
 
-.rumi-icon-button:active:not(:disabled) {
-  transform: scale(0.94);
-}
 
 .rumi-icon-button:disabled {
   opacity: 0.45;
@@ -1253,7 +1263,7 @@ html.rumi-keyboard-focus #root [data-settings-modal] :is(a, summary, [tabindex])
   --rumi-surface-overlay: #17181d;
   --rumi-border-subtle: rgba(63, 63, 70, 0.62);
   --rumi-border-strong: rgba(113, 113, 122, 0.78);
-  --rumi-focus-color: rgb(129 140 248 / 94%);
+  --rumi-focus-color: rgb(210 210 210 / 90%);
   --rumi-radius-control: 0.625rem;
   --rumi-radius-panel: 0.875rem;
   --rumi-shadow-overlay: 0 24px 72px rgba(0, 0, 0, 0.52);
@@ -1270,8 +1280,26 @@ body {
   min-height: 0;
 }
 
+.rumi-history-sidebar {
+  --rumi-history-width: 286px;
+  width: var(--rumi-history-width);
+  min-width: 0;
+  transition: width 200ms ease-out;
+}
+
+.rumi-history-sidebar.is-compact {
+  width: 56px;
+}
+
 .rumi-history-pane {
   contain: layout paint;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rumi-history-sidebar {
+    transition: none;
+  }
 }
 
 .rumi-composer-shell {
@@ -1405,10 +1433,8 @@ html.rumi-keyboard-focus #root :is(a, button, input, textarea, select, summary, 
 }
 
 @media (max-width: 1360px) {
-  .rumi-history-pane {
-    width: 252px !important;
-    min-width: 220px !important;
-    max-width: 26vw !important;
+  .rumi-history-sidebar {
+    --rumi-history-width: 252px;
   }
 
   .rumi-right-sidebar {
@@ -1427,10 +1453,8 @@ html.rumi-keyboard-focus #root :is(a, button, input, textarea, select, summary, 
 }
 
 @media (max-width: 1024px) {
-  .rumi-history-pane {
-    width: 232px !important;
-    min-width: 208px !important;
-    max-width: 29vw !important;
+  .rumi-history-sidebar {
+    --rumi-history-width: 232px;
   }
 
   .rumi-chat-context-toolbar span {
@@ -1447,14 +1471,15 @@ html.rumi-keyboard-focus #root :is(a, button, input, textarea, select, summary, 
     position: relative;
   }
 
+  .rumi-history-sidebar {
+    --rumi-history-width: min(17rem, calc(100vw - 4.25rem));
+  }
+
   .rumi-history-pane {
     position: absolute;
     top: 0;
     bottom: 0;
     left: 0;
-    width: min(17rem, calc(100vw - 4.25rem)) !important;
-    min-width: 0 !important;
-    max-width: none !important;
     box-shadow: 18px 0 48px rgba(0, 0, 0, 0.5);
   }
 
@@ -1733,5 +1758,75 @@ html.rumi-keyboard-focus #root :is(a, button, input, textarea, select, summary, 
 
   .rumi-composer-new .rumi-composer-toolbar {
     min-height: 2.5rem;
+  }
+}
+
+/* Composer-adjacent cards share the editor's width at every pane size. */
+.rumi-chat-pane {
+  --rumi-conversation-composer-width: 48rem;
+}
+
+.rumi-chat-pane .rumi-composer-shell:not(.rumi-composer-shell-new) {
+  width: 100%;
+  max-width: var(--rumi-conversation-composer-width);
+}
+
+.rumi-chat-pane .rumi-composer-companion {
+  width: min(var(--rumi-conversation-composer-width), calc(100% - 2rem));
+}
+
+.rumi-message-mention {
+  color: #7eb4ff;
+  font-weight: 500;
+}
+
+@media (max-width: 720px) {
+  .rumi-chat-pane .rumi-composer-companion {
+    width: calc(100% - 1rem);
+  }
+}
+
+/* Reveal the Canvas at its final content width while the chat makes room. */
+@media (min-width: 901px) and (prefers-reduced-motion: no-preference) {
+  .rumi-workspace-main.has-activity-preview {
+    animation: rumi-canvas-open 240ms ease-out;
+  }
+
+  .rumi-workspace-main.has-activity-preview.is-closing-preview {
+    animation: rumi-canvas-close 240ms ease-in forwards;
+  }
+
+  .rumi-activity-preview-pane > * {
+    width: var(--rumi-activity-preview-width);
+    min-width: var(--rumi-activity-preview-width);
+    max-width: none;
+  }
+}
+
+@keyframes rumi-canvas-open {
+  from { grid-template-columns: minmax(0, 1fr) 0px minmax(0, 0px); }
+  to { grid-template-columns: minmax(0, 1fr) 6px minmax(0, var(--rumi-activity-preview-width)); }
+}
+
+@keyframes rumi-canvas-close {
+  from { grid-template-columns: minmax(0, 1fr) 6px minmax(0, var(--rumi-activity-preview-width)); }
+  to { grid-template-columns: minmax(0, 1fr) 0px minmax(0, 0px); }
+}
+
+.rumi-message-column {
+  max-width: var(--rumi-conversation-composer-width, 48rem);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .rumi-message-actions {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+  }
+
+  .rumi-message-row:hover .rumi-message-actions,
+  .rumi-message-row:focus-within .rumi-message-actions {
+    opacity: 1;
+    pointer-events: auto;
   }
 }

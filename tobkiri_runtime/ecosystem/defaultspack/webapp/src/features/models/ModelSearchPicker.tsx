@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Check, ChevronDown, Loader2, Search, X } from "lucide-react";
 
 import { ErrorNotice } from "../../components/ErrorNotice";
@@ -45,9 +45,6 @@ export function ModelSearchPicker({
   onSelectedOptionChange,
   onQueryChange,
   onSearch,
-  remoteBrowse = false,
-  remoteHasMore = false,
-  onLoadMore,
 }: {
   value: string;
   options?: ModelSelectOption[];
@@ -68,12 +65,8 @@ export function ModelSearchPicker({
   onSelectedOptionChange?: (option: ModelSelectOption | null) => void;
   onQueryChange: (value: string) => void;
   onSearch?: (query: string) => void;
-  remoteBrowse?: boolean;
-  remoteHasMore?: boolean;
-  onLoadMore?: () => Promise<boolean>;
 }) {
   const [internalOpen, setInternalOpen] = useState(false);
-  const [page, setPage] = useState(0);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const [popoverStyle, setPopoverStyle] = useState<CSSProperties | null>(null);
   const open = controlledOpen ?? internalOpen;
@@ -113,9 +106,8 @@ export function ModelSearchPicker({
     (option) => option.value === value || option.qualified_model_id === value,
   ) ?? null;
   const selectedDisplay = selected ? modelSelectDisplay(selected) : null;
-  const allMatchingOptions = useMemo(() => {
-    const browseOptions = remoteBrowse && !error ? [] : filteredOptions;
-    const providerFilteredOptions = filterModelOptionsByProvider(browseOptions, providerState.providerId);
+  const visibleOptions = useMemo(() => {
+    const providerFilteredOptions = filterModelOptionsByProvider(filteredOptions, providerState.providerId);
     const providerFilteredRemoteOptions = filterModelOptionsByProvider(remoteOptions, providerState.providerId);
     const providerSelected = providerState.providerId
       ? filterModelOptionsByProvider(visibleSelected ? [visibleSelected] : [], providerState.providerId)[0] ?? null
@@ -125,32 +117,20 @@ export function ModelSearchPicker({
       selected: providerSelected,
       remoteOptions: providerFilteredRemoteOptions,
       query: providerState.providerId ? providerState.modelQuery : trimmedQuery,
-      resultLimit: Number.MAX_SAFE_INTEGER,
     });
-    return built;
+    const configuredLimit = resolvedSchema.layout.max_visible_options;
+    const limit = typeof maxVisibleOptions === "number" ? maxVisibleOptions : configuredLimit;
+    return built.slice(0, limit);
   }, [
-    error,
     filteredOptions,
+    maxVisibleOptions,
     providerState.modelQuery,
     providerState.providerId,
-    remoteBrowse,
     remoteOptions,
+    resolvedSchema.layout.max_visible_options,
     trimmedQuery,
     visibleSelected,
   ]);
-  const pageSize = Math.max(1, Math.min(50, maxVisibleOptions ?? resolvedSchema.layout.max_visible_options));
-  const visibleOptions = allMatchingOptions.slice(page * pageSize, (page + 1) * pageSize);
-  const hasNextPage = allMatchingOptions.length > (page + 1) * pageSize || (remoteBrowse && remoteHasMore);
-
-  useEffect(() => setPage(0), [open, query]);
-
-  async function nextPage() {
-    if (!hasNextPage || loading) return;
-    if (remoteBrowse && remoteHasMore && allMatchingOptions.length < (page + 2) * pageSize) {
-      if (!(await onLoadMore?.())) return;
-    }
-    setPage((current) => current + 1);
-  }
 
   function setOpen(nextOpen: boolean) {
     if (controlledOpen === undefined) setInternalOpen(nextOpen);
@@ -394,16 +374,9 @@ export function ModelSearchPicker({
                   </button>
                 );
               }) : (
-                <div className="px-3 py-5 text-xs text-zinc-600">{loading ? "モデルを読み込んでいます..." : emptyText}</div>
+                <div className="px-3 py-5 text-xs text-zinc-600">{emptyText}</div>
               )}
             </div>
-            {!providerState.active && (page > 0 || hasNextPage) && (
-              <div className="flex items-center justify-between border-t border-zinc-800 px-2 py-1 text-[11px] text-zinc-500">
-                <button type="button" disabled={page === 0} onClick={() => setPage((current) => current - 1)} className="rounded px-2 py-1 hover:bg-zinc-800 disabled:opacity-40">前へ</button>
-                <span>{page + 1}ページ</span>
-                <button type="button" disabled={!hasNextPage || loading} onClick={nextPage} className="rounded px-2 py-1 hover:bg-zinc-800 disabled:opacity-40">次へ</button>
-              </div>
-            )}
           </div>
         </>
       )}

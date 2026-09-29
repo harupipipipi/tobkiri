@@ -37,6 +37,16 @@ export function kanbanPriorityLabel(priority: string | undefined): string {
   return normalized === "normal" || !normalized ? "Normal" : priority ?? "Normal";
 }
 
+export function kanbanCardIsInColumn(
+  board: KanbanBoardResponse,
+  cardId: string,
+  columnId: string,
+): boolean {
+  return board.cards.some((card) => (
+    card.card_id === cardId && card.column_id === columnId
+  ));
+}
+
 function priorityClass(priority: string | undefined): string {
   const normalized = String(priority ?? "normal").toLowerCase();
   if (normalized === "urgent") return "border-red-400/30 bg-red-500/10 text-red-200";
@@ -77,7 +87,6 @@ export function KanbanWorkspacePanel({
   const [error, setError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [draftByColumn, setDraftByColumn] = useState<Record<string, string>>({});
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const initialDataConsumedRef = useRef(Boolean(initialData));
   const scopeType = scope.type;
   const scopeId = scope.id;
@@ -87,7 +96,6 @@ export function KanbanWorkspacePanel({
   const loadBoard = useCallback(async () => {
     setLoadState("loading");
     setError(null);
-    setStatusMessage(null);
     try {
       let next: KanbanBoardResponse;
       try {
@@ -124,16 +132,21 @@ export function KanbanWorkspacePanel({
     return map;
   }, [boardData?.cards, columns]);
 
-  const runMutation = useCallback(async (key: string, mutation: () => Promise<void>, successMessage: string): Promise<boolean> => {
+  const runMutation = useCallback(async (
+    key: string,
+    mutation: () => Promise<void>,
+    verify?: (next: KanbanBoardResponse) => boolean,
+  ): Promise<boolean> => {
     setBusyAction(key);
     setError(null);
-    setStatusMessage(null);
     try {
       await mutation();
       const next = await dataSource.loadBoard(stableScope);
+      if (verify && !verify(next)) {
+        throw new Error("Kanban update could not be verified. Refresh and try again.");
+      }
       setBoardData(next);
       setLoadState("ready");
-      setStatusMessage(successMessage);
       return true;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Kanban update failed.");
@@ -157,7 +170,6 @@ export function KanbanWorkspacePanel({
         workspace_id: workspaceId,
         company_id: companyId,
       }),
-      `Added “${title}”.`,
     ).then((didSucceed) => {
       if (didSucceed) setDraftByColumn((current) => ({ ...current, [column.column_id]: "" }));
     });
@@ -168,7 +180,7 @@ export function KanbanWorkspacePanel({
     void runMutation(
       `move:${card.card_id}`,
       () => dataSource.moveCard(boardData.board.board_id, card.card_id, { column_id: targetColumnId }),
-      `Moved “${card.title}”.`,
+      (next) => kanbanCardIsInColumn(next, card.card_id, targetColumnId),
     );
   }, [boardData, busyAction, dataSource, runMutation]);
 
@@ -186,7 +198,6 @@ export function KanbanWorkspacePanel({
     void runMutation(
       `delete:${card.card_id}`,
       () => dataSource.deleteCard(boardData.board.board_id, card.card_id),
-      `Deleted “${card.title}”.`,
     );
   };
 
@@ -207,7 +218,6 @@ export function KanbanWorkspacePanel({
           company_id: companyId,
           use_ai: false,
         }),
-        `Imported “${payload.title}”.`,
       );
     };
     window.addEventListener(HISTORY_CHAT_KANBAN_DROP_EVENT, handleHistoryDrop);
@@ -269,13 +279,8 @@ export function KanbanWorkspacePanel({
           copyLabel="Kanban 操作エラーをコピー"
           message={error}
           messageClassName="whitespace-pre-wrap"
-          trailing={<button type="button" onClick={() => { setError(null); setStatusMessage(null); }} className="shrink-0 rounded px-2 py-1 text-current/70 hover:bg-white/5 hover:text-current">Dismiss</button>}
+          trailing={<button type="button" onClick={() => setError(null)} className="shrink-0 rounded px-2 py-1 text-current/70 hover:bg-white/5 hover:text-current">Dismiss</button>}
         />
-      ) : statusMessage ? (
-        <div className="mx-4 mt-3 flex items-start justify-between gap-3 rounded-xl border border-emerald-400/20 bg-emerald-500/[0.08] px-3 py-2.5 text-xs text-emerald-100" role="status" aria-live="polite">
-          <span className="min-w-0 whitespace-pre-wrap break-words">{statusMessage}</span>
-          <button type="button" onClick={() => setStatusMessage(null)} className="shrink-0 rounded px-2 py-1 text-current/70 hover:bg-white/5 hover:text-current">Dismiss</button>
-        </div>
       ) : null}
 
       {columns.length === 0 ? (

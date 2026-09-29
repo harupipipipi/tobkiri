@@ -1,13 +1,13 @@
 import type { FormEvent, MutableRefObject, ReactNode } from "react";
 
-import type { ChatActivityEvent, ChatContentBlock, CodingContextEntry, CodingGitStatus, CodingWorkspaceRecord, ComposerWidgetAction, ConversationSteerItem, ModelCommandCandidate, ModelProfile, PromptUsageSummary, SettingsSection, SidebarAction, SidebarItem, StrategyContribution, TemplateComposerInput, ToolLogEntry, ToolTarget, UICatalog } from "../lib/api";
+import type { ChatActivityEvent, ChatContentBlock, CodingContextEntry, CodingGitStatus, CodingWorkspaceRecord, ComposerWidgetAction, ConversationSteerItem, ModelCommandCandidate, ModelProfile, PromptUsageSummary, SettingsSection, SidebarAction, SidebarItem, TemplateComposerInput, ToolLogEntry, ToolTarget, UICatalog } from "../lib/api";
 import type { DesktopSystemInfo } from "../lib/desktopSystemInfo";
 import type { ComposerCommandItem, RuntimeHealth } from "../lib/api";
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "../components/HistoryBoard";
 import type { ToolPreviewItem, ToolPreviewMode } from "../components/ToolPreview";
 import type { LocaleSetting } from "../lib/i18n";
 import type { RuntimeCapabilitySnapshot, ToolFilterEntry } from "../lib/toolStatus";
-import type { WorkspaceTab, WorkspaceTabKind } from "../components/WorkspaceTabs";
+import type { WorkspaceTab, WorkspaceTabCreateOption, WorkspaceTabKind } from "../components/WorkspaceTabs";
 import type { ActionApprovalMode } from "../features/tools/ActionApprovalControl";
 import type { PendingToolReview, ToolSelectionChip } from "../features/tools/types";
 import type { ComposerMentionMetadata } from "../lib/composerWidgets";
@@ -58,10 +58,9 @@ export type ComposerExtensionItem = {
   description?: string;
   tags?: string[];
   disabled?: boolean;
-  /** Provenance retained from the trusted sidebar catalog for mention grouping. */
+  /** Catalog provenance used only to organize mention suggestions. */
   sourcePackId?: string;
-  originKind?: string;
-  /** Service id supplied by the profile tool catalog, when present. */
+  /** Explicit catalog service identifier, when this tool belongs to an integration. */
   serviceId?: string;
   ui?: SidebarItem["ui"];
 };
@@ -141,6 +140,7 @@ export type HistoryBoardRendererProps = {
   isDesktopsActive?: boolean;
   onSettingsClick: () => void;
   onChatMetadataChange?: (chatId: string, updates: { is_pinned?: boolean; is_starred?: boolean; tags?: string[] }) => void;
+  onSearchOpen?: () => void;
   onMinimize?: () => void;
   onRestore?: () => void;
   isCompact?: boolean;
@@ -197,9 +197,6 @@ export type ComposerRendererProps = {
   modelProfiles?: ModelProfile[];
   modelSelectorSchema?: ModelSelectorSchema;
   thinkingLevel: string | null;
-  strategyContributions?: StrategyContribution[];
-  strategyReference?: string | null;
-  strategySelectionInvalid?: boolean;
   contextUsage: ContextUsageInfo;
   inlineExtensions: ComposerExtensionItem[];
   belowExtensions: ComposerExtensionItem[];
@@ -232,8 +229,6 @@ export type ComposerRendererProps = {
   steerBusy?: boolean;
   steerQueuedCount?: number;
   steerPreviewItems?: ConversationSteerItem[];
-  /** False when the active contract map registers no steer operation. */
-  steerEnabled?: boolean;
   suppressPopovers?: boolean;
   onOpenModelManager?: () => void;
   onOpenToolSettings?: () => void;
@@ -251,7 +246,6 @@ export type ComposerRendererProps = {
   onModelProfileSelect: (profileId: string) => void;
   onProviderApiKeySave?: (providerId: string, value: string) => Promise<void> | void;
   onThinkingLevelChange: (level: string | null) => void;
-  onStrategyReferenceChange?: (reference: string | null) => void;
   onInputChange: (value: string) => void;
   onStructuredInputChange?: (values: Record<string, string>) => void;
   onSubmit: (event: FormEvent) => void;
@@ -311,6 +305,8 @@ export type RightSidebarRendererProps = {
   showChatPromptUsage?: boolean;
   yoloMode?: boolean;
   workspaceTabs?: WorkspaceTab[];
+  workspaceTabsEnabled?: boolean;
+  workspaceTabCreateOptions?: WorkspaceTabCreateOption[];
   activeWorkspaceTabId?: string | null;
   activeConversationId?: string | null;
   onSettingChange: SettingChangeHandler;

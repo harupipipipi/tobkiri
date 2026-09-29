@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { createElement, type ComponentType, type ReactNode } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
 
 const source = ts.createSourceFile(
@@ -31,67 +29,6 @@ function appExpression(name: string, bindings: Record<string, unknown>): unknown
   const scope = { useCallback: (callback: unknown) => callback, ...bindings };
   return new Function(...Object.keys(scope), `${javascript}\nreturn value;`)(...Object.values(scope));
 }
-
-function appFunction(name: string, bindings: Record<string, unknown>): unknown {
-  let declaration: ts.FunctionDeclaration | undefined;
-  const visit = (node: ts.Node) => {
-    if (ts.isFunctionDeclaration(node) && node.name?.text === name) {
-      assert.equal(declaration, undefined, `duplicate App function: ${name}`);
-      declaration = node;
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
-  assert.ok(declaration, `missing App function: ${name}`);
-  const javascript = ts.transpileModule(
-    declaration.getText(source).replace(/^export\s+/, ""),
-    {
-      compilerOptions: {
-        jsx: ts.JsxEmit.React,
-        module: ts.ModuleKind.None,
-        target: ts.ScriptTarget.ES2022,
-      },
-    },
-  ).outputText;
-  const scope = { React: { createElement }, ...bindings };
-  return new Function(
-    ...Object.keys(scope),
-    `${javascript}\nreturn ${name};`,
-  )(...Object.values(scope));
-}
-
-type NewConversationStageProps = {
-  composerHomeTitle: string;
-  error: string | null;
-  isLaunching: boolean;
-  onDismissError: () => void;
-  onRetry?: () => void;
-  renderComposer: (isCentered: boolean) => ReactNode;
-};
-
-type ErrorNoticeStubProps = {
-  children?: ReactNode;
-  errorIcon?: string;
-  message: string;
-};
-
-function ErrorNoticeStub({ children, errorIcon, message }: ErrorNoticeStubProps): ReactNode {
-  return createElement(
-    "section",
-    { "data-error-notice": errorIcon, role: "alert" },
-    message,
-    children,
-  );
-}
-
-const NewConversationStage = appFunction("NewConversationStage", {
-  ErrorNotice: ErrorNoticeStub,
-  RefreshCw: () => null,
-  X: () => null,
-  cn: (...classes: Array<string | false | null | undefined>) => (
-    classes.filter(Boolean).join(" ")
-  ),
-}) as ComponentType<NewConversationStageProps>;
 
 function healthFixture(health: () => Promise<unknown>) {
   const states: unknown[] = [];
@@ -169,65 +106,6 @@ test("refresh button reports a failed workspace read to the App error notice", a
   refresh();
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.deepEqual(errors, ["HTTP 403"]);
-});
-
-test("an empty conversation keeps its composer visible after the first saved turn fails", () => {
-  const markup = renderToStaticMarkup(
-    createElement(NewConversationStage, {
-      composerHomeTitle: "Welcome to Tobkiri",
-      error: "The saved turn could not be completed.",
-      isLaunching: false,
-      onDismissError: () => undefined,
-      onRetry: () => undefined,
-      renderComposer: (isCentered) => createElement("textarea", {
-        "data-centered-composer": String(isCentered),
-      }),
-    }),
-  );
-
-  assert.match(markup, /data-error-notice="chat"/);
-  assert.match(markup, /The saved turn could not be completed\./);
-  assert.match(markup, /data-centered-composer="true"/);
-  assert.match(markup, />再試行</);
-  assert.doesNotMatch(markup, /Welcome to Tobkiri/);
-});
-
-test("an empty conversation shows its greeting when no failed turn is present", () => {
-  const markup = renderToStaticMarkup(
-    createElement(NewConversationStage, {
-      composerHomeTitle: "Welcome to Tobkiri",
-      error: null,
-      isLaunching: false,
-      onDismissError: () => undefined,
-      renderComposer: (isCentered) => createElement("textarea", {
-        "data-centered-composer": String(isCentered),
-      }),
-    }),
-  );
-
-  assert.match(markup, /Welcome to Tobkiri/);
-  assert.match(markup, /data-centered-composer="true"/);
-  assert.doesNotMatch(markup, /data-error-notice="chat"/);
-});
-
-test("model profile changes refresh the settings catalog as well as profiles", async () => {
-  const profiles: unknown[] = [];
-  let catalogRefreshes = 0;
-  const refreshModels = appExpression("refreshModels", {
-    api: {
-      listModelProfiles: async () => ({ profiles: ["saved-model"] }),
-    },
-    console: { error: () => undefined },
-    disposed: false,
-    refreshCatalog: async () => { catalogRefreshes += 1; },
-    setModelProfiles: (value: unknown) => profiles.push(value),
-  }) as () => void;
-
-  refreshModels();
-  await new Promise<void>((resolve) => setImmediate(resolve));
-
-  assert.deepEqual(profiles, [["saved-model"]]);
-  assert.equal(catalogRefreshes, 1);
 });
 
 for (const failedPart of ["context", "branch"] as const) {

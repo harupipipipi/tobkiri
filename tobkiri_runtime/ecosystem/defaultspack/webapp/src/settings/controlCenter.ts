@@ -5,6 +5,7 @@ import { settingsFieldSearchText } from "../lib/settingsSearch";
 export type ControlCenterSectionId =
   | "quick_setup"
   | "models_api"
+  | "calendar"
   | "accounts_connections"
   | "features"
   | "tools_mcp"
@@ -157,6 +158,13 @@ const SECTION_META: Array<Omit<ControlCenterSection, "fields" | "sourceSections"
     order: 20,
   },
   {
+    id: "calendar",
+    label: "Calendar",
+    description: "Calendar events, tasks, defaults, and scheduling behavior.",
+    help: "Calendar settings are grouped separately from other features.",
+    order: 25,
+  },
+  {
     id: "accounts_connections",
     label: "Connections",
     description: "AI providers, accounts, credentials, channels, webhooks, and devices.",
@@ -166,7 +174,7 @@ const SECTION_META: Array<Omit<ControlCenterSection, "fields" | "sourceSections"
   {
     id: "features",
     label: "Features",
-    description: "Calendar, commands, ambient capture, and other optional product features.",
+    description: "Commands, ambient capture, and other optional product features.",
     help: "Feature-specific behavior stays with the feature that owns it.",
     order: 40,
   },
@@ -180,7 +188,7 @@ const SECTION_META: Array<Omit<ControlCenterSection, "fields" | "sourceSections"
   {
     id: "computer_automation",
     label: "Automation & Permissions",
-    description: "Approval rules, computer control, OS permissions, triggers, and continuation.",
+    description: "Approval rules, triggers, and continuation.",
     help: "High-impact automation is explicit about scope, risk, and the next action.",
     order: 60,
   },
@@ -224,11 +232,12 @@ const SECTION_META: Array<Omit<ControlCenterSection, "fields" | "sourceSections"
 const JA_SECTION_COPY: Record<ControlCenterSectionId, Pick<ControlCenterSection, "label" | "description" | "help">> = {
   quick_setup: { label: "AIアシスタント", description: "応答の方針を決め、AIと対話しながら設定を探す・比較・変更できます。", help: "応答の方針はここで編集でき、AIは変更案を準備します。実際に適用する値はユーザーが確認できます。" },
   models_api: { label: "モデル", description: "会話で使うモデル、用途別の割り当て、自動選択とフォールバックを設定します。", help: "接続や認証情報は「接続」で管理します。" },
+  calendar: { label: "カレンダー", description: "予定とタスクの追加、表示、実行時に使うモデルを設定します。", help: "カレンダーに固有の設定をまとめています。" },
   workspace_ui: { label: "表示と入力", description: "表示言語、入力方法、ショートカット、回答とプレビューの見え方を設定します。", help: "日常的に変更する表示・入力項目だけをまとめています。" },
   accounts_connections: { label: "接続", description: "AIプロバイダー、アカウント、外部サービス、Webhook、デバイスの接続を管理します。", help: "認証情報は専用の安全な保存経路を使用します。" },
-  features: { label: "機能", description: "カレンダー、コマンド、指で録音など、追加機能ごとの動作を設定します。", help: "各機能に固有の項目を、その所有機能ごとにまとめています。" },
+  features: { label: "機能", description: "コマンド、指で録音など、追加機能ごとの動作を設定します。", help: "各機能に固有の項目を、その所有機能ごとにまとめています。" },
   tools_mcp: { label: "ツール", description: "チャットで使えるツール、MCP、ツール候補、透明性を管理します。", help: "ログインは「接続」、実行承認は「自動化と権限」で管理します。" },
-  computer_automation: { label: "自動化と権限", description: "承認ルール、コンピュータ操作、OS権限、トリガー、継続実行を管理します。", help: "影響の大きい操作は、必要な機能・リスク・適用範囲と一緒に表示します。" },
+  computer_automation: { label: "自動化と権限", description: "承認ルール、トリガー、継続実行を管理します。", help: "影響の大きい操作は、必要な機能・リスク・適用範囲と一緒に表示します。" },
   privacy_security: { label: "安全とデータ", description: "外部へ送るデータ、保持、ログ、認証情報、管理者ポリシーを管理します。", help: "件数ではなく、原因・影響・解決操作のある問題だけを表示します。" },
   profiles: { label: "プロファイル", description: "モデル、ツール、接続、承認ルールの上書きを比較・適用します。", help: "継承値と上書き値、適用範囲を確認できます。" },
   packs_extensions: { label: "Pack・拡張機能", description: "Packの提供元、信頼、権限、更新、Pack固有設定を管理します。", help: "Pack由来の項目を通常設定から隔離し、所有元とリセット範囲を示します。" },
@@ -295,6 +304,7 @@ const JA_FIELD_COPY: Record<string, LocalizedFieldCopy> = {
     help: "必要な場合だけ、モデルごとに使用するAPIキーを指定します。通常はプロバイダーの既定キーが使われます。",
   },
   "*.thinking_level": { label: "考える深さ" },
+  "*.deepthink_enabled": { label: "長時間の深い検討を使う" },
   "*.model_allowlist": { label: "利用するモデル", help: "モデル選択画面に表示し、Tobkiriが自動選択できるモデルを選びます。" },
   "*.handoff": { label: "クラウド・別端末へ引き継ぐ" },
   "*.api_keys": { label: "APIキーとトークン" },
@@ -375,6 +385,8 @@ const JA_SOURCE_SECTION_COPY: Record<string, string> = {
   calendar: "カレンダー",
   ambient: "指で録音",
   automation: "自動化",
+  triggers: "起動条件",
+  continuity: "クラウド・別端末への引き継ぎ",
   personalization: "パーソナライズ",
   operations_company: "業務エージェント",
   mimo_coding_company: "MiMo Coding",
@@ -439,7 +451,7 @@ const SECTION_ID_ALIASES: Record<string, ControlCenterSectionId> = {
   line: "accounts_connections",
   features: "features",
   feature: "features",
-  calendar: "features",
+  calendar: "calendar",
   commands: "features",
   ambient: "features",
   automation: "computer_automation",
@@ -501,7 +513,7 @@ const SOURCE_SECTION_ROUTES: Record<string, ControlCenterSectionId> = {
   external_output: "accounts_connections",
   line: "accounts_connections",
   mobile: "accounts_connections",
-  calendar: "features",
+  calendar: "calendar",
   commands: "features",
   ambient: "features",
   tools: "tools_mcp",
@@ -525,7 +537,8 @@ const SOURCE_SECTION_ROUTES: Record<string, ControlCenterSectionId> = {
 };
 
 const FIELD_ROUTE_OVERRIDES: Record<string, ControlCenterSectionId> = {
-  "calendar.agent_model": "features",
+  "calendar.agent_model": "calendar",
+  "automation.subagent_teams_enabled": "models_api",
   "ambient.agent_model": "models_api",
   "ambient.model": "models_api",
   "ambient.provider": "accounts_connections",
@@ -602,15 +615,16 @@ export function mapSettingsSectionId(sectionId: string | null | undefined): Cont
 
 export function controlCenterSectionForField(section: SettingsSection, field: SettingsField): ControlCenterSectionId {
   const fieldRecord = field as SettingsField & Record<string, unknown>;
-  const explicit = mapSettingsSectionId(String(fieldRecord.control_center_section ?? fieldRecord.section ?? ""));
-  if (explicit) return explicit;
   const exact = FIELD_ROUTE_OVERRIDES[`${section.id}.${field.id}`];
   if (exact) return exact;
+  const explicit = mapSettingsSectionId(String(fieldRecord.control_center_section ?? fieldRecord.section ?? ""));
+  if (explicit) return explicit;
   const sectionMatch = SOURCE_SECTION_ROUTES[section.id] ?? mapSettingsSectionId(section.id);
   if (
     sectionMatch === "computer_automation"
     || sectionMatch === "accounts_connections"
     || sectionMatch === "features"
+    || sectionMatch === "calendar"
     || sectionMatch === "privacy_security"
     || sectionMatch === "workspace_ui"
     || sectionMatch === "models_api"
@@ -636,6 +650,7 @@ export function buildControlCenterSections(settingsSections: SettingsSection[], 
   const sections = controlCenterSectionMeta(locale);
   const byId = new Map(sections.map((section) => [section.id, section]));
   for (const sourceSection of settingsSections) {
+    if (sourceSection.id === "computer_use_haze") continue;
     const sourceSectionTargets = new Set<ControlCenterSectionId>();
     for (const rawField of sourceSection.fields) {
       if (DEPRECATED_SETTING_KEYS.has(`${sourceSection.id}.${rawField.id}`)) continue;
@@ -684,9 +699,12 @@ export function buildControlCenterSections(settingsSections: SettingsSection[], 
     if (apiSource && !models.sourceSections.some((section) => section.id === apiSource.id)) {
       models.sourceSections.push(apiSource);
     }
+  }
+  if (models) {
     const modelFieldRank = (field: ControlCenterField): number => {
       if (["main_model", "lightweight_model", "preferred_model"].includes(field.id)) return 100;
-      if (field.id === "strategy_reference") return 110;
+      if (field.id === "deepthink_enabled") return 110;
+      if (field.sourceSectionId === "automation" && field.id === "subagent_teams_enabled") return 160;
       if (["preferred_model_group", "auto_route_within_group"].includes(field.id)) return 150;
       if (field.sourceSectionId === "apis" && field.id === "api_keys") return 200;
       if (field.id === "model_api_routes") return 900;
@@ -712,18 +730,23 @@ export function buildControlCenterSections(settingsSections: SettingsSection[], 
       .sort((left, right) => workspaceFieldRank(left.field) - workspaceFieldRank(right.field) || left.index - right.index)
       .map(({ field }) => field);
   }
-  const computerAutomation = byId.get("computer_automation");
-  if (computerAutomation) {
-    const computerAutomationFieldRank = (field: ControlCenterField): number => (
-      field.sourceSectionId === "automation" && field.id === "subagent_teams_enabled" ? 0 : 100
-    );
-    computerAutomation.fields = computerAutomation.fields
+  if (connections) {
+    const inputFieldRank = (field: ControlCenterField): number => {
+      if (field.id === "default_response_mode") return 100;
+      if (field.id === "input_response_preset") return 101;
+      if (field.id === "provider_route_copy") return 200;
+      if (field.id === "saved_sources_summary") return 300;
+      return 0;
+    };
+    const inputFields = connections.fields
+      .filter((field) => field.sourceSectionId === "external_input")
       .map((field, index) => ({ field, index }))
-      .sort((left, right) => (
-        computerAutomationFieldRank(left.field) - computerAutomationFieldRank(right.field)
-        || left.index - right.index
-      ))
+      .sort((left, right) => inputFieldRank(left.field) - inputFieldRank(right.field) || left.index - right.index)
       .map(({ field }) => field);
+    let inputIndex = 0;
+    connections.fields = connections.fields.map((field) => (
+      field.sourceSectionId === "external_input" ? inputFields[inputIndex++] : field
+    ));
   }
   const tools = byId.get("tools_mcp");
   if (tools) {

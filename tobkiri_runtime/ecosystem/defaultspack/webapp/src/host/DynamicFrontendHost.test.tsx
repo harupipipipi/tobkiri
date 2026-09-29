@@ -252,41 +252,6 @@ test("renders a declarative route without importing a product screen", () => {
   assert.doesNotMatch(markup, /iframe/);
 });
 
-test("verified declarative routes render only bounded inert local text inputs", () => {
-  resetFrontendHostQuarantineForTests();
-  const renderInput = (item: VerifiedFrontendContribution) => renderToStaticMarkup(
-    <DynamicFrontendHost
-      catalog={catalog([item])}
-      route="/feature"
-      activePlanHash="plan-1"
-      capabilities={capabilities}
-    />,
-  );
-  const markup = renderInput(contribution({
-    view: { title: "Notes", input: { label: "Note text", placeholder: "Type locally" } },
-  }));
-  assert.match(markup, /<label[^>]*><span>Note text<\/span><input/);
-  assert.match(markup, /data-pack-local-input="true"/);
-  assert.match(markup, /autoComplete="off"/);
-  assert.match(markup, /maxLength="256"/);
-  assert.match(markup, /placeholder="Type locally"/);
-  assert.doesNotMatch(markup, /<button|<form|<iframe/);
-
-  for (const input of [
-    { label: "" },
-    { label: "x".repeat(257) },
-    { label: "Note", placeholder: "x".repeat(257) },
-    { label: "Note", action: "send" },
-  ]) {
-    // A malformed or expanded descriptor cannot add an input control.
-    assert.doesNotMatch(renderInput(contribution({ view: { input } })), /data-pack-local-input/);
-  }
-  assert.doesNotMatch(renderInput(contribution({
-    action_contract: "rumi.action.feature.run.v1",
-    view: { input: { label: "Note text" } },
-  })), /data-pack-local-input/);
-});
-
 test("missing pack contribution has a copyable isolated fallback", () => {
   resetFrontendHostQuarantineForTests();
   const markup = renderToStaticMarkup(

@@ -1,8 +1,9 @@
-import { Box, Calculator, ChevronRight, CircleAlert, Clock, Copy, ExternalLink, FileText, GitBranch, Globe2, Image as ImageIcon, Loader2, Monitor, RefreshCw, Terminal, Wrench, X } from "lucide-react";
+import { Check, Box, Calculator, ChevronRight, CircleAlert, Clock, Copy, ExternalLink, FileText, GitBranch, Globe2, Image as ImageIcon, Loader2, Monitor, RefreshCw, Terminal, Wrench, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { remarkMessageMentions, type MessageMention } from "../lib/messageMentions";
 
 import { ArtifactPreviewDialog, type ArtifactPreviewDialogItem } from "../components/ArtifactPreviewDialog";
 import { ErrorCopyAction, ErrorNotice, copyTextWithFallback } from "../components/ErrorNotice";
@@ -341,16 +342,18 @@ function CompactLogBlock({ text }: { text: string }) {
 
 function MessageMarkdown({
   text,
+  mentions,
   onOpenImagePreview,
 }: {
   text: string;
+  mentions?: MessageMention[];
   onOpenImagePreview?: (image: ImagePreviewRequest) => void;
 }) {
   return isCompactLogLikeMessageText(text)
     ? <CompactLogBlock text={text} />
     : (
       <ReactMarkdown
-        remarkPlugins={markdownPlugins}
+        remarkPlugins={[...markdownPlugins, [remarkMessageMentions, mentions ?? []]]}
         components={{
           a: ({ href, children }) => <SafeChatLink href={href}>{children}</SafeChatLink>,
           img: ({ src, alt }) => (
@@ -435,33 +438,6 @@ function SafeChatLink({ href, children }: { href?: string; children: ReactNode }
         </span>
       )}
     </span>
-  );
-}
-
-function MessageMentionBadges({
-  mentions,
-}: {
-  mentions: NonNullable<NonNullable<ChatMessagesRendererProps["messages"][number]["metadata"]>["mentions"]>;
-}) {
-  if (mentions.length === 0) return null;
-  return (
-    <div
-      aria-label="このメッセージで指定されたメンション"
-      className="mb-2 flex flex-wrap gap-1.5"
-      data-testid="message-mention-badges"
-    >
-      {mentions.map((mention) => (
-        <span
-          key={`${mention.kind}:${mention.id}`}
-          data-testid="message-mention-badge"
-          data-mention-kind={mention.kind}
-          className="inline-flex min-h-6 max-w-full items-center overflow-hidden text-ellipsis whitespace-nowrap rounded-full border border-sky-400/25 bg-sky-400/10 px-2 text-[11px] font-medium text-sky-100"
-          title={`@${mention.label} · ${mention.kind}`}
-        >
-          @{mention.label}
-        </span>
-      ))}
-    </div>
   );
 }
 
@@ -624,11 +600,13 @@ function UntrustedImageBlock({
 
 function MessageBlock({
   block,
+  mentions,
   sanitizeText,
   unknownStrategy,
   onOpenImagePreview,
 }: {
   block: ChatContentBlock;
+  mentions?: MessageMention[];
   sanitizeText?: (text: string) => string;
   unknownStrategy: string;
   onOpenImagePreview?: (image: ImagePreviewRequest) => void;
@@ -638,7 +616,7 @@ function MessageBlock({
   if (blockType === "text" || blockType === "markdown") {
     const text = sanitizeText ? sanitizeText(String(block.text ?? "")) : String(block.text ?? "");
     if (!text.trim()) return null;
-    return <MessageMarkdown text={text} onOpenImagePreview={onOpenImagePreview} />;
+    return <MessageMarkdown text={text} mentions={mentions} onOpenImagePreview={onOpenImagePreview} />;
   }
 
   if (blockType === "code") {
@@ -842,24 +820,24 @@ function MessageActionBar({
   };
 
   return (
-    <div className="rumi-message-actions mt-1.5 flex min-h-8 items-center justify-start gap-1 opacity-85 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100">
+    <div className="rumi-message-actions mt-1.5 flex min-h-8 items-center justify-start gap-1">
       <button
         aria-label="コピー"
         className={cn(
           "flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800/85 hover:text-zinc-100 focus-visible:bg-zinc-800/85 focus-visible:text-zinc-100",
-          copyState === "copied" && "rumi-copy-icon-pop text-emerald-300",
-          copyState === "failed" && "rumi-copy-icon-pop text-red-300",
+          copyState === "copied" && "text-zinc-100",
+          copyState === "failed" && "text-red-300",
         )}
         data-copy-action="message"
         onClick={() => void copyMessage()}
         title="コピー"
         type="button"
       >
-        <Copy aria-hidden="true" data-copy-icon="message" size={14} />
+        {copyState === "copied" ? <Check aria-hidden="true" data-copy-icon="success" size={14} /> : <Copy aria-hidden="true" data-copy-icon="message" size={14} />}
       </button>
       <span className="sr-only" aria-live="polite">{copyState === "copied" ? "メッセージをコピーしました" : copyState === "failed" ? "メッセージをコピーできませんでした" : ""}</span>
       {timestampLabel && (
-        <span className="ml-1 shrink-0 font-mono text-[10px] leading-none text-zinc-600 opacity-50 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100">
+        <span className="ml-1 shrink-0 font-mono text-[10px] leading-none text-zinc-500">
           {timestampLabel}
         </span>
       )}
@@ -1617,20 +1595,20 @@ function ToolActivityPanel({
   if (items.length === 0) return null;
   const previewableCallIds = previewableToolActivityKeys(message.events ?? []);
   return (
-    <section className="rumi-tool-activity mb-3 grid w-full max-w-[640px] gap-1 rounded-md border border-zinc-800/70 bg-zinc-950/45 px-2 py-1.5 text-zinc-300" aria-label="ツール履歴">
+    <section className="rumi-tool-activity mb-3 grid w-full max-w-full gap-1 text-zinc-300" aria-label="ツール履歴">
       <button
         type="button"
         aria-expanded={isOpen}
-        aria-label={`作業状況を${isOpen ? "閉じる" : "開く"}: ${summary.label}`}
-        className="flex min-w-0 items-center gap-2 rounded px-0.5 py-0.5 text-left transition-colors hover:bg-zinc-900/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-600"
+        aria-label={`作業状況を${isOpen ? "閉じる" : "開く"}: ${summary.visibleTitle || `${items.length}件の作業`}`}
+        className="flex w-fit min-w-0 max-w-full items-center gap-2 rounded px-0.5 py-1 text-left transition-colors hover:bg-zinc-900/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-600"
         onClick={onToggle}
       >
         <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", summary.failedCount > 0 ? "bg-red-400" : summary.runningCount > 0 ? "animate-pulse bg-blue-300" : "bg-zinc-600")} />
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-2">
-            <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-zinc-500">ツール履歴</span>
-            <span className="min-w-0 truncate text-[12px] font-medium leading-4 text-zinc-300">{summary.visibleTitle || summary.label}</span>
-            <span className="shrink-0 text-[10px] leading-4 text-zinc-500">{summary.label}</span>
+            <span className="min-w-0 truncate text-[12px] font-medium leading-4 text-zinc-300">{summary.visibleTitle || `${items.length}件の作業`}</span>
+            {summary.runningCount > 0 && <span className="shrink-0 text-[11px] text-zinc-400">作業中</span>}
+            {summary.failedCount > 0 && <span className="shrink-0 text-[11px] text-red-300">{summary.failedCount}件失敗</span>}
           </span>
           {summary.runningCount > 0 && summary.nextAction && (
             <span className="block truncate text-[10px] leading-4 text-zinc-500">次: {summary.nextAction}</span>
@@ -1776,7 +1754,7 @@ export function ChatMessagesRenderer({
           onScroll={onMessagesScroll}
           className="rumi-messages-scroll flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-3 sm:px-6 lg:px-8"
         >
-          <div className="mx-auto w-full max-w-[980px] min-w-0 space-y-5">
+          <div className="rumi-message-column mx-auto w-full min-w-0 space-y-5">
             {visibleMessages.map((message) => {
               const toolActivity = showActivityInMessages && message.role === "agent"
                 ? toolActivityStateForMessage(message, activityNow)
@@ -1786,19 +1764,10 @@ export function ChatMessagesRenderer({
                 ? openToolActivityByMessageId[message.id] ?? toolActivity.hasRunningItems
                 : false;
               const isAuthorityPending = isAuthorityWaitingMessage(message);
-              // Persisted conversations can retain a stale `thinking.state=streaming`
-              // after the request has completed. Only the active tail response should
-              // keep advancing its timer; historical messages use their recorded end.
-              const isTaskRunning = message.role === "agent"
-                && isGenerating
-                && inlinePendingMessageId === message.id;
-              const taskDuration = message.role === "agent"
-                ? taskDurationForMessage(message, toolActivity?.items, activityNow, isTaskRunning)
-                : null;
               const toggleToolActivity = () => {
                 if (!toolActivity) return;
                 setOpenToolActivityByMessageId((current) => {
-                  const currentOpen = current[message.id] ?? false;
+                  const currentOpen = current[message.id] ?? toolActivity.hasRunningItems;
                   return { ...current, [message.id]: !currentOpen };
                 });
               };
@@ -1806,17 +1775,6 @@ export function ChatMessagesRenderer({
               return (
               <div key={message.id} className={cn("rumi-message-row group/message flex min-w-0 gap-3 select-text", message.role === "user" ? "flex-row-reverse sm:pr-2 lg:pr-5" : "sm:pl-1")}>
                 <div className={cn("flex min-w-0 flex-col pt-1", message.role === "user" ? "max-w-[88%] items-end sm:max-w-[78%] lg:max-w-[70%]" : "flex-1 items-start")}>
-                  {message.role === "agent" && (
-                    <div className="mb-1.5 flex max-w-full min-w-0 flex-nowrap items-center gap-2 overflow-hidden">
-                      <span className="shrink-0 text-xs font-semibold tracking-wide text-zinc-300">Assistant</span>
-                      {taskDuration && (
-                        <span className="flex shrink-0 items-center gap-1 text-[10px] text-zinc-500" aria-label={taskDuration.label}>
-                          <Clock size={10} aria-hidden="true" /> {taskDuration.label}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
                   <div className={cn("flex min-w-0 max-w-full flex-col", message.role === "user" ? "items-start" : "w-full items-start")}>
                     {toolActivity && (
                       <ToolActivityPanel
@@ -1850,10 +1808,6 @@ export function ChatMessagesRenderer({
                         </details>
                       )}
 
-                      {message.role === "user" && message.metadata?.mentions && (
-                        <MessageMentionBadges mentions={message.metadata.mentions} />
-                      )}
-
                       <div className="rumi-message-content markdown-body min-w-0 max-w-full select-text space-y-4 leading-relaxed">
                         {isAuthorityPending
                           ? (
@@ -1861,7 +1815,7 @@ export function ChatMessagesRenderer({
                             )
                           : message.content.length > 0 && (messageVisibleText(message) || message.content.some((block) => String(block.type ?? "text") !== "text"))
                           ? message.content.map((block, index) => (
-                              <MessageBlock key={`${message.id}-${index}`} block={block} sanitizeText={sanitizeMessageText} unknownStrategy={unknownBlockStrategy} onOpenImagePreview={setImagePreview} />
+                              <MessageBlock key={`${message.id}-${index}`} block={block} mentions={message.role === "user" ? message.metadata?.mentions : undefined} sanitizeText={sanitizeMessageText} unknownStrategy={unknownBlockStrategy} onOpenImagePreview={setImagePreview} />
                             ))
                           : shouldShowEmptyResponseWarning(message, hasToolActivity)
                             ? (
@@ -1874,7 +1828,7 @@ export function ChatMessagesRenderer({
                                   severity="warning"
                                 />
                               )
-                            : <MessageMarkdown text={messageDisplayText(message, message.rawText)} />}
+                            : <MessageMarkdown text={messageDisplayText(message, message.rawText)} mentions={message.role === "user" ? message.metadata?.mentions : undefined} />}
                       </div>
 
                       {message.role === "agent" && message.metadata?.interrupted && (

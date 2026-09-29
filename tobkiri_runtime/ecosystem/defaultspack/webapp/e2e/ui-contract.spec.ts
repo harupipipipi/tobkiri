@@ -774,7 +774,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       return fulfill(route, { status: "ok", pack: "defaultspack", ts: "2026-05-20T00:00:00Z" });
     }
 
-    if (path === routeKey("api/ui/catalog")) {
+    if (path === routeKey("api/ui/catalog") || path === routeKey("api/ui/full-catalog")) {
       return fulfill(route, {
         dynamic_host: dynamicHostCatalog(),
         app: { id: "defaultspack", name: "Rumi", account: { display_name: "Smoke User", plan_label: "Local" } },
@@ -1708,7 +1708,7 @@ test("composer approval menu opens action permissions while selection modes live
   await expect(approvalMenu).toContainText("承認を求める");
   await expect(approvalMenu).toContainText("代理で承認");
   await expect(approvalMenu).toContainText("フルアクセス");
-  await expect(approvalMenu).toContainText("カスタム（設定）");
+  await expect(approvalMenu).not.toContainText("カスタム（設定）");
   await expect(approvalMenu).not.toContainText("自動で選ぶ");
 
   await approvalMenu.getByRole("button", { name: "詳細はこちら" }).click();

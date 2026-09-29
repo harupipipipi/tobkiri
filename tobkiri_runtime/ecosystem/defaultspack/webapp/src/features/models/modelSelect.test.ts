@@ -11,10 +11,13 @@ import {
 
 import {
   buildVisibleModelOptions,
+  enrichModelSelectOptions,
   findSelectedModelOption,
   filterModelOptionsByProvider,
   filterModelProviderOptions,
   modelOptionBadges,
+  modelOptionNeedsVisionRecommendation,
+  modelOptionThinkingLevels,
   modelProviderOptions,
   modelSearchItemToModelSelectOption,
   parseModelProviderQuery,
@@ -22,6 +25,10 @@ import {
   serializeModelAllowlist,
   type ModelSelectOption,
 } from "./modelSelect";
+import {
+  SettingsModelSearchField,
+  withThinkingLevelForModel,
+} from "../../renderers/settings/renderers/modelSelectField";
 
 test("saved canonical routes remain selectable without claiming Provider health", () => {
   const route = {
@@ -157,6 +164,100 @@ test("model search items map API key and capability status into select options",
   assert.equal(option.requires_api_key, true);
   assert.equal(option.api_key_configured, false);
   assert.deepEqual(modelOptionBadges(option).map((badge) => badge.id), ["api-key-needed", "tools"]);
+});
+
+test("model selector uses declared thinking levels and only recommends Vision for known text-only models", () => {
+  const textOnly: ModelSelectOption = {
+    value: "demo/text",
+    label: "Text model",
+    supports_vision: false,
+    supports_image_input: false,
+    supports_thinking: true,
+    thinking_levels: ["none", "low", "high"],
+  };
+
+  assert.deepEqual(modelOptionThinkingLevels(textOnly), ["none", "low", "high"]);
+  assert.equal(modelOptionNeedsVisionRecommendation(textOnly, textOnly.value), true);
+  assert.equal(modelOptionNeedsVisionRecommendation({ value: "unknown", label: "Unknown" }, "unknown"), false);
+  assert.equal(modelOptionNeedsVisionRecommendation({ ...textOnly, supports_image_input: true }, textOnly.value), false);
+});
+
+test("settings options recover model capability metadata from the Host-read profile catalog", () => {
+  const [option] = enrichModelSelectOptions(
+    [{ value: "google/gemini-3-pro-preview", label: "Gemini 3 Pro" }],
+    [{
+      profile_id: "google/gemini-3-pro-preview",
+      display_name: "Gemini 3 Pro",
+      provider_id: "google",
+      model_id: "gemini-3-pro-preview",
+      supports_thinking: true,
+      thinking_levels: ["low", "high"],
+      default_thinking_level: "high",
+      supports_vision: true,
+    }],
+  );
+
+  assert.equal(option.provider_id, "google");
+  assert.deepEqual(modelOptionThinkingLevels(option), ["low", "high"]);
+  assert.equal(option.default_thinking_level, "high");
+  assert.equal(option.supports_vision, true);
+});
+
+test("settings model selector keeps thinking next to the selected model", () => {
+  const html = renderToStaticMarkup(createElement(SettingsModelSearchField, {
+    value: "demo/text",
+    options: [{
+      value: "demo/text",
+      label: "Text model",
+      supports_vision: false,
+      supports_image_input: false,
+      supports_thinking: true,
+      thinking_levels: ["low", "high"],
+      default_thinking_level: "high",
+    }],
+    thinkingLevelsByProfile: { "demo/text": "low" },
+    recommendVision: true,
+    onChange: () => undefined,
+    onThinkingLevelChange: () => undefined,
+  }));
+
+  assert.match(html, /data-settings-model-thinking/);
+  assert.match(html, /aria-label="考える深さ"/);
+  assert.match(html, /Vision対応モデルを推奨/);
+  assert.match(html, /<option value="low" selected="">Low<\/option>/);
+});
+
+test("remote model capability metadata persists its explicitly selected thinking level", () => {
+  const remoteOption: ModelSelectOption = {
+    value: "remote/reasoner",
+    label: "Remote Reasoner",
+    supports_thinking: true,
+    thinking_levels: ["low", "high"],
+  };
+
+  assert.deepEqual(
+    withThinkingLevelForModel({}, remoteOption.value, remoteOption, "high"),
+    { "remote/reasoner": "high" },
+  );
+  assert.equal(
+    withThinkingLevelForModel({}, remoteOption.value, remoteOption, "medium"),
+    null,
+  );
+});
+
+test("remembered server-selected options remain visible after a blank-query reset", () => {
+  const selected: ModelSelectOption = {
+    value: "remote/reasoner",
+    label: "Remote Reasoner",
+    provider_id: "remote",
+    supports_thinking: true,
+    thinking_levels: ["high"],
+  };
+
+  assert.deepEqual(
+    buildVisibleModelOptions({ options: [selected], remoteOptions: [], query: "" }),
+    [selected],
+  );
 });
 
 test("findSelectedModelOption falls back to the raw value", () => {

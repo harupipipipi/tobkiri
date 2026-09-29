@@ -1,7 +1,6 @@
 import type { ChatContinuationPacket, ChatMessage, Conversation, SavedTurnResult } from "./api";
 
 const STABLE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
-const GENERIC_SAVED_TURN_FAILURE_DETAIL = /(?:turn\s*(?:ledger|台帳)|ledger\s*(?:is\s*)?(?:incomplete|未完了)|saved\s+conversation\s+did\s+not\s+complete|saved\s+(?:conversation\s+)?outcome\s+is\s+unconfirmed)/i;
 
 /**
  * Fail-closed identity check for a Host-bound approval-continuation packet.
@@ -65,14 +64,6 @@ export function savedTurnSnapshotNotice(state: ReturnType<typeof savedTurnSnapsh
   return null;
 }
 
-/**
- * Explain an indeterminate saved send without exposing transport or storage
- * implementation details. This state is not a confirmed failure.
- */
-export function savedTurnConfirmationPendingNotice(): string {
-  return "送信の完了を確認しています。重複を防ぐため、同じ内容を送信し直さずに確認を続けます。";
-}
-
 export type SavedTurnProgressState =
   | "ledger_only"
   | "user_saved"
@@ -115,15 +106,15 @@ export function savedTurnProgressState(
 
 export function savedTurnProgressNotice(state: SavedTurnProgressState): string {
   if (state === "user_saved") {
-    return "あなたのメッセージは保存されました。AIの返答を確認中です。自動再送はしません。";
+    return "ユーザーメッセージは保存済みです。assistant の保存状態を照合中です。自動再送はしません。";
   }
   if (state === "all_messages_saved_unconfirmed") {
-    return "メッセージとAIの返答は保存されています。処理の完了確認中です。自動再送はしません。";
+    return "user／assistant メッセージは保存済みです。turn の完了状態を照合中です。自動再送はしません。";
   }
   if (state === "conversation_unavailable") {
-    return "会話を取得できず、前の処理の完了も確認できません。重複実行を防ぐため、自動再送せずに保存結果を確認します。";
+    return "turn 台帳は未完了で、現在の会話を取得できません。自動再送せず照合を待ちます。";
   }
-  return savedTurnConfirmationPendingNotice();
+  return "turn 台帳は未完了です。保存状態を照合中のため自動再送はしません。";
 }
 
 export function savedTurnTerminalNotice(
@@ -133,22 +124,10 @@ export function savedTurnTerminalNotice(
 ): string | null {
   if (turn.id !== turnId || turn.conversation_id !== conversationId) return null;
   if (turn.status === "cancelled") {
-    return "送信の停止を確認しました。会話の保存内容を確認してから、必要ならもう一度送信してください。";
+    return "送信の停止を確認しました。保存済みメッセージを表示し、自動再送はしません。";
   }
   if (turn.status === "failed") {
-    const structured = turn.error;
-    if (structured && typeof structured === "object") {
-      const parts = [structured.message, structured.cause, structured.fix]
-        .filter((item): item is string => (
-          typeof item === "string"
-          && Boolean(item.trim())
-          && !GENERIC_SAVED_TURN_FAILURE_DETAIL.test(item)
-        ));
-      if (parts.length) {
-        return `送信は失敗で終了しました。${parts.join(" — ")} 会話の保存内容を確認してから、必要ならもう一度送信してください。`;
-      }
-    }
-    return "送信は失敗で終了しました。会話の保存内容を確認してから、必要ならもう一度送信してください。";
+    return "送信は失敗で終了しました。保存済みメッセージを表示し、自動再送はしません。";
   }
   return null;
 }

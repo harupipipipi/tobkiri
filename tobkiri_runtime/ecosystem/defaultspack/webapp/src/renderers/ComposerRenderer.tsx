@@ -101,10 +101,11 @@ import { ProjectPicker } from "../features/projects/ProjectPicker";
 import { ToolOverrideChips } from "../features/tools/ToolOverrideChips";
 import { ToolSelectionReviewCard } from "../features/tools/ToolSelectionReviewCard";
 import {
+  appendVoiceTranscript,
   isAudioAttachment,
-  modelSupportsAudioInput,
   readableTranscriptionError,
   requestComposerAudioTranscript,
+  shouldTranscribeVoiceInput,
   transcriptAttachmentFromAudio,
 } from "../features/voice/composerVoice";
 import { fileToAttachment } from "../lib/attachments";
@@ -198,20 +199,52 @@ const COMPOSER_CHROME_WIDTHS = {
   mode: { basis: "auto", min: "2rem", max: "7rem", shrink: 1 },
   badge: { basis: "auto", min: "0", max: "11rem", shrink: 1 },
   thinking: { basis: "5.25rem", min: "5.25rem", max: "5.25rem", shrink: 0 },
-  strategy: { basis: "7.5rem", min: "6rem", max: "9rem", shrink: 1 },
   status: { basis: "auto", min: "2.5rem", shrink: 0 },
   send: { basis: "44px", min: "44px", max: "44px" },
   sendLarge: { basis: "44px", min: "44px", max: "44px" },
 } satisfies Record<string, ComposerChromeWidth>;
 
-const COMPOSER_CONTROL_SURFACE_CLASSNAME = "rumi-composer-control-surface flex h-[44px] min-h-[44px] min-w-0 items-center rounded-xl border border-white/[0.08] bg-white/[0.045] px-2.5";
+const COMPOSER_CONTROL_SURFACE_CLASSNAME = "rumi-composer-control-surface flex h-[44px] min-h-[44px] min-w-0 items-center rounded-lg px-2.5";
+export const COMPOSER_ATTACH_COMMAND_ID = "composer.attach_files";
+export const COMPOSER_ATTACH_IMAGE_COMMAND_ID = "composer.attach_images";
+
+export function composerMenuCommands(commands: ComposerCommandItem[], allowFiles: boolean, allowCommands: boolean): ComposerCommandItem[] {
+  const availableCommands = allowCommands ? commands : [];
+  if (!allowFiles) return availableCommands;
+  return [
+    {
+      id: COMPOSER_ATTACH_IMAGE_COMMAND_ID,
+      name: "image",
+      aliases: ["photo", "画像", "写真"],
+      label: "画像を追加",
+      description: "画像を選択して会話に添付",
+      category: "chat",
+      visibility: "default",
+      risk: "low",
+      execution: { type: "frontend", action: "attach_images" },
+    },
+    {
+      id: COMPOSER_ATTACH_COMMAND_ID,
+      name: "attach",
+      aliases: ["file", "添付"],
+      label: "ファイルを添付",
+      description: "写真やファイルを追加",
+      category: "chat",
+      visibility: "default",
+      risk: "low",
+      execution: { type: "frontend", action: "attach_files" },
+    },
+    ...availableCommands,
+  ];
+}
+
 const AT_MENTION_LISTBOX_ID = "composer-at-mention-listbox";
 const COMPOSER_MODEL_CONTROL_MIN_CH = 9;
 const COMPOSER_MODEL_CONTROL_MAX_CH = 18;
 const COMPOSER_MODEL_CONTROL_CHROME_CH = 6;
 const NEW_CONVERSATION_TEXTAREA_MIN_HEIGHT = 22;
 const NEW_CONVERSATION_TEXTAREA_MAX_HEIGHT = 240;
-const CONVERSATION_TEXTAREA_MIN_HEIGHT = 24;
+const CONVERSATION_TEXTAREA_MIN_HEIGHT = 56;
 const CONVERSATION_TEXTAREA_MAX_HEIGHT = 240;
 const COLLAPSED_TEXTAREA_MAX_HEIGHT = 72;
 const TEXTAREA_COLLAPSE_THRESHOLD = 104;
@@ -348,7 +381,7 @@ function ComposerTextareaResizeButton({
       aria-label={collapsed ? "入力欄を広げる" : "入力欄を小さくする"}
       title={collapsed ? "入力欄を広げる" : "入力欄を小さくする"}
       onClick={onToggle}
-      className="absolute right-1 top-1 rumi-layer-panel flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.07] bg-[#17181d]/90 text-zinc-500 shadow-sm transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+      className="absolute right-1 top-1 rumi-layer-panel flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
     >
       <Icon size={13} />
     </button>
@@ -363,7 +396,7 @@ function composerIconForName(iconName: string | undefined, fallback: LucideIcon)
   if (/git|branch|repo/.test(normalized)) return GitBranch;
   if (/code|terminal|shell|cli/.test(normalized)) return Code2;
   if (/model|cpu|provider|ai/.test(normalized)) return Cpu;
-  if (/strategy|think|brain|reason/.test(normalized)) return BrainCircuit;
+  if (/think|brain|reason/.test(normalized)) return BrainCircuit;
   if (/key|auth|credential/.test(normalized)) return KeyRound;
   if (/message|chat|conversation/.test(normalized)) return MessageSquare;
   if (/mention|at/.test(normalized)) return AtSign;
@@ -375,6 +408,7 @@ const COMMAND_ICON_BY_ID: Partial<Record<string, LucideIcon>> = {
   help: CircleHelp,
   model: Cpu,
   think: Brain,
+  deepthink: BrainCircuit,
   fast: Zap,
   price: BadgeDollarSign,
   compact: Minimize2,
@@ -576,6 +610,19 @@ export function shouldShowComposerCommandSuggestions({
   matchCount: number;
 }): boolean {
   return focused && slashCommandsEnabled && !hasModelCandidates && matchCount > 0;
+}
+
+/** A command surface owns the composer listbox while it is visible. */
+export function shouldShowComposerAtMentionSuggestions({
+  atMentionOpen,
+  commandMenuOpen,
+  commandSuggestionsOpen,
+}: {
+  atMentionOpen: boolean;
+  commandMenuOpen: boolean;
+  commandSuggestionsOpen: boolean;
+}): boolean {
+  return atMentionOpen && !commandMenuOpen && !commandSuggestionsOpen;
 }
 
 export function commandArgumentEntryPrefix(command: ComposerCommandItem | undefined): string | null {
@@ -1329,42 +1376,54 @@ function FilePreviewCard({
 function ComposerAttachmentRegion({
   attachedFiles,
   pendingPaths,
+  error,
   onFileRemove,
   onPendingRemove,
   onTranscribe,
 }: {
   attachedFiles: AttachedFile[];
   pendingPaths: string[];
+  error?: string | null;
   onFileRemove?: (id: string) => void;
   onPendingRemove?: (path: string) => void;
   onTranscribe?: (file: AttachedFile) => Promise<void>;
 }) {
   const hasAttachments = attachedFiles.length > 0 || pendingPaths.length > 0;
+  const isVisible = hasAttachments || Boolean(error);
   return (
     <div
       className="rumi-composer-attachment-reveal"
       data-composer-attachment-region
-      data-attachment-state={hasAttachments ? "expanded" : "collapsed"}
-      aria-hidden={!hasAttachments}
+      data-attachment-state={isVisible ? "expanded" : "collapsed"}
+      aria-hidden={!isVisible}
     >
       <div className="rumi-composer-attachment-reveal-inner">
-        <div
-          className="rumi-composer-attachment-strip flex gap-2 overflow-x-auto"
-          role="region"
-          aria-label="添付ファイル"
-        >
-          {pendingPaths.map((path) => (
-            <PendingFileChip key={path} path={path} onRemove={onPendingRemove} />
-          ))}
-          {attachedFiles.map((file) => (
-            <FilePreviewCard
-              key={file.id}
-              file={file}
-              onRemove={onFileRemove}
-              onTranscribe={onTranscribe}
-            />
-          ))}
-        </div>
+        {hasAttachments && (
+          <div
+            className="rumi-composer-attachment-strip flex gap-2 overflow-x-auto"
+            role="region"
+            aria-label="添付ファイル"
+          >
+            {pendingPaths.map((path) => (
+              <PendingFileChip key={path} path={path} onRemove={onPendingRemove} />
+            ))}
+            {attachedFiles.map((file) => (
+              <FilePreviewCard
+                key={file.id}
+                file={file}
+                onRemove={onFileRemove}
+                onTranscribe={onTranscribe}
+              />
+            ))}
+          </div>
+        )}
+        {error && (
+          <ErrorNotice
+            className="mt-1.5 rounded-lg px-2 py-1.5 text-[10px] leading-4"
+            copyLabel="画像添付エラーをコピー"
+            message={error}
+          />
+        )}
       </div>
     </div>
   );
@@ -1379,6 +1438,62 @@ export function composerClipboardFiles(
     .filter((item) => item.kind === "file")
     .map((item) => item.getAsFile())
     .filter((file): file is File => Boolean(file));
+}
+
+const INLINE_IMAGE_MIME_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+]);
+const MAX_INLINE_IMAGE_BYTES = 1024 * 1024;
+const MAX_INLINE_IMAGE_COUNT = 2;
+
+function isInlineImageAttachment(file: Pick<AttachedFile, "type">): boolean {
+  return INLINE_IMAGE_MIME_TYPES.has(String(file.type ?? "").trim().toLowerCase());
+}
+
+/**
+ * Keep the picker aligned with the saved-turn image contract before a user
+ * invests in a draft that the backend cannot safely persist or send.
+ */
+export function prepareComposerAttachments(
+  files: File[],
+  attachedFiles: AttachedFile[],
+): { files: File[]; error: string | null } {
+  let remainingImageSlots = Math.max(
+    0,
+    MAX_INLINE_IMAGE_COUNT - attachedFiles.filter(isInlineImageAttachment).length,
+  );
+  const accepted: File[] = [];
+  const rejected: string[] = [];
+
+  for (const file of files) {
+    const mimeType = String(file.type ?? "").trim().toLowerCase();
+    if (!mimeType.startsWith("image/")) {
+      accepted.push(file);
+      continue;
+    }
+    if (!INLINE_IMAGE_MIME_TYPES.has(mimeType)) {
+      rejected.push(`${file.name}: PNG、JPEG、WebP、GIFのみ対応`);
+      continue;
+    }
+    if (file.size > MAX_INLINE_IMAGE_BYTES) {
+      rejected.push(`${file.name}: 1 MB以下にしてください`);
+      continue;
+    }
+    if (remainingImageSlots <= 0) {
+      rejected.push(`${file.name}: 画像は1メッセージに最大2枚です`);
+      continue;
+    }
+    accepted.push(file);
+    remainingImageSlots -= 1;
+  }
+
+  return {
+    files: accepted,
+    error: rejected.length > 0 ? `画像を追加できませんでした。${rejected.join(" / ")}` : null,
+  };
 }
 
 function DroppedWidgetChip({
@@ -1602,28 +1717,6 @@ export function isModelPickerToggleCommand(currentOpen: boolean, rawInput: strin
   return currentOpen && rawInput.trim().toLowerCase() === "/model";
 }
 
-export function modelPickerPage(
-  profiles: ModelProfile[],
-  remoteProfiles: ModelProfile[],
-  selectedProfile: ModelProfile | null,
-  selectedFirst: boolean,
-  limit: number,
-): { visible: ModelProfile[]; total: number } {
-  const byId = new Map<string, ModelProfile>();
-  for (const profile of [...profiles, ...remoteProfiles]) {
-    const key = profile.profile_id || profile.qualified_model_id || `${profile.provider_id ?? ""}/${profile.model_id ?? ""}`;
-    if (!key || byId.has(key)) continue;
-    byId.set(key, profile);
-  }
-  const values = [...byId.values()];
-  if (selectedFirst && selectedProfile) {
-    const selectedId = selectedProfile.profile_id || selectedProfile.qualified_model_id;
-    const selectedIndex = values.findIndex((profile) => (profile.profile_id || profile.qualified_model_id) === selectedId);
-    if (selectedIndex > 0) values.unshift(...values.splice(selectedIndex, 1));
-  }
-  return { visible: values.slice(0, limit), total: values.length };
-}
-
 function ModelDropdown({
   profiles,
   selectedProfile,
@@ -1643,11 +1736,6 @@ function ModelDropdown({
 }) {
   const [search, setSearch] = useState("");
   const [remoteProfiles, setRemoteProfiles] = useState<ModelProfile[]>([]);
-  const [remoteOffset, setRemoteOffset] = useState(0);
-  const [remoteHasMore, setRemoteHasMore] = useState(false);
-  const [remoteLoading, setRemoteLoading] = useState(false);
-  const [remoteError, setRemoteError] = useState(false);
-  const [visibleLimit, setVisibleLimit] = useState(60);
   const [activeProviderIndex, setActiveProviderIndex] = useState(0);
   const [activeModelIndex, setActiveModelIndex] = useState(0);
   const searchRequestSeqRef = useRef(0);
@@ -1662,11 +1750,6 @@ function ModelDropdown({
     () => modelProviderSearchState(search, providerTrigger),
     [providerTrigger, search],
   );
-  const pageSize = Math.min(100, Math.max(1, resolvedSelectorSchema.layout.max_visible_options));
-  const remoteProviderId = providerState.confirmedProviderId;
-  const remoteQuery = remoteProviderId
-    ? search.slice(providerState.highlightPrefix.length).trim()
-    : trimmedSearch;
   const eligibleProfiles = useMemo(
     () => filterModelProfilesBySelector(profiles, resolvedSelectorSchema, "composer"),
     [profiles, resolvedSelectorSchema],
@@ -1697,89 +1780,49 @@ function ModelDropdown({
     searchRequestSeqRef.current += 1;
     const requestSeq = searchRequestSeqRef.current;
     setRemoteProfiles([]);
-    setRemoteOffset(0);
-    setRemoteHasMore(false);
-    setRemoteLoading(false);
-    setRemoteError(false);
-    setVisibleLimit(pageSize);
-    if (providerState.active) {
+    if (!trimmedSearch || providerState.active) {
       return;
     }
     let disposed = false;
     const timer = window.setTimeout(() => {
-      setRemoteLoading(true);
       chatComposerResources.searchModels({
-        query: remoteQuery,
-        provider_id: remoteProviderId,
-        max_results: pageSize,
-        offset: 0,
+        query: trimmedSearch,
+        max_results: resolvedSelectorSchema.layout.max_visible_options,
       })
         .then((result) => {
           if (disposed || requestSeq !== searchRequestSeqRef.current) return;
-          const models = result.models ?? [];
           setRemoteProfiles(filterModelProfilesBySelector(
-            models.map(modelSearchItemToProfile),
+            (result.models ?? []).map(modelSearchItemToProfile),
             resolvedSelectorSchema,
             "composer",
           ));
-          setRemoteOffset(models.length);
-          setRemoteHasMore(result.has_more ?? models.length === pageSize);
-          setRemoteLoading(false);
         })
         .catch(() => {
           if (disposed || requestSeq !== searchRequestSeqRef.current) return;
           setRemoteProfiles([]);
-          setRemoteLoading(false);
-          setRemoteError(true);
         });
-    }, remoteQuery ? 160 : 0);
+    }, 160);
     return () => {
       disposed = true;
       window.clearTimeout(timer);
     };
-  }, [pageSize, providerState.active, remoteProviderId, remoteQuery, resolvedSelectorSchema]);
+  }, [providerState.active, resolvedSelectorSchema, trimmedSearch]);
 
-  const modelPage = useMemo(() => modelPickerPage(
-    filtered,
-    remoteProfiles,
-    selectedProfile,
-    !trimmedSearch && resolvedSelectorSchema.layout.selected_position === "first",
-    visibleLimit,
-  ), [filtered, remoteProfiles, resolvedSelectorSchema.layout.selected_position, selectedProfile, trimmedSearch, visibleLimit]);
-  const visibleProfiles = modelPage.visible;
-  const hasMoreProfiles = modelPage.total > visibleLimit || remoteHasMore || remoteError;
-  const showMoreProfiles = () => {
-    if (remoteLoading) return;
-    if (modelPage.total > visibleLimit) {
-      setVisibleLimit((limit) => limit + pageSize);
-      return;
+  const visibleProfiles = useMemo(() => {
+    const byId = new Map<string, ModelProfile>();
+    for (const profile of [...filtered, ...remoteProfiles]) {
+      const key = profile.profile_id || profile.qualified_model_id || `${profile.provider_id ?? ""}/${profile.model_id ?? ""}`;
+      if (!key || byId.has(key)) continue;
+      byId.set(key, profile);
     }
-    const requestSeq = searchRequestSeqRef.current;
-    setRemoteLoading(true);
-    setRemoteError(false);
-    void chatComposerResources.searchModels({
-      query: remoteQuery,
-      provider_id: remoteProviderId,
-      max_results: pageSize,
-      offset: remoteOffset,
-    }).then((result) => {
-      if (requestSeq !== searchRequestSeqRef.current) return;
-      const models = result.models ?? [];
-      setRemoteProfiles((previous) => [...previous, ...filterModelProfilesBySelector(
-        models.map(modelSearchItemToProfile),
-        resolvedSelectorSchema,
-        "composer",
-      )]);
-      setRemoteOffset((offset) => offset + models.length);
-      setRemoteHasMore(models.length > 0 && (result.has_more ?? models.length === pageSize));
-      setVisibleLimit((limit) => limit + pageSize);
-      setRemoteLoading(false);
-    }).catch(() => {
-      if (requestSeq !== searchRequestSeqRef.current) return;
-      setRemoteLoading(false);
-      setRemoteError(true);
-    });
-  };
+    const values = [...byId.values()];
+    if (!trimmedSearch && selectedProfile && resolvedSelectorSchema.layout.selected_position === "first") {
+      const selectedId = selectedProfile.profile_id || selectedProfile.qualified_model_id;
+      const selectedIndex = values.findIndex((profile) => (profile.profile_id || profile.qualified_model_id) === selectedId);
+      if (selectedIndex > 0) values.unshift(...values.splice(selectedIndex, 1));
+    }
+    return values.slice(0, resolvedSelectorSchema.layout.max_visible_options);
+  }, [filtered, remoteProfiles, resolvedSelectorSchema.layout.max_visible_options, resolvedSelectorSchema.layout.selected_position, selectedProfile, trimmedSearch]);
 
   useEffect(() => {
     setActiveProviderIndex(0);
@@ -2011,16 +2054,6 @@ function ModelDropdown({
           {!providerState.active && groupedByProvider.length === 0 && (
             <div className="px-3 py-4 text-center text-xs text-zinc-500">モデルが見つかりません</div>
           )}
-          {!providerState.active && hasMoreProfiles && (
-            <button
-              type="button"
-              disabled={remoteLoading}
-              onClick={showMoreProfiles}
-              className="w-full border-t border-white/[0.06] px-3 py-2 text-center text-xs text-sky-300 hover:bg-white/[0.05] disabled:opacity-50"
-            >
-              {remoteLoading ? "読み込み中..." : remoteError ? "モデルを再読み込み" : "さらにモデルを表示"}
-            </button>
-          )}
         </div>
       </div>
     </>
@@ -2073,7 +2106,7 @@ function ModeSelector({
 }
 
 export type ComposerMentionSection = {
-  id: "plugin" | "builtin-tool" | "other-tool" | "skill" | "service" | "file";
+  id: "plugin" | "builtin-tool" | "custom-tool" | "skill" | "service" | "file";
   label: string;
   badge: string;
   tone: "sky" | "cyan" | "violet" | "blue" | "emerald" | "amber" | "rose" | "neutral";
@@ -2082,7 +2115,7 @@ export type ComposerMentionSection = {
 const COMPOSER_MENTION_SECTIONS: Record<ComposerMentionSection["id"], ComposerMentionSection> = {
   plugin: { id: "plugin", label: "プラグイン・接続", badge: "接続", tone: "cyan" },
   "builtin-tool": { id: "builtin-tool", label: "内蔵ツール", badge: "内蔵", tone: "sky" },
-  "other-tool": { id: "other-tool", label: "その他のツール", badge: "その他", tone: "emerald" },
+  "custom-tool": { id: "custom-tool", label: "追加したツール", badge: "追加", tone: "emerald" },
   skill: { id: "skill", label: "スキル", badge: "スキル", tone: "violet" },
   service: { id: "service", label: "ツールのまとまり", badge: "まとまり", tone: "blue" },
   file: { id: "file", label: "ワークスペースのファイル", badge: "ファイル", tone: "neutral" },
@@ -2094,24 +2127,25 @@ const BUILTIN_TOOL_PACK_IDS = new Set([
 ]);
 
 /**
- * Group mentionable tools by the catalog provenance that already controls
- * their discovery. No label or identifier heuristics are used here.
+ * Separate catalog-backed integrations from bundled tools without inferring a
+ * provider from a tool name. A service id is an explicit catalog declaration;
+ * a pack outside the known bundled packs is likewise a separately installed
+ * capability.
  */
 export function composerMentionSectionForTool(item: ComposerExtensionItem): ComposerMentionSection {
   const sourcePackId = String(item.sourcePackId ?? "").trim().toLowerCase();
-  if (sourcePackId === "user_dynamic") return COMPOSER_MENTION_SECTIONS["other-tool"];
-  if (item.originKind === "profile_tool_catalog") {
-    return item.serviceId === "other"
-      ? COMPOSER_MENTION_SECTIONS["other-tool"]
-      : COMPOSER_MENTION_SECTIONS.plugin;
-  }
-  if (sourcePackId && !BUILTIN_TOOL_PACK_IDS.has(sourcePackId)) {
+  if (sourcePackId === "user_dynamic") return COMPOSER_MENTION_SECTIONS["custom-tool"];
+  if (String(item.serviceId ?? "").trim() || (sourcePackId && !BUILTIN_TOOL_PACK_IDS.has(sourcePackId))) {
     return COMPOSER_MENTION_SECTIONS.plugin;
   }
   return COMPOSER_MENTION_SECTIONS["builtin-tool"];
 }
 
-/** Keep service mentions beside homogeneous tool provenance. */
+/**
+ * Keep a service group beside the catalog entries it contains. Groups that
+ * span catalog origins intentionally remain a separate catch-all, since a
+ * label such as a provider name cannot reliably describe a mixed bundle.
+ */
 export function composerMentionSectionForToolGroup(
   items: readonly ComposerExtensionItem[],
 ): ComposerMentionSection {
@@ -2119,7 +2153,9 @@ export function composerMentionSectionForToolGroup(
   for (const item of items) {
     if (item.disabled) continue;
     const itemSection = composerMentionSectionForTool(item);
-    if (section && section.id !== itemSection.id) return COMPOSER_MENTION_SECTIONS.service;
+    if (section && section.id !== itemSection.id) {
+      return COMPOSER_MENTION_SECTIONS.service;
+    }
     section = itemSection;
   }
   return section ?? COMPOSER_MENTION_SECTIONS.service;
@@ -2128,7 +2164,7 @@ export function composerMentionSectionForToolGroup(
 const COMPOSER_MENTION_SECTION_ORDER: readonly ComposerMentionSection["id"][] = [
   "plugin",
   "builtin-tool",
-  "other-tool",
+  "custom-tool",
   "skill",
   "service",
   "file",
@@ -2140,18 +2176,18 @@ export type ComposerAtMentionCandidate =
   | { kind: "skill"; id: string; label: string; displayLabel?: string; description?: string; skill: ComposerSkillItem; section: ComposerMentionSection }
   | { kind: "file"; id: string; label: string; displayLabel?: string; description?: string; file: string; section: ComposerMentionSection };
 
-/** Keep palette section headings contiguous without changing candidate identity. */
+/** Ensure Settings Mode stays available when a host catalog omits skills. */
+export function composerMentionSkills(skills: ComposerSkillItem[]): ComposerSkillItem[] {
+  return withSettingsAssistantSkill(skills);
+}
+
+/** Keep palette section headings contiguous while preserving each section's source order. */
 export function orderComposerAtMentionCandidates(
   candidates: readonly ComposerAtMentionCandidate[],
 ): ComposerAtMentionCandidate[] {
   return COMPOSER_MENTION_SECTION_ORDER.flatMap((sectionId) => (
     candidates.filter((candidate) => candidate.section.id === sectionId)
   ));
-}
-
-/** Keep Settings available even when the host omits its skill catalog entry. */
-export function composerMentionSkills(skills: ComposerSkillItem[]): ComposerSkillItem[] {
-  return withSettingsAssistantSkill(skills);
 }
 
 export type JsonListPanelItem = {
@@ -2291,48 +2327,49 @@ export function JsonListPanel({
         )}
         {payload.items.map((item, index) => {
           const Icon = composerIconForName(item.icon, JSON_LIST_FALLBACK_ICON[item.fallbackIcon]);
+          const section = item.section;
           const previousSectionId = payload.items[index - 1]?.section?.id;
-          const startsSection = item.section && item.section.id !== previousSectionId;
+          const startsSection = section && section.id !== previousSectionId;
           return (
             <div key={item.id}>
               {startsSection && (
                 <div aria-hidden="true" className="px-3 pb-1 pt-2 text-[10px] font-medium text-zinc-500">
-                  {item.section?.label}
+                  {section?.label}
                 </div>
               )}
               <button
-                id={`${payload.id}-option-${index}`}
-                type="button"
-                role="option"
-                aria-selected={index === activeIndex}
-                aria-disabled={item.disabled || undefined}
-                disabled={item.disabled}
-                title={item.disabledReason}
-                tabIndex={-1}
-                onMouseEnter={() => onActiveIndexChange(index)}
-                onClick={() => onSelect(index)}
-                className={`flex min-h-11 w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
-                  index === activeIndex ? "bg-white/[0.08] text-zinc-100" : "hover:bg-white/[0.05]"
-                }`}
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.04] text-zinc-300">
-                    <Icon size={14} />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-[13px] text-zinc-200">{payload.item.prefix ?? ""}{item.title}</span>
-                    {payload.item.showDescription !== false && item.description && <span className="block truncate text-[10px] text-zinc-500">{item.description}</span>}
-                  </span>
+              id={`${payload.id}-option-${index}`}
+              type="button"
+              role="option"
+              aria-selected={index === activeIndex}
+              aria-disabled={item.disabled || undefined}
+              disabled={item.disabled}
+              title={item.disabledReason}
+              tabIndex={-1}
+              onMouseEnter={() => onActiveIndexChange(index)}
+              onClick={() => onSelect(index)}
+              className={`flex min-h-11 w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                index === activeIndex ? "bg-white/[0.08] text-zinc-100" : "hover:bg-white/[0.05]"
+              }`}
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.04] text-zinc-300">
+                  <Icon size={14} />
                 </span>
-                {item.badges && item.badges.length > 0 && (
-                  <span className="flex flex-shrink-0 items-center gap-1">
-                    {item.badges.map((badge, badgeIndex) => (
-                      <span key={`${badge.label}:${badgeIndex}`} className={`rounded-full border px-1.5 py-0.5 text-[9px] leading-none ${JSON_LIST_BADGE_TONE_CLASS[badge.tone]}`}>
-                        {badge.label}
-                      </span>
-                    ))}
-                  </span>
-                )}
+                <span className="min-w-0">
+                  <span className="block truncate text-[13px] text-zinc-200">{payload.item.prefix ?? ""}{item.title}</span>
+                  {payload.item.showDescription !== false && item.description && <span className="block truncate text-[10px] text-zinc-500">{item.description}</span>}
+                </span>
+              </span>
+              {item.badges && item.badges.length > 0 && (
+                <span className="flex flex-shrink-0 items-center gap-1">
+                  {item.badges.map((badge, badgeIndex) => (
+                    <span key={`${badge.label}:${badgeIndex}`} className={`rounded-full border px-1.5 py-0.5 text-[9px] leading-none ${JSON_LIST_BADGE_TONE_CLASS[badge.tone]}`}>
+                      {badge.label}
+                    </span>
+                  ))}
+                </span>
+              )}
               </button>
             </div>
           );
@@ -2365,9 +2402,9 @@ export function atMentionPalettePayload(candidates: ComposerAtMentionCandidate[]
   return jsonListPanelPayload({
     id: "composer-at-mention",
     listboxId: AT_MENTION_LISTBOX_ID,
-    ariaLabel: "Composer mentions",
+    ariaLabel: "メンション候補",
     testId: "composer-at-mention-candidates",
-    header: { label: "Mentions", icon: "wrench" },
+    header: { label: "メンション", icon: "wrench" },
     empty: { message: "一致する候補はありません。Enterで本文を送信、Tabで次の操作へ移動できます。" },
     item: { prefix: "@" },
     items,
@@ -2403,7 +2440,7 @@ export function commandPalettePayload(commands: ComposerCommandItem[]): JsonList
         icon: `${command.id} ${command.name} ${command.category}`,
         fallbackIcon: "command" as const,
         badges: [
-          { label: command.risk, tone: riskTone[command.risk] },
+          ...(command.risk !== "low" ? [{ label: command.risk, tone: riskTone[command.risk] }] : []),
           ...(command.availability?.status === "unavailable"
             ? [{ label: "unavailable", tone: "neutral" as const }]
             : []),
@@ -2778,9 +2815,6 @@ export function ComposerRenderer({
   modelProfiles = [],
   modelSelectorSchema = DEFAULT_MODEL_SELECTOR_SCHEMA,
   thinkingLevel,
-  strategyContributions = [],
-  strategyReference = null,
-  strategySelectionInvalid = false,
   contextUsage,
   inlineExtensions,
   belowExtensions,
@@ -2813,7 +2847,6 @@ export function ComposerRenderer({
   steerBusy = false,
   steerQueuedCount = 0,
   steerPreviewItems = [],
-  steerEnabled = true,
   suppressPopovers = false,
   onOpenModelManager,
   onOpenToolSettings,
@@ -2831,7 +2864,6 @@ export function ComposerRenderer({
   onModelProfileSelect,
   onProviderApiKeySave,
   onThinkingLevelChange,
-  onStrategyReferenceChange,
   onInputChange,
   onStructuredInputChange,
   onSubmit,
@@ -2858,7 +2890,9 @@ export function ComposerRenderer({
   onProjectStoragePrepare,
 }: ComposerRendererProps) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
+  const [commandMenuOpen, setCommandMenuOpen] = useState(false);
+  const previousTextareaCollapsed = useRef(false);
+  const textareaResizeAnimation = useRef<Animation | null>(null);
   const [openFolder, setOpenFolder] = useState<"tools" | "models" | "commands">("tools");
   const [openToolGroup, setOpenToolGroup] = useState<string | null>(null);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
@@ -2876,14 +2910,16 @@ export function ComposerRenderer({
   const [voiceStatus, setVoiceStatus] = useState<"idle" | "starting" | "listening" | "transcribing" | "error">("idle");
   const [voiceElapsedSeconds, setVoiceElapsedSeconds] = useState(0);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [textareaCollapsed, setTextareaCollapsed] = useState(false);
   const [textareaCanCollapse, setTextareaCanCollapse] = useState(false);
   const [textareaFocused, setTextareaFocused] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
-  const attachmentMenuRef = useRef<HTMLDivElement | null>(null);
-  const attachmentMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const commandMenuRef = useRef<HTMLDivElement | null>(null);
+  const commandMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const inlineMentionLayerRef = useRef<HTMLDivElement | null>(null);
   const voiceRecorderRef = useRef<ActiveAudioRecorder | null>(null);
@@ -2944,7 +2980,10 @@ export function ComposerRenderer({
   const templateAllowsAtMentions = templateFeatureFlags.at_mentions !== false
     && templateFeatureFlags.mentions !== false;
 	  const toolItems = useMemo(() => [...inlineExtensions, ...belowExtensions], [inlineExtensions, belowExtensions]);
-  const mentionSkills = useMemo(() => composerMentionSkills(skillExtensions), [skillExtensions]);
+  const mentionSkills = useMemo(
+    () => composerMentionSkills(skillExtensions),
+    [skillExtensions],
+  );
   const resolvedModelSelectorSchema = useMemo(
     () => modelSelectorSchemaForSurface(modelSelectorSchema, "composer"),
     [modelSelectorSchema],
@@ -3005,18 +3044,18 @@ export function ComposerRenderer({
     || toolId === "browser_companion"
   ));
   const hasAttachedImages = attachedFiles.some((file) => String(file.type ?? "").startsWith("image/"));
-  const imageBridgePlanned = hasAttachedImages && !selectedProfile?.supports_vision && !selectedProfile?.supports_image_input;
+  const imageRequiresVisionModel = hasAttachedImages && !selectedProfile?.supports_vision && !selectedProfile?.supports_image_input;
   const activeToolGroup = toolGroups.find((group) => group.id === openToolGroup) ?? toolGroups[0] ?? null;
   const showToolGroups = toolItems.length > 4;
   const isEscapedSlash = input.startsWith("//");
-  const isSteerMode = steerEnabled && isGenerating && !isNewConversation;
+  const isSteerMode = isGenerating && !isNewConversation;
   const effectiveComposerPlaceholder = composerPlaceholderCopy({
     isSteerMode,
     mode,
     placeholder,
     templatePlaceholder: templateComposerPlaceholder,
   });
-  const effectiveComposerHelp = composerHelperCopy({
+  const effectiveComposerHelp = !isSteerMode && (!templateComposerHelp || looksLikeInternalComposerCopy(templateComposerHelp)) ? "" : composerHelperCopy({
     isSteerMode,
     hasInput: Boolean(input.trim()),
     slashCommands: templateAllowsSlashCommands,
@@ -3029,7 +3068,8 @@ export function ComposerRenderer({
   const slashCommandName = slashText.trimStart().split(/\s+/, 1)[0] ?? "";
   const slashQuery = slashCommandName.toLowerCase();
   const staticSelectMatch = hasSlashCommandPrefix ? protocolStaticSelectMatch(input, commands) : null;
-  const matchedCommands = hasSlashCommandPrefix
+  const menuCommands = composerMenuCommands(commands, templateAllowsFileAttachments, templateAllowsSlashCommands);
+  const matchedCommands = hasSlashCommandPrefix || commandMenuOpen
     ? staticSelectMatch && staticSelectMatch.options.length > 0
       ? staticSelectMatch.options
           .filter((option) => !staticSelectMatch.query || `${option.value} ${option.label}`.toLocaleLowerCase().includes(staticSelectMatch.query))
@@ -3042,7 +3082,7 @@ export function ComposerRenderer({
             protocol_source_command_id: staticSelectMatch.command.id,
             protocol_option_value: option.value,
           }))
-      : commands.filter((command) => {
+      : menuCommands.filter((command) => {
           const haystack = `${command.id} ${command.name} ${(command.aliases ?? []).join(" ")} ${command.label} ${command.description ?? ""}`.toLowerCase();
           return !slashQuery || haystack.includes(slashQuery);
         })
@@ -3050,10 +3090,15 @@ export function ComposerRenderer({
   const activeCommandArgumentGuide = commandArgumentGuideForInput(input, commands);
   const hasModelCommandCandidates = textareaFocused && modelCommandCandidates.length > 0;
   const showCommandSuggestions = shouldShowComposerCommandSuggestions({
-    focused: textareaFocused,
-    slashCommandsEnabled: templateAllowsSlashCommands,
+    focused: textareaFocused || commandMenuOpen,
+    slashCommandsEnabled: templateAllowsSlashCommands || commandMenuOpen,
     hasModelCandidates: hasModelCommandCandidates,
-    matchCount: activeCommandArgumentGuide ? 0 : matchedCommands.length,
+    matchCount: activeCommandArgumentGuide && !commandMenuOpen ? 0 : matchedCommands.length,
+  });
+  const showAtMentionSuggestions = shouldShowComposerAtMentionSuggestions({
+    atMentionOpen,
+    commandMenuOpen,
+    commandSuggestionsOpen: showCommandSuggestions,
   });
   const persistentToggleCommands = persistentComposerToggleCommands(commands).slice(0, 3);
   const visibleSteerPreviewItems = steerPreviewItems.filter((item) => (
@@ -3074,7 +3119,7 @@ export function ComposerRenderer({
     ...(mode === "coding" ? codingContext?.files ?? [] : []),
   ], [codingContext?.files, mentionSkills, mode, toolGroups, toolItems]);
   const atMentionCandidates = useMemo<ComposerAtMentionCandidate[]>(() => {
-    const toolCandidates = filterComposerToolMentions(toolItems, atMentionQuery, 14).map((item) => {
+    const toolCandidates = filterComposerToolMentions(toolItems, atMentionQuery, 32).map((item) => {
       const display = composerToolMentionDisplay(item);
       return {
         kind: "tool" as const,
@@ -3085,6 +3130,9 @@ export function ComposerRenderer({
         section: composerMentionSectionForTool(item),
       };
     });
+    const toolsInSection = (sectionId: ComposerMentionSection["id"]) => toolCandidates
+      .filter((candidate) => candidate.section.id === sectionId)
+      .slice(0, atMentionQuery.trim() ? 8 : 6);
     const skillCandidates = filterComposerSkillMentions(mentionSkills, atMentionQuery, 8).map((skill) => {
       const display = composerSkillMentionDisplay(skill);
       return {
@@ -3132,12 +3180,14 @@ export function ComposerRenderer({
         }))
       : [];
     return orderComposerAtMentionCandidates([
-      ...toolCandidates,
+      ...toolsInSection("plugin"),
+      ...toolsInSection("builtin-tool"),
+      ...toolsInSection("custom-tool"),
       ...skillCandidates,
       ...serviceCandidates,
       ...fileCandidates,
     ]);
-	  }, [atMentionQuery, codingContext?.files, mentionSkills, mode, toolGroups, toolItems]);
+  }, [atMentionQuery, codingContext?.files, mentionSkills, mode, toolGroups, toolItems]);
 
   const atMentionPalette = useMemo(() => atMentionPalettePayload(atMentionCandidates), [atMentionCandidates]);
   const commandPalette = useMemo(() => commandPalettePayload(matchedCommands), [matchedCommands]);
@@ -3147,14 +3197,14 @@ export function ComposerRenderer({
       : null,
     [activeCommandArgumentGuide],
   );
-  const activeComposerListboxId = atMentionOpen
+  const activeComposerListboxId = showAtMentionSuggestions
     ? AT_MENTION_LISTBOX_ID
     : showCommandSuggestions
       ? COMMAND_LISTBOX_ID
       : commandArgumentPalette
         ? COMMAND_ARGUMENT_LISTBOX_ID
         : undefined;
-  const activeComposerOptionId = atMentionOpen && atMentionCandidates.length > 0
+  const activeComposerOptionId = showAtMentionSuggestions && atMentionCandidates.length > 0
     ? `composer-at-mention-option-${selectedAtMentionIndex}`
     : showCommandSuggestions && matchedCommands.length > 0
       ? `composer-slash-command-option-${selectedCommandIndex}`
@@ -3178,6 +3228,10 @@ export function ComposerRenderer({
   const resizeComposerTextarea = useCallback(
     (textarea: HTMLTextAreaElement | null = textareaRef.current) => {
       if (!textarea) return;
+      const previousHeight = textarea.getBoundingClientRect().height;
+      textareaResizeAnimation.current?.cancel();
+      const animateResize = previousTextareaCollapsed.current !== textareaCollapsed;
+      previousTextareaCollapsed.current = textareaCollapsed;
       textarea.style.height = "auto";
       const naturalHeight = Math.max(textarea.scrollHeight, 0);
       const minHeight = isNewConversation ? NEW_CONVERSATION_TEXTAREA_MIN_HEIGHT : CONVERSATION_TEXTAREA_MIN_HEIGHT;
@@ -3189,6 +3243,12 @@ export function ComposerRenderer({
         minHeight,
         maxHeight,
       );
+      if (animateResize && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        textareaResizeAnimation.current = textarea.animate(
+          [{ height: `${previousHeight}px` }, { height: textarea.style.height }],
+          { duration: 200, easing: "ease-out" },
+        );
+      }
     },
     [isNewConversation, textareaCollapsed],
   );
@@ -3257,15 +3317,15 @@ export function ComposerRenderer({
   }, [menuOpen]);
 
   useEffect(() => {
-    if (!attachmentMenuOpen) return;
+    if (!commandMenuOpen) return;
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
-      if (attachmentMenuRef.current?.contains(target) || attachmentMenuButtonRef.current?.contains(target)) return;
-      setAttachmentMenuOpen(false);
+      if (commandMenuRef.current?.contains(target) || commandMenuButtonRef.current?.contains(target)) return;
+      setCommandMenuOpen(false);
     };
     const handleDocumentKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setAttachmentMenuOpen(false);
+      if (event.key === "Escape") setCommandMenuOpen(false);
     };
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleDocumentKeyDown);
@@ -3273,7 +3333,14 @@ export function ComposerRenderer({
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleDocumentKeyDown);
     };
-  }, [attachmentMenuOpen]);
+  }, [commandMenuOpen]);
+
+  useIsomorphicLayoutEffect(() => {
+    if (!commandMenuOpen) return;
+    setAtMentionOpen(false);
+    setAtMentionQuery("");
+    setAtMentionStart(null);
+  }, [commandMenuOpen]);
 
   useEffect(() => {
     setSelectedCommandIndex((current) => {
@@ -3323,6 +3390,7 @@ export function ComposerRenderer({
 
   useEffect(() => {
     if (!suppressPopovers) return;
+    setCommandMenuOpen(false);
     setMenuOpen(false);
     setAtMentionOpen(false);
     setModelDropdownOpen(false);
@@ -3380,19 +3448,35 @@ export function ComposerRenderer({
     rawInput = input,
     intent: "execute" | "complete" = "execute",
   ) => {
+    if (commandId === COMPOSER_ATTACH_COMMAND_ID || commandId === COMPOSER_ATTACH_IMAGE_COMMAND_ID) {
+      if (!templateAllowsFileAttachments) return;
+      setCommandMenuOpen(false);
+      if (hasSlashCommandPrefix) onInputChange("");
+      const inputElement = commandId === COMPOSER_ATTACH_IMAGE_COMMAND_ID
+        ? imageInputRef.current
+        : fileInputRef.current;
+      inputElement?.click();
+      return;
+    }
     if (!templateAllowsSlashCommands) return;
+    setCommandMenuOpen(false);
+    if (commandMenuOpen && !hasSlashCommandPrefix) {
+      const selected = commands.find((command) => command.id === commandId);
+      rawInput = `/${selected?.name ?? commandId}`;
+    }
     const protocolOption = matchedCommands.find((command) => command.id === commandId) as (
       ComposerCommandItem & { protocol_source_command_id?: string; protocol_option_value?: string }
     ) | undefined;
     if (protocolOption?.protocol_source_command_id && protocolOption.protocol_option_value) {
       const source = commands.find((command) => command.id === protocolOption.protocol_source_command_id);
-      if (!source) return;
+      if (!source || source.availability?.status === "unavailable") return;
       onCommandSelect?.(source.id, `/${source.name} ${protocolOption.protocol_option_value}`);
       onInputChange("");
       return;
     }
 
     const command = commands.find((item) => item.id === commandId);
+    if (command?.availability?.status === "unavailable") return;
     const argumentEntryPrefix = commandArgumentEntryPrefix(command);
     if (intent === "complete" && argumentEntryPrefix) {
       onInputChange(argumentEntryPrefix);
@@ -3423,7 +3507,7 @@ export function ComposerRenderer({
       setMenuOpen(true);
     }
     onCommandSelect?.(commandId, rawInput);
-    if (!(command?.protocol_presentation?.input.kind === "search_select" && rawHasArgs)) {
+    if (hasSlashCommandPrefix && !(command?.protocol_presentation?.input.kind === "search_select" && rawHasArgs)) {
       onInputChange("");
     }
   };
@@ -3440,7 +3524,7 @@ export function ComposerRenderer({
     (value: string) => {
       const textarea = textareaRef.current;
       const textareaOwnsFocus = typeof document === "undefined" || document.activeElement === textarea;
-      if (!textarea || !textareaOwnsFocus || suppressPopovers || !templateAllowsAtMentions) {
+      if (!textarea || !textareaOwnsFocus || commandMenuOpen || suppressPopovers || !templateAllowsAtMentions) {
         setAtMentionOpen(false);
         setAtMentionQuery("");
         setAtMentionStart(null);
@@ -3459,7 +3543,7 @@ export function ComposerRenderer({
         setAtMentionStart(null);
       }
     },
-    [atMentionKnownValues, suppressPopovers, templateAllowsAtMentions],
+    [atMentionKnownValues, commandMenuOpen, suppressPopovers, templateAllowsAtMentions],
   );
 
   useEffect(() => {
@@ -3534,9 +3618,20 @@ export function ComposerRenderer({
   const attachFiles = useCallback(async (files: FileList | File[] | null) => {
     if (!files?.length) return;
     if (!templateAllowsFileAttachments) return;
-    const newFiles: AttachedFile[] = await Promise.all(Array.from(files).map(fileToAttachment));
-    onFileAttach?.(newFiles);
-  }, [onFileAttach, templateAllowsFileAttachments]);
+    const prepared = prepareComposerAttachments(Array.from(files), attachedFiles);
+    setAttachmentError(prepared.error);
+    if (prepared.files.length === 0) return;
+    const results = await Promise.allSettled(prepared.files.map(fileToAttachment));
+    const newFiles = results
+      .filter((result): result is PromiseFulfilledResult<AttachedFile> => result.status === "fulfilled")
+      .map((result) => result.value);
+    const readError = results.find((result): result is PromiseRejectedResult => result.status === "rejected")?.reason;
+    if (readError) {
+      const message = readError instanceof Error ? readError.message : "ファイルを読み込めませんでした。";
+      setAttachmentError(prepared.error ? `${prepared.error} / ${message}` : message);
+    }
+    if (newFiles.length > 0) onFileAttach?.(newFiles);
+  }, [attachedFiles, onFileAttach, templateAllowsFileAttachments]);
 
   const handleCopy = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const textarea = event.currentTarget;
@@ -3654,9 +3749,9 @@ export function ComposerRenderer({
       event.preventDefault();
       if (isGenerating) {
         const prompt = input.trim();
-        if (prompt && !steerBusy && steerEnabled) {
+        if (prompt && !steerBusy) {
           onSteerSubmit?.(prompt);
-        } else if (!prompt || !steerEnabled) {
+        } else if (!prompt) {
           onStopGenerating?.();
         }
         return;
@@ -3672,7 +3767,7 @@ export function ComposerRenderer({
       submissionLockRef.current = { signature, submittedAt: now };
       onSubmit(event);
     },
-    [attachedFiles, input, isGenerating, needsApiKey, onStopGenerating, onSteerSubmit, onSubmit, pendingMentionAttachmentPaths.length, selectedProfile, steerBusy, steerEnabled],
+    [attachedFiles, input, isGenerating, needsApiKey, onStopGenerating, onSteerSubmit, onSubmit, pendingMentionAttachmentPaths.length, selectedProfile, steerBusy],
   );
 
   const handleSendButtonClick = useCallback(
@@ -3721,7 +3816,7 @@ export function ComposerRenderer({
         type: recording.mimeType,
         dataUrl: recording.dataUrl,
       };
-      if (modelSupportsAudioInput(selectedProfile)) {
+      if (!shouldTranscribeVoiceInput(selectedProfile, voiceInputUseAi)) {
         onFileAttach?.([audioFile]);
         setVoiceStatus("idle");
         setVoiceElapsedSeconds(0);
@@ -3729,12 +3824,11 @@ export function ComposerRenderer({
       }
       const transcript = await requestAudioTranscript(audioFile, {
         duration_ms: recording.durationMs,
-        action: "automatic_transcription_for_unsupported_model",
-        voice_input_use_ai: voiceInputUseAi,
+        action: voiceInputUseAi
+          ? "voice_input_transcription"
+          : "automatic_transcription_for_unsupported_model",
       });
-      const prefix = voiceInputUseAi ? "文字起こしして: " : "";
-      const base = input.trimEnd();
-      onInputChange(`${base}${base ? "\n" : ""}${prefix}${transcript}`);
+      onInputChange(appendVoiceTranscript(input, transcript));
       setVoiceStatus("idle");
       setVoiceElapsedSeconds(0);
     } catch (error) {
@@ -3819,17 +3913,18 @@ export function ComposerRenderer({
       }
 
       if (event.key === "Escape") {
-        const composerOwnsEscape = atMentionOpen
+        const composerOwnsEscape = showAtMentionSuggestions
           || hasSlashCommandPrefix
           || hasModelCommandCandidates
           || menuOpen
           || modelDropdownOpen
           || modeSelectorOpen
+          || commandMenuOpen
           || openModelStatusId !== null;
         if (composerOwnsEscape) {
           event.preventDefault();
           event.stopPropagation();
-          if (atMentionOpen) {
+          if (showAtMentionSuggestions) {
             // Read from the textarea as the source of truth here. A keydown can
             // arrive before the controlled `input` prop has caught up with the
             // browser's latest input event (notably immediately after typing @).
@@ -3843,6 +3938,7 @@ export function ComposerRenderer({
             }
           }
           setAtMentionOpen(false);
+          setCommandMenuOpen(false);
           setMenuOpen(false);
           setModelDropdownOpen(false);
           setModeSelectorOpen(false);
@@ -3853,7 +3949,7 @@ export function ComposerRenderer({
         }
       }
 
-      if (atMentionOpen) {
+      if (showAtMentionSuggestions) {
         const action = atMentionMenuKeyAction(
           event.key,
           event.shiftKey,
@@ -3925,9 +4021,10 @@ export function ComposerRenderer({
       }
     },
     [
+      commandMenuOpen,
       atMentionCandidates,
       atMentionKnownValues,
-      atMentionOpen,
+      showAtMentionSuggestions,
       atMentionQuery.length,
       atMentionStart,
       chooseModelCommandCandidate,
@@ -3983,50 +4080,30 @@ export function ComposerRenderer({
       slot: "leading",
       homeSlot: "editor-leading",
       order: 20,
-      visible: templateAllowsFileAttachments,
-      width: COMPOSER_CHROME_WIDTHS.icon,
+      visible: templateAllowsFileAttachments || templateAllowsSlashCommands,
+      width: { basis: "32px", min: "32px", max: "32px" },
       className: "relative overflow-visible",
       render: () => (
         <>
           <button
-            ref={attachmentMenuButtonRef}
+            ref={commandMenuButtonRef}
             type="button"
             tabIndex={chromeButtonTabIndex}
-            aria-label="ファイルを添付"
-            aria-expanded={attachmentMenuOpen}
-            disabled={!templateAllowsFileAttachments}
-            title="写真とファイルを追加"
-            onClick={() => setAttachmentMenuOpen((open) => !open)}
-            className="rumi-icon-button text-zinc-300"
+            aria-label="添付とコマンド"
+            aria-controls={COMMAND_LISTBOX_ID}
+            aria-expanded={showCommandSuggestions}
+            title="添付とコマンド"
+            onClick={() => {
+              setCommandMenuOpen(!showCommandSuggestions);
+              if (showCommandSuggestions && hasSlashCommandPrefix) onInputChange("");
+              setAtMentionOpen(false);
+              textareaRef.current?.focus({ preventScroll: true });
+            }}
+            className="rumi-icon-button rumi-attachment-button text-zinc-300"
           >
-            <Plus aria-hidden="true" size={isNewConversation ? 24 : 20} strokeWidth={1.8} />
+            <Plus aria-hidden="true" size={18} strokeWidth={1.8} />
           </button>
-          {attachmentMenuOpen && (
-            <div
-              ref={attachmentMenuRef}
-              role="menu"
-              aria-label="添付メニュー"
-              className="rumi-attachment-menu rumi-popover absolute left-0 top-full rumi-layer-modal mt-2 w-[min(360px,calc(100vw-32px))] p-2"
-            >
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setAttachmentMenuOpen(false);
-                  fileInputRef.current?.click();
-                }}
-                className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-sm text-zinc-100 transition-colors hover:bg-white/[0.06]"
-              >
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-zinc-200">
-                  <CloudUpload aria-hidden="true" size={17} />
-                </span>
-                <span className="min-w-0">
-                  <span className="block font-medium">写真とファイルを追加</span>
-                  <span className="block text-xs text-zinc-500">コンピューターからアップロード</span>
-                </span>
-              </button>
-            </div>
-          )}
+
         </>
       ),
     },
@@ -4232,17 +4309,17 @@ export function ComposerRenderer({
       ),
     },
     {
-      id: "vision-bridge-status",
+      id: "vision-model-required-status",
       slot: "leading",
       homeSlot: "toolbar-leading",
       order: 70,
-      visible: imageBridgePlanned,
+      visible: imageRequiresVisionModel,
       width: COMPOSER_CHROME_WIDTHS.badge,
       className: "overflow-hidden",
       render: () => (
-        <span aria-label="Vision Bridge" title="Vision Bridge" className="inline-flex items-center gap-1 rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-300 max-[430px]:px-1.5">
-          <FileText size={12} className="flex-shrink-0" />
-          <span className="truncate max-[430px]:hidden">Vision Bridge</span>
+        <span aria-label="画像対応モデルが必要" title="画像対応モデルが必要" className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300 max-[430px]:px-1.5">
+          <CircleAlert size={12} className="flex-shrink-0" />
+          <span className="truncate max-[430px]:hidden">画像対応モデルが必要</span>
         </span>
       ),
     },
@@ -4328,48 +4405,6 @@ export function ComposerRenderer({
       ),
     },
     {
-      id: "strategy-control",
-      slot: "trailing",
-      homeSlot: "toolbar-trailing",
-      order: 25,
-      // An unavailable persisted selection remains visible only as an error
-      // recovery control. A Pack with no admitted contribution stays hidden.
-      visible: strategyContributions.length > 0 || strategySelectionInvalid,
-      mobile: "hide",
-      width: COMPOSER_CHROME_WIDTHS.strategy,
-      className: "rumi-composer-dock-control",
-      render: () => (
-        <label className={`${COMPOSER_CONTROL_SURFACE_CLASSNAME} cursor-pointer justify-between gap-1.5 text-[11px] font-medium ${
-          strategySelectionInvalid ? "border-red-500/60 text-red-200" : "text-zinc-500"
-        }`}>
-          <select
-            value={strategySelectionInvalid ? "" : strategyReference ?? ""}
-            onChange={(event) => onStrategyReferenceChange?.(event.target.value || null)}
-            disabled={isGenerating || !onStrategyReferenceChange}
-            tabIndex={chromeButtonTabIndex}
-            className={`h-full w-full cursor-pointer appearance-none bg-transparent text-right text-[11px] font-medium outline-none transition-colors disabled:opacity-50 ${
-              strategySelectionInvalid ? "text-red-200" : "text-zinc-300 hover:text-zinc-100"
-            }`}
-            aria-label={strategySelectionInvalid ? "Strategy unavailable" : "Strategy"}
-            aria-invalid={strategySelectionInvalid || undefined}
-            title={strategySelectionInvalid
-              ? "The selected Strategy is no longer admitted. Choose Direct or another available Strategy."
-              : "Strategy"}
-          >
-            <option value="" className="bg-zinc-900 text-zinc-100">
-              {strategySelectionInvalid ? "Strategy unavailable — Direct" : "Direct"}
-            </option>
-            {strategyContributions.map((strategy) => (
-              <option key={strategy.reference} value={strategy.reference} className="bg-zinc-900 text-zinc-100">
-                {strategy.label}
-              </option>
-            ))}
-          </select>
-          <ChevronDown size={12} className="pointer-events-none flex-shrink-0 text-zinc-500" />
-        </label>
-      ),
-    },
-    {
       id: "model-status",
       slot: "trailing",
       homeSlot: "toolbar-trailing",
@@ -4406,21 +4441,21 @@ export function ComposerRenderer({
           onClick={handleSendButtonClick}
           tabIndex={chromeButtonTabIndex}
           aria-label={isGenerating
-            ? (input.trim() && steerEnabled ? "追加指示を送る" : "生成を停止")
+            ? (input.trim() ? "追加指示を送る" : "生成を停止")
             : pendingMentionAttachmentPaths.length > 0
               ? "ファイルを読み込み中"
               : "メッセージを送信"}
-          disabled={isGenerating
-            ? false
-            : pendingMentionAttachmentPaths.length > 0
-              || (!input.trim() && attachedFiles.length === 0)}
+          disabled={!isGenerating && (
+            pendingMentionAttachmentPaths.length > 0
+            || (!input.trim() && attachedFiles.length === 0)
+          )}
           title={isGenerating
-            ? (input.trim() && steerEnabled ? "追加指示を送る" : "停止")
+            ? (input.trim() ? "追加指示を送る" : "停止")
             : pendingMentionAttachmentPaths.length > 0
               ? "ファイルを読み込み中"
               : "送信"}
           className={`rumi-send-button flex flex-shrink-0 items-center justify-center rounded-full transition-all duration-150 disabled:cursor-not-allowed ${
-            "h-[44px] min-h-[44px] w-[44px] min-w-[44px]"
+            "h-8 min-h-8 w-8 min-w-8"
           } ${
             isGenerating
               ? input.trim()
@@ -4431,12 +4466,12 @@ export function ComposerRenderer({
                 : "bg-zinc-100 text-zinc-950 shadow-[0_6px_18px_rgba(0,0,0,0.28)] hover:bg-white"
           }`}
         >
-          {isGenerating && (!input.trim() || !steerEnabled) ? (
+          {isGenerating && !input.trim() ? (
             <Square size={11} strokeWidth={2.4} fill="currentColor" aria-hidden="true" />
-          ) : isGenerating && steerEnabled ? (
+          ) : isGenerating ? (
             <CornerDownRight size={15} strokeWidth={2.4} />
           ) : (
-            <SendButtonIcon size={isNewConversation ? 18 : 16} />
+            <SendButtonIcon size={18} />
           )}
         </button>
       ),
@@ -4470,7 +4505,7 @@ export function ComposerRenderer({
     >
       <div className={`rumi-composer-shell ${isNewConversation ? "rumi-composer-shell-new mx-auto" : "mx-auto"}`}>
         <RuntimeCapabilityBanner
-          visible={imageBridgePlanned}
+          visible={imageRequiresVisionModel}
           onSwitchToVisionModel={onSwitchToVisionModel}
           onOpenModelManager={onOpenModelManager}
           onOpenToolSettings={onOpenToolSettings}
@@ -4501,12 +4536,14 @@ export function ComposerRenderer({
             />
           )}
           {showCommandSuggestions && (
+            <div ref={commandMenuRef}>
             <JsonListPanel
               payload={commandPalette}
               activeIndex={selectedCommandIndex}
               onActiveIndexChange={setSelectedCommandIndex}
               onSelect={(index) => chooseCommand(matchedCommands[index].id)}
             />
+            </div>
           )}
 
           {commandArgumentPalette && (
@@ -4518,7 +4555,7 @@ export function ComposerRenderer({
             />
           )}
 
-          {atMentionOpen && (
+          {showAtMentionSuggestions && (
             <>
               <button
                 type="button"
@@ -4847,6 +4884,7 @@ export function ComposerRenderer({
                 <ComposerAttachmentRegion
                   attachedFiles={attachedFiles}
                   pendingPaths={pendingMentionAttachmentPaths}
+                  error={attachmentError}
                   onFileRemove={onFileRemove}
                   onPendingRemove={onPendingMentionAttachmentRemove}
                   onTranscribe={transcribeAttachedAudio}
@@ -4889,11 +4927,11 @@ export function ComposerRenderer({
                         handleInputChange(event.currentTarget.value);
                       }}
                       placeholder={effectiveComposerPlaceholder}
-                      aria-label="Rumiにメッセージを送信"
+                      aria-label="Tobkiriにメッセージを送信"
                       aria-autocomplete="list"
                       aria-controls={activeComposerListboxId}
                       aria-activedescendant={activeComposerOptionId}
-                      aria-expanded={atMentionOpen || showCommandSuggestions || Boolean(commandArgumentPalette)}
+                      aria-expanded={showAtMentionSuggestions || showCommandSuggestions || Boolean(commandArgumentPalette)}
                       role="combobox"
                       className={`rumi-composer-input-new rumi-composer-textarea relative rumi-layer-panel block min-h-[44px] w-full max-h-[240px] select-text resize-none overflow-x-hidden overflow-y-auto border-none bg-transparent px-0 py-2.5 text-[16px] font-medium leading-[24px] caret-zinc-100 outline-none placeholder:text-zinc-500/70 ${hasInlineMentions ? "rumi-composer-textarea-highlighted text-transparent" : "text-zinc-100"} ${textareaCanCollapse ? "pr-9" : ""}`}
                       onScroll={(event) => syncInlineMentionScroll(event.currentTarget)}
@@ -4959,13 +4997,14 @@ export function ComposerRenderer({
               <ComposerAttachmentRegion
                 attachedFiles={attachedFiles}
                 pendingPaths={pendingMentionAttachmentPaths}
+                error={attachmentError}
                 onFileRemove={onFileRemove}
                 onPendingRemove={onPendingMentionAttachmentRemove}
                 onTranscribe={transcribeAttachedAudio}
               />
               <div className={`grid min-w-0 items-end gap-1 px-2 ${conversationFileAttachWidget ? "grid-cols-[44px_minmax(0,1fr)]" : "grid-cols-1"}`}>
                 {conversationFileAttachWidget && (
-                  <div className="self-end pb-0.5">
+                  <div className="self-start pb-0.5 pt-1.5">
                     <ComposerChromeWidget widget={conversationFileAttachWidget} />
                   </div>
                 )}
@@ -4992,11 +5031,11 @@ export function ComposerRenderer({
                       handleInputChange(event.currentTarget.value);
                     }}
                     placeholder={effectiveComposerPlaceholder}
-                    aria-label="Rumiにメッセージを送信"
+                    aria-label="Tobkiriにメッセージを送信"
                     aria-autocomplete="list"
                     aria-controls={activeComposerListboxId}
                     aria-activedescendant={activeComposerOptionId}
-                    aria-expanded={atMentionOpen || showCommandSuggestions || Boolean(commandArgumentPalette)}
+                    aria-expanded={showAtMentionSuggestions || showCommandSuggestions || Boolean(commandArgumentPalette)}
                     role="combobox"
                     className={`rumi-composer-textarea relative min-h-[24px] w-full max-h-[240px] select-text resize-none overflow-x-hidden overflow-y-auto border-none bg-transparent px-2 pb-0 pt-2.5 text-[15px] leading-[22px] caret-zinc-100 outline-none placeholder:text-zinc-500/70 max-[640px]:min-h-[24px] max-[640px]:pb-0 max-[640px]:pt-2.5 max-[640px]:text-[13px] ${hasInlineMentions ? "rumi-composer-textarea-highlighted text-transparent" : "text-zinc-100"} ${textareaCanCollapse ? "pr-11 max-[640px]:pr-10" : ""}`}
                     onScroll={(event) => syncInlineMentionScroll(event.currentTarget)}
@@ -5032,21 +5071,10 @@ export function ComposerRenderer({
             </>
           )}
 
-          {!isSteerMode && (effectiveComposerHelp || templateComposerInfoItems.length > 0) && (
-            <div className={`${isNewConversation ? "px-5 pt-1" : "px-5 pt-1 max-[640px]:px-3"} flex min-h-5 flex-wrap items-center gap-1.5 text-[10px] leading-none text-zinc-500`}>
-              {effectiveComposerHelp && (
-                <span className="min-w-[12rem] flex-1 break-words line-clamp-2" title={effectiveComposerHelp}>
-                  {effectiveComposerHelp}
-                </span>
-              )}
-              {!isNewConversation && templateComposerInfoItems.map((item) => (
-                <span
-                  key={item}
-                  className="flex-shrink-0 rounded-full bg-white/[0.04] px-2 py-0.5 text-[9px] uppercase tracking-wide text-zinc-500"
-                >
-                  {item}
-                </span>
-              ))}
+          {!isSteerMode && (effectiveComposerHelp || (!isNewConversation && templateComposerInfoItems.length > 0)) && (
+            <div className="flex flex-wrap gap-2 px-5 pt-1 text-[10px] text-zinc-500">
+              {effectiveComposerHelp && <span>{effectiveComposerHelp}</span>}
+              {!isNewConversation && templateComposerInfoItems.map((item) => <span key={item}>{item}</span>)}
             </div>
           )}
 
@@ -5071,6 +5099,19 @@ export function ComposerRenderer({
           <input
             ref={fileInputRef}
             type="file"
+            multiple
+            disabled={!templateAllowsFileAttachments}
+            className="hidden"
+            onChange={(event) => {
+              void attachFiles(event.target.files).finally(() => {
+                event.target.value = "";
+              });
+            }}
+          />
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
             multiple
             disabled={!templateAllowsFileAttachments}
             className="hidden"

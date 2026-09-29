@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  appendVoiceTranscript,
   audioTranscriptFileName,
   isAudioAttachment,
   modelSupportsAudioInput,
   readableTranscriptionError,
   requestComposerAudioTranscript,
+  shouldTranscribeVoiceInput,
   transcriptAttachmentFromAudio,
 } from "./composerVoice";
 
@@ -33,6 +35,28 @@ test("audio capability is accepted from profile metadata and modality lists", ()
     display_name: "Native modalities",
     metadata: { input_modalities: ["text", "audio"] },
   }), true);
+});
+
+test("AI dictation transcribes even when the chat model accepts audio", () => {
+  const audioProfile = {
+    profile_id: "native/audio",
+    display_name: "Native audio",
+    metadata: { capabilities: { audio_input: true } },
+  };
+
+  assert.equal(shouldTranscribeVoiceInput(audioProfile, true), true);
+  assert.equal(shouldTranscribeVoiceInput(audioProfile, false), false);
+  assert.equal(shouldTranscribeVoiceInput(null, false), true);
+});
+
+test("dictation appends plain recognized words to the draft without submitting", () => {
+  assert.equal(
+    appendVoiceTranscript("既存の下書き  ", "  明日の予定を確認して。  "),
+    "既存の下書き\n明日の予定を確認して。",
+  );
+  assert.equal(appendVoiceTranscript("", "こんにちは"), "こんにちは");
+  assert.equal(appendVoiceTranscript("下書き", "   "), "下書き");
+  assert.equal(appendVoiceTranscript("", "これは話した内容"), "これは話した内容");
 });
 
 test("audio attachments include MIME and common extension fallbacks", () => {
@@ -111,6 +135,57 @@ test("manual and automatic voice transcription share the narrow transcription cl
       surface: "composer",
       target_supports_audio: false,
       action: "automatic_transcription_for_unsupported_model",
+    },
+  });
+});
+
+test("AI dictation uses the existing transcription response as composer text", async () => {
+  const calls: unknown[] = [];
+  const transcript = await requestComposerAudioTranscript(
+    {
+      id: "voice-2",
+      name: "voice.webm",
+      size: 42,
+      type: "audio/webm",
+      dataUrl: "data:audio/webm;base64,BBBB",
+    },
+    {
+      profile: {
+        profile_id: "native/audio",
+        display_name: "Native audio",
+        metadata: { capabilities: { audio_input: true } },
+      },
+      metadata: { action: "voice_input_transcription" },
+    },
+    {
+      async transcribeAudio(payload) {
+        calls.push(payload);
+        return {
+          transcript: "  音声から下書きを作ります。  ",
+          transcription: { status: "ok", source: "local_whisper" },
+        };
+      },
+    },
+  );
+
+  assert.equal(appendVoiceTranscript("確認:", transcript), "確認:\n音声から下書きを作ります。");
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], {
+    audio_data_url: "data:audio/webm;base64,BBBB",
+    audio_mime_type: "audio/webm",
+    audio_size: 42,
+    audio_name: "voice.webm",
+    model: "native/audio",
+    profile_id: "native/audio",
+    params: {
+      language: "ja",
+      model: undefined,
+      profile_id: "native/audio",
+    },
+    metadata: {
+      surface: "composer",
+      target_supports_audio: true,
+      action: "voice_input_transcription",
     },
   });
 });

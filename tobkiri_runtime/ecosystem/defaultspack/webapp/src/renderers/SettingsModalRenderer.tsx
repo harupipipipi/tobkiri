@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { AlertTriangle, ArrowRight, Check, ChevronDown, Copy, Loader2, MessageCircle, MoreVertical, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 
@@ -24,10 +24,7 @@ import {
   parseModelSelectorSchema,
   type ModelSelectorSchema,
 } from "../features/models";
-import { ModelRouteSetup } from "../features/models/ModelRouteSetup";
-import { useModelSearchPages } from "../features/models/useModelSearchPages";
 import type { SettingsModalRendererProps, SettingsSaveState } from "./types";
-import type { DesktopPermissionStatus, DesktopSystemInfo } from "../lib/desktopSystemInfo";
 import {
   buildCodexAppServerPrelude,
   buildControlCenterSections,
@@ -80,7 +77,10 @@ const settingsModalFieldRendererRegistry = createSettingsFieldRendererRegistry([
 const TOOL_EXPERIENCE_OWNED_FIELD_IDS = new Set([
   "default_mode",
   "show_selection_summary",
+  "show_selected_tools_in_answer",
+  "keep_selected_tools_after_send",
   "show_selection_reasons",
+  "expand_selection_reasoning",
   "selection_strategy",
   "selector_trace",
   "final_tool_limit",
@@ -198,108 +198,34 @@ function settingsFieldTakesFullWidth(field: SettingsSection["fields"][number]): 
     || type === "external_tokens"
     || type === "public_url"
     || type === "model_api_routes"
+    || type === "mcp_servers"
     || type === "continuity"
     || type === "device_lock"
     || type === "mobile_pairing_review"
     || type === "slash_commands"
+    || field.id === "provider_route_copy"
+    || field.id === "saved_sources_summary"
     || field.id.endsWith("_setup_guide")
   );
 }
 
-function permissionStatusLabel(permission: DesktopPermissionStatus): string {
-  if (permission.granted === true || permission.status === "granted") return "Granted";
-  if (permission.granted === false || permission.status === "missing") return "Missing";
-  if (permission.status === "not_checked") return "Manual check";
-  if (permission.status === "unsupported") return "Unsupported";
-  return permission.status || "Unknown";
+function settingsFieldGroupKey(field: ControlCenterField): string {
+  if (field.sourceSectionId === "external_input") {
+    if (field.id === "default_response_mode" || field.id === "input_response_preset") return "external_input:reply";
+    if (field.id === "provider_route_copy") return "external_input:paths";
+    if (field.id === "saved_sources_summary") return "external_input:sources";
+  }
+  return field.sourceSectionId;
 }
 
-function permissionBadgeClass(permission: DesktopPermissionStatus): string {
-  if (permission.granted === true || permission.status === "granted") {
-    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
-  }
-  if (permission.granted === false || permission.status === "missing") {
-    return "border-rose-500/30 bg-rose-500/10 text-rose-300";
-  }
-  if (permission.status === "not_checked") {
-    return "border-amber-500/30 bg-amber-500/10 text-amber-200";
-  }
-  return "border-zinc-800 bg-zinc-900 text-zinc-400";
-}
-
-function SystemInfoPanel({ info }: { info?: DesktopSystemInfo | null }) {
-  if (!info) {
-    return (
-      <div className="rounded-lg border border-white/[0.07] bg-white/[0.03] p-4 text-sm leading-6 text-zinc-400">
-        Tobkiri Launcher の権限状態を取得できませんでした。Tobkiri Launcherを起動し、Accessibility / Screen Recording / Input Monitoring を許可してください。
-      </div>
-    );
-  }
-  const versionRows = [
-    ["App", info.display_version],
-    ["Viewer", info.viewer_version],
-    ["Channel", info.build_channel],
-    ["Platform", [info.platform, info.platform_release].filter(Boolean).join(" ")],
-  ];
-  const unverified = !info.reliable || (info.source !== "launcher_tauri" && info.source !== "viewer_tauri" && info.source !== "viewer_broker");
-  return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2">
-        {versionRows.map(([label, value]) => (
-          <div key={label} className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.07] bg-white/[0.035] px-3 py-2.5">
-            <span className="text-xs text-zinc-500">{label}</span>
-            <span className="font-mono text-xs text-zinc-200">{value || "unknown"}</span>
-          </div>
-        ))}
-      </div>
-      <section className="space-y-3 rounded-xl border border-white/[0.07] bg-white/[0.03] p-4">
-        <div>
-          <h4 className="text-sm font-medium text-zinc-100">Permission Host</h4>
-          <p className="mt-1 text-xs leading-5 text-zinc-500">
-            macOSの承認対象は {info.permission_subject || "Tobkiri Launcher"} です。
-            DefaultspackはTobkiri Launcher経由で、許可された操作だけを実行します。
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2 text-[11px] text-zinc-400">
-          <span className="rounded-full border border-white/[0.07] bg-white/[0.045] px-2.5 py-1">画面を見る</span>
-          <span className="rounded-full border border-white/[0.07] bg-white/[0.045] px-2.5 py-1">クリック・キーボード操作</span>
-          <span className="rounded-full border border-white/[0.07] bg-white/[0.045] px-2.5 py-1">ブラウザ操作</span>
-        </div>
-      </section>
-      {unverified ? (
-        <section className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm leading-6 text-amber-100">
-          Viewer permission status is unverified. Open Tobkiri Launcher or reconnect Viewer broker.
-        </section>
-      ) : (
-      <section className="space-y-3">
-        <div>
-          <h4 className="text-sm font-medium text-zinc-100">macOS Permissions</h4>
-          <p className="mt-1 text-xs text-zinc-500">Computer Use と画面確認に使う macOS 側の承認状態です。</p>
-        </div>
-        <div className="grid gap-3 lg:grid-cols-2">
-          {info.permissions.map((permission) => (
-            <div key={permission.id} className="rounded-lg border border-white/[0.07] bg-white/[0.035] p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-zinc-100">{permission.label}</div>
-                  <p className="mt-1 text-xs leading-5 text-zinc-500">{permission.detail}</p>
-                </div>
-                <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium", permissionBadgeClass(permission))}>
-                  {permissionStatusLabel(permission)}
-                </span>
-              </div>
-              {permission.settings_hint && (
-                <p className="mt-3 rounded-md border border-white/[0.07] bg-white/[0.04] px-2.5 py-2 text-[11px] text-zinc-500">
-                  {permission.settings_hint}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
-      )}
-    </div>
-  );
+function settingsFieldGroupLabel(field: ControlCenterField, sectionId: string): string {
+  const key = settingsFieldGroupKey(field);
+  if (sectionId === "models_api" && field.sourceSectionId === "automation" && field.id === "subagent_teams_enabled") return "サブエージェント";
+  if (key === "external_input:reply") return "返信設定";
+  if (key === "external_input:paths") return "接続先";
+  if (key === "external_input:sources") return "受け取り元";
+  if (field.sourceSectionId === sectionId || (sectionId === "workspace_ui" && field.sourceSectionId === "preview")) return "";
+  return field.sourceSectionLabel;
 }
 
 async function copyTextToClipboard(text: string): Promise<void> {
@@ -824,19 +750,68 @@ function SettingsModelSearchSelect({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [remoteResults, setRemoteResults] = useState<ModelSearchItem[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const searchRequestSeq = useRef(0);
+  const trimmedQuery = query.trim();
   const resolvedSelectorSchema = selectorSchema ?? parseModelSelectorSchema(undefined);
-  const { models: remoteResults, loading: busy, error, hasMore, loadMore } = useModelSearchPages(
-    open, query, options, resolvedSelectorSchema.layout.provider_trigger,
+  const providerState = parseModelProviderQuery(
+    query,
+    modelProviderOptions(options),
+    resolvedSelectorSchema.layout.provider_trigger,
   );
+
+  useEffect(() => {
+    if (!open) return;
+    searchRequestSeq.current += 1;
+    const requestSeq = searchRequestSeq.current;
+    let disposed = false;
+    setRemoteResults([]);
+    if (providerState.active) {
+      setBusy(false);
+      setError("");
+      return;
+    }
+    setBusy(Boolean(trimmedQuery));
+    setError("");
+    const timer = window.setTimeout(() => {
+      if (!trimmedQuery) return;
+      settingsApiResources.searchModels({
+        query: providerState.providerId ? providerState.modelQuery : trimmedQuery,
+        max_results: 30,
+        ...(providerState.providerId ? { provider_id: providerState.providerId } : {}),
+      })
+        .then((result) => {
+          if (disposed || requestSeq !== searchRequestSeq.current) return;
+          setRemoteResults(result.models ?? []);
+        })
+        .catch((searchError: unknown) => {
+          if (disposed || requestSeq !== searchRequestSeq.current) return;
+          setRemoteResults([]);
+          setError(searchError instanceof Error ? searchError.message : "モデル検索に失敗しました");
+        })
+        .finally(() => {
+          if (!disposed && requestSeq === searchRequestSeq.current) setBusy(false);
+        });
+    }, 160);
+    return () => {
+      disposed = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    open,
+    providerState.active,
+    providerState.modelQuery,
+    providerState.providerId,
+    trimmedQuery,
+  ]);
 
   return (
     <ModelSearchPicker
       value={value}
       options={options}
       remoteResults={remoteResults}
-      remoteBrowse
-      remoteHasMore={hasMore}
-      onLoadMore={loadMore}
       query={query}
       loading={busy}
       error={error}
@@ -864,10 +839,10 @@ function ModelAllowlistField({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [page, setPage] = useState(0);
-  const { models: remoteResults, loading: busy, error, hasMore, loadMore } = useModelSearchPages(
-    open, query, options, "@",
-  );
+  const [remoteResults, setRemoteResults] = useState<ModelSearchItem[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const searchRequestSeq = useRef(0);
   const selectedModels = parseModelAllowlist(value, fallback);
   const selectedSet = useMemo(() => new Set(selectedModels), [selectedModels]);
   const selectedOptions = useMemo(() => {
@@ -876,26 +851,46 @@ function ModelAllowlistField({
   }, [options, selectedModels]);
   const trimmedQuery = query.trim();
 
-  useEffect(() => setPage(0), [open, query]);
+  useEffect(() => {
+    if (!open) return;
+    searchRequestSeq.current += 1;
+    const requestSeq = searchRequestSeq.current;
+    let disposed = false;
+    setRemoteResults([]);
+    setBusy(true);
+    setError("");
+    const timer = window.setTimeout(() => {
+      settingsApiResources.searchModels({ query: trimmedQuery, max_results: 50 })
+        .then((result) => {
+          if (disposed || requestSeq !== searchRequestSeq.current) return;
+          setRemoteResults(result.models ?? []);
+        })
+        .catch((searchError: unknown) => {
+          if (disposed || requestSeq !== searchRequestSeq.current) return;
+          setRemoteResults([]);
+          setError(searchError instanceof Error ? searchError.message : "モデル検索に失敗しました");
+        })
+        .finally(() => {
+          if (!disposed && requestSeq === searchRequestSeq.current) setBusy(false);
+        });
+    }, trimmedQuery ? 160 : 0);
+    return () => {
+      disposed = true;
+      window.clearTimeout(timer);
+    };
+  }, [open, trimmedQuery]);
 
   const candidateOptions = useMemo(() => {
-    const localMatches = error
-      ? (trimmedQuery ? options.filter((option) => modelOptionMatchesSearch(option, trimmedQuery)) : options)
-      : [];
+    const localMatches = trimmedQuery
+      ? options.filter((option) => modelOptionMatchesSearch(option, trimmedQuery))
+      : options;
     return dedupeModelOptions([
       ...localMatches,
       ...remoteResults.map(modelSearchItemToOption),
-    ]).filter((option) => !selectedSet.has(option.value));
-  }, [error, options, remoteResults, selectedSet, trimmedQuery]);
-  const visibleCandidates = candidateOptions.slice(page * 50, (page + 1) * 50);
-  const hasNextPage = candidateOptions.length > (page + 1) * 50 || hasMore;
-  const nextPage = async () => {
-    if (busy || !hasNextPage) return;
-    if (hasMore && candidateOptions.length < (page + 2) * 50) {
-      if (!(await loadMore())) return;
-    }
-    setPage((current) => current + 1);
-  };
+    ])
+      .filter((option) => !selectedSet.has(option.value))
+      .slice(0, 50);
+  }, [options, remoteResults, selectedSet, trimmedQuery]);
 
   const commit = (items: string[]) => onChange(serializeModelAllowlist(items));
   const addModel = (modelId: string) => {
@@ -991,7 +986,7 @@ function ModelAllowlistField({
                 />
               )}
               <div className="max-h-72 overflow-y-auto border-t border-zinc-800 p-1">
-                {visibleCandidates.length > 0 ? visibleCandidates.map((option) => {
+                {candidateOptions.length > 0 ? candidateOptions.map((option) => {
                   const badges = modelOptionBadges(option);
                   return (
                     <button
@@ -1020,13 +1015,6 @@ function ModelAllowlistField({
                   </div>
                 )}
               </div>
-              {(page > 0 || hasNextPage) && (
-                <div className="flex items-center justify-between border-t border-zinc-800 px-2 py-1 text-[11px] text-zinc-500">
-                  <button type="button" disabled={page === 0} onClick={() => setPage((current) => current - 1)} className="rounded px-2 py-1 hover:bg-zinc-800 disabled:opacity-40">前へ</button>
-                  <span>{page + 1}ページ</span>
-                  <button type="button" disabled={!hasNextPage || busy} onClick={nextPage} className="rounded px-2 py-1 hover:bg-zinc-800 disabled:opacity-40">次へ</button>
-                </div>
-              )}
             </div>
           </>
         )}
@@ -2448,7 +2436,6 @@ function SettingsField({
             </div>
           )}
 
-          <ModelRouteSetup />
           <details className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
             <summary className="cursor-pointer text-xs text-zinc-500">Advanced: route text</summary>
             <textarea
@@ -3280,9 +3267,19 @@ function SettingsField({
       break;
     }
     case "readonly":
+      if (sectionId === "external_input" && field.id === "saved_sources_summary"
+        && /^(?:no saved sources)?$/i.test(formatReadonlyValue(value, field.default).trim())) {
+        control = <p className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-3 text-sm text-zinc-500">保存済みの受け取り元はありません</p>;
+        break;
+      }
       control = (
         <div className="group/readonly flex min-w-0 items-start justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2">
-          <div className="min-w-0 flex-1 whitespace-pre-wrap break-all text-sm leading-6 text-zinc-300 select-text">{formatReadonlyValue(value, field.default)}</div>
+          <div className={cn(
+            "min-w-0 flex-1 text-sm leading-6 text-zinc-300 select-text",
+            sectionId === "external_input" && field.id === "provider_route_copy"
+              ? "overflow-x-auto whitespace-pre font-mono"
+              : "whitespace-pre-wrap break-all",
+          )}>{formatReadonlyValue(value, field.default)}</div>
           <button
             type="button"
             onClick={() => void copyTextToClipboard(formatReadonlyValue(value, field.default))}
@@ -3329,6 +3326,16 @@ function SettingsField({
     }
   }
 
+  if (field.type === "toggle") return (
+    <div className="flex min-w-0 items-center justify-between gap-4">
+      <div className="min-w-0">
+        {commonLabel}
+        {field.help && <p className="mt-1 text-xs leading-5 text-zinc-500">{field.help}</p>}
+      </div>
+      <div className="shrink-0">{control}</div>
+    </div>
+  );
+
   return (
     <div className="space-y-1.5 min-w-0">
       <div className="flex flex-col gap-2">
@@ -3356,7 +3363,6 @@ export function SettingsModalRenderer({
   previewsCount,
   settingsSections,
   settingsValues,
-  desktopSystemInfo,
   modelProfiles = [],
   activeModelProfileId,
   backendConnectionState = "online",
@@ -3399,6 +3405,7 @@ export function SettingsModalRenderer({
     () => requestedSectionId === "external_custom" || requestedSectionId === "debug" ? "advanced" : "standard",
   );
   const [settingsSearch, setSettingsSearch] = useState("");
+  const [toolTabRequest, setToolTabRequest] = useState<{ id: "basic" | "permissions" | "connections" | "advanced"; version: number } | undefined>();
   const [profileSelectionRequest, setProfileSelectionRequest] = useState<{ id: string; version: number } | null>(null);
   const [placementMenuOpen, setPlacementMenuOpen] = useState(false);
   const [closeConfirmationOpen, setCloseConfirmationOpen] = useState(false);
@@ -3537,19 +3544,19 @@ export function SettingsModalRenderer({
   }, [controlCenterSections, normalizedSearch, profileOwnedFieldKeys, settingsDisplayMode]);
   const navigationGroups = useMemo(() => ([
     {
-      id: "everyday",
-      label: localizedCopy("Everyday", "日常設定"),
-      sectionIds: ["quick_setup", "models_api", "workspace_ui"],
+      id: "tobkiri",
+      label: localizedCopy("Tobkiri", "Tobkiri共通"),
+      sectionIds: ["quick_setup", "models_api", "accounts_connections", "privacy_security", "profiles"],
     },
     {
-      id: "connections_features",
-      label: localizedCopy("Connections & features", "接続と機能"),
-      sectionIds: ["accounts_connections", "features", "tools_mcp", "computer_automation"],
+      id: "defaultspack",
+      label: "Defaultspack",
+      sectionIds: ["workspace_ui", "calendar", "features", "tools_mcp", "computer_automation"],
     },
     {
-      id: "management",
-      label: localizedCopy("Management", "管理"),
-      sectionIds: ["privacy_security", "profiles", "packs_extensions"],
+      id: "other_packs",
+      label: localizedCopy("Other packs", "その他のPack"),
+      sectionIds: ["packs_extensions"],
     },
     {
       id: "details",
@@ -3737,11 +3744,6 @@ export function SettingsModalRenderer({
   const nonPreviewPrimaryFields = previewPrimaryFields.length > 0
     ? visiblePrimaryFields.filter((field) => field.sourceSectionId !== "preview")
     : visiblePrimaryFields;
-  const priorityAutomationFields = activeSection?.id === "computer_automation"
-    ? nonPreviewPrimaryFields.filter((field) => (
-      field.sourceSectionId === "automation" && field.id === "subagent_teams_enabled"
-    ))
-    : [];
   const priorityToolFields = activeSection?.id === "tools_mcp"
     ? nonPreviewPrimaryFields.filter((field) => (
       field.sourceSectionId === "tools" && field.id === "mcp_servers"
@@ -3752,7 +3754,7 @@ export function SettingsModalRenderer({
       field.sourceSectionId === "personalization" && field.id === "default_system_prompt_id"
     ))
     : [];
-  const priorityFields = [...priorityQuickSetupFields, ...priorityAutomationFields, ...priorityToolFields];
+  const priorityFields = [...priorityQuickSetupFields, ...priorityToolFields];
   const remainingPrimaryFields = nonPreviewPrimaryFields.filter((field) => (
     !priorityFields.includes(field)
     && !(activeSection?.id === "tools_mcp" && TOOL_EXPERIENCE_OWNED_FIELD_IDS.has(field.id))
@@ -4035,6 +4037,10 @@ export function SettingsModalRenderer({
   const settingsFieldAnchorId = (field: ControlCenterField) => `settings-field-${field.sourceSectionId}-${field.id}`.replace(/[^a-zA-Z0-9_-]/g, "-");
   const openSearchMatch = (sectionId: ControlCenterSection["id"], field: ControlCenterField) => {
     setActiveSectionId(sectionId);
+    if (sectionId === "tools_mcp") {
+      const id = field.id === "mcp_servers" ? "connections" : field.advanced ? "advanced" : "basic";
+      setToolTabRequest((current) => ({ id, version: (current?.version ?? 0) + 1 }));
+    }
     onOpenSection?.(sectionId);
     requestAnimationFrame(() => {
       const target = document.getElementById(settingsFieldAnchorId(field));
@@ -4042,23 +4048,16 @@ export function SettingsModalRenderer({
       target?.querySelector<HTMLElement>("input, select, textarea, button, [tabindex]:not([tabindex='-1'])")?.focus();
     });
   };
-  const renderField = (field: ControlCenterField) => (
+  const renderField = (field: ControlCenterField, fullWidthAtLg = false) => (
     <div
       id={settingsFieldAnchorId(field)}
       data-settings-field={`${field.sourceSectionId}.${field.id}`}
       key={`${field.sourceSectionId}.${field.id}`}
       className={cn(
-        "min-w-0 border-b border-white/[0.07] px-1 py-4 transition-colors focus-within:border-indigo-400/35",
-        settingsFieldTakesFullWidth(field) ? "lg:col-span-2" : "",
+        "min-w-0 border-b border-white/[0.07] px-1 py-3 transition-colors focus-within:border-indigo-400/35",
+        settingsFieldTakesFullWidth(field) ? (fullWidthAtLg ? "lg:col-span-2" : "2xl:col-span-2") : "",
       )}
     >
-      {field.sourceSectionLabel && field.sourceSectionId !== activeSection?.id && !(activeSection?.id === "workspace_ui" && field.sourceSectionId === "preview") && (
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <span className="rounded-md border border-white/[0.07] bg-white/[0.045] px-2 py-1 text-[10px] font-medium uppercase tracking-normal text-zinc-500">
-            {field.sourceSectionLabel}
-          </span>
-        </div>
-      )}
       <SettingsFieldRendererHost
         registry={settingsModalFieldRendererRegistry}
         componentBindings={catalog?.component_bindings ?? []}
@@ -4076,6 +4075,17 @@ export function SettingsModalRenderer({
       />
     </div>
   );
+  const renderGroupedFields = (fields: ControlCenterField[], fullWidthAtLg = false) => fields.map((field, index) => {
+    const groupKey = settingsFieldGroupKey(field);
+    const groupLabel = settingsFieldGroupLabel(field, activeSection?.id ?? "");
+    const showHeading = groupLabel && (index === 0 || settingsFieldGroupKey(fields[index - 1]) !== groupKey);
+    return (
+      <Fragment key={`${field.sourceSectionId}.${field.id}`}>
+        {showHeading && <h4 className="col-span-full border-b border-white/[0.07] pb-2 pt-3 text-sm font-medium text-zinc-300">{groupLabel}</h4>}
+        {renderField(field, fullWidthAtLg)}
+      </Fragment>
+    );
+  });
 
   const renderSettingsPlacement = (manifest: PlacementManifest) => {
     const action = manifest.renderer.action;
@@ -4550,6 +4560,8 @@ export function SettingsModalRenderer({
         ["automationEndpointEnabled", "Automation endpoint", "Show readiness in Computer & Automation."],
       ];
       const appServerBlocked = Boolean(codexAppServerPrelude.blockedReason);
+      const appServerTransport = codexAppServerDraft.transport ?? "off";
+      const appServerUsesWebSocket = appServerTransport === "websocket_loopback" || appServerTransport === "websocket_remote";
       return (
         <div className="space-y-4">
           <div className="grid gap-4 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
@@ -4590,7 +4602,7 @@ export function SettingsModalRenderer({
                   <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-medium", statusBadgeClass(codexAppServerPrelude.status, codexAppServerPrelude.configured, !appServerBlocked))}>{codexAppServerPrelude.statusLabel}</span>
                 </div>
 
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <div className={cn("mt-4 grid gap-3", appServerTransport !== "off" && "md:grid-cols-2")}>
                   <div className="space-y-2">
                     <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-600">Transport</div>
                     <div className="grid gap-2">
@@ -4610,7 +4622,7 @@ export function SettingsModalRenderer({
                       })}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-zinc-800 bg-black/20 p-3">
+                  {appServerTransport !== "off" && <div className="rounded-xl border border-zinc-800 bg-black/20 p-3">
                     <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-600">Current state</div>
                     <div className="mt-3 grid gap-2 text-[11px]">
                       <div className="flex justify-between gap-2"><span className="text-zinc-500">Transport</span><span className="text-zinc-200">{codexAppServerPrelude.transport}</span></div>
@@ -4619,27 +4631,37 @@ export function SettingsModalRenderer({
                       <div className="flex justify-between gap-2"><span className="text-zinc-500">Tool source</span><span className="text-zinc-200">{codexAppServerPrelude.toolSourceStatus}</span></div>
                       <div className="flex justify-between gap-2"><span className="text-zinc-500">Automation</span><span className="text-zinc-200">{codexAppServerPrelude.automationEndpointStatus}</span></div>
                     </div>
+                  </div>}
+                </div>
+
+                {appServerTransport === "unix" && (
+                  <div className="mt-4">
+                    <label className="block space-y-1 text-[11px] text-zinc-500"><span>Unix socket path</span><input value={codexAppServerDraft.unixSocketPath ?? ""} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, unixSocketPath: event.target.value }))} placeholder="/tmp/rumi-codex.sock" className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-700" /></label>
                   </div>
-                </div>
+                )}
+                {appServerUsesWebSocket && (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <label className="space-y-1 text-[11px] text-zinc-500"><span>Base URL</span><input value={codexAppServerDraft.baseUrl ?? ""} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, baseUrl: event.target.value }))} placeholder={appServerTransport === "websocket_remote" ? "https://app.example.com" : "http://127.0.0.1:7331"} className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-700" /></label>
+                    <label className="space-y-1 text-[11px] text-zinc-500"><span>WebSocket URL</span><input value={codexAppServerDraft.websocketUrl ?? ""} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, websocketUrl: event.target.value }))} placeholder={appServerTransport === "websocket_remote" ? "wss://app.example.com/ws" : "ws://127.0.0.1:7331/ws"} className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-700" /></label>
+                    {appServerTransport === "websocket_remote" && (
+                      <>
+                        <label className="space-y-1 text-[11px] text-zinc-500"><span>WS token file</span><input value={codexAppServerDraft.wsTokenFile ?? ""} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, wsTokenFile: event.target.value }))} placeholder="~/.config/rumi/codex-app-server.token" className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-700" /></label>
+                        <label className="space-y-1 text-[11px] text-zinc-500"><span>Shared secret file</span><input value={codexAppServerDraft.sharedSecretFile ?? ""} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, sharedSecretFile: event.target.value }))} placeholder="~/.config/rumi/codex-app-server.secret" className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-700" /></label>
+                      </>
+                    )}
+                  </div>
+                )}
 
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <label className="space-y-1 text-[11px] text-zinc-500"><span>Unix socket path</span><input value={codexAppServerDraft.unixSocketPath ?? ""} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, unixSocketPath: event.target.value }))} placeholder="/tmp/rumi-codex.sock" className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-700" /></label>
-                  <label className="space-y-1 text-[11px] text-zinc-500"><span>Base URL</span><input value={codexAppServerDraft.baseUrl ?? ""} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="http://127.0.0.1:7331" className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-700" /></label>
-                  <label className="space-y-1 text-[11px] text-zinc-500"><span>WebSocket URL</span><input value={codexAppServerDraft.websocketUrl ?? ""} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, websocketUrl: event.target.value }))} placeholder="ws://127.0.0.1:7331/ws" className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-700" /></label>
-                  <label className="space-y-1 text-[11px] text-zinc-500"><span>WS token file</span><input value={codexAppServerDraft.wsTokenFile ?? ""} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, wsTokenFile: event.target.value }))} placeholder="~/.config/rumi/codex-app-server.token" className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-700" /></label>
-                  <label className="space-y-1 text-[11px] text-zinc-500 sm:col-span-2"><span>Shared secret file</span><input value={codexAppServerDraft.sharedSecretFile ?? ""} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, sharedSecretFile: event.target.value }))} placeholder="~/.config/rumi/codex-app-server.secret" className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-700" /></label>
-                </div>
-
-                <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                {appServerTransport !== "off" && <div className="mt-4 grid gap-2 sm:grid-cols-3">
                   {appServerToggleFields.map(([key, label, detail]) => (
                     <label key={key} className="rounded-xl border border-zinc-800 bg-black/20 px-3 py-2 text-xs text-zinc-300">
                       <span className="flex items-center gap-2"><input type="checkbox" checked={codexAppServerDraft[key]} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, [key]: event.target.checked }))} className="h-3.5 w-3.5 rounded border-zinc-700 bg-zinc-950 text-cyan-500" />{label}</span>
                       <span className="mt-1 block text-[10px] leading-4 text-zinc-600">{detail}</span>
                     </label>
                   ))}
-                </div>
+                </div>}
 
-                {codexAppServerPrelude.blockedReason && (
+                {appServerTransport !== "off" && codexAppServerPrelude.blockedReason && (
                   <ErrorNotice
                     className="mt-4 px-3 py-2 text-[11px] leading-5"
                     copyLabel={localizedCopy("Copy Codex App Server warning", "Codex App Serverの注意をコピー")}
@@ -4649,8 +4671,8 @@ export function SettingsModalRenderer({
                 )}
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button type="button" disabled={connectionBusy === "codex_app_server:save"} onClick={() => void saveCodexAppServer()} className="rounded-lg border border-cyan-700 bg-cyan-950/30 px-3 py-1.5 text-xs text-cyan-100 transition-colors hover:border-cyan-500 hover:bg-cyan-900/35 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-600">{connectionBusy === "codex_app_server:save" ? "Saving..." : "Save config"}</button>
-                  <button type="button" disabled={connectionBusy === "codex_app_server:probe"} onClick={() => void probeCodexAppServer()} className="rounded-lg border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200 disabled:cursor-not-allowed disabled:text-zinc-700">{connectionBusy === "codex_app_server:probe" ? "Probing..." : "Probe"}</button>
-                  <button type="button" disabled={connectionBusy === "codex_app_server:clear"} onClick={() => void clearCodexAppServer()} className="rounded-lg border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200 disabled:cursor-not-allowed disabled:text-zinc-700">{connectionBusy === "codex_app_server:clear" ? "Clearing..." : "Clear"}</button>
+                  {appServerTransport !== "off" && <button type="button" disabled={connectionBusy === "codex_app_server:probe"} onClick={() => void probeCodexAppServer()} className="rounded-lg border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200 disabled:cursor-not-allowed disabled:text-zinc-700">{connectionBusy === "codex_app_server:probe" ? "Probing..." : "Probe"}</button>}
+                  {appServerTransport !== "off" && <button type="button" disabled={connectionBusy === "codex_app_server:clear"} onClick={() => void clearCodexAppServer()} className="rounded-lg border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200 disabled:cursor-not-allowed disabled:text-zinc-700">{connectionBusy === "codex_app_server:clear" ? "Clearing..." : "Clear"}</button>}
                 </div>
                 {appServerMessage && (
                   appServerMessage.tone === "success" ? (
@@ -4666,16 +4688,6 @@ export function SettingsModalRenderer({
               </div>
             </div>
           </div>
-        </div>
-      );
-    }
-    if (section.id === "computer_automation") {
-      return (
-        <div className="rounded-lg border border-rose-500/20 bg-rose-500/10 p-4">
-          <div className="text-sm font-medium text-rose-100">Computer actions are high-impact</div>
-          <p className="mt-1 text-xs leading-5 text-rose-100/75">
-            Screen observation, clicking, typing, scrolling, browser automation, checkpoint/resume, and cloud continuation stay together here.
-          </p>
         </div>
       );
     }
@@ -4879,7 +4891,7 @@ export function SettingsModalRenderer({
                     if (groupSections.length === 0) return null;
                     return (
                       <div key={group.id} className="flex shrink-0 gap-1.5 lg:mb-5 lg:block lg:last:mb-0">
-                        <div className="hidden px-2 pb-1.5 text-[9px] font-medium uppercase tracking-[0.16em] text-zinc-700 lg:block">{group.label}</div>
+                        <div className="hidden px-2 pb-1.5 text-[11px] font-medium tracking-wide text-zinc-600 lg:block">{group.label}</div>
                         {groupSections.map((section) => {
                           return (
                             <button
@@ -4983,31 +4995,45 @@ export function SettingsModalRenderer({
                       {activeSection.description && <p className="mt-1 max-w-2xl text-xs leading-5 text-zinc-500">{activeSection.description}</p>}
                       </div>
                     </div>
-                    {priorityFields.length > 0 && (
-                      <div className="grid gap-4 2xl:grid-cols-2">
-                        {priorityFields.map(renderField)}
-                      </div>
-                    )}
-                    {sectionPreludeIsVisible(activeSection.id, settingsDisplayMode) && renderSectionPrelude(activeSection)}
                     {activeSection.id === "tools_mcp" && (
                       <ToolExperienceSettingsPanel
                         tools={(catalog?.sidebar.items ?? []).filter((item) => item.category === "tool")}
                         settingsValues={settingsValues}
                         onSettingChange={onSettingChange}
                         displayMode={settingsDisplayMode}
+                        requestedTab={toolTabRequest}
+                        basicSettings={remainingPrimaryFields.length > 0 ? (
+                          <div className="grid gap-x-4 2xl:grid-cols-2">{renderGroupedFields(remainingPrimaryFields)}</div>
+                        ) : undefined}
+                        connectionSettings={(
+                          <div className="space-y-4">
+                            {priorityToolFields.length > 0 && (
+                              <div className="grid gap-x-4 2xl:grid-cols-2">{renderGroupedFields(priorityToolFields)}</div>
+                            )}
+                            {sectionPreludeIsVisible(activeSection.id, settingsDisplayMode) && renderSectionPrelude(activeSection)}
+                          </div>
+                        )}
+                        advancedSettings={remainingAdvancedFields.length > 0 ? (
+                          <div className="grid gap-x-4 2xl:grid-cols-2">{renderGroupedFields(remainingAdvancedFields)}</div>
+                        ) : undefined}
                       />
                     )}
-                    {activeSection.id === "computer_automation" && (
-                      <SystemInfoPanel info={desktopSystemInfo} />
+                    {activeSection.id !== "tools_mcp" && priorityFields.length > 0 && (
+                      <div className="grid gap-4 2xl:grid-cols-2">
+                        {renderGroupedFields(priorityFields)}
+                      </div>
                     )}
-                    <div className="grid gap-4 2xl:grid-cols-2">
-                      {remainingPrimaryFields.map(renderField)}
-                    </div>
+                    {activeSection.id !== "tools_mcp" && sectionPreludeIsVisible(activeSection.id, settingsDisplayMode) && renderSectionPrelude(activeSection)}
+                    {activeSection.id !== "tools_mcp" && remainingPrimaryFields.length > 0 && (
+                      <div className="grid gap-x-4 2xl:grid-cols-2">
+                        {renderGroupedFields(remainingPrimaryFields)}
+                      </div>
+                    )}
                     {previewPrimaryFields.length > 0 && (
                       <section className="space-y-1 border-t border-white/[0.07] pt-4">
                         <h4 className="text-sm font-medium text-zinc-200">{localizedCopy("Preview", "プレビュー")}</h4>
                         <div className="grid gap-4 2xl:grid-cols-2">
-                          {previewPrimaryFields.map(renderField)}
+                          {renderGroupedFields(previewPrimaryFields)}
                         </div>
                       </section>
                     )}
@@ -5032,14 +5058,14 @@ export function SettingsModalRenderer({
                         )}
                       </div>
                     )}
-                    {remainingAdvancedFields.length > 0 && settingsDisplayMode === "advanced" && (
+                    {activeSection.id !== "tools_mcp" && remainingAdvancedFields.length > 0 && settingsDisplayMode === "advanced" && (
                       <details className="rounded-lg border border-white/[0.07] bg-white/[0.03]">
                         <summary className="cursor-pointer list-none px-4 py-3 text-xs font-medium text-zinc-400 transition-colors hover:text-zinc-200">
                           {t(locale, "settings.advanced")}
                           <span className="mt-1 block font-normal leading-5 text-zinc-600">{t(locale, "settings.advancedHelp")}</span>
                         </summary>
                         <div className="grid gap-4 border-t border-zinc-800 p-4 lg:grid-cols-2">
-                          {remainingAdvancedFields.map(renderField)}
+                          {renderGroupedFields(remainingAdvancedFields, true)}
                         </div>
                       </details>
                     )}
