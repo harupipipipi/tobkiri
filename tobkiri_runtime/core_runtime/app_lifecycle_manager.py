@@ -326,7 +326,7 @@ class AppLifecycleManager:
                     authority_store=AuthorityStore(user_data / "authority" / "v4.sqlite3"),
                     packvm_provisioner=inputs.packvm_backend_factory,
                     packvm_readiness_reader=(
-                        self.packvm_lifecycle.readiness_snapshot
+                        self.packvm_lifecycle.presentation_readiness_reader()
                         if self.packvm_lifecycle is not None
                         else None
                     ),

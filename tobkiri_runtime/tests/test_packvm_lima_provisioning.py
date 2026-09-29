@@ -1401,14 +1401,18 @@ def test_failed_provision_cleanup_refuses_replaced_same_name_orphan(
 def test_runtime_surface_recomputes_exact_packvm_attestation_digest(
     provisioner,
 ) -> None:
+    from core_runtime.packvm_lifecycle_v4 import PackVMLifecycleV4
     from ecosystem.defaultspack.domain.runtime_surface_v4 import _packvm_attested
 
     manager, _fake, _command = provisioner
     plan = manager.prepare()
     manager.provision(_request(plan))
     snapshot = manager.readiness_snapshot()
+    reader = PackVMLifecycleV4(manager).presentation_readiness_reader()
 
     assert _packvm_attested(snapshot) is True
+    assert reader is not None
+    assert _packvm_attested(reader()) is True
     assert snapshot["config_digest"] == plan.config_digest
     assert snapshot["image_digest"] == plan.image_digest
     assert snapshot["guest_runner_digest"] == plan.guest_runner_digest

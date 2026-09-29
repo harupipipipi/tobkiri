@@ -21,6 +21,10 @@ from core_runtime.bootstrap.profile_capture import (
     runtime_user_data_root,
 )
 from core_runtime.authority.v4 import AuthorityStore
+from core_runtime.packvm_lifecycle_v4 import PackVMLifecycleV4
+from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner import (
+    MacOSVZProvisioner,
+)
 from ecosystem.defaultspack.domain.runtime_surface_v4 import (
     RUNTIME_SURFACE_API_VERSION,
     RuntimeSurfaceErrorCode,
@@ -926,6 +930,31 @@ def test_packvm_invocation_requires_fresh_matching_host_attestation(
     assert all(
         item["invokable"] is False for item in wrong_rows if item["domain_kind"] == "pack_vm"
     )
+
+
+def test_vz_profile_reads_do_not_run_incompatible_doctor(
+    active_runtime,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """VZ remains non-invokable without hashing its image for presentation."""
+
+    provisioner = MacOSVZProvisioner(state_dir=tmp_path.resolve() / "packvm-vz")
+    lifecycle = PackVMLifecycleV4(provisioner)
+    monkeypatch.setattr(
+        provisioner,
+        "doctor",
+        lambda: pytest.fail("ordinary profile reads must not run VZ doctor"),
+    )
+    reader = lifecycle.presentation_readiness_reader()
+    assert reader is None
+
+    service = _service(active_runtime, packvm_readiness_reader=reader)
+    service.read_profile()
+    operations = service.read_advanced("operations")["data"]["operations"]
+    packvm_rows = [item for item in operations if item["domain_kind"] == "pack_vm"]
+    assert packvm_rows
+    assert all(item["invokable"] is False for item in packvm_rows)
 
 
 def test_pack_files_are_exact_manifest_artifacts(active_runtime) -> None:

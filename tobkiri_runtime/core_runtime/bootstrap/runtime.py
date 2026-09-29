@@ -194,7 +194,7 @@ class Kernel:
                             authority_store=authority_store,
                             packvm_provisioner=inputs.packvm_backend_factory,
                             packvm_readiness_reader=(
-                                self._packvm_lifecycle.readiness_snapshot
+                                self._packvm_lifecycle.presentation_readiness_reader()
                                 if self._packvm_lifecycle is not None
                                 else None
                             ),

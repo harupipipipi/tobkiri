@@ -83,6 +83,10 @@ class PackVMLifecycleProvisioner(Protocol):
     """The narrow authenticated lifecycle surface shared by production backends."""
 
     @property
+    def runtime_surface_attestation_supported(self) -> bool:
+        """Whether readiness snapshots use the current RuntimeSurface format."""
+
+    @property
     def state_path(self) -> Path:
         """Return the durable authenticated state path."""
 
@@ -426,6 +430,22 @@ class PackVMLifecycleV4:
 
         with self._lock:
             return self._provisioner.readiness_snapshot()
+
+    def presentation_readiness_reader(
+        self,
+    ) -> Callable[[], Mapping[str, Any]] | None:
+        """Expose compatible readiness only to the presentation projection.
+
+        This capability does not authorize execution. An unknown provisioner
+        fails closed until it explicitly declares snapshot compatibility.
+        """
+
+        if (
+            getattr(self._provisioner, "runtime_surface_attestation_supported", False)
+            is not True
+        ):
+            return None
+        return self.readiness_snapshot
 
     def production_backend_registration(self) -> object | None:
         """Expose authenticated direct-VZ facts to the bootstrap composition root.

@@ -8,7 +8,7 @@ import logging
 import threading
 import time
 import uuid
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -1620,6 +1620,11 @@ def test_server_refresh_reuses_exact_packvm_lifecycle_for_backend_capture(
     class Lifecycle:
         def readiness_snapshot(self) -> dict[str, object]:
             return {"ready": True}
+
+        def presentation_readiness_reader(
+            self,
+        ) -> Callable[[], Mapping[str, object]]:
+            return self.readiness_snapshot
 
         def production_backend_registration(self) -> object:
             return object()

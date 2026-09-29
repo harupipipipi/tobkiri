@@ -537,6 +537,10 @@ class PackVMLifecyclePort(Protocol):
 
     def readiness_snapshot(self) -> Mapping[str, object]: ...
 
+    def presentation_readiness_reader(
+        self,
+    ) -> Callable[[], Mapping[str, object]] | None: ...
+
     def progress(
         self, operation_id: str, *, session_id: str | None = None
     ) -> Mapping[str, object]: ...
@@ -3569,7 +3573,7 @@ class PackAPIServer:
                         authority_store=authority,
                         packvm_provisioner=inputs.packvm_backend_factory,
                         packvm_readiness_reader=(
-                            self._packvm_lifecycle.readiness_snapshot
+                            self._packvm_lifecycle.presentation_readiness_reader()
                             if self._packvm_lifecycle is not None
                             else None
                         ),

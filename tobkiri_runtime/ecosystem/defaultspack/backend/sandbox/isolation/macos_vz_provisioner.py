@@ -735,6 +735,8 @@ class MacOSVZProvisioner:
     variables and user-selected helper paths are intentionally not accepted.
     """
 
+    runtime_surface_attestation_supported: bool = False
+
     def __init__(
         self,
         *,

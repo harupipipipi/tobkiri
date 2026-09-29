@@ -963,6 +963,8 @@ def _require_pinned_directory_identity(
 class PackVMLimaProvisioner:
     """Explicit, authenticated lifecycle for Tobkiri's dedicated Lima PackVM."""
 
+    runtime_surface_attestation_supported: bool = True
+
     def __init__(
         self,
         *,
