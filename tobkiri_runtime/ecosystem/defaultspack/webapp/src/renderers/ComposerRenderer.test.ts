@@ -531,15 +531,23 @@ test("JSON list panel renders trigger-neutral payload data", () => {
 
 test("slash commands use the same JSON palette contract as mentions", () => {
   const command: ComposerCommandItem = {
-    id: "deepthink",
-    name: "deepthink",
-    label: "DeepThink",
-    description: "Toggle the DeepThink loop.",
-    category: "model",
+    id: "custompack.focus_mode",
+    name: "focus",
+    label: "Focus Mode",
+    description: "Toggle this Pack's focus mode.",
+    category: "tools",
     visibility: "default",
     risk: "medium",
     active: false,
-    execution: { type: "settings_patch", section: "models", field: "deepthink_enabled" },
+    execution: { type: "rumi_function", qualified_name: "custompack:set_focus_mode" },
+    protocol_presentation: {
+      label: { fallback: "Focus Mode" },
+      category: "tools",
+      visibility: "default",
+      icon: "brain",
+      input: { kind: "toggle", state_ref: "custompack:focus_enabled" },
+      mounts: [],
+    },
   };
   const mentionPayload = atMentionPalettePayload([]);
   const commandPayload = commandPalettePayload([command]);
@@ -547,7 +555,7 @@ test("slash commands use the same JSON palette contract as mentions", () => {
   assert.equal(commandPayload.maxHeightRem, mentionPayload.maxHeightRem);
   assert.equal(commandPayload.item.showDescription, mentionPayload.item.showDescription);
   assert.equal(commandPayload.item.prefix, "/");
-  assert.equal(commandPayload.items[0]?.title, "deepthink");
+  assert.equal(commandPayload.items[0]?.title, "focus");
   assert.deepEqual(commandPayload.items[0]?.badges, [
     { label: "medium", tone: "amber" },
     { label: "オフ", tone: "neutral" },
@@ -556,22 +564,22 @@ test("slash commands use the same JSON palette contract as mentions", () => {
 });
 
 test("composer runtime state hides persistent toggle indicators while they are off", () => {
-  const deepthink: ComposerCommandItem = {
-    id: "deepthink",
-    name: "deepthink",
-    label: "DeepThink",
-    category: "model",
+  const focusMode: ComposerCommandItem = {
+    id: "custompack.focus_mode",
+    name: "focus",
+    label: "Focus Mode",
+    category: "tools",
     visibility: "default",
     risk: "medium",
     active: false,
     enabled: false,
-    execution: { type: "rumi_function", qualified_name: "defaultspack:ai_set_deepthink_enabled" },
+    execution: { type: "rumi_function", qualified_name: "custompack:set_focus_mode" },
     protocol_presentation: {
-      label: { fallback: "DeepThink" },
-      category: "model",
+      label: { fallback: "Focus Mode" },
+      category: "tools",
       visibility: "default",
-      icon: "deepthink",
-      input: { kind: "toggle", state_ref: "defaultspack:models.deepthink_enabled" },
+      icon: "brain",
+      input: { kind: "toggle", state_ref: "custompack:focus_enabled" },
       mounts: [{ slot_ref: "tobkiri:composer.toolbar.leading", display: "persistent", order: 20 }],
     },
   };
@@ -590,7 +598,7 @@ test("composer runtime state hides persistent toggle indicators while they are o
     favoriteProfiles: [],
     inlineExtensions: [],
     belowExtensions: [],
-    commands: [deepthink],
+    commands: [focusMode],
     manualRuntimeModeSelectionEnabled: true,
     mode: "agent",
     thinkingLevel: "high",
@@ -601,32 +609,32 @@ test("composer runtime state hides persistent toggle indicators while they are o
     onThinkingLevelChange: () => undefined,
   }));
 
-  assert.deepEqual(persistentComposerToggleCommands([deepthink]), [deepthink]);
+  assert.deepEqual(persistentComposerToggleCommands([focusMode]), [focusMode]);
   assert.match(html, /data-composer-widget="runtime-option-states"/);
   assert.match(html, /aria-label="実行モード: 自律エージェント"/);
   assert.match(html, /aria-label="思考レベル: 高"/);
   assert.match(html, /lucide-bot/);
-  assert.doesNotMatch(html, /aria-label="DeepThink: オフ"/);
+  assert.doesNotMatch(html, /aria-label="Focus Mode: オフ"/);
   assert.doesNotMatch(html, /data-state="off"/);
 });
 
-test("composer runtime state updates the DeepThink SVG indicator when enabled", () => {
-  const deepthink: ComposerCommandItem = {
-    id: "deepthink",
-    name: "deepthink",
-    label: "DeepThink",
-    category: "model",
+test("composer runtime state renders enabled Pack toggle icons from presentation metadata", () => {
+  const focusMode: ComposerCommandItem = {
+    id: "custompack.focus_mode",
+    name: "focus",
+    label: "Focus Mode",
+    category: "tools",
     visibility: "default",
     risk: "medium",
     active: true,
     enabled: true,
-    execution: { type: "rumi_function", qualified_name: "defaultspack:ai_set_deepthink_enabled" },
+    execution: { type: "rumi_function", qualified_name: "custompack:set_focus_mode" },
     protocol_presentation: {
-      label: { fallback: "DeepThink" },
-      category: "model",
+      label: { fallback: "Focus Mode" },
+      category: "tools",
       visibility: "default",
-      icon: "deepthink",
-      input: { kind: "toggle", state_ref: "defaultspack:models.deepthink_enabled" },
+      icon: "brain",
+      input: { kind: "toggle", state_ref: "custompack:focus_enabled" },
       mounts: [{ slot_ref: "tobkiri:composer.toolbar.leading", display: "persistent", order: 20 }],
     },
   };
@@ -643,7 +651,7 @@ test("composer runtime state updates the DeepThink SVG indicator when enabled", 
     favoriteProfiles: [],
     inlineExtensions: [],
     belowExtensions: [],
-    commands: [deepthink],
+    commands: [focusMode],
     manualRuntimeModeSelectionEnabled: true,
     mode: "chat",
     thinkingLevel: null,
@@ -654,11 +662,11 @@ test("composer runtime state updates the DeepThink SVG indicator when enabled", 
     onThinkingLevelChange: () => undefined,
   }));
 
-  assert.match(html, /aria-label="DeepThink: オン"/);
+  assert.match(html, /aria-label="Focus Mode: オン"/);
   assert.match(html, /data-state="on"/);
   assert.match(html, /lucide-brain-circuit/);
   assert.match(html, /drop-shadow-/);
-  assert.match(html, /role="tooltip"[^>]*>DeepThink: オン</);
+  assert.match(html, /role="tooltip"[^>]*>Focus Mode: オン</);
   assert.match(html, /group-focus\/runtime:opacity-100/);
 });
 
@@ -1192,19 +1200,19 @@ test("composer command and at-mention palettes are mutually exclusive", () => {
 
 test("stateful slash commands expose explicit on/off state", () => {
   assert.equal(commandShowsToggleState({
-    id: "deepthink",
-    name: "deepthink",
-    label: "DeepThink",
-    category: "model",
+    id: "custompack.focus_mode",
+    name: "focus",
+    label: "Focus Mode",
+    category: "tools",
     visibility: "default",
     risk: "medium",
     active: false,
-    execution: { type: "settings_patch", section: "models", field: "deepthink_enabled" },
+    execution: { type: "rumi_function", qualified_name: "custompack:set_focus_mode" },
     protocol_presentation: {
-      label: { fallback: "DeepThink" },
-      category: "model",
+      label: { fallback: "Focus Mode" },
+      category: "tools",
       visibility: "default",
-      input: { kind: "toggle", state_ref: "defaultspack:models.deepthink_enabled" },
+      input: { kind: "toggle", state_ref: "custompack:focus_enabled" },
       mounts: [],
     },
   }), true);
@@ -1239,8 +1247,8 @@ test("form commands with text arguments enter argument mode on Tab completion", 
   };
   const toggleCommand: ComposerCommandItem = {
     ...titleCommand,
-    id: "deepthink",
-    name: "deepthink",
+    id: "custompack.focus_mode",
+    name: "focus",
     args: [{ name: "enabled", type: "boolean" }],
     protocol_presentation: {
       ...titleCommand.protocol_presentation!,

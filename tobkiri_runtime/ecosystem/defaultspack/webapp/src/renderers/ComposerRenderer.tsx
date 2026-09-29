@@ -395,8 +395,8 @@ function composerIconForName(iconName: string | undefined, fallback: LucideIcon)
   if (/folder|directory/.test(normalized)) return Folder;
   if (/git|branch|repo/.test(normalized)) return GitBranch;
   if (/code|terminal|shell|cli/.test(normalized)) return Code2;
-  if (/model|cpu|provider|ai/.test(normalized)) return Cpu;
   if (/think|brain|reason/.test(normalized)) return BrainCircuit;
+  if (/model|cpu|provider|ai/.test(normalized)) return Cpu;
   if (/key|auth|credential/.test(normalized)) return KeyRound;
   if (/message|chat|conversation/.test(normalized)) return MessageSquare;
   if (/mention|at/.test(normalized)) return AtSign;
@@ -408,7 +408,6 @@ const COMMAND_ICON_BY_ID: Partial<Record<string, LucideIcon>> = {
   help: CircleHelp,
   model: Cpu,
   think: Brain,
-  deepthink: BrainCircuit,
   fast: Zap,
   price: BadgeDollarSign,
   compact: Minimize2,
