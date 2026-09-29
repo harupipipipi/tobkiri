@@ -270,7 +270,7 @@ const JA_FIELD_COPY: Record<string, LocalizedFieldCopy> = {
   "tools.semantic_backend": { label: "機能候補の探し方", options: { embedding: "意味が近い機能を探す", lexical: "名前や説明から探す" } },
   "tools.selector_trace": { label: "機能選定の記録" },
   "tools.semantic_candidate_limit": { label: "確認する機能候補の上限" },
-  "computer_use_haze.enabled": { label: "操作中の画面表示", help: "Rumiが画面を操作している間、画面端に色を表示します。" },
+  "computer_use_haze.enabled": { label: "操作中の画面表示", help: "Tobkiriが画面を操作している間、画面端に色を表示します。" },
   "computer_use_haze.preset": { label: "操作中に表示する配色" },
   "computer_use_haze.start_color": { label: "開始色" },
   "computer_use_haze.end_color": { label: "終了色" },
