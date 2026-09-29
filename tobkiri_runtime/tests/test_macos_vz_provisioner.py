@@ -542,6 +542,24 @@ def attested_provisioner(
     return provisioner, manifest, root
 
 
+def test_doctor_does_not_repeat_state_verification(
+    attested_provisioner: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Doctor must not repeat state and image checks while building facts."""
+
+    provisioner, _manifest, _base_image = attested_provisioner
+    state_checks = 0
+
+    def counted_verification(_state: object, _manifest: object) -> None:
+        nonlocal state_checks
+        state_checks += 1
+
+    monkeypatch.setattr(provisioner, "_verify_state_bindings", counted_verification)
+    provisioner.doctor()
+    assert state_checks == 1
+
+
 def _write_failed_recovery(
     provisioner: MacOSVZProvisioner,
     manifest: MacOSVZAssetManifest,

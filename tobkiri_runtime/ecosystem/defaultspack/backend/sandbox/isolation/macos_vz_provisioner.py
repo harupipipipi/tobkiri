@@ -1291,7 +1291,9 @@ class MacOSVZProvisioner:
             state = self._load_state()
             manifest = self._require_manifest()
             self._verify_state_bindings(state, manifest)
-            facts = self.prepare_direct_vz()
+            # The state and immutable image were verified above. Re-entering
+            # prepare_direct_vz() would hash the multi-gigabyte image again.
+            facts = self._prepare_direct_vz_verified(state, manifest)
             if facts is None:
                 return PackVMDoctor(
                     False,
@@ -1368,6 +1370,18 @@ class MacOSVZProvisioner:
             state = self._load_state()
             manifest = self._require_manifest()
             self._verify_state_bindings(state, manifest)
+            return self._prepare_direct_vz_verified(state, manifest)
+        except (OSError, ValueError, ImportError):
+            return None
+
+    def _prepare_direct_vz_verified(
+        self,
+        state: Mapping[str, Any],
+        manifest: MacOSVZAssetManifest,
+    ) -> MacOSVZProvisionedFacts | None:
+        """Build driver facts from state verified in the current call."""
+
+        try:
             if not bool(state.get("protocol_ready")):
                 return None
             from tobkiri_host.macos_vz_supervisor import (
