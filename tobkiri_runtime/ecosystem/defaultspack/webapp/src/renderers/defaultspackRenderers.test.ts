@@ -330,6 +330,35 @@ test("company workspace keeps active MiMo company visible when only runtime reso
   assert.doesNotMatch(html, /No Subagent Team loaded/);
 });
 
+test("company tree keeps authoritative task totals when the loaded page is smaller", () => {
+  const company = enrichCompanyRecordWithLoadedResources({
+    id: MIMO_CODING_COMPANY_ID,
+    name: "MiMo Coding Company",
+    task_count: 6,
+  }, {
+    tasks: [
+      {
+        id: "task-visible",
+        company_id: MIMO_CODING_COMPANY_ID,
+        title: "Visible task",
+        status: "queued",
+      },
+    ],
+  });
+
+  const html = renderToStaticMarkup(
+    createElement(CompanyTree, {
+      companies: [company],
+      activeCompanyId: MIMO_CODING_COMPANY_ID,
+      activeTaskCount: Math.max(company.task_count ?? 0, 1),
+    }),
+  );
+
+  assert.equal(company.task_count, 6);
+  assert.match(html, /6 tasks/);
+  assert.doesNotMatch(html, /1 tasks/);
+});
+
 test("company tree does not claim the Subagent Team is missing while loading", () => {
   const html = renderToStaticMarkup(
     createElement(CompanyTree, {
