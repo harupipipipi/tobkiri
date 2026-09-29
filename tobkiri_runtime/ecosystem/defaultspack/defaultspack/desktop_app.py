@@ -477,7 +477,12 @@ def _restore_active_profile_contracts(
             packvm_backend_factory
             or defaultspack_packvm_backend_factory(packvm_lifecycle)
         ),
-        packvm_readiness_reader=packvm_lifecycle.readiness_snapshot,
+        # The runtime-surface projection currently accepts the Lima v2
+        # attestation shape, not the direct macOS VZ snapshot.  Reading the
+        # latter here rehashes the multi-gigabyte VM image on every ordinary
+        # profile/catalog request but can never mark an operation invokable.
+        # VM execution and explicit doctor calls retain their live checks.
+        packvm_readiness_reader=None,
         http_contract_bindings=bindings,
         activation_snapshot_loader=defaultspack_activation_snapshot_loader,
         runtime_surface_factory=create_runtime_surface_services,
