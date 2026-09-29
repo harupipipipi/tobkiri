@@ -29,7 +29,9 @@ import {
   composerHelperCopy,
   composerModelControlWidth,
   composerPlaceholderCopy,
+  composerModelSearchPayload,
   modelDropdownPlacementClassName,
+  modelPickerPage,
   nextModelPickerOpenState,
   isModelPickerToggleCommand,
   modelCandidateMenuKeyAction,
@@ -954,6 +956,45 @@ test("model dropdown search supports @provider filters", () => {
   assert.deepEqual(filterModelProfilesBySearch(profiles, "@opencode qwen").map((profile) => profile.profile_id), ["opencode-go/qwen3.5-plus"]);
   assert.deepEqual(filterModelProfilesBySearch(profiles, "@openai 4.1").map((profile) => profile.profile_id), ["openai/gpt-4.1"]);
   assert.deepEqual(filterModelProfilesBySearch(profiles, "hy3 free").map((profile) => profile.profile_id), ["openrouter/tencent/hy3"]);
+});
+
+test("model dropdown sends provider-qualified remote searches separately", () => {
+  const providerSearch = modelProviderSearchState("@openrouter gemini");
+
+  assert.deepEqual(composerModelSearchPayload(
+    "@openrouter gemini",
+    providerSearch,
+    30,
+  ), {
+    query: "gemini",
+    provider_id: "openrouter",
+    max_results: 30,
+    offset: 0,
+  });
+  assert.deepEqual(composerModelSearchPayload(
+    "gemini",
+    modelProviderSearchState("gemini"),
+    30,
+  ), {
+    query: "gemini",
+    max_results: 30,
+    offset: 0,
+  });
+});
+
+test("composer model picker pages through deduplicated remote profiles", () => {
+  const profiles = Array.from({ length: 62 }, (_, index) => ({
+    profile_id: `openrouter/model-${index}`,
+    display_name: `Model ${index}`,
+  }));
+
+  const firstPage = modelPickerPage(profiles, [], null, false, 30);
+  assert.equal(firstPage.visible.length, 30);
+  assert.equal(firstPage.total, 62);
+
+  const allProfiles = modelPickerPage(profiles, [profiles[0]], null, false, 90);
+  assert.equal(allProfiles.visible.length, 62);
+  assert.equal(allProfiles.visible.at(-1)?.profile_id, "openrouter/model-61");
 });
 
 test("model dropdown exposes provider-first Tab confirmation", () => {
