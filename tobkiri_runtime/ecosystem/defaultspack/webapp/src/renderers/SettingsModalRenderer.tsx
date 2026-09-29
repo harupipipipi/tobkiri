@@ -24,6 +24,7 @@ import {
   parseModelSelectorSchema,
   type ModelSelectorSchema,
 } from "../features/models";
+import { ModelRouteSetup } from "../features/models/ModelRouteSetup";
 import type { SettingsModalRendererProps, SettingsSaveState } from "./types";
 import {
   buildCodexAppServerPrelude,
@@ -2436,6 +2437,7 @@ function SettingsField({
             </div>
           )}
 
+          <ModelRouteSetup />
           <details className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
             <summary className="cursor-pointer text-xs text-zinc-500">Advanced: route text</summary>
             <textarea

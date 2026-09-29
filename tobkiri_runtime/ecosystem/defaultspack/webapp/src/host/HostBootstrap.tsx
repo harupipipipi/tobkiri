@@ -13,6 +13,7 @@ import {
   DynamicFrontendHost,
   contributionsForRoute,
 } from "./DynamicFrontendHost";
+import { PackRouteNavigation } from "./PackRouteNavigation";
 import type {
   CapturedCapabilityInvocation,
   FrontendCapabilityInvoker,
@@ -257,14 +258,37 @@ export function HostBootstrap({
     window.location.replace(`${resolution.destination}${window.location.search}${window.location.hash}`);
     return <TobkiriLoadingScreen />;
   }
-  const route = resolution.route;
+  return <ProfileScreenHost
+    catalog={catalog}
+    route={resolution.route}
+    capabilities={capabilities}
+  />;
+}
+
+/** Render a Profile-qualified Application route with its trusted catalog navigation. */
+export function ProfileScreenHost({
+  catalog,
+  route,
+  capabilities,
+}: {
+  catalog: FrontendCatalog;
+  route: string;
+  capabilities: FrontendCapabilityInvoker;
+}) {
   return (
-    <DynamicFrontendHost
-      catalog={catalog}
-      route={route}
-      activePlanHash={catalog.plan_hash}
-      capabilities={capabilities}
-    />
+    <>
+      <DynamicFrontendHost
+        catalog={catalog}
+        route={route}
+        activePlanHash={catalog.plan_hash}
+        capabilities={capabilities}
+      />
+      <PackRouteNavigation
+        catalog={catalog}
+        route={route}
+        activePlanHash={catalog.plan_hash}
+      />
+    </>
   );
 }
 

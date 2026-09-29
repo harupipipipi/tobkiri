@@ -1083,6 +1083,8 @@ test("SettingsModalRenderer renders template model_api_routes through registered
   assert.match(html, /google\/main/);
   assert.match(html, /min-h-11/);
   assert.match(html, /API keyを追加/);
+  assert.match(html, /モデルルート作成（キー保存とは別操作）/);
+  assert.match(html, /aria-label="Provider connection ID"/);
   assert.doesNotMatch(html, /data-settings-routing-overview/);
 });
 
@@ -1521,7 +1523,7 @@ test("MiMo model allowlist also uses the catalog picker instead of raw model IDs
   assert.doesNotMatch(html, /<textarea[^>]*>xiaomi-token-plan-sgp/);
 });
 
-test("Automation settings omit Computer Use display controls and host permission panels", () => {
+test("Automation settings include Computer Use display controls without host permission panels", () => {
   const html = renderToStaticMarkup(createElement(SettingsModalRenderer, {
     isOpen: true,
     activeSectionId: "computer_automation",
@@ -1542,7 +1544,9 @@ test("Automation settings omit Computer Use display controls and host permission
   }));
 
   assert.match(html, /cloud_handoff_enabled/);
-  assert.doesNotMatch(html, /settings-field-computer_use_haze/);
+  assert.match(html, /data-settings-field="computer_use_haze\.preset"/);
+  assert.match(html, /data-settings-field="computer_use_haze\.start_color"/);
+  assert.match(html, /操作中に表示する配色/);
   assert.doesNotMatch(html, /Computer actions are high-impact|Permission Host|macOS Permissions/);
 });
 

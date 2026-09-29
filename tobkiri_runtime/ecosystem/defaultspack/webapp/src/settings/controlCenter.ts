@@ -650,7 +650,6 @@ export function buildControlCenterSections(settingsSections: SettingsSection[], 
   const sections = controlCenterSectionMeta(locale);
   const byId = new Map(sections.map((section) => [section.id, section]));
   for (const sourceSection of settingsSections) {
-    if (sourceSection.id === "computer_use_haze") continue;
     const sourceSectionTargets = new Set<ControlCenterSectionId>();
     for (const rawField of sourceSection.fields) {
       if (DEPRECATED_SETTING_KEYS.has(`${sourceSection.id}.${rawField.id}`)) continue;

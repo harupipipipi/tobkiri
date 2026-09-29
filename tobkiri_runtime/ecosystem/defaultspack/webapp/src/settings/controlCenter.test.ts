@@ -245,13 +245,18 @@ test("subagent settings appear with models while automation keeps its extension 
   );
 });
 
-test("Computer Use appearance is omitted from settings navigation", () => {
+test("Computer Use appearance remains in Automation settings navigation", () => {
   const sections = buildControlCenterSections([{ id: "computer_use_haze", label: "Computer Use", fields: [
     { id: "preset", label: "Preset", type: "select" },
     { id: "start_color", label: "Start Color", type: "text" },
   ] }]);
 
-  assert.equal(sections.flatMap((section) => section.fields).some((field) => field.sourceSectionId === "computer_use_haze"), false);
+  const automation = sections.find((section) => section.id === "computer_automation");
+  assert.deepEqual(automation?.fields.map((field) => field.id), ["preset", "start_color"]);
+  assert.equal(
+    automation?.sourceSections.some((section) => section.id === "computer_use_haze"),
+    true,
+  );
 });
 
 test("MCP management leads other tool controls", () => {

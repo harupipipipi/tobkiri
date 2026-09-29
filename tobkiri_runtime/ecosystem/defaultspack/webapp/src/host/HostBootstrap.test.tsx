@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   FrontendCapabilityError,
   HostBootstrap,
+  ProfileScreenHost,
   fetchDynamicCatalog,
   invokeCapability,
   resolveProfileScreenRequest,
@@ -13,7 +14,9 @@ import {
 import type {
   CapturedCapabilityInvocation,
   FrontendCatalog,
+  VerifiedFrontendContribution,
 } from "./frontendContracts";
+import { PackRouteNavigation, packScreenLinks } from "./PackRouteNavigation";
 
 const catalog: FrontendCatalog = {
   version: "rumi.ui.contribution.v1",
@@ -41,6 +44,101 @@ const invocation = (
   planHash: catalog.plan_hash,
   catalogHash: catalog.catalog_hash,
   ...overrides,
+});
+
+const packRoute = (
+  overrides: Partial<VerifiedFrontendContribution> = {},
+): VerifiedFrontendContribution => ({
+  contribution_id: "notes.screen",
+  kind: "route",
+  mode: "declarative",
+  label: "Notes",
+  priority: 0,
+  owner_pack_id: "notes-pack",
+  owner_pack_hash: `sha256:${"2".repeat(64)}`,
+  build_identity: "notes.fixture",
+  resolved_profile_id: catalog.profile_id,
+  resolved_profile_revision: catalog.profile_revision,
+  resolved_activation_id: catalog.activation_id,
+  resolved_plan_hash: catalog.plan_hash,
+  descriptor_hash: `sha256:${"3".repeat(64)}`,
+  route: "/notes",
+  route_match: "exact",
+  view: { title: "Notes" },
+  localization: {},
+  accessibility: { name: "Notes", keyboard: true },
+  ...overrides,
+});
+
+test("Pack navigation links only unique active non-Application routes", () => {
+  const note = packRoute();
+  const current: FrontendCatalog = {
+    ...catalog,
+    contributions: [
+      packRoute({ contribution_id: "defaults.chat", mode: "application_builtin", route: "/chat" }),
+      note,
+      packRoute({ contribution_id: "notes.unsafe", route: "/notes?mode=edit" }),
+      packRoute({ contribution_id: "notes.stale", route: "/stale", resolved_plan_hash: "old-plan" }),
+    ],
+  };
+  assert.deepEqual(packScreenLinks(current, "plan-1"), [{
+    contributionId: "notes.screen",
+    href: "/p/defaults/notes",
+    label: "Notes",
+    route: "/notes",
+  }]);
+  assert.deepEqual(packScreenLinks(current, "old-plan"), []);
+  assert.deepEqual(packScreenLinks({
+    ...current,
+    contributions: [...current.contributions, packRoute({ contribution_id: "other.notes" })],
+  }, "plan-1"), []);
+  assert.deepEqual(packScreenLinks({ ...current, quarantined_pack_ids: ["notes-pack"] }, "plan-1"), []);
+  assert.deepEqual(packScreenLinks({ ...current, profile_id: "other-profile" }, "plan-1"), []);
+});
+
+test("Pack navigation offers Profile-qualified links and an active-page return route", () => {
+  const current: FrontendCatalog = {
+    ...catalog,
+    contributions: [
+      packRoute({ contribution_id: "defaults.chat", mode: "application_builtin", route: "/chat" }),
+      packRoute(),
+    ],
+  };
+  const chatMarkup = renderToStaticMarkup(createElement(PackRouteNavigation, {
+    catalog: current, route: "/chat", activePlanHash: "plan-1",
+  }));
+  assert.match(chatMarkup, /aria-label="Pack screens"/);
+  assert.match(chatMarkup, /href="\/p\/defaults\/notes"/);
+  assert.doesNotMatch(chatMarkup, />Home<\/a>/);
+
+  const noteMarkup = renderToStaticMarkup(createElement(PackRouteNavigation, {
+    catalog: current, route: "/notes", activePlanHash: "plan-1",
+  }));
+  assert.match(noteMarkup, /href="\/p\/defaults\/chat"[^>]*>Home<\/a>/);
+  assert.match(noteMarkup, /href="\/p\/defaults\/notes" aria-current="page"/);
+});
+
+test("Profile-qualified screen host retains catalog navigation beside the active contribution", () => {
+  const current: FrontendCatalog = {
+    ...catalog,
+    contributions: [
+      packRoute({ contribution_id: "defaults.chat", mode: "application_builtin", route: "/chat" }),
+      packRoute(),
+    ],
+  };
+  const markup = renderToStaticMarkup(createElement(ProfileScreenHost, {
+    catalog: current,
+    route: "/notes",
+    capabilities: {
+      invokeAction: async () => undefined,
+      readDataSource: async () => undefined,
+    },
+  }));
+
+  assert.match(markup, /data-rumi-frontend-host/);
+  assert.match(markup, /data-contribution-id="notes\.screen"/);
+  assert.match(markup, /data-pack-route-navigation/);
+  assert.match(markup, /href="\/p\/defaults\/chat"[^>]*>Home<\/a>/);
 });
 
 test("screen route resolution binds URL identity and declared non-Chat entries", () => {
