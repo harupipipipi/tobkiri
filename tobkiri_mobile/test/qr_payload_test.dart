@@ -11,27 +11,25 @@ void main() {
     expect(pc.token, 'abc');
   });
 
-  test('parses rumi_api import payload with api_key alias', () {
+  test('rejects legacy plaintext API credential QR payloads', () {
     final payload = parseQrPayload(
         '{"kind":"rumi_api","baseUrl":"https://api.openai.com/v1","api_key":"sk-xx","model":"gpt-4o-mini","label":"main"}');
-    expect(payload, isA<QrApiImport>());
-    final api = payload as QrApiImport;
-    expect(api.apiKey, 'sk-xx');
-    expect(api.model, 'gpt-4o-mini');
-    expect(api.label, 'main');
+    expect(payload, isA<QrRejected>());
+    final rejection = payload as QrRejected;
+    expect(rejection.reason, contains('旧式QR'));
+    expect(rejection.reason, isNot(contains('sk-xx')));
   });
 
-  test('parses rumi_api provider payload for mobile provider config', () {
+  test('rejects known-provider QR payloads without trusting their host', () {
     final payload = parseQrPayload(
       '{"kind":"rumi_api","providerId":"google","apiId":"main","baseUrl":"https://generativelanguage.googleapis.com/v1beta/openai","apiKey":"sk-google","model":"gemini-2.5-pro","label":"Google","apiCompatibility":"openai"}',
     );
-    expect(payload, isA<QrApiImport>());
-    final api = payload as QrApiImport;
-    expect(api.providerId, 'google');
-    expect(api.apiId, 'main');
-    expect(api.apiKey, 'sk-google');
-    expect(api.model, 'gemini-2.5-pro');
-    expect(api.apiCompatibility, 'openai');
+    expect(payload, isA<QrRejected>());
+  });
+
+  test('rejects QR payloads larger than 64 KiB before parsing', () {
+    expect(parseQrPayload('x' * (64 * 1024 + 1)), isA<QrRejected>());
+    expect(parseQrPayload('界' * 22000), isA<QrRejected>());
   });
 
   test('parses plain url as QrUrl', () {
