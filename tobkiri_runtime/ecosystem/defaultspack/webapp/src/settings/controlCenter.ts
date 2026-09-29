@@ -304,7 +304,6 @@ const JA_FIELD_COPY: Record<string, LocalizedFieldCopy> = {
     help: "必要な場合だけ、モデルごとに使用するAPIキーを指定します。通常はプロバイダーの既定キーが使われます。",
   },
   "*.thinking_level": { label: "考える深さ" },
-  "*.deepthink_enabled": { label: "長時間の深い検討を使う" },
   "*.model_allowlist": { label: "利用するモデル", help: "モデル選択画面に表示し、Tobkiriが自動選択できるモデルを選びます。" },
   "*.handoff": { label: "クラウド・別端末へ引き継ぐ" },
   "*.api_keys": { label: "APIキーとトークン" },
@@ -702,7 +701,6 @@ export function buildControlCenterSections(settingsSections: SettingsSection[], 
   if (models) {
     const modelFieldRank = (field: ControlCenterField): number => {
       if (["main_model", "lightweight_model", "preferred_model"].includes(field.id)) return 100;
-      if (field.id === "deepthink_enabled") return 110;
       if (field.sourceSectionId === "automation" && field.id === "subagent_teams_enabled") return 160;
       if (["preferred_model_group", "auto_route_within_group"].includes(field.id)) return 150;
       if (field.sourceSectionId === "apis" && field.id === "api_keys") return 200;

@@ -65,31 +65,6 @@ test("AI API setup is shared with models while connections keeps the source fiel
   assert.deepEqual(connections?.fields.map((field) => field.id), ["api_keys"]);
 });
 
-test("DeepThink follows the model choice and precedes AI API setup", () => {
-  const sections = buildControlCenterSections([
-    {
-      id: "models",
-      label: "Models",
-      fields: [
-        { id: "main_model", label: "Main model", type: "model_select" },
-        { id: "lightweight_model", label: "Lightweight model", type: "model_select" },
-        { id: "deepthink_enabled", label: "DeepThink", type: "toggle" },
-        { id: "preferred_model_group", label: "Model group", type: "select" },
-      ],
-    },
-    {
-      id: "apis",
-      label: "APIs / Tokens",
-      fields: [{ id: "api_keys", label: "API keys", type: "api_keys" }],
-    },
-  ] as SettingsSection[]);
-
-  assert.deepEqual(
-    sections.find((section) => section.id === "models_api")?.fields.map((field) => field.id),
-    ["main_model", "lightweight_model", "deepthink_enabled", "preferred_model_group", "api_keys"],
-  );
-});
-
 test("pack-owned model and tool choices use their user-facing destinations", () => {
   const operationsCompany = {
     id: "operations_company",
