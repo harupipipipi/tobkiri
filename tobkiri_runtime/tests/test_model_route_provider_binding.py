@@ -145,7 +145,7 @@ def test_gateway_routes_bind_each_mode_to_the_exact_registry_read() -> None:
     registry_target = "rumi_provider_registry_pack.provider-registry.resource"
     expected = {
         (
-            "rumi_ai_gateway_pack.ai-gateway.preflight",
+            "rumi_ai_gateway_pack.ai-gateway.route-quote",
             "rumi_provider_registry_pack.provider-registry-resource.generate",
         ),
         (
