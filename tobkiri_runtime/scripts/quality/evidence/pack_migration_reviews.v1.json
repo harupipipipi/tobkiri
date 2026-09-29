@@ -427,14 +427,21 @@
           "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/artifact-manifest.json",
           "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/__init__.py",
           "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/gateway.py",
-          "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/route_quote.py"
+          "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/runtime/route_quote.py",
+          "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/runtime/catalog.py",
+          "tobkiri_runtime/tests/test_saved_bridge_tool_requirement.py",
+          "tobkiri_runtime/tests/test_model_catalog_v4_routing.py"
         ],
         "verified_claims": [
           "one-to-one committed legacy-operation and v4-operation inventory",
           "contract identifier and version equality for every mapped operation",
           "implementation path and digest equality between the source registry and v4 executable catalog",
           "v4 provider identity, role, isolation, failure, and security semantics reviewed per operation",
-          "canonical input, output, and error schema equality for every mapped operation"
+          "canonical input, output, and error schema equality for every mapped operation",
+          "the four legacy-to-v4 operation identities, contract versions, schemas, provider authority fields, and exact implementation paths remain unchanged after the Gateway runtime update",
+          "a saved connection capability lookup requires the reviewed adapter and endpoint plus one exact provider/model descriptor from the captured catalog owner; unmatched evidence contributes no capabilities",
+          "bundled-approved capabilities require matching owner inventory; OpenRouter live or last-known-good capabilities require non-stale provider-reported model metadata from /models?output_modalities=all",
+          "required saved tool calls use exact catalog capability evidence and fail closed when it is absent; optional auto-offered tools do not become a hard routing requirement"
         ],
         "excluded_claims": [
           "runtime admission",
@@ -443,12 +450,12 @@
           "release readiness"
         ]
       },
-      "reviewed_at": "2026-09-29T00:21:25+09:00",
-      "reviewer_id": "codex:independent-semantic-review:strategy-isolation-2026-09-29",
+      "reviewed_at": "2026-09-29T14:32:19+09:00",
+      "reviewer_id": "codex:independent-semantic-review:gateway-catalog-capabilities-2026-09-29",
       "semantic_record_digest": "sha256:d640c20ceb8c2692936416bd773f9af26109075eaf394bede9570807e21db60f",
-      "source_digest": "sha256:341320b106f2234f4b7a64b04cfbb0bddf9d720f99a7e8082148969841bc8d4f",
+      "source_digest": "sha256:380147ea921ab282dcbfdc58ef10cc2081e1a1d1bb579c2bb6aa5f972a0d1d11",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:2434050a9372b7daee4c62779992c65ecdaa061989b56dacb30e30a3a99533f4",
+      "target_digest": "sha256:a8f080df6336a9d979cf4d8f18473738b7cb2d198103e3e83ff89bcd3e6c729e",
       "semantic_record": {
         "status": "verified",
         "equivalent": true,
@@ -636,7 +643,7 @@
         "rationale": "Independent review reconciled 4 hardened legacy operation records with the exact v4 Pack quartet for rumi_ai_gateway_pack. Every mapping has the same function identity, contract identifier/version, implementation path/digest, and target provider semantics. All input, output, and error schemas are canonically equal.",
         "semantic_record_digest": "sha256:d640c20ceb8c2692936416bd773f9af26109075eaf394bede9570807e21db60f"
       },
-      "review_attestation_digest": "sha256:56141e6d4a9ac86501b2b129a4b6677d32c166ce91228cd61237bf070c552604"
+      "review_attestation_digest": "sha256:78d5417a99c65846aa8d370cf93e81c6463b4590a1a49d9a4f3e5e078f3d8189"
     },
     "rumi_ai_modality_pack": {
       "pack_id": "rumi_ai_modality_pack",
