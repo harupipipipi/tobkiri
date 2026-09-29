@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:7463f52304c8b3ebe41e1e281a2c255ebbd746bbb2c2f44c2c3db840e9246198",
+  "source_identity": "sha256:9ed96bafc711c4cef4924137071d99c5db79e4d215b1be6e0228bccc77e84d93",
   "variants": [
     {
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.generate.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:92c1b24bf8efbb0a74ca4bb462ff117e4492dd06967a14a0dece46eb0d011c59",
+      "implementation_digest": "sha256:0fcbe1da0a14a14f4a945e1c57a4f51c4f98aecbcf81858adcb482281aa4b62e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -257,7 +257,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:92c1b24bf8efbb0a74ca4bb462ff117e4492dd06967a14a0dece46eb0d011c59",
+      "implementation_digest": "sha256:0fcbe1da0a14a14f4a945e1c57a4f51c4f98aecbcf81858adcb482281aa4b62e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -291,7 +291,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.stream.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:92c1b24bf8efbb0a74ca4bb462ff117e4492dd06967a14a0dece46eb0d011c59",
+      "implementation_digest": "sha256:0fcbe1da0a14a14f4a945e1c57a4f51c4f98aecbcf81858adcb482281aa4b62e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -322,6 +322,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:1cebd9b864106ac3169fef681c8eb315beae816651d6efeaa03734f1e8891c72",
-  "catalog_digest": "sha256:d9810c1560eaeaed4f29fe889a5b734178487ec4a1fbbce8a739a818362482fc"
+  "materialization_catalog_digest": "sha256:2c88aef8a2091d2829ae8f0f13a74e70c2e40eba6cb235b404e1d8a52b30b9cd",
+  "catalog_digest": "sha256:9ac8a301f381e7efc7b91fffdd2507a5110869f4884512783f98d8f189e926d2"
 }

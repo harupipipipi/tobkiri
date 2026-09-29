@@ -2240,7 +2240,7 @@
             {
               "entrypoint_id": "ai-gateway-routing-diagnostics",
               "id": "rumi_ai_gateway_pack.ai-gateway-routing-diagnostics",
-              "implementation_digest": "sha256:92c1b24bf8efbb0a74ca4bb462ff117e4492dd06967a14a0dece46eb0d011c59"
+              "implementation_digest": "sha256:0fcbe1da0a14a14f4a945e1c57a4f51c4f98aecbcf81858adcb482281aa4b62e"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2273,7 +2273,7 @@
             {
               "entrypoint_id": "ai-gateway-generate",
               "id": "rumi_ai_gateway_pack.ai-gateway.generate",
-              "implementation_digest": "sha256:92c1b24bf8efbb0a74ca4bb462ff117e4492dd06967a14a0dece46eb0d011c59"
+              "implementation_digest": "sha256:0fcbe1da0a14a14f4a945e1c57a4f51c4f98aecbcf81858adcb482281aa4b62e"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2306,7 +2306,7 @@
             {
               "entrypoint_id": "ai-gateway-stream",
               "id": "rumi_ai_gateway_pack.ai-gateway.stream",
-              "implementation_digest": "sha256:92c1b24bf8efbb0a74ca4bb462ff117e4492dd06967a14a0dece46eb0d011c59"
+              "implementation_digest": "sha256:0fcbe1da0a14a14f4a945e1c57a4f51c4f98aecbcf81858adcb482281aa4b62e"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2401,7 +2401,7 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:92c1b24bf8efbb0a74ca4bb462ff117e4492dd06967a14a0dece46eb0d011c59",
+          "digest": "sha256:0fcbe1da0a14a14f4a945e1c57a4f51c4f98aecbcf81858adcb482281aa4b62e",
           "kind": "executable",
           "path": "runtime/gateway.py"
         },
@@ -2419,7 +2419,7 @@
           "rule_id": "pack-v4-one-way-migration-input"
         },
         {
-          "digest": "sha256:0cf0b80b8e8736b12e2c5919fef4a9199a7d99d58b03a494cf6596d264fe5ef7",
+          "digest": "sha256:076838425ecc1862cb85ab6103f9485a49b981a81ae1a4e6c1949d019be50acd",
           "path": "ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json",
           "rule_id": "pack-v4-one-way-migration-input"
         }
