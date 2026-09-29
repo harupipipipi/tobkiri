@@ -1,13 +1,12 @@
-"""Saved-turn tool routing: auto offers tools, explicit stays fail-closed.
+"""Saved-turn tool routing with exact catalog-owned capability evidence.
 
 A saved model profile bound to a Provider connection resolves through a
 synthetic catalog descriptor whose capabilities are unverified
 (``capabilities: []``). Turning every selected tool into a hard
-``tool_calling`` routing requirement excluded the only candidate
-(``tool_calling_mismatch``) and wedged the turn with ``unresolved_profile``
-before any write. ``auto`` selection without ``must_use`` only offers tools
-to the model, so it must not become a routing requirement; ``must_use`` or
-an explicit ``manual`` selection keeps the fail-closed requirement.
+``tool_calling`` routing requirement excludes the candidate unless an exact
+provider catalog record supplies the capability. ``auto`` selection without
+``must_use`` only offers tools to the model, while ``must_use`` or an explicit
+``manual`` selection keeps the fail-closed requirement.
 """
 
 from __future__ import annotations
@@ -25,6 +24,7 @@ from core_runtime.bootstrap.saved_bridge import (
     READINESS,
     SavedBridgeCallbacks,
     project_saved_ai_result,
+    project_saved_tool_result,
 )
 from core_runtime.global_contract_dispatch import (
     GlobalContractClient,
@@ -51,7 +51,7 @@ from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationSto
 from ecosystem.rumi_model_catalog_pack.runtime.catalog import (
     create_model_catalog_operation,
 )
-from tobkiri_host.saved_turn_plan import SavedToolFrame
+from tobkiri_host.saved_turn_plan import TOOL, SavedToolFrame
 from tobkiri_protocol.canonical import canonical_digest, canonical_json
 
 
@@ -81,6 +81,7 @@ class _SavedRouteSession:
         )["record"]
         self.provider_requests: list[dict[str, Any]] = []
         self.catalog_requests: list[dict[str, Any]] = []
+        self.respond_with_calculator = False
 
     def provider_metadata(
         self, contract_id: str
@@ -154,6 +155,20 @@ class _SavedRouteSession:
             return {"providers": []}
         if contract_id == gateway.GENERATE_PROVIDER_CONTRACT:
             self.provider_requests.append(dict(payload))
+            if self.respond_with_calculator and len(self.provider_requests) == 1:
+                return {
+                    "status": "ok",
+                    "output": "",
+                    "tool_intents": [{
+                        "id": "call-1",
+                        "function": {
+                            "name": "calculator",
+                            "arguments": '{"expression":"13829+12312"}',
+                        },
+                    }],
+                    "finish_reason": "tool_calls",
+                    "usage": {"input_tokens": 2, "output_tokens": 1},
+                }
             return {
                 "status": "ok",
                 "output": "Done",
@@ -164,7 +179,11 @@ class _SavedRouteSession:
 
 
 def _bridge_setup(
-    tmp_path: Path, selection: Mapping[str, Any]
+    tmp_path: Path,
+    selection: Mapping[str, Any],
+    *,
+    model_id: str = "account-visible-model",
+    tool_name: str = "file_read",
 ) -> tuple[ConversationStore, Any, list, SavedBridgeCallbacks, _SavedRouteSession]:
     """Bind saved callbacks to a real owner store and the real AI route."""
     store = ConversationStore("defaults", user_data_root=tmp_path)
@@ -172,7 +191,7 @@ def _bridge_setup(
         {"id": "conversation-1", "model_reference": "daily"},
         expected_revision=0,
     )
-    session = _SavedRouteSession()
+    session = _SavedRouteSession(model_id)
     client = GlobalContractClient(
         session=session,
         allowed_contract_ids=gateway._GENERATE_ALLOWED_CONTRACTS,
@@ -219,18 +238,25 @@ def _bridge_setup(
                 "operation": "select",
                 "selection": dict(selection),
             }
+            parameters = (
+                {"type": "object", "properties": {"expression": {"type": "string"}}}
+                if tool_name == "calculator"
+                else {"type": "object"}
+            )
             value = {
                 "tools": [
                     {
                         "type": "function",
                         "function": {
-                            "name": "file_read",
-                            "description": "Read",
-                            "parameters": {"type": "object"},
+                            "name": tool_name,
+                            "description": (
+                                "Calculate" if tool_name == "calculator" else "Read"
+                            ),
+                            "parameters": parameters,
                         },
                     }
                 ],
-                "definitions": {"file_read": "b" * 64},
+                "definitions": {tool_name: "b" * 64},
             }
         elif target == READINESS:
             # The production bridge would wrap a routing error into a bounded
@@ -243,6 +269,16 @@ def _bridge_setup(
                 "status": "ok",
                 "value": project_saved_ai_result(generate("generate", payload)),
             }
+        elif target == TOOL:
+            assert payload["tool_id"] == tool_name
+            assert payload["expected_definition_hash"] == "b" * 64
+            value = project_saved_tool_result({
+                "tool_id": tool_name,
+                "tool_call_id": payload["tool_call_id"],
+                "status": "success",
+                "is_error": False,
+                "result": {"value": 26141},
+            })
         else:
             raise AssertionError(target)
         return {"status": "ok", "value": value}
@@ -376,6 +412,88 @@ def test_connection_catalog_pricing_requires_exact_trusted_evidence(
     ) == {}
 
 
+@pytest.mark.parametrize(
+    ("connection_update", "model_update", "inventory_update"),
+    [
+        ({"endpoint": "https://example.com/v1"}, {}, {}),
+        ({"adapter_id": "other"}, {}, {}),
+        ({}, {"provider_id": "other"}, {}),
+        ({}, {"provider_model_id": "other/model"}, {}),
+        ({}, {"model_id": "openrouter/other/model"}, {}),
+        ({}, {"capabilities": []}, {}),
+        ({}, {"metadata": {"capability_source": "saved_profile"}}, {}),
+        ({}, {}, {"source": "unavailable"}),
+        ({}, {}, {"stale": True}),
+    ],
+)
+def test_connection_capabilities_require_exact_provider_owned_evidence(
+    connection_update: Mapping[str, Any],
+    model_update: Mapping[str, Any],
+    inventory_update: Mapping[str, Any],
+) -> None:
+    """Connection and profile claims never fill a missing catalog capability."""
+
+    connection = {
+        "adapter_id": "openai-compatible",
+        "endpoint": "https://openrouter.ai/api/v1",
+        **connection_update,
+    }
+    model = {
+        "model_id": "openrouter/xiaomi/mimo-v2.6-flash",
+        "provider_id": "openrouter",
+        "provider_model_id": "xiaomi/mimo-v2.6-flash",
+        "capabilities": ["tool_calling"],
+        "catalog_provider_instance_id": "catalog-main",
+        "metadata": {
+            "capability_source": "openrouter_models_api",
+            "capability_confidence": "provider_reported",
+            "source_endpoint": "/models?output_modalities=all",
+        },
+        **model_update,
+    }
+    inventory = {
+        "catalog-main": {
+            "openrouter": {
+                "source": "last_known_good",
+                "stale": False,
+                **inventory_update,
+            }
+        }
+    }
+    actual = gateway._saved_connection_catalog_capabilities(
+        [model], inventory, connection, "xiaomi/mimo-v2.6-flash"
+    )
+    assert actual == frozenset()
+
+
+@pytest.mark.parametrize("source", ["live", "last_known_good"])
+def test_connection_capabilities_accept_fresh_reported_inventory(
+    source: str,
+) -> None:
+    """An exact OpenRouter model can contribute its provider-reported tools."""
+    capabilities = gateway._saved_connection_catalog_capabilities(
+        [{
+            "model_id": "openrouter/xiaomi/mimo-v2.6-flash",
+            "provider_id": "openrouter",
+            "provider_model_id": "xiaomi/mimo-v2.6-flash",
+            "capabilities": ["tool_calling", "thinking"],
+            "catalog_provider_instance_id": "catalog-main",
+            "metadata": {
+                "capability_source": "openrouter_models_api",
+                "capability_confidence": "provider_reported",
+                "source_endpoint": "/models?output_modalities=all",
+            },
+        }],
+        {"catalog-main": {"openrouter": {"source": source, "stale": False}}},
+        {
+            "adapter_id": "openai-compatible",
+            "endpoint": "https://openrouter.ai/api/v1",
+        },
+        "xiaomi/mimo-v2.6-flash",
+    )
+    assert capabilities == {"tool_calling", "thinking"}
+
+
 def test_unrecognized_provider_failure_remains_generic() -> None:
     """Arbitrary provider diagnostics do not cross the guest boundary."""
 
@@ -491,6 +609,63 @@ def test_saved_tool_offer_keeps_selected_thinking_level(tmp_path: Path) -> None:
         "tool_choice": "auto",
     }
     assert session.provider_requests[0]["parameters"]["thinking_level"] == "high"
+
+
+@pytest.mark.parametrize(
+    "selection",
+    [
+        {"mode": "auto", "must_use": True},
+        {"mode": "manual", "include": ["calculator"]},
+    ],
+)
+def test_required_calculator_uses_exact_openrouter_catalog_capability(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    selection: Mapping[str, Any],
+) -> None:
+    """A provider-reported tool capability permits the full saved tool round."""
+    from ecosystem.rumi_model_catalog_pack.runtime import catalog
+
+    model = catalog._normalize_openrouter_model({
+        "id": "xiaomi/mimo-v2.6-flash",
+        "architecture": {
+            "input_modalities": ["text"],
+            "output_modalities": ["text"],
+        },
+        "supported_parameters": ["tools", "tool_choice"],
+    })
+    assert model is not None
+    monkeypatch.setattr(
+        catalog, "_openrouter_inventory", lambda: ([model], "live", False)
+    )
+    store, outer, calls, callbacks, session = _bridge_setup(
+        tmp_path,
+        selection,
+        model_id="xiaomi/mimo-v2.6-flash",
+        tool_name="calculator",
+    )
+    session.respond_with_calculator = True
+
+    callbacks.preflight(outer)
+    result = _drive_turn(outer, callbacks)
+
+    assert result["status"] == "ok"
+    assert len(session.provider_requests) == 2
+    assert session.provider_requests[0]["tools"][0]["function"]["name"] == (
+        "calculator"
+    )
+    assert session.provider_requests[0]["provider_connection_id"] == (
+        session.connection_id
+    )
+    assert any(target == TOOL for target, _payload in calls)
+    assert session.catalog_requests
+    assert all(request == {
+        "provider_id": "openrouter",
+        "model_id": "xiaomi/mimo-v2.6-flash",
+    } for request in session.catalog_requests)
+    assert [message["role"] for message in store.get("conversation-1")["messages"]] == [
+        "user", "assistant"
+    ]
 
 
 @pytest.mark.parametrize(

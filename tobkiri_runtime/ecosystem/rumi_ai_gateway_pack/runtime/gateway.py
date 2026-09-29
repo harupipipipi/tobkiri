@@ -935,6 +935,9 @@ def _catalog_candidates(
     catalog_payload = _saved_connection_catalog_query(
         explicit_connection,
         str(requirement.preferred_model_id or ""),
+        require_capabilities=bool(
+            requirement.capabilities or requirement.tool_calling or requirement.thinking
+        ),
     )
     catalog_providers = (
         ()
@@ -968,25 +971,34 @@ def _catalog_candidates(
             catalog_models.append(descriptor)
     if explicit_connection is not None:
         # A saved raw model/connection pair is an explicit route, not a catalog
-        # brand/model identifier. Unknown capabilities stay unknown; requests
-        # cannot manufacture tool, image, context-size or residency evidence.
+        # brand/model identifier. Only reviewed exact connection/model evidence
+        # can supply capabilities; request requirements cannot manufacture them.
         connection = (
             dict(explicit_connection)
             if isinstance(explicit_connection, Mapping)
             else {}
         )
+        provider_model_id = str(requirement.preferred_model_id or "")
         pricing = _saved_connection_catalog_pricing(
             catalog_models,
             catalog_inventory,
             connection,
-            str(requirement.preferred_model_id or ""),
+            provider_model_id,
+        )
+        capabilities = _saved_connection_catalog_capabilities(
+            catalog_models,
+            catalog_inventory,
+            connection,
+            provider_model_id,
         )
         catalog_models = [{
             "model_id": requirement.preferred_model_id,
             "provider_model_id": requirement.preferred_model_id,
             "provider_connection_id": connection.get("provider_instance_id"),
             "provider_id": pricing.get("provider_id"),
-            "execution_provider_instance_id": requirement.preferred_provider_instance_id,
+            "execution_provider_instance_id": (
+                requirement.preferred_provider_instance_id
+            ),
             "health_provider_instance_id": connection.get("provider_instance_id"),
             "catalog_revision": str(
                 pricing.get("revision") or "saved-connection:v1"
@@ -995,7 +1007,7 @@ def _catalog_candidates(
             "output_cost": _optional_float(pricing.get("output")),
             "currency": str(pricing.get("currency") or "USD"),
             "modalities": ["text"],
-            "capabilities": [],
+            "capabilities": sorted(capabilities),
         }]
     else:
         _append_explicit_live_model(
@@ -1110,6 +1122,7 @@ def _saved_connection_catalog_pricing(
         for item in catalog_models
         if item.get("provider_id") == provider_id
         and item.get("provider_model_id") == provider_model_id
+        and item.get("model_id") == f"{provider_id}/{provider_model_id}"
     ]
     if len(matches) != 1:
         return {}
@@ -1149,11 +1162,62 @@ def _saved_connection_catalog_pricing(
     }
 
 
+def _saved_connection_catalog_capabilities(
+    catalog_models: list[dict[str, Any]],
+    catalog_inventory: Mapping[str, Mapping[str, Mapping[str, Any]]],
+    connection: Mapping[str, Any],
+    provider_model_id: str,
+) -> frozenset[str]:
+    """Use only exact catalog-owner capability evidence for a saved route."""
+    route = _SAVED_CONNECTION_CATALOG_ROUTES.get(
+        (
+            str(connection.get("adapter_id") or ""),
+            str(connection.get("endpoint") or ""),
+        )
+    )
+    if route is None:
+        return frozenset()
+    provider_id = route[0]
+    matches = [
+        item
+        for item in catalog_models
+        if item.get("provider_id") == provider_id
+        and item.get("provider_model_id") == provider_model_id
+        and item.get("model_id") == f"{provider_id}/{provider_model_id}"
+    ]
+    if len(matches) != 1:
+        return frozenset()
+    descriptor = matches[0]
+    inventory = catalog_inventory.get(
+        str(descriptor.get("catalog_provider_instance_id") or ""), {}
+    ).get(provider_id)
+    if not isinstance(inventory, Mapping):
+        return frozenset()
+    if descriptor.get("catalog_source") == _BUNDLED_APPROVED_CATALOG_SOURCE:
+        if inventory.get("source") != _BUNDLED_APPROVED_CATALOG_SOURCE:
+            return frozenset()
+    else:
+        metadata = descriptor.get("metadata")
+        if (
+            provider_id != "openrouter"
+            or not isinstance(metadata, Mapping)
+            or metadata.get("capability_source") != "openrouter_models_api"
+            or metadata.get("capability_confidence") != "provider_reported"
+            or metadata.get("source_endpoint") != "/models?output_modalities=all"
+            or inventory.get("source") not in {"live", "last_known_good"}
+            or inventory.get("stale") is not False
+        ):
+            return frozenset()
+    return _strings(descriptor.get("capabilities"))
+
+
 def _saved_connection_catalog_query(
     connection_value: Any,
     provider_model_id: str,
+    *,
+    require_capabilities: bool = False,
 ) -> dict[str, Any]:
-    """Select a network-free owner lookup for an exact reviewed saved route."""
+    """Select an exact catalog-owner lookup for a known provider connection."""
 
     connection = (
         dict(connection_value)
@@ -1169,12 +1233,17 @@ def _saved_connection_catalog_query(
     if route is None:
         return {}
     provider_id, reviewed_models, _currency = route
-    if provider_model_id not in reviewed_models:
+    if provider_model_id in reviewed_models:
+        return {
+            "provider_id": provider_id,
+            "model_id": provider_model_id,
+            "catalog_source": _BUNDLED_APPROVED_CATALOG_SOURCE,
+        }
+    if not require_capabilities:
         return {}
     return {
         "provider_id": provider_id,
         "model_id": provider_model_id,
-        "catalog_source": _BUNDLED_APPROVED_CATALOG_SOURCE,
     }
 
 
