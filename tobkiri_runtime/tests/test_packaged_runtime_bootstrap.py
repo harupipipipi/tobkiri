@@ -103,6 +103,7 @@ def test_superseded_packaged_artifact_starts_ui_ready_reconfirmation(
     """A valid predecessor transition serves setup instead of wedging startup."""
 
     import core_runtime.bootstrap.runtime as runtime_bootstrap
+    from core_runtime.restart_control import clear_kernel_restart_request
     from ecosystem.defaultspack.domain.runtime_v4 import (
         ProfileReconfirmationRequired,
     )
@@ -138,6 +139,7 @@ def test_superseded_packaged_artifact_starts_ui_ready_reconfirmation(
         )
     monkeypatch.setattr(runtime_bootstrap, "resolve_runtime_port", lambda: port)
 
+    clear_kernel_restart_request()
     kernel = _kernel()
     if failure_stage in {"http_composition", "stale_verified_artifact"}:
         def unavailable_composition(active):
@@ -173,7 +175,10 @@ def test_superseded_packaged_artifact_starts_ui_ready_reconfirmation(
             "runtime_error": diagnostic,
         }
     finally:
-        kernel.shutdown()
+        try:
+            kernel.shutdown()
+        finally:
+            clear_kernel_restart_request()
 
 
 def test_kernel_bootstrap_publishes_and_reuses_desktop_api_token(
