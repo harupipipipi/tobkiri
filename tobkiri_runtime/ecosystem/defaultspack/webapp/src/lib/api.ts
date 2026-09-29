@@ -156,7 +156,49 @@ export type SavedTurnRequest = {
   conversation_revision: number;
   content: SavedTurnContent;
   tool_selection?: SavedToolSelection;
+  /** Exact reference selected from the Host-admitted strategy catalog. */
+  strategy_reference?: string;
+  thinking_level?: "none" | "low" | "medium" | "high" | "xhigh";
 };
+
+export type StrategyContribution = {
+  reference: string;
+  label: string;
+  description?: string;
+};
+
+/**
+ * Parses only strategies the Host projected from the active Plan. Client-side
+ * flags do not make a strategy eligible for selection or persistence.
+ */
+export function admittedStrategyContributions(value: unknown): StrategyContribution[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const contributions: StrategyContribution[] = [];
+  for (const item of value) {
+    const record = item && typeof item === "object" && !Array.isArray(item)
+      ? item as Record<string, unknown>
+      : null;
+    if (!record) continue;
+    const reference = typeof record.strategy_reference === "string"
+      ? record.strategy_reference.trim()
+      : "";
+    const label = typeof record.label === "string" ? record.label.trim() : "";
+    const description = typeof record.description === "string"
+      ? record.description.trim()
+      : "";
+    if (!reference || !label || reference.length > 256 || seen.has(reference)
+      || description.length > 400 || record.signature_verified !== true
+      || record.plan_admitted !== true || record.available !== true) continue;
+    seen.add(reference);
+    contributions.push({
+      reference,
+      label,
+      ...(description ? { description } : {}),
+    });
+  }
+  return contributions;
+}
 
 export type SavedTurnResult = {
   status: "completed" | "existing" | "reconciliation_required";
@@ -1683,6 +1725,8 @@ export type ModelSearchItem = ModelCommandCandidate & {
 export type ModelSearchResponse = {
   models: ModelSearchItem[];
   filters_applied: Record<string, unknown>;
+  total?: number;
+  has_more?: boolean;
 };
 
 export type ConversationSteerItem = {
@@ -2410,6 +2454,8 @@ export type UICatalog = {
     }>;
   };
   skills?: SkillCatalogItem[];
+  /** Host-admitted Pack strategy choices; see admittedStrategyContributions. */
+  strategy_contributions?: unknown;
   commands?: ComposerCommandItem[];
   composer_inputs?: TemplateComposerInput[];
   ai_inputs?: TemplateAiInput[];
@@ -2679,14 +2725,6 @@ export function composerCommandFeedbackTone(
 ): ComposerCommandFeedbackTone {
   if (result.operation_status === "failed") return "error";
   if (result.requires_approval) return "warning";
-
-  const deepthinkState = result.state_changes?.find(
-    (snapshot) => snapshot.state_ref === "defaultspack:models.deepthink_enabled",
-  );
-  if (deepthinkState) {
-    return deepthinkState.value === true ? "warning" : "success";
-  }
-
   return "success";
 }
 
@@ -2771,6 +2809,107 @@ export type ToolCatalogResponse = {
   count: number;
 };
 
+export function isToolCatalogResponse(value: unknown): value is ToolCatalogResponse {
+  const catalog = objectRecord(value);
+  return Boolean(
+    catalog
+    && Array.isArray(catalog.services)
+    && Array.isArray(catalog.tools)
+    && Number.isSafeInteger(catalog.count)
+    && catalog.count === catalog.tools.length
+    && catalog.tools.every((item) => {
+      const tool = objectRecord(item);
+      return tool
+        && hasNonEmptyString(tool, "tool_id")
+        && hasNonEmptyString(tool, "name")
+        && hasNonEmptyString(tool, "service_id")
+        && hasNonEmptyString(tool, "service_label");
+    }),
+  );
+}
+
+export type StrategyCatalogResponse = {
+  api_version: string;
+  strategies: Array<{
+    strategy_reference: string;
+    label: string;
+    description?: string;
+    signature_verified: true;
+    plan_admitted: true;
+    available: true;
+  }>;
+  count: number;
+  catalog_revision: string;
+  diagnostics: unknown[];
+  quarantined_pack_ids: string[];
+};
+
+function isStrategyCatalogResponse(value: unknown): value is StrategyCatalogResponse {
+  const catalog = objectRecord(value);
+  const strategies = catalog?.strategies;
+  return Boolean(
+    catalog
+    && hasNonEmptyString(catalog, "api_version")
+    && hasNonEmptyString(catalog, "catalog_revision")
+    && Array.isArray(strategies)
+    && Number.isSafeInteger(catalog.count)
+    && catalog.count === strategies.length
+    && Array.isArray(catalog.diagnostics)
+    && Array.isArray(catalog.quarantined_pack_ids)
+    && catalog.quarantined_pack_ids.every((packId) => typeof packId === "string" && packId.trim())
+    && strategies.every((item) => {
+      const strategy = objectRecord(item);
+      return Boolean(
+        strategy
+        && hasNonEmptyString(strategy, "strategy_reference")
+        && hasNonEmptyString(strategy, "label")
+        && (strategy.description === undefined || typeof strategy.description === "string")
+        && strategy.signature_verified === true
+        && strategy.plan_admitted === true
+        && strategy.available === true,
+      );
+    }),
+  );
+}
+
+export function uiCatalogWithSelectedTools(catalog: UICatalog, tools: ToolCatalogResponse): UICatalog {
+  const existingIds = new Set(catalog.sidebar.items.map((item) => item.id));
+  const toolItems: SidebarItem[] = [];
+  for (const tool of tools.tools) {
+    if (existingIds.has(tool.tool_id)) continue;
+    existingIds.add(tool.tool_id);
+    toolItems.push({
+      id: tool.tool_id,
+      label: tool.name,
+      category: "tool",
+      description: tool.summary,
+      tags: tool.tags ?? [],
+      risk: tool.risk,
+      badge: tool.connection_status === "connected" ? null : "Unavailable",
+      ui: {
+        service_id: tool.service_id,
+        group_id: tool.service_id,
+        group_label: tool.service_label,
+        composer_label: tool.name,
+        composer_description: tool.summary,
+      },
+      tool_info: {
+        service_id: tool.service_id,
+        setup_state: { status: tool.connection_status === "connected" ? "ok" : "missing" },
+      },
+      origin: { kind: "profile_tool_catalog" },
+      panel: { kind: "tool_settings", title: tool.name, fields: [] },
+    });
+  }
+  return {
+    ...catalog,
+    sidebar: {
+      ...catalog.sidebar,
+      items: [...catalog.sidebar.items, ...toolItems],
+    },
+  };
+}
+
 export type ToolSelectionPreviewResponse = {
   preview_id: string;
   expires_at: string;
@@ -2787,7 +2926,7 @@ export type ToolSelectionPreviewResponse = {
 type SendMessageOptions = {
   idempotency_key?: string;
   thinking_level?: string | null;
-  deepthink_enabled?: boolean;
+  strategy_reference?: string;
   tool_choice?: "auto" | "none" | "required" | Record<string, unknown>;
   parallel_tool_calls?: boolean;
   params?: Record<string, unknown>;
@@ -3447,7 +3586,7 @@ function messageRequestBody(
     params: {
       ...(options?.params ?? {}),
       thinking_level: options?.thinking_level ?? undefined,
-      deepthink_enabled: options?.deepthink_enabled ?? undefined,
+      strategy_reference: options?.strategy_reference ?? undefined,
       tool_choice: options?.tool_choice ?? undefined,
       parallel_tool_calls: options?.parallel_tool_calls ?? undefined,
       tool_policy: options?.tool_policy ?? undefined,
@@ -3461,6 +3600,103 @@ function createChatOperationId(): string {
     return globalThis.crypto.randomUUID();
   }
   return `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
+}
+
+// Conversation-scoped tool preferences are metadata on the conversation
+// resource. The Host exposes that owned resource through GET/PUT
+// /api/chat/conversation, rather than a separately admitted sub-route.
+const CONVERSATION_TOOL_PREFERENCE_MODES = new Set(["auto", "review", "manual", "none"]);
+const CONVERSATION_TOOL_PREFERENCE_SCOPES = new Set(["turn", "conversation"]);
+const CONVERSATION_TOOL_PREFERENCE_STRATEGIES = new Set([
+  "hybrid", "semantic", "catalog_ai", "all_with_hints", "all_schemas", "lexical",
+]);
+const CONVERSATION_TOOL_PREFERENCE_TARGET_KINDS = new Set(["activity", "service", "tool", "skill"]);
+const CONVERSATION_TOOL_PREFERENCE_MAX_TARGETS = 64;
+const CONVERSATION_TOOL_PREFERENCE_MAX_TARGET_ID = 160;
+const CONVERSATION_TOOL_PREFERENCE_MAX_PREVIEW_ID = 128;
+
+function conversationToolPreferencesFromMetadata(metadata: unknown): Record<string, unknown> {
+  return objectRecord(objectRecord(metadata)?.tool_preferences) ?? {};
+}
+
+function conversationToolPreferenceBool(value: unknown, fallback: boolean): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["1", "true", "yes", "on"].includes(normalized)) return true;
+    if (["0", "false", "no", "off"].includes(normalized)) return false;
+  }
+  if (value === null || value === undefined) return fallback;
+  return Boolean(value);
+}
+
+function conversationToolPreferenceTarget(value: unknown): Record<string, string> | null {
+  if (typeof value === "string") {
+    const id = value.trim();
+    return id ? { kind: "tool", id } : null;
+  }
+  const record = objectRecord(value);
+  if (!record) return null;
+  let kind = String(record.kind ?? record.type ?? "").trim().toLowerCase();
+  if (!CONVERSATION_TOOL_PREFERENCE_TARGET_KINDS.has(kind)) {
+    if (record.tool_id && !record.service_id) kind = "tool";
+    else if (record.service_id && !record.tool_id) kind = "service";
+  }
+  const id = String(
+    record.id ?? record.tool_id ?? record.service_id ?? record.activity_id ?? record.skill_id ?? "",
+  ).trim();
+  if (!id || !CONVERSATION_TOOL_PREFERENCE_TARGET_KINDS.has(kind)) return null;
+  return { kind, id };
+}
+
+function conversationToolPreferenceTargets(value: unknown): Array<Record<string, string>> {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    throw new Error("preferences include/exclude must be arrays");
+  }
+  const targets: Array<Record<string, string>> = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const target = conversationToolPreferenceTarget(item);
+    if (!target || target.id.length > CONVERSATION_TOOL_PREFERENCE_MAX_TARGET_ID) continue;
+    const key = `${target.kind}:${target.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    targets.push(target);
+    if (targets.length >= CONVERSATION_TOOL_PREFERENCE_MAX_TARGETS) break;
+  }
+  return targets;
+}
+
+function sanitizeConversationToolPreferences(value: unknown): Record<string, unknown> {
+  const record = objectRecord(value);
+  if (!record) throw new Error("preferences must be an object");
+  const mode = String(record.mode ?? "auto").trim().toLowerCase();
+  if (!CONVERSATION_TOOL_PREFERENCE_MODES.has(mode)) {
+    throw new Error("preferences.mode must be one of auto, review, manual, none");
+  }
+  const scope = String(record.scope ?? "conversation").trim().toLowerCase();
+  if (!CONVERSATION_TOOL_PREFERENCE_SCOPES.has(scope)) {
+    throw new Error("preferences.scope must be one of turn, conversation");
+  }
+  const strategy = String(record.strategy ?? "").trim().toLowerCase();
+  if (strategy && !CONVERSATION_TOOL_PREFERENCE_STRATEGIES.has(strategy)) {
+    throw new Error("preferences.strategy is not supported");
+  }
+  const previewId = String(record.preview_id ?? "").trim();
+  if (previewId.length > CONVERSATION_TOOL_PREFERENCE_MAX_PREVIEW_ID) {
+    throw new Error("preferences.preview_id is too long");
+  }
+  return {
+    mode,
+    include: conversationToolPreferenceTargets(record.include),
+    exclude: conversationToolPreferenceTargets(record.exclude),
+    scope,
+    strategy: strategy || null,
+    must_use: conversationToolPreferenceBool(record.must_use, false),
+    review: conversationToolPreferenceBool(record.review, mode === "review"),
+    preview_id: previewId || null,
+  };
 }
 
 async function readStreamEvents(
@@ -3951,11 +4187,23 @@ export const api = {
   async startSavedTurn(value: SavedTurnRequest): Promise<SavedTurnResult> {
     const input = { ...value };
     const fields = ["turn_id", "conversation_id", "conversation_revision", "content"];
-    if (Object.keys(input).some((key) => ![...fields, "tool_selection"].includes(key)) || fields.some((key) => !(key in input))
+    if (Object.keys(input).some((key) => ![
+      ...fields,
+      "tool_selection",
+      "strategy_reference",
+      "thinking_level",
+    ].includes(key)) || fields.some((key) => !(key in input))
       || typeof input.turn_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(input.turn_id)
       || typeof input.conversation_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(input.conversation_id)
       || !Number.isSafeInteger(input.conversation_revision) || input.conversation_revision < 1
       || (input.tool_selection !== undefined && !validSavedToolSelection(input.tool_selection))
+      || (input.strategy_reference !== undefined && (
+        typeof input.strategy_reference !== "string"
+        || !input.strategy_reference.trim()
+        || input.strategy_reference.length > 256
+      ))
+      || (input.thinking_level !== undefined
+        && !["none", "low", "medium", "high", "xhigh"].includes(input.thinking_level))
       || !validSavedTurnContent(input.content)
       || new TextEncoder().encode(JSON.stringify(input)).length > MAX_SAVED_TURN_INPUT_BYTES) {
       throw new Error("Saved conversation request is invalid or requires unsupported context.");
@@ -4119,12 +4367,26 @@ export const api = {
     return request<RuntimeHealth>("/health", { cache: "no-store" });
   },
 
-  uiCatalog() {
-    return request<UICatalog>(
+  async uiCatalog(): Promise<UICatalog> {
+    const catalog = await request<UICatalog>(
       defaultspackContractRoute("api/ui/full-catalog"),
       undefined,
       isUICatalog,
     );
+    const tools = await request<ToolCatalogResponse>(
+      defaultspackContractRoute("api/tools/catalog"),
+      { cache: "no-store" },
+      isToolCatalogResponse,
+    );
+    const strategies = await request<StrategyCatalogResponse>(
+      defaultspackContractRoute("api/ai/strategies"),
+      { cache: "no-store" },
+      isStrategyCatalogResponse,
+    );
+    return {
+      ...uiCatalogWithSelectedTools(catalog, tools),
+      strategy_contributions: strategies.strategies,
+    };
   },
 
   uiSettings(options: { full?: boolean } = {}) {
@@ -4136,7 +4398,10 @@ export const api = {
     );
   },
 
-  async updateModelState(kind: "preferred_model" | "thinking_level" | "deepthink_enabled", value: unknown) {
+  async updateModelState(
+    kind: "preferred_model" | "thinking_level" | "strategy_reference",
+    value: unknown,
+  ) {
     const snapshot = await request<{ namespace: string; revision: number; values: Record<string, unknown> }>(
       defaultspackContractRoute("api/ui/model-state"), { cache: "no-store" },
       (candidate): candidate is { namespace: string; revision: number; values: Record<string, unknown> } => {
@@ -4293,18 +4558,29 @@ export const api = {
     });
   },
 
-  getConversationToolPreferences(conversationId: string) {
-    return request<{ conversation_id: string; preferences: Record<string, unknown> }>(
-      defaultspackContractRoute(`api/conversations/${encodeURIComponent(conversationId)}/tool-preferences`),
-      { cache: "no-store" },
-    );
+  async getConversationToolPreferences(conversationId: string) {
+    const conversation = await api.getConversation(conversationId);
+    return {
+      conversation_id: conversationId,
+      preferences: conversationToolPreferencesFromMetadata(conversation.metadata),
+    };
   },
 
-  updateConversationToolPreferences(conversationId: string, preferences: Record<string, unknown>) {
-    return request<{ conversation_id: string; preferences: Record<string, unknown> }>(
-      defaultspackContractRoute(`api/conversations/${encodeURIComponent(conversationId)}/tool-preferences`),
-      { method: "PUT", body: JSON.stringify({ preferences }) },
+  async updateConversationToolPreferences(conversationId: string, preferences: Record<string, unknown>) {
+    const conversation = await api.getConversation(conversationId);
+    const metadata = {
+      ...(objectRecord(conversation.metadata) ?? {}),
+      tool_preferences: sanitizeConversationToolPreferences(preferences),
+    };
+    const updated = await api.updateConversation(
+      conversationId,
+      { metadata },
+      conversation.conversation_revision,
     );
+    return {
+      conversation_id: conversationId,
+      preferences: conversationToolPreferencesFromMetadata(updated.metadata),
+    };
   },
 
   async executeResolvedUiCommand(payload: {

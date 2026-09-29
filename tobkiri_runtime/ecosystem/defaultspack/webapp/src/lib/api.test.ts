@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, usesBrowserComputerApprovalEndpoint, validSavedTurnContent } from "./api";
+import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandResultMessage, defaultspackApiHeaders, defaultspackUrlWithLocalAuth, explainDefaultspackApiError, mergeComposerCommands, normalizeChatStreamEvent, normalizeBrowserComputerApprovalAction, streamCommandInvocationEvents, uiCatalogWithSelectedTools, usesBrowserComputerApprovalEndpoint, validSavedTurnContent } from "./api";
 import type { ComposerCommandItem } from "./api";
 import { authorityApprovalRuntimeContent } from "./authorityApproval";
 import { deleteCalendarScheduleBeforeLocalChange } from "./calendarScheduleDeletion";
@@ -14,7 +14,9 @@ import {
   MIMO_CODING_DEFAULT_MODEL,
   MIMO_CODING_DEFAULT_VISION_MODEL,
   commandSupportsMode,
+  composerExtensionItems,
   frontendCommandArgs,
+  highRiskResumeDisposition,
   keepSelectedToolsAfterSend,
   parseCommandBoolean,
   parseSlashCommandInput,
@@ -182,6 +184,34 @@ test("saved turn uses exact canonical transport and never retries an uncertain o
   assert.equal(calls, 2);
 });
 
+test("saved turn preserves the admitted strategy and thinking level", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const input = {
+    turn_id: "turn-strategy-1",
+    conversation_id: "conversation-1",
+    conversation_revision: 7,
+    content: "hello",
+    strategy_reference: "strategy.pack.execute",
+    thinking_level: "high" as const,
+  };
+  const result = {
+    status: "completed" as const,
+    turn: {
+      id: input.turn_id,
+      conversation_id: input.conversation_id,
+      status: "completed",
+      revision: 3,
+    },
+  };
+  globalThis.fetch = async (url, init) => {
+    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent("POST /api/chat/turn")}`);
+    assert.deepEqual(JSON.parse(String(init?.body)), { request: input });
+    return new Response(JSON.stringify({ success: true, data: result }));
+  };
+  assert.deepEqual(await api.startSavedTurn(input), result);
+});
+
 test("saved turn rejects unsupported fields and invalid revisions before sending", async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });
@@ -189,8 +219,9 @@ test("saved turn rejects unsupported fields and invalid revisions before sending
   globalThis.fetch = async () => { calls += 1; throw new Error("must not send"); };
   const input = { turn_id: "turn-1", conversation_id: "conversation-1", conversation_revision: 7, content: "hello" };
   for (const patch of [{ approved: true }, { state: {} }, { attachments: [] }, { conversation_revision: 0 },
-    { conversation_revision: Number.MAX_SAFE_INTEGER + 1 }, { turn_id: "../escape" }, { content: " " }, { content: "あ".repeat(22000) }]) {
-    await assert.rejects(api.startSavedTurn({ ...input, ...patch }), /invalid|unsupported/);
+    { conversation_revision: Number.MAX_SAFE_INTEGER + 1 }, { turn_id: "../escape" }, { content: " " }, { content: "あ".repeat(22000) },
+    { strategy_reference: " " }, { strategy_reference: "x".repeat(257) }, { thinking_level: "maximum" }]) {
+    await assert.rejects(api.startSavedTurn({ ...input, ...patch } as never), /invalid|unsupported/);
   }
   assert.equal(calls, 0);
 });
@@ -1046,57 +1077,6 @@ test("composer command feedback surfaces pack block result messages and paths", 
   );
 });
 
-test("deepthink command feedback uses warning only while the mode is enabled", () => {
-  assert.equal(
-    composerCommandFeedbackTone({
-      command: {
-        id: "deepthink",
-        name: "deepthink",
-        label: "DeepThink",
-        category: "model",
-        visibility: "default",
-        risk: "medium",
-        execution: {
-          type: "rumi_function",
-          qualified_name: "defaultspack:ai_set_deepthink_enabled",
-        },
-      },
-      executed: true,
-      operation_status: "succeeded",
-      state_changes: [{
-        state_ref: "defaultspack:models.deepthink_enabled",
-        value: true,
-        revision: 1,
-      }],
-    }),
-    "warning",
-  );
-  assert.equal(
-    composerCommandFeedbackTone({
-      command: {
-        id: "deepthink",
-        name: "deepthink",
-        label: "DeepThink",
-        category: "model",
-        visibility: "default",
-        risk: "medium",
-        execution: {
-          type: "rumi_function",
-          qualified_name: "defaultspack:ai_set_deepthink_enabled",
-        },
-      },
-      executed: true,
-      operation_status: "succeeded",
-      state_changes: [{
-        state_ref: "defaultspack:models.deepthink_enabled",
-        value: false,
-        revision: 2,
-      }],
-    }),
-    "success",
-  );
-});
-
 test("template ai input selects composer and tool policy metadata", () => {
   const catalog = {
     ai_inputs: [
@@ -1310,6 +1290,13 @@ test("yolo full access always toggles back to ask instead of restoring agent app
   );
 });
 
+test("claimed and dispatched high-risk resumes retain their durable poll receipt", () => {
+  assert.equal(highRiskResumeDisposition("claimed"), "pending");
+  assert.equal(highRiskResumeDisposition("dispatched"), "pending");
+  assert.equal(highRiskResumeDisposition("succeeded"), "succeeded");
+  assert.equal(highRiskResumeDisposition("failed"), "failed");
+});
+
 test("history sidebar auto-compacts on narrow screens", () => {
   assert.equal(shouldAutoCompactHistory(390), true);
   assert.equal(shouldAutoCompactHistory(759), true);
@@ -1320,13 +1307,13 @@ test("command protocol catalog is authoritative and invocation preserves its env
   const originalFetch = globalThis.fetch;
   const requests: string[] = [];
   const legacyCommand = {
-    id: "deepthink",
-    name: "deepthink",
-    label: "DeepThink",
+    id: "feature_toggle",
+    name: "feature-toggle",
+    label: "Feature toggle",
     category: "model",
     visibility: "default",
     risk: "medium",
-    execution: { type: "rumi_function", qualified_name: "defaultspack:ai_set_deepthink_enabled" },
+    execution: { type: "rumi_function", qualified_name: "example_pack:toggle_feature" },
   };
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = requestTarget(input);
@@ -1337,20 +1324,20 @@ test("command protocol catalog is authoritative and invocation preserves its env
           kind: "ResolvedCommandCatalog",
           catalog_revision: "revision-1",
           commands: [{
-            canonical_id: "defaultspack:deepthink",
-            pack_id: "defaultspack",
+            canonical_id: "example_pack:feature-toggle",
+            pack_id: "example_pack",
             pack_generation: 1,
             command_version: "1.0.0",
-            identity: { id: "deepthink", name: "deepthink", version: "1.0.0" },
+            identity: { id: "feature_toggle", name: "feature-toggle", version: "1.0.0" },
             presentation: {
-              label: { fallback: "DeepThink" },
+              label: { fallback: "Feature toggle" },
               category: "model",
               visibility: "default",
-              icon: "deepthink",
-              input: { kind: "toggle", state_ref: "defaultspack:models.deepthink_enabled" },
+              icon: "feature-toggle",
+              input: { kind: "toggle", state_ref: "example_pack:features.enabled" },
               mounts: [],
             },
-            execution: { kind: "state_mutation", state_ref: "defaultspack:models.deepthink_enabled" },
+            execution: { kind: "state_mutation", state_ref: "example_pack:features.enabled" },
             availability: { status: "available" },
             legacy: legacyCommand,
           }],
@@ -1361,9 +1348,9 @@ test("command protocol catalog is authoritative and invocation preserves its env
           api_version: "tobkiri.commands/v1",
           operation_id: "operation-1",
           status: "succeeded",
-          command_ref: "defaultspack:deepthink",
+          command_ref: "example_pack:feature-toggle",
           state_changes: [{
-            state_ref: "defaultspack:models.deepthink_enabled",
+            state_ref: "example_pack:features.enabled",
             value: true,
             revision: 1,
             freshness: "authoritative",
@@ -1578,6 +1565,45 @@ const validUiCatalogFixture = {
   extension_points: [],
 };
 
+const selectedToolCatalogFixture = {
+  services: [{ service_id: "local", label: "Local tools", connection_status: "connected" }],
+  tools: [
+    {
+      tool_id: "web-search",
+      service_id: "web",
+      service_label: "Web",
+      name: "Web search",
+      action_class: "search",
+      connection_status: "missing",
+    },
+    {
+      tool_id: "calculator",
+      service_id: "local",
+      service_label: "Local tools",
+      name: "Calculator",
+      action_class: "calculation",
+      connection_status: "connected",
+    },
+  ],
+  count: 2,
+};
+
+const strategyCatalogFixture = {
+  api_version: "tobkiri.ai.strategy.catalog/v1",
+  strategies: [{
+    strategy_reference: "strategy.pack.execute",
+    label: "Planner",
+    description: "An admitted strategy.",
+    signature_verified: true as const,
+    plan_admitted: true as const,
+    available: true as const,
+  }],
+  count: 1,
+  catalog_revision: "strategy-revision-1",
+  diagnostics: [],
+  quarantined_pack_ids: [],
+};
+
 async function assertUiCatalogResponseRejected(payload: unknown): Promise<void> {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => new Response(JSON.stringify(payload), {
@@ -1591,19 +1617,115 @@ async function assertUiCatalogResponseRejected(payload: unknown): Promise<void> 
   }
 }
 
-test("uiCatalog accepts the canonical Pack v4 response envelope", async () => {
+test("uiCatalog composes Host-admitted tools and strategies into the Pack catalog", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => new Response(JSON.stringify({
-    status: "ok",
-    data: validUiCatalogFixture,
-  }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+  const requests: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const target = requestTarget(input);
+    requests.push(target);
+    const data = target === routeKey("api/ui/full-catalog")
+      ? validUiCatalogFixture
+      : target === routeKey("api/tools/catalog")
+        ? selectedToolCatalogFixture
+        : strategyCatalogFixture;
+    return new Response(JSON.stringify({ status: "ok", data }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
   try {
     const catalog = await api.uiCatalog();
     assert.equal(catalog.app?.id, "defaultspack");
-    assert.deepEqual(catalog.sidebar.items, []);
+    assert.deepEqual(requests, [
+      routeKey("api/ui/full-catalog"),
+      routeKey("api/tools/catalog"),
+      routeKey("api/ai/strategies"),
+    ]);
+    assert.deepEqual(catalog.sidebar.items.map((item) => item.id), ["web-search", "calculator"]);
+    assert.deepEqual(catalog.sidebar.items[0]?.tool_info?.setup_state, { status: "missing" });
+    assert.deepEqual(catalog.strategy_contributions, strategyCatalogFixture.strategies);
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("only Host-admitted strategies and configured profile tools reach the composer", () => {
+  assert.deepEqual(admittedStrategyContributions([
+    ...strategyCatalogFixture.strategies,
+    {
+      strategy_reference: "untrusted.strategy",
+      label: "Untrusted",
+      signature_verified: false,
+      plan_admitted: true,
+      available: true,
+    },
+  ]), [{
+    reference: "strategy.pack.execute",
+    label: "Planner",
+    description: "An admitted strategy.",
+  }]);
+  const catalog = uiCatalogWithSelectedTools(validUiCatalogFixture, selectedToolCatalogFixture);
+  assert.deepEqual(composerExtensionItems(catalog.sidebar.items).map((item) => item.id), ["calculator"]);
+});
+
+test("conversation tool preferences use the revision-bound conversation resource", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const requests: Array<{ target: string; body?: Record<string, unknown> }> = [];
+  const record = (metadata: Record<string, unknown>) => ({
+    id: "conv-1",
+    conversation_revision: 8,
+    title: "t",
+    model: "m",
+    tags: [],
+    is_starred: false,
+    is_archived: false,
+    created_at: 1,
+    updated_at: 1,
+    messages: [],
+    metadata,
+  });
+  globalThis.fetch = async (input, init) => {
+    const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined;
+    requests.push({ target: requestTarget(input), body });
+    const metadata = body?.updates && typeof body.updates === "object"
+      && (body.updates as Record<string, unknown>).metadata
+      ? (body.updates as Record<string, unknown>).metadata as Record<string, unknown>
+      : { ui_state: { theme: "dark" } };
+    return new Response(JSON.stringify({ success: true, data: record(metadata) }));
+  };
+
+  const result = await api.updateConversationToolPreferences("conv-1", {
+    mode: "manual",
+    include: ["calculator"],
+  });
+  assert.deepEqual(requests.map((request) => request.target), [
+    `${routeKey("api/chat/conversation")}?conversation_id=conv-1`,
+    routeKey("api/chat/conversation"),
+  ]);
+  assert.deepEqual(requests[1]?.body, {
+    conversation_id: "conv-1",
+    updates: {
+      metadata: {
+        ui_state: { theme: "dark" },
+        tool_preferences: {
+          mode: "manual",
+          include: [{ kind: "tool", id: "calculator" }],
+          exclude: [],
+          scope: "conversation",
+          strategy: null,
+          must_use: false,
+          review: false,
+          preview_id: null,
+        },
+      },
+    },
+    expected_conversation_revision: 8,
+  });
+  assert.deepEqual(result.preferences, requests[1]?.body?.updates
+    && (requests[1].body.updates as Record<string, unknown>).metadata
+    && ((requests[1].body.updates as Record<string, unknown>).metadata as Record<string, unknown>).tool_preferences,
+  );
 });
 
 test("uiCatalog rejects a missing Pack v4 data envelope", async () => {
