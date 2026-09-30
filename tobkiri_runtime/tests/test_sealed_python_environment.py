@@ -426,7 +426,10 @@ def test_rootless_packaging_binding_and_identity_safe_cleanup(
         "c" * 64,
         "d" * 64,
     )
-    payload = binding.read_text(encoding="utf-8")
+    binding_bytes = binding.read_bytes()
+    assert b"\r" not in binding_bytes
+    assert binding_bytes.endswith(b"\n")
+    payload = binding_bytes.decode("utf-8")
     assert f"TOBKIRI_PACKAGING_PYTHON_SNAPSHOT={output}\n" in payload
     assert f"TOBKIRI_PACKAGING_PYTHON_INVENTORY_SHA256={digest}\n" in payload
     os.environ[BUILDER.MANIFEST_SHA_ENV] = digest
@@ -989,6 +992,7 @@ def test_committed_source_inventory_copies_exact_bytes_and_rejects_tamper(
         "tobkiri_runtime/docs/managed-sandbox-runtime/01-overview.md": (b"overview\n"),
         "tobkiri_runtime/module.py": b"VALUE = 1\n",
         "tobkiri_runtime/packaged_defaultspack_source_manifest.v1.json": b"{}\n",
+        "tobkiri_runtime/payload.bin": b"\n\r\n\x1a\x00" + bytes(range(256)),
     }
     entries = []
     source.chmod(0o700)
@@ -1038,6 +1042,9 @@ def test_committed_source_inventory_copies_exact_bytes_and_rejects_tamper(
         source, tmp_path / "copied", inventory_digest, release_digest
     )
     assert (copied / "tobkiri_runtime/module.py").read_bytes() == b"VALUE = 1\n"
+    assert (copied / "tobkiri_runtime/payload.bin").read_bytes() == (
+        payloads["tobkiri_runtime/payload.bin"]
+    )
     source.chmod(0o700)
     (source / "tobkiri_runtime").chmod(0o700)
     extra = source / "tobkiri_runtime" / "unexpected.py"
@@ -3854,6 +3861,22 @@ def test_windows_pinned_runtime_relocates_without_external_python(
     extracted = BUILDER._extract_pinned_python_archive(
         archive, build_root / "extracted"
     )
+    # Validate the actual vendor native payload before attempting execution:
+    # Windows CRT text-mode descriptors can silently expand LF into CRLF.
+    with tarfile.open(archive, "r:gz") as vendor:
+        native_members = [
+            member for member in vendor.getmembers()
+            if member.isreg() and member.name.lower().endswith((".exe", ".dll", ".pyd"))
+        ]
+        assert any(member.name == "python/python.exe" for member in native_members)
+        for member in native_members:
+            source = vendor.extractfile(member)
+            assert source is not None
+            with source:
+                expected = source.read()
+            actual = extracted.joinpath(*Path(member.name).parts[1:]).read_bytes()
+            assert len(actual) == member.size, member.name
+            assert hashlib.sha256(actual).digest() == hashlib.sha256(expected).digest(), member.name
     runtime = build_root / "runtime"
     extracted.rename(runtime)
     venv = build_root / "venv"
@@ -3971,3 +3994,41 @@ def test_windows_archive_chmod_rejects_reparse_ancestor(tmp_path: Path) -> None:
         assert not leaf.stat().st_file_attributes & 1
     finally:
         junction.rmdir()
+
+
+@pytest.mark.parametrize("use_dirfd", (False, True))
+def test_python_archive_preserves_binary_bytes_for_files_and_materialized_links(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, use_dirfd: bool,
+) -> None:
+    """CRT text mode must never translate LF/CRLF or interpret Ctrl-Z as EOF."""
+    if use_dirfd and not BUILDER._archive_dirfd_supported():
+        pytest.skip("descriptor-relative archive operations unavailable")
+    monkeypatch.setattr(BUILDER, "_archive_dirfd_supported", lambda: use_dirfd)
+    payload = b"MZ\x00\x00\n\r\n\x1a\xff" + bytes(range(256)) * 3
+    archive = tmp_path / "binary.tar.gz"
+    member, data = _archive_member("python/python.exe", payload=payload)
+    alias, alias_data = _archive_member(
+        "python/alias.exe", member_type=tarfile.SYMTYPE, linkname="python.exe",
+    )
+    _write_archive(archive, ((member, data), (alias, alias_data)))
+    runtime = BUILDER._extract_pinned_python_archive(archive, tmp_path / "output")
+    for name in ("python.exe", "alias.exe"):
+        actual = (runtime / name).read_bytes()
+        assert actual == payload
+        assert len(actual) == len(payload)
+        assert hashlib.sha256(actual).digest() == hashlib.sha256(payload).digest()
+        assert not (runtime / name).is_symlink()
+
+
+def test_application_snapshot_copy_preserves_all_binary_bytes(tmp_path: Path) -> None:
+    """Raw descriptor readers and writers preserve native/source closure bytes."""
+    payload = b"\n\r\n\x1a\x00" + bytes(range(256)) * 3
+    source = tmp_path / "source.bin"
+    source.write_bytes(payload)
+    entry = BUILDER._ApplicationClosureEntry(
+        "source.bin", "file", BUILDER._application_entry_identity(source.stat()), False,
+    )
+    target = "x86_64-pc-windows-msvc" if os.name == "nt" else "x86_64-unknown-linux-gnu"
+    destination = tmp_path / "copy.bin"
+    BUILDER._copy_snapshot_file(source, destination, entry, BUILDER.target_spec(target))
+    assert destination.read_bytes() == payload

@@ -630,7 +630,12 @@ def _copy_snapshot_file(
     current = source.lstat()
     if _application_entry_identity(current) != entry.identity:
         raise SealedEnvironmentError(f"application closure changed before copy: {source}")
-    source_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    source_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
     source_fd = os.open(source, source_flags)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination_flags = (
@@ -639,6 +644,7 @@ def _copy_snapshot_file(
         | os.O_EXCL
         | getattr(os, "O_NOFOLLOW", 0)
         | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_BINARY", 0)
     )
     destination_fd = -1
     try:
@@ -3511,6 +3517,7 @@ def _extract_pinned_python_archive(archive: Path, destination: Path) -> Path:
                     assert root_fd is not None
                     parent_fd = _ensure_archive_directory_fd(root_fd, parent_parts)
                     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                    flags |= getattr(os, "O_BINARY", 0)
                     flags |= getattr(os, "O_NOFOLLOW", 0)
                     flags |= getattr(os, "O_CLOEXEC", 0)
                     try:
@@ -3534,6 +3541,7 @@ def _extract_pinned_python_archive(archive: Path, destination: Path) -> Path:
                             f"duplicate pinned CPython archive member: {member.name}"
                         )
                     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                    flags |= getattr(os, "O_BINARY", 0)
                     flags |= getattr(os, "O_NOFOLLOW", 0)
                     file_fd = os.open(file_path, flags, 0o600)
                 mode = _archive_file_mode(member)
@@ -3558,6 +3566,7 @@ def _extract_pinned_python_archive(archive: Path, destination: Path) -> Path:
                         assert root_fd is not None
                         parent_fd = _ensure_archive_directory_fd(root_fd, parent_parts)
                         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                        flags |= getattr(os, "O_BINARY", 0)
                         flags |= getattr(os, "O_NOFOLLOW", 0)
                         flags |= getattr(os, "O_CLOEXEC", 0)
                         try:
@@ -3579,6 +3588,7 @@ def _extract_pinned_python_archive(archive: Path, destination: Path) -> Path:
                                 f"duplicate pinned CPython archive member: {member.name}"
                             )
                         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                        flags |= getattr(os, "O_BINARY", 0)
                         flags |= getattr(os, "O_NOFOLLOW", 0)
                         file_fd = os.open(link_file_path, flags, 0o600)
                     mode = _archive_file_mode(terminal_member)
@@ -4089,7 +4099,10 @@ def _copy_verified_source_snapshot(
     if not re.fullmatch(r"[0-9a-f]{64}", expected_manifest_digest):
         raise SealedEnvironmentError("source inventory digest must be raw SHA-256")
     manifest_path = source_root / SOURCE_SNAPSHOT_MANIFEST
-    descriptor = os.open(manifest_path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    descriptor = os.open(
+        manifest_path,
+        os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0),
+    )
     try:
         metadata = os.fstat(descriptor)
         encoded = b""
@@ -4172,7 +4185,10 @@ def _copy_verified_source_snapshot(
         ):
             raise SealedEnvironmentError("committed source entry is unsafe or unsorted")
         source = source_root.joinpath(*Path(relative).parts)
-        source_descriptor = os.open(source, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        source_descriptor = os.open(
+            source,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0),
+        )
         try:
             opened = os.fstat(source_descriptor)
             payload = b""
@@ -4196,7 +4212,11 @@ def _copy_verified_source_snapshot(
         target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         target_descriptor = os.open(
             target,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_BINARY", 0),
             0o500 if entry["executable"] else 0o400,
         )
         try:
@@ -4405,7 +4425,7 @@ def _write_packaging_binding(
             raise SealedEnvironmentError(
                 "packaging environment output escapes RUNNER_TEMP"
             ) from exc
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
     descriptor = os.open(path, flags, 0o600)
