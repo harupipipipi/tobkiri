@@ -142,6 +142,105 @@ pub fn create_private_directory(path: &Path, sid: &str) -> io::Result<()> {
     Ok(())
 }
 
+/// Atomically create a protected directory relative to a pinned parent and
+/// return its creation handle. Unlike CreateDirectoryW followed by reopening,
+/// this has no name-replacement window even under a shared writable TEMP.
+/// The parent is a namespace anchor, not an ACL authority; only the newly
+/// created object's protected current-user DACL is trusted.
+pub fn create_private_directory_pinned(path: &Path, sid: &str) -> io::Result<PinnedPath> {
+    use windows_sys::Wdk::{
+        Foundation::OBJECT_ATTRIBUTES,
+        Storage::FileSystem::{
+            NtCreateFile, FILE_CREATE, FILE_DIRECTORY_FILE, FILE_OPEN_REPARSE_POINT,
+            FILE_SYNCHRONOUS_IO_NONALERT,
+        },
+    };
+    use windows_sys::Win32::{
+        Foundation::{RtlNtStatusToDosError, OBJ_CASE_INSENSITIVE, UNICODE_STRING},
+        System::IO::IO_STATUS_BLOCK,
+    };
+    validate_absolute(path)?;
+    let parent_path = path.parent().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "private directory has no parent",
+        )
+    })?;
+    let name = path.file_name().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "private directory has no name")
+    })?;
+    validate_component(name)?;
+    let parent = open_pinned(parent_path, true)?;
+    let mut encoded = name.encode_wide().collect::<Vec<_>>();
+    let bytes = encoded
+        .len()
+        .checked_mul(2)
+        .and_then(|n| u16::try_from(n).ok())
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "private directory name too long",
+            )
+        })?;
+    let name = UNICODE_STRING {
+        Length: bytes,
+        MaximumLength: bytes,
+        Buffer: encoded.as_mut_ptr(),
+    };
+    let descriptor = security_descriptor(sid, false)?;
+    let attributes = OBJECT_ATTRIBUTES {
+        Length: size_of::<OBJECT_ATTRIBUTES>() as u32,
+        RootDirectory: parent.file.as_raw_handle(),
+        ObjectName: &name,
+        Attributes: OBJ_CASE_INSENSITIVE,
+        SecurityDescriptor: descriptor.0.cast(),
+        SecurityQualityOfService: null(),
+    };
+    let mut status_block: IO_STATUS_BLOCK = unsafe { zeroed() };
+    let mut raw = null_mut();
+    let status = unsafe {
+        NtCreateFile(
+            &mut raw,
+            FILE_GENERIC_READ | WRITE_DAC,
+            &attributes,
+            &mut status_block,
+            null(),
+            FILE_ATTRIBUTE_NORMAL,
+            FILE_SHARE_READ,
+            FILE_CREATE,
+            FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT,
+            null(),
+            0,
+        )
+    };
+    if status < 0 {
+        return Err(io::Error::from_raw_os_error(
+            unsafe { RtlNtStatusToDosError(status) } as i32,
+        ));
+    }
+    if raw.is_null() || raw == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
+        invalid!("private directory creation returned no handle; residue retained");
+    }
+    let file = unsafe { File::from_raw_handle(raw) };
+    // FILE_CREATED is the native create-information result (WinNT value 2),
+    // distinct from the FILE_CREATE disposition requested above.
+    const FILE_CREATED_INFORMATION: usize = 2;
+    if status != 0 || status_block.Information != FILE_CREATED_INFORMATION {
+        invalid!("private directory creation did not confirm a new object; residue retained");
+    }
+    if !identity(&file)?.directory {
+        invalid!("private directory creation returned wrong object type");
+    }
+    verify_acl(&file, sid, false, true)?;
+    let mut ancestors = parent._ancestors;
+    ancestors.push(parent.file);
+    Ok(PinnedPath {
+        file,
+        path: path.to_owned(),
+        _ancestors: ancestors,
+    })
+}
+
 pub fn create_private_file(path: &Path, sid: &str) -> io::Result<File> {
     let descriptor = security_descriptor(sid, false)?;
     let attributes = SECURITY_ATTRIBUTES {
@@ -708,6 +807,115 @@ mod tests {
         set_private_acl(&pin.file, &sid, false).unwrap();
         fs::write(root.join("allowed"), b"yes").unwrap();
         drop(pin);
+        remove_owned_tree(&root, &inventory(&root).unwrap()).unwrap();
+    }
+    #[test]
+    fn windows_atomic_private_child_accepts_shared_parent_without_changing_acl() {
+        let sid = current_user_sid().unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "tobkiri-atomic-shared-parent-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        // The broad ACL is applied only through our atomic creation handle.
+        // FILE_CREATE prevents touching any pre-existing path, even on collision.
+        let parent = create_private_directory_pinned(&root, &sid).unwrap();
+        let sddl = wide(OsStr::new(&format!(
+            "O:{sid}D:P(A;OICI;FA;;;{sid})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;WD)"
+        )))
+        .unwrap();
+        let mut raw = null_mut();
+        assert_ne!(
+            unsafe {
+                ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                    sddl.as_ptr(),
+                    SDDL_REVISION_1,
+                    &mut raw,
+                    null_mut(),
+                )
+            },
+            0
+        );
+        let descriptor = LocalAllocation(raw);
+        let mut dacl = null_mut();
+        let mut present = 0;
+        let mut defaulted = 0;
+        assert_ne!(
+            unsafe {
+                GetSecurityDescriptorDacl(descriptor.0, &mut present, &mut dacl, &mut defaulted)
+            },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                SetSecurityInfo(
+                    parent.file.as_raw_handle(),
+                    SE_FILE_OBJECT,
+                    DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                    null_mut(),
+                    null_mut(),
+                    dacl,
+                    null(),
+                )
+            },
+            0
+        );
+        assert!(
+            verify_acl(&parent.file, &sid, false, false).is_err(),
+            "fixture must actually have a broad parent grant"
+        );
+        fn acl_bytes(file: &File) -> Vec<u8> {
+            let mut dacl = null_mut();
+            let mut descriptor = null_mut();
+            assert_eq!(
+                unsafe {
+                    GetSecurityInfo(
+                        file.as_raw_handle(),
+                        SE_FILE_OBJECT,
+                        DACL_SECURITY_INFORMATION,
+                        null_mut(),
+                        null_mut(),
+                        &mut dacl,
+                        null_mut(),
+                        &mut descriptor,
+                    )
+                },
+                0
+            );
+            let _allocation = LocalAllocation(descriptor);
+            unsafe {
+                std::slice::from_raw_parts(dacl.cast::<u8>(), (*dacl).AclSize as usize).to_vec()
+            }
+        }
+        let before = acl_bytes(&parent.file);
+        let path = root.join("private-child");
+        let child = create_private_directory_pinned(&path, &sid).unwrap();
+        verify_acl(&child.file, &sid, false, true).unwrap();
+        assert!(
+            before == acl_bytes(&parent.file),
+            "private child creation changed the shared parent ACL"
+        );
+        assert!(fs::rename(&path, root.join("moved")).is_err());
+        assert!(fs::remove_dir(&path).is_err());
+        assert_eq!(
+            create_private_directory_pinned(&path, &sid)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::AlreadyExists
+        );
+        let reopened = open_pinned(&path, true).unwrap();
+        assert_eq!(
+            identity(&child.file).unwrap(),
+            identity(&reopened.file).unwrap()
+        );
+        drop(reopened);
+        fs::write(path.join("payload"), b"owned").unwrap();
+        drop(child);
+        set_private_acl(&parent.file, &sid, false).unwrap();
+        drop(parent);
         remove_owned_tree(&root, &inventory(&root).unwrap()).unwrap();
     }
 }

@@ -300,17 +300,13 @@ fn python_lease_at(
     validate_venv_config(&read_bytes(&config.file, 64 * 1024)?)?;
     let sid = win::current_user_sid()?;
     let temp = env::temp_dir();
-    let temp_pin = win::open_pinned(&temp, true)?;
-    win::verify_acl(&temp_pin.file, &sid, false, false)
-        .map_err(|error| invalid(format!("Python temporary parent ACL: {error}")))?;
     let mut nonce = [0u8; 16];
     rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut nonce);
     let target = temp.join(format!(
         "tobkiri-python-{}",
         nonce.iter().map(|b| format!("{b:02x}")).collect::<String>()
     ));
-    win::create_private_directory(&target, &sid)?;
-    let target_root = win::open_pinned(&target, true)?;
+    let target_root = win::create_private_directory_pinned(&target, &sid)?;
     for (relative, directory) in &wanted {
         if relative.is_empty() {
             continue;
@@ -354,7 +350,6 @@ fn python_lease_at(
     });
     lease.verify_unchanged()?;
     drop(target_root);
-    drop(temp_pin);
     drop(source_root);
     Ok(lease)
 }

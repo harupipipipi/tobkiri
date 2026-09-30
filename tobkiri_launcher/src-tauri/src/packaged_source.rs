@@ -1923,7 +1923,10 @@ mod tests {
         }
     }
 
-    pub(super) struct Tree(pub(super) PathBuf);
+    pub(super) struct Tree(
+        pub(super) PathBuf,
+        #[cfg(windows)] Option<super::super::windows_packaging_fs::PinnedPath>,
+    );
     impl Tree {
         pub(super) fn new(label: &str) -> Self {
             let root = std::env::temp_dir().join(format!(
@@ -1934,12 +1937,26 @@ mod tests {
                     .unwrap()
                     .as_nanos()
             ));
-            fs::create_dir_all(&root).unwrap();
-            Self(root)
+            #[cfg(windows)]
+            {
+                let sid = super::super::windows_packaging_fs::current_user_sid().unwrap();
+                let pin = super::super::windows_packaging_fs::create_private_directory_pinned(
+                    &root, &sid,
+                )
+                .unwrap();
+                Self(root, Some(pin))
+            }
+            #[cfg(not(windows))]
+            {
+                fs::create_dir_all(&root).unwrap();
+                Self(root)
+            }
         }
     }
     impl Drop for Tree {
         fn drop(&mut self) {
+            #[cfg(windows)]
+            self.1.take();
             let _ = fs::remove_dir_all(&self.0);
         }
     }
@@ -2203,13 +2220,21 @@ mod tests {
         let swapped = root.join("scripts/fixture.py");
         let manifest =
             read_manifest(&root.join("packaged_defaultspack_source_manifest.v1.json")).unwrap();
+        let hook_ran = std::cell::Cell::new(false);
         let error = verify_and_snapshot_against_manifest_with_hook(
             &root,
             &tree.0.join("snapshots"),
             &manifest,
-            || fs::write(&swapped, b"swapped\n").unwrap(),
+            || {
+                hook_ran.set(true);
+                fs::write(&swapped, b"swapped\n").unwrap();
+            },
         )
         .unwrap_err();
+        assert!(
+            hook_ran.get(),
+            "source mutation hook was not reached: {error}"
+        );
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
         match fs::read_dir(tree.0.join("snapshots")) {
             Ok(mut entries) => assert!(entries.all(|entry| !entry
