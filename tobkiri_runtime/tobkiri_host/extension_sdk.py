@@ -144,7 +144,26 @@ class HostExtensionSDK:
             """
         )
         self._database.commit()
-        self._active: dict[str, tuple[str, tuple[str, ...], str]] = {}
+
+    def _active_registration(
+        self, registration_id: str
+    ) -> tuple[str, tuple[str, ...], str] | None:
+        """Read the durable lifecycle state, including after an SDK restart."""
+        row = self._database.execute(
+            """
+            SELECT trust_id, provider_record_ids, artifact_digest
+            FROM host_extension_registration_state
+            WHERE registration_id = ? AND active = 1
+            """,
+            (registration_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return (
+            str(row[0]),
+            tuple(str(item) for item in json.loads(str(row[1]))),
+            str(row[2]),
+        )
 
     def register(self, request: HostExtensionRegistration) -> tuple[str, ...]:
         """Atomically register exact Provider identities or fail closed."""
@@ -154,7 +173,11 @@ class HostExtensionSDK:
             ...,
         ] = (trust, *domains, *authorities)
         with self._lock:
-            if request.registration_id in self._active:
+            if self._database.execute(
+                "SELECT 1 FROM host_extension_registration_state "
+                "WHERE registration_id = ?",
+                (request.registration_id,),
+            ).fetchone() is not None:
                 raise AuthorizationError("Host Extension registration already exists")
             self._store.put_records_atomically(records)
             record_ids = tuple(item.record_id for item in authorities)
@@ -173,11 +196,6 @@ class HostExtensionSDK:
                         json.dumps(record_ids, separators=(",", ":")),
                     ),
                 )
-            self._active[request.registration_id] = (
-                request.trust_id,
-                record_ids,
-                request.artifact.digest,
-            )
             self._audit(
                 request.registration_id,
                 "registered",
@@ -189,23 +207,9 @@ class HostExtensionSDK:
     def revoke(self, registration_id: str, *, reason: str) -> None:
         """Durably revoke one registration and all its Provider authorities."""
         with self._lock:
-            active = self._active.pop(registration_id, None)
+            active = self._active_registration(registration_id)
             if active is None:
-                row = self._database.execute(
-                    """
-                    SELECT trust_id, provider_record_ids, artifact_digest
-                    FROM host_extension_registration_state
-                    WHERE registration_id = ? AND active = 1
-                    """,
-                    (registration_id,),
-                ).fetchone()
-                if row is None:
-                    raise AuthorizationError("Host Extension registration is not active")
-                active = (
-                    str(row[0]),
-                    tuple(str(item) for item in json.loads(str(row[1]))),
-                    str(row[2]),
-                )
+                raise AuthorizationError("Host Extension registration is not active")
             trust_id, record_ids, artifact_digest = active
             for record_id in record_ids:
                 self._authority.revoke(
@@ -236,23 +240,24 @@ class HostExtensionSDK:
         reason: str,
     ) -> tuple[str, ...]:
         """Revoke the old exact artifact before registering its successor."""
-        active = self._active.get(previous_registration_id)
-        if active is None:
-            raise AuthorizationError("Host Extension predecessor is not active")
-        if active[2] == successor.artifact.digest:
-            raise AuthorizationError("Host Extension update requires a new artifact")
-        self.revoke(previous_registration_id, reason=reason)
-        try:
-            result = self.register(successor)
-        except Exception:
-            self._audit(
-                successor.registration_id,
-                "update_failed_closed",
-                successor.artifact.digest,
-                (),
-            )
-            raise
-        return result
+        with self._lock:
+            active = self._active_registration(previous_registration_id)
+            if active is None:
+                raise AuthorizationError("Host Extension predecessor is not active")
+            if active[2] == successor.artifact.digest:
+                raise AuthorizationError("Host Extension update requires a new artifact")
+            self.revoke(previous_registration_id, reason=reason)
+            try:
+                result = self.register(successor)
+            except Exception:
+                self._audit(
+                    successor.registration_id,
+                    "update_failed_closed",
+                    successor.artifact.digest,
+                    (),
+                )
+                raise
+            return result
 
     def audit_events(self, registration_id: str) -> tuple[Mapping[str, Any], ...]:
         """Return the finite ordered Host registration audit history."""

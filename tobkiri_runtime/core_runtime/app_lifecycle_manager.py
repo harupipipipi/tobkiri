@@ -294,6 +294,17 @@ class AppLifecycleManager:
                 break
 
         result.update(get_runtime_readiness())
+        if not result["active_profile_ready"]:
+            # Process startup readiness cannot override a failed current capture.
+            # Keep this observation local so a subsequent verified capture can
+            # recover without publishing a stale failure over a new activation.
+            result["runtime_ready"] = False
+            result["runtime_status"] = (
+                "profile_reconfirmation_required"
+                if result["reason"] == "profile_reconfirmation_required"
+                else "error"
+            )
+            result["runtime_error"] = result["denial_diagnostic"]
         return result
 
     def activate_bootstrap_profile(

@@ -3070,3 +3070,82 @@ def test_v4_update_apply_is_authenticated_validated_and_reports_restart(
         assert applied == [("tobkiri", True)]
     finally:
         server.stop()
+
+
+@pytest.mark.parametrize("lock_name", ["_activation_lock", "_health_capture_lock"])
+def test_pending_health_skips_identity_capture_but_authenticates_challenge(
+    live_server: tuple[PackAPIServer, _Dispatch],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    lock_name: str,
+) -> None:
+    """The HTTP identity projection cannot undo lifecycle capture exclusion."""
+    import hashlib
+    import hmac
+    from unittest.mock import Mock
+
+    from core_runtime import app_lifecycle_manager as lifecycle_module
+
+    server, dispatch = live_server
+    lifecycle = lifecycle_module.AppLifecycleManager(base_dir=tmp_path)
+    monkeypatch.setattr(lifecycle_module, "_RUNTIME_READINESS_STATE", {})
+    lifecycle_module.mark_runtime_ready()
+    capture = Mock(side_effect=AssertionError("pending probe captured identity"))
+    setup = Mock(side_effect=AssertionError("pending probe captured profile"))
+    monkeypatch.setattr(dispatch, "assert_current", capture)
+    monkeypatch.setattr(lifecycle, "check_setup_status", setup)
+    assert server.handler_class is not None
+    monkeypatch.setattr(server.handler_class, "app_lifecycle_manager", lifecycle)
+    challenge = "pending-health-challenge"
+    with getattr(lifecycle, lock_name):
+        status, payload, _ = _request(
+            server,
+            "GET",
+            "/health",
+            headers={"X-Rumi-Desktop-Health-Challenge": challenge},
+        )
+    assert status == 200
+    health = payload["data"]
+    assert health["runtime_ready"] is False
+    assert health["panel_ready"] is True
+    assert health["launch_ready"] is False
+    assert health["runtime_status"] == "panel_ready"
+    assert health["desktop_challenge_response"] == hmac.new(
+        b"verified-desktop", challenge.encode(), hashlib.sha256
+    ).hexdigest()
+    identity_fields = {"profile_id", "profile_revision", "activation_id", "plan_digest"}
+    assert not identity_fields & health.keys()
+    capture.assert_not_called()
+    setup.assert_not_called()
+
+
+def test_verified_panel_only_health_keeps_current_execution_identity(
+    live_server: tuple[PackAPIServer, _Dispatch],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Execution identity remains available before application runtime readiness."""
+    from unittest.mock import Mock
+
+    server, dispatch = live_server
+    monkeypatch.setattr(
+        _Lifecycle,
+        "get_health",
+        lambda _self: {
+            "status": "ok",
+            "panel_ready": True,
+            "runtime_ready": False,
+            "active_profile_ready": True,
+        },
+    )
+    capture = Mock()
+    monkeypatch.setattr(dispatch, "assert_current", capture)
+    status, payload, _ = _request(server, "GET", "/health")
+    assert status == 200
+    assert payload["data"]["runtime_ready"] is False
+    assert payload["data"]["activation_id"] == dispatch.activation_id
+    capture.assert_called_once()
+
+    capture.side_effect = RuntimeError("activation changed")
+    status, payload, _ = _request(server, "GET", "/health")
+    assert status == 200
+    assert "activation_id" not in payload["data"]

@@ -1017,6 +1017,99 @@ def test_host_extension_sdk_exact_registration_revoke_and_normal_pack_denial() -
         sdk.register(extension_registration(PackageKind.NORMAL))
 
 
+def _successor_extension_registration() -> HostExtensionRegistration:
+    original = extension_registration()
+    artifact = replace(original.artifact, digest=digest("extension-successor"))
+    provider = original.providers[0]
+    domain = replace(
+        provider.execution_domain,
+        domain_id="domain.extension.files.v2",
+        activation_id="extension.files.activation.v2",
+        principals=tuple(
+            replace(principal, parent_artifact_digest=artifact.digest)
+            for principal in provider.execution_domain.principals
+        ),
+    )
+    return replace(
+        original,
+        registration_id="registration.files.v2",
+        trust_id="trust.extension.files.v2",
+        artifact=artifact,
+        providers=(replace(provider, execution_domain=domain),),
+    )
+
+
+def test_host_extension_sdk_update_survives_restart() -> None:
+    authority = Authority()
+    database = sqlite3.connect(":memory:")
+    original = HostExtensionSDK(authority, database, clock=lambda: 2.0)
+    original.register(extension_registration())
+    restarted = HostExtensionSDK(authority, database, clock=lambda: 3.0)
+
+    ids = restarted.update(
+        "registration.files.v1", _successor_extension_registration(), reason="upgrade"
+    )
+
+    assert ids == ("provider-authority.registration.files.v2.0",)
+    assert len(authority.store.records) == 6
+    assert database.execute(
+        "SELECT registration_id, active FROM host_extension_registration_state "
+        "ORDER BY registration_id"
+    ).fetchall() == [("registration.files.v1", 0), ("registration.files.v2", 1)]
+    assert [event["event_type"] for event in restarted.audit_events("registration.files.v1")] == [
+        "registered", "revoked"
+    ]
+    HostExtensionSDK(authority, database).revoke("registration.files.v2", reason="cleanup")
+    assert authority.revocations[-1] == ("host_extension", "trust.extension.files.v2")
+
+
+def test_host_extension_sdk_durable_revocation_overrides_old_instance() -> None:
+    authority = Authority()
+    database = sqlite3.connect(":memory:")
+    old = HostExtensionSDK(authority, database)
+    old.register(extension_registration())
+    HostExtensionSDK(authority, database).revoke("registration.files.v1", reason="operator")
+    before = list(authority.revocations)
+
+    with pytest.raises(AuthorizationError, match="predecessor is not active"):
+        old.update("registration.files.v1", _successor_extension_registration(), reason="upgrade")
+    with pytest.raises(AuthorizationError, match="registration is not active"):
+        old.revoke("registration.files.v1", reason="repeat")
+    assert authority.revocations == before
+    assert len(authority.store.records) == 3
+
+
+def test_host_extension_sdk_duplicate_after_restart_has_no_authority_side_effect() -> None:
+    authority = Authority()
+    database = sqlite3.connect(":memory:")
+    HostExtensionSDK(authority, database).register(extension_registration())
+    restarted = HostExtensionSDK(authority, database)
+    with pytest.raises(AuthorizationError, match="registration already exists"):
+        restarted.register(extension_registration())
+    assert len(authority.store.records) == 3
+
+
+def test_host_extension_sdk_restart_update_preserves_artifact_validation() -> None:
+    authority = Authority()
+    database = sqlite3.connect(":memory:")
+    HostExtensionSDK(authority, database).register(extension_registration())
+    restarted = HostExtensionSDK(authority, database)
+    with pytest.raises(AuthorizationError, match="requires a new artifact"):
+        restarted.update("registration.files.v1", extension_registration(), reason="same")
+    assert authority.revocations == []
+
+    successor = _successor_extension_registration()
+    invalid = replace(successor, artifact=replace(successor.artifact, package_kind=PackageKind.NORMAL))
+    with pytest.raises(AuthorizationError, match="normal Pack/Profile"):
+        restarted.update("registration.files.v1", invalid, reason="invalid successor")
+    assert database.execute(
+        "SELECT active FROM host_extension_registration_state WHERE registration_id = ?",
+        ("registration.files.v1",),
+    ).fetchone() == (0,)
+    assert len(authority.store.records) == 3
+    assert restarted.audit_events("registration.files.v2")[-1]["event_type"] == "update_failed_closed"
+
+
 class WakeAuthority:
     def issue_trigger_lease(
         self,
