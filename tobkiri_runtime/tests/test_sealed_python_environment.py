@@ -3909,3 +3909,65 @@ def test_windows_pinned_runtime_relocates_without_external_python(
         assert Path(report[field]).resolve() == (moved / relative).resolve()
     assert Path(report["stdlib"]).resolve().is_relative_to(moved / "runtime")
     assert Path(report["package"]).resolve().is_relative_to(moved / "venv")
+
+
+def test_archive_chmod_does_not_fallback_to_following_links(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing POSIX no-follow implementation must fail closed."""
+    if os.name == "nt":
+        pytest.skip("POSIX-only no-follow failure contract")
+    calls = []
+
+    def unsupported(*args: object, **kwargs: object) -> None:
+        calls.append((args, kwargs))
+        raise NotImplementedError("no no-follow chmod")
+
+    monkeypatch.setattr(BUILDER.os, "chmod", unsupported)
+    with pytest.raises(NotImplementedError):
+        BUILDER._chmod_archive_path(tmp_path / "leaf", 0o444)
+    assert len(calls) == 1
+    assert calls[0][1] == {"follow_symlinks": False}
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows handle attribute test")
+def test_windows_archive_chmod_uses_handle_not_os_chmod(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Python 3.12 lacking no-follow chmod still sets readonly without fallback."""
+    leaf = tmp_path / "file"
+    leaf.write_bytes(b"archive")
+
+    def unsupported(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("Windows archive permissions must use held handles")
+
+    monkeypatch.setattr(BUILDER.os, "chmod", unsupported)
+    try:
+        BUILDER._chmod_archive_path(leaf, 0o444)
+        assert leaf.stat().st_file_attributes & 1
+        BUILDER._chmod_archive_path(leaf, 0o644)
+        assert not leaf.stat().st_file_attributes & 1
+    finally:
+        BUILDER._chmod_windows_archive_path(leaf, 0o644)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows junction rejection test")
+def test_windows_archive_chmod_rejects_reparse_ancestor(tmp_path: Path) -> None:
+    """An intermediate junction cannot redirect a readonly attribute update."""
+    target = tmp_path / "target"
+    target.mkdir()
+    leaf = target / "file"
+    leaf.write_bytes(b"unchanged")
+    junction = tmp_path / "junction"
+    cmd = Path(os.environ["SystemRoot"]) / "System32/cmd.exe"
+    subprocess.run(
+        [os.fspath(cmd), "/d", "/c", "mklink", "/J",
+         os.fspath(junction), os.fspath(target)],
+        check=True, capture_output=True, text=True,
+    )
+    try:
+        with pytest.raises(BUILDER.SealedEnvironmentError, match="reparse point"):
+            BUILDER._chmod_archive_path(junction / "file", 0o444)
+        assert not leaf.stat().st_file_attributes & 1
+    finally:
+        junction.rmdir()

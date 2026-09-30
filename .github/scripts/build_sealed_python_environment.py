@@ -3285,12 +3285,86 @@ def _write_archive_file(
         os.close(fd)
 
 
-def _chmod_archive_path(path: Path, mode: int) -> None:
-    """Apply a safe mode without following a final symlink."""
+def _chmod_windows_archive_path(path: Path, mode: int) -> None:
+    """Set readonly by handle while retaining a no-reparse ancestor chain."""
+    import ctypes
+    from ctypes import wintypes
+
+    class FileBasicInfo(ctypes.Structure):
+        _fields_ = [
+            ("CreationTime", ctypes.c_longlong),
+            ("LastAccessTime", ctypes.c_longlong),
+            ("LastWriteTime", ctypes.c_longlong),
+            ("ChangeTime", ctypes.c_longlong),
+            ("FileAttributes", wintypes.DWORD),
+        ]
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    create = kernel.CreateFileW
+    create.argtypes = [
+        wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
+        wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
+    ]
+    create.restype = wintypes.HANDLE
+    get_info = kernel.GetFileInformationByHandleEx
+    get_info.argtypes = [
+        wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD,
+    ]
+    get_info.restype = wintypes.BOOL
+    set_info = kernel.SetFileInformationByHandle
+    set_info.argtypes = get_info.argtypes
+    set_info.restype = wintypes.BOOL
+    close = kernel.CloseHandle
+    close.argtypes = [wintypes.HANDLE]
+    close.restype = wintypes.BOOL
+    absolute = Path(os.path.abspath(path))
+    handles = []
     try:
+        # OPEN_REPARSE_POINT only protects the final component. Open every
+        # ancestor first and deny write/delete sharing until mutation finishes.
+        paths = [*reversed(absolute.parents), absolute]
+        for index, current in enumerate(paths):
+            leaf = index == len(paths) - 1
+            access = 0x0080 | (0x0100 if leaf else 0)  # READ/WRITE_ATTRIBUTES
+            handle = create(
+                os.fspath(current), access, 0x0001, None, 3,
+                0x00200000 | 0x02000000, None,
+            )
+            if handle == ctypes.c_void_p(-1).value:
+                raise ctypes.WinError(ctypes.get_last_error())
+            handles.append(handle)
+            info = FileBasicInfo()
+            if not get_info(handle, 0, ctypes.byref(info), ctypes.sizeof(info)):
+                raise ctypes.WinError(ctypes.get_last_error())
+            if info.FileAttributes & REPARSE_POINT:
+                raise SealedEnvironmentError(
+                    f"archive chmod path contains a reparse point: {current}"
+                )
+            if not leaf and not info.FileAttributes & 0x0010:
+                raise SealedEnvironmentError(
+                    f"archive chmod ancestor is not a directory: {current}"
+                )
+        # Windows chmod implements only the readonly attribute. Zero timestamps
+        # leave them unchanged; preserve all unrelated attributes.
+        attributes = info.FileAttributes
+        attributes = attributes & ~1 if mode & stat.S_IWRITE else attributes | 1
+        attributes = (attributes & ~0x0080) or 0x0080  # NORMAL stands alone
+        update = FileBasicInfo(FileAttributes=attributes)
+        if not set_info(handle, 0, ctypes.byref(update), ctypes.sizeof(update)):
+            raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        for handle in reversed(handles):
+            close(handle)
+
+
+def _chmod_archive_path(path: Path, mode: int) -> None:
+    """Apply archive mode without following links, including on Python 3.12."""
+    if os.name == "nt":
+        _chmod_windows_archive_path(path, mode)
+    else:
+        # Unsupported no-follow chmod must fail closed, never retry with a
+        # symlink-following path operation.
         os.chmod(path, mode, follow_symlinks=False)
-    except TypeError:  # pragma: no cover - only old platform Python builds
-        os.chmod(path, mode)
 
 
 def _create_archive_symlink(
