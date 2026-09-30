@@ -10,7 +10,7 @@ from typing import BinaryIO
 _BLOCK_SIZE = 64 * 1024
 
 
-def _enable_sparse(output: BinaryIO) -> None:
+def _sparse_control(output: BinaryIO, code: int, data: object = None) -> None:
     if os.name != "nt":
         return
     import ctypes
@@ -30,13 +30,11 @@ def _enable_sparse(output: BinaryIO) -> None:
     ]
     control.restype = wintypes.BOOL
     returned = wintypes.DWORD()
-    # FSCTL_SET_SPARSE with a NULL input buffer sets sparse mode. Only the
-    # caller's newly created destination handle is modified, never the source.
     if not control(
         msvcrt.get_osfhandle(output.fileno()),
-        0x000900C4,
-        None,
-        0,
+        code,
+        ctypes.byref(data) if data is not None else None,
+        ctypes.sizeof(data) if data is not None else 0,
         None,
         0,
         ctypes.byref(returned),
@@ -45,9 +43,30 @@ def _enable_sparse(output: BinaryIO) -> None:
         error = ctypes.get_last_error()
         raise OSError(
             error,
-            "PackVM destination cannot enable sparse files; "
+            "PackVM destination cannot perform sparse file operation; "
             "use a filesystem supporting sparse files",
         )
+
+
+def _enable_sparse(output: BinaryIO) -> None:
+    # FSCTL_SET_SPARSE with NULL input marks only the newly owned output.
+    _sparse_control(output, 0x000900C4)
+
+
+def _deallocate_zero_ranges(output: BinaryIO, ranges: list[tuple[int, int]]) -> None:
+    if os.name != "nt":
+        return
+    import ctypes
+
+    class ZeroData(ctypes.Structure):
+        _fields_ = [("FileOffset", ctypes.c_int64), ("BeyondFinalZero", ctypes.c_int64)]
+
+    for start, end in ranges:
+        # FSCTL_SET_ZERO_DATA uses an exclusive ending offset. A seek followed
+        # by WriteFile can allocate preceding zeros even on a sparse NTFS file;
+        # explicitly deallocate only the source-verified zero spans after EOF
+        # and all buffered writes are finalized, before readback verification.
+        _sparse_control(output, 0x000980C8, ZeroData(start, end))
 
 
 def copy_verified_stream(
@@ -78,20 +97,32 @@ def copy_verified_stream(
         _enable_sparse(output)
     digest = hashlib.sha256()
     total = 0
+    zero_ranges: list[tuple[int, int]] = []
+    zero_start: int | None = None
     while block := source.read(_BLOCK_SIZE):
         total += len(block)
         if total > size_bytes:
             raise ValueError("PackVM input changed during copy")
         digest.update(block)
         if sparse and not block.strip(b"\0"):
+            if zero_start is None:
+                zero_start = total - len(block)
             output.seek(len(block), os.SEEK_CUR)
-        elif output.write(block) != len(block):
-            raise OSError("PackVM copy encountered a short write")
+        else:
+            if zero_start is not None:
+                zero_ranges.append((zero_start, total - len(block)))
+                zero_start = None
+            if output.write(block) != len(block):
+                raise OSError("PackVM copy encountered a short write")
+    if zero_start is not None:
+        zero_ranges.append((zero_start, total))
     if total != size_bytes or "sha256:" + digest.hexdigest() != expected_digest:
         raise ValueError("PackVM input digest mismatch or input changed during copy")
     # Seeking past EOF alone does not create trailing holes or an all-zero file.
     output.truncate(total)
     output.flush()
+    if sparse:
+        _deallocate_zero_ranges(output, zero_ranges)
     os.fsync(output.fileno())
     output.seek(0)
     copied = hashlib.sha256()

@@ -164,3 +164,43 @@ def test_sparse_copy_verifies_destination_readback(tmp_path):
             size_bytes=7,
             sparse=True,
         )
+
+
+def test_zero_ranges_coalesced_and_deallocated_after_flush(tmp_path, monkeypatch):
+    block = 65536
+    data = bytes(2 * block) + b"x" * block + bytes(3 * block) + b"y" * block + bytes(17)
+    source, target = tmp_path / "source", tmp_path / "target"
+    source.write_bytes(data)
+    calls = []
+
+    def deallocate(output, ranges):
+        assert os.fstat(output.fileno()).st_size == len(data)
+        assert target.read_bytes() == data  # Buffered data was flushed already.
+        calls.append(ranges)
+
+    monkeypatch.setattr(sparse_copy, "_deallocate_zero_ranges", deallocate)
+    with source.open("rb") as incoming, target.open("x+b") as output:
+        sparse_copy.copy_verified_stream(
+            incoming, output, expected_digest=digest(data), size_bytes=len(data), sparse=True
+        )
+    assert calls == [[(0, 2 * block), (3 * block, 6 * block), (7 * block, len(data))]]
+    assert target.read_bytes() == source.read_bytes()
+
+
+def test_private_copy_zero_deallocation_failure_cleans_output(tmp_path, monkeypatch):
+    from ecosystem.defaultspack.backend.sandbox.isolation import (
+        windows_whpx_provisioner as provisioner,
+    )
+
+    source, target = tmp_path / "source", tmp_path / "boot.raw"
+    data = bytes(65536) + b"payload"
+    source.write_bytes(data)
+
+    def failed_deallocation(output, ranges):
+        raise OSError("FSCTL_SET_ZERO_DATA failed")
+
+    monkeypatch.setattr(sparse_copy, "_deallocate_zero_ranges", failed_deallocation)
+    with pytest.raises(OSError, match="FSCTL_SET_ZERO_DATA"):
+        provisioner._copy_private(source, target, digest(data))
+    assert not target.exists()
+    assert source.read_bytes() == data
