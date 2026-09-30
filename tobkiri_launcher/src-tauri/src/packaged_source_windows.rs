@@ -105,7 +105,9 @@ impl VerifiedSourceSnapshot {
             ));
         }
         for (relative, pinned) in &self.held {
-            win::verify_acl(&pinned.file, &self.sid, true, true)?;
+            win::verify_acl(&pinned.file, &self.sid, true, true).map_err(|error| {
+                invalid(format!("source snapshot held entry {relative:?}: {error}"))
+            })?;
             let id = win::identity(&pinned.file)?;
             let key = if relative.is_empty() {
                 "source".to_owned()
@@ -273,7 +275,8 @@ pub(super) fn verify_and_snapshot_against_manifest_with_hook(
         }
         Err(e) => return Err(e),
     };
-    win::verify_acl(&parent.file, &sid, false, false)?;
+    win::verify_acl(&parent.file, &sid, false, false)
+        .map_err(|error| invalid(format!("source snapshot parent ACL: {error}")))?;
     let mut nonce = [0u8; 16];
     rand::rngs::OsRng.fill_bytes(&mut nonce);
     let owner = snapshot_parent.join(format!(
@@ -350,7 +353,8 @@ pub(super) fn verify_and_snapshot_against_manifest_with_hook(
             })
             .ok_or_else(|| invalid("source escaped owner"))?;
         let pin = win::open_private_control(&owner.join(relative), *directory)?;
-        win::set_private_acl(&pin.file, &sid, true)?;
+        win::set_private_acl(&pin.file, &sid, true)
+            .map_err(|error| invalid(format!("source snapshot seal entry {local:?}: {error}")))?;
         held.insert(local.to_owned(), pin);
     }
     win::set_private_acl(&owner_pin.file, &sid, true)?;

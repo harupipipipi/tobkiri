@@ -194,7 +194,9 @@ pub fn set_private_acl(file: &File, sid: &str, sealed: bool) -> io::Result<()> {
         return Err(io::Error::from_raw_os_error(status as i32))
             .context("seal Windows snapshot DACL");
     }
-    verify_acl(file, sid, sealed, true)
+    verify_acl(file, sid, sealed, true).map_err(|error| {
+        io::Error::new(error.kind(), format!("after applying private ACL: {error}"))
+    })
 }
 
 /// Inspect the actual handle's owner and ACL, never a pathname's descriptor.
@@ -258,7 +260,14 @@ pub fn verify_acl(file: &File, sid: &str, sealed: bool, private: bool) -> io::Re
         if (private && !privileged && !user)
             || (!privileged && (!user || sealed) && allow.Mask & WRITE_ACCESS != 0)
         {
-            invalid!("[PYTHON_SEALED_SNAPSHOT_INVALID] Windows ACL permits unauthorized writes");
+            let grantee_class = if user {
+                "current-user"
+            } else if privileged {
+                "system-or-administrators"
+            } else {
+                "other"
+            };
+            invalid!("[PYTHON_SEALED_SNAPSHOT_INVALID] Windows ACL permits unauthorized writes (sealed={sealed}, private={private}, ace={index}, mask={:#010x}, flags={:#04x}, grantee={grantee_class})", allow.Mask, header.AceFlags);
         }
     }
     Ok(())
@@ -398,7 +407,12 @@ pub fn inventory(root: &Path) -> io::Result<Inventory> {
         sid: &str,
     ) -> io::Result<()> {
         let held = open_pinned(path, true)?;
-        verify_acl(&held.file, sid, false, false)?;
+        verify_acl(&held.file, sid, false, false).map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!("inventory directory {relative:?}: {error}"),
+            )
+        })?;
         let id = identity(&held.file)?;
         if id.volume != volume {
             invalid!("packaging tree crosses volumes");
@@ -419,7 +433,9 @@ pub fn inventory(root: &Path) -> io::Result<Inventory> {
                 visit(&entry.path(), &rel, volume, output, sid)?;
             } else {
                 let file = open_pinned(&entry.path(), false)?;
-                verify_acl(&file.file, sid, false, false)?;
+                verify_acl(&file.file, sid, false, false).map_err(|error| {
+                    io::Error::new(error.kind(), format!("inventory file {rel:?}: {error}"))
+                })?;
                 let id = identity(&file.file)?;
                 if id.volume != volume {
                     invalid!("packaging tree crosses volumes");

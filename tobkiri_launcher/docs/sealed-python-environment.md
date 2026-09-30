@@ -259,3 +259,40 @@ snapshot-`sys.path` behavior. Full CPython/native-extension construction is
 deferred to the integration lane while the shared Cargo target is being
 cleaned; it must cover native macOS relocation and all three role smokes before
 the macOS release workflow is considered green.
+
+### Windows standalone CPython input
+
+The Windows x64 builder consumes the same reviewed Astral
+`python-build-standalone` release as macOS: CPython `3.13.13`, build `20260510`,
+`x86_64-pc-windows-msvc-install_only_stripped.tar.gz`. The vendor release asset
+metadata is available at
+<https://github.com/astral-sh/python-build-standalone/releases/expanded_assets/20260510>.
+Its SHA-256 is
+`e1d52e7b6707a04942970e120c298f0cfa36c138177ae4d5d5ea176f6a3cd834`;
+the downloaded archive bytes were independently checked against that value.
+The normal bounded, hash-checking downloader and safe archive extractor are
+used unchanged. This input pin does not replace the Windows package signature,
+manifest, ACL, or relocation checks, and does not enable the Windows release gate.
+
+The archive supplies the base interpreter, standard library, extension modules,
+and Visual C++ runtime DLLs. The venv alone is **not** self-contained: `uv venv
+--relocatable` still writes a `home` pointing at its base Python. Assembly rewrites
+that field to `runtime`, and the launcher must run with the sealed closure root
+as its working directory. Both `runtime/` and `venv/` must move together.
+
+The opt-in Windows acceptance test checks the exact archive and uv binary hashes,
+creates the venv offline, moves the entire closure (making the original build path
+unavailable), then imports standard-library native modules and an installed probe.
+It requires the reported executable, prefix, base prefix and module origins to be
+inside the moved closure. From a clean committed checkout on a Windows host with
+the pinned inputs, run:
+
+```powershell
+$env:TOBKIRI_WINDOWS_PYTHON_ARCHIVE = '<path to the pinned tar.gz>'
+$env:TOBKIRI_WINDOWS_PINNED_UV = '<path to pinned uv 0.11.14 uv.exe>'
+python -B -m pytest tobkiri_runtime/tests/test_sealed_python_environment.py -q -k windows_pinned_runtime_relocates
+```
+
+This isolated input/relocation test is additional evidence, not a substitute for
+native full closure build, fixed-role smoke tests, installer signature validation,
+and Windows lease/ACL/process-containment acceptance.

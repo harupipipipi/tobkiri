@@ -481,14 +481,15 @@ def test_explicit_uv_authority_is_private_absolute_and_digest_bound(
         BUILDER._validate_pinned_uv_executable(ROOT, uv, BUILDER.target_spec(target))
 
 
-def test_macos_python_archive_authority_is_exact_and_offline_after_download(
+def test_python_archive_authority_is_exact_and_offline_after_download(
     tmp_path: Path,
 ) -> None:
-    """Each mac target names one reviewed PBS revision/digest and safe payload."""
+    """Each pinned target names one reviewed PBS revision/digest and safe payload."""
     assert BUILDER.PYTHON_BUILD_REVISION == "20260510"
     assert set(BUILDER.PYTHON_ARCHIVE_SHA256_BY_TARGET) == {
         "aarch64-apple-darwin",
         "x86_64-apple-darwin",
+        "x86_64-pc-windows-msvc",
     }
     for target, digest in BUILDER.PYTHON_ARCHIVE_SHA256_BY_TARGET.items():
         assert len(digest) == 64
@@ -557,12 +558,16 @@ def test_formal_builder_rejects_external_requirements_path(tmp_path: Path) -> No
         )
 
 
+@pytest.mark.parametrize(
+    "target", ("x86_64-apple-darwin", "x86_64-pc-windows-msvc")
+)
 def test_pinned_python_archive_download_keeps_sha256_binding(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    target: str,
 ) -> None:
     """The pinned archive download still verifies its exact SHA-256 digest."""
-    spec = BUILDER.target_spec("x86_64-apple-darwin")
+    spec = BUILDER.target_spec(target)
     payload = b"pinned archive bytes\n"
 
     class Response:
@@ -3785,3 +3790,122 @@ def test_all_tauri_build_callsites_are_mac_release_gated() -> None:
     guard = 'if [[ "$mode" == "production" && "$presentation_platform" != "macos" ]]'
     assert guard in helper
     assert helper.index(guard) < helper.index(raw_needle)
+
+
+def test_windows_python_archive_is_exact_reviewed_vendor_release() -> None:
+    """Windows selects the hash-reviewed standalone runtime, never host Python."""
+    spec = BUILDER.target_spec("x86_64-pc-windows-msvc")
+    assert BUILDER._python_archive_url(spec) == (
+        "https://github.com/astral-sh/python-build-standalone/releases/download/"
+        "20260510/cpython-3.13.13%2B20260510-x86_64-pc-windows-msvc"
+        "-install_only_stripped.tar.gz"
+    )
+    assert BUILDER.PYTHON_ARCHIVE_SHA256_BY_TARGET[spec.triple] == (
+        "e1d52e7b6707a04942970e120c298f0cfa36c138177ae4d5d5ea176f6a3cd834"
+    )
+
+
+def test_windows_python_archive_extracts_implicit_directory_layout(
+    tmp_path: Path,
+) -> None:
+    """The vendor Windows tar uses regular files with implicit directories."""
+    spec = BUILDER.target_spec("x86_64-pc-windows-msvc")
+    archive = tmp_path / "windows.tar.gz"
+    paths = (
+        "python.exe",
+        "python313.dll",
+        "vcruntime140.dll",
+        "Lib/os.py",
+        "DLLs/_ssl.pyd",
+        "Lib/venv/scripts/nt/venvlauncher.exe",
+    )
+    _write_archive(
+        archive,
+        tuple(_archive_member(f"python/{path}") for path in paths),
+    )
+    runtime = BUILDER._extract_pinned_python_archive(archive, tmp_path / "output")
+    assert BUILDER._runtime_python(runtime, spec) == runtime / "python.exe"
+    for path in paths:
+        assert (runtime / path).is_file()
+        assert not (runtime / path).is_symlink()
+
+
+@pytest.mark.skipif(
+    os.name != "nt"
+    or not os.environ.get("TOBKIRI_WINDOWS_PYTHON_ARCHIVE")
+    or not os.environ.get("TOBKIRI_WINDOWS_PINNED_UV"),
+    reason="requires Windows and the pinned PBS archive and uv executable",
+)
+def test_windows_pinned_runtime_relocates_without_external_python(
+    tmp_path: Path,
+) -> None:
+    """Move both runtime and uv venv; prove imports cannot use the original base."""
+    spec = BUILDER.target_spec("x86_64-pc-windows-msvc")
+    archive = Path(os.environ["TOBKIRI_WINDOWS_PYTHON_ARCHIVE"])
+    uv = Path(os.environ["TOBKIRI_WINDOWS_PINNED_UV"])
+    assert hashlib.sha256(archive.read_bytes()).hexdigest() == (
+        BUILDER.PYTHON_ARCHIVE_SHA256_BY_TARGET[spec.triple]
+    )
+    assert hashlib.sha256(uv.read_bytes()).hexdigest() == (
+        BUILDER.UV_BINARY_SHA256_BY_TARGET[spec.triple]
+    )
+    build_root = tmp_path / "original-build"
+    build_root.mkdir()
+    extracted = BUILDER._extract_pinned_python_archive(
+        archive, build_root / "extracted"
+    )
+    runtime = build_root / "runtime"
+    extracted.rename(runtime)
+    venv = build_root / "venv"
+    environment = _clean_sealed_test_environment()
+    environment.update(
+        {"UV_NO_CONFIG": "1", "UV_PYTHON_DOWNLOADS": "never"}
+    )
+    subprocess.run(
+        [
+            os.fspath(uv), "venv", os.fspath(venv),
+            "--python", os.fspath(runtime / "python.exe"),
+            "--relocatable", "--no-project", "--offline",
+        ],
+        env=environment,
+        cwd=build_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    BUILDER._normalize_venv(venv, runtime, spec, home="runtime")
+    site = venv / "Lib" / "site-packages"
+    (site / "installed_probe.py").write_text("VALUE = 'sealed'\n", encoding="utf-8")
+    moved = tmp_path / "relocated closure with spaces"
+    build_root.rename(moved)
+    assert not build_root.exists()
+    environment["PATH"] = os.pathsep.join(
+        os.fspath(moved / part) for part in ("venv/Scripts", "runtime")
+    )
+    result = subprocess.run(
+        [
+            os.fspath(moved / "venv/Scripts/python.exe"), "-I", "-B", "-c",
+            "import _ssl, _hashlib, _ctypes, sqlite3, encodings, "
+            "installed_probe, json, sys; "
+            "print(json.dumps({'version': '.'.join(map(str, sys.version_info[:3])), "
+            "'prefix': sys.prefix, 'base_prefix': sys.base_prefix, "
+            "'executable': sys.executable, 'stdlib': encodings.__file__, "
+            "'package': installed_probe.__file__, 'value': installed_probe.VALUE}))",
+        ],
+        cwd=moved,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    report = json.loads(result.stdout)
+    assert report["version"] == BUILDER.PYTHON_VERSION
+    assert report["value"] == "sealed"
+    for field, relative in (
+        ("prefix", "venv"),
+        ("base_prefix", "runtime"),
+        ("executable", "venv/Scripts/python.exe"),
+    ):
+        assert Path(report[field]).resolve() == (moved / relative).resolve()
+    assert Path(report["stdlib"]).resolve().is_relative_to(moved / "runtime")
+    assert Path(report["package"]).resolve().is_relative_to(moved / "venv")

@@ -2211,13 +2211,15 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
-        assert!(fs::read_dir(tree.0.join("snapshots"))
-            .unwrap()
-            .all(|entry| !entry
+        match fs::read_dir(tree.0.join("snapshots")) {
+            Ok(mut entries) => assert!(entries.all(|entry| !entry
                 .unwrap()
                 .file_name()
                 .to_string_lossy()
-                .starts_with("packaged-source-snapshot-")));
+                .starts_with("packaged-source-snapshot-"))),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => panic!("snapshot residue inspection failed: {error}"),
+        }
     }
 
     #[cfg(not(windows))]

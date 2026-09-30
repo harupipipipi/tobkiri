@@ -82,7 +82,11 @@ UV_BINARY_SHA256_BY_TARGET = {
     "x86_64-pc-windows-msvc": "442b73298cf8648217e5bc232588bb1067f98ea5b40beea18e43c9c7929c020c",
     "x86_64-unknown-linux-gnu": "b5cbc3a3f35debad0b4770811efd190bcf460b654114d6a3f71e0ce298468e5d",
 }
+# Vendor release asset digests: https://github.com/astral-sh/
+# python-build-standalone/releases/expanded_assets/20260510
+# Windows archive bytes were independently SHA-256 checked against that metadata.
 PYTHON_ARCHIVE_SHA256_BY_TARGET = {
+    "x86_64-pc-windows-msvc": "e1d52e7b6707a04942970e120c298f0cfa36c138177ae4d5d5ea176f6a3cd834",
     "aarch64-apple-darwin": "16d2332d950178968534e65fe09f01f876d13af1147176fd0c77a74c9e4d1a4b",
     "x86_64-apple-darwin": "8937475b0b8536d391270da4510488cb41ecd21040b63f9d8f84a8b1cdd491fc",
 }

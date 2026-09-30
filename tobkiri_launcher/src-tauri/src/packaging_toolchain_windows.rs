@@ -39,7 +39,9 @@ impl PythonLease {
             if self.inventory.get(relative) != Some(&(id.volume, id.file, id.directory)) {
                 return Err(invalid("Windows Python lease identity changed"));
             }
-            win::verify_acl(&pin.file, &self.sid, true, true)?;
+            win::verify_acl(&pin.file, &self.sid, true, true).map_err(|error| {
+                invalid(format!("Python lease held entry {relative:?}: {error}"))
+            })?;
             if let Some((size, digest)) = self.records.get(relative) {
                 verify_bytes(&pin.file, *size, digest)?;
             }
@@ -268,7 +270,8 @@ fn python_lease_at(
         (bytes.len() as u64, expected.to_owned()),
     );
     let wanted = expected_tree(&records)?;
-    let inventory = win::inventory(root)?;
+    let inventory = win::inventory(root)
+        .map_err(|error| invalid(format!("Python source inventory: {error}")))?;
     if inventory.len() != wanted.len()
         || inventory
             .iter()
@@ -298,7 +301,8 @@ fn python_lease_at(
     let sid = win::current_user_sid()?;
     let temp = env::temp_dir();
     let temp_pin = win::open_pinned(&temp, true)?;
-    win::verify_acl(&temp_pin.file, &sid, false, false)?;
+    win::verify_acl(&temp_pin.file, &sid, false, false)
+        .map_err(|error| invalid(format!("Python temporary parent ACL: {error}")))?;
     let mut nonce = [0u8; 16];
     rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut nonce);
     let target = temp.join(format!(
@@ -334,7 +338,9 @@ fn python_lease_at(
     let mut held = BTreeMap::new();
     for (relative, (_, _, directory)) in &inventory {
         let pin = win::open_private_control(&target.join(relative), *directory)?;
-        win::set_private_acl(&pin.file, &sid, true)?;
+        win::set_private_acl(&pin.file, &sid, true).map_err(|error| {
+            invalid(format!("Python snapshot seal entry {relative:?}: {error}"))
+        })?;
         held.insert(relative.clone(), pin);
     }
     let executable = target.join(executable_relative);
