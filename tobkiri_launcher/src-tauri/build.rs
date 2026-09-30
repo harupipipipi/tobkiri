@@ -850,7 +850,7 @@ fn isolated_python_module_command<'a>(
         }
     }
     source.bind_command_cwd(&mut command)?;
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     // The sealed venv's relative `home` is resolved from its verified root;
     // the source snapshot is passed as an absolute import root above.
     command.bind_python_runtime_cwd()?;

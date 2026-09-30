@@ -10,8 +10,11 @@ use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Output, Stdio};
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 use std::sync::Arc;
+#[cfg(windows)]
+#[path = "packaging_toolchain_windows.rs"]
+mod windows;
 
 #[cfg(target_os = "macos")]
 const DARWIN_MAX_CAPTURE_BYTES: usize = 64 * 1024 * 1024;
@@ -44,9 +47,9 @@ pub const PYTHON_PATH_ENV: &str = "TOBKIRI_PACKAGING_PYTHON";
 pub const PYTHON_SHA256_ENV: &str = "TOBKIRI_PACKAGING_PYTHON_SHA256";
 pub const GIT_PATH_ENV: &str = "TOBKIRI_PACKAGING_GIT";
 pub const GIT_SHA256_ENV: &str = "TOBKIRI_PACKAGING_GIT_SHA256";
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 pub const PYTHON_SNAPSHOT_ENV: &str = "TOBKIRI_PACKAGING_PYTHON_SNAPSHOT";
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 pub const PYTHON_INVENTORY_SHA256_ENV: &str = "TOBKIRI_PACKAGING_PYTHON_INVENTORY_SHA256";
 
 /// A fail-closed execution budget derived from a verified packaging contract.
@@ -227,6 +230,12 @@ pub struct VerifiedTool {
     #[cfg(target_os = "macos")]
     python_installation: Option<Arc<MacOSPythonInstallationLease>>,
     lock: File,
+    #[cfg(windows)]
+    windows_executable: Arc<super::windows_packaging_fs::PinnedPath>,
+    // Drop after the executable guards, so final lease cleanup can acquire
+    // exclusive DELETE handles without colliding with our own read locks.
+    #[cfg(windows)]
+    windows_python: Option<Arc<windows::PythonLease>>,
 }
 
 #[cfg(target_os = "macos")]
@@ -397,8 +406,39 @@ fn collect_snapshot_files(
 impl VerifiedTool {
     fn configure_command<'a>(&'a self, command: &mut VerifiedCommand<'a>) {
         if self.kind != "git" {
+            #[cfg(windows)]
+            if self.kind == "python" {
+                command.env_clear().args(["-I", "-B"]);
+            }
             return;
         }
+        #[cfg(windows)]
+        command
+            .env_clear()
+            .args([
+                "--no-optional-locks",
+                "--no-replace-objects",
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "core.untrackedCache=false",
+                "-c",
+                "core.hooksPath=NUL",
+                "-c",
+                "core.attributesFile=NUL",
+                "-c",
+                "core.excludesFile=NUL",
+                "-c",
+                "diff.external=",
+                "-c",
+                "core.sshCommand=false",
+            ])
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_ATTR_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "NUL")
+            .env("GIT_CONFIG_SYSTEM", "NUL")
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_OPTIONAL_LOCKS", "0");
         #[cfg(unix)]
         command
             .env_clear()
@@ -443,7 +483,7 @@ impl VerifiedTool {
     }
 
     pub fn command(&self) -> io::Result<VerifiedCommand<'_>> {
-        #[cfg(not(unix))]
+        #[cfg(not(any(unix, windows)))]
         {
             let current = fs::symlink_metadata(&self.original_path)?;
             if current.file_type().is_symlink()
@@ -486,9 +526,17 @@ impl VerifiedTool {
         }
         #[cfg(not(unix))]
         {
+            #[cfg(windows)]
+            if let Some(lease) = &self.windows_python {
+                lease.verify_unchanged()?;
+            }
             let _ = &self.lock;
             let mut command = VerifiedCommand::new(self);
             self.configure_command(&mut command);
+            #[cfg(windows)]
+            if self.windows_python.is_some() {
+                command.bind_python_runtime_cwd()?;
+            }
             Ok(command)
         }
     }
@@ -532,12 +580,16 @@ pub struct VerifiedCommand<'a> {
     environment: std::collections::BTreeMap<std::ffi::OsString, std::ffi::OsString>,
     clear_environment: bool,
     current_dir: Option<PathBuf>,
+    #[cfg(windows)]
+    windows_cwd: Option<Arc<super::windows_packaging_fs::PinnedPath>>,
     #[cfg(unix)]
     current_dir_handle: Option<File>,
 }
 
 pub enum VerifiedChild {
     Standard(Child),
+    #[cfg(windows)]
+    Windows(windows::WindowsChild),
     #[cfg(target_os = "macos")]
     Darwin(DarwinChild),
 }
@@ -553,6 +605,8 @@ impl VerifiedChild {
     pub fn wait(&mut self) -> io::Result<ExitStatus> {
         match self {
             Self::Standard(child) => child.wait(),
+            #[cfg(windows)]
+            Self::Windows(child) => child.wait(),
             #[cfg(target_os = "macos")]
             Self::Darwin(child) => child.wait(),
         }
@@ -561,6 +615,8 @@ impl VerifiedChild {
     pub fn kill(&mut self) -> io::Result<()> {
         match self {
             Self::Standard(child) => child.kill(),
+            #[cfg(windows)]
+            Self::Windows(child) => child.kill(),
             #[cfg(target_os = "macos")]
             Self::Darwin(child) => child.kill(),
         }
@@ -570,6 +626,8 @@ impl VerifiedChild {
         loop {
             let status = match self {
                 Self::Standard(child) => child.try_wait()?,
+                #[cfg(windows)]
+                Self::Windows(child) => child.try_wait()?,
                 #[cfg(target_os = "macos")]
                 Self::Darwin(child) => child.wait_nonblocking_until(deadline)?,
             };
@@ -589,6 +647,8 @@ impl<'a> VerifiedCommand<'a> {
             environment: std::collections::BTreeMap::new(),
             clear_environment: false,
             current_dir: None,
+            #[cfg(windows)]
+            windows_cwd: None,
             #[cfg(unix)]
             current_dir_handle: None,
         }
@@ -630,6 +690,13 @@ impl<'a> VerifiedCommand<'a> {
     }
 
     pub fn current_dir<P: AsRef<Path>>(&mut self, path: P) -> io::Result<&mut Self> {
+        #[cfg(windows)]
+        {
+            self.windows_cwd = Some(Arc::new(super::windows_packaging_fs::open_pinned(
+                path.as_ref(),
+                true,
+            )?));
+        }
         self.current_dir = Some(path.as_ref().to_owned());
         #[cfg(target_os = "macos")]
         if self.tool.kind == "git" {
@@ -678,6 +745,18 @@ impl<'a> VerifiedCommand<'a> {
         self.current_dir = None;
         self.current_dir_handle = Some(installation._root_handle.try_clone()?);
         Ok(self)
+    }
+
+    #[cfg(windows)]
+    pub fn bind_python_runtime_cwd(&mut self) -> io::Result<&mut Self> {
+        let root = self
+            .tool
+            .windows_python
+            .as_ref()
+            .ok_or_else(|| invalid("command has no Windows Python lease"))?
+            .root
+            .clone();
+        self.current_dir(root)
     }
 
     fn environment(&self) -> std::collections::BTreeMap<std::ffi::OsString, std::ffi::OsString> {
@@ -774,11 +853,12 @@ impl<'a> VerifiedCommand<'a> {
 
     #[cfg(windows)]
     fn command_with_stdio(&self, capture: bool) -> io::Result<Command> {
-        let mut command = Command::new(&self.tool.original_path);
+        let mut command = Command::new(&self.tool.windows_executable.path);
         if self.clear_environment {
             command.env_clear();
         }
         command.args(&self.args).envs(&self.environment);
+        windows::configure_environment(&mut command)?;
         if let Some(directory) = &self.current_dir {
             command.current_dir(directory);
         }
@@ -869,7 +949,11 @@ impl<'a> VerifiedCommand<'a> {
         {
             return self.spawn_darwin(false);
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(windows)]
+        {
+            return windows::spawn(self, false);
+        }
+        #[cfg(not(any(target_os = "macos", windows)))]
         {
             match self
                 .command_with_stdio(false)
@@ -923,7 +1007,19 @@ impl<'a> VerifiedCommand<'a> {
                 VerifiedSpawnOutcome::Running(VerifiedChild::Standard(_)) => unreachable!(),
             };
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(windows)]
+        {
+            return match windows::spawn(self, true) {
+                VerifiedSpawnOutcome::Running(VerifiedChild::Windows(child)) => {
+                    child.output(budget)
+                }
+                VerifiedSpawnOutcome::NoChild(error)
+                | VerifiedSpawnOutcome::ReapedFailure(error)
+                | VerifiedSpawnOutcome::Uncontained(error) => Err(error),
+                _ => unreachable!(),
+            };
+        }
+        #[cfg(not(any(target_os = "macos", windows)))]
         {
             let _ = budget;
             let mut command = self.command_with_stdio(true)?;
@@ -2482,8 +2578,30 @@ fn verify_tool_binding_guard(kind: &str, path: &Path, expected: &str) -> io::Res
     if kind == "git" {
         verify_macos_git_path_authority(path)?;
     }
+    #[cfg(not(windows))]
     #[allow(unused_mut)]
     let (mut file, metadata, actual) = open_hashed_regular_executable(path)?;
+    #[cfg(windows)]
+    let original_pin = Arc::new(super::windows_packaging_fs::open_pinned(path, false)?);
+    #[cfg(windows)]
+    let (file, metadata, actual) = {
+        let mut input = original_pin.file.try_clone()?;
+        let mut digest = Sha256::new();
+        let mut buffer = [0u8; 65536];
+        loop {
+            let count = input.read(&mut buffer)?;
+            if count == 0 {
+                break;
+            }
+            digest.update(&buffer[..count]);
+        }
+        input.seek(SeekFrom::Start(0))?;
+        (
+            input,
+            original_pin.file.metadata()?,
+            format!("{:x}", digest.finalize()),
+        )
+    };
     if actual != expected {
         return Err(invalid(format!(
             "{kind} executable digest mismatch: expected {expected}, got {actual}"
@@ -2522,9 +2640,24 @@ fn verify_tool_binding_guard(kind: &str, path: &Path, expected: &str) -> io::Res
     #[cfg(target_os = "macos")]
     drop(file);
     #[cfg(windows)]
+    let windows_python = if kind == "python" {
+        Some(windows::python_lease(path, expected)?)
+    } else {
+        None
+    };
+    #[cfg(windows)]
+    let windows_executable = if let Some(lease) = &windows_python {
+        Arc::new(super::windows_packaging_fs::open_pinned(
+            &lease.executable,
+            false,
+        )?)
+    } else {
+        original_pin
+    };
+    #[cfg(windows)]
     let locked_file = {
         drop(file);
-        locked_windows_executable(path, expected)?
+        windows_executable.file.try_clone()?
     };
     #[cfg(all(not(unix), not(windows)))]
     let locked_file = file;
@@ -2546,6 +2679,10 @@ fn verify_tool_binding_guard(kind: &str, path: &Path, expected: &str) -> io::Res
         macos_cdhash,
         #[cfg(target_os = "macos")]
         python_installation,
+        #[cfg(windows)]
+        windows_python,
+        #[cfg(windows)]
+        windows_executable,
         lock: {
             #[cfg(unix)]
             {
@@ -2780,7 +2917,7 @@ mod tests {
 
     #[test]
     fn missing_and_nonabsolute_bindings_fail_before_any_spawn() {
-        let missing = verify_tool_binding("python", Path::new("/missing"), "")
+        let missing = verify_tool_binding("python", &env::temp_dir().join("missing"), "")
             .expect_err("missing digest input must fail");
         assert!(missing.to_string().contains(PYTHON_SHA256_ENV));
 
@@ -2816,7 +2953,12 @@ mod tests {
                 .expect_err("a digest-matching path outside the sealed root must fail");
             assert!(lookalike.to_string().contains("escapes its installation"));
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(windows)]
+        assert!(
+            verify_tool_binding("python", &tool.path, &expected).is_err(),
+            "an executable hash alone must not authorize an unbound Python closure"
+        );
+        #[cfg(not(any(target_os = "macos", windows)))]
         assert_eq!(
             verify_tool_binding("python", &tool.path, &expected)
                 .expect("exact tool identity should pass"),
