@@ -2939,15 +2939,95 @@ def parse_uv_version(
     return identity
 
 
+def _validate_windows_uv_pe(payload: bytes, spec: TargetSpec) -> None:
+    """Require a native AMD64 executable in addition to the locked member hash."""
+    offset = int.from_bytes(payload[0x3C:0x40], "little") if len(payload) >= 64 else 0
+    if (
+        not spec.windows
+        or spec.architecture != "x86_64"
+        or payload[:2] != b"MZ"
+        or not 64 <= offset <= len(payload) - 26
+        or payload[offset : offset + 4] != b"PE\0\0"
+        or int.from_bytes(payload[offset + 4 : offset + 6], "little") != 0x8664
+        or int.from_bytes(payload[offset + 6 : offset + 8], "little") == 0
+        or int.from_bytes(payload[offset + 20 : offset + 22], "little") < 112
+        or offset + 24 + int.from_bytes(payload[offset + 20 : offset + 22], "little")
+        > len(payload)
+        or not int.from_bytes(payload[offset + 22 : offset + 24], "little") & 0x2
+        or int.from_bytes(payload[offset + 22 : offset + 24], "little") & 0x2000
+        or payload[offset + 24 : offset + 26] != b"\x0b\x02"
+    ):
+        raise SealedEnvironmentError("pinned uv is not a native AMD64 PE executable")
+
+
+@contextlib.contextmanager
+def _windows_uv_lease(candidate: Path, spec: TargetSpec):
+    """Keep the exact private uv executable and its namespace pinned at spawn."""
+    if not candidate.is_absolute() or candidate.name != "uv.exe":
+        raise SealedEnvironmentError("pinned Windows uv path must be absolute uv.exe")
+    with _load_windows_source_snapshot()(candidate.parent, None) as guard:
+        if set(guard.inputs) != {"", "uv.exe"}:
+            raise SealedEnvironmentError(
+                "pinned uv authority contains unexpected entries"
+            )
+        payload = guard.read("uv.exe")
+        if (
+            hashlib.sha256(payload).hexdigest()
+            != UV_BINARY_SHA256_BY_TARGET[spec.triple]
+        ):
+            raise SealedEnvironmentError("pinned uv executable SHA256 mismatch")
+        _validate_windows_uv_pe(payload, spec)
+        guard.verify(guard.inputs, candidate.parent)
+        yield candidate
+        guard.verify(guard.inputs, candidate.parent)
+        if guard.read("uv.exe") != payload:
+            raise SealedEnvironmentError(
+                "pinned uv executable changed during execution"
+            )
+
+
+@contextlib.contextmanager
+def _uv_environment(cache: Path):
+    """Use a clear environment and OS-derived trusted Windows DLL search paths."""
+    environment = {
+        "HOME": os.fspath(cache),
+        "LC_ALL": "C",
+        "PATH": "/usr/bin:/bin",
+        PYTHON_BYTECODE_ENVIRONMENT: "1",
+        "TMPDIR": os.fspath(cache),
+        "UV_CACHE_DIR": os.fspath(cache / "uv-cache"),
+        "UV_NO_CONFIG": "1",
+        "UV_NO_PROGRESS": "1",
+        "UV_PYTHON_DOWNLOADS": "never",
+    }
+    if os.name == "nt":
+        snapshot = _load_windows_source_snapshot()
+        native = sys.modules[snapshot.__module__]
+        with native.system_environment(cache) as system:
+            environment.update(system)
+            yield environment
+    else:
+        yield environment
+
+
 def _uv_version(uv: Path, expected_target: str) -> UvVersionIdentity:
     try:
-        result = subprocess.run(
-            [os.fspath(uv), "--version"],
-            check=True,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
+        with contextlib.ExitStack() as scope:
+            kwargs = {}
+            if os.name == "nt":
+                scope.enter_context(_windows_uv_lease(uv, target_spec(expected_target)))
+                kwargs = {
+                    "env": scope.enter_context(_uv_environment(uv.parent)),
+                    "cwd": uv.parent,
+                }
+            result = subprocess.run(
+                [os.fspath(uv), "--version"],
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                **kwargs,
+            )
     except (OSError, subprocess.CalledProcessError) as exc:
         raise SealedEnvironmentError(f"cannot execute pinned uv binary: {uv}") from exc
     return parse_uv_version(result.stdout or "", expected_target=expected_target)
@@ -2972,6 +3052,11 @@ def _validate_pinned_uv_executable(
     if uv_path is not None and not candidate.is_absolute():
         raise SealedEnvironmentError("explicit pinned uv path must be absolute")
     candidate = candidate.absolute()
+    if os.name == "nt":
+        # The native version invocation itself acquires and retains the complete
+        # ACL/identity/digest/PE lease until the child has exited.
+        _uv_version(candidate, spec.triple)
+        return candidate
     authority_root = _assert_root(bundled_root if uv_path is None else candidate.parent)
     if uv_path is None:
         if candidate != expected.absolute():
@@ -3012,23 +3097,25 @@ def _run_uv(
     cwd: Path,
     cache: Path,
 ) -> None:
-    environment = {
-        "HOME": os.fspath(cache),
-        "LC_ALL": "C",
-        "PATH": "/usr/bin:/bin",
-        PYTHON_BYTECODE_ENVIRONMENT: "1",
-        "TMPDIR": os.fspath(cache),
-        "UV_CACHE_DIR": os.fspath(cache / "uv-cache"),
-        "UV_NO_CONFIG": "1",
-        "UV_NO_PROGRESS": "1",
-    }
     try:
-        subprocess.run(
-            [os.fspath(uv), *[os.fspath(argument) for argument in arguments]],
-            cwd=cwd,
-            env=environment,
-            check=True,
-        )
+        with contextlib.ExitStack() as scope:
+            if os.name == "nt":
+                scope.enter_context(
+                    _windows_uv_lease(uv, target_spec("x86_64-pc-windows-msvc"))
+                )
+                # Windows searches the working directory for dependent DLLs.
+                # Require the same protected, pinned source closure at spawn.
+                source = scope.enter_context(_load_windows_source_snapshot()(cwd, None))
+                source.verify(source.inputs, cwd)
+            environment = scope.enter_context(_uv_environment(cache))
+            subprocess.run(
+                [os.fspath(uv), *[os.fspath(argument) for argument in arguments]],
+                cwd=cwd,
+                env=environment,
+                check=True,
+            )
+            if os.name == "nt":
+                source.verify(source.inputs, cwd)
     except (OSError, subprocess.CalledProcessError) as exc:
         raise SealedEnvironmentError(
             f"uv sealed-environment command failed: {arguments}"
@@ -4129,7 +4216,7 @@ def _sealed_build_workspace(parent: Path):
     yield os.fspath(work)
     _load_cleanup_remove()(
         work, owner_root=parent, operation="remove sealed Python build workspace",
-        expected_identity=identity, unseal_read_only=True,
+        expected_identity=identity,
     )
 
 

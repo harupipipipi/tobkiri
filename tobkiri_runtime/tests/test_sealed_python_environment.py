@@ -4536,8 +4536,13 @@ def test_windows_source_snapshot_native_rejects_aliased_entry(
         finally:
             parent = api.open(tmp_path, True)
             handle = api.kernel.CreateFileW(
-                str(root.path), module.READ | module.WRITE_DAC, 1, None,
-                3, 0x200000 | 0x2000000, None,
+                str(root.path),
+                module.READ | module.WRITE_DAC,
+                1,
+                None,
+                3,
+                0x200000 | 0x2000000,
+                None,
             )
             if handle in (None, module.c.c_void_p(-1).value):
                 raise module.c.WinError(module.c.get_last_error())
@@ -4585,3 +4590,201 @@ def test_windows_source_chain_rejects_nonlocal_or_device_prefixes(path: str) -> 
     guard = object.__new__(snapshot_type)
     with pytest.raises(module.SnapshotError, match="local absolute"):
         guard.pin_chain(PureWindowsPath(path))
+
+
+def _minimal_amd64_pe() -> bytes:
+    payload = bytearray(256)
+    payload[:2] = b"MZ"
+    payload[0x3C:0x40] = (64).to_bytes(4, "little")
+    payload[64:68] = b"PE\0\0"
+    payload[68:70] = (0x8664).to_bytes(2, "little")
+    payload[70:72] = (1).to_bytes(2, "little")
+    payload[84:86] = (112).to_bytes(2, "little")
+    payload[86:88] = (2).to_bytes(2, "little")
+    payload[88:90] = (0x20B).to_bytes(2, "little")
+    return bytes(payload)
+
+
+@pytest.mark.parametrize(
+    "damage", [None, "dos", "offset", "machine", "dll", "optional"]
+)
+def test_windows_uv_requires_native_amd64_pe(damage: str | None) -> None:
+    payload = bytearray(_minimal_amd64_pe())
+    if damage == "dos":
+        payload[:2] = b"#!"
+    elif damage == "offset":
+        payload[0x3C:0x40] = (9999).to_bytes(4, "little")
+    elif damage == "machine":
+        payload[68:70] = (0xAA64).to_bytes(2, "little")
+    elif damage == "dll":
+        payload[86:88] = (0x2002).to_bytes(2, "little")
+    elif damage == "optional":
+        payload[88:90] = (0x10B).to_bytes(2, "little")
+    spec = BUILDER.target_spec("x86_64-pc-windows-msvc")
+    if damage is None:
+        BUILDER._validate_windows_uv_pe(bytes(payload), spec)
+    else:
+        with pytest.raises(BUILDER.SealedEnvironmentError, match="AMD64 PE"):
+            BUILDER._validate_windows_uv_pe(bytes(payload), spec)
+
+
+def test_windows_uv_requires_exact_vendor_banner_target() -> None:
+    target = "x86_64-pc-windows-msvc"
+    identity = BUILDER.parse_uv_version(
+        "uv 0.11.14 (3fdfdc7d4 2026-05-12 x86_64-pc-windows-msvc)\n",
+        expected_target=target,
+    )
+    assert identity.target == target and identity.version == "0.11.14"
+    with pytest.raises(BUILDER.SealedEnvironmentError):
+        BUILDER.parse_uv_version(
+            "uv 0.11.14 (3fdfdc7d4 2026-05-12)\n",
+            expected_target=target,
+        )
+
+
+def test_windows_uv_environment_ignores_process_search_paths(
+    monkeypatch, tmp_path: Path
+) -> None:
+    import contextlib
+
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    native = sys.modules[snapshot_type.__module__]
+    events = []
+
+    @contextlib.contextmanager
+    def system_environment(cache):
+        events.append("held")
+        yield {
+            "SystemRoot": "C:\\Windows",
+            "PATH": "C:\\Windows\\System32",
+            "TEMP": str(cache),
+            "TMP": str(cache),
+        }
+        events.append("released")
+
+    monkeypatch.setattr(native, "system_environment", system_environment)
+    monkeypatch.setattr(BUILDER, "_load_windows_source_snapshot", lambda: snapshot_type)
+    monkeypatch.setattr(
+        BUILDER, "os", types.SimpleNamespace(**{**vars(os), "name": "nt"})
+    )
+    for key in ("PATH", "SystemRoot", "PYTHONPATH", "UV_INDEX_URL", "__COMPAT_LAYER"):
+        monkeypatch.setenv(key, "attacker")
+    with BUILDER._uv_environment(tmp_path) as environment:
+        assert events == ["held"]
+        assert environment["PATH"] == "C:\\Windows\\System32"
+        assert environment["SystemRoot"] == "C:\\Windows"
+        assert environment["TEMP"] == str(tmp_path)
+        assert not {"PYTHONPATH", "UV_INDEX_URL", "__COMPAT_LAYER"} & environment.keys()
+        assert environment["UV_PYTHON_DOWNLOADS"] == "never"
+    assert events == ["held", "released"]
+
+
+@pytest.mark.skipif(
+    os.name != "nt"
+    or not os.environ.get("TOBKIRI_WINDOWS_PINNED_UV")
+    or not os.environ.get("TOBKIRI_WINDOWS_PYTHON_ARCHIVE"),
+    reason="requires Windows with pinned uv and PBS native artifacts",
+)
+def test_windows_native_uv_private_lease_and_clear_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real uv version and offline venv copy execute under held native authority."""
+    spec = BUILDER.target_spec("x86_64-pc-windows-msvc")
+    payload = Path(os.environ["TOBKIRI_WINDOWS_PINNED_UV"]).read_bytes()
+    assert (
+        hashlib.sha256(payload).hexdigest()
+        == BUILDER.UV_BINARY_SHA256_BY_TARGET[spec.triple]
+    )
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    native = sys.modules[snapshot_type.__module__]
+    api = native.NativeApi()
+    parent = api.open(tmp_path, True)
+    root = api.create(parent, "uv-stage", True)
+    executable = api.create(root, "uv.exe", False)
+    try:
+        api.write(executable, payload)
+        api.set_acl(root.handle, True)
+        cache = tmp_path / "cache"
+        cache.mkdir()
+        archive = Path(os.environ["TOBKIRI_WINDOWS_PYTHON_ARCHIVE"])
+        assert (
+            hashlib.sha256(archive.read_bytes()).hexdigest()
+            == BUILDER.PYTHON_ARCHIVE_SHA256_BY_TARGET[spec.triple]
+        )
+        runtime = BUILDER._extract_pinned_python_archive(archive, tmp_path / "runtime")
+        for key in ("PATH", "SystemRoot", "WINDIR", "PYTHONPATH", "UV_INDEX_URL"):
+            monkeypatch.setenv(key, "attacker-controlled-value")
+        assert (
+            BUILDER._validate_pinned_uv_executable(tmp_path, executable.path, spec)
+            == executable.path
+        )
+        with BUILDER._windows_uv_lease(executable.path, spec):
+            with pytest.raises(OSError):
+                executable.path.write_bytes(b"replace")
+            with pytest.raises(OSError):
+                root.path.rename(tmp_path / "replacement")
+        venv = tmp_path / "copied-venv"
+        BUILDER._run_uv(
+            executable.path,
+            [
+                "venv",
+                venv,
+                "--python",
+                runtime / "python.exe",
+                "--no-project",
+                "--offline",
+                "--link-mode",
+                "copy",
+            ],
+            root.path,
+            cache,
+        )
+        assert (venv / "Scripts/python.exe").is_file()
+    finally:
+        api.set_acl(executable.handle, False)
+        api.set_acl(root.handle, False)
+        api.close(executable.handle)
+        api.close(root.handle)
+        api.close(parent.handle)
+
+
+@pytest.mark.parametrize("damage", ["digest", "architecture", "extra-dll"])
+def test_windows_uv_lease_rejects_before_any_consumer(
+    monkeypatch: pytest.MonkeyPatch,
+    damage: str,
+) -> None:
+    spec = BUILDER.target_spec("x86_64-pc-windows-msvc")
+    payload = bytearray(_minimal_amd64_pe())
+    if damage == "architecture":
+        payload[68:70] = (0xAA64).to_bytes(2, "little")
+    if damage != "digest":
+        monkeypatch.setitem(
+            BUILDER.UV_BINARY_SHA256_BY_TARGET,
+            spec.triple,
+            hashlib.sha256(payload).hexdigest(),
+        )
+
+    class Guard:
+        inputs = {"": object(), "uv.exe": object()}
+
+        def __init__(self, *args):
+            if damage == "extra-dll":
+                self.inputs = {**self.inputs, "injected.dll": object()}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def read(self, path):
+            return bytes(payload)
+
+        def verify(self, *args):
+            pass
+
+    monkeypatch.setattr(BUILDER, "_load_windows_source_snapshot", lambda: Guard)
+    with pytest.raises(BUILDER.SealedEnvironmentError):
+        with BUILDER._windows_uv_lease(Path.cwd() / "uv.exe", spec):
+            pytest.fail("unsafe Windows uv reached the consumer")

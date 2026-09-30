@@ -322,6 +322,17 @@ class _WindowsApi:
     def mark_delete(self, handle: int) -> None:
         """Mark an open file or empty directory for deletion on close."""
 
+        # Re-read the mutation handle itself immediately before deletion. A
+        # pathname lstat cannot rule out a substituted or newly linked file.
+        # Retain the quarantine rather than touch an inode shared outside it.
+        metadata = _WindowsByHandleFileInformation()
+        if not self._get_file_information(wintypes.HANDLE(handle), ctypes.byref(metadata)):
+            raise self._last_error(Path("<native-handle>"))
+        if (
+            not metadata.dwFileAttributes & _WINDOWS_FILE_ATTRIBUTE_DIRECTORY
+            and metadata.nNumberOfLinks != 1
+        ):
+            raise OSError(errno.EPERM, "native Windows cleanup contains a hard-linked file")
         information = _WindowsFileDispositionInfo(DeleteFile=wintypes.BOOLEAN(True))
         if not self._set_file_information(
             wintypes.HANDLE(handle),

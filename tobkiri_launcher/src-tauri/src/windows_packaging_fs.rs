@@ -564,6 +564,10 @@ pub fn preserve_directory_by_identity(
     destination: &Path,
     expected: Identity,
 ) -> io::Result<()> {
+    use windows_sys::Wdk::Storage::FileSystem::{
+        FileRenameInformation, NtSetInformationFile, FILE_RENAME_INFORMATION,
+    };
+    use windows_sys::Win32::{Foundation::RtlNtStatusToDosError, System::IO::IO_STATUS_BLOCK};
     if source.parent() != destination.parent() || !source.is_absolute() {
         invalid!("preserved stage must be an absolute sibling");
     }
@@ -577,28 +581,44 @@ pub fn preserve_directory_by_identity(
     if identity(&file)? != expected {
         invalid!("legacy stage changed before preservation");
     }
-    let name = wide(destination.as_os_str())?;
+    // Native same-directory rename: a NULL RootDirectory and a simple name
+    // bind the destination to the opened source object's existing parent.
+    // Supplying a full path or target RootDirectory makes Windows reopen that
+    // directory for write access, conflicting with its no-write-share pin.
+    // Keep the parent continuously pinned; never relax sharing for a rename.
+    let name = wide(destination.file_name().unwrap())?;
     let name_bytes = (name.len() - 1) * 2;
-    let offset = std::mem::offset_of!(FILE_RENAME_INFO, FileName);
-    // Word allocation preserves FILE_RENAME_INFO alignment.
-    let bytes = offset + name_bytes;
+    // Include the full native structure plus the counted name buffer.
+    // Word allocation preserves FILE_RENAME_INFORMATION alignment.
+    let bytes = size_of::<FILE_RENAME_INFORMATION>() + name_bytes;
     let mut buffer = vec![0usize; (bytes + size_of::<usize>() - 1) / size_of::<usize>()];
-    let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFO>();
-    unsafe {
+    let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFORMATION>();
+    let mut status_block: IO_STATUS_BLOCK = unsafe { zeroed() };
+    let status = unsafe {
         (*info).Anonymous.ReplaceIfExists = false;
         (*info).RootDirectory = null_mut();
         (*info).FileNameLength = name_bytes as u32;
         std::ptr::copy_nonoverlapping(name.as_ptr(), (*info).FileName.as_mut_ptr(), name.len() - 1);
-        if SetFileInformationByHandle(
+        NtSetInformationFile(
             file.as_raw_handle(),
-            FileRenameInfo,
+            &mut status_block,
             info.cast(),
             bytes as u32,
-        ) == 0
-        {
-            return Err(io::Error::last_os_error());
-        }
+            FileRenameInformation,
+        )
+    };
+    if status < 0 {
+        return Err(io::Error::from_raw_os_error(
+            unsafe { RtlNtStatusToDosError(status) } as i32,
+        ))
+        .context("native same-directory stage preservation");
     }
+    // The mutation handle is synchronous. Pending or inconsistent completion
+    // must not be interpreted as permission to create or clean another tree.
+    if status != 0 || unsafe { status_block.Anonymous.Status } != 0 {
+        invalid!("native stage preservation did not complete synchronously; residue retained");
+    }
+
     if identity(&file)? != expected {
         invalid!("preserved stage identity changed");
     }
@@ -883,6 +903,29 @@ mod tests {
         );
         preserve_directory_by_identity(&root.join("legacy"), &root.join("fresh"), id).unwrap();
         assert_eq!(fs::read(root.join("fresh/sentinel")).unwrap(), b"unchanged");
+        remove_owned_tree(&root, &inventory(&root).unwrap()).unwrap();
+    }
+    #[test]
+    fn windows_legacy_preservation_supports_long_parent_with_read_only_sharing() {
+        let root = tree("long-preserve");
+        let sid = current_user_sid().unwrap();
+        let mut parent = root.clone();
+        for index in 0..5 {
+            parent = parent.join(format!("segment-{index}-{}", "x".repeat(48)));
+            drop(create_private_directory_pinned(&parent, &sid).unwrap());
+        }
+        assert!(parent.as_os_str().encode_wide().count() > 260);
+        let parent_pin = open_pinned(&parent, true).unwrap();
+        let source = parent.join("old");
+        let source_pin = create_private_directory_pinned(&source, &sid).unwrap();
+        fs::write(source.join("sentinel"), b"preserve").unwrap();
+        let id = identity(&source_pin.file).unwrap();
+        drop(source_pin);
+        let destination = parent.join("retained");
+        preserve_directory_by_identity(&source, &destination, id).unwrap();
+        assert_eq!(fs::read(destination.join("sentinel")).unwrap(), b"preserve");
+        assert!(fs::rename(&parent, root.join("moved-parent")).is_err());
+        drop(parent_pin);
         remove_owned_tree(&root, &inventory(&root).unwrap()).unwrap();
     }
     #[test]

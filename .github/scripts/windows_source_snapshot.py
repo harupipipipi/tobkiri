@@ -7,6 +7,7 @@ non-write/non-delete-sharing handles form this boundary instead.
 
 from __future__ import annotations
 
+import contextlib
 import ctypes as c
 import os
 import re
@@ -21,6 +22,13 @@ WRITE_DAC = 0x40000
 DELETE = 0x10000
 SEALED = 0x1200A9  # FILE_GENERIC_READ | FILE_GENERIC_EXECUTE
 FULL = 0x1F01FF
+SYSTEM_OWNERS = frozenset(
+    {
+        "S-1-5-18",
+        "S-1-5-32-544",
+        "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464",
+    }
+)
 
 
 class SnapshotError(OSError):
@@ -106,6 +114,8 @@ class NativeApi:
         self.ntdll = c.WinDLL("ntdll", use_last_error=True, winmode=0x800)
         signatures = {
             "CreateFileW": ([c.c_wchar_p, D, D, H, D, D, H], H),
+            "GetSystemWindowsDirectoryW": ([H, D], D),
+            "GetSystemDirectoryW": ([H, D], D),
             "CloseHandle": ([H], c.c_int),
             "GetFileInformationByHandle": ([H, c.POINTER(Info)], c.c_int),
             "GetCurrentProcess": ([], H),
@@ -215,7 +225,7 @@ class NativeApi:
         )
         return result
 
-    def verify_acl(self, handle: int, sealed: bool) -> None:
+    def verify_acl(self, handle: int, sealed: bool, *, system: bool = False) -> None:
         owner, acl, descriptor = H(), H(), H()
         status = self.advapi.GetSecurityInfo(
             handle, 1, 5, c.byref(owner), None, c.byref(acl), None, c.byref(descriptor)
@@ -226,11 +236,12 @@ class NativeApi:
                 status
                 or not owner
                 or not acl
-                or self.sid_text(owner.value) != self.sid
+                or self.sid_text(owner.value)
+                not in (SYSTEM_OWNERS if system else {self.sid})
                 or not self.advapi.GetSecurityDescriptorControl(
                     descriptor, c.byref(control), c.byref(revision)
                 )
-                or not control.value & 0x1000
+                or (not system and not control.value & 0x1000)
             ):
                 raise SnapshotError("source snapshot ownership or DACL is unsafe")
             header = c.string_at(acl, 8)
@@ -267,12 +278,27 @@ class NativeApi:
                     continue
                 trustee = self.sid_text(sid)
                 mask = int.from_bytes(raw[4:8], "little")
-                allowed = (
-                    FULL
-                    if trustee in {"S-1-5-18", "S-1-5-32-544"}
-                    else ((SEALED if sealed else FULL) if trustee == self.sid else 0)
-                )
-                if not allowed or mask & ~allowed or raw[1] & ~0x03:
+                if system:
+                    # System directories can inherit their effective ACL. Only
+                    # system administrators/TrustedInstaller may mutate entries;
+                    # inherit-only grants do not apply to this directory itself.
+                    if raw[1] & 0x08:
+                        continue
+                    privileged = trustee in SYSTEM_OWNERS | {"S-1-3-4"}
+                    allowed = (
+                        (FULL | 0xF0000000) if privileged else (SEALED | 0xA0000000)
+                    )
+                    safe_flags = 0x1F
+                else:
+                    allowed = (
+                        FULL
+                        if trustee in {"S-1-5-18", "S-1-5-32-544"}
+                        else (
+                            (SEALED if sealed else FULL) if trustee == self.sid else 0
+                        )
+                    )
+                    safe_flags = 0x03
+                if not allowed or mask & ~allowed or raw[1] & ~safe_flags:
                     raise SnapshotError("source snapshot DACL grants unsafe access")
         finally:
             if descriptor:
@@ -310,6 +336,19 @@ class NativeApi:
                 "source snapshot contains a reparse, hardlink or wrong type"
             )
         return (info.volume, (info.index_high << 32) | info.index_low, directory)
+
+    def system_paths(self) -> tuple[Path, Path]:
+        """Get OS-owned paths from Win32, never SystemRoot/PATH environment text."""
+        result = []
+        for name in ("GetSystemWindowsDirectoryW", "GetSystemDirectoryW"):
+            buffer = c.create_unicode_buffer(32768)
+            length = getattr(self.kernel, name)(buffer, len(buffer))
+            if not 0 < length < len(buffer):
+                raise SnapshotError("Windows system directory query failed")
+            result.append(Path(buffer.value))
+        if result[1].parent != result[0]:
+            raise SnapshotError("Windows system directory is outside the OS root")
+        return result[0], result[1]
 
     def open(self, path: Path, directory: bool, *, delete: bool = False) -> Pin:
         handle = self.kernel.CreateFileW(
@@ -609,3 +648,34 @@ class WindowsSnapshot:
             self.cleanup()
         finally:
             self._close()
+
+
+@contextlib.contextmanager
+def system_environment(cache: Path):
+    """Hold trusted OS directories while a clear-environment child executes."""
+    api = NativeApi()
+    guard = WindowsSnapshot(cache, None, api=api)
+    try:
+        windows, system = api.system_paths()
+        trusted = []
+        for path in (windows, system):
+            pin = guard.pin_chain(path)
+            api.verify_acl(pin.handle, False, system=True)
+            trusted.append(pin)
+        yield {
+            "SystemRoot": os.fspath(windows),
+            "WINDIR": os.fspath(windows),
+            "PATH": os.fspath(system),
+            "TEMP": os.fspath(cache),
+            "TMP": os.fspath(cache),
+            "USERPROFILE": os.fspath(cache),
+            "APPDATA": os.fspath(cache),
+            "LOCALAPPDATA": os.fspath(cache),
+        }
+        for pin in guard.ancestors:
+            if api.identity(pin.handle, True) != pin.identity:
+                raise SnapshotError("Windows system directory identity changed")
+        for pin in trusted:
+            api.verify_acl(pin.handle, False, system=True)
+    finally:
+        guard._close()

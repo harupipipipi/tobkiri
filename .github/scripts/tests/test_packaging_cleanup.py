@@ -2199,3 +2199,38 @@ def test_cleanup_rejects_scope_root_and_outside_paths(tmp_path: Path) -> None:
 
     assert owner_root.exists()
     assert outside.exists()
+
+
+def test_windows_delete_checks_held_link_count_before_disposition() -> None:
+    """A newly hardlinked inode must not be changed through a delete handle."""
+    api = object.__new__(cleanup._WindowsApi)
+    calls = []
+
+    def information(handle, output):
+        output._obj.dwFileAttributes = 0
+        output._obj.nNumberOfLinks = 2
+        calls.append("held-info")
+        return 1
+
+    api._get_file_information = information
+    api._set_file_information = lambda *args: calls.append("mutate") or 1
+    with pytest.raises(OSError, match="hard-linked file"):
+        api.mark_delete(42)
+    assert calls == ["held-info"]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Requires native Windows cleanup handles")
+def test_windows_native_cleanup_retains_preexisting_hardlink(tmp_path: Path) -> None:
+    """The outside file keeps both its bytes and attributes when cleanup rejects."""
+    root = tmp_path / "owned"
+    root.mkdir()
+    outside = tmp_path / "outside.bin"
+    outside.write_bytes(b"outside")
+    os.link(outside, root / "alias.bin")
+    before = outside.stat()
+    with pytest.raises(cleanup.PackagingCleanupError, match="hard-linked file"):
+        cleanup.remove_owned_path(root, owner_root=tmp_path, operation="native hardlink test")
+    assert outside.read_bytes() == b"outside"
+    after = outside.stat()
+    assert after.st_file_attributes == before.st_file_attributes
+    assert after.st_nlink == before.st_nlink == 2
