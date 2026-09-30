@@ -133,29 +133,35 @@ def _copy_verified(
     source: Path, destination: Path, expected_digest: str, slot: str
 ) -> dict[str, object]:
     _require_digest(expected_digest)
-    digest = hashlib.sha256()
-    total = 0
-    with _pinned_input(source) as stream, destination.open("xb") as target:
-        before = os.fstat(stream.fileno())
-        if not 0 < before.st_size <= _MAX_BYTES[slot]:
-            raise ValueError(f"{slot} input size is outside the supported bounds")
-        while block := stream.read(1024 * 1024):
-            total += len(block)
-            if total > before.st_size:
+    helper = Path(__file__).resolve().parents[1] / "tobkiri_host/sparse_copy.py"
+    spec = importlib.util.spec_from_file_location("_packvm_sparse_copy", helper)
+    if spec is None or spec.loader is None:
+        raise ValueError("PackVM sparse copier is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    created = False
+    try:
+        with _pinned_input(source) as stream, destination.open("x+b") as target:
+            created = True
+            before = os.fstat(stream.fileno())
+            if not 0 < before.st_size <= _MAX_BYTES[slot]:
+                raise ValueError(f"{slot} input size is outside the supported bounds")
+            total = module.copy_verified_stream(
+                stream, target, expected_digest=expected_digest,
+                size_bytes=before.st_size, sparse=slot == "image",
+            )
+            after = os.fstat(stream.fileno())
+            if (
+                before.st_size != after.st_size
+                or before.st_mtime_ns != after.st_mtime_ns
+                or before.st_ctime_ns != after.st_ctime_ns
+                or after.st_nlink != 1
+            ):
                 raise ValueError(f"{slot} input changed during copy")
-            digest.update(block)
-            target.write(block)
-        after = os.fstat(stream.fileno())
-        if (
-            total != before.st_size
-            or before.st_mtime_ns != after.st_mtime_ns
-            or before.st_ctime_ns != after.st_ctime_ns
-            or after.st_nlink != 1
-            or "sha256:" + digest.hexdigest() != expected_digest
-        ):
-            raise ValueError(f"{slot} input digest mismatch or input changed during copy")
-        target.flush()
-        os.fsync(target.fileno())
+    except Exception:
+        if created:
+            destination.unlink(missing_ok=True)
+        raise
     destination.chmod(0o555 if slot == "qemu" else 0o444)
     return {"path": FILE_PATHS[slot], "sha256": expected_digest, "size_bytes": total}
 

@@ -3255,8 +3255,8 @@
     {
       "path": "scripts/build_linux_packvm_bundle.py",
       "type": "regular-file",
-      "size": 15331,
-      "sha256": "b9ba879ecb5e779e9005d6ba4034d4049475207ccacb47136aabc214631a24c7",
+      "size": 15654,
+      "sha256": "915003023542718ad704de2dd59860b36d37f3b331834d641d99a54cee275616",
       "executable": false
     },
     {

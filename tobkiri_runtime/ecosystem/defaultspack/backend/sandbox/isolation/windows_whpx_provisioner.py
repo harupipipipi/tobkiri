@@ -32,6 +32,7 @@ from cryptography.hazmat.primitives.serialization import (
 
 from core_runtime.hmac_key_manager import generate_or_load_signing_key
 from core_runtime.process_identity import process_start_identity
+from tobkiri_host.sparse_copy import copy_verified_stream
 from tobkiri_host.windows_whpx_probe import whpx_capability
 from tobkiri_host.windows_whpx_security import private_directory, stable_file
 from tobkiri_protocol.canonical import canonical_digest, canonical_json
@@ -773,23 +774,22 @@ def _read_asset(asset: Any, maximum: int) -> bytes:
 
 
 def _copy_private(source: Path, target: Path, expected: str) -> None:
-
     fd = os.open(
         target,
         os.O_CREAT
         | os.O_EXCL
-        | os.O_WRONLY
+        | os.O_RDWR
         | getattr(os, "O_NOFOLLOW", 0)
         | getattr(os, "O_BINARY", 0),
         0o600,
     )
     try:
-        digest = hashlib.sha256()
-        with os.fdopen(fd, "wb") as output, stable_file(source) as incoming:
+        with os.fdopen(fd, "w+b") as output, stable_file(source) as incoming:
             before = os.fstat(incoming.fileno())
-            while chunk := incoming.read(1024 * 1024):
-                output.write(chunk)
-                digest.update(chunk)
+            copy_verified_stream(
+                incoming, output, expected_digest=expected,
+                size_bytes=before.st_size, sparse=target.name == "boot.raw",
+            )
             after = os.fstat(incoming.fileno())
             if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
                 after.st_size,
@@ -797,10 +797,6 @@ def _copy_private(source: Path, target: Path, expected: str) -> None:
                 after.st_ctime_ns,
             ):
                 raise ValueError("Windows PackVM immutable source changed during copy")
-            output.flush()
-            os.fsync(output.fileno())
-        if "sha256:" + digest.hexdigest() != expected:
-            raise ValueError("Windows PackVM private copy digest mismatch")
     except Exception:
         target.unlink(missing_ok=True)
         raise

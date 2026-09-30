@@ -4515,25 +4515,45 @@ def test_windows_source_snapshot_native_rejects_aliased_entry(
     outside = tmp_path / "outside.bin"
     outside.write_bytes(b"outside authority")
     alias = root.path / "alias.bin"
+    # A held directory pin intentionally blocks CreateHardLink's directory
+    # write open. Construct the pre-existing attack before pinning/sealing,
+    # then recover owner-control on the same creation-bound directory identity.
+    api.close(root.handle)
+    root.handle = 0
+    api.close(parent.handle)
+    parent.handle = 0
     try:
-        if kind == "symlink":
-            try:
-                alias.symlink_to(outside)
-            except OSError as exc:
-                if getattr(exc, "winerror", None) == 1314:
-                    pytest.skip("native runner lacks symbolic-link privilege")
-                raise
-        else:
-            os.link(outside, alias)
+        try:
+            if kind == "symlink":
+                try:
+                    alias.symlink_to(outside)
+                except OSError as exc:
+                    if getattr(exc, "winerror", None) == 1314:
+                        pytest.skip("native runner lacks symbolic-link privilege")
+                    raise
+            else:
+                os.link(outside, alias)
+        finally:
+            parent = api.open(tmp_path, True)
+            handle = api.kernel.CreateFileW(
+                str(root.path), module.READ | module.WRITE_DAC, 1, None,
+                3, 0x200000 | 0x2000000, None,
+            )
+            if handle in (None, module.c.c_void_p(-1).value):
+                raise module.c.WinError(module.c.get_last_error())
+            root.handle = handle
+            assert api.identity(handle, True) == root.identity
         api.set_acl(root.handle, True)
         with pytest.raises(module.SnapshotError, match="reparse, hardlink"):
             with snapshot_type(root.path, None):
                 pytest.fail("aliased native source entry was accepted")
         assert outside.read_bytes() == b"outside authority"
     finally:
-        api.set_acl(root.handle, False)
-        api.close(root.handle)
-        api.close(parent.handle)
+        if root.handle:
+            api.set_acl(root.handle, False)
+            api.close(root.handle)
+        if parent.handle:
+            api.close(parent.handle)
         if alias.exists() or alias.is_symlink():
             alias.unlink()
 
