@@ -227,6 +227,8 @@ fn main() {
     bind_macos_artifact_policy().expect("failed to bind macOS artifact policy");
     warn_legacy_defaultspack_app_bundle();
     let unbundled_local_development = is_unbundled_local_development_build();
+    let _runtime_stage_guard;
+    let _debug_destination_guard;
     if unbundled_local_development {
         println!("cargo:rustc-env=TOBKIRI_LOCAL_DEV_WORKSPACE=1");
         println!(
@@ -235,10 +237,10 @@ fn main() {
         stage_local_development_authority().expect("failed to stage local development authority");
     } else {
         println!("cargo:rustc-env=TOBKIRI_LOCAL_DEV_WORKSPACE=0");
-        stage_runtime_bundle().expect("failed to stage runtime bundle");
+        _runtime_stage_guard = stage_runtime_bundle().expect("failed to stage runtime bundle");
         reset_tauri_macos_resource_copy()
             .expect("failed to reset the manifest-bound Tauri resource copy");
-        prepare_debug_tauri_resource_destination()
+        _debug_destination_guard = prepare_debug_tauri_resource_destination()
             .expect("failed to prepare debug Tauri resource destination");
     }
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
@@ -569,9 +571,9 @@ fn verify_prepared_host_assets(
 /// files from an earlier copy. Reset only that owned debug destination before
 /// the next copy so an obsolete file cannot invalidate the runtime manifest.
 /// The sealed source tree and every non-debug build remain untouched.
-fn prepare_debug_tauri_resource_destination() -> io::Result<()> {
+fn prepare_debug_tauri_resource_destination() -> io::Result<Option<StagedRuntimeGuard>> {
     if std::env::var("PROFILE").as_deref() != Ok("debug") {
-        return Ok(());
+        return Ok(None);
     }
     let out_dir = PathBuf::from(
         std::env::var_os("OUT_DIR").ok_or_else(|| invalid_release("Cargo OUT_DIR is missing"))?,
@@ -581,8 +583,8 @@ fn prepare_debug_tauri_resource_destination() -> io::Result<()> {
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let target_root = resolve_tauri_shell_target_dir(&project_dir)?;
         let target = required_cargo_target()?;
-        reset_windows_debug_tauri_resource_copy_at(&out_dir, &target_root, &target)?;
-        return Ok(());
+        let (_, guard) = reset_windows_debug_tauri_resource_copy_at(&out_dir, &target_root, &target)?;
+        return Ok(Some(guard));
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -594,7 +596,7 @@ fn prepare_debug_tauri_resource_destination() -> io::Result<()> {
         if resource_root.exists() {
             make_generated_tree_owner_writable(&resource_root)?;
         }
-        Ok(())
+        Ok(None)
     }
 }
 
@@ -603,7 +605,7 @@ fn reset_windows_debug_tauri_resource_copy_at(
     out_dir: &Path,
     target_root: &Path,
     target: &str,
-) -> io::Result<PathBuf> {
+) -> io::Result<(PathBuf, StagedRuntimeGuard)> {
     use std::os::windows::fs::MetadataExt;
 
     const REPARSE_POINT: u32 = 0x400;
@@ -693,13 +695,13 @@ fn reset_windows_debug_tauri_resource_copy_at(
         match fs::symlink_metadata(&resource_root) {
             Ok(_) => {
                 regular_tree(&resource_root)?;
-                make_generated_tree_owner_writable(&resource_root)?;
+                // Validation only: old output is never chmod-adopted.
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => return Err(error),
         }
-        reset_staged_runtime(&resource_root)?;
-        return Ok(resource_root);
+        let guard = reset_staged_runtime(&resource_root)?;
+        return Ok((resource_root, guard));
     }
     Err(invalid_release(
         "Cargo OUT_DIR escaped the owned debug target profile",
@@ -1030,7 +1032,12 @@ fn warn_legacy_defaultspack_app_bundle() {
     }
 }
 
-fn stage_runtime_bundle() -> io::Result<()> {
+#[cfg(windows)]
+type StagedRuntimeGuard = windows_packaging_fs::PinnedPath;
+#[cfg(not(windows))]
+type StagedRuntimeGuard = ();
+
+fn stage_runtime_bundle() -> io::Result<StagedRuntimeGuard> {
     let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let repo_root = project_dir
         .parent()
@@ -1039,8 +1046,13 @@ fn stage_runtime_bundle() -> io::Result<()> {
     let runtime_root = repo_root.join(APP_SOURCE_DIR);
     let staged_root = project_dir.join("gen").join("app");
 
-    reset_staged_runtime(&staged_root)
+    let guard = reset_staged_runtime(&staged_root)
         .map_err(|error| stage_error("reset staged runtime", error))?;
+    stage_runtime_bundle_into(&project_dir, repo_root, &runtime_root, &staged_root)?;
+    Ok(guard)
+}
+
+fn stage_runtime_bundle_into(project_dir: &Path, repo_root: &Path, runtime_root: &Path, staged_root: &Path) -> io::Result<()> {
     if core_build_stage() == CoreBuildStage::IntermediateShell {
         // The Shell is only the presentation artifact consumed by the outer
         // Launcher. It has no embedded Kernel/Python resources of its own, so
@@ -6141,7 +6153,7 @@ fn reset_dir(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn reset_staged_runtime(path: &Path) -> io::Result<()> {
+fn reset_staged_runtime(path: &Path) -> io::Result<StagedRuntimeGuard> {
     #[cfg(unix)]
     {
         return reset_staged_runtime_macos(path);
@@ -6755,7 +6767,7 @@ mod tests {
 
         let reset = reset_windows_debug_tauri_resource_copy_at(&out_dir, &target_root, triple)
             .expect("owned debug resource copy should reset");
-        assert_eq!(reset, resource_root);
+        assert_eq!(reset.0, resource_root);
         assert!(resource_root.is_dir());
         assert!(fs::read_dir(&resource_root).unwrap().next().is_none());
         assert_eq!(fs::read(&unrelated).unwrap(), b"another profile");
@@ -9745,44 +9757,44 @@ fn stage_core_defaults_bundle(
 }
 
 #[cfg(windows)]
-fn reset_staged_runtime_windows(path: &Path) -> io::Result<()> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| invalid_release("staged runtime has no parent"))?;
+fn reset_staged_runtime_windows(path: &Path) -> io::Result<StagedRuntimeGuard> {
+    let parent = path.parent().ok_or_else(|| invalid_release("staged runtime has no parent"))?;
     let sid = windows_packaging_fs::current_user_sid()?;
+    // Existing generated parents are namespace anchors, not trusted content.
+    // Atomic creation pins a protected child even under an ambient broad DACL.
     let parent_pin = match windows_packaging_fs::open_pinned(parent, true) {
         Ok(pin) => pin,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            let grandparent = windows_packaging_fs::open_pinned(
-                parent
-                    .parent()
-                    .ok_or_else(|| invalid_release("staged parent has no parent"))?,
-                true,
-            )?;
-            windows_packaging_fs::verify_acl(&grandparent.file, &sid, false, false)?;
-            windows_packaging_fs::create_private_directory(parent, &sid)?;
-            windows_packaging_fs::open_pinned(parent, true)?
-        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound =>
+            windows_packaging_fs::create_private_directory_pinned(parent, &sid)?,
         Err(error) => return Err(error),
     };
-    windows_packaging_fs::verify_acl(&parent_pin.file, &sid, false, false)?;
     match windows_packaging_fs::open_pinned(path, true) {
         Ok(root) => {
-            windows_packaging_fs::verify_acl(&root.file, &sid, false, true)?;
-            let inventory = windows_packaging_fs::inventory(path)?;
-            if inventory.len() > 1 {
-                validate_staged_runtime_manifest(&root.file, &inventory)?;
+            let root_id = windows_packaging_fs::identity(&root.file)?;
+            if windows_packaging_fs::verify_acl(&root.file, &sid, false, true).is_err() {
+                // Legacy output is not authenticated ownership. Preserve its
+                // entire namespace without traversing it or adopting its ACL.
+                let mut nonce = [0u8; 16];
+                rand::rngs::OsRng.fill_bytes(&mut nonce);
+                let retained = parent.join(format!(".tobkiri-retained-stage-{}", hex_bytes(&nonce)));
+                drop(root);
+                windows_packaging_fs::preserve_directory_by_identity(path, &retained, root_id)?;
+                println!("cargo:warning=preserved legacy generated stage at {}", retained.display());
+            } else {
+                let inventory = windows_packaging_fs::inventory(path)?;
+                if inventory.len() > 1 {
+                    validate_staged_runtime_manifest(&root.file, &inventory)?;
+                }
+                drop(root);
+                windows_packaging_fs::remove_owned_tree(path, &inventory)?;
             }
-            drop(root);
-            windows_packaging_fs::remove_owned_tree(path, &inventory)?;
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
         Err(error) => return Err(error),
     }
-    windows_packaging_fs::create_private_directory(path, &sid)?;
-    let root = windows_packaging_fs::open_pinned(path, true)?;
-    windows_packaging_fs::verify_acl(&root.file, &sid, false, true)?;
-    Ok(())
+    let root = windows_packaging_fs::create_private_directory_pinned(path, &sid)?;
+    drop(parent_pin);
+    Ok(root)
 }
 
 #[cfg(all(test, windows))]
@@ -9810,6 +9822,27 @@ mod windows_transaction_tests {
             &windows_packaging_fs::inventory(root).unwrap(),
         )
         .unwrap();
+    }
+    #[test]
+    fn windows_staged_runtime_preserves_legacy_tree_and_pins_fresh_root() {
+        let parent = root("legacy-stage");
+        let path = parent.join("gen/app");
+        fs::create_dir_all(&path).unwrap();
+        fs::write(path.join("user-sentinel"), b"preserve unchanged").unwrap();
+        let guard = reset_staged_runtime(&path).unwrap();
+        let sid = windows_packaging_fs::current_user_sid().unwrap();
+        windows_packaging_fs::verify_acl(&guard.file, &sid, false, true).unwrap();
+        assert!(fs::read_dir(&path).unwrap().next().is_none());
+        assert!(fs::rename(&path, parent.join("stolen")).is_err());
+        let retained = fs::read_dir(parent.join("gen")).unwrap()
+            .map(|entry| entry.unwrap().path())
+            .find(|entry| entry.file_name().unwrap().to_string_lossy().starts_with(".tobkiri-retained-stage-"))
+            .expect("legacy tree must be retained");
+        assert_eq!(fs::read(retained.join("user-sentinel")).unwrap(), b"preserve unchanged");
+        drop(guard);
+        drop(reset_staged_runtime(&path).unwrap());
+        assert_eq!(fs::read(retained.join("user-sentinel")).unwrap(), b"preserve unchanged");
+        remove(&parent);
     }
     #[test]
     fn windows_core_transaction_creates_and_cleans_owned_tree() {

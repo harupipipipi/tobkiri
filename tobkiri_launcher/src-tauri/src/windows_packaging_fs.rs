@@ -556,6 +556,55 @@ pub fn inventory(root: &Path) -> io::Result<Inventory> {
     Ok(output)
 }
 
+/// Preserve an unauthenticated generated directory without traversing, deleting,
+/// or changing permissions. The target must be a fresh sibling; replacement is
+/// forbidden. Identity is rechecked on the exclusive mutation handle.
+pub fn preserve_directory_by_identity(
+    source: &Path,
+    destination: &Path,
+    expected: Identity,
+) -> io::Result<()> {
+    if source.parent() != destination.parent() || !source.is_absolute() {
+        invalid!("preserved stage must be an absolute sibling");
+    }
+    validate_component(
+        destination
+            .file_name()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing preserved name"))?,
+    )?;
+    let _parent = open_pinned(source.parent().unwrap(), true)?;
+    let file = open_leaf(source, true, true)?;
+    if identity(&file)? != expected {
+        invalid!("legacy stage changed before preservation");
+    }
+    let name = wide(destination.as_os_str())?;
+    let name_bytes = (name.len() - 1) * 2;
+    let offset = std::mem::offset_of!(FILE_RENAME_INFO, FileName);
+    // Word allocation preserves FILE_RENAME_INFO alignment.
+    let bytes = offset + name_bytes;
+    let mut buffer = vec![0usize; (bytes + size_of::<usize>() - 1) / size_of::<usize>()];
+    let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFO>();
+    unsafe {
+        (*info).Anonymous.ReplaceIfExists = false;
+        (*info).RootDirectory = null_mut();
+        (*info).FileNameLength = name_bytes as u32;
+        std::ptr::copy_nonoverlapping(name.as_ptr(), (*info).FileName.as_mut_ptr(), name.len() - 1);
+        if SetFileInformationByHandle(
+            file.as_raw_handle(),
+            FileRenameInfo,
+            info.cast(),
+            bytes as u32,
+        ) == 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    if identity(&file)? != expected {
+        invalid!("preserved stage identity changed");
+    }
+    Ok(())
+}
+
 /// Remove only the inventoried objects. Each mutation targets an opened handle;
 /// a replacement, extra, ACL change, or reparse point leaves residue fail-closed.
 pub fn remove_owned_tree(root: &Path, expected: &Inventory) -> io::Result<()> {
@@ -807,6 +856,33 @@ mod tests {
         set_private_acl(&pin.file, &sid, false).unwrap();
         fs::write(root.join("allowed"), b"yes").unwrap();
         drop(pin);
+        remove_owned_tree(&root, &inventory(&root).unwrap()).unwrap();
+    }
+    #[test]
+    fn windows_legacy_preservation_rejects_identity_change_and_existing_target() {
+        let root = tree("preserve");
+        fs::create_dir(root.join("legacy")).unwrap();
+        fs::write(root.join("legacy/sentinel"), b"unchanged").unwrap();
+        fs::create_dir(root.join("occupied")).unwrap();
+        let pin = open_pinned(&root.join("legacy"), true).unwrap();
+        let id = identity(&pin.file).unwrap();
+        drop(pin);
+        let mut wrong = id;
+        wrong.file ^= 1;
+        assert!(
+            preserve_directory_by_identity(&root.join("legacy"), &root.join("fresh"), wrong)
+                .is_err()
+        );
+        assert!(
+            preserve_directory_by_identity(&root.join("legacy"), &root.join("occupied"), id)
+                .is_err()
+        );
+        assert_eq!(
+            fs::read(root.join("legacy/sentinel")).unwrap(),
+            b"unchanged"
+        );
+        preserve_directory_by_identity(&root.join("legacy"), &root.join("fresh"), id).unwrap();
+        assert_eq!(fs::read(root.join("fresh/sentinel")).unwrap(), b"unchanged");
         remove_owned_tree(&root, &inventory(&root).unwrap()).unwrap();
     }
     #[test]
