@@ -583,7 +583,8 @@ fn prepare_debug_tauri_resource_destination() -> io::Result<Option<StagedRuntime
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let target_root = resolve_tauri_shell_target_dir(&project_dir)?;
         let target = required_cargo_target()?;
-        let (_, guard) = reset_windows_debug_tauri_resource_copy_at(&out_dir, &target_root, &target)?;
+        let (_, guard) =
+            reset_windows_debug_tauri_resource_copy_at(&out_dir, &target_root, &target)?;
         return Ok(Some(guard));
     }
     #[cfg(not(target_os = "windows"))]
@@ -1052,7 +1053,12 @@ fn stage_runtime_bundle() -> io::Result<StagedRuntimeGuard> {
     Ok(guard)
 }
 
-fn stage_runtime_bundle_into(project_dir: &Path, repo_root: &Path, runtime_root: &Path, staged_root: &Path) -> io::Result<()> {
+fn stage_runtime_bundle_into(
+    project_dir: &Path,
+    repo_root: &Path,
+    runtime_root: &Path,
+    staged_root: &Path,
+) -> io::Result<()> {
     if core_build_stage() == CoreBuildStage::IntermediateShell {
         // The Shell is only the presentation artifact consumed by the outer
         // Launcher. It has no embedded Kernel/Python resources of its own, so
@@ -5714,50 +5720,119 @@ fn stage_pack_shell(repo_root: &Path, staged_root: &Path) -> io::Result<()> {
         return Ok(());
     };
     let target = required_cargo_target()?;
-    let (payload, permissions) = read_verified_pack_shell(&pack_shell, &target)?;
-    verify_prebuilt_pack_shell_digest(&pack_shell, &payload)?;
-    let bundled_dir = staged_root.join("bundled");
-    if bundled_dir.exists() {
-        require_directory(&bundled_dir, "pack-shell staging directory")?;
+    #[cfg(windows)]
+    {
+        return stage_windows_compiled_pack_shell(&pack_shell, staged_root, &target);
     }
-    fs::create_dir_all(&bundled_dir)?;
-    let destination = bundled_dir.join(pack_shell_binary_name(&target));
-    if destination.exists() || fs::symlink_metadata(&destination).is_ok() {
-        require_regular_file(&destination, "pack-shell staging destination")?;
+    #[cfg(not(windows))]
+    {
+        let (payload, permissions) = read_verified_pack_shell(&pack_shell, &target)?;
+        verify_prebuilt_pack_shell_digest(&pack_shell, &payload)?;
+        let bundled_dir = staged_root.join("bundled");
+        if bundled_dir.exists() {
+            require_directory(&bundled_dir, "pack-shell staging directory")?;
+        }
+        fs::create_dir_all(&bundled_dir)?;
+        let destination = bundled_dir.join(pack_shell_binary_name(&target));
+        if destination.exists() || fs::symlink_metadata(&destination).is_ok() {
+            require_regular_file(&destination, "pack-shell staging destination")?;
+        }
+        let temporary = bundled_dir.join(format!(
+            ".{}.{}.tmp",
+            pack_shell_binary_name(&target),
+            std::process::id()
+        ));
+        let mut temporary_file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)?;
+        let stage_result = (|| {
+            temporary_file.write_all(&payload)?;
+            temporary_file.sync_all()?;
+            fs::set_permissions(&temporary, permissions)?;
+            drop(temporary_file);
+            if destination.exists() {
+                fs::remove_file(&destination)?;
+            }
+            fs::rename(&temporary, &destination)?;
+            let staged = fs::read(&destination)?;
+            if Sha256::digest(&staged) != Sha256::digest(&payload) {
+                let _ = fs::remove_file(&destination);
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "staged pack-shell SHA256 mismatch: {}",
+                        destination.display()
+                    ),
+                ));
+            }
+            Ok(())
+        })();
+        let _ = fs::remove_file(&temporary);
+        stage_result?;
+        Ok(())
     }
-    let temporary = bundled_dir.join(format!(
-        ".{}.{}.tmp",
-        pack_shell_binary_name(&target),
-        std::process::id()
-    ));
-    let mut temporary_file = OpenOptions::new()
+}
+
+#[cfg(windows)]
+fn stage_windows_compiled_pack_shell(
+    source: &Path,
+    staged_root: &Path,
+    target: &str,
+) -> io::Result<()> {
+    use std::os::windows::fs::OpenOptionsExt;
+    let source_pin = windows_packaging_fs::open_compiled_source(source)?;
+    let source_id = windows_packaging_fs::compiled_source_identity(&source_pin.file)?;
+    let mut payload = Vec::new();
+    (&source_pin.file).read_to_end(&mut payload)?;
+    let actual = pack_shell_binary_architecture(&payload, target)?;
+    if actual != expected_pack_shell_architecture(target) {
+        return Err(invalid_release("pack-shell architecture mismatch"));
+    }
+    let mut digest_path = source.as_os_str().to_os_string();
+    digest_path.push(".sha256");
+    let digest_pin = windows_packaging_fs::open_pinned(Path::new(&digest_path), false)?;
+    let mut expected = Vec::new();
+    (&digest_pin.file).read_to_end(&mut expected)?;
+    if expected != format!("{:x}\n", Sha256::digest(&payload)).as_bytes() {
+        return Err(invalid_release(
+            "prebuilt pack-shell digest mismatch or non-canonical encoding",
+        ));
+    }
+    let sid = windows_packaging_fs::current_user_sid()?;
+    let bundled = staged_root.join("bundled");
+    let bundled_pin = match windows_packaging_fs::open_pinned(&bundled, true) {
+        Ok(pin) => pin,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            windows_packaging_fs::create_private_directory_pinned(&bundled, &sid)?
+        }
+        Err(error) => return Err(error),
+    };
+    windows_packaging_fs::verify_acl(&bundled_pin.file, &sid, false, false)?;
+    let destination = bundled.join(pack_shell_binary_name(target));
+    // CREATE_NEW guarantees this build owns the inode. No Cargo alias or old
+    // staged entry is removed. Readback uses this same exclusive handle.
+    let mut output = OpenOptions::new()
+        .read(true)
         .write(true)
         .create_new(true)
-        .open(&temporary)?;
-    let stage_result = (|| {
-        temporary_file.write_all(&payload)?;
-        temporary_file.sync_all()?;
-        fs::set_permissions(&temporary, permissions)?;
-        drop(temporary_file);
-        if destination.exists() {
-            fs::remove_file(&destination)?;
-        }
-        fs::rename(&temporary, &destination)?;
-        let staged = fs::read(&destination)?;
-        if Sha256::digest(&staged) != Sha256::digest(&payload) {
-            let _ = fs::remove_file(&destination);
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "staged pack-shell SHA256 mismatch: {}",
-                    destination.display()
-                ),
-            ));
-        }
-        Ok(())
-    })();
-    let _ = fs::remove_file(&temporary);
-    stage_result?;
+        .share_mode(0)
+        .open(&destination)?;
+    let output_id = windows_packaging_fs::identity(&output)?;
+    windows_packaging_fs::verify_acl(&output, &sid, false, false)?;
+    output.write_all(&payload)?;
+    output.sync_all()?;
+    std::io::Seek::rewind(&mut output)?;
+    let mut readback = Vec::new();
+    output.read_to_end(&mut readback)?;
+    if Sha256::digest(&readback) != Sha256::digest(&payload)
+        || windows_packaging_fs::identity(&output)? != output_id
+        || windows_packaging_fs::compiled_source_identity(&source_pin.file)? != source_id
+    {
+        return Err(invalid_release(
+            "staged pack-shell readback or identity mismatch; residue retained",
+        ));
+    }
     Ok(())
 }
 
@@ -6081,11 +6156,11 @@ fn same_file_identity(before: &fs::Metadata, after: &fs::Metadata) -> bool {
 
 #[cfg(windows)]
 fn read_verified_pack_shell(path: &Path, target: &str) -> io::Result<(Vec<u8>, fs::Permissions)> {
-    let pinned = windows_packaging_fs::open_pinned(path, false)?;
-    let before = windows_packaging_fs::identity(&pinned.file)?;
+    let pinned = windows_packaging_fs::open_compiled_source(path)?;
+    let before = windows_packaging_fs::compiled_source_identity(&pinned.file)?;
     let mut payload = Vec::new();
     (&pinned.file).read_to_end(&mut payload)?;
-    if windows_packaging_fs::identity(&pinned.file)? != before {
+    if windows_packaging_fs::compiled_source_identity(&pinned.file)? != before {
         return Err(invalid_release("pack-shell identity changed"));
     }
     let actual = pack_shell_binary_architecture(&payload, target)?;
@@ -8219,6 +8294,90 @@ mod tests {
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn windows_compiled_pack_shell_accepts_cargo_hardlinks_and_stages_single_link() {
+        let tree = TestTree::new("cargo-links");
+        let target = "x86_64-pc-windows-msvc";
+        let source = write_pack_shell_fixture(&tree.path().join("target"), target, "debug");
+        let mut digest = source.as_os_str().to_os_string();
+        digest.push(".sha256");
+        fs::write(
+            Path::new(&digest),
+            format!("{:x}\n", Sha256::digest(fs::read(&source).unwrap())),
+        )
+        .unwrap();
+        let deps = source.parent().unwrap().join("deps");
+        fs::create_dir(&deps).unwrap();
+        let alias = deps.join("pack_shell.exe");
+        fs::hard_link(&source, &alias).unwrap();
+        assert!(windows_packaging_fs::open_pinned(&source, false).is_err());
+        let pin = windows_packaging_fs::open_compiled_source(&source).unwrap();
+        assert!(OpenOptions::new().write(true).open(&alias).is_err());
+        assert!(fs::remove_file(&alias).is_err());
+        let staged = tree.path().join("stage");
+        let guard = windows_packaging_fs::create_private_directory_pinned(
+            &staged,
+            &windows_packaging_fs::current_user_sid().unwrap(),
+        )
+        .unwrap();
+        stage_windows_compiled_pack_shell(&source, &staged, target).unwrap();
+        let output = staged.join("bundled/pack-shell.exe");
+        let output_pin = windows_packaging_fs::open_pinned(&output, false).unwrap();
+        assert_ne!(
+            windows_packaging_fs::identity(&output_pin.file).unwrap(),
+            windows_packaging_fs::compiled_source_identity(&pin.file).unwrap()
+        );
+        assert_eq!(fs::read(&output).unwrap(), fs::read(&source).unwrap());
+        assert!(alias.exists());
+        drop(output_pin);
+        drop(pin);
+        drop(guard);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_compiled_pack_shell_rejects_digest_and_architecture_mismatch() {
+        let tree = TestTree::new("cargo-bad-digest");
+        let target = "x86_64-pc-windows-msvc";
+        let source = write_pack_shell_fixture(&tree.path().join("target"), target, "debug");
+        fs::hard_link(&source, source.parent().unwrap().join("alias.exe")).unwrap();
+        let staged = tree.path().join("stage");
+        let guard = windows_packaging_fs::create_private_directory_pinned(
+            &staged,
+            &windows_packaging_fs::current_user_sid().unwrap(),
+        )
+        .unwrap();
+        assert!(
+            stage_windows_compiled_pack_shell(&source, &staged, "aarch64-pc-windows-msvc").is_err()
+        );
+        let mut digest = source.as_os_str().to_os_string();
+        digest.push(".sha256");
+        fs::write(Path::new(&digest), format!("{}\n", "0".repeat(64))).unwrap();
+        assert!(stage_windows_compiled_pack_shell(&source, &staged, target).is_err());
+        assert!(!staged.join("bundled/pack-shell.exe").exists());
+        drop(guard);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_compiled_pack_shell_rejects_junction_ancestor() {
+        let tree = TestTree::new("cargo-junction");
+        let target = "x86_64-pc-windows-msvc";
+        let source = write_pack_shell_fixture(&tree.path().join("target"), target, "debug");
+        let link = tree.path().join("junction");
+        let status =
+            std::process::Command::new(std::env::var_os("COMSPEC").expect("Windows COMSPEC"))
+                .args(["/d", "/c", "mklink", "/J"])
+                .arg(&link)
+                .arg(source.parent().unwrap())
+                .status()
+                .unwrap();
+        assert!(status.success(), "native junction fixture must be created");
+        assert!(windows_packaging_fs::open_compiled_source(&link.join("pack-shell.exe")).is_err());
+        fs::remove_dir(&link).unwrap();
+    }
+
     #[test]
     fn pack_shell_header_rejects_wrong_architecture_and_accepts_cross_target_names() {
         let tree = TestTree::new("pack-shell-header");
@@ -9758,14 +9917,17 @@ fn stage_core_defaults_bundle(
 
 #[cfg(windows)]
 fn reset_staged_runtime_windows(path: &Path) -> io::Result<StagedRuntimeGuard> {
-    let parent = path.parent().ok_or_else(|| invalid_release("staged runtime has no parent"))?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| invalid_release("staged runtime has no parent"))?;
     let sid = windows_packaging_fs::current_user_sid()?;
     // Existing generated parents are namespace anchors, not trusted content.
     // Atomic creation pins a protected child even under an ambient broad DACL.
     let parent_pin = match windows_packaging_fs::open_pinned(parent, true) {
         Ok(pin) => pin,
-        Err(error) if error.kind() == io::ErrorKind::NotFound =>
-            windows_packaging_fs::create_private_directory_pinned(parent, &sid)?,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            windows_packaging_fs::create_private_directory_pinned(parent, &sid)?
+        }
         Err(error) => return Err(error),
     };
     match windows_packaging_fs::open_pinned(path, true) {
@@ -9776,10 +9938,14 @@ fn reset_staged_runtime_windows(path: &Path) -> io::Result<StagedRuntimeGuard> {
                 // entire namespace without traversing it or adopting its ACL.
                 let mut nonce = [0u8; 16];
                 rand::rngs::OsRng.fill_bytes(&mut nonce);
-                let retained = parent.join(format!(".tobkiri-retained-stage-{}", hex_bytes(&nonce)));
+                let retained =
+                    parent.join(format!(".tobkiri-retained-stage-{}", hex_bytes(&nonce)));
                 drop(root);
                 windows_packaging_fs::preserve_directory_by_identity(path, &retained, root_id)?;
-                println!("cargo:warning=preserved legacy generated stage at {}", retained.display());
+                println!(
+                    "cargo:warning=preserved legacy generated stage at {}",
+                    retained.display()
+                );
             } else {
                 let inventory = windows_packaging_fs::inventory(path)?;
                 if inventory.len() > 1 {
@@ -9834,14 +10000,27 @@ mod windows_transaction_tests {
         windows_packaging_fs::verify_acl(&guard.file, &sid, false, true).unwrap();
         assert!(fs::read_dir(&path).unwrap().next().is_none());
         assert!(fs::rename(&path, parent.join("stolen")).is_err());
-        let retained = fs::read_dir(parent.join("gen")).unwrap()
+        let retained = fs::read_dir(parent.join("gen"))
+            .unwrap()
             .map(|entry| entry.unwrap().path())
-            .find(|entry| entry.file_name().unwrap().to_string_lossy().starts_with(".tobkiri-retained-stage-"))
+            .find(|entry| {
+                entry
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with(".tobkiri-retained-stage-")
+            })
             .expect("legacy tree must be retained");
-        assert_eq!(fs::read(retained.join("user-sentinel")).unwrap(), b"preserve unchanged");
+        assert_eq!(
+            fs::read(retained.join("user-sentinel")).unwrap(),
+            b"preserve unchanged"
+        );
         drop(guard);
         drop(reset_staged_runtime(&path).unwrap());
-        assert_eq!(fs::read(retained.join("user-sentinel")).unwrap(), b"preserve unchanged");
+        assert_eq!(
+            fs::read(retained.join("user-sentinel")).unwrap(),
+            b"preserve unchanged"
+        );
         remove(&parent);
     }
     #[test]

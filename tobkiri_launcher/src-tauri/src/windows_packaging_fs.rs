@@ -381,13 +381,17 @@ pub struct Identity {
 }
 
 pub fn identity(file: &File) -> io::Result<Identity> {
+    identity_with_link_policy(file, false)
+}
+
+fn identity_with_link_policy(file: &File, compiled_source: bool) -> io::Result<Identity> {
     let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { zeroed() };
     if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
         return Err(io::Error::last_os_error());
     }
     let directory = info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY != 0;
     if info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0
-        || (!directory && info.nNumberOfLinks != 1)
+        || (!directory && !compiled_source && info.nNumberOfLinks != 1)
     {
         invalid!("packaging object is a reparse point or hardlinked file");
     }
@@ -445,6 +449,40 @@ pub fn open_pinned(path: &Path, directory: bool) -> io::Result<PinnedPath> {
         path: path.to_owned(),
         _ancestors: held,
     })
+}
+
+/// Pin a Cargo-produced input, whose final and deps names may be hardlinks.
+/// This is only for verified compiled source reads, never snapshot ownership or
+/// cleanup. Sharing denies writes/deletion through every alias of this file.
+pub(crate) fn open_compiled_source(path: &Path) -> io::Result<PinnedPath> {
+    validate_absolute(path)?;
+    let parent = open_pinned(
+        path.parent().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidInput, "compiled source has no parent")
+        })?,
+        true,
+    )?;
+    let file = OpenOptions::new()
+        .access_mode(FILE_GENERIC_READ)
+        .share_mode(FILE_SHARE_READ)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)?;
+    if compiled_source_identity(&file)?.directory {
+        invalid!("compiled source must be a regular file");
+    }
+    let mut ancestors = parent._ancestors;
+    ancestors.push(parent.file);
+    Ok(PinnedPath {
+        file,
+        path: path.to_owned(),
+        _ancestors: ancestors,
+    })
+}
+
+/// Identity for a held compiled-source handle only. All ordinary callers must
+/// use identity(), which also rejects hardlinks.
+pub(crate) fn compiled_source_identity(file: &File) -> io::Result<Identity> {
+    identity_with_link_policy(file, true)
 }
 
 fn validate_absolute(path: &Path) -> io::Result<()> {
