@@ -52,11 +52,14 @@ def build(tmp_path, inputs, dependencies=()):
     )
 
 
-def test_windows_bundle_contains_complete_verified_dll_inventory(tmp_path, inputs):
+@pytest.mark.parametrize("dll_name", ["runtime.dll", "libstdc++-6.dll"])
+def test_windows_bundle_contains_complete_verified_dll_inventory(
+    tmp_path, inputs, dll_name
+):
     qemu, _ = inputs["qemu"]
-    qemu.write_bytes(pe("runtime.dll"))
+    qemu.write_bytes(pe(dll_name))
     inputs["qemu"] = (qemu, digest(qemu.read_bytes()))
-    dll = tmp_path / "runtime.dll"
+    dll = tmp_path / dll_name
     dll.write_bytes(pe("KERNEL32.dll"))
     path = build(tmp_path, inputs, ((dll.name, dll, digest(dll.read_bytes())),))
     manifest = json.loads(path.read_bytes())
@@ -64,7 +67,7 @@ def test_windows_bundle_contains_complete_verified_dll_inventory(tmp_path, input
     assert manifest["files"]["qemu"]["path"] == "bin/qemu-system-x86_64.exe"
     assert manifest["qemu_dependencies"] == [
         {
-            "path": "bin/runtime.dll",
+            "path": f"bin/{dll_name}",
             "sha256": digest(dll.read_bytes()),
             "size_bytes": dll.stat().st_size,
         }
@@ -80,11 +83,34 @@ def test_windows_bundle_rejects_unbundled_import(tmp_path, inputs):
     assert not (tmp_path / "windows-bundle").exists()
 
 
+@pytest.mark.parametrize(
+    "import_name",
+    ["../libstdc++-6.dll", "a/libstdc++-6.dll", "a\\libstdc++-6.dll", "C:libstdc++-6.dll"],
+)
+def test_windows_bundle_rejects_paths_in_pe_import_names(tmp_path, inputs, import_name):
+    qemu, _ = inputs["qemu"]
+    qemu.write_bytes(pe(import_name))
+    inputs["qemu"] = (qemu, digest(qemu.read_bytes()))
+    with pytest.raises(ValueError, match="DLL name contains a path"):
+        build(tmp_path, inputs)
+    assert not (tmp_path / "windows-bundle").exists()
+
+
 def test_windows_bundle_rejects_dependency_digest_mismatch(tmp_path, inputs):
     dll = tmp_path / "runtime.dll"
     dll.write_bytes(pe())
     with pytest.raises(ValueError, match="digest mismatch"):
         build(tmp_path, inputs, ((dll.name, dll, "sha256:" + "0" * 64),))
+
+
+@pytest.mark.parametrize("dll_name", ["dwrite.dll", "gdiplus.dll", "mswsock.dll", "ncrypt.dll"])
+def test_windows_bundle_accepts_documented_windows_system_imports(
+    tmp_path, inputs, dll_name
+):
+    qemu, _ = inputs["qemu"]
+    qemu.write_bytes(pe(dll_name))
+    inputs["qemu"] = (qemu, digest(qemu.read_bytes()))
+    assert json.loads(build(tmp_path, inputs).read_bytes())["qemu_dependencies"] == []
 
 
 @pytest.mark.parametrize(

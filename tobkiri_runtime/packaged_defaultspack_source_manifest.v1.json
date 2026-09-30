@@ -3267,6 +3267,13 @@
       "executable": false
     },
     {
+      "path": "scripts/build_pinned_windows_packvm_bundle.py",
+      "type": "regular-file",
+      "size": 3766,
+      "sha256": "6fcba27ce037d84bd0899c5809aed268e72b7c8cc9d5762174f3d31bb635a079",
+      "executable": false
+    },
+    {
       "path": "scripts/build_windows_packvm_bundle.py",
       "type": "regular-file",
       "size": 561,

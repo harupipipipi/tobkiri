@@ -184,14 +184,18 @@ _SYSTEM_DLLS = frozenset(
         "dnsapi.dll",
         "dsound.dll",
         "dwmapi.dll",
+        "dwrite.dll",
         "dxgi.dll",
         "gdi32.dll",
+        "gdiplus.dll",
         "hid.dll",
         "imm32.dll",
         "iphlpapi.dll",
         "kernel32.dll",
         "msimg32.dll",
         "msvcrt.dll",
+        "mswsock.dll",
+        "ncrypt.dll",
         "netapi32.dll",
         "normaliz.dll",
         "ntdll.dll",
@@ -308,7 +312,9 @@ def _pe_imports(path: Path) -> set[str]:
                 name = content.decode("ascii").casefold()
             except UnicodeError as exc:
                 raise ValueError("Windows PackVM DLL name is not ASCII") from exc
-            if not name or any(c not in "abcdefghijklmnopqrstuvwxyz0123456789-_." for c in name):
+            if not name or any(
+                c not in "abcdefghijklmnopqrstuvwxyz0123456789-_.+" for c in name
+            ):
                 raise ValueError("Windows PackVM DLL name contains a path")
             return name
 
