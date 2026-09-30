@@ -248,8 +248,12 @@ export function Dashboard() {
   }, [runtimeReady, profileTransitionPending]);
 
   useEffect(() => {
-    if (!profileTransitionPending) void refreshProfiles();
-  }, [profileTransitionPending]);
+    // The Host verifies the sealed catalog during startup. Starting another
+    // capture before that readiness fence competes with the cold read, and a
+    // failed request otherwise stays visible even after the Host recovers.
+    if (hostCatalogVerified && !profileTransitionPending) void refreshProfiles();
+    return () => { profileReadGeneration.current += 1; };
+  }, [hostCatalogVerified, profileTransitionPending]);
 
   useEffect(() => {
     if (desktopShellAvailable && runtimeReady && !packVmDoctor) {

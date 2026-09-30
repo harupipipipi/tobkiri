@@ -102,7 +102,16 @@ struct ExpectedFile {
     executable: bool,
 }
 
+#[cfg(windows)]
+#[path = "packaged_source_windows.rs"]
+mod windows;
+#[cfg(windows)]
+use windows::verify_and_snapshot_against_manifest_with_hook;
+#[cfg(windows)]
+pub use windows::VerifiedSourceSnapshot;
+
 /// A verified source tree. Its directory is removed when the value is dropped.
+#[cfg(not(windows))]
 #[derive(Debug)]
 pub struct VerifiedSourceSnapshot {
     owner: PathBuf,
@@ -123,6 +132,7 @@ pub struct VerifiedSourceSnapshot {
     cleanup_attempted: bool,
 }
 
+#[cfg(not(windows))]
 impl VerifiedSourceSnapshot {
     pub fn root(&self) -> &Path {
         &self.root
@@ -144,6 +154,7 @@ impl VerifiedSourceSnapshot {
     }
 }
 
+#[cfg(not(windows))]
 impl Drop for VerifiedSourceSnapshot {
     fn drop(&mut self) {
         if !self.cleanup_attempted {
@@ -152,6 +163,7 @@ impl Drop for VerifiedSourceSnapshot {
     }
 }
 
+#[cfg(not(windows))]
 impl VerifiedSourceSnapshot {
     pub fn verify_unchanged(&self) -> io::Result<()> {
         if identity(&self.root_handle.metadata()?) != self.root_identity
@@ -1722,7 +1734,7 @@ pub fn verify_and_snapshot_against_manifest(
     )
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 fn unsupported_nonunix_snapshot() -> io::Error {
     io::Error::new(
         io::ErrorKind::Unsupported,
@@ -1730,7 +1742,7 @@ fn unsupported_nonunix_snapshot() -> io::Error {
     )
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 fn verify_and_snapshot_against_manifest_with_hook(
     _runtime_root: &Path,
     _snapshot_parent: &Path,
@@ -1911,9 +1923,9 @@ mod tests {
         }
     }
 
-    struct Tree(PathBuf);
+    pub(super) struct Tree(pub(super) PathBuf);
     impl Tree {
-        fn new(label: &str) -> Self {
+        pub(super) fn new(label: &str) -> Self {
             let root = std::env::temp_dir().join(format!(
                 "tobkiri-source-{label}-{}-{}",
                 std::process::id(),
@@ -1932,7 +1944,7 @@ mod tests {
         }
     }
 
-    fn fixture(tree: &Tree) -> PathBuf {
+    pub(super) fn fixture(tree: &Tree) -> PathBuf {
         let root = tree.0.join("runtime");
         if root.exists() {
             fs::remove_dir_all(&root).unwrap();
@@ -2100,6 +2112,10 @@ mod tests {
     fn manifest_type_size_digest_and_executable_are_strict() {
         let tree = Tree::new("manifest-metadata");
         for field in ["type", "size", "sha256", "executable"] {
+            #[cfg(windows)]
+            if field == "executable" {
+                continue;
+            }
             let root = fixture(&tree);
             mutate_first_manifest_entry(&root, |entry| match field {
                 "type" => entry["type"] = Value::String("device".to_owned()),
@@ -2204,6 +2220,7 @@ mod tests {
                 .starts_with("packaged-source-snapshot-")));
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn root_swap_fails_closed() {
         let tree = Tree::new("root-swap");
@@ -2303,6 +2320,7 @@ mod tests {
         assert!(!owner.exists());
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn cleanup_refuses_root_swap_and_preserves_replacement() {
         let tree = Tree::new("cleanup-root-swap");
@@ -2327,7 +2345,7 @@ mod tests {
         );
     }
 
-    #[cfg(not(unix))]
+    #[cfg(not(any(unix, windows)))]
     #[test]
     fn nonunix_snapshot_creation_is_fail_closed_before_path_mutation() {
         let tree = Tree::new("nonunix-disabled");
@@ -2340,5 +2358,37 @@ mod tests {
         .unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::Unsupported);
         assert!(!snapshot_parent.exists());
+    }
+    #[cfg(windows)]
+    #[test]
+    fn windows_source_snapshot_seals_and_cleans_after_provenance() {
+        let tree = Tree::new("windows-seal");
+        let root = fixture(&tree);
+        let mut snapshot = verify_and_snapshot(&root, &tree.0.join("snapshots")).unwrap();
+        let owner = snapshot.owner.clone();
+        assert!(fs::write(snapshot.root().join("scripts/fixture.py"), b"changed").is_err());
+        assert!(fs::rename(snapshot.root(), owner.join("moved")).is_err());
+        snapshot.bind_provenance(b"verified provenance").unwrap();
+        snapshot.verify_unchanged().unwrap();
+        snapshot.cleanup().unwrap();
+        assert!(!owner.exists());
+    }
+    #[cfg(windows)]
+    #[test]
+    fn windows_source_root_is_pinned_during_copy() {
+        let tree = Tree::new("windows-root-pin");
+        let root = fixture(&tree);
+        let manifest =
+            read_manifest(&root.join("packaged_defaultspack_source_manifest.v1.json")).unwrap();
+        let snapshot = verify_and_snapshot_against_manifest_with_hook(
+            &root,
+            &tree.0.join("snapshots"),
+            &manifest,
+            || {
+                assert!(fs::rename(&root, tree.0.join("moved")).is_err());
+            },
+        )
+        .unwrap();
+        snapshot.cleanup().unwrap();
     }
 }

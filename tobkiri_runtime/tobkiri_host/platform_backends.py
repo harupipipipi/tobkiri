@@ -695,6 +695,26 @@ class LinuxFirecrackerBackend(ProductionIsolationBackend):
         super().__init__(driver, artifact_resolver=artifact_resolver)
 
 
+class LinuxQemuBackend(ProductionIsolationBackend):
+    """Authenticated Linux QEMU/KVM PackVM backend, never TCG fallback."""
+
+    def __init__(
+        self,
+        driver: PlatformIsolationDriver,
+        *,
+        artifact_resolver: Callable[
+            [ResolvedOperationBinding], MaterializedPackArtifact
+        ] | None = None,
+    ) -> None:
+        if (
+            driver.backend_id != PYTHON_PACKVM_BACKEND
+            or driver.substrate_id != "linux-qemu"
+            or driver.platform != "linux-amd64"
+        ):
+            raise BackendUnavailableError("Linux QEMU driver identity mismatch")
+        super().__init__(driver, artifact_resolver=artifact_resolver)
+
+
 def build_platform_backend(
     *,
     platform_system: str | None = None,
@@ -708,7 +728,16 @@ def build_platform_backend(
     """Build exactly the documented backend for the selected Host platform."""
     system = platform_system or host_platform.system()
     architecture = _normalize_machine(machine or host_platform.machine())
+    supplied_drivers = tuple(drivers)
     spec = SUPPORTED_BACKENDS.get(system)
+    if system == "Linux" and any(
+        getattr(item, "substrate_id", None) == "linux-qemu"
+        for item in supplied_drivers
+    ):
+        if any(getattr(item, "substrate_id", None) == "linux-firecracker"
+               for item in supplied_drivers):
+            raise BackendUnavailableError("multiple Linux VM substrates registered")
+        spec = ("linux-qemu", "/dev/kvm")
     if spec is None:
         driver: PlatformIsolationDriver = UnavailablePlatformDriver(
             "unsupported-packvm", f"{system.lower()}-{architecture}", "unsupported Host platform"
@@ -718,7 +747,7 @@ def build_platform_backend(
     platform_id = f"{system.lower().replace('darwin', 'macos')}-{architecture}"
     candidates = [
         item
-        for item in drivers
+        for item in supplied_drivers
         if getattr(item, "backend_id", None) == PYTHON_PACKVM_BACKEND
         and getattr(item, "substrate_id", None) == substrate_id
         and getattr(item, "platform", None) == platform_id
@@ -730,6 +759,7 @@ def build_platform_backend(
             "macos-vz": MacOSVZBackend,
             "windows-whpx": WindowsWHPXBackend,
             "linux-firecracker": LinuxFirecrackerBackend,
+            "linux-qemu": LinuxQemuBackend,
         }[substrate_id]
         return backend_class(candidates[0], artifact_resolver=artifact_resolver)
     reason = (

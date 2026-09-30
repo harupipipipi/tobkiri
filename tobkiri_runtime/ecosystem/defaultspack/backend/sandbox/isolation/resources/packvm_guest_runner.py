@@ -21,6 +21,7 @@ import os
 from pathlib import Path, PurePosixPath
 import platform
 import re
+import select
 import signal
 import shutil
 import socket
@@ -80,6 +81,9 @@ MAX_CHILD_REQUEST_BYTES = 1024 * 1024
 PACKVM_GUEST_AGENT_PORT = 19001
 PACKVM_GUEST_AGENT_CONFIG = Path("/run/tobkiri-packvm/agent-config.json")
 PACKVM_GUEST_AGENT_KEY = Path("/run/tobkiri-packvm/agent-ed25519.pem")
+PACKVM_GUEST_AGENT_SERIAL_DEVICE = Path(
+    "/dev/virtio-ports/io.tobkiri.packvm.agent"
+)
 PACKVM_GUEST_AGENT_REQUEST_PROTOCOL = PROTOCOL
 PACKVM_GUEST_AGENT_RESPONSE_PROTOCOL = "io.tobkiri.macos-vz-supervisor.v1"
 PACKVM_GUEST_AGENT_RESPONSE_KIND = "tobkiri.packvm.guest.response.v1"
@@ -192,6 +196,16 @@ def main() -> int:
         except ValueError as exc:
             _emit_vsock_console_phase("vsock-startup-validation-rejected")
             print(f"PackVM vsock agent startup failed: {exc}", file=sys.stderr)
+            return 1
+
+    if sys.argv[1:] == ["--serve-virtio-serial"]:
+        try:
+            return _serve_virtio_serial_agent()
+        except (OSError, ValueError):
+            # Device loss is fatal: systemd restarts the root service, while
+            # bubblewrap's --die-with-parent tears down its sandbox children.
+            # Never put request bytes, key paths, or signing diagnostics here.
+            print("PackVM virtio-serial agent stopped.", file=sys.stderr)
             return 1
 
     try:
@@ -1270,6 +1284,221 @@ def _serve_vsock_agent() -> int:
         )
     finally:
         listener.close()
+
+
+def _serve_virtio_serial_agent() -> int:
+    """Serve the fixed QEMU character device with the existing signed protocol."""
+
+    if os.geteuid() != 0:
+        raise ValueError("PackVM guest agent requires the root-owned supervisor")
+    config = _load_vsock_agent_config(PACKVM_GUEST_AGENT_CONFIG)
+    _assert_root_only_regular_file(config.private_key_path, "PackVM guest agent key")
+    # /dev/virtio-ports contains kernel/udev-managed symlinks to /dev/vport*.
+    # Inspect the opened target, rather than forbidding those normal symlinks.
+    descriptor = os.open(
+        PACKVM_GUEST_AGENT_SERIAL_DEVICE,
+        os.O_RDWR | os.O_CLOEXEC | os.O_NONBLOCK,
+    )
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISCHR(metadata.st_mode)
+            or metadata.st_uid != 0
+            or stat.S_IMODE(metadata.st_mode) & 0o077
+        ):
+            raise ValueError("PackVM guest agent serial device is unsafe")
+        os.set_inheritable(descriptor, False)
+        return _serve_authenticated_serial_agent(
+            descriptor, config, _OpenSSLAgentSigner(config.private_key_path),
+        )
+    finally:
+        os.close(descriptor)
+
+
+class _SerialAgentStream:
+    """Bound a persistent duplex NDJSON stream without leaking its descriptor."""
+
+    def __init__(self, descriptor: int, stopped: threading.Event) -> None:
+        self.descriptor = descriptor
+        self.stopped = stopped
+        self.pending = bytearray()
+        self.write_lock = threading.Lock()
+        os.set_inheritable(descriptor, False)
+        os.set_blocking(descriptor, False)
+
+    def _wait(self, *, writing: bool, deadline: float | None) -> None:
+        while not self.stopped.is_set():
+            timeout = 0.1
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("PackVM serial agent I/O timed out")
+                timeout = min(timeout, remaining)
+            readable, writable, _ = select.select(
+                [] if writing else [self.descriptor],
+                [self.descriptor] if writing else [],
+                [],
+                timeout,
+            )
+            if (writable if writing else readable):
+                return
+        raise ConnectionError("PackVM serial agent stream closed")
+
+    def read_request(self) -> dict[str, object]:
+        """Read exactly one bounded canonical frame, preserving pipelined bytes."""
+
+        deadline = (
+            time.monotonic() + AGENT_IO_TIMEOUT_SECONDS if self.pending else None
+        )
+        while True:
+            newline = self.pending.find(b"\n")
+            if newline >= 0:
+                if newline + 1 > MAX_AGENT_REQUEST_BYTES:
+                    raise ValueError("PackVM serial agent request exceeds size limit")
+                encoded = bytes(self.pending[:newline])
+                del self.pending[:newline + 1]
+                try:
+                    value = json.loads(encoded)
+                    if not isinstance(value, dict) or not hmac.compare_digest(
+                        encoded, _bridge_canonical_json(value),
+                    ):
+                        raise ValueError("PackVM serial agent request is invalid")
+                except (ValueError, RecursionError) as exc:
+                    raise ValueError("PackVM serial agent request is invalid") from exc
+                return value
+            if len(self.pending) >= MAX_AGENT_REQUEST_BYTES:
+                raise ValueError("PackVM serial agent request exceeds size limit")
+            self._wait(writing=False, deadline=deadline)
+            try:
+                chunk = os.read(
+                    self.descriptor,
+                    min(64 * 1024, MAX_AGENT_REQUEST_BYTES - len(self.pending)),
+                )
+            except BlockingIOError:
+                continue
+            if not chunk:
+                raise ConnectionError("PackVM serial agent stream closed")
+            if deadline is None:
+                deadline = time.monotonic() + AGENT_IO_TIMEOUT_SECONDS
+            self.pending.extend(chunk)
+
+    def write_response(self, encoded: bytes) -> None:
+        """Serialize complete response frames with a finite write deadline."""
+
+        if len(encoded) > MAX_AGENT_RESPONSE_BYTES:
+            raise ValueError("PackVM guest agent response exceeds the size limit")
+        deadline = time.monotonic() + AGENT_IO_TIMEOUT_SECONDS
+        if not self.write_lock.acquire(timeout=AGENT_IO_TIMEOUT_SECONDS):
+            raise TimeoutError("PackVM serial agent response timed out")
+        try:
+            view = memoryview(encoded + b"\n")
+            while view:
+                self._wait(writing=True, deadline=deadline)
+                try:
+                    written = os.write(self.descriptor, view)
+                except BlockingIOError:
+                    continue
+                if written <= 0:
+                    raise ConnectionError("PackVM serial agent stream closed")
+                view = view[written:]
+        finally:
+            self.write_lock.release()
+
+
+def _serve_authenticated_serial_agent(
+    descriptor: int,
+    config: _VsockAgentConfig,
+    signer: _AgentSigner,
+    *,
+    max_requests: int | None = None,
+    max_active_requests: int = MAX_ACTIVE_AGENT_REQUESTS,
+) -> int:
+    """Multiplex exact signed envelopes using their fresh guest challenges.
+
+    One worker slot is reserved for cancellation so a full set of invocations
+    cannot prevent a cancel from arriving on the same serial stream. Responses
+    may be out of order; the Host must correlate the signed guest_challenge,
+    never just request_id. Framing, signing, or write failure retires the whole
+    stream. Only the production wrapper opens the root-only character device.
+    """
+
+    if max_requests is not None and (
+        type(max_requests) is not int or max_requests < 0
+    ):
+        raise ValueError("PackVM guest agent request limit is invalid")
+    if (
+        type(max_active_requests) is not int
+        or not 2 <= max_active_requests <= MAX_ACTIVE_AGENT_REQUESTS
+    ):
+        raise ValueError("PackVM guest agent active request limit is invalid")
+    stopped = threading.Event()
+    stream = _SerialAgentStream(descriptor, stopped)
+    ledger = _PendingBridgeLedger()
+    state = threading.Condition()
+    active = {"cancel": 0, "other": 0}
+    failure: list[Exception] = []
+
+    def respond(response: dict[str, object]) -> None:
+        signed = _sign_agent_response(response, signer)
+        stream.write_response(_bridge_canonical_json(signed))
+
+    def serve_request(request: dict[str, object], lane: str) -> None:
+        try:
+            try:
+                response = _dispatch_agent_request(request, config, ledger)
+            except (OSError, ValueError, RecursionError) as exc:
+                response = _safe_agent_error_response(request, exc)
+            respond(response)
+        except Exception as exc:
+            with state:
+                if not failure:
+                    failure.append(exc)
+                stopped.set()
+        finally:
+            with state:
+                active[lane] -= 1
+                state.notify_all()
+
+    served = 0
+    try:
+        while max_requests is None or served < max_requests:
+            request = stream.read_request()
+            lane = "cancel" if request.get("operation") == "cancel" else "other"
+            limit = 1 if lane == "cancel" else max_active_requests - 1
+            with state:
+                admitted = not stopped.is_set() and active[lane] < limit
+                if admitted:
+                    active[lane] += 1
+            if stopped.is_set():
+                raise ConnectionError("PackVM serial agent stream closed")
+            if not admitted:
+                # No queue of unbounded requests, and no dispatch on rejection.
+                respond(_safe_agent_error_response(
+                    request, ValueError("PackVM guest agent is busy"),
+                ))
+            else:
+                worker = threading.Thread(
+                    target=serve_request, args=(request, lane), daemon=True,
+                )
+                try:
+                    worker.start()
+                except Exception:
+                    with state:
+                        active[lane] -= 1
+                    raise
+            served += 1
+        with state:
+            state.wait_for(lambda: stopped.is_set() or not any(active.values()))
+            if failure:
+                raise ValueError("PackVM serial agent response failed") from failure[0]
+        return 0
+    finally:
+        stopped.set()
+        # The caller owns descriptor closure. Fence any in-flight os.write
+        # before it can close/reuse that descriptor; later writers observe
+        # stopped before doing I/O even if an invocation is still unwinding.
+        with stream.write_lock:
+            pass
 
 
 def _emit_vsock_console_phase(code: str) -> None:

@@ -18,14 +18,16 @@ test('an unknown or healthy doctor does not suppress Host launch preparation', (
   assert.equal(packVmLaunchBlockedReason(null), null);
 });
 
-test('Windows without a PackVM backend points to tracked support work', () => {
-  assert.match(packVmLaunchBlockedReason({
+test('Windows without a PackVM backend requires the bundled runtime, not Docker', () => {
+  const reason = packVmLaunchBlockedReason({
     ...doctor,
     ready: false,
     platform: 'windows-amd64',
     reason: 'This build can provision PackVM only on macOS on Apple Silicon.',
     attestation_digest: null,
-  }) ?? '', /WHPX.*Docker.*#1494/);
+  }) ?? '';
+  assert.match(reason, /bundled QEMU\/WHPX.*#1494/);
+  assert.doesNotMatch(reason, /Docker/);
 });
 
 test('recoverable macOS provisioning remains available through Launch', () => {
@@ -37,10 +39,11 @@ test('recoverable macOS provisioning remains available through Launch', () => {
   }), null);
 });
 
-test('a future recoverable Windows backend is not classified as unsupported', () => {
+test('a recoverable Windows WHPX backend is not classified as unsupported', () => {
   assert.equal(packVmLaunchBlockedReason({
     ...doctor,
     ready: false,
+    backend_id: 'windows-whpx',
     platform: 'windows-amd64',
     reason: 'PackVM has not completed explicit provisioning',
     attestation_digest: null,

@@ -8,13 +8,12 @@ consumers can only read the binding installed during sealed role preparation.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
 import re
 import threading
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
 from types import MappingProxyType
-from typing import Mapping
-
 
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _TEAM_ID = re.compile(r"^[A-Z0-9]{10}$")
@@ -24,8 +23,9 @@ _BINDING_KEYS = (
     "helper_manifest_sha256",
     "helper_team_id",
 )
+_PORTABLE_BINDING_KEYS = ("root", "provisioning_sha256", "platform")
 _BINDING_LOCK = threading.RLock()
-_PACKVM_BUNDLE_BINDING: PackagedApplicationBundleBinding | None = None
+_PACKVM_BUNDLE_BINDING: PackagedApplicationBundleBinding | PortablePackVMBundleBinding | None = None
 _PACKVM_BUNDLE_BINDING_INITIALIZED = False
 
 
@@ -43,10 +43,19 @@ class PackagedApplicationBundleBinding:
     helper_team_id: str
 
 
+@dataclass(frozen=True)
+class PortablePackVMBundleBinding:
+    """Build-bound QEMU assets issued only through the sealed role scope."""
+
+    root: Path
+    provisioning_sha256: str
+    platform: str
+
+
 def install_packvm_bundle_binding_from_sealed_scope(
     scope: object,
     module_file: str | Path,
-) -> PackagedApplicationBundleBinding | None:
+) -> PackagedApplicationBundleBinding | PortablePackVMBundleBinding | None:
     """Install exactly one PackVM bundle binding issued by sealed bootstrap.
 
     The opaque dispatch scope must validate the exact module target before it
@@ -93,7 +102,9 @@ def install_packvm_bundle_binding_from_sealed_scope(
         return existing
 
 
-def packvm_bundle_binding() -> PackagedApplicationBundleBinding | None:
+def packvm_bundle_binding() -> (
+    PackagedApplicationBundleBinding | PortablePackVMBundleBinding | None
+):
     """Return the sealed one-shot PackVM bundle identity, if this is a sealed run."""
 
     with _BINDING_LOCK:
@@ -102,13 +113,15 @@ def packvm_bundle_binding() -> PackagedApplicationBundleBinding | None:
 
 def _validated_binding(
     raw_binding: object,
-) -> PackagedApplicationBundleBinding | None:
+) -> PackagedApplicationBundleBinding | PortablePackVMBundleBinding | None:
     """Decode only the bootstrap's immutable exact PackVM binding mapping."""
 
     if raw_binding is None:
         return None
     if not isinstance(raw_binding, MappingProxyType):
         raise PackagedApplicationBundleBindingError("sealed PackVM bundle binding is not immutable")
+    if tuple(raw_binding) == _PORTABLE_BINDING_KEYS:
+        return _validated_portable_binding(raw_binding)
     if tuple(raw_binding) != _BINDING_KEYS:
         raise PackagedApplicationBundleBindingError("sealed PackVM bundle binding shape is invalid")
     values: Mapping[str, object] = raw_binding
@@ -154,9 +167,40 @@ def _validated_binding(
     )
 
 
+def _validated_portable_binding(values: Mapping[str, object]) -> PortablePackVMBundleBinding:
+    root_value = values["root"]
+    digest = values["provisioning_sha256"]
+    platform = values["platform"]
+    if (
+        not isinstance(root_value, str)
+        or not isinstance(digest, str)
+        or _DIGEST.fullmatch(digest) is None
+        or platform not in {"linux", "windows"}
+    ):
+        raise PackagedApplicationBundleBindingError("sealed portable PackVM identity is invalid")
+    root = Path(root_value)
+    try:
+        if (
+            not root.is_absolute()
+            or root != root.resolve(strict=True)
+            or root.is_symlink()
+            or not root.is_dir()
+            or root.name != "packvm-qemu"
+        ):
+            raise PackagedApplicationBundleBindingError("sealed portable PackVM root is invalid")
+    except (OSError, RuntimeError) as exc:
+        raise PackagedApplicationBundleBindingError(
+            "sealed portable PackVM root is unavailable"
+        ) from exc
+    return PortablePackVMBundleBinding(
+        root=root, provisioning_sha256=digest, platform=str(platform)
+    )
+
+
 __all__ = [
     "PackagedApplicationBundleBinding",
     "PackagedApplicationBundleBindingError",
+    "PortablePackVMBundleBinding",
     "install_packvm_bundle_binding_from_sealed_scope",
     "packvm_bundle_binding",
 ]

@@ -194,6 +194,52 @@ ordinary user-owned snapshots cannot provide that guarantee.
 Windows/Linux installer and release publication is intentionally disabled until
 their platform signing and native runtime validation are explicitly re-enabled.
 
+### Windows runtime execution boundary
+
+`sealed_python_windows.rs` implements the Windows runtime side independently
+of the remaining installer/build-time portability work. It is not evidence
+that a native Windows installer has been released or smoke-tested.
+
+* Release builds require `TOBKIRI_WINDOWS_SIGNER_CERT_SHA256`, the lowercase
+  SHA-256 of the actual Authenticode leaf certificate's DER bytes. It is
+  compiled into Launcher; an end-user environment variable cannot replace it.
+* Launcher opens its own installed executable without write/delete sharing,
+  verifies Authenticode with Windows `WinVerifyTrust`, checks the exact signer
+  certificate, and requires runtime resources beside that executable. The
+  already compiled Python and outer resource manifest hashes bind payloads to
+  that authenticated caller. Unsigned or differently signed callers fail closed.
+* Verification is offline and uses installed Windows trust. It does not claim
+  fresh online certificate revocation status and never downloads a runtime.
+* Snapshot roots and descendants use explicit protected ACLs owned by the
+  current user. After copying and hashing, the user has read/execute access;
+  SYSTEM and Administrators retain administrative control. Every component is
+  opened without following reparse points; all ancestor directories and all
+  snapshot files are held without write/delete sharing for the child's life.
+  Hardlinks, alternate data streams, reserved DOS names, case aliases, and
+  extra/missing inventory are rejected.
+* Cleanup waits for confirmed child exit. Abandoned live-child snapshots stay
+  protected rather than being deleted. Windows stale-snapshot reclamation is
+  not yet implemented.
+* The parent and bootstrap use real shared `LockFileEx` byte-zero leases.
+  `msvcrt.LK_RLCK` is deliberately not used: Windows treats it as an exclusive
+  lock, which cannot coexist with the parent's shared lease. An exclusive
+  probe proves that the child holds a lock, not merely an open file handle.
+
+The Windows Rust tests cover ACL sealing, write/replacement refusal, hardlinks,
+unsigned caller rejection, and genuine child-lease proof. Their bodies compile
+for `x86_64-pc-windows-gnu` in the cloud source harness; executing those tests and
+all three packaged Python roles still requires native Windows. Run the focused
+Python lease tests with:
+
+```bash
+python -m pytest .github/scripts/tests/test_windows_sealed_lease.py -q
+```
+
+The native shared-lock interoperability test is skipped on other platforms.
+A release must use the real signing certificate supplied by the release
+pipeline; this implementation creates no signing credentials or unsigned
+production exception.
+
 The packaging lane owns the generator, resource assembly, and Python boundary;
 the core Rust `sealed_python.rs` implementation remains the owner of launcher
 binding/launch validation. Integration must keep the two implementations

@@ -340,7 +340,7 @@ def _require_http_provider_selection(
 def defaultspack_packvm_backend_factory(
     provisioner: object,
 ) -> Callable[[], ExecutionBackend | None]:
-    """Build a production VZ backend only from Defaultspack's exact facts."""
+    """Build a native VM backend only from exact authenticated platform facts."""
 
     from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner import (
         MacOSVZProvisionedFacts,
@@ -352,6 +352,23 @@ def defaultspack_packvm_backend_factory(
         registration = getattr(provisioner, "production_backend_registration", None)
         facts = registration() if callable(registration) else None
         if not isinstance(facts, MacOSVZProvisionedFacts):
+            # Linux imports POSIX-only primitives; load only the native family.
+            # Neither a mapping nor a user-supplied build_backend method is
+            # trusted: exact known fact classes gate this promotion boundary.
+            import platform
+
+            if platform.system() == "Linux":
+                from ecosystem.defaultspack.backend.sandbox.isolation.linux_qemu_provisioner import (
+                    LinuxQemuProvisionedFacts,
+                )
+                if type(facts) is LinuxQemuProvisionedFacts:
+                    return facts.build_backend()
+            elif platform.system() == "Windows":
+                from ecosystem.defaultspack.backend.sandbox.isolation.windows_whpx_provisioner import (
+                    WindowsWHPXProvisionedFacts,
+                )
+                if type(facts) is WindowsWHPXProvisionedFacts:
+                    return facts.build_backend()
             return None
         transport_factory = facts.transport_or_factory()
         if transport_factory is None:

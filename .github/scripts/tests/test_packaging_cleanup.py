@@ -103,6 +103,7 @@ class _FakeHandleRecord(TypedDict):
     file_index: int
     attributes: int
     share_mode: int
+    delete_access: bool
 
 
 class _FakeWindowsApi:
@@ -148,6 +149,7 @@ class _FakeWindowsApi:
         path: Path,
         *,
         directory: bool,
+        delete_access: bool = True,
         share_mode: int = cleanup._WINDOWS_HANDLE_SHARE_MODE,
     ) -> int:
         if path.name == "owned.bin" and self.open_failures:
@@ -165,6 +167,7 @@ class _FakeWindowsApi:
             "file_index": identity.file_index,
             "attributes": identity.file_attributes,
             "share_mode": share_mode,
+            "delete_access": delete_access,
         }
         return handle
 
@@ -192,6 +195,11 @@ class _FakeWindowsApi:
         _parent_path: Path,
         name: str,
     ) -> None:
+        assert self.handles[handle]["delete_access"]
+        # FileRenameInfo internally opens the destination parent without delete
+        # sharing, which conflicts with DELETE access on a held guard handle.
+        if self.handles[parent_handle]["delete_access"]:
+            raise _windows_error(32)
         target = Path(self.handles[handle]["path"])
         parent = Path(self.handles[parent_handle]["path"])
         quarantine = parent / name
@@ -200,6 +208,7 @@ class _FakeWindowsApi:
         self.handles[handle]["path"] = quarantine
 
     def mark_delete(self, handle: int) -> None:
+        assert self.handles[handle]["delete_access"]
         path = Path(self.handles[handle]["path"])
         if path.is_dir():
             path.rmdir()
@@ -509,30 +518,45 @@ def test_windows_rename_info_rejects_relative_parent() -> None:
         api.rename_same_parent(41, 42, Path("scope"), "name")
 
 
-def test_windows_directory_open_requests_traverse_and_read_attributes() -> None:
-    """Held parent directories request every right used by the trust walk."""
+@pytest.mark.parametrize("delete_access", [False, True])
+@pytest.mark.parametrize("directory", [False, True])
+def test_windows_open_separates_guard_and_mutation_access(
+    delete_access: bool, directory: bool
+) -> None:
+    """Only mutation handles request DELETE; every handle remains pinned."""
 
-    accesses: list[int] = []
+    calls: list[tuple[int, int, int]] = []
     api = cleanup._WindowsApi.__new__(cleanup._WindowsApi)
 
     def create_file(
         _path: str,
         access: int,
-        _share_mode: int,
+        share_mode: int,
         _security: object,
         _creation: int,
-        _flags: int,
+        flags: int,
         _template: object,
     ) -> int:
-        accesses.append(access)
+        calls.append((access, share_mode, flags))
         return 123
 
     api._create_file = create_file
-    assert api.open(Path("held-parent"), directory=True) == 123
-    assert len(accesses) == 1
-    assert accesses[0] & cleanup._WINDOWS_FILE_LIST_DIRECTORY
-    assert accesses[0] & cleanup._WINDOWS_FILE_TRAVERSE
-    assert accesses[0] & cleanup._WINDOWS_FILE_READ_ATTRIBUTES
+    assert api.open(
+        Path("held-object"), directory=directory, delete_access=delete_access
+    ) == 123
+    expected_access = cleanup._WINDOWS_FILE_READ_ATTRIBUTES
+    expected_flags = cleanup._WINDOWS_FILE_FLAG_OPEN_REPARSE_POINT
+    if directory:
+        expected_access |= (
+            cleanup._WINDOWS_FILE_LIST_DIRECTORY | cleanup._WINDOWS_FILE_TRAVERSE
+        )
+        expected_flags |= cleanup._WINDOWS_FILE_FLAG_BACKUP_SEMANTICS
+    if delete_access:
+        expected_access |= cleanup._WINDOWS_DELETE
+    assert calls == [
+        (expected_access, cleanup._WINDOWS_HANDLE_SHARE_MODE, expected_flags)
+    ]
+    assert not calls[0][1] & cleanup._WINDOWS_FILE_SHARE_DELETE
 
 
 def test_windows_path_probe_is_nofollow_identity_only_and_closes() -> None:
@@ -575,15 +599,22 @@ def test_windows_path_probe_is_nofollow_identity_only_and_closes() -> None:
 
 
 @pytest.mark.skipif(os.name != "nt", reason="requires native Windows handles")
+@pytest.mark.parametrize("directory", [False, True], ids=["file", "tree"])
 def test_windows_native_quarantine_rename_accepts_packager_output(
-    tmp_path: Path,
+    tmp_path: Path, directory: bool
 ) -> None:
     """Native SetFileInformationByHandle accepts the quarantine rename ABI."""
 
     scope = tmp_path / "scope"
-    scope.mkdir()
-    target = scope / "owned.bin"
-    target.write_bytes(b"owned")
+    parent = scope / "nested parent 日本語"
+    parent.mkdir(parents=True)
+    target = parent / "owned.bin"
+    if directory:
+        (target / "nested").mkdir(parents=True)
+        (target / "nested" / "child.bin").write_bytes(b"owned")
+        (target / "file.bin").write_bytes(b"owned")
+    else:
+        target.write_bytes(b"owned")
     setattr(cleanup, "_WINDOWS_API", None)
 
     cleanup.remove_owned_path(
@@ -593,7 +624,31 @@ def test_windows_native_quarantine_rename_accepts_packager_output(
     )
 
     assert not target.exists()
-    assert not list(scope.glob(".tobkiri-cleanup-*"))
+    assert not list(scope.rglob(".tobkiri-cleanup-*"))
+    assert parent.is_dir()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires native Windows handles")
+def test_windows_native_ancestor_guard_still_blocks_competing_rename(
+    tmp_path: Path,
+) -> None:
+    """Removing requested DELETE does not remove the guard's rename exclusion."""
+
+    parent = tmp_path / "held-parent"
+    parent.mkdir()
+    destination = tmp_path / "moved-parent"
+    api = cleanup._WindowsApi()
+    guard = api.open(parent, directory=True, delete_access=False)
+    try:
+        with pytest.raises(OSError) as raised:
+            parent.rename(destination)
+        assert raised.value.winerror == 32
+        assert parent.is_dir()
+        assert not destination.exists()
+    finally:
+        api.close(guard)
+    parent.rename(destination)
+    assert destination.is_dir()
 
 
 def test_windows_bound_chain_excludes_delete_sharing_and_blocks_move(
@@ -627,6 +682,11 @@ def test_windows_bound_chain_excludes_delete_sharing_and_blocks_move(
         assert binding.windows_state is not None
         assert len(binding.windows_state.ancestor_handles) == 2
         assert binding.windows_state.target_handle is not None
+        assert all(
+            not fake_api.handles[handle]["delete_access"]
+            for _, handle, _ in binding.windows_state.ancestor_handles
+        )
+        assert fake_api.handles[binding.windows_state.target_handle]["delete_access"]
 
         for source, name in (
             (scope, "scope-moved"),

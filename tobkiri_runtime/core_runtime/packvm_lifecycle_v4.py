@@ -448,14 +448,16 @@ class PackVMLifecycleV4:
         return self.readiness_snapshot
 
     def production_backend_registration(self) -> object | None:
-        """Expose authenticated direct-VZ facts to the bootstrap composition root.
+        """Expose authenticated facts to the application's typed composition root.
 
-        Explicit Lima injection is intentionally not adaptable here.  Only a
-        provisioner that independently verifies direct VZ state may offer a
-        registration, and a missing signed helper transport stays unavailable.
+        The concrete application still admits only its exact known platform
+        fact types. Legacy VZ registration remains compatible; arbitrary
+        provisioner mappings or status flags never authorize execution.
         """
 
-        candidate = getattr(self._provisioner, "prepare_direct_vz", None)
+        candidate = getattr(self._provisioner, "production_backend_registration", None)
+        if not callable(candidate):
+            candidate = getattr(self._provisioner, "prepare_direct_vz", None)
         if not callable(candidate):
             return None
         try:

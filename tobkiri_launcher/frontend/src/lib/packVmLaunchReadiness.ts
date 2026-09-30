@@ -12,7 +12,7 @@ export function packVmLaunchBlockedReason(
     && doctor.platform.startsWith('windows-')
     && /only on macos on apple silicon/i.test(doctor.reason ?? '')
   ) {
-    return 'This Windows build cannot provision PackVM. Windows WHPX and a temporary Docker path are tracked in issue #1494.';
+    return 'This Windows build cannot provision PackVM. It requires the bundled QEMU/WHPX runtime; see issue #1494.';
   }
   return null;
 }

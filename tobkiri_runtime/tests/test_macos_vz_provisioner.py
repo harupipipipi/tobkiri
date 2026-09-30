@@ -2174,25 +2174,31 @@ def test_lifecycle_ignores_ambient_limactl_and_reports_direct_vz_failure(
         lambda: None,
     )
 
+    if system == "Linux":
+        from ecosystem.defaultspack.backend.sandbox.isolation import linux_qemu_provisioner
+        linux_provisioner = linux_qemu_provisioner.LinuxQemuProvisioner(
+            state_dir=tmp_path / "linux-qemu-state")
+        monkeypatch.setattr(linux_qemu_provisioner, "default_linux_packvm_provisioner",
+                            lambda: linux_provisioner)
+        monkeypatch.setattr(linux_qemu_provisioner, "kvm_capability",
+                            lambda: (False, "Linux KVM unavailable in test"))
+
     lifecycle = PackVMLifecycleV4(macos_vz_provisioner.default_packvm_provisioner())
 
     assert shutil.which("limactl") == str(limactl)
-    assert isinstance(lifecycle._provisioner, MacOSVZProvisioner)
-    if system == "Darwin":
-        plan = lifecycle.prepare()
-        assert plan["limactl"] is None
-        assert plan["launcher_reason"] == expected_reason
-    else:
-        with pytest.raises(macos_vz_provisioner.PackVMUnsupportedPlatformError):
-            lifecycle.prepare()
+    plan = lifecycle.prepare()
+    assert plan["limactl"] is None
     readiness = lifecycle.readiness_snapshot()
     assert readiness["ready"] is False
-    assert readiness["platform"] == ("macos-arm64" if system == "Darwin" else "linux-x86_64")
-    assert readiness["reason"] == (
-        "PackVM VZ has not completed authenticated provisioning"
-        if system == "Darwin"
-        else macos_vz_provisioner.UNSUPPORTED_PACKVM_HOST_REASON
-    )
+    if system == "Darwin":
+        assert isinstance(lifecycle._provisioner, MacOSVZProvisioner)
+        assert plan["launcher_reason"] == expected_reason
+        assert readiness["platform"] == "macos-arm64"
+        assert readiness["reason"] == "PackVM VZ has not completed authenticated provisioning"
+    else:
+        assert isinstance(lifecycle._provisioner, linux_qemu_provisioner.LinuxQemuProvisioner)
+        assert readiness["platform"] == "linux-amd64"
+        assert plan["launcher_reason"] == readiness["reason"] == "Linux KVM unavailable in test"
     assert _authenticated_packvm_backend(lifecycle) is None
 
 
@@ -2224,6 +2230,8 @@ def isolated_default_vz_state(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> Path:
     """Keep default-factory recovery away from an existing user's VM journal."""
+    monkeypatch.setattr(macos_vz_provisioner.host_platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(macos_vz_provisioner.host_platform, "machine", lambda: "arm64")
     state_dir = tmp_path / "default-vz-state"
     state_dir.mkdir(mode=0o700)
     monkeypatch.setattr(macos_vz_provisioner, "_default_state_dir", lambda: state_dir)
@@ -2288,6 +2296,7 @@ def test_development_default_requires_isolated_absolute_launcher_user_data(
 def test_development_default_rejects_symlinked_user_data_before_journal_access(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
+    monkeypatch.setattr(macos_vz_provisioner.host_platform, "system", lambda: "Darwin")
     installed_state = tmp_path / "installed-state"
     installed_state.mkdir()
     symlinked_user_data = tmp_path / "developer-user-data"

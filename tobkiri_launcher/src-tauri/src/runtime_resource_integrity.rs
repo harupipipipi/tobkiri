@@ -215,11 +215,9 @@ fn verify_file_set(
         bail!("packaged runtime file inventory does not match its manifest");
     }
     for relative in actual_files {
-        let payload = fs::read(root.join(relative.as_path()))?;
+        let (digest, size) = crate::packvm_bundle::hash_regular(&root.join(relative.as_path()))?;
         let entry = &expected[&relative];
-        if payload.len() as u64 != entry.size
-            || format!("{:x}", Sha256::digest(&payload)) != entry.sha256
-        {
+        if size != entry.size || digest != entry.sha256 {
             bail!(
                 "packaged runtime resource failed integrity: {}",
                 relative.as_str()

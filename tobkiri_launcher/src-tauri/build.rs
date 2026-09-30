@@ -9,11 +9,17 @@ mod artifact_integrity;
 mod packaged_source;
 #[path = "src/packaging_toolchain.rs"]
 mod packaging_toolchain;
+#[path = "src/packvm_bundle.rs"]
+mod packvm_bundle;
 #[path = "src/runtime_resource_paths.rs"]
 mod runtime_resource_paths;
 #[allow(dead_code)]
 #[path = "src/sealed_python_protocol.rs"]
 mod sealed_python_protocol;
+
+#[cfg(windows)]
+#[path = "src/windows_packaging_fs.rs"]
+mod windows_packaging_fs;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use ed25519_dalek::Signer;
@@ -208,6 +214,9 @@ fn main() {
     println!("cargo:rerun-if-env-changed={MACOS_CI_CERT_SHA256_ENV}");
     println!("cargo:rerun-if-env-changed={MACOS_CI_PUBLIC_KEY_ENV}");
     println!("cargo:rerun-if-env-changed={APPLE_TEAM_ID_ENV}");
+    println!("cargo:rerun-if-env-changed={}", packvm_bundle::SOURCE_ENV);
+    println!("cargo:rerun-if-env-changed={}", packvm_bundle::DIGEST_ENV);
+    println!("cargo:rerun-if-env-changed=TOBKIRI_WINDOWS_SIGNER_CERT_SHA256");
     println!("cargo:rerun-if-changed=capabilities");
 
     if let Some(panel_dir) = configured_panel_build_dir(&PathBuf::from(env!("CARGO_MANIFEST_DIR")))
@@ -1110,6 +1119,8 @@ fn stage_runtime_bundle() -> io::Result<()> {
 
     stage_pack_shell(repo_root, &staged_root)
         .map_err(|error| stage_error("stage pack-shell", error))?;
+    stage_portable_packvm_bundle(&staged_root)
+        .map_err(|error| stage_error("stage build-pinned PackVM", error))?;
     bind_sealed_python_root(&staged_root.join(SEALED_PYTHON_ROOT), false)
         .map_err(|error| stage_error("bind sealed Python environment", error))?;
     write_runtime_resource_manifest(&staged_root)
@@ -2297,11 +2308,11 @@ fn write_runtime_resource_manifest(staged_root: &Path) -> io::Result<()> {
                     "runtime resource paths are ambiguous by ASCII case",
                 ));
             }
-            let payload = fs::read(staged_root.join(&relative))?;
+            let (sha256, size) = packvm_bundle::hash_regular(&staged_root.join(&relative))?;
             Ok(serde_json::json!({
                 "path": canonical.as_str(),
-                "size": payload.len(),
-                "sha256": format!("{:x}", Sha256::digest(&payload)),
+                "size": size,
+                "sha256": sha256,
             }))
         })
         .collect::<io::Result<Vec<_>>>()?;
@@ -2315,6 +2326,40 @@ fn write_runtime_resource_manifest(staged_root: &Path) -> io::Result<()> {
         staged_root.join(RUNTIME_RESOURCE_MANIFEST),
         [payload, b"\n".to_vec()].concat(),
     )
+}
+
+fn stage_portable_packvm_bundle(staged_root: &Path) -> io::Result<()> {
+    let target = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let accelerator = match target.as_str() {
+        "linux" => "kvm",
+        "windows" => "whpx",
+        _ => return Ok(()),
+    };
+    if target == "windows" {
+        let signer = std::env::var("TOBKIRI_WINDOWS_SIGNER_CERT_SHA256").map_err(|_| {
+            invalid_release(
+                "Windows release requires an expected Authenticode signer certificate SHA256",
+            )
+        })?;
+        if !packvm_bundle::valid_digest(&signer) {
+            return Err(invalid_release(
+                "Windows release signer certificate SHA256 is invalid",
+            ));
+        }
+        println!("cargo:rustc-env=TOBKIRI_WINDOWS_SIGNER_CERT_SHA256={signer}");
+    }
+    let source = std::env::var_os(packvm_bundle::SOURCE_ENV)
+        .map(PathBuf::from)
+        .ok_or_else(|| invalid_release("release requires the complete reviewed PackVM bundle"))?;
+    let expected = std::env::var(packvm_bundle::DIGEST_ENV).map_err(|_| {
+        invalid_release("release requires a separately expected PackVM manifest digest")
+    })?;
+    let expected = expected.strip_prefix("sha256:").unwrap_or(&expected);
+    let destination = staged_root.join(packvm_bundle::DIRECTORY);
+    packvm_bundle::stage(&source, &destination, expected, accelerator)?;
+    println!("cargo:rerun-if-changed={}", source.display());
+    println!("cargo:rustc-env=TOBKIRI_QEMU_PACKVM_MANIFEST_SHA256={expected}");
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -3105,7 +3150,7 @@ struct ShellArtifactAuthority {
     architecture: String,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 struct CoreTransactionGuard {
     path: PathBuf,
     parent: File,
@@ -3116,7 +3161,7 @@ struct CoreTransactionGuard {
     armed: bool,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 impl CoreTransactionGuard {
     fn create(parent: &Path) -> io::Result<Self> {
         use std::ffi::CString;
@@ -3203,7 +3248,7 @@ impl CoreTransactionGuard {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 impl Drop for CoreTransactionGuard {
     fn drop(&mut self) {
         // Explicit cleanup composes diagnostics. Drop never performs a path-based retry.
@@ -3211,7 +3256,7 @@ impl Drop for CoreTransactionGuard {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 struct StagedRuntimeResetGuard {
     parent: File,
     root: File,
@@ -3221,7 +3266,7 @@ struct StagedRuntimeResetGuard {
     armed: bool,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 impl StagedRuntimeResetGuard {
     fn open(path: &Path) -> io::Result<Self> {
         use std::os::unix::fs::MetadataExt;
@@ -3279,7 +3324,7 @@ impl StagedRuntimeResetGuard {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 impl Drop for StagedRuntimeResetGuard {
     fn drop(&mut self) {
         // Explicit cleanup is the only removal path.  Drop never retries by path.
@@ -3287,7 +3332,7 @@ impl Drop for StagedRuntimeResetGuard {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn reject_staged_path_components(path: &Path) -> io::Result<()> {
     if !path.is_absolute() {
         return Err(invalid_release(
@@ -3314,7 +3359,7 @@ fn reject_staged_path_components(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn require_staged_owner(metadata: &fs::Metadata, label: &str) -> io::Result<()> {
     use std::os::unix::fs::MetadataExt;
     if metadata.uid() != unsafe { libc::geteuid() } {
@@ -3325,7 +3370,7 @@ fn require_staged_owner(metadata: &fs::Metadata, label: &str) -> io::Result<()> 
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn open_staged_directory(path: &Path, label: &str) -> io::Result<File> {
     use std::ffi::CString;
     use std::os::fd::FromRawFd;
@@ -3348,7 +3393,7 @@ fn open_staged_directory(path: &Path, label: &str) -> io::Result<File> {
     Ok(directory)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn ensure_staged_parent(parent: &Path) -> io::Result<()> {
     use std::os::unix::fs::MetadataExt;
 
@@ -3389,7 +3434,7 @@ fn ensure_staged_parent(parent: &Path) -> io::Result<()> {
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn create_staged_runtime_root(path: &Path) -> io::Result<()> {
     use std::ffi::CString;
     use std::os::fd::AsRawFd;
@@ -3425,7 +3470,7 @@ fn create_staged_runtime_root(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn reset_staged_runtime_macos(path: &Path) -> io::Result<()> {
     reject_staged_path_components(path)?;
     let parent = path
@@ -3448,7 +3493,17 @@ fn reset_staged_runtime_macos(path: &Path) -> io::Result<()> {
     create_staged_runtime_root(path)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(windows)]
+fn core_open_relative(root: &File, relative: &str, directory_only: bool) -> io::Result<File> {
+    let relative = safe_release_relative_path(relative, "staged runtime entry")?;
+    let root_path = windows_packaging_fs::path_from_handle(root)?;
+    // Retain the entire ancestor chain until the leaf is opened. Returning
+    // its no-write/no-delete handle is sufficient for subsequent handle reads.
+    let pinned = windows_packaging_fs::open_pinned(&root_path.join(relative), directory_only)?;
+    Ok(pinned.file)
+}
+
+#[cfg(unix)]
 fn core_open_relative(root: &File, relative: &str, directory_only: bool) -> io::Result<File> {
     let relative_path = safe_release_relative_path(relative, "staged runtime entry")?;
     let components = relative_path
@@ -3471,7 +3526,7 @@ fn core_open_relative(root: &File, relative: &str, directory_only: bool) -> io::
     Ok(directory)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn core_create_directory(
     parent: &File,
     name: &std::ffi::OsStr,
@@ -3508,7 +3563,7 @@ fn core_create_directory(
     Ok(directory)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn stage_core_defaults_bundle(
     transaction: &CoreTransactionGuard,
     repository_root: &Path,
@@ -3554,15 +3609,18 @@ fn stage_core_defaults_bundle(
     Ok(bundle_root)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(unix, windows))]
 fn validate_staged_runtime_manifest(
     root: &File,
     inventory: &std::collections::BTreeMap<String, (u64, u64, bool)>,
 ) -> io::Result<()> {
+    #[cfg(unix)]
     use std::os::unix::fs::MetadataExt;
 
     let manifest = core_openat(root, std::ffi::OsStr::new(RUNTIME_RESOURCE_MANIFEST), false)?;
+    #[cfg(unix)]
     let manifest_metadata = manifest.metadata()?;
+    #[cfg(unix)]
     if !manifest_metadata.is_file()
         || manifest_metadata.nlink() != 1
         || manifest_metadata.uid() != unsafe { libc::geteuid() }
@@ -3570,6 +3628,16 @@ fn validate_staged_runtime_manifest(
         return Err(invalid_release(
             "staged runtime seal manifest has unsafe identity; residue retained",
         ));
+    }
+    #[cfg(windows)]
+    {
+        windows_packaging_fs::identity(&manifest)?;
+        windows_packaging_fs::verify_acl(
+            &manifest,
+            &windows_packaging_fs::current_user_sid()?,
+            false,
+            false,
+        )?;
     }
     let mut manifest_bytes = Vec::new();
     manifest
@@ -3688,7 +3756,9 @@ fn validate_staged_runtime_manifest(
         } else {
             core_open_relative(root, path, *directory)?
         };
+        #[cfg(unix)]
         let metadata = handle.metadata()?;
+        #[cfg(unix)]
         if metadata.uid() != unsafe { libc::geteuid() }
             || (*directory && !metadata.is_dir())
             || (!*directory && (!metadata.is_file() || metadata.nlink() != 1))
@@ -3697,16 +3767,39 @@ fn validate_staged_runtime_manifest(
                 "staged runtime tree ownership or type is invalid; residue retained",
             ));
         }
+        #[cfg(windows)]
+        {
+            let id = windows_packaging_fs::identity(&handle)?;
+            if id.directory != *directory
+                || inventory.get(path) != Some(&(id.volume, id.file, id.directory))
+            {
+                return Err(invalid_release(
+                    "staged runtime tree identity changed; residue retained",
+                ));
+            }
+            windows_packaging_fs::verify_acl(
+                &handle,
+                &windows_packaging_fs::current_user_sid()?,
+                false,
+                false,
+            )?;
+        }
     }
 
     for (path, expected_size, expected_digest) in verified_entries {
         let mut file = core_open_relative(root, &path, false)?;
         let before = file.metadata()?;
+        #[cfg(windows)]
+        let before_identity = windows_packaging_fs::identity(&file)?;
         let mut payload = Vec::new();
         file.read_to_end(&mut payload)?;
         let after = file.metadata()?;
-        if before.dev() != after.dev()
-            || before.ino() != after.ino()
+        #[cfg(unix)]
+        let identity_changed = before.dev() != after.dev() || before.ino() != after.ino();
+        #[cfg(windows)]
+        let identity_changed = before_identity != windows_packaging_fs::identity(&file)?;
+        if identity_changed
+            || after.len() != expected_size
             || before.len() != expected_size
             || payload.len() as u64 != expected_size
             || raw_byte_digest(&payload) != expected_digest
@@ -3719,7 +3812,7 @@ fn validate_staged_runtime_manifest(
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn core_openat(directory: &File, name: &std::ffi::OsStr, directory_only: bool) -> io::Result<File> {
     use std::ffi::CString;
     use std::os::fd::{AsRawFd, FromRawFd};
@@ -3738,7 +3831,7 @@ fn core_openat(directory: &File, name: &std::ffi::OsStr, directory_only: bool) -
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn core_directory_entries(directory: &File) -> io::Result<Vec<std::ffi::OsString>> {
     use std::ffi::CStr;
     use std::os::fd::IntoRawFd;
@@ -3750,7 +3843,14 @@ fn core_directory_entries(directory: &File) -> io::Result<Vec<std::ffi::OsString
     }
     let mut names = Vec::new();
     loop {
-        unsafe { *libc::__error() = 0 };
+        #[cfg(target_os = "macos")]
+        unsafe {
+            *libc::__error() = 0
+        };
+        #[cfg(target_os = "linux")]
+        unsafe {
+            *libc::__errno_location() = 0
+        };
         let entry = unsafe { libc::readdir(stream) };
         if entry.is_null() {
             let error = io::Error::last_os_error();
@@ -3769,7 +3869,7 @@ fn core_directory_entries(directory: &File) -> io::Result<Vec<std::ffi::OsString
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn core_transaction_inventory(
     root: &File,
 ) -> io::Result<std::collections::BTreeMap<String, (u64, u64, bool)>> {
@@ -3812,7 +3912,7 @@ fn core_transaction_inventory(
     Ok(inventory)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn unlinkat_core(directory: &File, name: &std::ffi::OsStr, flags: i32) -> io::Result<()> {
     use std::ffi::CString;
     use std::os::fd::AsRawFd;
@@ -3826,7 +3926,7 @@ fn unlinkat_core(directory: &File, name: &std::ffi::OsStr, flags: i32) -> io::Re
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn verify_core_transaction_name(
     parent: &File,
     name: &std::ffi::OsStr,
@@ -3843,7 +3943,7 @@ fn verify_core_transaction_name(
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 fn core_transaction_remove(
     directory: &File,
     relative: &str,
@@ -4148,6 +4248,12 @@ fn verify_release_source_shape(entries: &[ReleaseTreeEntry]) -> io::Result<()> {
     Ok(())
 }
 
+#[cfg(windows)]
+fn copy_release_tree(source: &Path, destination: &Path) -> io::Result<()> {
+    windows_packaging_fs::copy_private_tree(source, destination)
+}
+
+#[cfg(not(windows))]
 fn copy_release_tree(source: &Path, destination: &Path) -> io::Result<()> {
     fs::create_dir(destination)?;
     #[cfg(unix)]
@@ -4425,12 +4531,12 @@ fn produce_and_stage_core_presentation_release(staged_root: &Path) -> io::Result
             "Core presentation producer may run only for the final application stage",
         ));
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(unix, windows)))]
     return Err(io::Error::new(
         io::ErrorKind::Unsupported,
-        "Core-owned final presentation production currently requires macOS FD-anchored packaging",
+        "Core-owned final presentation production currently requires a native descriptor-anchored packaging implementation",
     ));
-    #[cfg(target_os = "macos")]
+    #[cfg(any(unix, windows))]
     {
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let repository_root = project_dir
@@ -4986,6 +5092,12 @@ fn verify_allowed_generated_untracked(repository_root: &Path, relative: &str) ->
     if allow_symlink {
         return verify_node_modules_generated_path(&current, descendant, relative);
     }
+    #[cfg(windows)]
+    let _windows_generated_pin = {
+        let target = current.join(descendant);
+        let metadata = fs::symlink_metadata(&target)?;
+        windows_packaging_fs::open_pinned(&target, metadata.is_dir())?
+    };
     let components = descendant.components().collect::<Vec<_>>();
     for (index, component) in components.iter().enumerate() {
         current.push(component.as_os_str());
@@ -5232,7 +5344,37 @@ fn verify_generated_open_target(handle: &File, relative: &str) -> io::Result<()>
     Ok(())
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn verify_node_modules_generated_path(
+    root: &Path,
+    descendant: &Path,
+    relative: &str,
+) -> io::Result<()> {
+    let root_pin = windows_packaging_fs::open_pinned(root, true)?;
+    if descendant
+        .components()
+        .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(invalid_release(format!(
+            "unsafe generated node_modules path: {relative}"
+        )));
+    }
+    // Windows npm uses regular .cmd shims. Junctions, symlinks and all other
+    // reparse tags are rejected rather than trusting an unbounded redirect.
+    let target = root.join(descendant);
+    let metadata = fs::symlink_metadata(&target)?;
+    let pin = windows_packaging_fs::open_pinned(&target, metadata.is_dir())?;
+    if windows_packaging_fs::identity(&pin.file)?.volume
+        != windows_packaging_fs::identity(&root_pin.file)?.volume
+    {
+        return Err(invalid_release(
+            "generated node_modules target crosses volumes",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(any(unix, windows)))]
 fn verify_node_modules_generated_path(
     _root: &Path,
     _descendant: &Path,
@@ -5291,6 +5433,15 @@ fn verify_tracked_worktree_bytes(
             .map_err(|_| invalid_release("source tree path is not UTF-8"))?;
         let relative = safe_release_relative_path(relative, "source tree path")?;
         let path = repository_root.join(&relative);
+        #[cfg(windows)]
+        let windows_pin = {
+            if mode == "120000" {
+                return Err(invalid_release(
+                    "tracked symlinks are not supported by the Windows release provenance boundary",
+                ));
+            }
+            windows_packaging_fs::open_pinned(&path, false)?
+        };
         let before = fs::symlink_metadata(&path)?;
         let payload = if mode == "120000" {
             if !before.file_type().is_symlink() {
@@ -5320,8 +5471,13 @@ fn verify_tracked_worktree_bytes(
                     )));
                 }
             }
+            #[cfg(not(windows))]
             let mut file = File::open(&path)?;
+            #[cfg(windows)]
+            let mut file = windows_pin.file.try_clone()?;
+            #[cfg(not(windows))]
             let opened = file.metadata()?;
+            #[cfg(not(windows))]
             if !same_source_object(&before, &opened) {
                 return Err(invalid_release(format!(
                     "tracked file changed before read: {}",
@@ -5330,6 +5486,7 @@ fn verify_tracked_worktree_bytes(
             }
             let mut payload = Vec::new();
             file.read_to_end(&mut payload)?;
+            #[cfg(not(windows))]
             if !same_source_object(&opened, &file.metadata()?) {
                 return Err(invalid_release(format!(
                     "tracked file changed while read: {}",
@@ -5338,7 +5495,9 @@ fn verify_tracked_worktree_bytes(
             }
             payload
         };
+        #[cfg(not(windows))]
         let after = fs::symlink_metadata(&path)?;
+        #[cfg(not(windows))]
         if !same_source_object(&before, &after) {
             return Err(invalid_release(format!(
                 "tracked path changed while verified: {}",
@@ -5375,6 +5534,7 @@ fn verify_tracked_worktree_bytes(
     Ok(())
 }
 
+#[cfg(not(windows))]
 fn same_source_object(left: &fs::Metadata, right: &fs::Metadata) -> bool {
     #[cfg(unix)]
     {
@@ -5891,6 +6051,7 @@ fn pack_shell_binary_architecture(payload: &[u8], target: &str) -> io::Result<St
     })
 }
 
+#[cfg(not(windows))]
 fn same_file_identity(before: &fs::Metadata, after: &fs::Metadata) -> bool {
     if before.len() != after.len() || before.modified().ok() != after.modified().ok() {
         return false;
@@ -5906,6 +6067,26 @@ fn same_file_identity(before: &fs::Metadata, after: &fs::Metadata) -> bool {
     }
 }
 
+#[cfg(windows)]
+fn read_verified_pack_shell(path: &Path, target: &str) -> io::Result<(Vec<u8>, fs::Permissions)> {
+    let pinned = windows_packaging_fs::open_pinned(path, false)?;
+    let before = windows_packaging_fs::identity(&pinned.file)?;
+    let mut payload = Vec::new();
+    (&pinned.file).read_to_end(&mut payload)?;
+    if windows_packaging_fs::identity(&pinned.file)? != before {
+        return Err(invalid_release("pack-shell identity changed"));
+    }
+    let actual = pack_shell_binary_architecture(&payload, target)?;
+    let expected = expected_pack_shell_architecture(target);
+    if actual != expected {
+        return Err(invalid_release(format!(
+            "pack-shell architecture mismatch: expected {expected}, got {actual}"
+        )));
+    }
+    Ok((payload, pinned.file.metadata()?.permissions()))
+}
+
+#[cfg(not(windows))]
 fn read_verified_pack_shell(path: &Path, target: &str) -> io::Result<(Vec<u8>, fs::Permissions)> {
     let before = fs::symlink_metadata(path)?;
     if before.file_type().is_symlink() || !before.is_file() {
@@ -5961,13 +6142,20 @@ fn reset_dir(path: &Path) -> io::Result<()> {
 }
 
 fn reset_staged_runtime(path: &Path) -> io::Result<()> {
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     {
         return reset_staged_runtime_macos(path);
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
     {
-        reset_dir(path)
+        return reset_staged_runtime_windows(path);
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "secure staged reset unavailable",
+        ))
     }
 }
 
@@ -8775,7 +8963,7 @@ mod tests {
         assert!(!updated.contains_key("dev.tauri.toolchain.default"));
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     #[test]
     fn core_transaction_cleanup_refuses_name_swap() {
         let tree = TestTree::new("core-transaction-name-swap");
@@ -8801,7 +8989,7 @@ mod tests {
         }
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     #[test]
     fn core_transaction_without_complete_inventory_leaves_residue() {
         let tree = TestTree::new("core-transaction-incomplete");
@@ -8815,7 +9003,7 @@ mod tests {
         assert!(path.is_dir());
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     fn write_read_only_staged_runtime_fixture(root: &Path) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
 
@@ -8988,7 +9176,7 @@ mod tests {
             .expect("resource fixture should be restored for cleanup");
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     #[test]
     fn staged_runtime_reset_creates_a_missing_host_owned_root() {
         use std::os::unix::fs::PermissionsExt;
@@ -9017,7 +9205,7 @@ mod tests {
         );
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     #[test]
     fn staged_runtime_reset_unseals_only_the_host_sealed_tree() {
         use std::os::unix::fs::PermissionsExt;
@@ -9041,7 +9229,7 @@ mod tests {
         );
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     #[test]
     fn staged_runtime_reset_reaps_an_empty_partial_root() {
         use std::os::unix::fs::PermissionsExt;
@@ -9064,7 +9252,7 @@ mod tests {
         );
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     #[test]
     fn staged_runtime_reset_retains_nonempty_unsealed_residue() {
         let tree = TestTree::new("staged-runtime-unsealed-residue");
@@ -9080,7 +9268,7 @@ mod tests {
         assert!(staged.join("partial-entry").is_file());
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     #[test]
     fn staged_runtime_reset_rejects_extra_and_replaced_entries() {
         use std::os::unix::fs::PermissionsExt;
@@ -9264,7 +9452,7 @@ mod tests {
         }
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     #[test]
     fn core_packager_output_uses_verified_runtime_and_stages_bundle() {
         let _environment = environment_lock();
@@ -9454,5 +9642,237 @@ mod tests {
             .expect_err("release root symlink must fail closed");
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
         assert!(error.to_string().contains("release presentation root"));
+    }
+}
+
+#[cfg(windows)]
+struct CoreTransactionGuard {
+    path: PathBuf,
+    root: windows_packaging_fs::PinnedPath,
+    inventory: Option<windows_packaging_fs::Inventory>,
+}
+
+#[cfg(windows)]
+impl CoreTransactionGuard {
+    fn create(parent: &Path) -> io::Result<Self> {
+        let parent_guard = windows_packaging_fs::open_pinned(parent, true)?;
+        let sid = windows_packaging_fs::current_user_sid()?;
+        windows_packaging_fs::verify_acl(&parent_guard.file, &sid, false, false)?;
+        let mut nonce = [0u8; 16];
+        rand::rngs::OsRng.fill_bytes(&mut nonce);
+        let path = parent.join(format!(".tobkiri-core-presentation-{}", hex_bytes(&nonce)));
+        windows_packaging_fs::create_private_directory(&path, &sid)?;
+        let root = windows_packaging_fs::open_pinned(&path, true)?;
+        windows_packaging_fs::verify_acl(&root.file, &sid, false, true)?;
+        Ok(Self {
+            path,
+            root,
+            inventory: None,
+        })
+    }
+    fn path(&self) -> &Path {
+        &self.path
+    }
+    fn seal_inventory(&mut self) -> io::Result<()> {
+        self.inventory = Some(windows_packaging_fs::inventory(&self.path)?);
+        Ok(())
+    }
+    fn cleanup(self) -> io::Result<()> {
+        let inventory = self
+            .inventory
+            .ok_or_else(|| invalid_release("Core ownership incomplete; residue retained"))?;
+        let id = windows_packaging_fs::identity(&self.root.file)?;
+        if inventory.get("") != Some(&(id.volume, id.file, true)) {
+            return Err(invalid_release(
+                "Core root identity changed; residue retained",
+            ));
+        }
+        let path = self.path;
+        // The mutation helper pins the parent before acquiring its DELETE
+        // handle and checks the sealed identity after reopening the root.
+        let parent = windows_packaging_fs::open_pinned(
+            path.parent()
+                .ok_or_else(|| invalid_release("Core parent missing"))?,
+            true,
+        )?;
+        drop(self.root);
+        let result = windows_packaging_fs::remove_owned_tree(&path, &inventory);
+        drop(parent);
+        result
+    }
+}
+
+#[cfg(windows)]
+fn core_openat(parent: &File, name: &std::ffi::OsStr, directory: bool) -> io::Result<File> {
+    windows_packaging_fs::open_child(parent, name, directory)
+}
+
+#[cfg(windows)]
+fn stage_core_defaults_bundle(
+    transaction: &CoreTransactionGuard,
+    repository_root: &Path,
+) -> io::Result<PathBuf> {
+    let source = repository_root
+        .join(APP_SOURCE_DIR)
+        .join("ecosystem/defaultspack/v4");
+    let source_pin = windows_packaging_fs::open_pinned(&source, true)?;
+    let sid = windows_packaging_fs::current_user_sid()?;
+    let root_id = windows_packaging_fs::identity(&transaction.root.file)?;
+    let mut pins = Vec::new();
+    for relative in [
+        "release",
+        "release/ecosystem",
+        "release/ecosystem/defaultspack",
+    ] {
+        let path = transaction.path.join(relative);
+        windows_packaging_fs::create_private_directory(&path, &sid)?;
+        let pin = windows_packaging_fs::open_pinned(&path, true)?;
+        windows_packaging_fs::verify_acl(&pin.file, &sid, false, true)?;
+        if windows_packaging_fs::identity(&pin.file)?.volume != root_id.volume {
+            return Err(invalid_release("Core transaction crossed volumes"));
+        }
+        pins.push(pin);
+    }
+    let bundle = transaction.path.join("release/ecosystem/defaultspack/v4");
+    copy_release_tree(&source, &bundle)?;
+    let pin = windows_packaging_fs::open_pinned(&bundle, true)?;
+    windows_packaging_fs::verify_acl(&pin.file, &sid, false, false)?;
+    if windows_packaging_fs::identity(&pin.file)?.volume != root_id.volume {
+        return Err(invalid_release("Core bundle crossed volumes"));
+    }
+    drop(source_pin);
+    Ok(bundle)
+}
+
+#[cfg(windows)]
+fn reset_staged_runtime_windows(path: &Path) -> io::Result<()> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| invalid_release("staged runtime has no parent"))?;
+    let sid = windows_packaging_fs::current_user_sid()?;
+    let parent_pin = match windows_packaging_fs::open_pinned(parent, true) {
+        Ok(pin) => pin,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            let grandparent = windows_packaging_fs::open_pinned(
+                parent
+                    .parent()
+                    .ok_or_else(|| invalid_release("staged parent has no parent"))?,
+                true,
+            )?;
+            windows_packaging_fs::verify_acl(&grandparent.file, &sid, false, false)?;
+            windows_packaging_fs::create_private_directory(parent, &sid)?;
+            windows_packaging_fs::open_pinned(parent, true)?
+        }
+        Err(error) => return Err(error),
+    };
+    windows_packaging_fs::verify_acl(&parent_pin.file, &sid, false, false)?;
+    match windows_packaging_fs::open_pinned(path, true) {
+        Ok(root) => {
+            windows_packaging_fs::verify_acl(&root.file, &sid, false, true)?;
+            let inventory = windows_packaging_fs::inventory(path)?;
+            if inventory.len() > 1 {
+                validate_staged_runtime_manifest(&root.file, &inventory)?;
+            }
+            drop(root);
+            windows_packaging_fs::remove_owned_tree(path, &inventory)?;
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    windows_packaging_fs::create_private_directory(path, &sid)?;
+    let root = windows_packaging_fs::open_pinned(path, true)?;
+    windows_packaging_fs::verify_acl(&root.file, &sid, false, true)?;
+    Ok(())
+}
+
+#[cfg(all(test, windows))]
+mod windows_transaction_tests {
+    use super::*;
+    fn root(label: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "tobkiri-winbuild-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        windows_packaging_fs::create_private_directory(
+            &path,
+            &windows_packaging_fs::current_user_sid().unwrap(),
+        )
+        .unwrap();
+        path
+    }
+    fn remove(root: &Path) {
+        windows_packaging_fs::remove_owned_tree(
+            root,
+            &windows_packaging_fs::inventory(root).unwrap(),
+        )
+        .unwrap();
+    }
+    #[test]
+    fn windows_core_transaction_creates_and_cleans_owned_tree() {
+        let parent = root("transaction");
+        let mut transaction = CoreTransactionGuard::create(&parent).unwrap();
+        let path = transaction.path().to_owned();
+        fs::create_dir(path.join("child")).unwrap();
+        fs::write(path.join("child/file"), b"owned").unwrap();
+        transaction.seal_inventory().unwrap();
+        transaction.cleanup().unwrap();
+        assert!(!path.exists());
+        remove(&parent);
+    }
+    #[test]
+    fn windows_core_transaction_retains_extra_and_incomplete_ownership() {
+        let parent = root("extra");
+        let mut transaction = CoreTransactionGuard::create(&parent).unwrap();
+        let path = transaction.path().to_owned();
+        fs::write(path.join("owned"), b"owned").unwrap();
+        transaction.seal_inventory().unwrap();
+        fs::write(path.join("extra"), b"preserve").unwrap();
+        assert!(transaction.cleanup().is_err());
+        assert_eq!(fs::read(path.join("extra")).unwrap(), b"preserve");
+        remove(&parent);
+    }
+    #[test]
+    fn windows_staged_runtime_reset_requires_exact_manifest_and_digest() {
+        let parent = root("reset");
+        let path = parent.join("gen/app");
+        reset_staged_runtime(&path).unwrap();
+        fs::write(path.join("payload"), b"sealed").unwrap();
+        write_runtime_resource_manifest(&path).unwrap();
+        fs::write(path.join("extra"), b"preserve").unwrap();
+        assert!(reset_staged_runtime(&path).is_err());
+        assert!(path.join("extra").exists());
+        fs::remove_file(path.join("extra")).unwrap();
+        fs::write(path.join("payload"), b"wrong!").unwrap();
+        assert!(reset_staged_runtime(&path).is_err());
+        fs::write(path.join("payload"), b"sealed").unwrap();
+        reset_staged_runtime(&path).unwrap();
+        assert!(fs::read_dir(&path).unwrap().next().is_none());
+        remove(&parent);
+    }
+    #[test]
+    fn windows_generated_node_modules_accepts_regular_shims_rejects_escape_and_hardlink() {
+        let parent = root("generated");
+        let modules = parent.join("node_modules");
+        fs::create_dir_all(modules.join(".bin")).unwrap();
+        fs::write(modules.join(".bin/tool.cmd"), b"@echo off").unwrap();
+        verify_node_modules_generated_path(&modules, Path::new(".bin/tool.cmd"), "fixture")
+            .unwrap();
+        assert!(
+            verify_node_modules_generated_path(&modules, Path::new("../outside"), "fixture")
+                .is_err()
+        );
+        fs::hard_link(modules.join(".bin/tool.cmd"), parent.join("outside.cmd")).unwrap();
+        assert!(verify_node_modules_generated_path(
+            &modules,
+            Path::new(".bin/tool.cmd"),
+            "fixture"
+        )
+        .is_err());
+        fs::remove_file(parent.join("outside.cmd")).unwrap();
+        remove(&parent);
     }
 }

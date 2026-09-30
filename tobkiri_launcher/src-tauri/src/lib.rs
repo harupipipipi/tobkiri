@@ -3,6 +3,7 @@
 //! V2: Full implementation with setup hook, commands, tray menu, and navigation guard.
 
 mod artifact_integrity;
+mod packvm_bundle;
 mod ci_e2e_app_data;
 mod config;
 mod debug_approval;

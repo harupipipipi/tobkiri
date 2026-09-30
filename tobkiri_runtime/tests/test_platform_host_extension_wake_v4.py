@@ -304,7 +304,7 @@ def test_platform_supervisor_accepts_only_explicit_portable_variant_alias() -> N
 def test_platform_selection_and_attestation_fail_closed() -> None:
     selected = binding()
     unavailable = production_backend_registry(platform_system="Darwin", machine="arm64")
-    with pytest.raises(BackendUnavailableError, match="supervisor"):
+    with pytest.raises(BackendUnavailableError, match="supervisor|substrate dependency"):
         unavailable.select(selected)
     driver = Driver()
     backend = ProductionIsolationBackend(

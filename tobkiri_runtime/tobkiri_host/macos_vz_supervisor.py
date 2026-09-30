@@ -555,6 +555,7 @@ class MacOSVZSupervisorDriver:
 
     backend_id = PYTHON_PACKVM_BACKEND
     substrate_id = "macos-vz"
+    _platform_prefix = "macos-"
 
     def __init__(
         self,
@@ -573,7 +574,7 @@ class MacOSVZSupervisorDriver:
         channel_key_factory: Callable[[], bytes] | None = None,
         max_nonce_ledger_entries: int = 8192,
     ) -> None:
-        if not platform.startswith("macos-"):
+        if not platform.startswith(self._platform_prefix):
             raise BackendUnavailableError("direct VZ driver platform is invalid")
         if not isinstance(max_nonce_ledger_entries, int) or max_nonce_ledger_entries < 64:
             raise BackendUnavailableError("macOS VZ nonce ledger bound is invalid")

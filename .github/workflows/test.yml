@@ -308,6 +308,13 @@ jobs:
             tests/test_macos_vz_registration.py \
             tests/test_macos_vz_provisioner.py \
             tests/test_packvm_guest_bridge_runner.py \
+            tests/test_linux_packvm_bundle.py \
+            tests/test_windows_packvm_bundle.py \
+            tests/test_portable_packvm_binding.py \
+            tests/test_linux_qemu_process.py \
+            tests/test_linux_qemu_provisioner.py \
+            tests/test_packvm_guest_serial_transport.py \
+            tests/test_qemu_supervisor_transport.py \
             tests/test_saved_guest_dispatch.py \
             tests/test_saved_host_exchange.py \
             tests/test_saved_tool_turn.py \

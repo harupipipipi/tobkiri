@@ -399,7 +399,7 @@ impl VerifiedTool {
         if self.kind != "git" {
             return;
         }
-        #[cfg(target_os = "macos")]
+        #[cfg(unix)]
         command
             .env_clear()
             .args([
