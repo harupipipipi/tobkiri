@@ -15,7 +15,7 @@ import subprocess
 import sys
 import tarfile
 import types
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
@@ -980,6 +980,10 @@ def test_pinned_python_archive_rejects_destination_symlink(tmp_path: Path) -> No
     assert not (real_destination / "python").exists()
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="POSIX mode fixture; real Windows ACL copy/tamper coverage is below",
+)
 def test_committed_source_inventory_copies_exact_bytes_and_rejects_tamper(
     tmp_path: Path,
 ) -> None:
@@ -4032,3 +4036,532 @@ def test_application_snapshot_copy_preserves_all_binary_bytes(tmp_path: Path) ->
     destination = tmp_path / "copy.bin"
     BUILDER._copy_snapshot_file(source, destination, entry, BUILDER.target_spec(target))
     assert destination.read_bytes() == payload
+
+
+def _windows_source_fixture(tmp_path: Path):
+    source = tmp_path / "native-source"
+    source.mkdir()
+    payloads = {
+        "run.py": b"print('sealed')\r\n\x1a\x00",
+        "tobkiri_runtime/packaged_defaultspack_source_manifest.v1.json": b"{}\n",
+    }
+    entries = []
+    for relative, payload in payloads.items():
+        path = source / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+        entries.append(
+            {
+                "path": relative,
+                "size": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+                "executable": relative == "run.py",
+            }
+        )
+    authority = entries[-1]["sha256"]
+    document = {
+        "schema": BUILDER.SOURCE_SNAPSHOT_SCHEMA,
+        "source_commit": "a" * 40,
+        "source_tree": "b" * 40,
+        "source_manifest_sha256": authority,
+        "files": entries,
+    }
+    encoded = (
+        json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+    (source / BUILDER.SOURCE_SNAPSHOT_MANIFEST).write_bytes(encoded)
+    manifest = hashlib.sha256(encoded).hexdigest()
+    frame = {key: value for key, value in document.items() if key != "files"}
+    frame["source_inventory_sha256"] = manifest
+    release = hashlib.sha256(
+        (json.dumps(frame, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    ).hexdigest()
+    return source, payloads, manifest, release
+
+
+def _fake_windows_snapshot(monkeypatch, source: Path, destination: Path):
+    """Exercise orchestration on POSIX; this is not native Windows acceptance."""
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    module = sys.modules[snapshot_type.__module__]
+
+    class Api:
+        def __init__(self):
+            self.handles = {}
+            self.sealed = {}
+            self.next_handle = 1
+            self.deleted = []
+            self.events = []
+
+        def identity(self, handle, directory):
+            path = self.handles[handle]
+            metadata = path.lstat()
+            if path.is_symlink() or (not directory and metadata.st_nlink != 1):
+                raise module.SnapshotError("reparse or hardlink")
+            if path.is_dir() != directory:
+                raise module.SnapshotError("wrong type")
+            return metadata.st_dev, metadata.st_ino, directory
+
+        def open(self, path, directory, *, delete=False):
+            handle = self.next_handle
+            self.next_handle += 1
+            self.handles[handle] = path
+            try:
+                pin = module.Pin(path, handle, self.identity(handle, directory))
+            except BaseException:
+                self.close(handle)
+                raise
+            self.events.append(("open-delete" if delete else "open", path))
+            return pin
+
+        def close(self, handle):
+            self.handles.pop(handle)
+
+        def verify_acl(self, handle, sealed):
+            path = self.handles[handle]
+            if self.sealed.get(path, True) != sealed:
+                raise module.SnapshotError("unsafe DACL")
+
+        def set_acl(self, handle, sealed):
+            self.sealed[self.handles[handle]] = sealed
+            self.events.append(("seal" if sealed else "unseal", self.handles[handle]))
+
+        def create(self, parent, name, directory):
+            path = parent.path / name
+            if directory:
+                path.mkdir()
+            else:
+                with path.open("xb"):
+                    pass
+            self.sealed[path] = False
+            return self.open(path, directory)
+
+        def read(self, pin):
+            return pin.path.read_bytes()
+
+        def write(self, pin, payload):
+            pin.path.write_bytes(payload)
+            self.set_acl(pin.handle, True)
+            pin.sealed = True
+
+        def delete(self, pin):
+            self.deleted.append(pin.path)
+            pin.path.rmdir() if pin.identity[2] else pin.path.unlink()
+
+    api = Api()
+
+    def pin_chain(self, path):
+        pin = api.open(path, True)
+        self.ancestors.append(pin)
+        return pin
+
+    monkeypatch.setattr(snapshot_type, "pin_chain", pin_chain)
+    return snapshot_type(source, destination, api=api), api, module
+
+
+def test_windows_source_snapshot_preserves_bytes_and_holds_lifetime(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """ACL/held scope substitutes for POSIX modes without losing Git semantics."""
+    source, payloads, manifest, release = _windows_source_fixture(tmp_path)
+    destination = tmp_path / "copy"
+    guard, api, _module = _fake_windows_snapshot(monkeypatch, source, destination)
+    monkeypatch.setattr(
+        BUILDER.os, "fchmod", lambda *args: pytest.fail("POSIX chmod"), raising=False
+    )
+    with guard:
+        copied = BUILDER._copy_verified_source_snapshot(
+            source,
+            destination,
+            manifest,
+            release,
+            _windows_snapshot=guard,
+        )
+        assert copied == destination
+        for relative, payload in payloads.items():
+            assert (copied / relative).read_bytes() == payload
+        assert api.handles
+        assert all(pin.sealed for pin in guard.outputs.values())
+        assert not api.deleted
+    assert not destination.exists()
+    assert not api.handles
+    assert source.exists()
+
+
+@pytest.mark.parametrize("damage", ["manifest", "release", "bytes", "extra-directory"])
+def test_windows_source_snapshot_rejects_digest_or_inventory_damage(
+    monkeypatch,
+    tmp_path: Path,
+    damage: str,
+) -> None:
+    source, _payloads, manifest, release = _windows_source_fixture(tmp_path)
+    if damage == "manifest":
+        manifest = "0" * 64
+    elif damage == "release":
+        release = "0" * 64
+    elif damage == "bytes":
+        (source / "run.py").write_bytes(b"tampered")
+    else:
+        (source / "unlisted").mkdir()
+    destination = tmp_path / "copy"
+    guard, api, module = _fake_windows_snapshot(monkeypatch, source, destination)
+    with pytest.raises((BUILDER.SealedEnvironmentError, module.SnapshotError)):
+        with guard:
+            BUILDER._copy_verified_source_snapshot(
+                source,
+                destination,
+                manifest,
+                release,
+                _windows_snapshot=guard,
+            )
+    assert not destination.exists()
+    assert not api.handles
+
+
+@pytest.mark.parametrize("damage", ["reparse", "hardlink", "acl"])
+def test_windows_source_snapshot_rejects_unsafe_native_authority(
+    monkeypatch,
+    tmp_path: Path,
+    damage: str,
+) -> None:
+    source, _payloads, _manifest, _release = _windows_source_fixture(tmp_path)
+    target = source / "run.py"
+    if damage == "hardlink":
+        os.link(target, tmp_path / "outside")
+    guard, api, module = _fake_windows_snapshot(monkeypatch, source, tmp_path / "copy")
+    if damage == "acl":
+        api.sealed[target] = False
+    elif damage == "reparse":
+        identity = api.identity
+
+        def reject_reparse(handle, directory):
+            if api.handles[handle] == target:
+                raise module.SnapshotError("reparse")
+            return identity(handle, directory)
+
+        api.identity = reject_reparse
+    with pytest.raises(module.SnapshotError):
+        with guard:
+            pytest.fail("unsafe source was accepted")
+    assert not api.handles
+    assert not (tmp_path / "copy").exists()
+
+
+def test_windows_source_snapshot_cleanup_retains_unowned_entries(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source, _payloads, manifest, release = _windows_source_fixture(tmp_path)
+    destination = tmp_path / "copy"
+    guard, api, module = _fake_windows_snapshot(monkeypatch, source, destination)
+    with pytest.raises(module.SnapshotError, match="inventory changed"):
+        with guard:
+            BUILDER._copy_verified_source_snapshot(
+                source,
+                destination,
+                manifest,
+                release,
+                _windows_snapshot=guard,
+            )
+            (destination / "unowned").write_text("do not delete")
+    assert (destination / "unowned").read_text() == "do not delete"
+    assert not api.deleted
+    assert not api.handles
+
+
+def test_windows_source_snapshot_cleanup_never_deletes_replacement(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source, _payloads, manifest, release = _windows_source_fixture(tmp_path)
+    destination = tmp_path / "copy"
+    guard, api, module = _fake_windows_snapshot(monkeypatch, source, destination)
+    original_open = api.open
+
+    def replace_at_delete(path, directory, *, delete=False):
+        if delete and path.name == "run.py":
+            path.rename(path.with_name("original-retained.py"))
+            path.write_bytes(b"foreign")
+        return original_open(path, directory, delete=delete)
+
+    api.open = replace_at_delete
+    with pytest.raises(module.SnapshotError, match="cleanup.*identity changed"):
+        with guard:
+            BUILDER._copy_verified_source_snapshot(
+                source,
+                destination,
+                manifest,
+                release,
+                _windows_snapshot=guard,
+            )
+    assert (destination / "run.py").read_bytes() == b"foreign"
+    assert destination / "run.py" not in api.deleted
+    assert not api.handles
+
+
+@pytest.mark.parametrize(
+    "relative",
+    ["a\\b", "a:b", "a/../b", "NUL.txt", "a.", "a ", "/root", "a//b", "C:/a"],
+)
+def test_windows_source_snapshot_rejects_windows_path_aliases(relative: str) -> None:
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    module = sys.modules[snapshot_type.__module__]
+    with pytest.raises(module.SnapshotError):
+        module.safe_relative(relative)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Requires real Windows DACL/share APIs")
+@pytest.mark.parametrize(
+    "damage", [None, "manifest", "release", "bytes", "extra-directory"]
+)
+def test_windows_source_snapshot_native_copy_acl_lifetime_and_cleanup(
+    tmp_path: Path,
+    damage: str | None,
+) -> None:
+    """Native acceptance: real protected source, binary copy, share lock, cleanup."""
+    source, payloads, manifest, release = _windows_source_fixture(tmp_path)
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    module = sys.modules[snapshot_type.__module__]
+    api = module.NativeApi()
+    # Use atomic, protected creation just like the coordinator; inherited
+    # temporary-directory ownership is deliberately not trusted.
+    raw_source = source.with_name("fixture-bytes")
+    source.rename(raw_source)
+    if damage == "bytes":
+        (raw_source / "run.py").write_bytes(b"tampered")
+    elif damage == "extra-directory":
+        (raw_source / "unlisted").mkdir()
+    elif damage == "manifest":
+        manifest = "0" * 64
+    elif damage == "release":
+        release = "0" * 64
+    parent = api.open(tmp_path, True)
+    root = api.create(parent, source.name, True)
+    pins = [root]
+    by_relative = {"": root}
+    try:
+        for path in sorted(raw_source.rglob("*")):
+            relative = path.relative_to(raw_source)
+            parent_name = relative.parent.as_posix()
+            pin = api.create(
+                by_relative["" if parent_name == "." else parent_name],
+                path.name,
+                path.is_dir(),
+            )
+            pins.append(pin)
+            by_relative[relative.as_posix()] = pin
+            if path.is_file():
+                api.write(pin, path.read_bytes())
+        for pin in reversed(pins):
+            api.set_acl(pin.handle, True)
+        destination = tmp_path / "copy"
+        if damage is not None:
+            with pytest.raises(
+                (BUILDER.SealedEnvironmentError, OSError), match="committed source"
+            ):
+                with BUILDER._verified_source_snapshot(
+                    source, destination, manifest, release
+                ):
+                    pytest.fail("unsafe native snapshot was accepted")
+            assert not destination.exists()
+            return
+        with BUILDER._verified_source_snapshot(source, destination, manifest, release):
+            for relative, payload in payloads.items():
+                assert (destination / relative).read_bytes() == payload
+            with pytest.raises(OSError):
+                (destination / "run.py").write_bytes(b"tamper")
+            with pytest.raises(OSError):
+                destination.rename(tmp_path / "moved")
+            with pytest.raises(OSError):
+                (source / "run.py").write_bytes(b"tamper")
+        assert not destination.exists()
+    finally:
+        for pin in reversed(pins):
+            api.set_acl(pin.handle, False)
+            api.close(pin.handle)
+        api.close(parent.handle)
+
+
+def test_windows_source_writer_reopens_independent_read_objects(monkeypatch) -> None:
+    """Reduced DuplicateHandle access would retain the writer's share reservation."""
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    module = sys.modules[snapshot_type.__module__]
+    api = object.__new__(module.NativeApi)
+    opened, closed = [], []
+
+    class Kernel:
+        @staticmethod
+        def WriteFile(handle, payload, length, count, overlapped):
+            count._obj.value = length
+            return 1
+
+        @staticmethod
+        def FlushFileBuffers(handle):
+            return 1
+
+        @staticmethod
+        def CreateFileW(
+            path, access, sharing, attributes, disposition, flags, template
+        ):
+            opened.append((path, access, sharing, disposition, flags))
+            return 20 + len(opened)
+
+    api.kernel = Kernel()
+    api.identity = lambda handle, directory: (1, 2, False)
+    api.set_acl = lambda handle, sealed: None
+    api.verify_acl = lambda handle, sealed: None
+    api.close = closed.append
+    api.read = lambda pin: b"exact\r\n\x1a\0"
+    pin = module.Pin(Path("source.py"), 10, (1, 2, False))
+    api.write(pin, b"exact\r\n\x1a\0")
+    assert [item[2] for item in opened] == [3, 1]
+    assert all(item[1] == module.READ | module.WRITE_DAC for item in opened)
+    assert all(item[3:] == (3, 0x200000) for item in opened)
+    assert closed == [10, 21]
+    assert pin.handle == 22 and pin.sealed
+
+
+def test_windows_source_scope_propagates_consumer_failure_and_cleans(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source, _payloads, manifest, release = _windows_source_fixture(tmp_path)
+    destination = tmp_path / "copy"
+    guard, api, _module = _fake_windows_snapshot(monkeypatch, source, destination)
+    # Replace only this module's platform view, never pathlib's global os.name.
+    monkeypatch.setattr(
+        BUILDER, "os", types.SimpleNamespace(**{**vars(os), "name": "nt"})
+    )
+    monkeypatch.setattr(
+        BUILDER, "_load_windows_source_snapshot", lambda: lambda *args: guard
+    )
+    with pytest.raises(RuntimeError, match="consumer failed"):
+        with BUILDER._verified_source_snapshot(source, destination, manifest, release):
+            assert api.handles and destination.exists()
+            raise RuntimeError("consumer failed")
+    assert not destination.exists() and not api.handles
+
+
+def test_windows_source_workspace_never_falls_back_to_generic_cleanup(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        BUILDER, "os", types.SimpleNamespace(**{**vars(os), "name": "nt"})
+    )
+    calls = []
+    monkeypatch.setattr(
+        BUILDER, "_load_cleanup_remove", lambda: lambda *a, **kw: calls.append(a)
+    )
+    workspace = None
+    with pytest.raises(RuntimeError, match="unsafe cleanup"):
+        with BUILDER._sealed_build_workspace(tmp_path) as raw:
+            workspace = Path(raw)
+            (workspace / "foreign").write_bytes(b"retain")
+            raise RuntimeError("unsafe cleanup")
+    assert workspace and (workspace / "foreign").read_bytes() == b"retain"
+    assert not calls
+
+
+def test_windows_native_reader_rewinds_each_binary_read() -> None:
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    module = sys.modules[snapshot_type.__module__]
+    api = object.__new__(module.NativeApi)
+    payload = b"\r\n\x1a\x00binary"
+
+    class Kernel:
+        offset = 0
+        seeks = []
+
+        def SetFilePointerEx(self, handle, distance, result, origin):
+            self.seeks.append((handle, distance, origin))
+            self.offset = distance
+            return 1
+
+        def ReadFile(self, handle, buffer, size, count, overlapped):
+            chunk = payload[self.offset : self.offset + size]
+            module.c.memmove(buffer, chunk, len(chunk))
+            count._obj.value = len(chunk)
+            self.offset += len(chunk)
+            return 1
+
+    api.kernel = Kernel()
+    pin = module.Pin(Path("source.bin"), 10, (1, 2, False))
+    assert api.read(pin) == payload
+    assert api.read(pin) == payload
+    assert api.kernel.seeks == [(10, 0, 0), (10, 0, 0)]
+
+
+def test_windows_native_create_rejects_multiple_components() -> None:
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    module = sys.modules[snapshot_type.__module__]
+    api = object.__new__(module.NativeApi)
+    with pytest.raises(module.SnapshotError, match="one path component"):
+        api.create(module.Pin(Path("root"), 10, (1, 2, True)), "a/b", False)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Requires real Windows reparse/ACL APIs")
+@pytest.mark.parametrize("kind", ["symlink", "hardlink"])
+def test_windows_source_snapshot_native_rejects_aliased_entry(
+    tmp_path: Path,
+    kind: str,
+) -> None:
+    """The native FILE_ATTRIBUTE_REPARSE_POINT/link-count checks fail closed."""
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    module = sys.modules[snapshot_type.__module__]
+    api = module.NativeApi()
+    parent = api.open(tmp_path, True)
+    root = api.create(parent, "unsafe-source", True)
+    outside = tmp_path / "outside.bin"
+    outside.write_bytes(b"outside authority")
+    alias = root.path / "alias.bin"
+    try:
+        if kind == "symlink":
+            try:
+                alias.symlink_to(outside)
+            except OSError as exc:
+                if getattr(exc, "winerror", None) == 1314:
+                    pytest.skip("native runner lacks symbolic-link privilege")
+                raise
+        else:
+            os.link(outside, alias)
+        api.set_acl(root.handle, True)
+        with pytest.raises(module.SnapshotError, match="reparse, hardlink"):
+            with snapshot_type(root.path, None):
+                pytest.fail("aliased native source entry was accepted")
+        assert outside.read_bytes() == b"outside authority"
+    finally:
+        api.set_acl(root.handle, False)
+        api.close(root.handle)
+        api.close(parent.handle)
+        if alias.exists() or alias.is_symlink():
+            alias.unlink()
+
+
+@pytest.mark.parametrize("path", [r"C:\snapshot", r"\\?\C:\snapshot"])
+def test_windows_source_chain_accepts_only_local_disk_prefixes(path: str) -> None:
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    module = sys.modules[snapshot_type.__module__]
+    guard = object.__new__(snapshot_type)
+    guard.ancestors = []
+    calls = []
+
+    def opened(path, directory):
+        calls.append(path)
+        return module.Pin(path, len(calls), (1, len(calls), True))
+
+    guard.api = types.SimpleNamespace(open=opened)
+    guard.pin_chain(PureWindowsPath(path))
+    assert calls and str(calls[-1]) == path
+
+
+@pytest.mark.parametrize(
+    "path",
+    [r"\\server\share\snapshot", r"\\.\C:\snapshot", r"C:snapshot", r"\snapshot"],
+)
+def test_windows_source_chain_rejects_nonlocal_or_device_prefixes(path: str) -> None:
+    snapshot_type = BUILDER._load_windows_source_snapshot()
+    module = sys.modules[snapshot_type.__module__]
+    guard = object.__new__(snapshot_type)
+    with pytest.raises(module.SnapshotError, match="local absolute"):
+        guard.pin_chain(PureWindowsPath(path))
