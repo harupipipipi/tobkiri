@@ -995,6 +995,10 @@ class AuthorityStore:
                     frozenset({*authority_tables, "host_pending_effects"}),
                     frozenset({*authority_tables, *optional_tables}),
                 }
+                supported_table_sets |= {
+                    frozenset({*tables, "host_extension_registrations"})
+                    for tables in supported_table_sets.copy()
+                }
                 if frozenset(existing_tables) not in supported_table_sets:
                     raise AuthorityStoreError(
                         "authority database table set is partial or inconsistent"
@@ -1003,14 +1007,22 @@ class AuthorityStore:
                     "SELECT value FROM authority_meta WHERE key='schema_version'"
                 ).fetchone()
                 if version_row is None:
-                    raise AuthorityStoreError(
-                        "authority database schema version is missing"
-                    )
+                    raise AuthorityStoreError("authority database schema version is missing")
                 existing_version = str(version_row["value"])
-                if existing_version not in {"1", "2", "3"}:
-                    raise AuthorityStoreError(
-                        "authority database schema version is unsupported"
-                    )
+                if existing_version not in {"1", "2", "3", "4"}:
+                    raise AuthorityStoreError("authority database schema version is unsupported")
+            if existing_version is not None and (
+                (existing_version == "4") != ("host_extension_registrations" in existing_tables)
+            ):
+                raise AuthorityStoreError(
+                    "authority registration schema is partial or inconsistent"
+                )
+            if existing_version == "4" and existing_tables != {
+                *authority_tables, *optional_tables, "host_extension_registrations"
+            }:
+                raise AuthorityStoreError(
+                    "authority database table set is partial or inconsistent"
+                )
             connection.executescript("""
                 CREATE TABLE IF NOT EXISTS authority_meta (
                     key TEXT PRIMARY KEY,
@@ -1135,9 +1147,7 @@ class AuthorityStore:
             )
             lease_columns = {
                 str(row["name"])
-                for row in connection.execute(
-                    "PRAGMA table_info(invocation_leases)"
-                ).fetchall()
+                for row in connection.execute("PRAGMA table_info(invocation_leases)").fetchall()
             }
             expected_v2_columns = {
                 "lease_id",
@@ -1174,9 +1184,7 @@ class AuthorityStore:
                 )
             pending_effect_columns = {
                 str(row["name"])
-                for row in connection.execute(
-                    "PRAGMA table_info(host_pending_effects)"
-                ).fetchall()
+                for row in connection.execute("PRAGMA table_info(host_pending_effects)").fetchall()
             }
             if pending_effect_columns != {
                 "effect_id",
@@ -1193,14 +1201,25 @@ class AuthorityStore:
             self._verify_audit_connection(connection)
             if existing_version == "1":
                 self._migrate_request_bound_leases(connection)
+            else:
+                connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS host_extension_registrations ("
+                "registration_id TEXT PRIMARY KEY, encrypted_payload BLOB NOT NULL) STRICT"
+            )
+            columns = {
+                str(row["name"])
+                for row in connection.execute("PRAGMA table_info(host_extension_registrations)")
+            }
+            if columns != {"registration_id", "encrypted_payload"}:
+                raise AuthorityStoreError(
+                    "authority registration schema is partial or inconsistent"
+                )
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS leases_request ON invocation_leases(request_id)"
             )
-            connection.execute(
-                "UPDATE authority_meta SET value='3' WHERE key='schema_version'"
-            )
-            if existing_version == "1":
-                connection.commit()
+            connection.execute("UPDATE authority_meta SET value='4' WHERE key='schema_version'")
+            connection.commit()
 
     def _migrate_request_bound_leases(
         self, connection: _IdentityBoundConnection
@@ -1424,6 +1443,283 @@ class AuthorityStore:
         except (sqlite3.Error, OSError) as exc:
             raise AuthorityStoreError("authority record commit failed") from exc
 
+    def _extension_events(
+        self, connection: _IdentityBoundConnection
+    ) -> list[dict[str, Any]]:
+        rows = connection.execute(
+            "SELECT encrypted_payload FROM authority_audit "
+            "WHERE event_type='host_extension_registration' ORDER BY sequence"
+        ).fetchall()
+        return [self._decrypt(row["encrypted_payload"]) for row in rows]
+
+    def _extension_audit(
+        self, connection: _IdentityBoundConnection, event: Mapping[str, Any]
+    ) -> None:
+        payload = dict(event)
+        if "sequence" not in payload:
+            payload["sequence"] = 1 + max(
+                (int(item["sequence"]) for item in self._extension_events(connection)),
+                default=0,
+            )
+        self._append_audit(
+            connection,
+            event_id="extension-" + secrets.token_hex(16),
+            event_type="host_extension_registration",
+            event_state=str(payload["event_type"]),
+            payload=payload,
+        )
+
+    def _insert_extension_state(
+        self, connection: _IdentityBoundConnection, state: Mapping[str, Any]
+    ) -> None:
+        connection.execute(
+            "INSERT INTO host_extension_registrations "
+            "(registration_id, encrypted_payload) VALUES (?, ?)",
+            (state["registration_id"], self._encrypt(state)),
+        )
+
+    @_process_owned
+    def host_extension_registration(
+        self, registration_id: str
+    ) -> dict[str, Any] | None:
+        """Read the authenticated durable SDK lifecycle ledger."""
+        with self._lock, self._connection() as connection:
+            row = connection.execute(
+                "SELECT encrypted_payload FROM host_extension_registrations "
+                "WHERE registration_id=?",
+                (registration_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            state = self._decrypt(row[0])
+            if state.get("registration_id") != registration_id:
+                raise AuthorityStoreError("Host Extension ledger identity mismatch")
+            return state
+
+    @_process_owned
+    def host_extension_audit_events(
+        self, registration_id: str
+    ) -> tuple[dict[str, Any], ...]:
+        """Return verified SDK events with their original SDK sequence and time."""
+        events = self.audit_events()
+        return tuple(
+            sorted(
+                (
+                    dict(event["payload"])
+                    for event in events
+                    if event["event_type"] == "host_extension_registration"
+                    and event["payload"]["registration_id"] == registration_id
+                ),
+                key=lambda event: int(event["sequence"]),
+            )
+        )
+
+    @_process_owned
+    def commit_host_extension_registration(
+        self,
+        records: Iterable[Record],
+        state: Mapping[str, Any],
+        event: Mapping[str, Any],
+    ) -> None:
+        """Commit immutable authority, registration identity and SDK audit together."""
+        pending = tuple(records)
+        try:
+            with self._lock, self._connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                if (
+                    connection.execute(
+                        "SELECT 1 FROM host_extension_registrations WHERE registration_id=?",
+                        (state["registration_id"],),
+                    ).fetchone()
+                    is not None
+                ):
+                    raise AuthorityDenied("Host Extension registration already exists")
+                epoch = int(
+                    connection.execute(
+                        "SELECT value FROM authority_meta WHERE key='security_epoch'"
+                    ).fetchone()[0]
+                )
+                if not pending or any(
+                    record.security_epoch != epoch for record in pending
+                ):
+                    raise AuthorityDenied(
+                        "Host Extension registration has a stale epoch"
+                    )
+                for record in pending:
+                    self._insert_record(connection, record)
+                self._insert_extension_state(connection, state)
+                self._append_audit(
+                    connection,
+                    event_id="authority-txn-" + secrets.token_hex(16),
+                    event_type="authority_records_committed",
+                    event_state="committed",
+                    payload={
+                        "records": [
+                            {
+                                "record_type": self._record_type(record),
+                                "record_id": self._record_id(record),
+                                "record_digest": authority_digest(record.to_dict()),
+                            }
+                            for record in pending
+                        ]
+                    },
+                )
+                self._extension_audit(connection, event)
+                connection.commit()
+        except sqlite3.Error as exc:
+            raise AuthorityStoreError(
+                "Host Extension registration transaction failed"
+            ) from exc
+
+    @_process_owned
+    def finish_host_extension_revocation(
+        self, registration_id: str, event: Mapping[str, Any]
+    ) -> None:
+        """Mark the ledger inactive only after Kernel revocation has completed."""
+        with self._lock, self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT encrypted_payload FROM host_extension_registrations "
+                "WHERE registration_id=?",
+                (registration_id,),
+            ).fetchone()
+            if row is None:
+                raise AuthorityDenied("Host Extension registration is not active")
+            state = self._decrypt(row[0])
+            if state.get("registration_id") != registration_id:
+                raise AuthorityStoreError("Host Extension ledger identity mismatch")
+            if not state["active"] and not state.get("revocation_pending", False):
+                raise AuthorityDenied("Host Extension registration is not active")
+            if not all(
+                self._is_revoked(connection, kind, target)
+                for kind, target in (
+                    ("host_extension", state["trust_id"]),
+                    *(
+                        ("provider_authority", item)
+                        for item in state["provider_record_ids"]
+                    ),
+                )
+            ):
+                raise AuthorityDenied("Host Extension revocation is incomplete")
+            state["active"] = False
+            state.pop("revocation_pending", None)
+            connection.execute(
+                "UPDATE host_extension_registrations SET encrypted_payload=? "
+                "WHERE registration_id=?",
+                (self._encrypt(state), registration_id),
+            )
+            self._extension_audit(connection, event)
+            connection.commit()
+
+    @_process_owned
+    def append_host_extension_event(self, event: Mapping[str, Any]) -> None:
+        """Append a failed-closed SDK update event to authoritative audit."""
+        with self._lock, self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._extension_audit(connection, event)
+            connection.commit()
+
+    @_process_owned
+    def migrate_host_extension_registrations(
+        self, states: Iterable[Mapping[str, Any]], events: Iterable[Mapping[str, Any]]
+    ) -> None:
+        """Import validated legacy lifecycle data without creating any authority."""
+        states, events = tuple(states), tuple(events)
+        source_digest = authority_digest({"states": states, "events": events})
+        marker = "extension-import-" + source_digest
+        with self._lock, self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if connection.execute(
+                "SELECT 1 FROM authority_meta WHERE key=?", (marker,)
+            ).fetchone():
+                return
+            for state in states:
+                trust = self.get_host_extension_trust(str(state["trust_id"]))
+                expected_ids = [
+                    f"provider-authority.{state['registration_id']}.{index}"
+                    for index in range(len(state["provider_record_ids"]))
+                ]
+                if state["provider_record_ids"] != expected_ids:
+                    raise AuthorityStoreError(
+                        "legacy Host Extension provider IDs do not match"
+                    )
+                providers = [
+                    self.get_provider_authority(item)
+                    for item in state["provider_record_ids"]
+                ]
+                if (
+                    trust is None
+                    or trust.parent_artifact_digest != state["artifact_digest"]
+                    or not providers
+                    or len(trust.provider_principal_ids) != len(providers)
+                    or any(provider is None for provider in providers)
+                    or set(trust.provider_principal_ids)
+                    != {provider.provider.principal_id for provider in providers}
+                    or any(
+                        provider.provider.parent_artifact_digest
+                        != state["artifact_digest"]
+                        or provider.trust_provenance_digest
+                        != trust.trust_provenance_digest
+                        or provider.publisher_lineage != trust.publisher_lineage
+                        for provider in providers
+                    )
+                ):
+                    raise AuthorityStoreError(
+                        "legacy Host Extension authority does not match"
+                    )
+                existing = connection.execute(
+                    "SELECT encrypted_payload FROM host_extension_registrations WHERE registration_id=?",
+                    (state["registration_id"],),
+                ).fetchone()
+                if existing is not None:
+                    current = self._decrypt(existing[0])
+                    if any(
+                        current[key] != state[key]
+                        for key in (
+                            "registration_id",
+                            "trust_id",
+                            "artifact_digest",
+                            "provider_record_ids",
+                        )
+                    ):
+                        raise AuthorityStoreError(
+                            "legacy Host Extension identity conflicts"
+                        )
+                    continue
+                imported = dict(state)
+                revoked = [
+                    self._is_revoked(connection, kind, target)
+                    for kind, target in (
+                        ("host_extension", state["trust_id"]),
+                        *(("provider_authority", item)
+                          for item in state["provider_record_ids"]),
+                    )
+                ]
+                # A legacy active row can survive a crash midway through Kernel
+                # revocation, including between durable revoke and domain stop.
+                # Keep authority inactive, but retain a path to finish cleanup.
+                if any(revoked) or not state["active"]:
+                    imported["active"] = False
+                    if state["active"] or not all(revoked):
+                        imported["revocation_pending"] = True
+                self._insert_extension_state(connection, imported)
+            prior = {
+                int(item["sequence"]): item
+                for item in self._extension_events(connection)
+            }
+            for event in events:
+                old = prior.get(int(event["sequence"]))
+                if old is not None:
+                    if old != event:
+                        raise AuthorityStoreError(
+                            "legacy Host Extension audit sequence conflicts"
+                        )
+                    continue
+                self._extension_audit(connection, event)
+            connection.execute(
+                "INSERT INTO authority_meta(key,value) VALUES (?, '1')", (marker,)
+            )
+            connection.commit()
     @_process_owned
     def put_records_atomically(self, records: Iterable[Record]) -> None:
         """Commit an approval transaction without leaving partial authority."""

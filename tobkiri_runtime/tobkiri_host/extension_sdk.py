@@ -2,27 +2,28 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+import math
 import sqlite3
-from threading import RLock
 import time
-from typing import Any, Callable, Iterable, Mapping, Protocol
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
+from threading import RLock
+from typing import Any, Protocol
 
 from core_runtime.authority.v4 import (
+    AuthorityDenied,
     AuthorityMode,
     AuthorityScope,
-    ApprovalRecord,
     ExecutionDomain,
     FunctionPrincipal,
-    GrantRecord,
     HostExtensionTrustRecord,
     ProviderAuthorityRecord,
 )
 from tobkiri_protocol.canonical import canonical_digest
 
 from .errors import AuthorizationError
-from .models import PackArtifact, PackageKind
+from .models import PackageKind, PackArtifact
 
 
 class AuthorityRegistrationStore(Protocol):
@@ -32,17 +33,33 @@ class AuthorityRegistrationStore(Protocol):
     def security_epoch(self) -> int:
         """Return the current Host-owned SecurityEpoch."""
 
-    def put_records_atomically(
-        self,
-        records: Iterable[
-            ProviderAuthorityRecord
-            | ApprovalRecord
-            | GrantRecord
-            | ExecutionDomain
-            | HostExtensionTrustRecord
-        ],
+    def commit_host_extension_registration(
+        self, records: Iterable[Any], state: Mapping[str, Any], event: Mapping[str, Any]
     ) -> None:
-        """Commit an immutable trust/domain/provider set atomically."""
+        """Commit records, lifecycle state and audit in one transaction."""
+
+    def host_extension_registration(
+        self, registration_id: str
+    ) -> Mapping[str, Any] | None:
+        """Read durable registration state."""
+
+    def host_extension_audit_events(
+        self, registration_id: str
+    ) -> Iterable[Mapping[str, Any]]:
+        """Read authenticated SDK events."""
+
+    def finish_host_extension_revocation(
+        self, registration_id: str, event: Mapping[str, Any]
+    ) -> None:
+        """Commit inactive lifecycle state after Kernel revocation."""
+
+    def append_host_extension_event(self, event: Mapping[str, Any]) -> None:
+        """Append an authoritative lifecycle event."""
+
+    def migrate_host_extension_registrations(
+        self, states: Iterable[Mapping[str, Any]], events: Iterable[Mapping[str, Any]]
+    ) -> None:
+        """Validate and idempotently import legacy lifecycle data."""
 
 
 class AuthorityRegistrationKernel(Protocol):
@@ -104,7 +121,10 @@ class HostExtensionSDK:
 
     This surface accepts verified ``PackArtifact`` objects, never Profile or Pack
     manifest dictionaries.  It cannot install evaluator, matcher, renderer, or
-    identity-resolver code into the authority kernel.
+    identity-resolver code into the authority kernel. The supplied audit database
+    is only a read-only migration source; new state and audit live with authority.
+    Revocation retains the Kernel's durable revoke and domain-stop sequence. It
+    is fail-closed and retryable, not an atomic group revoke across SDK instances.
     """
 
     def __init__(
@@ -116,53 +136,134 @@ class HostExtensionSDK:
     ) -> None:
         self._authority = authority
         self._store: AuthorityRegistrationStore = authority.store
-        self._database = audit_database
         self._clock = clock
         self._lock = RLock()
-        self._database.execute(
-            """
-            CREATE TABLE IF NOT EXISTS host_extension_registration_audit (
-                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-                registration_id TEXT NOT NULL,
-                event_type TEXT NOT NULL,
-                artifact_digest TEXT NOT NULL,
-                provider_record_ids TEXT NOT NULL,
-                security_epoch INTEGER NOT NULL,
-                event_time REAL NOT NULL
-            )
-            """
+        required = (
+            "commit_host_extension_registration",
+            "host_extension_registration",
+            "host_extension_audit_events",
+            "finish_host_extension_revocation",
+            "append_host_extension_event",
+            "migrate_host_extension_registrations",
         )
-        self._database.execute(
-            """
-            CREATE TABLE IF NOT EXISTS host_extension_registration_state (
-                registration_id TEXT PRIMARY KEY,
-                trust_id TEXT NOT NULL,
-                artifact_digest TEXT NOT NULL,
-                provider_record_ids TEXT NOT NULL,
-                active INTEGER NOT NULL
+        if any(not callable(getattr(self._store, name, None)) for name in required):
+            raise AuthorizationError(
+                "authority store lacks atomic Host registration support"
             )
-            """
-        )
-        self._database.commit()
+        self._migrate_legacy(audit_database)
+
+    def _migrate_legacy(self, source: sqlite3.Connection) -> None:
+        """Read a consistent legacy snapshot without changing its contents."""
+        source.execute("SAVEPOINT host_extension_import")
+        try:
+            self._read_legacy(source)
+        finally:
+            source.execute("RELEASE SAVEPOINT host_extension_import")
+
+    def _read_legacy(self, source: sqlite3.Connection) -> None:
+        """Read the old SDK database without modifying or deleting its history."""
+        tables = {
+            row[0]
+            for row in source.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        expected = {
+            "host_extension_registration_state",
+            "host_extension_registration_audit",
+        }
+        if not tables.intersection(expected):
+            return
+        if not expected.issubset(tables):
+            raise AuthorizationError("legacy Host Extension state is incomplete")
+        states = []
+        for row in source.execute(
+            "SELECT registration_id, trust_id, artifact_digest, provider_record_ids, active "
+            "FROM host_extension_registration_state ORDER BY registration_id"
+        ):
+            ids = json.loads(row[3])
+            if (
+                not isinstance(ids, list)
+                or not ids
+                or len(set(ids)) != len(ids)
+                or any(not isinstance(item, str) or not item for item in ids)
+                or row[4] not in (0, 1)
+            ):
+                raise AuthorizationError("legacy Host Extension state is invalid")
+            states.append(
+                {
+                    "registration_id": row[0],
+                    "trust_id": row[1],
+                    "artifact_digest": row[2],
+                    "provider_record_ids": ids,
+                    "active": bool(row[4]),
+                }
+            )
+        events = []
+        by_id = {state["registration_id"]: state for state in states}
+        for row in source.execute(
+            "SELECT sequence, registration_id, event_type, artifact_digest, "
+            "provider_record_ids, security_epoch, event_time "
+            "FROM host_extension_registration_audit ORDER BY sequence"
+        ):
+            ids = json.loads(row[4])
+            state = by_id.get(row[1])
+            if (
+                row[0] <= 0
+                or row[5] <= 0
+                or not math.isfinite(row[6])
+                or not isinstance(ids, list)
+                or row[2] not in {"registered", "revoked", "update_failed_closed"}
+                or (
+                    row[2] != "update_failed_closed"
+                    and (
+                        state is None
+                        or ids != state["provider_record_ids"]
+                        or row[3] != state["artifact_digest"]
+                    )
+                )
+                or (row[2] == "update_failed_closed" and ids)
+            ):
+                raise AuthorizationError("legacy Host Extension audit is invalid")
+            events.append(
+                {
+                    "sequence": row[0],
+                    "registration_id": row[1],
+                    "event_type": row[2],
+                    "artifact_digest": row[3],
+                    "provider_record_ids": ids,
+                    "security_epoch": row[5],
+                    "event_time": row[6],
+                }
+            )
+        for state in states:
+            history = [
+                event
+                for event in events
+                if event["registration_id"] == state["registration_id"]
+            ]
+            if not history or history[0]["event_type"] != "registered":
+                raise AuthorizationError(
+                    "legacy Host Extension registration lacks audit history"
+                )
+            if any(event["event_type"] == "revoked" for event in history):
+                state["active"] = False
+        self._store.migrate_host_extension_registrations(states, events)
 
     def _active_registration(
-        self, registration_id: str
+        self, registration_id: str, *, include_pending: bool = False
     ) -> tuple[str, tuple[str, ...], str] | None:
         """Read the durable lifecycle state, including after an SDK restart."""
-        row = self._database.execute(
-            """
-            SELECT trust_id, provider_record_ids, artifact_digest
-            FROM host_extension_registration_state
-            WHERE registration_id = ? AND active = 1
-            """,
-            (registration_id,),
-        ).fetchone()
-        if row is None:
+        state = self._store.host_extension_registration(registration_id)
+        if state is None or (
+            not state["active"]
+            and not (include_pending and state.get("revocation_pending", False))
+        ):
             return None
         return (
-            str(row[0]),
-            tuple(str(item) for item in json.loads(str(row[1]))),
-            str(row[2]),
+            state["trust_id"],
+            tuple(state["provider_record_ids"]),
+            state["artifact_digest"],
         )
 
     def register(self, request: HostExtensionRegistration) -> tuple[str, ...]:
@@ -173,41 +274,33 @@ class HostExtensionSDK:
             ...,
         ] = (trust, *domains, *authorities)
         with self._lock:
-            if self._database.execute(
-                "SELECT 1 FROM host_extension_registration_state "
-                "WHERE registration_id = ?",
-                (request.registration_id,),
-            ).fetchone() is not None:
-                raise AuthorizationError("Host Extension registration already exists")
-            self._store.put_records_atomically(records)
             record_ids = tuple(item.record_id for item in authorities)
-            with self._database:
-                self._database.execute(
-                    """
-                    INSERT INTO host_extension_registration_state (
-                        registration_id, trust_id, artifact_digest,
-                        provider_record_ids, active
-                    ) VALUES (?, ?, ?, ?, 1)
-                    """,
-                    (
+            state = {
+                "registration_id": request.registration_id,
+                "trust_id": request.trust_id,
+                "artifact_digest": request.artifact.digest,
+                "provider_record_ids": list(record_ids),
+                "active": True,
+            }
+            try:
+                self._store.commit_host_extension_registration(
+                    records,
+                    state,
+                    self._event(
                         request.registration_id,
-                        request.trust_id,
+                        "registered",
                         request.artifact.digest,
-                        json.dumps(record_ids, separators=(",", ":")),
+                        record_ids,
                     ),
                 )
-            self._audit(
-                request.registration_id,
-                "registered",
-                request.artifact.digest,
-                record_ids,
-            )
+            except AuthorityDenied as exc:
+                raise AuthorizationError(str(exc)) from exc
             return record_ids
 
     def revoke(self, registration_id: str, *, reason: str) -> None:
         """Durably revoke one registration and all its Provider authorities."""
         with self._lock:
-            active = self._active_registration(registration_id)
+            active = self._active_registration(registration_id, include_pending=True)
             if active is None:
                 raise AuthorizationError("Host Extension registration is not active")
             trust_id, record_ids, artifact_digest = active
@@ -222,15 +315,15 @@ class HostExtensionSDK:
                 target_id=trust_id,
                 reason=reason,
             )
-            with self._database:
-                self._database.execute(
-                    """
-                    UPDATE host_extension_registration_state SET active = 0
-                    WHERE registration_id = ?
-                    """,
-                    (registration_id,),
+            try:
+                self._store.finish_host_extension_revocation(
+                    registration_id,
+                    self._event(
+                        registration_id, "revoked", artifact_digest, record_ids
+                    ),
                 )
-            self._audit(registration_id, "revoked", artifact_digest, record_ids)
+            except AuthorityDenied as exc:
+                raise AuthorizationError(str(exc)) from exc
 
     def update(
         self,
@@ -245,7 +338,9 @@ class HostExtensionSDK:
             if active is None:
                 raise AuthorizationError("Host Extension predecessor is not active")
             if active[2] == successor.artifact.digest:
-                raise AuthorizationError("Host Extension update requires a new artifact")
+                raise AuthorizationError(
+                    "Host Extension update requires a new artifact"
+                )
             self.revoke(previous_registration_id, reason=reason)
             try:
                 result = self.register(successor)
@@ -261,25 +356,13 @@ class HostExtensionSDK:
 
     def audit_events(self, registration_id: str) -> tuple[Mapping[str, Any], ...]:
         """Return the finite ordered Host registration audit history."""
-        rows = self._database.execute(
-            """
-            SELECT sequence, event_type, artifact_digest, provider_record_ids,
-                   security_epoch, event_time
-            FROM host_extension_registration_audit
-            WHERE registration_id = ? ORDER BY sequence
-            """,
-            (registration_id,),
-        ).fetchall()
         return tuple(
             {
-                "sequence": int(row[0]),
-                "event_type": str(row[1]),
-                "artifact_digest": str(row[2]),
-                "provider_record_ids": tuple(json.loads(str(row[3]))),
-                "security_epoch": int(row[4]),
-                "event_time": float(row[5]),
+                key: (tuple(value) if key == "provider_record_ids" else value)
+                for key, value in event.items()
+                if key != "registration_id"
             }
-            for row in rows
+            for event in self._store.host_extension_audit_events(registration_id)
         )
 
     def _compile(
@@ -320,7 +403,9 @@ class HostExtensionSDK:
                 and item.operation_id == definition.operation_id
             ]
             if len(operations) != 1:
-                raise AuthorizationError("Provider operation is outside artifact inventory")
+                raise AuthorizationError(
+                    "Provider operation is outside artifact inventory"
+                )
             operation = operations[0]
             if (
                 canonical_digest(operation.input_schema)
@@ -332,8 +417,13 @@ class HostExtensionSDK:
                 or canonical_digest(operation.progress_schema or {})
                 != canonical_digest(definition.progress_schema or {})
             ):
-                raise AuthorizationError("Provider schema does not match exact operation")
-            if definition.scope_semantics_digest != definition.provider_ceiling.semantics_digest:
+                raise AuthorizationError(
+                    "Provider schema does not match exact operation"
+                )
+            if (
+                definition.scope_semantics_digest
+                != definition.provider_ceiling.semantics_digest
+            ):
                 raise AuthorizationError("Provider scope semantics digest mismatch")
             if not definition.conformance_vectors:
                 raise AuthorizationError("Provider conformance vectors are required")
@@ -400,23 +490,25 @@ class HostExtensionSDK:
         artifact_digest: str,
         record_ids: tuple[str, ...],
     ) -> None:
-        with self._database:
-            self._database.execute(
-                """
-                INSERT INTO host_extension_registration_audit (
-                    registration_id, event_type, artifact_digest,
-                    provider_record_ids, security_epoch, event_time
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    registration_id,
-                    event_type,
-                    artifact_digest,
-                    json.dumps(record_ids, separators=(",", ":")),
-                    self._store.security_epoch,
-                    self._clock(),
-                ),
-            )
+        self._store.append_host_extension_event(
+            self._event(registration_id, event_type, artifact_digest, record_ids)
+        )
+
+    def _event(
+        self,
+        registration_id: str,
+        event_type: str,
+        artifact_digest: str,
+        record_ids: tuple[str, ...],
+    ) -> dict[str, Any]:
+        return {
+            "registration_id": registration_id,
+            "event_type": event_type,
+            "artifact_digest": artifact_digest,
+            "provider_record_ids": list(record_ids),
+            "security_epoch": self._store.security_epoch,
+            "event_time": self._clock(),
+        }
 
 
 __all__ = [

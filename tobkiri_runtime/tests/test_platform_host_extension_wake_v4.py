@@ -16,6 +16,7 @@ import pytest
 
 from core_runtime.bootstrap.production_v4 import _authenticated_packvm_backend
 from core_runtime.authority.v4 import (
+    AuthorityStore,
     AuthorityMode,
     AuthorityScope,
     DomainBoundary,
@@ -915,24 +916,21 @@ def test_production_composition_rejects_missing_or_failed_direct_vz_facts() -> N
     assert _authenticated_packvm_backend(FailingLifecycle()) is None
 
 
-class RegistrationStore:
-    security_epoch = 1
-
-    def __init__(self) -> None:
-        self.records: list[object] = []
-
-    def put_records_atomically(self, records) -> None:
-        self.records.extend(records)
+class RegistrationStore(AuthorityStore):
+    @property
+    def records(self) -> list[object]:
+        return [*self.list_domains(), *self.list_provider_authorities(),
+                *self._list_records("host_extension_trust")]
 
 
 class Authority:
-    def __init__(self) -> None:
-        self.store = RegistrationStore()
+    def __init__(self, path: Path) -> None:
+        self.store = RegistrationStore(path / "authority.sqlite")
         self.revocations: list[tuple[str, str]] = []
 
     def revoke(self, *, target_kind: str, target_id: str, reason: str) -> str:
         self.revocations.append((target_kind, target_id))
-        return digest(reason)
+        return self.store.revoke(target_kind=target_kind, target_id=target_id, reason=reason)
 
 
 def extension_registration(
@@ -996,8 +994,8 @@ def extension_registration(
     )
 
 
-def test_host_extension_sdk_exact_registration_revoke_and_normal_pack_denial() -> None:
-    authority = Authority()
+def test_host_extension_sdk_exact_registration_revoke_and_normal_pack_denial(tmp_path: Path) -> None:
+    authority = Authority(tmp_path)
     database = sqlite3.connect(":memory:")
     sdk = HostExtensionSDK(authority, database, clock=lambda: 2.0)
     ids = sdk.register(extension_registration())
@@ -1039,8 +1037,8 @@ def _successor_extension_registration() -> HostExtensionRegistration:
     )
 
 
-def test_host_extension_sdk_update_survives_restart() -> None:
-    authority = Authority()
+def test_host_extension_sdk_update_survives_restart(tmp_path: Path) -> None:
+    authority = Authority(tmp_path)
     database = sqlite3.connect(":memory:")
     original = HostExtensionSDK(authority, database, clock=lambda: 2.0)
     original.register(extension_registration())
@@ -1052,10 +1050,8 @@ def test_host_extension_sdk_update_survives_restart() -> None:
 
     assert ids == ("provider-authority.registration.files.v2.0",)
     assert len(authority.store.records) == 6
-    assert database.execute(
-        "SELECT registration_id, active FROM host_extension_registration_state "
-        "ORDER BY registration_id"
-    ).fetchall() == [("registration.files.v1", 0), ("registration.files.v2", 1)]
+    assert not authority.store.host_extension_registration("registration.files.v1")["active"]
+    assert authority.store.host_extension_registration("registration.files.v2")["active"]
     assert [event["event_type"] for event in restarted.audit_events("registration.files.v1")] == [
         "registered", "revoked"
     ]
@@ -1063,8 +1059,8 @@ def test_host_extension_sdk_update_survives_restart() -> None:
     assert authority.revocations[-1] == ("host_extension", "trust.extension.files.v2")
 
 
-def test_host_extension_sdk_durable_revocation_overrides_old_instance() -> None:
-    authority = Authority()
+def test_host_extension_sdk_durable_revocation_overrides_old_instance(tmp_path: Path) -> None:
+    authority = Authority(tmp_path)
     database = sqlite3.connect(":memory:")
     old = HostExtensionSDK(authority, database)
     old.register(extension_registration())
@@ -1079,8 +1075,8 @@ def test_host_extension_sdk_durable_revocation_overrides_old_instance() -> None:
     assert len(authority.store.records) == 3
 
 
-def test_host_extension_sdk_duplicate_after_restart_has_no_authority_side_effect() -> None:
-    authority = Authority()
+def test_host_extension_sdk_duplicate_after_restart_has_no_authority_side_effect(tmp_path: Path) -> None:
+    authority = Authority(tmp_path)
     database = sqlite3.connect(":memory:")
     HostExtensionSDK(authority, database).register(extension_registration())
     restarted = HostExtensionSDK(authority, database)
@@ -1089,8 +1085,8 @@ def test_host_extension_sdk_duplicate_after_restart_has_no_authority_side_effect
     assert len(authority.store.records) == 3
 
 
-def test_host_extension_sdk_restart_update_preserves_artifact_validation() -> None:
-    authority = Authority()
+def test_host_extension_sdk_restart_update_preserves_artifact_validation(tmp_path: Path) -> None:
+    authority = Authority(tmp_path)
     database = sqlite3.connect(":memory:")
     HostExtensionSDK(authority, database).register(extension_registration())
     restarted = HostExtensionSDK(authority, database)
@@ -1102,10 +1098,7 @@ def test_host_extension_sdk_restart_update_preserves_artifact_validation() -> No
     invalid = replace(successor, artifact=replace(successor.artifact, package_kind=PackageKind.NORMAL))
     with pytest.raises(AuthorizationError, match="normal Pack/Profile"):
         restarted.update("registration.files.v1", invalid, reason="invalid successor")
-    assert database.execute(
-        "SELECT active FROM host_extension_registration_state WHERE registration_id = ?",
-        ("registration.files.v1",),
-    ).fetchone() == (0,)
+    assert not authority.store.host_extension_registration("registration.files.v1")["active"]
     assert len(authority.store.records) == 3
     assert restarted.audit_events("registration.files.v2")[-1]["event_type"] == "update_failed_closed"
 

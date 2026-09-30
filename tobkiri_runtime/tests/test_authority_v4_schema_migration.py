@@ -159,6 +159,7 @@ def _downgrade_to_v1(store: AuthorityStore) -> None:
             f"INSERT INTO invocation_leases ({columns}) SELECT {columns} FROM leases_v2"
         )
         connection.execute("DROP TABLE leases_v2")
+        connection.execute("DROP TABLE host_extension_registrations")
         connection.execute("UPDATE authority_meta SET value='1' WHERE key='schema_version'")
 
 
@@ -189,7 +190,7 @@ def test_historical_v1_migrates_without_silent_authority_expansion(
         clock=fixture.harness.clock,
     )
 
-    assert _schema_version(fixture.path) == "3"
+    assert _schema_version(fixture.path) == "4"
     assert "request_id" in _lease_columns(fixture.path)
     assert migrated.security_epoch == 1
     assert migrated.grant_usage(fixture.harness.grant.grant_id) == (0, 1)
@@ -395,6 +396,7 @@ def test_migration_audit_failure_rolls_back_schema_and_authority_state(
 def test_partial_v1_schema_fails_closed_without_normalization(tmp_path: Path) -> None:
     harness = _Harness(tmp_path)
     with sqlite3.connect(harness.store.path) as connection:
+        connection.execute("DROP TABLE host_extension_registrations")
         connection.execute("UPDATE authority_meta SET value='1' WHERE key='schema_version'")
 
     with pytest.raises(AuthorityStoreError, match="partial or inconsistent"):

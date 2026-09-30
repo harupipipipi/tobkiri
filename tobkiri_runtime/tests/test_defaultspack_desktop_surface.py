@@ -369,12 +369,75 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
     def test_desktop_app_opens_recovery_panel_when_packvm_startup_is_unavailable(self):
         """A missing PackVM keeps the authenticated recovery panel available."""
 
+        from tobkiri_host.errors import BackendUnavailableError
+
+        self._assert_startup_failure_recovery(
+            BackendUnavailableError("stale helper identity"),
+            "required runtime backend is unavailable",
+            "Open Tobkiri Launcher > Packs to prepare PackVM.",
+        )
+
+    def test_stale_startup_session_does_not_request_packvm_repair(self):
+        from core_runtime.authority.v4_models import AuthorityDenied
+
+        self._assert_startup_failure_recovery(
+            AuthorityDenied("secret startup diagnostic", code="stale_revision"),
+            "runtime Profile session is no longer current",
+            "Reopen the active Profile from Tobkiri Launcher.",
+        )
+
+    def test_unknown_startup_failure_does_not_request_packvm_repair(self):
+        self._assert_startup_failure_recovery(
+            RuntimeError("secret startup diagnostic"),
+            "runtime startup validation failed",
+            "Restart Tobkiri Launcher and review the active Profile if the failure persists.",
+        )
+
+    def test_startup_diagnostics_use_types_not_exception_text_or_unknown_codes(self):
+        from core_runtime.authority.v4_models import AuthorityDenied
+        from core_runtime.host_contract import HostContractError
+        from defaultspack import desktop_app
+        from ecosystem.defaultspack.domain.runtime_v4 import (
+            ActivationLockTimeout,
+            ProfileReconfirmationRequired,
+        )
+
+        class UnprintableError(RuntimeError):
+            code = "backend_unavailable"
+
+            def __str__(self):
+                raise AssertionError("exception text must not be rendered")
+
+            def __repr__(self):
+                raise AssertionError("exception repr must not be rendered")
+
+        wrapped = RuntimeError("secret startup diagnostic")
+        wrapped.__cause__ = HostContractError("secret startup diagnostic")
+        cycle = UnprintableError()
+        cycle.__cause__ = cycle
+        cases = [
+            (AuthorityDenied("secret", code="secret"), "authority_denied"),
+            (ActivationLockTimeout("secret"), "profile_verification_pending"),
+            (ProfileReconfirmationRequired("secret"), "profile_reconfirmation_required"),
+            (wrapped, "host_contract_invalid"),
+            (UnprintableError(), "startup_validation_failed"),
+            (cycle, "startup_validation_failed"),
+        ]
+        for error, expected_kind in cases:
+            with self.subTest(kind=expected_kind):
+                diagnostic = desktop_app._classify_startup_failure(error)
+                self.assertEqual(diagnostic.kind, expected_kind)
+                self.assertNotIn("secret", str(diagnostic))
+                self.assertNotIn("prepare PackVM", diagnostic.recovery_action)
+
+    def _assert_startup_failure_recovery(
+        self, error: Exception, message: str, recovery_action: str
+    ) -> None:
         from core_runtime.app_lifecycle_manager import (
             get_runtime_readiness,
             reset_runtime_readiness,
         )
         from defaultspack import desktop_app
-        from tobkiri_host.errors import BackendUnavailableError
 
         events: list[tuple[str, dict[str, object]]] = []
 
@@ -390,7 +453,7 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
                 self.stopped = True
 
             def assert_runtime_startup_ready(self):
-                raise BackendUnavailableError("stale helper identity")
+                raise error
 
             def issue_panel_login_code(self):
                 return {"code": "test-panel-login-code"}
@@ -450,15 +513,19 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
             "panel_ready": True,
             "runtime_ready": False,
             "runtime_status": "error",
-            "runtime_error": "required runtime backend is unavailable",
+            "runtime_error": message,
         })
         unavailable = next(item for item in events if item[0] == "runtime_unavailable")
         self.assertEqual(unavailable[1]["code"], "API_FAILURE")
         self.assertEqual(
             unavailable[1]["recovery_action"],
-            "Open Tobkiri Launcher > Packs to prepare PackVM.",
+            recovery_action,
         )
-        self.assertNotIn("stale helper identity", str(unavailable[1]))
+        self.assertNotIn("stale helper identity", str(events))
+        self.assertNotIn("secret startup diagnostic", str(events))
+        blocked = next(item for item in events if item[0] == "chat_launch_blocked")
+        self.assertEqual(blocked[1]["recovery_action"], recovery_action)
+        self.assertEqual(blocked[1]["failure_kind"], unavailable[1]["failure_kind"])
 
     def test_valid_stale_profile_does_not_open_authenticated_surface(self):
         from core_runtime.app_lifecycle_manager import (
