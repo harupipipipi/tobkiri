@@ -3,12 +3,12 @@
     {
       "path": "catalog/licenses/models.dev-MIT.txt",
       "role": "resource",
-      "sha256": "sha256:dc2dc41c9fea2fd3c41c21c6f484844cab367800b88ff24781f980ad3a9d160a"
+      "sha256": "dc2dc41c9fea2fd3c41c21c6f484844cab367800b88ff24781f980ad3a9d160a"
     },
     {
       "path": "catalog/provider-setup.json",
       "role": "resource",
-      "sha256": "sha256:c246a910c983cb99bdd50b55edac896e9d7dc32e5d58eaa369bbb1b6edaa5a99"
+      "sha256": "4ec00997a29b6b0ed0d6a66829f2f10fc257970416a394da9ae02d055bf44d28"
     },
     {
       "path": "runtime/__init__.py",

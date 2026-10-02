@@ -28,6 +28,7 @@ SOURCES = {
     "avian": "https://api.avian.io/v1/models",
     "sambanova": "https://api.sambanova.ai/v1/models",
 }
+MAX_MODEL_FILE_BYTES = 512 * 1024
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -35,6 +36,41 @@ def _read(path: Path) -> dict[str, Any]:
     if not isinstance(result, dict):
         raise ValueError("provider model source must be an object")
     return result
+
+
+def _load_setup_catalog() -> dict[str, Any]:
+    catalog = _read(CATALOG)
+    for provider_id, descriptor in catalog["providers"].items():
+        model_path = CATALOG.parent / "setup" / f"{provider_id}.json"
+        if descriptor["models_file"] != f"setup/{provider_id}.json":
+            raise ValueError("provider model file is invalid")
+        data = _read(model_path)
+        if data.get("provider_id") != provider_id:
+            raise ValueError("provider model file identity is invalid")
+        descriptor["models"] = data["models"]
+    return catalog
+
+
+def _write_setup_catalog(catalog: dict[str, Any]) -> None:
+    index = {**catalog, "providers": {}}
+    files: dict[Path, str] = {}
+    for provider_id, provider in catalog["providers"].items():
+        models_file = f"setup/{provider_id}.json"
+        document = {"provider_id": provider_id, "models": provider["models"]}
+        output = json.dumps(document, ensure_ascii=False, indent=1) + "\n"
+        if len(output.encode("utf-8")) > MAX_MODEL_FILE_BYTES:
+            raise ValueError(f"{provider_id} model JSON exceeds its byte budget")
+        files[CATALOG.parent / models_file] = output
+        index["providers"][provider_id] = {
+            **{key: value for key, value in provider.items() if key != "models"},
+            "models_file": models_file,
+        }
+    for path, output in files.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(output, encoding="utf-8")
+    CATALOG.write_text(
+        json.dumps(index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
 
 
 def _model_type(inputs: list[str], outputs: list[str], reasoning: bool) -> str:
@@ -224,7 +260,7 @@ def main() -> int:
     args = parser.parse_args()
     if args.check and args.refresh:
         parser.error("--check cannot refresh network sources")
-    catalog = _read(CATALOG)
+    catalog = _load_setup_catalog()
     if args.refresh:
         import tempfile
 
@@ -255,10 +291,7 @@ def main() -> int:
                     ], check=True)
                 public_paths[name] = path
             catalog = refresh(catalog, *paths, args.retrieved_on, public_paths)
-        CATALOG.write_text(
-            json.dumps(catalog, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        _write_setup_catalog(catalog)
     output = json.dumps(projection(catalog), ensure_ascii=False, indent=2) + "\n"
     if args.check:
         if not PROJECTION.is_file() or PROJECTION.read_text(encoding="utf-8") != output:

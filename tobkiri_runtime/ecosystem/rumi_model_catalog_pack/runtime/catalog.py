@@ -21,7 +21,7 @@ if TYPE_CHECKING:
         HostProviderInvocationContextV4,
     )
 
-CATALOG_REVISION = "sha256:ed621f501f5851221bd7ed0c5ea972ed9552794d633574d9edb88f8e9e1b2231"
+CATALOG_REVISION = "sha256:b077149ea0f3e60fa3bbcc6bc6bb82c91afe8b35fa1fe1462ea2dc6131cf409b"
 _ROOT = Path(__file__).resolve().parents[1] / "catalog" / "providers"
 _EXTENSION_ROOT = Path(__file__).resolve().parents[1] / "extensions" / "llm" / "providers"
 _OPENROUTER_PROVIDER_ID = "openrouter"
@@ -200,7 +200,11 @@ def _load_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
             "available": True,
             "catalog_revision": CATALOG_REVISION,
         })
-        for raw in descriptor["models"]:
+        model_file = _ROOT.parent / "setup" / f"{provider_id}.json"
+        model_data = _read_json(model_file)
+        if model_data.get("provider_id") != provider_id:
+            raise ValueError("setup model catalog provider ID is inconsistent")
+        for raw in model_data["models"]:
             item = _model(provider_id, raw, {})
             # Existing curated metadata can enrich the imported discovery data.
             model_items.setdefault((provider_id, item["model_id"]), item)
@@ -645,6 +649,7 @@ def _catalog_revision() -> str:
     pack_root = _ROOT.parent.parent
     paths = list(_ROOT.glob("*/*.json"))
     paths.append(_ROOT.parent / "provider-setup.json")
+    paths.extend((_ROOT.parent / "setup").glob("*.json"))
     paths.extend(_EXTENSION_ROOT.glob("**/*.json"))
     for path in sorted(paths):
         content = path.read_bytes().replace(b"\r\n", b"\n")
