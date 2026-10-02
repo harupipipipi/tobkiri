@@ -8,12 +8,15 @@ and the normal Broker authorization/audit path supplied by production capture.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import json
 from pathlib import Path
 import secrets
 import sqlite3
+import stat
 import threading
 import time
 from typing import Any, Callable, Mapping, Protocol
+from types import MappingProxyType
 
 from tobkiri_host.models import OpaqueAuthorityRef
 from tobkiri_host.ports import OpaqueInvocationLease
@@ -43,6 +46,21 @@ class CapturedWakeDeclarationV4:
         if type(self.interval_ms) is not int or not 100 <= self.interval_ms <= 86400000:
             raise ValueError("wake interval is invalid")
         canonical_digest(dict(self.payload))
+        object.__setattr__(
+            self, "payload", MappingProxyType(json.loads(json.dumps(dict(self.payload))))
+        )
+
+    @property
+    def digest(self) -> str:
+        """Pin the entire copied declaration and detect any nested drift."""
+        return canonical_digest(
+            {
+                "contract_id": self.contract_id,
+                "operation_id": self.operation_id,
+                "payload": dict(self.payload),
+                "interval_ms": self.interval_ms,
+            }
+        )
 
 
 class CapturedWakePortV4(Protocol):
@@ -209,23 +227,39 @@ class CapturedWakeDriverV4:
         registration: TriggerRegistration,
         binding_identity: Mapping[str, Any],
         assert_authorized: Callable[[], None],
-        invoke_fresh: Callable[[str, Callable[[], None]], Mapping[str, Any]],
+        invoke_fresh: Callable[[str, Callable[[], None], threading.Event], Mapping[str, Any]],
         current_epoch: Callable[[], int],
         adapter_factory: Callable[[Callable[[], None]], OSWakeAdapter] | None = None,
         wall_clock: Callable[[], float] = time.time,
         monotonic_clock: Callable[[], float] = time.monotonic,
     ) -> None:
+        if (
+            registration.contract_id != declaration.contract_id
+            or registration.operation_id != declaration.operation_id
+        ):
+            raise PermissionError("wake declaration and registration differ")
         self._declaration, self._registration = declaration, registration
         self._identity = canonical_digest(dict(binding_identity))
-        self._check, self._invoke = assert_authorized, invoke_fresh
+        self._assert_authorized, self._invoke = assert_authorized, invoke_fresh
+        self._current_epoch = current_epoch
+        self._declaration_digest = declaration.digest
         self._wall, self._mono = wall_clock, monotonic_clock
         self._lock = threading.RLock()
         self._closed = False
+        self._delivery_cancellation = threading.Event()
         self._armed = False
         self._reason = "registration_disabled"
+        state_path = state_path.absolute()
+        for ancestor in (state_path, *state_path.parents):
+            if ancestor.is_symlink():
+                raise PermissionError("wake state ancestor is invalid")
         state_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        if state_path.is_symlink():
-            raise PermissionError("wake state path is invalid")
+        self._path = state_path
+        self._ancestor_identities = {
+            ancestor: (ancestor.stat().st_dev, ancestor.stat().st_ino)
+            for ancestor in state_path.parents
+        }
+        self._check_state_path()
         self._database = sqlite3.connect(state_path, check_same_thread=False)
         state_path.chmod(0o600)
         self._database.execute("PRAGMA journal_mode=WAL")
@@ -247,6 +281,23 @@ class CapturedWakeDriverV4:
         self._registered = False
         self._active_registration = registration
         self._restore()
+
+    def _check_state_path(self) -> None:
+        for path, expected in self._ancestor_identities.items():
+            actual = path.lstat()
+            if not stat.S_ISDIR(actual.st_mode) or (actual.st_dev, actual.st_ino) != expected:
+                raise PermissionError("wake state ancestor changed")
+        if any(Path(str(self._path) + suffix).is_symlink() for suffix in ("", "-wal", "-shm")):
+            raise PermissionError("wake state entry is symlinked")
+
+    def _check(self) -> None:
+        self._check_state_path()
+        if (
+            self._declaration.digest != self._declaration_digest
+            or self._current_epoch() != self._registration.security_epoch
+        ):
+            raise PermissionError("wake declaration or epoch changed")
+        self._assert_authorized()
 
     def _state(self) -> tuple[Any, ...] | None:
         return self._database.execute(
@@ -317,6 +368,7 @@ class CapturedWakeDriverV4:
     def disarm(self) -> Mapping[str, Any]:
         """Fence pending/delivering callbacks before revoking the timer source."""
         with self._lock, self._database:
+            self._delivery_cancellation.set()
             self._database.execute(
                 "UPDATE wake_state SET enabled=0,generation=generation+1 WHERE id=1"
             )
@@ -368,19 +420,15 @@ class CapturedWakeDriverV4:
                     self._check()
 
                 fence()
+                self._delivery_cancellation = threading.Event()
+                cancellation = self._delivery_cancellation
             except Exception:
                 self.disarm()
                 self._reason = "wake_authority_or_adapter_unavailable"
                 return
         try:
-            result = self._invoke(delivery.occurrence_id, fence)
-            if result.get("status") in {
-                "failed",
-                "error",
-                "denied",
-                "approval_required",
-                "unavailable",
-            }:
+            result = self._invoke(delivery.occurrence_id, fence, cancellation)
+            if result.get("status") not in {"ok", "completed"}:
                 raise PermissionError("wake execution did not complete")
             with self._lock:
                 fence()
@@ -404,6 +452,12 @@ class CapturedWakeDriverV4:
         """Armed requires an existing driver, source lease and finite intent."""
         with self._lock:
             state = self._state()
+            if self._armed:
+                try:
+                    self._check()
+                except Exception:
+                    self.disarm()
+                    self._reason = "wake_authority_or_adapter_unavailable"
             return {
                 "armed": self._armed
                 and not self._closed
@@ -420,6 +474,7 @@ class CapturedWakeDriverV4:
         """Fence this capture; a restart must independently recheck intent/grant."""
         with self._lock:
             self._closed, self._armed = True, False
+            self._delivery_cancellation.set()
             if self._registered:
                 self._kernel.revoke(self._active_registration.registration_id)
             self._registered = False
