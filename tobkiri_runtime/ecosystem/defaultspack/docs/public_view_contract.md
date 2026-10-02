@@ -38,6 +38,15 @@ Its save declaration combines constants, source/record/context bindings and a
 failures. Nested field edits preserve untouched siblings. Navigation guards block
 pending operations and require explicit discard of unsaved changes.
 
+The `conversation_thread` grammar maps a canonical conversation, message list,
+pending turn, and optional read-only model reference from the source. Its exact
+`send`, optional `stop`, and `events` requests accept source/context bindings;
+`content_key` is fixed to `content` and `turn_id_key` to `turn_id`. Constants or
+bindings cannot replace these injected values. The shared renderer is integrated
+separately and remains explicitly unavailable until its Application code exists.
+Canonical turn/event identity checks and source read-only evidence apply to that
+renderer; the descriptor cannot override models, tools, grants, or approval policy.
+
 `context_bindings: {conversation_id: "conversation_id"}` and `turn_id` can
 bind finite IDs from the current captured App state. Missing context fails
 closed; conversation/turn changes unmount old requests. Profile, principal,

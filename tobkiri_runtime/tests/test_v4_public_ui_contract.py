@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 import pytest
+from jsonschema.exceptions import ValidationError
 
 from core_runtime.global_contracts.capability_capture import (
     capture_capability_binding_snapshot,
@@ -388,6 +389,66 @@ def _view() -> dict[str, Any]:
             "input": {"settings": {"enabled": True}},
         },
     }
+
+
+def _thread_view() -> dict[str, Any]:
+    view = _view()
+    operation = {key: value for key, value in view["data_source"].items() if key != "input"}
+    return {
+        **view,
+        "renderer": "conversation_thread",
+        "conversation_thread": {
+            "conversation_path": "thread.conversation",
+            "messages_path": "thread.messages",
+            "pending_turn_path": "thread.pending_turn",
+            "model_reference_path": "thread.context.model_reference",
+            "send": {
+                "operation": operation,
+                "content_key": "content",
+                "turn_id_key": "turn_id",
+                "source_bindings": {"expected_child_revision": "revision"},
+            },
+            "events": {"operation": operation, "turn_id_key": "turn_id"},
+        },
+    }
+
+
+def test_thread_view_grammar_preserves_canonical_operations_and_fixed_keys() -> None:
+    """A descriptor supplies inert mappings, not model/turn execution authority."""
+    validate_catalog_view(_thread_view())
+
+
+@pytest.mark.parametrize("scenario", [
+    "content_override", "turn_override", "scope", "url", "collision", "model",
+    "events_content", "prototype", "source_missing",
+])
+def test_thread_view_rejects_injected_scope_and_unsupported_execution(
+    scenario: str,
+) -> None:
+    """Thread controls cannot silently replace text, tickets, scope or models."""
+    view = _thread_view()
+    thread = view["conversation_thread"]
+    send = thread["send"]
+    if scenario == "content_override":
+        send["content_key"] = "model_override"
+    elif scenario == "turn_override":
+        send["input"] = {"turn_id": "forged"}
+    elif scenario == "scope":
+        send["source_bindings"]["profile_id"] = "thread.id"
+    elif scenario == "url":
+        thread["url"] = "/api/send"
+    elif scenario == "collision":
+        send["context_bindings"] = {"content": "conversation_id"}
+    elif scenario == "model":
+        thread["model_override"] = "another-model"
+    elif scenario == "events_content":
+        thread["events"]["content_key"] = "content"
+    elif scenario == "prototype":
+        thread["messages_path"] = "constructor.messages"
+    else:
+        del view["data_source"]
+    with pytest.raises((ValueError, ValidationError)):
+        validate_catalog_view(view)
 
 
 @pytest.mark.parametrize(

@@ -28,7 +28,8 @@
         "panel",
         "status",
         "entity_picker",
-        "record_editor"
+        "record_editor",
+        "conversation_thread"
       ]
     },
     "title": {
@@ -58,6 +59,9 @@
     },
     "record_editor": {
       "$ref": "#/$defs/record_editor"
+    },
+    "conversation_thread": {
+      "$ref": "#/$defs/conversation_thread"
     }
   },
   "$defs": {
@@ -490,6 +494,93 @@
           }
         }
       }
+    },
+    "thread_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation",
+        "turn_id_key"
+      ],
+      "properties": {
+        "operation": {
+          "$ref": "#/$defs/operation"
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        },
+        "context_bindings": {
+          "$ref": "#/$defs/context_bindings"
+        },
+        "source_bindings": {
+          "$ref": "#/$defs/bindings"
+        },
+        "turn_id_key": {
+          "const": "turn_id"
+        }
+      }
+    },
+    "thread_send": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation",
+        "turn_id_key",
+        "content_key"
+      ],
+      "properties": {
+        "operation": {
+          "$ref": "#/$defs/operation"
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        },
+        "context_bindings": {
+          "$ref": "#/$defs/context_bindings"
+        },
+        "source_bindings": {
+          "$ref": "#/$defs/bindings"
+        },
+        "turn_id_key": {
+          "const": "turn_id"
+        },
+        "content_key": {
+          "const": "content"
+        }
+      }
+    },
+    "conversation_thread": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "conversation_path",
+        "messages_path",
+        "pending_turn_path",
+        "send"
+      ],
+      "properties": {
+        "conversation_path": {
+          "$ref": "#/$defs/path"
+        },
+        "messages_path": {
+          "$ref": "#/$defs/path"
+        },
+        "pending_turn_path": {
+          "$ref": "#/$defs/path"
+        },
+        "model_reference_path": {
+          "$ref": "#/$defs/path"
+        },
+        "send": {
+          "$ref": "#/$defs/thread_send"
+        },
+        "stop": {
+          "$ref": "#/$defs/thread_request"
+        },
+        "events": {
+          "$ref": "#/$defs/thread_request"
+        }
+      }
     }
   },
   "allOf": [
@@ -510,6 +601,28 @@
         "not": {
           "required": [
             "record_editor"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "renderer": {
+            "const": "conversation_thread"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "conversation_thread",
+          "data_source"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "conversation_thread"
           ]
         }
       }
