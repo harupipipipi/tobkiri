@@ -359,7 +359,9 @@ def test_reviewed_schema_override_rejects_changed_owner_inventory(
         build_registry(ecosystem, fixture_path=fixture_path)
 
 
-@pytest.mark.parametrize("scenario", ["duplicate", "schema", "authority"])
+@pytest.mark.parametrize("scenario", [
+    "duplicate", "schema", "authority", "$ref", "$dynamicRef", "$recursiveRef",
+])
 def test_reviewed_schema_override_rejects_ambiguous_or_invalid_inputs(
     tmp_path: Path, scenario: str,
 ) -> None:
@@ -371,11 +373,47 @@ def test_reviewed_schema_override_rejects_ambiguous_or_invalid_inputs(
         fixture["schema_overrides"].append(override)
     elif scenario == "schema":
         override["schemas"]["input"]["type"] = "invalid-type"
+    elif scenario.startswith("$"):
+        override["schemas"]["input"][scenario] = "https://example.invalid/schema"
     else:
         override["effect_ceiling"] = ["host:brokered-execution"]
     fixture_path.write_text(json.dumps(fixture))
     with pytest.raises(ExecutableSourceRegistryError):
         build_registry(ecosystem, fixture_path=fixture_path)
+
+
+@pytest.mark.parametrize("mismatch", [None, "schema", "version"])
+def test_reviewed_schema_override_checks_additive_function_wire(
+    tmp_path: Path, mismatch: str | None,
+) -> None:
+    """Additional Operations must retain the reviewed Function's exact wire."""
+    ecosystem, fixture_path = _write_schema_override_fixture(tmp_path)
+    fixture = json.loads(fixture_path.read_text())
+    override = fixture["schema_overrides"][0]
+    legacy = override["legacy_functions"][0]
+    entry = {
+        "function_id": legacy["function_id"],
+        "operation_ids": ["sample_pack.sample.other"],
+        "contract_id": override["contract_id"],
+        "contract_version": override["contract_version"],
+        "implementation_path": legacy["implementation_path"],
+        "schemas": json.loads(json.dumps(override["schemas"])),
+    }
+    if mismatch == "schema":
+        entry["schemas"]["input"] = {"type": "object"}
+    elif mismatch == "version":
+        entry["contract_version"] = "2.0.0"
+    fixture["packs"]["sample_pack"] = {"entries": [entry]}
+    fixture_path.write_text(json.dumps(fixture))
+    if mismatch:
+        with pytest.raises(ExecutableSourceRegistryError, match="wire schema conflict"):
+            build_registry(ecosystem, fixture_path=fixture_path)
+    else:
+        registry = build_registry(ecosystem, fixture_path=fixture_path)
+        record = next(iter(registry["packs"].values()))
+        assert len(record["operations"]) == 2
+        assert all(operation["input_schema"] == record["input_schema"]
+                   for operation in record["operations"])
 
 
 def test_source_registry_accepts_regular_v3_module_file(tmp_path: Path) -> None:

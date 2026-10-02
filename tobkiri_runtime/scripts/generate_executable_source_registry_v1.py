@@ -585,6 +585,13 @@ def _merge_records(
             raise ExecutableSourceRegistryError(f"explicit Function implementation conflict: {function_id}")
         if target["contract_id"] != explicit_record["contract_id"]:
             raise ExecutableSourceRegistryError(f"explicit Function Contract conflict: {function_id}")
+        if target["contract_version"] != explicit_record["contract_version"] or any(
+            target[field] != explicit_record[field]
+            for field in ("input_schema", "output_schema", "error_schema")
+        ):
+            raise ExecutableSourceRegistryError(
+                f"explicit Function wire schema conflict: {function_id}"
+            )
         target["operations"].extend(explicit_record["operations"])
         target["source"].extend(explicit_record["source"])
         operation_ids = [str(item["operation_id"]) for item in target["operations"]]
@@ -773,8 +780,8 @@ def _apply_schema_overrides(
             raise ExecutableSourceRegistryError("schema override schemas are invalid")
         try:
             encoded = json.dumps(schemas, allow_nan=False).encode("utf-8")
-            if len(encoded) > 65536:
-                raise ValueError("schema override is too large")
+            if len(encoded) > 65536 or _external_schema_reference(schemas):
+                raise ValueError("schema override is unbounded or external")
             for schema in schemas.values():
                 Draft202012Validator.check_schema(schema)
         except (SchemaError, TypeError, ValueError) as error:
@@ -792,6 +799,21 @@ def _apply_schema_overrides(
                 "path": _label(fixture_path, repository_root),
                 "contract_id": contract_id,
             })
+
+
+def _external_schema_reference(value: Any) -> bool:
+    """Permit only local schema references in a reviewed replacement wire."""
+    if isinstance(value, Mapping):
+        for keyword in ("$ref", "$dynamicRef", "$recursiveRef"):
+            if keyword in value and (
+                not isinstance(value[keyword], str)
+                or not (value[keyword] == "#" or value[keyword].startswith("#/"))
+            ):
+                return True
+        return any(_external_schema_reference(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_external_schema_reference(item) for item in value)
+    return False
 
 
 def _apply_implementation_adapters(
