@@ -1,0 +1,245 @@
+{
+  "version": "tobkiri.cloud-workspace-profile-proposal.v1",
+  "status": "source-proposal-needs-verified-artifact-resolution",
+  "default_profile_unchanged": true,
+  "template": {
+    "path": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.intent.v1.json",
+    "sha256": "9f1eb19c79e7c07167533189c472b4b4c7442887c8a3c1c58cee7f655d7baa04"
+  },
+  "intent_overrides": {
+    "profile_id": "cloud-workspace",
+    "display_name": "Tobkiri Cloud Workspace",
+    "state": "needs_resolution",
+    "catalog_revision": null,
+    "authority_references": [],
+    "profile_authority_snapshot_digest": null
+  },
+  "pack_additions": [
+    {
+      "pack_id": "tobkiri_cloud_workspace_pack",
+      "artifact_digest": null,
+      "role": "provider"
+    },
+    {
+      "pack_id": "rumi_coding_sandbox_service_pack",
+      "artifact_digest": null,
+      "role": "provider"
+    }
+  ],
+  "requested_edge_additions": [
+    {
+      "caller_function_id": "tobkiri_cloud_workspace_pack.manage",
+      "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "contract_id": "tobkiri.service.interactive-effect.v1",
+      "operation_id": "interactive_effect.manage",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.interactive-effect.v1"
+          ],
+          "operation": [
+            "interactive_effect.manage"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "tobkiri_cloud_workspace_pack.manage",
+      "target_provider_id": "rumi_coding_sandbox_service_pack.task-resource",
+      "contract_id": "tobkiri.resource.workspace.container-task.v1",
+      "operation_id": "rumi_coding_sandbox_service_pack.task-resource",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.workspace.container-task.v1"
+          ],
+          "operation": [
+            "rumi_coding_sandbox_service_pack.task-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "tobkiri_cloud_workspace_pack.resource",
+      "target_provider_id": "rumi_coding_sandbox_service_pack.task-resource",
+      "contract_id": "tobkiri.resource.workspace.container-task.v1",
+      "operation_id": "rumi_coding_sandbox_service_pack.task-resource",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.workspace.container-task.v1"
+          ],
+          "operation": [
+            "rumi_coding_sandbox_service_pack.task-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_coding_sandbox_service_pack.task-prepare",
+      "target_provider_id": "tobkiri_cloud_workspace_pack.resource",
+      "contract_id": "tobkiri.resource.cloud.workspace.v1",
+      "operation_id": "tobkiri_cloud_workspace_pack.workspace-resource",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.cloud.workspace.v1"
+          ],
+          "operation": [
+            "tobkiri_cloud_workspace_pack.workspace-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_coding_sandbox_service_pack.task-execute",
+      "target_provider_id": "tobkiri_cloud_workspace_pack.resource",
+      "contract_id": "tobkiri.resource.cloud.workspace.v1",
+      "operation_id": "tobkiri_cloud_workspace_pack.workspace-resource",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.cloud.workspace.v1"
+          ],
+          "operation": [
+            "tobkiri_cloud_workspace_pack.workspace-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "target_provider_id": "rumi_coding_sandbox_service_pack.task-prepare",
+      "contract_id": "tobkiri.action.workspace.container.v1",
+      "operation_id": "rumi_coding_sandbox_service_pack.task-prepare",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.workspace.container.v1"
+          ],
+          "operation": [
+            "rumi_coding_sandbox_service_pack.task-prepare"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "target_provider_id": "rumi_coding_sandbox_service_pack.task-execute",
+      "contract_id": "tobkiri.action.workspace.container.v1",
+      "operation_id": "rumi_coding_sandbox_service_pack.task-execute",
+      "authority_mode": "interactive_only",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.workspace.container.v1"
+          ],
+          "operation": [
+            "rumi_coding_sandbox_service_pack.task-execute"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "tobkiri_cloud_workspace_pack.resource",
+      "contract_id": "tobkiri.resource.cloud.workspace.v1",
+      "operation_id": "tobkiri_cloud_workspace_pack.workspace-resource",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.cloud.workspace.v1"
+          ],
+          "operation": [
+            "tobkiri_cloud_workspace_pack.workspace-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "tobkiri_cloud_workspace_pack.manage",
+      "contract_id": "tobkiri.action.cloud.workspace.v1",
+      "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.cloud.workspace.v1"
+          ],
+          "operation": [
+            "tobkiri_cloud_workspace_pack.workspace-manage"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    }
+  ],
+  "declared_data_proposal": "tobkiri_runtime/ecosystem/tobkiri_cloud_workspace_pack/docs/task-adoption.v1.json",
+  "ui_contributions": [
+    {
+      "path": "tobkiri_runtime/ecosystem/tobkiri_cloud_workspace_pack/frontend/contributions/composer.json",
+      "slot": "composer_above"
+    },
+    {
+      "path": "tobkiri_runtime/ecosystem/tobkiri_cloud_workspace_pack/frontend/contributions/workspace.json",
+      "slot": "workspace_tab"
+    }
+  ],
+  "resolution_requirements": [
+    "Revalidate the exact template and merge additions into a separately named author-edited Profile intent; preserve its existing approval UI edges.",
+    "Use verified packaged Shell and selected Pack artifacts for the requested macos/arm64 target; the source Shell is build_required.",
+    "Compile the intent through the generic Profile artifact generator with a matching named compatibility entry and current verified bundle lock.",
+    "Register the exact compiled definition through ProfileDefinitionStore generation CAS and resolve_profile_pack_set; capture real Host authority facts.",
+    "Activate only through the existing confirmed activate_resolved_profile_pack_set ceremony. This source proposal grants no authority.",
+    "Task execution requires a cached reviewed digest-pinned image and the ordinary workspace_task approval/resume path."
+  ],
+  "deferred": [
+    "cloud-provider-deployment-pack",
+    "aws-upload",
+    "automatic-main-pc-sync",
+    "remote-mobile-session"
+  ]
+}

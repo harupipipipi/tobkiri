@@ -1,272 +1,102 @@
-"""
-test_wave26_dx_approval_warning.py
-W26-DX: approval ステータス起因の component skip に WARNING 通知が出ることを検証
-"""
+"""Pack v4 approval evidence replaces legacy kernel approval scan warnings."""
+
 from __future__ import annotations
 
-import sys
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+import copy
+from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
-
-# =====================================================================
-# _h_approval_scan tests (stderr WARNING)
-# =====================================================================
-
-class TestApprovalScanWarning:
-    """_h_approval_scan の WARNING 出力テスト"""
-
-    def _make_kernel(self):
-        from core_runtime.kernel_handlers_system import KernelSystemHandlersMixin
-
-        class FakeKernel(KernelSystemHandlersMixin):
-            pass
-
-        k = FakeKernel()
-        k.diagnostics = MagicMock()
-        return k
-
-    def _make_am(self, packs, statuses, verify_results):
-        am = MagicMock()
-        am.scan_packs.return_value = packs
-        am.get_status.side_effect = lambda pid: statuses.get(pid)
-        am.verify_hash.side_effect = lambda pid: verify_results.get(pid, True)
-        return am
-
-    @patch("core_runtime.approval_manager.get_approval_manager")
-    def test_modified_pack_warns_stderr(self, mock_get_am, capsys):
-        """modified Pack 検出時に stderr に WARNING が出る"""
-        from core_runtime.approval_manager import PackStatus
-
-        k = self._make_kernel()
-        am = self._make_am(
-            ["pack-a"],
-            {"pack-a": PackStatus.APPROVED},
-            {"pack-a": False},
-        )
-        mock_get_am.return_value = am
-
-        ctx = {}
-        k._h_approval_scan({"check_hash": True}, ctx)
-
-        captured = capsys.readouterr()
-        assert "[Rumi] WARNING" in captured.err
-        assert "pack-a" in captured.err
-        assert "modified" in captured.err.lower() or "Re-approve" in captured.err
-
-    @patch("core_runtime.approval_manager.get_approval_manager")
-    def test_pending_pack_warns_stderr(self, mock_get_am, capsys):
-        """pending Pack 検出時に stderr に WARNING が出る"""
-        from core_runtime.approval_manager import PackStatus
-
-        k = self._make_kernel()
-        am = self._make_am(
-            ["pack-b"],
-            {"pack-b": PackStatus.PENDING},
-            {},
-        )
-        mock_get_am.return_value = am
-
-        ctx = {}
-        k._h_approval_scan({"check_hash": True}, ctx)
-
-        captured = capsys.readouterr()
-        assert "[Rumi] WARNING" in captured.err
-        assert "pack-b" in captured.err
-        assert "awaiting approval" in captured.err.lower()
-
-    @patch("core_runtime.approval_manager.get_approval_manager")
-    def test_no_warning_when_all_approved(self, mock_get_am, capsys):
-        """modified も pending もなければ WARNING が出ない"""
-        from core_runtime.approval_manager import PackStatus
-
-        k = self._make_kernel()
-        am = self._make_am(
-            ["pack-c"],
-            {"pack-c": PackStatus.APPROVED},
-            {"pack-c": True},
-        )
-        mock_get_am.return_value = am
-
-        ctx = {}
-        k._h_approval_scan({"check_hash": True}, ctx)
-
-        captured = capsys.readouterr()
-        assert "[Rumi] WARNING" not in captured.err
-
-    @patch("core_runtime.approval_manager.get_approval_manager")
-    def test_dev_auto_approved_pack_is_not_left_pending(self, mock_get_am, capsys):
-        """approval scan 時点で dev auto-approve が効けば pending 警告を出さない"""
-        from core_runtime.approval_manager import PackStatus
-
-        k = self._make_kernel()
-        am = self._make_am(
-            ["defaultspack"],
-            {"defaultspack": PackStatus.INSTALLED},
-            {"defaultspack": True},
-        )
-        am.auto_approve_if_dev.return_value = True
-        am.get_status.side_effect = [PackStatus.INSTALLED, PackStatus.APPROVED]
-        mock_get_am.return_value = am
-
-        ctx = {}
-        k._h_approval_scan({"check_hash": True}, ctx)
-
-        captured = capsys.readouterr()
-        assert "awaiting approval" not in captured.err.lower()
-        assert ctx["_packs_approved"] == ["defaultspack"]
-        assert ctx["_packs_pending"] == []
+from ecosystem.defaultspack.domain.runtime_v4 import (
+    BundledCatalog,
+    ProfileResolutionDenied,
+    resolve_default_profile,
+)
+from tests.legacy_authority_contracts import assert_retired_module_absent
+from tests.conformance_support.packaged_profile import load_packaged_profile_catalog
+from tests.v4_batch_support import authority_bindings_for_profile
 
 
-# =====================================================================
-# _run_phase_for_component tests (logger.warning)
-# =====================================================================
+ROOT = Path(__file__).resolve().parents[1]
+BUNDLE = ROOT / "ecosystem" / "defaultspack" / "v4"
+SNAPSHOT = "sha256:" + "9" * 64
 
-class TestRunPhaseWarning:
-    """_run_phase_for_component の logger.warning テスト"""
 
-    def _make_executor(self):
-        from core_runtime.component_lifecycle import ComponentLifecycleExecutor
-        return ComponentLifecycleExecutor(
-            diagnostics=MagicMock(),
-            install_journal=MagicMock(),
+def _catalog() -> BundledCatalog:
+    return load_packaged_profile_catalog()
+
+
+def _approved(catalog: BundledCatalog) -> set[str]:
+    return {str(item["pack"]["artifact_digest"]) for item in catalog.packs.values()}
+
+
+def _bindings() -> dict[str, str]:
+    return authority_bindings_for_profile(_catalog().profiles["defaults"])
+
+
+def test_deleted_kernel_approval_scan_is_not_importable() -> None:
+    assert_retired_module_absent("core_runtime.kernel_handlers_system")
+
+
+def test_v4_profile_resolves_only_with_approved_artifacts() -> None:
+    catalog = _catalog()
+    resolved = resolve_default_profile(
+        catalog,
+        "defaults",
+        approved_artifact_digests=_approved(catalog),
+        authority_snapshot_digest=SNAPSHOT,
+        authority_bindings=_bindings(),
+        security_epoch=1,
+    )
+    assert resolved.profile["state"] == "resolved"
+
+
+@pytest.mark.parametrize("pack_id", ["defaultspack", "rumi_file_inspect_pack"])
+def test_v4_profile_denies_each_unapproved_pack(pack_id: str) -> None:
+    catalog = _catalog()
+    approved = _approved(catalog)
+    approved.remove(catalog.packs[pack_id]["pack"]["artifact_digest"])
+    with pytest.raises(ProfileResolutionDenied, match="not approved"):
+        resolve_default_profile(
+            catalog,
+            "defaults",
+            approved_artifact_digests=approved,
+            authority_snapshot_digest=SNAPSHOT,
+            authority_bindings=_bindings(),
+            security_epoch=1,
         )
 
-    def _make_component(self, pack_id="test-pack", comp_id="comp1"):
-        return SimpleNamespace(
-            full_id=f"{pack_id}:plugin:{comp_id}",
-            pack_id=pack_id,
-            type="plugin",
-            id=comp_id,
-            path="/tmp/nonexistent_w26_test",
+
+def test_v4_profile_does_not_accept_client_approval_marker() -> None:
+    catalog = _catalog()
+    with pytest.raises(ProfileResolutionDenied, match="Authority Kernel reference"):
+        resolve_default_profile(
+            catalog,
+            "defaults",
+            approved_artifact_digests=_approved(catalog),
+            authority_snapshot_digest=SNAPSHOT,
+            authority_bindings={},
+            security_epoch=1,
         )
 
-    @patch("core_runtime.component_lifecycle.logger")
-    @patch("core_runtime.approval_manager.get_approval_manager")
-    def test_not_approved_warns(self, mock_get_am, mock_logger):
-        """未承認 Pack のコンポーネント skip 時に logger.warning が呼ばれる"""
-        from core_runtime.approval_manager import PackStatus
 
-        am = MagicMock()
-        am._initialized = True
-        am.get_status.return_value = PackStatus.PENDING
-        mock_get_am.return_value = am
-
-        executor = self._make_executor()
-        comp = self._make_component(pack_id="my-pack")
-        executor._run_phase_for_component("setup", comp)
-
-        mock_logger.warning.assert_called_once()
-        call_args = mock_logger.warning.call_args
-        msg = call_args[0][0]
-        assert "skipped" in msg.lower()
-        # %s placeholders are filled with positional args
-        assert call_args[0][1] == "my-pack:plugin:comp1"  # comp_id
-        assert call_args[0][2] == "my-pack"  # pack_id
-
-    @patch("core_runtime.component_lifecycle.logger")
-    @patch("core_runtime.approval_manager.get_approval_manager")
-    def test_hash_mismatch_warns(self, mock_get_am, mock_logger):
-        """verify_hash 失敗時に logger.warning が呼ばれる"""
-        from core_runtime.approval_manager import PackStatus
-
-        am = MagicMock()
-        am._initialized = True
-        am.get_status.return_value = PackStatus.APPROVED
-        am.verify_hash.return_value = False
-        mock_get_am.return_value = am
-
-        executor = self._make_executor()
-        comp = self._make_component(pack_id="changed-pack")
-        executor._run_phase_for_component("setup", comp)
-
-        mock_logger.warning.assert_called_once()
-        call_args = mock_logger.warning.call_args
-        msg = call_args[0][0]
-        assert "changed after approval" in msg.lower() or "Re-approve" in msg
-        assert call_args[0][1] == "changed-pack:plugin:comp1"
-        assert call_args[0][2] == "changed-pack"
-
-    @patch("core_runtime.component_lifecycle.logger")
-    @patch("core_runtime.approval_manager.get_approval_manager")
-    def test_approved_and_hash_ok_no_warning(self, mock_get_am, mock_logger):
-        """approved + hash OK の正常パスでは logger.warning が呼ばれない"""
-        from core_runtime.approval_manager import PackStatus
-
-        am = MagicMock()
-        am._initialized = True
-        am.get_status.return_value = PackStatus.APPROVED
-        am.verify_hash.return_value = True
-        mock_get_am.return_value = am
-
-        executor = self._make_executor()
-        comp = self._make_component()
-        executor._run_phase_for_component("setup", comp)
-
-        mock_logger.warning.assert_not_called()
-
-
-# =====================================================================
-# Cross-cutting tests
-# =====================================================================
-
-class TestWarningMessageQuality:
-    """WARNING メッセージの品質テスト"""
-
-    @patch("core_runtime.approval_manager.get_approval_manager")
-    def test_warning_contains_dynamic_pack_id(self, mock_get_am, capsys):
-        """WARNING に動的な Pack ID が含まれ、特定 Pack 名のハードコードでないことを確認"""
-        from core_runtime.kernel_handlers_system import KernelSystemHandlersMixin
-        from core_runtime.approval_manager import PackStatus
-
-        class FK(KernelSystemHandlersMixin):
-            pass
-
-        k = FK()
-        k.diagnostics = MagicMock()
-
-        am = MagicMock()
-        am.scan_packs.return_value = ["unique-id-12345"]
-        am.get_status.return_value = PackStatus.MODIFIED
-        am.verify_hash.return_value = True
-        mock_get_am.return_value = am
-
-        k._h_approval_scan({"check_hash": True}, {})
-        captured = capsys.readouterr()
-        assert "unique-id-12345" in captured.err
-
-
-class TestSecurityRegressionGuard:
-    """セキュリティロジックが変更されていないことの回帰テスト"""
-
-    @patch("core_runtime.component_lifecycle.logger")
-    @patch("core_runtime.approval_manager.get_approval_manager")
-    def test_mark_modified_still_called_on_hash_failure(
-        self, mock_get_am, mock_logger
-    ):
-        """verify_hash 失敗時に mark_modified が依然として呼ばれること"""
-        from core_runtime.approval_manager import PackStatus
-        from core_runtime.component_lifecycle import ComponentLifecycleExecutor
-
-        am = MagicMock()
-        am._initialized = True
-        am.get_status.return_value = PackStatus.APPROVED
-        am.verify_hash.return_value = False
-        mock_get_am.return_value = am
-
-        executor = ComponentLifecycleExecutor(
-            diagnostics=MagicMock(),
-            install_journal=MagicMock(),
+def test_v4_profile_rejects_duplicate_pack_identity() -> None:
+    catalog = _catalog()
+    duplicate = copy.deepcopy(catalog.packs["defaultspack"])
+    duplicate["pack"]["id"] = "duplicate-defaultspack"
+    duplicate["pack"]["artifact_digest"] = "sha256:" + "8" * 64
+    duplicate_catalog = replace(
+        catalog,
+        packs={**catalog.packs, "duplicate-defaultspack": duplicate},
+    )
+    with pytest.raises(ProfileResolutionDenied, match="exactly once"):
+        resolve_default_profile(
+            duplicate_catalog,
+            "defaults",
+            approved_artifact_digests=_approved(duplicate_catalog),
+            authority_snapshot_digest=SNAPSHOT,
+            authority_bindings=_bindings(),
+            security_epoch=1,
+            additional_pack_ids=("duplicate-defaultspack",),
         )
-        comp = SimpleNamespace(
-            full_id="sec-pack:plugin:sec-comp",
-            pack_id="sec-pack",
-            type="plugin",
-            id="sec-comp",
-            path="/tmp/nonexistent_w26_test",
-        )
-        executor._run_phase_for_component("setup", comp)
-
-        am.mark_modified.assert_called_once_with("sec-pack")

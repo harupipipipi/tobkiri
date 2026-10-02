@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-launch-active-presentation-from-auxiliary"
+description = "Enables the launch_active_presentation_from_auxiliary command without any pre-configured scope."
+commands.allow = ["launch_active_presentation_from_auxiliary"]
+
+[[permission]]
+identifier = "deny-launch-active-presentation-from-auxiliary"
+description = "Denies the launch_active_presentation_from_auxiliary command without any pre-configured scope."
+commands.deny = ["launch_active_presentation_from_auxiliary"]

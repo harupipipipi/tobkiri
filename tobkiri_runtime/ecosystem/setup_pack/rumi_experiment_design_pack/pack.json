@@ -32,7 +32,7 @@
     "experiment_design_contract": "owned_by_rumi_experiment_design_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Rumi Experiment Design Pack is a declarative setup pack. Promotion requires owner-pack integration evidence, local-first audit receipts, and real-world success cases before any defaultspack inclusion.",
     "criteria": [

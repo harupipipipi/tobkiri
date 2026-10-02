@@ -1,0 +1,57 @@
+{
+  "artifact_set_digest": "sha256:537ca11c19056486e24ada22d9d4b1ad0444ed97631232a1cd1bfbd310afa995",
+  "artifacts": [
+    {
+      "digest": "sha256:4d1cfec417832a29756e0af9cb8ab9977e4c3dd23d44f7baf825ea7c8db774b3",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:937279f80ab5d466f297b11fab820c8e745ddc73aa19a28ad27d31159523232c",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:ae87ed8e1ca2aa6886a9493aa0fdc8d2a57f62dfd8a1184dbba5fc38dc1c788f",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:a4772ae69d4ed2171ac32ca418afc9c2245bf3d8dc0100137cc71afb90435472",
+      "path": "runtime/__init__.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:1ac0e5c5a405a8bc0610b626260e9c42a56debb160831d8a8e0e417fa8404d44",
+      "path": "runtime/configuration.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c",
+      "path": "runtime/health_process.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:2be6b54edfd56ab5b908ead9e1cd9436dc37cb30806702fa4d063f76f692ddf0",
+      "path": "runtime/process.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:825de1b62ebb90906c1c90de4cb0d0a6a50eed220d35d36a4c1c1f194d5d1615",
+      "path": "runtime/registry.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:06da1bcfbd044b2d5404ac5590dbfaeb406f64298f656a17561a820be46f73bf",
+      "path": "runtime/service.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:aecb21434f218530d3fb28d623eca009a7c16ce41f8f435d20f473c5f5597476"
+  },
+  "pack_id": "rumi_provider_registry_pack",
+  "source_identity": "sha256:f97c0e51d1524a9667af8100805946d53e92e91b47dd31edd7954be7c873b57b"
+}

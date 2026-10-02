@@ -17,6 +17,20 @@ class VercelAIGatewayProvider(OpenAICompatibleProvider):
     display_name = "Vercel AI Gateway"
     DEFAULT_BASE_URL = "https://ai-gateway.vercel.sh/v1"
 
+    @classmethod
+    def from_manifest(
+        cls,
+        manifest: Dict[str, Any],
+        *,
+        api_key: str = "",
+        model_manifests: List[Dict[str, Any]] | None = None,
+        allow_declared_models: bool = True,
+    ) -> "VercelAIGatewayProvider":
+        """Build the dedicated adapter while preserving manifest model overlays."""
+        del manifest
+        del allow_declared_models
+        return cls(api_key=api_key, known_models=model_manifests)
+
     def __init__(
         self,
         api_key: str = "",
@@ -41,20 +55,45 @@ class VercelAIGatewayProvider(OpenAICompatibleProvider):
             credential_required=True,
             known_models=models,
             remote_model_discovery=True,
+            remote_model_discovery_requires_auth=False,
             remote_model_list_path="/models",
             remote_model_cache_ttl_seconds=3600,
         )
 
     @classmethod
+    def _provider_model_id(cls, model: str) -> str:
+        model_ref = str(model or "").strip()
+        prefix = f"{cls.provider_name}/"
+        if model_ref.startswith(prefix):
+            return model_ref[len(prefix) :]
+        return model_ref
+
+    @classmethod
     def _catalog_models(cls) -> List[Dict[str, Any]]:
-        path = Path(__file__).resolve().parents[2] / "providers" / cls.provider_name / "models.json"
+        # Keep this compatibility catalog read anchored to the repository's
+        # canonical model-catalog pack. Runtime invocation still receives an
+        # explicit empty inventory and discovers the gateway's live /models
+        # response; this path is only for callers that request the public
+        # Vercel catalog directly.
+        path = (
+            Path(__file__).resolve().parents[4]
+            / "rumi_model_catalog_pack"
+            / "catalog"
+            / "providers"
+            / cls.provider_name
+            / "models.json"
+        )
         try:
             payload = load_strict_metadata_json(path)
             validate_model_catalog_source(payload, path=path)
         except (MetadataJsonError, ModelMetadataSchemaError):
             return []
         raw_models = payload.get("models") if isinstance(payload, dict) else []
-        return [dict(model) for model in raw_models if isinstance(model, dict)] if isinstance(raw_models, list) else []
+        return (
+            [dict(model) for model in raw_models if isinstance(model, dict)]
+            if isinstance(raw_models, list)
+            else []
+        )
 
     @staticmethod
     def _string_list(value: Any) -> List[str]:
@@ -74,13 +113,17 @@ class VercelAIGatewayProvider(OpenAICompatibleProvider):
         if normalized is None or not isinstance(raw, dict):
             return normalized
 
-        model_type = str(
-            raw.get("type")
-            or raw.get("model_type")
-            or raw.get("modelType")
-            or normalized.get("type")
-            or "chat"
-        ).strip().lower()
+        model_type = (
+            str(
+                raw.get("type")
+                or raw.get("model_type")
+                or raw.get("modelType")
+                or normalized.get("type")
+                or "chat"
+            )
+            .strip()
+            .lower()
+        )
         type_aliases = {
             "language": "chat",
             "text": "chat",
@@ -89,14 +132,18 @@ class VercelAIGatewayProvider(OpenAICompatibleProvider):
             "embeddings": "embedding",
             "rerank": "rerank",
             "reranking": "rerank",
-            "image": "image",
-            "video": "video",
-            "speech": "audio",
-            "audio": "audio",
+            "image": "image_gen",
+            "image_generation": "image_gen",
+            "video": "video_gen",
+            "video_generation": "video_gen",
+            "speech": "tts",
+            "audio": "tts",
         }
         normalized["type"] = type_aliases.get(model_type, model_type)
 
-        raw_capabilities = raw.get("capabilities") if isinstance(raw.get("capabilities"), dict) else {}
+        raw_capabilities = (
+            raw.get("capabilities") if isinstance(raw.get("capabilities"), dict) else {}
+        )
         supported_parameters = self._string_list(
             raw.get("supported_parameters") or raw.get("supportedParameters")
         )
@@ -126,7 +173,9 @@ class VercelAIGatewayProvider(OpenAICompatibleProvider):
         )
         supports_structured = bool(
             raw_capabilities.get("structured_output")
-            or parameter_tokens.intersection({"response_format", "json_schema", "structured_outputs"})
+            or parameter_tokens.intersection(
+                {"response_format", "json_schema", "structured_outputs"}
+            )
         )
 
         capabilities = dict(normalized.get("capabilities") or {})
@@ -145,15 +194,20 @@ class VercelAIGatewayProvider(OpenAICompatibleProvider):
                 "thinking": supports_reasoning,
                 "reasoning": supports_reasoning,
                 "structured_output": supports_structured,
-                "json_schema": bool(parameter_tokens.intersection({"json_schema", "structured_outputs"})),
+                "json_schema": bool(
+                    parameter_tokens.intersection({"json_schema", "structured_outputs"})
+                ),
+                "embeddings": normalized["type"] == "embedding",
+                "rerank": normalized["type"] == "rerank",
+                "image_generation": normalized["type"] == "image_gen",
+                "video_generation": normalized["type"] == "video_gen",
+                "tts": normalized["type"] == "tts",
             }
         )
         normalized["capabilities"] = capabilities
 
         context_window = self._positive_int(
-            raw.get("context_window")
-            or raw.get("contextWindow")
-            or raw.get("context_length")
+            raw.get("context_window") or raw.get("contextWindow") or raw.get("context_length")
         )
         if context_window:
             normalized["context_window"] = context_window
@@ -188,7 +242,9 @@ class VercelAIGatewayProvider(OpenAICompatibleProvider):
             "tool_choice": "tool_choice" in parameter_tokens,
             "parallel_tool_calls": "parallel_tool_calls" in parameter_tokens,
             "response_format": "response_format" in parameter_tokens,
-            "structured_outputs": bool(parameter_tokens.intersection({"structured_outputs", "json_schema"})),
+            "structured_outputs": bool(
+                parameter_tokens.intersection({"structured_outputs", "json_schema"})
+            ),
             "reasoning": "reasoning" in parameter_tokens,
             "reasoning_effort": "reasoning_effort" in parameter_tokens,
         }
@@ -215,7 +271,11 @@ class VercelAIGatewayProvider(OpenAICompatibleProvider):
 
     def _with_gateway_routing(self, params: Dict[str, Any] | None) -> Dict[str, Any]:
         routed = dict(params or {})
-        extra_body = dict(routed.get("extra_body") or {}) if isinstance(routed.get("extra_body"), dict) else {}
+        extra_body = (
+            dict(routed.get("extra_body") or {})
+            if isinstance(routed.get("extra_body"), dict)
+            else {}
+        )
         provider_options = routed.get("providerOptions")
         if not isinstance(provider_options, dict):
             provider_options = extra_body.get("providerOptions")
@@ -231,7 +291,17 @@ class VercelAIGatewayProvider(OpenAICompatibleProvider):
         return routed
 
     def complete(self, model, messages, tools, params):
-        return super().complete(model, messages, tools, self._with_gateway_routing(params))
+        return super().complete(
+            self._provider_model_id(model),
+            messages,
+            tools,
+            self._with_gateway_routing(params),
+        )
 
     def stream(self, model, messages, tools, params):
-        return super().stream(model, messages, tools, self._with_gateway_routing(params))
+        return super().stream(
+            self._provider_model_id(model),
+            messages,
+            tools,
+            self._with_gateway_routing(params),
+        )

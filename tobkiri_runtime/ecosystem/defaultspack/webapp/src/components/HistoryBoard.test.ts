@@ -10,10 +10,13 @@ import {
   buildHistoryCalendarSummary,
   HistoryBoard,
   loadCustomGroups,
+  toggleHistoryGroupCollapsed,
   type ChatItem,
   type CustomGroupInfo,
 } from "./HistoryBoard";
 import { droppedWidgetFromHistoryChat, historyChatDragPayload, parseHistoryChatDrop } from "../lib/historyComposer";
+import { HISTORY_ORGANIZATION_STORAGE_KEY } from "../features/history/historyOrganization";
+import { filterProjects, newProjectId, projectFromStorageItem, projectTaskContext } from "../features/projects/projectStorage";
 
 test("buildGroupsFromChats places LINE conversations into a dedicated group", () => {
   const chats: ChatItem[] = [
@@ -39,6 +42,26 @@ test("buildGroupsFromChats places LINE conversations into a dedicated group", ()
   assert.deepEqual(groups[0]?.chats.map((chat) => chat.id), ["line-1"]);
   assert.equal(groups[1]?.title, "Today");
   assert.deepEqual(groups[1]?.chats.map((chat) => chat.id), ["chat-1"]);
+});
+
+test("toggleHistoryGroupCollapsed preserves nested groups while updating the selected group", () => {
+  const groups = [{
+    id: "parent",
+    title: "Parent",
+    chats: [],
+    isCollapsed: false,
+    subGroups: [{
+      id: "child",
+      title: "Child",
+      chats: [],
+      isCollapsed: false,
+      subGroups: [],
+    }],
+  }];
+
+  const toggled = toggleHistoryGroupCollapsed(groups, "child");
+  assert.equal(toggled[0]?.isCollapsed, false);
+  assert.equal(toggled[0]?.subGroups[0]?.isCollapsed, true);
 });
 
 test("buildGroupsFromChats groups metadata chats in compact workspace buckets", () => {
@@ -172,7 +195,7 @@ test("buildGroupsFromChats keeps reserved bucket ids unique when custom metadata
   assert.equal(new Set(railGroupIds).size, railGroupIds.length);
 });
 
-test("loadCustomGroups migrates legacy and snake_case workspace records", () => {
+test("Project state never exposes legacy localStorage before owner acknowledgement", () => {
   const previousDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
   const values = new Map<string, string>();
   values.set("rumi-history-custom-groups", JSON.stringify([
@@ -189,10 +212,14 @@ test("loadCustomGroups migrates legacy and snake_case workspace records", () => 
   });
 
   try {
-    assert.deepEqual(loadCustomGroups(), [
-      { id: "legacy", title: "Legacy", workspaceId: null, workspaceLabel: null, workspaceRoot: null, rumiDataPath: null },
-      { id: "snake", title: "Snake", workspaceId: "ws1", workspaceLabel: "Repo", workspaceRoot: "/repo", rumiDataPath: "/repo/.rumiDP" },
-    ]);
+    assert.deepEqual(loadCustomGroups(), []);
+    assert.deepEqual(projectFromStorageItem({
+      id: "snake", title: "Snake", workspace_id: "ws1", workspace_label: "Repo",
+      workspace_root: "/repo", rumi_data_path: "/repo/.rumiDP",
+    }), {
+      id: "snake", title: "Snake", workspaceId: "ws1", workspaceLabel: "Repo",
+      workspaceRoot: "/repo", rumiDataPath: "/repo/.rumiDP",
+    });
   } finally {
     if (previousDescriptor) {
       Object.defineProperty(globalThis, "localStorage", previousDescriptor);
@@ -200,6 +227,59 @@ test("loadCustomGroups migrates legacy and snake_case workspace records", () => 
       Reflect.deleteProperty(globalThis, "localStorage");
     }
   }
+});
+
+test("HistoryBoard exposes recovery controls when organization storage is corrupt", () => {
+  const previousDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => key === HISTORY_ORGANIZATION_STORAGE_KEY ? "{broken" : null,
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    },
+  });
+
+  try {
+    const html = renderToStaticMarkup(createElement(HistoryBoard, {
+      activeChatId: null,
+      chatItems: [],
+      onChatSelect: () => undefined,
+      onNewTask: () => undefined,
+      onSettingsClick: () => undefined,
+    }));
+    assert.match(html, /data-history-save-state="corrupt"/);
+    assert.match(html, /History changes are not saved/);
+    assert.match(html, /Export<\/button>/);
+    assert.match(html, />Reset</);
+  } finally {
+    if (previousDescriptor) Object.defineProperty(globalThis, "localStorage", previousDescriptor);
+    else Reflect.deleteProperty(globalThis, "localStorage");
+  }
+});
+
+test("Project helpers preserve group ids while exposing project context", () => {
+  assert.equal(newProjectId(123), "group-123");
+  assert.deepEqual(projectTaskContext({
+    id: "group-main",
+    title: "Main",
+    workspaceId: "ws-main",
+    workspaceLabel: "Main repo",
+    workspaceRoot: "/repo/main",
+    rumiDataPath: "/repo/main/.rumiDP",
+  }), {
+    groupId: "group-main",
+    workspaceId: "ws-main",
+    workspaceLabel: "Main repo",
+    workspaceRoot: "/repo/main",
+    rumiDataPath: "/repo/main/.rumiDP",
+  });
+  const projects = [
+    { id: "group-main", title: "Main", workspaceRoot: "/repo/main" },
+    { id: "group-docs", title: "Writing", workspaceLabel: "Documentation" },
+  ];
+  assert.deepEqual(filterProjects(projects, "documentation").map((project) => project.id), ["group-docs"]);
+  assert.deepEqual(filterProjects(projects, "/repo").map((project) => project.id), ["group-main"]);
 });
 
 test("history calendar summary counts visible chat buckets and highlights", () => {
@@ -284,6 +364,34 @@ test("HistoryBoard places Desktops directly below Kanban in full layout", () => 
   assert.match(html, /aria-current="page"/);
 });
 
+test("HistoryBoard exposes project creation alongside the main navigation", () => {
+  const html = renderToStaticMarkup(createElement(HistoryBoard, {
+    activeChatId: null,
+    chatItems: [],
+    onChatSelect: () => undefined,
+    onNewTask: () => undefined,
+    onSettingsClick: () => undefined,
+  }));
+
+  assert.match(html, />Projects</);
+  assert.match(html, /aria-label="New Project"/);
+  assert.ok(html.indexOf('aria-label="New Project"') < html.indexOf('aria-label="Calendar"'));
+  assert.doesNotMatch(html, /New Group/);
+});
+
+test("HistoryBoard places Settings after the account identity in the full sidebar", () => {
+  const html = renderToStaticMarkup(createElement(HistoryBoard, {
+    activeChatId: null,
+    chatItems: [],
+    account: { display_name: "Smoke User", plan_label: "Local" },
+    onChatSelect: () => undefined,
+    onNewTask: () => undefined,
+    onSettingsClick: () => undefined,
+  }));
+
+  assert.ok(html.indexOf("Smoke User") < html.indexOf('aria-label="Settings"'));
+});
+
 test("HistoryBoard places Desktops directly below Kanban in compact rail", () => {
   const html = renderToStaticMarkup(createElement(HistoryBoard, {
     activeChatId: null,
@@ -305,4 +413,46 @@ test("HistoryBoard places Desktops directly below Kanban in compact rail", () =>
   assert.ok(kanbanIndex > calendarIndex);
   assert.ok(desktopsIndex > kanbanIndex);
   assert.match(html, /aria-current="page"/);
+});
+
+test("HistoryBoard ignores stored SVG markup and renders host icon IDs", () => {
+  const chatItems: ChatItem[] = [{
+    id: "custom-icon-chat",
+    title: "Custom icon chat",
+    date: "Today",
+    type: "chat",
+    metadata: {
+      icon_id: "database",
+      icon_svg: '<svg onload="globalThis.pwned=true"></svg>',
+    },
+    presentation: {
+      conversationId: "custom-icon-chat",
+      title: "Custom icon chat",
+      iconId: "database",
+      activity: "waiting",
+      unread: true,
+      accessibleStatusLabel: "Waiting for approval or input, unread",
+    },
+  }];
+  const baseProps = {
+    activeChatId: null,
+    chatItems,
+    onChatSelect: () => undefined,
+    onNewTask: () => undefined,
+    onSettingsClick: () => undefined,
+  };
+
+  const fullHtml = renderToStaticMarkup(createElement(HistoryBoard, baseProps));
+  const compactHtml = renderToStaticMarkup(createElement(HistoryBoard, { ...baseProps, isCompact: true }));
+
+  for (const html of [fullHtml, compactHtml]) {
+    assert.match(html, /data-history-chat-icon="true"/);
+    assert.match(html, /data-history-chat-icon-id="database"/);
+    assert.match(html, /data-history-chat-icon-size="14"/);
+    assert.match(html, /data-conversation-activity="waiting"/);
+    assert.match(html, /data-conversation-unread="true"/);
+    assert.match(html, /style="width:14px;height:14px;flex-basis:14px"/);
+    assert.doesNotMatch(html, /onload=/);
+    assert.doesNotMatch(html, /globalThis\.pwned/);
+  }
 });

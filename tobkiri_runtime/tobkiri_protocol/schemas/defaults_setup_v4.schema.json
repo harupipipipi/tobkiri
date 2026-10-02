@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/defaults-setup.v4.schema.json",
+  "title": "Tobkiri Defaults setup state v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["setup_api_version", "state", "denial_diagnostic", "packs", "recommended_default_profile", "required_transaction"],
+  "properties": {
+    "setup_api_version": {"const": "io.tobkiri.setup-state.v4"},
+    "state": {"enum": ["review_required", "active", "activation_denied"]},
+    "denial_diagnostic": {"type": ["string", "null"]},
+    "packs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/packProjection"}
+    },
+    "recommended_default_profile": {"$ref": "#/$defs/recommendedProfile"},
+    "required_transaction": {
+      "const": ["catalog.verify", "profile.resolve", "authority.snapshot", "activation.prepare", "activation.commit", "runtime.capture"]
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+    },
+    "contractId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*\\.v[1-9][0-9]*$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "authorityReference": {
+      "type": "string",
+      "pattern": "^authority-ref:[0-9a-f]{64}$"
+    },
+    "packProjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pack_id", "display_name"],
+      "properties": {
+        "pack_id": {"$ref": "#/$defs/id"},
+        "display_name": {"type": "string", "minLength": 1}
+      }
+    },
+    "recommendedProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "profile_id", "name", "base_pack", "shell", "pack_ids", "packs", "conversation_provider", "confirmation"],
+      "properties": {
+        "available": {"const": true},
+        "profile_id": {"const": "defaults"},
+        "name": {"type": "string", "minLength": 1},
+        "base_pack": {"const": "defaults-basepack"},
+        "shell": {"$ref": "#/$defs/profileShell"},
+        "pack_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/id"}
+        },
+        "packs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/packProjection"}
+        },
+        "conversation_provider": {"$ref": "#/$defs/id"},
+        "confirmation": {"$ref": "#/$defs/confirmation"}
+      }
+    },
+    "profileShell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider_id", "contract_id"],
+      "properties": {
+        "provider_id": {"const": "shell.tauri.default"},
+        "contract_id": {"const": "app.shell.v1"}
+      }
+    },
+    "confirmation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["confirmation_api_version", "operation_id", "profile_id", "catalog_revision", "profile_revision", "plan_digest", "authority_snapshot_digest", "security_epoch", "base", "shell", "bindings", "confirmation_digest"],
+      "properties": {
+        "confirmation_api_version": {"const": "io.tobkiri.defaults-confirmation.v1"},
+        "operation_id": {"const": "defaults.activate"},
+        "profile_id": {"const": "defaults"},
+        "catalog_revision": {"$ref": "#/$defs/digest"},
+        "profile_revision": {"$ref": "#/$defs/digest"},
+        "plan_digest": {"$ref": "#/$defs/digest"},
+        "authority_snapshot_digest": {"$ref": "#/$defs/digest"},
+        "security_epoch": {"type": "integer", "minimum": 1},
+        "base": {"$ref": "#/$defs/base"},
+        "shell": {"$ref": "#/$defs/confirmedShell"},
+        "bindings": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/binding"}
+        },
+        "confirmation_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "base": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pack_id", "artifact_digest", "definition_digest"],
+      "properties": {
+        "pack_id": {"const": "defaults-basepack"},
+        "artifact_digest": {"$ref": "#/$defs/digest"},
+        "definition_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "confirmedShell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider_id", "pack_id", "artifact_digest", "executable_artifact_digest", "contract_id", "definition_digest"],
+      "properties": {
+        "provider_id": {"const": "shell.tauri.default"},
+        "pack_id": {"const": "shell.tauri.default"},
+        "artifact_digest": {"$ref": "#/$defs/digest"},
+        "executable_artifact_digest": {"$ref": "#/$defs/digest"},
+        "contract_id": {"const": "app.shell.v1"},
+        "definition_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caller_function_id", "pack_id", "artifact_digest", "function_principal", "contract_id", "operation_id", "domain_kind", "executable_catalog_digest", "variant_id", "platform", "architecture", "runtime_abi", "backend", "execution_kind", "authority_reference", "requested_scope_digest", "adapter_digests"],
+      "properties": {
+        "caller_function_id": {"$ref": "#/$defs/id"},
+        "pack_id": {"$ref": "#/$defs/id"},
+        "artifact_digest": {"$ref": "#/$defs/digest"},
+        "function_principal": {"$ref": "#/$defs/functionPrincipal"},
+        "contract_id": {"$ref": "#/$defs/contractId"},
+        "operation_id": {"$ref": "#/$defs/id"},
+        "domain_kind": {"enum": ["wasm_component", "pack_vm", "dedicated_process", "remote"]},
+        "executable_catalog_digest": {"$ref": "#/$defs/digest"},
+        "variant_id": {"$ref": "#/$defs/id"},
+        "platform": {"type": "string", "minLength": 1},
+        "architecture": {"type": "string", "minLength": 1},
+        "runtime_abi": {"type": "string", "minLength": 1},
+        "backend": {"$ref": "#/$defs/id"},
+        "execution_kind": {"enum": ["wasm", "pack_vm", "host_extension", "remote"]},
+        "authority_reference": {"$ref": "#/$defs/authorityReference"},
+        "requested_scope_digest": {"$ref": "#/$defs/digest"},
+        "authority_mode": {"enum": ["profile_grant", "interactive_only"]},
+        "adapter_digests": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/digest"}
+        }
+      }
+    },
+    "functionPrincipal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parent_artifact_digest", "function_implementation_digest", "function_id", "contract_revision_digest", "operation_id"],
+      "properties": {
+        "parent_artifact_digest": {"$ref": "#/$defs/digest"},
+        "function_implementation_digest": {"$ref": "#/$defs/digest"},
+        "function_id": {"$ref": "#/$defs/id"},
+        "contract_revision_digest": {"$ref": "#/$defs/digest"},
+        "operation_id": {"$ref": "#/$defs/id"}
+      }
+    }
+  }
+}

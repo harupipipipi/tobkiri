@@ -73,7 +73,12 @@ class ToolCallAccumulator:
         call_id = self._call_id(block)
         current = self._call(call_id)
         current["name"] = str(block.get("name") or block.get("tool_name") or current.get("name") or "")
-        current["arguments_parts"] = [json.dumps(block.get("input", {}), ensure_ascii=False)]
+        tool_input = block.get("input", {})
+        current["arguments_parts"] = [
+            tool_input
+            if isinstance(tool_input, str)
+            else json.dumps(tool_input, ensure_ascii=False)
+        ]
         current["started"] = True
         current["ended"] = True
 
