@@ -139,7 +139,8 @@ from ..host_provider_backend_v4 import (
 )
 from ..host_provider_data_v4 import HostProviderDataCaptureV4
 from ..invocation_scope_v4 import (
-    CapturedInvocationScopeV4, assert_dispatched_invocation,
+    CapturedInvocationScopeV4, ParentInvocationScopesV4,
+    assert_dispatched_invocation, execution_session_id,
 )
 from ..host_provider_hooks_v4 import load_host_provider_factory
 from ..interactive_effect_coordinator import (
@@ -2590,7 +2591,7 @@ def capture_production_dispatch(
     presentation_owner_bindings: dict[str, tuple[str, str]] = {}
     presentation_owner_refcounts: dict[str, int] = {}
     nested_session_refcounts: dict[str, int] = {}
-    parent_invocation_scopes: dict[str, CapturedInvocationScopeV4] = {}
+    parent_invocation_scopes = ParentInvocationScopesV4()
     caller_session_bindings_lock = threading.RLock()
 
     def authority_session_id(session_id: str, caller_principal_id: str) -> str:
@@ -2641,7 +2642,7 @@ def capture_production_dispatch(
 
     def capture_invocation_scope(envelope: Any) -> CapturedInvocationScopeV4:
         with caller_session_bindings_lock:
-            parent = parent_invocation_scopes.get(envelope.context.caller_session_id)
+            parent = parent_invocation_scopes.lookup(envelope.context.caller_session_id)
 
         def guard() -> None:
             assert_dispatched_invocation(envelope, authority_store)
@@ -2667,10 +2668,7 @@ def capture_production_dispatch(
             if existing_caller not in {None, caller_principal_id}:
                 raise AuthorityDenied("nested Host Provider caller binding changed")
             if parent_invocation is not None:
-                prior = parent_invocation_scopes.get(resolved_session_id)
-                if prior is not None and prior.envelope is not parent_invocation.envelope:
-                    raise AuthorityDenied("nested captured parent changed")
-                parent_invocation_scopes[resolved_session_id] = parent_invocation
+                parent_invocation_scopes.retain(resolved_session_id, parent_invocation)
             retain_presentation_owner(resolved_session_id, presentation_owner)
             caller_session_bindings[session_id] = caller_principal_id
             nested_session_refcounts[session_id] = (
@@ -2683,13 +2681,13 @@ def capture_production_dispatch(
 
         with caller_session_bindings_lock:
             release_presentation_owner(resolved_session_id)
+            parent_invocation_scopes.release(resolved_session_id)
             remaining = nested_session_refcounts.get(session_id, 0) - 1
             if remaining > 0:
                 nested_session_refcounts[session_id] = remaining
                 return
             nested_session_refcounts.pop(session_id, None)
             caller_session_bindings.pop(session_id, None)
-            parent_invocation_scopes.pop(resolved_session_id, None)
 
     class _InvocationSession:
         """Bind nested dispatch to the authenticated provider invocation."""
@@ -2708,6 +2706,7 @@ def capture_production_dispatch(
             self.activation_id = str(active.activation["activation_id"])
 
         def provider_metadata(self, contract_id: str) -> tuple[Mapping[str, Any], ...]:
+            capture_invocation_scope(self._envelope).assert_current()
             if not dispatch_holder:
                 raise AuthorityDenied("Host Provider dispatch is not initialized")
             return dispatch_holder[0].provider_metadata(contract_id)
@@ -2722,27 +2721,32 @@ def capture_production_dispatch(
         ) -> Mapping[str, Any]:
             if not dispatch_holder:
                 raise AuthorityDenied("Host Provider dispatch is not initialized")
-            nested_session_id = _nested_host_provider_session_id(self._envelope)
+            scope = capture_invocation_scope(self._envelope)
+            scope.assert_current()
+            nested_session_id = execution_session_id(self._envelope)
             nested_authority_session_id = bind_nested_session(
                 nested_session_id,
                 self._envelope.target_principal.value,
                 self._presentation_owner,
-                parent_invocation=capture_invocation_scope(self._envelope),
+                parent_invocation=scope,
             )
             try:
-                return dispatch_holder[0].invoke(
+                result = dispatch_holder[0].invoke(
                     contract_id,
                     operation_id,
                     {**dict(payload), "_session_id": nested_session_id},
                     version_range=version_range,
                     parent_deadline_monotonic=self._envelope.deadline_monotonic,
                     parent_cancellation=self._envelope.cancellation_requested,
+                    before_dispatch=scope.assert_current,
                     parent_cancellation_proof=nested_cancellation_proof_for(
                         self._envelope,
                         self._presentation_owner[0],
                         self._presentation_owner[1],
                     ),
                 )
+                scope.assert_current()
+                return result
             except Exception as error:
                 log_nested_dispatch_failure(contract_id, operation_id, error)
                 raise
@@ -2820,6 +2824,7 @@ def capture_production_dispatch(
                     current_security_epoch=lambda: authority_store.security_epoch,
                     credential_key_version=credential_store_binding.key_version,
                     consumer_pack_id=consumer_pack_id,
+                    parent_guard=self.assert_current,
                 )
                 if include_credentials and credential_store_binding is not None
                 else None

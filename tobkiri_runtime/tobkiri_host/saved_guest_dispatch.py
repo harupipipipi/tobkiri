@@ -92,9 +92,10 @@ class SavedGuestTurns:
             tool_plan = plan
             session = ContinuationSession(
                 identity,
-                tuple(dict.fromkeys((*TARGETS, STRATEGY, TOOL, AI_STREAM)))
-                if tool_plan
-                else TARGETS,
+                tuple(dict.fromkeys((*TARGETS, STRATEGY, TOOL)))
+                if plan.strategy_reference is not None else
+                tuple(dict.fromkeys((*TARGETS, TOOL))) if plan.enabled else
+                tuple(dict.fromkeys((*TARGETS, AI_STREAM))),
                 chains=self._chains,
                 target_selector=(lambda: plan.target) if tool_plan else None,
                 max_intent_bytes=MAX_SAVED_INPUT_BYTES,
