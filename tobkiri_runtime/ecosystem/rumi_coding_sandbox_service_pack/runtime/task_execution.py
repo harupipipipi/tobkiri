@@ -67,6 +67,7 @@ class TaskExecution:
             or set(value) != {"id", "token", "state"}
             or not isinstance(value["id"], str)
             or CID.fullmatch(value["id"]) is None
+            or (CID.fullmatch(reference) is not None and value["id"] != reference)
         ):
             raise RuntimeError("task container identity is invalid")
         return value
@@ -80,8 +81,9 @@ class TaskExecution:
             if owned is None:
                 return True
             if owned["token"] != self.token:
-                # A create name conflict is not our object and must not be removed.
-                return True
+                # A foreign name is not ours; a confirmed CID still present is
+                # ambiguous and must never count as verified cleanup.
+                return CID.fullmatch(reference) is None
             removed = self.command(["rm", "-f", owned["id"]])
             if removed.exit_code != 0 or removed.timed_out:
                 return False
@@ -124,6 +126,8 @@ class TaskExecution:
                 name,
                 "--label",
                 f"tobkiri.task-token={self.token}",
+                "--log-driver",
+                "none",
                 "--network",
                 "none",
                 "--cap-drop",

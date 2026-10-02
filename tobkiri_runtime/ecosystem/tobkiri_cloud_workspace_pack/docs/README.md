@@ -14,6 +14,8 @@ builds an image, runs a Host shell, redeems legacy receipts, or trusts client
 root, fixed memory/CPU/PID limits and read-only input/driver mounts. Work runs in
 an 8 MiB tmpfs with at most 512 inodes; `/tmp` is 16 MiB/256 inodes. A reviewed
 guest driver captures task output and a capsule before the tmpfs disappears.
+The owned container disables daemon log retention; its attached output is bounded
+by the Host runner, including writes that bypass the guest driver's output pipes.
 Input is limited to 4 MiB of work, with a 5 MiB archive bound. stdout
 and stderr are each capped at 32 KiB. Task plans expire after 60 seconds and bind
 the captured Profile, Plan, security epoch, exact argv, image and checkpoint.
@@ -25,9 +27,10 @@ running journal is never automatically executed again. Cancellation/current
 capture fencing stops the Docker CLI and then removes only its journal-owned
 container ID only after checking its private random ownership label. A pinned
 local Unix socket and daemon identity prevent a Docker context switch; the CLI
-uses an empty Pack-owned config and no inherited Docker credentials. A Docker
-daemon state observation establishes whether the workload
-started. Verified absence after cleanup is required before reading output through
+uses an empty Pack-owned config and no inherited Docker credentials. Docker
+daemon state establishes whether the container started; a verified guest receipt
+establishes whether the workload started. Verified absence after cleanup is
+required before reading output through
 bounded descriptor-pinned file inspection. Unverified cleanup remains ambiguous
 and produces no output capsule. A nonzero workload or container exit also
 produces no output capsule. Output rejects links, secret paths, special files,
