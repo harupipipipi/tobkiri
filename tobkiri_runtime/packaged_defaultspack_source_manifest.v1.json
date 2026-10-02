@@ -196,15 +196,15 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/v4_frontend_contributions.py",
       "type": "regular-file",
-      "size": 23677,
-      "sha256": "679877eca68c15e4084699396fb38801c19fff630f75066add5add814330d188",
+      "size": 24493,
+      "sha256": "9845eacb57ffe0d86b942a1dcbfda2f36e88a5b2fa1bc960faf2593d7cf4f6ee",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/defaultspack/v4_view_contract.py",
       "type": "regular-file",
-      "size": 12167,
-      "sha256": "d8b55cbb332750634cb8c7879c8b58495f28b8588a065a8fcbf6efc2f3fc94c0",
+      "size": 12331,
+      "sha256": "0f18ff449a558bcf88cd0dc3e9d17b7edcd67eeb7ea637fea6f7f4842b5a393a",
       "executable": false
     },
     {
@@ -4107,10 +4107,45 @@
       "executable": false
     },
     {
+      "path": "tobkiri_protocol/schemas/surface_intent_v1.schema.json",
+      "type": "regular-file",
+      "size": 3420,
+      "sha256": "e5995795d0af116bef8dc5daf06da228362134210ce11aaeda61e8c5029675e6",
+      "executable": false
+    },
+    {
+      "path": "tobkiri_protocol/schemas/surface_outcome_v1.schema.json",
+      "type": "regular-file",
+      "size": 1205,
+      "sha256": "01d0e261a479f013b80ae5207495de87531c26b1b6a5e2d5397be90cab9a2d96",
+      "executable": false
+    },
+    {
+      "path": "tobkiri_protocol/schemas/surface_renderer_v1.schema.json",
+      "type": "regular-file",
+      "size": 1007,
+      "sha256": "e79499827aeb75c38ddcdb7cb244aa5454e38f6f7e99b1338da73256bbee38be",
+      "executable": false
+    },
+    {
+      "path": "tobkiri_protocol/schemas/surface_resource_v1.schema.json",
+      "type": "regular-file",
+      "size": 858,
+      "sha256": "97bd62cd2eba087f4ba5dfd837bf68edf077bddd566fc4a460df2a99cce4c95e",
+      "executable": false
+    },
+    {
+      "path": "tobkiri_protocol/schemas/surface_template_v1.schema.json",
+      "type": "regular-file",
+      "size": 9727,
+      "sha256": "b79c44025cd5a53271aaa0b5f1527b37a199d482b7e65a2d1c618deedfe38fa2",
+      "executable": false
+    },
+    {
       "path": "tobkiri_protocol/schemas/ui_view_v1.schema.json",
       "type": "regular-file",
-      "size": 13128,
-      "sha256": "2a3d1517aaf1e7f8c4da8693e6051a9056218c5606831e41577f3d4ee531696a",
+      "size": 23520,
+      "sha256": "d57e59c883acdf8ea09eb1f89f31eb6164cfcfc31711a8bb5b2654a688dd8111",
       "executable": false
     },
     {
@@ -4139,6 +4174,13 @@
       "type": "regular-file",
       "size": 3715,
       "sha256": "8f0555026ceaab7b243d72f6e1df427eaa0d4d3f22be9aa1c1567e3399530fae",
+      "executable": false
+    },
+    {
+      "path": "tobkiri_protocol/surface_templates_v1.py",
+      "type": "regular-file",
+      "size": 12553,
+      "sha256": "7c5ff5ce51973b816624ae5937472d2925489c4fea5b398f59853f7f19032e6b",
       "executable": false
     },
     {
