@@ -183,7 +183,7 @@ class JobActionBroker:
         return {
             "status": entry["status"],
             "idempotency_key": key,
-            "result": entry["result"],
+            "result": entry["result"] if self.canonical else result,
             "provider_instance_id": entry["provider_instance_id"],
         }
 
