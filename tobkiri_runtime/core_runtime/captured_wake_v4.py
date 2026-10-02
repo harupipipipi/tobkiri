@@ -15,7 +15,7 @@ import sqlite3
 import stat
 import threading
 import time
-from typing import Any, Callable, Mapping, Protocol
+from typing import Any, Callable, Iterable, Mapping, Protocol
 from types import MappingProxyType
 
 from tobkiri_host.models import OpaqueAuthorityRef
@@ -308,6 +308,8 @@ class CapturedWakeDriverV4:
             raise PermissionError("wake state entry is symlinked")
 
     def _check(self) -> None:
+        if self._closed:
+            raise PermissionError("wake capture is closed")
         self._check_state_path()
         if (
             self._declaration.digest != self._declaration_digest
@@ -331,6 +333,9 @@ class CapturedWakeDriverV4:
                 return
             try:
                 self._check()
+                if state[5] > 0:
+                    self._reason = "wake_reconciliation_required"
+                    return
                 self._arm_kernel(state)
             except Exception:
                 self._reason = "wake_authority_or_adapter_unavailable"
@@ -386,6 +391,8 @@ class CapturedWakeDriverV4:
     def disarm(self) -> Mapping[str, Any]:
         """Fence pending/delivering callbacks before revoking the timer source."""
         with self._lock, self._database:
+            if self._closed:
+                raise PermissionError("wake capture is closed")
             self._delivery_cancellation.set()
             self._database.execute(
                 "UPDATE wake_state SET enabled=0,generation=generation+1 WHERE id=1"
@@ -464,7 +471,7 @@ class CapturedWakeDriverV4:
         except Exception:
             with self._lock:
                 current = self._state()
-                if current and current[1] == generation:
+                if not self._closed and current and current[1] == generation:
                     self.disarm()
                     self._reason = "wake_execution_unavailable"
 
@@ -488,16 +495,43 @@ class CapturedWakeDriverV4:
                 "reason": self._reason,
                 "expires_at_ms": int(state[3] * 1000) if state else None,
                 "next_wake_at_ms": int(state[4] * 1000) if state else None,
+                "registration_enabled": bool(state and state[2] and state[3] > self._wall()),
+                "reconciliation_required": bool(
+                    state and state[2] and state[5] > 0 and not self._armed
+                ),
+                "claim_until_ms": int(state[5] * 1000) if state and state[5] else None,
             }
 
     def close(self) -> None:
         """Fence this capture; a restart must independently recheck intent/grant."""
+        failed = False
         with self._lock:
             self._closed, self._armed = True, False
             self._delivery_cancellation.set()
             if self._registered:
-                self._kernel.revoke(self._active_registration.registration_id)
-            self._registered = False
+                try:
+                    self._kernel.revoke(self._active_registration.registration_id)
+                except Exception:
+                    failed = True
+                else:
+                    self._registered = False
         close = getattr(self._adapter, "close", None)
         if callable(close):
-            close()
+            try:
+                close()
+            except Exception:
+                failed = True
+        if failed:
+            raise RuntimeError("captured wake source cleanup is incomplete")
+
+
+def close_captured_wake_drivers_v4(drivers: Iterable[CapturedWakeDriverV4]) -> None:
+    """Attempt every source fence before reporting any cleanup failure."""
+    failed = False
+    for driver in drivers:
+        try:
+            driver.close()
+        except Exception:
+            failed = True
+    if failed:
+        raise RuntimeError("captured wake source cleanup is incomplete")
