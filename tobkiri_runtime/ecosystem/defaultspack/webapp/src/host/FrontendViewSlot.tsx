@@ -5,6 +5,7 @@ import {
 import type { FrontendCapabilityInvoker, FrontendCatalog } from "./frontendContracts";
 import { ConversationThreadView } from "./ConversationThreadView";
 import { RecordEditorView } from "./RecordEditorView";
+import { SurfaceTemplatesView } from "./SurfaceTemplatesView";
 import { freshTextDraft, refreshTextDraft, textDraftDirty, viewOperationOutcome } from "./viewControlState";
 import {
   choicePayload, controlPayload, matchesViewReference, readViewPath,
@@ -24,19 +25,47 @@ export function FrontendViewSlot({
   context?: ViewInputContext;
   onNavigationGuardChange?: ViewNavigationGuardChange;
 }) {
+  const [expiryRevision, setExpiryRevision] = useState(0);
+  useEffect(() => {
+    const expiries = catalog.contributions.map((item) => item.resolved_expires_at_ms)
+      .filter((value): value is number => typeof value === "number" && value > Date.now());
+    if (!expiries.length) return;
+    const timer = window.setTimeout(() => setExpiryRevision((value) => value + 1), Math.min(...expiries) - Date.now() + 1);
+    return () => window.clearTimeout(timer);
+  }, [catalog, expiryRevision]);
   const views = useMemo(() => viewsForSlot(catalog, slot, activePlanHash)
     .filter((registered) => !contributionId || registered.item.contribution_id === contributionId)
     .filter((registered) => !reference || matchesViewReference(registered, reference)),
-  [catalog, slot, activePlanHash, contributionId, reference]);
+  [catalog, slot, activePlanHash, contributionId, reference, expiryRevision]);
   if (contributionId && views.length !== 1) return <UnavailableView />;
   return <div data-tobkiri-view-slot={slot} className="flex min-w-0 flex-col gap-2">
     {views.map((registered) => <ViewBoundary
-      key={JSON.stringify([registered.reference, viewContextKey(registered, context)])}
+      key={JSON.stringify([{ ...registered.reference, rendererExpiresAtMs: undefined }, viewContextKey(registered, context)])}
       fallback={<UnavailableView />}>
-      <CatalogViewHost registered={registered} catalog={catalog} capabilities={capabilities}
+      <CapturedViewHost registered={registered} reference={reference} catalog={catalog} capabilities={capabilities}
         context={context} onNavigationGuardChange={onNavigationGuardChange} />
     </ViewBoundary>)}
   </div>;
+}
+
+/** A catalog refresh can verify a capture without extending its original lease. */
+function CapturedViewHost({ registered, reference, ...props }: {
+  registered: RegisteredCatalogView; reference?: CatalogViewReference;
+  catalog: FrontendCatalog; capabilities: FrontendCapabilityInvoker; context: ViewInputContext;
+  onNavigationGuardChange?: ViewNavigationGuardChange;
+}) {
+  const captured = useRef(reference ?? registered.reference);
+  const [expired, setExpired] = useState(false);
+  useEffect(() => {
+    const deadline = captured.current.rendererExpiresAtMs;
+    if (deadline === undefined) return;
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) { setExpired(true); return; }
+    const timer = window.setTimeout(() => setExpired(true), remaining + 1);
+    return () => window.clearTimeout(timer);
+  }, []);
+  if (expired || !matchesViewReference(registered, captured.current)) return <UnavailableView />;
+  return <CatalogViewHost {...props} registered={{ ...registered, reference: captured.current }} />;
 }
 
 function UnavailableView() {
@@ -124,6 +153,9 @@ function CatalogViewHost({
       })}
     </dl>
     <div className="mt-2 flex min-w-0 flex-wrap gap-2">
+      {registered.view.renderer === "surface_template" && <SurfaceTemplatesView
+        registered={registered} catalog={catalog} capabilities={capabilities} snapshot={snapshot}
+        sourceReady={sourceReady} context={context} onRefresh={refresh} onDirtyChange={onNavigationGuardChange} />}
       {registered.view.renderer === "record_editor" && <RecordEditorView
         registered={registered} catalog={catalog} capabilities={capabilities} snapshot={snapshot}
         onRefresh={refresh} context={context} sourceReady={sourceReady}

@@ -1,6 +1,8 @@
 import type {
   CapturedCapabilityInvocation, FrontendCatalog, VerifiedFrontendContribution,
 } from "./frontendContracts";
+import { parseSurfaceTemplate, surfaceOperations, type SurfaceTemplate } from "./surfaceTemplateContract";
+import { resolveSurfaceRenderer, type SurfaceRendererCapture } from "./surfaceRendererCapture";
 
 export const VIEW_VERSION = "tobkiri.ui.view.v1";
 export const VIEW_SLOTS = [
@@ -64,7 +66,7 @@ export type ViewControl = {
 };
 export type CatalogView = {
   version: typeof VIEW_VERSION; slot: ViewSlot;
-  renderer: "panel" | "status" | "entity_picker" | "record_editor" | "conversation_thread";
+  renderer: "panel" | "status" | "entity_picker" | "record_editor" | "conversation_thread" | "surface_template";
   title?: string; body?: string;
   data_source?: ViewOperation & {
     input?: Record<string, unknown>; context_bindings?: ContextBindings;
@@ -72,8 +74,9 @@ export type CatalogView = {
   fields?: ViewField[]; controls?: ViewControl[];
   record_editor?: RecordEditorDefinition;
   conversation_thread?: ConversationThreadDefinition;
+  surface_template?: SurfaceTemplate;
 };
-export type CatalogViewReference = {
+export type CatalogViewReference = Partial<SurfaceRendererCapture> & {
   contributionId: string; ownerPackId: string; descriptorHash: string;
   profileId: string; profileRevision: string; activationId: string;
   planHash: string; catalogHash: string;
@@ -262,10 +265,10 @@ export function parseConversationThread(value: unknown): ConversationThreadDefin
 /** Validate the complete view before resolving any shipped renderer. */
 export function parseCatalogView(value: unknown): CatalogView | null {
   if (!record(value) || !keys(value, [
-    "version", "slot", "renderer", "title", "body", "data_source", "fields", "controls", "record_editor", "conversation_thread",
+    "version", "slot", "renderer", "title", "body", "data_source", "fields", "controls", "record_editor", "conversation_thread", "surface_template",
   ]) || value.version !== VIEW_VERSION
     || !VIEW_SLOTS.includes(value.slot as ViewSlot)
-    || !["panel", "status", "entity_picker", "record_editor", "conversation_thread"].includes(String(value.renderer))
+    || !["panel", "status", "entity_picker", "record_editor", "conversation_thread", "surface_template"].includes(String(value.renderer))
     || (own(value, "title") && !bounded(value.title, 256))
     || (own(value, "body") && !bounded(value.body, 4096))
     || (own(value, "data_source") && !operationValid(value.data_source, true))) return null;
@@ -275,6 +278,8 @@ export function parseCatalogView(value: unknown): CatalogView | null {
     || !parseConversationThread(value.conversation_thread) : own(value, "conversation_thread")) return null;
   if (value.renderer === "conversation_thread" && record(value.data_source)
     && !validConversationThreadInput(value.data_source.input ?? {})) return null;
+  if (value.renderer === "surface_template" ? !parseSurfaceTemplate(value.surface_template)
+    : own(value, "surface_template")) return null;
   if (own(value, "fields") && (!Array.isArray(value.fields) || value.fields.length > 32
     || !value.fields.every((field) => record(field)
       && keys(field, ["label", "path", "kind", "total_path"])
@@ -331,11 +336,14 @@ const isActive = (catalog: FrontendCatalog, item: VerifiedFrontendContribution, 
 export function viewReference(
   catalog: FrontendCatalog, item: VerifiedFrontendContribution,
 ): CatalogViewReference {
+  const template = parseSurfaceTemplate(item.view?.surface_template);
+  const renderer = template ? resolveSurfaceRenderer(catalog, template) : null;
   return {
     contributionId: item.contribution_id, ownerPackId: item.owner_pack_id,
     descriptorHash: item.descriptor_hash, profileId: catalog.profile_id,
     profileRevision: catalog.profile_revision, activationId: catalog.activation_id,
     planHash: catalog.plan_hash, catalogHash: catalog.catalog_hash,
+    ...(renderer?.capture ?? {}),
   };
 }
 
@@ -348,6 +356,7 @@ export function viewsForSlot(
       || !isActive(catalog, item, activePlanHash)
       || catalog.contributions.filter((other) => other.contribution_id === item.contribution_id).length !== 1) return [];
     const view = parseCatalogView(item.view);
+    if (view?.surface_template && !resolveSurfaceRenderer(catalog, view.surface_template)) return [];
     return view?.slot === slot ? [{ item, view, reference: viewReference(catalog, item) }] : [];
   }).sort((left, right) => right.item.priority - left.item.priority
     || left.item.contribution_id.localeCompare(right.item.contribution_id));
@@ -356,8 +365,16 @@ export function viewsForSlot(
 export function matchesViewReference(
   registered: RegisteredCatalogView, reference: CatalogViewReference,
 ): boolean {
-  return Object.keys(registered.reference).every((key) =>
-    registered.reference[key as keyof CatalogViewReference] === reference[key as keyof CatalogViewReference]);
+  const current = registered.reference;
+  const keys = new Set([...Object.keys(current), ...Object.keys(reference)]);
+  return [...keys].every((key) => {
+    if (key === "rendererExpiresAtMs") {
+      return Number.isSafeInteger(current.rendererExpiresAtMs) && Number.isSafeInteger(reference.rendererExpiresAtMs)
+        && Number(reference.rendererExpiresAtMs) > Date.now()
+        && Number(reference.rendererExpiresAtMs) <= Number(current.rendererExpiresAtMs);
+    }
+    return current[key as keyof CatalogViewReference] === reference[key as keyof CatalogViewReference];
+  });
 }
 
 /** Select an operation from the captured catalog, never from view-owned authority. */
@@ -366,7 +383,7 @@ export function viewOperationRequest(
   operation: ViewOperation, payload: Record<string, unknown>,
 ): CapturedCapabilityInvocation | null {
   if (!isActive(catalog, registered.item, registered.reference.planHash)
-    || !matchesViewReference(registered, viewReference(catalog, registered.item))
+    || !matchesViewReference({ ...registered, reference: viewReference(catalog, registered.item) }, registered.reference)
     || catalog.contributions.filter((item) =>
       item.contribution_id === registered.item.contribution_id
       && item.owner_pack_id === registered.item.owner_pack_id
@@ -382,6 +399,7 @@ export function viewOperationRequest(
     registered.view.conversation_thread?.stop?.operation,
     registered.view.conversation_thread?.events?.operation,
     registered.view.conversation_thread?.reconcile?.operation,
+    ...(registered.view.surface_template ? surfaceOperations(registered.view.surface_template) : []),
   ];
   if (!declared.some((item) => item
     && item.contribution_id === operation.contribution_id
@@ -482,6 +500,10 @@ export function viewContextKey(
     registered.view.conversation_thread?.stop,
     registered.view.conversation_thread?.events,
     registered.view.conversation_thread?.reconcile,
+    ...(registered.view.surface_template?.nodes.flatMap((node) => [
+      ...(node.intents ?? []).map((intent) => intent.request),
+      ...(node.resource ? [node.resource.acquire, node.resource.exchange] : []),
+    ]) ?? []),
   ];
   const consumed = new Set(requests.flatMap((request) =>
     Object.values(request?.context_bindings ?? {})));

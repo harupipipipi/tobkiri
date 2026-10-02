@@ -76,7 +76,8 @@ Historical review: PR #1297/#1458 registry and collision principles, #1298
 data-driven status, #1299 own-property choice normalization and rollback, and
 #1324 exact operation binding are retained in the current v4 adapter. Old
 filesystem registries, stale generated bundles, executable Pack modules, and
-feature-specific App branches were omitted. PR #1376's renderer-neutral
-architecture is retained as a separate contract boundary; resource input,
-neutral renderer discovery/pinning, and full Surface Template pattern coverage
-require follow-up and are not represented as completed by this adapter.
+feature-specific App branches were omitted. PR #1376's renderer-neutral boundary
+now has ten patterns, typed intents/outcomes, selected finite renderer capture,
+and a scoped resource port; see `surface_templates_v1.md`. An unbound acquisition
+provider remains unavailable. Native/PackVM acceptance and installed execution
+are separate checks.

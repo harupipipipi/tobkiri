@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -16,6 +17,7 @@ from core_runtime.external_pack_catalog_v4 import (
 from tobkiri_host.artifact_compiler import compile_pack_root
 from tobkiri_protocol.canonical import strict_loads
 from tobkiri_protocol.validation import validate_file
+from tobkiri_protocol.surface_templates_v1 import validate_surface_renderer
 from .v4_view_contract import validate_catalog_view
 
 
@@ -131,7 +133,7 @@ def _load_pack_routes(
         payload = strict_loads(raw)
         if not isinstance(payload, Mapping) or not _SCHEMA.is_valid(payload):
             raise FrontendPackDenied("frontend descriptor schema is invalid")
-        if payload["kind"] not in {"route", "view"}:
+        if payload["kind"] not in {"route", "view", "renderer"}:
             continue
         if payload["kind"] == "route" and manifest["pack"]["kind"] != "normal_sandbox":
             raise FrontendPackDenied("only Normal Packs can contribute routes")
@@ -142,21 +144,28 @@ def _load_pack_routes(
                 field in payload
                 for field in (
                     "action_contract", "data_source_contract", "isolated", "module",
-                    "region", "renderer", "schema",
+                    "region", "schema",
                 )
             )
+            or (payload["kind"] != "renderer" and "renderer" in payload)
         ):
             raise FrontendPackDenied("only inert declarative routes are admitted")
-        if payload["kind"] == "view":
+        if payload["kind"] in {"view", "renderer"}:
             if set(payload) - {
                 "version", "id", "kind", "mode", "label", "description",
                 "priority", "accessibility", "localization", "view",
-            }:
+            } - ({"renderer"} if payload["kind"] == "renderer" else set()):
                 raise FrontendPackDenied("catalog view has undeclared fields")
-            validate_catalog_view(payload["view"])
+            renderer = payload["kind"] == "renderer"
+            if renderer:
+                if payload.get("renderer") != "tobkiri.ui.surface-renderer.v1":
+                    raise FrontendPackDenied("renderer API is unavailable")
+                validate_surface_renderer(payload["view"])
+            else:
+                validate_catalog_view(payload["view"])
             projected.append({
                 "contribution_id": str(payload["id"]),
-                "kind": "view",
+                "kind": str(payload["kind"]),
                 "mode": "declarative",
                 "label": str(payload["label"]),
                 "priority": int(payload["priority"]),
@@ -171,6 +180,11 @@ def _load_pack_routes(
                 "view": dict(payload["view"]),
                 "localization": dict(payload.get("localization") or {}),
                 "accessibility": dict(payload["accessibility"]),
+                **({
+                    "renderer": "tobkiri.ui.surface-renderer.v1",
+                    "resolved_expires_at_ms": int(time.time() * 1000)
+                    + int(payload["view"]["ttl_ms"]),
+                } if renderer else {}),
             })
             continue
         route = str(payload["route"])

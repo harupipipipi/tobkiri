@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from jsonschema import Draft202012Validator
+from tobkiri_protocol.surface_templates_v1 import validate_surface_template
 
 VIEW_VERSION = "tobkiri.ui.view.v1"
 VIEW_SLOTS = frozenset(
@@ -101,6 +102,8 @@ def validate_public_input(
 def validate_catalog_view(view: Mapping[str, Any]) -> None:
     """Validate a fixed-renderer view without admitting any capability."""
     _VALIDATOR.validate(view)
+    if "surface_template" in view:
+        validate_surface_template(view["surface_template"])
     controls = view.get("controls", [])
     ids = [item["id"] for item in controls]
     if len(ids) != len(set(ids)):

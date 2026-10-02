@@ -43,7 +43,10 @@ def scope() -> SurfaceResourceScope:
         presentation_owner_session_id="session.owner",
         view_descriptor_hash=digest("e"),
         renderer_id="renderer.one",
+        renderer_api_version="1.0.0",
         renderer_digest=digest("f"),
+        renderer_descriptor_hash=digest("e"),
+        renderer_expires_at_ms=1_700_000_400_000,
         consumer_contract_id="example.inspect.v1",
         consumer_operation_id="inspect",
         consumer_provider_id="provider.inspect",
@@ -102,9 +105,13 @@ class Provider:
         self.revoked: list[object] = []
         self.requests: list[str] = []
 
-    def acquire(self, kind: str) -> PrivateSurfaceSelection:
+    def acquire(self, kind: str, request: RequestContext) -> PrivateSurfaceSelection:
         """Select a private resource without accepting a client path."""
-        reference = {"private_path": "/private/selected", "kind": kind}
+        reference = {
+            "private_path": "/private/selected",
+            "kind": kind,
+            "request_id": request.request_id,
+        }
         self.acquired.append(reference)
         return PrivateSurfaceSelection(reference, "Selected image")
 
@@ -288,7 +295,14 @@ def test_malformed_public_requests_fail_closed(rig, payload) -> None:
     assert not provider.acquired
 
 
-@pytest.mark.parametrize("field", [field for field in scope().__dataclass_fields__])
+@pytest.mark.parametrize(
+    "field",
+    [
+        field
+        for field in scope().__dataclass_fields__
+        if field != "renderer_api_version"
+    ],
+)
 def test_every_scope_pin_rejects_cross_capture_exchange(rig, field) -> None:
     port, provider, _ = rig
     selected = invoke(port)
@@ -296,6 +310,8 @@ def test_every_scope_pin_rejects_cross_capture_exchange(rig, field) -> None:
     alternate = (
         8
         if field == "security_epoch"
+        else original + 1
+        if field == "renderer_expires_at_ms"
         else (
             digest("1")
             if field.endswith(("_hash", "_digest")) or field == "profile_revision"
@@ -434,9 +450,9 @@ def test_changed_capture_after_provider_effect_revokes_unpublished_result(rig) -
     _, provider, clock = rig
     current = True
 
-    def acquire(kind: str) -> PrivateSurfaceSelection:
+    def acquire(kind: str, request: RequestContext) -> PrivateSurfaceSelection:
         nonlocal current
-        result = provider.acquire(kind)
+        result = provider.acquire(kind, request)
         current = False
         return result
 
@@ -498,6 +514,8 @@ def test_typed_action_adapter_uses_authenticated_envelope_and_server_scope(rig) 
     invocation = SimpleNamespace(
         envelope=SimpleNamespace(context=context(), deadline_monotonic=100.0),
         assert_current=lambda: checks.append(True),
+        presentation_owner_principal_id=scope().presentation_owner_principal_id,
+        presentation_owner_session_id=scope().presentation_owner_session_id,
     )
     adapter = SurfaceResourceActionAdapter(port, lambda authenticated: scope())
     result = adapter.invoke({"operation": "acquire", "kind": "image"}, invocation)
@@ -508,6 +526,31 @@ def test_typed_action_adapter_uses_authenticated_envelope_and_server_scope(rig) 
             {"operation": "acquire", "kind": "image", "profile_id": "profile.one"},
             invocation,
         )
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "presentation_owner_principal_id",
+        "presentation_owner_session_id",
+    ],
+)
+def test_action_adapter_rejects_changed_authenticated_origin(rig, field: str) -> None:
+    """A trusted scope callback cannot substitute the actual originating owner."""
+    port, provider, _ = rig
+    invocation = SimpleNamespace(
+        envelope=SimpleNamespace(context=context(), deadline_monotonic=100.0),
+        assert_current=lambda: None,
+        presentation_owner_principal_id=scope().presentation_owner_principal_id,
+        presentation_owner_session_id=scope().presentation_owner_session_id,
+    )
+    setattr(invocation, field, "other.owner")
+    with pytest.raises(SurfaceResourceRejected):
+        SurfaceResourceActionAdapter(port, lambda authenticated: scope()).invoke(
+            {"operation": "acquire", "kind": "image"},
+            invocation,
+        )
+    assert provider.acquired == []
 
 
 def test_failed_close_cleanup_is_quarantined_and_can_be_retried(rig) -> None:
@@ -530,3 +573,49 @@ def test_failed_close_cleanup_is_quarantined_and_can_be_retried(rig) -> None:
     fail = False
     port.close()
     assert provider.acquired == provider.revoked
+
+
+def test_resource_lifetime_cannot_outlive_captured_renderer(rig) -> None:
+    """A fresh action deadline cannot extend the original renderer lease."""
+    port, provider, clock = rig
+    pinned = replace(scope(), renderer_expires_at_ms=int((clock.wall() + 3) * 1000))
+    selected = invoke(port, scope=pinned, ttl_seconds=300)
+    assert selected["expires_at_ms"] == pinned.renderer_expires_at_ms
+    clock.now += 3
+    with pytest.raises(SurfaceResourceRejected):
+        exchange(port, selected["selection_id"], scope=pinned)
+    assert not provider.exchanged
+
+
+def test_unknown_renderer_api_is_not_a_server_resource_capture() -> None:
+    """No client/future API can be substituted for the selected renderer."""
+    with pytest.raises(ValueError):
+        replace(scope(), renderer_api_version="2.0.0")
+
+
+def test_action_adapter_consume_binds_actual_contract_and_operation(rig) -> None:
+    """The exchanged token is not a bearer grant for another consumer."""
+    port, provider, _ = rig
+    ticket = exchange(port, invoke(port)["selection_id"])
+    invocation = SimpleNamespace(
+        envelope=SimpleNamespace(
+            context=context(),
+            deadline_monotonic=100.0,
+            contract_id="other.contract",
+            operation_id=scope().consumer_operation_id,
+        ),
+        assert_current=lambda: None,
+        presentation_owner_principal_id=scope().presentation_owner_principal_id,
+        presentation_owner_session_id=scope().presentation_owner_session_id,
+    )
+    adapter = SurfaceResourceActionAdapter(port, lambda authenticated: scope())
+    with pytest.raises(SurfaceResourceRejected):
+        adapter.consume(ticket["selection_id"], kind="image", invocation=invocation)
+    assert not provider.consumed
+    invocation.envelope.contract_id = scope().consumer_contract_id
+    invocation.envelope.operation_id = "other.operation"
+    with pytest.raises(SurfaceResourceRejected):
+        adapter.consume(ticket["selection_id"], kind="image", invocation=invocation)
+    invocation.envelope.operation_id = scope().consumer_operation_id
+    assert adapter.consume(ticket["selection_id"], kind="image", invocation=invocation)
+    assert len(provider.consumed) == 1
