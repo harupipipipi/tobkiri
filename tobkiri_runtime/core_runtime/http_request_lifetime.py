@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import contextvars
 import socket
 import threading
 import time
@@ -38,8 +39,10 @@ class HttpRequestLifetime:
         self._interrupted = threading.Event()
         self._lock = threading.Lock()
         self._socket: socket.socket | None = None
+        operation_context = contextvars.copy_context()
         self._watcher = threading.Thread(
-            target=self._watch, name="tobkiri-http-deadline", daemon=True,
+            target=lambda: operation_context.run(self._watch),
+            name="tobkiri-http-deadline", daemon=True,
         )
         self.check()
         self._watcher.start()
