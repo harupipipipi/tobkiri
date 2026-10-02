@@ -212,10 +212,10 @@ class AuthorizedEnvelopeLocalProviderTransport:
         peer = socket.socket(socket.AF_INET6 if address == "::1" else socket.AF_INET)
         response = None
         try:
-            peer.settimeout(lifetime.remaining())
-            lifetime.attach(peer)
-            peer.connect((address, parsed.port))
-            connection.sock = peer
+            if parsed.port is None:
+                raise LocalProviderTransportDenied()
+            lifetime.connect(peer, (address, parsed.port))
+            connection.sock = lifetime.http_socket(peer)
             connection.auto_open = 0
             lifetime.check()
             connection.request("POST", parsed.path, body=body, headers=dict(headers))

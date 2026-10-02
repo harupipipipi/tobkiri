@@ -4,7 +4,7 @@ import type { AuthorityApprovalScope } from "./authorityApproval";
 import { chatContinuationPacketMatchesTurn } from "./pendingChat";
 import { defaultspackApiHeaders } from "./apiAuth";
 export { bootstrapDefaultspackLocalAuth, defaultspackApiHeaders, defaultspackUrlWithLocalAuth } from "./apiAuth";
-import { configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
+import { allowsCredentialFreeLocalProvider, configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
 import { openAuthorityApprovalWindow } from "./desktopApproval";
 import { jsonValueMatches } from "./jsonValueMatches";
 import { isCustomProviderSetup, providerSetupPreset } from "./providerPresets";
@@ -1657,7 +1657,7 @@ export type ModelProfile = {
 export type RegisteredProviderConnection = {
   provider_instance_id: string;
   display_name: string;
-  credential_status: "configured" | "missing";
+  credential_status: "configured" | "missing" | "not_required";
   health_status: "verified" | "unverified";
   reachability: "available" | "unavailable" | "unknown";
   observed_at: number | null;
@@ -2655,7 +2655,7 @@ function isProviderConnectionSnapshot(
     provider_instance_id: string;
     display_name: string;
     enabled: boolean;
-    credential_status: "configured" | "missing";
+    credential_status: "configured" | "missing" | "not_required";
     health_status: "verified" | "unverified";
     reachability: "available" | "unavailable" | "unknown";
     observed_at: number | null;
@@ -2680,7 +2680,8 @@ function isProviderConnectionSnapshot(
       && hasNonEmptyString(item, "display_name")
       && typeof item.enabled === "boolean"
       && (item.credential_status === "configured"
-        || item.credential_status === "missing")
+        || item.credential_status === "missing"
+        || item.credential_status === "not_required")
       && (item.health_status === "verified"
         || item.health_status === "unverified")
       && ["available", "unavailable", "unknown"].includes(String(item.reachability))
@@ -4191,7 +4192,7 @@ export const api = {
         provider_instance_id: string;
         display_name: string;
         enabled: boolean;
-        credential_status: "configured" | "missing";
+        credential_status: "configured" | "missing" | "not_required";
         health_status: "verified" | "unverified";
         reachability: "available" | "unavailable" | "unknown";
         observed_at: number | null;
@@ -4844,15 +4845,19 @@ export const api = {
     const connection = `${providerId}.${options?.apiId || "default"}`;
     const endpoint = options?.baseUrl?.trim() || preset?.endpoint || "";
     if (customSetup && !options?.baseUrl?.trim()) {
-      throw new Error("Custom ProviderにはHTTPSの接続先URLを入力してください。");
+      throw new Error("Custom Providerには接続先URLを入力してください。");
     }
     let url: URL;
-    try { url = new URL(endpoint); } catch { throw new Error("HTTPSのProvider接続先URLを入力してください。"); }
+    try { url = new URL(endpoint); } catch { throw new Error("Provider接続先URLを入力してください。"); }
+    const localWithoutCredential = allowsCredentialFreeLocalProvider(endpoint, protocol);
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(connection)
-      || !value || /[\x00-\x1f\x7f]/.test(value) || value.length > 16384
-      || url.protocol !== "https:" || url.username || url.password || url.search || url.hash
-      || /\s/.test(endpoint) || endpoint.length > 2048 || endpoint.includes(value) || connection.includes(value)) {
-      throw new Error("Provider接続名・HTTPS URL・APIキーの入力を確認してください。");
+      || (localWithoutCredential ? value !== "" : !value)
+      || /[\x00-\x1f\x7f]/.test(value) || value.length > 16384
+      || (!localWithoutCredential && url.protocol !== "https:")
+      || url.username || url.password || url.search || url.hash
+      || /\s/.test(endpoint) || endpoint.length > 2048
+      || (value && (endpoint.includes(value) || connection.includes(value)))) {
+      throw new Error("Provider接続名・URL・APIキーの入力を確認してください。ローカル接続のAPIキーは空欄にします。");
     }
     const post = (body: object) => request<ProviderConfigurationStatus>(
       defaultspackContractRoute("api/ai/provider-key"), {

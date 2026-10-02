@@ -135,6 +135,38 @@ def test_application_capability_map_binds_the_shell_to_the_exact_registry_read()
     } in capability_route["targets"]
 
 
+@pytest.mark.parametrize("adapter,endpoint,handle,expected", [
+    ("openai-compatible", "http://127.0.0.1:18080/v1", None, "not_required"),
+    ("openai", "http://[::1]:18080", None, "not_required"),
+    ("openai-compatible", "http://localhost:18080/v1", None, "missing"),
+    ("openai-compatible", "http://127.0.0.2:18080/v1", None, "missing"),
+    ("anthropic", "http://127.0.0.1:18080/v1", None, "missing"),
+    ("openai-compatible", "https://provider.example/v1", None, "missing"),
+    ("openai-compatible", "https://provider.example/v1", "credential:fixture", "configured"),
+])
+def test_connection_readiness_describes_keyless_local_without_claiming_health(
+    adapter: str, endpoint: str, handle: str | None, expected: str,
+) -> None:
+    from ecosystem.rumi_provider_registry_pack.runtime.process import (
+        _provider_connection_snapshot,
+    )
+
+    result = _provider_connection_snapshot({
+        "revision": 1,
+        "providers": [{
+            "provider_instance_id": "provider.fixture", "display_name": "Fixture",
+            "enabled": True, "adapter_id": adapter, "endpoint": endpoint,
+            "credential_handle": handle,
+        }],
+    })
+    assert result["providers"][0]["credential_status"] == expected
+    assert result["providers"][0]["health_status"] == "unverified"
+    assert result["providers"][0]["reachability"] == "unknown"
+    assert result["providers"][0]["observed_at"] is None
+    assert "endpoint" not in str(result)
+    assert "credential_handle" not in str(result)
+
+
 def test_gateway_routes_bind_each_mode_to_the_exact_registry_read() -> None:
     """Saved model execution must revalidate the same owner projection."""
     runtime_root = Path(__file__).resolve().parents[1]

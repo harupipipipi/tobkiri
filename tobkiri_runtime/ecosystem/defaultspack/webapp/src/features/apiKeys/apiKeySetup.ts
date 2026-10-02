@@ -1,4 +1,5 @@
 import { isCustomProviderSetup } from "../../lib/providerPresets";
+import { allowsCredentialFreeLocalProvider } from "../../lib/providerConfiguration";
 
 export const BUILTIN_API_PROVIDER_IDS: string[] = [
   "anthropic",
@@ -289,11 +290,14 @@ export function buildApiKeySavePayload(draft: ApiKeySetupDraft, fallbackKind: Ap
   const providerId = draft.provider_id.trim();
   const name = draft.name.trim();
   const value = draft.value;
-  const credentialMode = draft.credential_mode === "none" ? "none" : "api_key";
   const kind = draft.kind ?? fallbackKind;
+  const localWithoutCredential = kind === "llm" && allowsCredentialFreeLocalProvider(
+    draft.base_url?.trim() ?? "", draft.protocol ?? "openai-compatible",
+  );
+  const credentialMode = localWithoutCredential || draft.credential_mode === "none" ? "none" : "api_key";
   const customLlm = requiresExplicitApiProviderProtocol(providerId, kind);
   if (!providerId || !name || (credentialMode === "api_key" && !value.trim())
-    || (credentialMode === "none" && !draft.base_url?.trim())
+    || (credentialMode === "none" && (!localWithoutCredential || value !== ""))
     || (customLlm && !draft.base_url?.trim())) return null;
   const allowedModels = parseAllowedModels(draft.allowed_models);
   return {

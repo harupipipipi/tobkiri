@@ -4,6 +4,7 @@ import { CredentialTransferModal } from "../../../components/CredentialTransferM
 import { ErrorNotice } from "../../../components/ErrorNotice";
 import { cn } from "../../../lib/cn";
 import { allowCleartextMobileQr } from "../../../lib/mobileCleartextQr";
+import { allowsCredentialFreeLocalProvider } from "../../../lib/providerConfiguration";
 import {
   apiKeySaveResource,
   buildApiKeySavePayload,
@@ -76,6 +77,16 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
   );
   const credentialTransferEnabled = allowCleartextMobileQr();
   const feedback = saveState === "saved" ? availabilityCopy(availability) : null;
+  const localWithoutCredential = customLlmProtocolRequired && allowsCredentialFreeLocalProvider(baseUrl.trim(), protocol);
+  const savePayload = buildApiKeySavePayload({
+    provider_id: providerId,
+    name: apiName,
+    value: secret,
+    kind: selectedKind,
+    protocol: customLlmProtocolRequired ? protocol : undefined,
+    base_url: customLlmProtocolRequired ? baseUrl : undefined,
+    credential_mode: localWithoutCredential ? "none" : "api_key",
+  });
 
   useEffect(() => {
     if (!providerId) return;
@@ -90,16 +101,8 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
   };
 
   const handleSubmit = async () => {
-    const payload = buildApiKeySavePayload({
-      provider_id: providerId,
-      name: apiName,
-      value: secret,
-      kind: selectedKind,
-      protocol: customLlmProtocolRequired ? protocol : undefined,
-      base_url: customLlmProtocolRequired ? baseUrl : undefined,
-      credential_mode: "api_key",
-    });
-    if (!payload) return;
+    const payload = savePayload;
+    if (!payload || saveState === "saving") return;
     setSaveState("saving");
     setSaveError("");
     setAvailability(null);
@@ -124,7 +127,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
           reason: "Saved, but the backend did not confirm model availability. Choose a model route before using this key.",
         });
       }
-      if (!savesExternalToken && credentialTransferEnabled) {
+      if (!savesExternalToken && !localWithoutCredential && credentialTransferEnabled) {
         setCredentialTransfer({
           providerId: payload.provider_id,
           providerLabel: selectedProviderOption?.label,
@@ -166,7 +169,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
             {savesExternalToken
               ? "外部サービスを選び、識別用の名前とトークンを入力します。"
               : customLlmProtocolRequired
-                ? "Customの接続先とプロトコルを指定して、識別用の名前とAPIキーを入力します。"
+                ? "Customの接続先とプロトコルを指定します。ローカルのOpenAI-compatible接続はAPIキーを空欄で保存できます。"
                 : "使いたいAIプロバイダーを選び、識別用の名前とAPIキーを入力します。接続先は自動で設定されます。"}
           </p>
           <div className="grid gap-2 md:grid-cols-[180px_minmax(120px,1fr)_minmax(180px,2fr)_auto]">
@@ -215,17 +218,17 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
                   }}
                   placeholder={savesExternalToken
                     ? `${providerId || "provider"} token`
-                    : `${providerId || "provider"} API key`}
+                    : localWithoutCredential ? "ローカル接続はAPIキー不要（空欄で保存）" : `${providerId || "provider"} API key`}
                   className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-zinc-200 outline-none"
                 />
               </div>
               <button
                 type="button"
-                disabled={saveState === "saving" || !providerId.trim() || !apiName.trim() || !secret.trim() || (customLlmProtocolRequired && !baseUrl.trim())}
+                disabled={saveState === "saving" || !savePayload}
                 onClick={() => void handleSubmit()}
                 className={cn(
                   "rounded-lg border px-3 py-2 text-xs transition-colors",
-                  saveState !== "saving" && providerId.trim() && apiName.trim() && secret.trim() && (!customLlmProtocolRequired || baseUrl.trim())
+                  saveState !== "saving" && savePayload
                     ? "border-zinc-100 bg-zinc-100 text-zinc-950"
                     : "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-600",
                 )}
@@ -259,15 +262,19 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
                     </select>
                   </label>
                   <label className="space-y-1 text-[11px] text-zinc-500">
-                    <span>HTTPS 接続先 URL</span>
+                    <span>接続先 URL</span>
                     <input
                       value={baseUrl}
                       onChange={(event) => { setBaseUrl(event.target.value); resetFeedback(); }}
                       placeholder="https://api.example.com/v1"
-                      aria-label="Provider HTTPS base URL"
+                      aria-label="Provider base URL"
                       className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none"
                     />
                   </label>
+                  <p className="text-[11px] leading-5 text-zinc-500 md:col-span-2">
+                    APIキーなしで使える接続先は http://127.0.0.1:ポート または http://[::1]:ポート（末尾 /v1 も可）です。
+                    OpenAI-compatibleを選び、APIキーを空欄にします。その他の接続先はHTTPSとAPIキーが必要です。
+                  </p>
                 </div>
               )}
             </>

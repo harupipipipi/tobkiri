@@ -2157,6 +2157,15 @@ test("listProviderConnections uses the captured registry's exact opaque connecti
             reachability: "unknown",
             observed_at: null,
           },
+          {
+            provider_instance_id: "provider.openai_compatible.local",
+            display_name: "Local connection",
+            enabled: true,
+            credential_status: "not_required",
+            health_status: "unverified",
+            reachability: "unknown",
+            observed_at: null,
+          },
         ],
       };
     return new Response(JSON.stringify({ success: true, data }), {
@@ -2174,6 +2183,13 @@ test("listProviderConnections uses the captured registry's exact opaque connecti
         health_status: "verified",
         reachability: "available",
         observed_at: 123.5,
+      }, {
+        provider_instance_id: "provider.openai_compatible.local",
+        display_name: "Local connection",
+        credential_status: "not_required",
+        health_status: "unverified",
+        reachability: "unknown",
+        observed_at: null,
       }],
     });
     assert.deepEqual(calls, [{ target: routeKey("api/connections/status"), body: undefined }]);
@@ -2340,8 +2356,77 @@ test("saveProviderApiKey fills a known provider endpoint before the approved con
 test("saveProviderApiKey keeps Custom endpoints explicit", async () => {
   await assert.rejects(
     api.saveProviderApiKey("openai_compatible", "fixture-private-key", { apiId: "main", protocol: "openai-compatible" }),
-    /Custom ProviderにはHTTPSの接続先URL/,
+    /Custom Providerには接続先URL/,
   );
+});
+
+test("local no-key provider setup keeps the same approved configure flow", async () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const endpoint of ["http://127.0.0.1:8181/v1", "http://[::1]:8181/"]) {
+      const f = providerConfigurationFixture();
+      const bodies: Record<string, unknown>[] = [];
+      Object.defineProperty(globalThis, "window", {
+        configurable: true, value: { sessionStorage: f.ports.storage, location: { hash: "" } },
+      });
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body ?? "{}"));
+        bodies.push(body);
+        const data = requestTarget(input).includes("interactive-approval")
+          ? { request_id: "approval-1", state: "approved" }
+          : f.status(body.phase === "resume" ? "succeeded" : "approval_pending");
+        return new Response(JSON.stringify({ status: "ok", data }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }) as typeof fetch;
+      const result = await api.saveProviderApiKey("openai_compatible", "", {
+        apiId: "local", baseUrl: endpoint, protocol: "openai-compatible", kind: "llm",
+      });
+      assert.equal(result.configured, true);
+      assert.deepEqual(bodies, [
+        {
+          phase: "prepare", effect_kind: "provider_configure", correlation_id: bodies[0].correlation_id,
+          request: { connection_name: "openai_compatible.local", protocol: "openai-compatible", endpoint, key_value: "" },
+        },
+        { request_id: "approval-1" },
+        { phase: "resume", effect_id: "effect-1" },
+      ]);
+      assert.equal(f.values.size, 0);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+test("local setup rejects alternate URLs and credentials before any request", async () => {
+  const originalFetch = globalThis.fetch;
+  let sent = 0;
+  globalThis.fetch = (async () => { sent += 1; throw new Error("must not send"); }) as typeof fetch;
+  try {
+    for (const endpoint of [
+      "https://provider.example/v1", "http://provider.example:8181/v1", "http://localhost:8181/v1",
+      "http://127.1:8181/v1", "http://2130706433:8181/v1", "http://127.0.0.1:08181/v1",
+      "http://127.0.0.1:0/v1", "http://127.0.0.1:65536/v1", "http://127.0.0.1:8181/other",
+      "http://user@127.0.0.1:8181/v1", "http://127.0.0.1:8181/v1?x=1",
+      "http://127.0.0.1:8181/v1#fragment", "http://[::ffff:127.0.0.1]:8181/v1",
+    ]) {
+      await assert.rejects(api.saveProviderApiKey("openai_compatible", "", {
+        apiId: "local", baseUrl: endpoint, protocol: "openai-compatible",
+      }));
+    }
+    await assert.rejects(api.saveProviderApiKey("openai_compatible", "private-key", {
+      apiId: "local", baseUrl: "http://127.0.0.1:8181/v1", protocol: "openai-compatible",
+    }));
+    await assert.rejects(api.saveProviderApiKey("openai_compatible", "", {
+      apiId: "local", baseUrl: "http://127.0.0.1:8181/v1", protocol: "anthropic",
+    }));
+    assert.equal(sent, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("saveProviderApiKey forwards an explicit custom LLM protocol unchanged", async () => {

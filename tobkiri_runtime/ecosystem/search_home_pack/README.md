@@ -17,6 +17,9 @@ Defaults model-search and model-state contracts.
 
 Credential-free local OpenAI-compatible providers may use an explicitly
 registered literal-loopback endpoint such as `http://127.0.0.1:18080/v1`.
+In Defaults' Provider setup, select OpenAI-compatible, enter that local URL,
+and leave the API key empty. The existing prepare/approval/resume flow owns
+the connection write; then register the model ID in the shared model settings.
 Their requests retain the existing Broker lease, cancellation, revocation and
 durable audit checks. Cloud providers retain their credential transport.
 

@@ -1030,7 +1030,7 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
             )
             self._lifetime.attach(self.sock)
             self.sock.settimeout(self._lifetime.remaining())
-            self.sock.do_handshake()
+            self._lifetime.handshake(self.sock)
             self._lifetime.check()
         except BaseException:
             raw_socket.close()
@@ -1147,8 +1147,7 @@ def _open_pinned_response(
         try:
             if connection.sock is None:
                 raise OSError("HTTP connection socket is unavailable")
-            lifetime.attach(connection.sock)
-            connection.sock.settimeout(lifetime.remaining())
+            connection.sock = lifetime.http_socket(connection.sock)
             connection.auto_open = 0
             # DNS/TLS may have waited across a durable revocation or epoch fence.
             if authority_check is not None and not authority_check():

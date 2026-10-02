@@ -168,3 +168,119 @@ def test_configuration_prepare_rejects_invalid_input_without_writes(
     with pytest.raises(ValueError):
         prepare_configuration(registry, {**_request(), **change})
     assert not (tmp_path / "packs").exists()
+
+
+@pytest.mark.parametrize("endpoint", [
+    "http://127.0.0.1:18080", "http://127.0.0.1:18080/v1/",
+    "http://[::1]:18080", "http://[::1]:18080/v1",
+])
+@pytest.mark.parametrize("lost_ack", [False, True])
+def test_local_configuration_keeps_frozen_owner_write_without_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    endpoint: str, lost_ack: bool,
+) -> None:
+    """Local setup uses the same prepared revision and creates no empty secret."""
+    registry = ProviderRegistry("defaults", user_data_root=tmp_path)
+    client = _Client(tmp_path)
+    request = {**_request(), "endpoint": endpoint, "key_value": ""}
+    plan = prepare_configuration(registry, request)
+    original_save = registry.save
+
+    def save(*args: Any, **kwargs: Any) -> Any:
+        result = original_save(*args, **kwargs)
+        if lost_ack:
+            raise OSError("fixture lost owner ACK")
+        return result
+
+    monkeypatch.setattr(registry, "save", save)
+    result = execute_configuration(
+        registry, client, {"request": request, "plan": plan},
+        consumer_pack_id="fixture.consumer",
+    )
+    assert result == {"configured": True, "provider_instance_id": "provider.fixture"}
+    assert client.calls == []
+    saved = registry.snapshot()
+    assert saved["revision"] == 1
+    assert saved["providers"][0]["endpoint"] == endpoint
+    assert saved["providers"][0]["credential_handle"] is None
+    with pytest.raises(PermissionError, match="changed after preparation"):
+        execute_configuration(
+            registry, client, {"request": request, "plan": plan},
+            consumer_pack_id="fixture.consumer",
+        )
+    assert registry.snapshot()["revision"] == 1
+    assert client.calls == []
+
+
+@pytest.mark.parametrize("change", [
+    {"endpoint": "http://localhost:18080/v1"},
+    {"endpoint": "http://127.0.0.2:18080/v1"},
+    {"endpoint": "http://provider.example:18080/v1"},
+    {"endpoint": "https://provider.example/v1"},
+    {"endpoint": "http://127.0.0.1/v1"},
+    {"endpoint": "http://127.0.0.1:0/v1"},
+    {"endpoint": "http://127.0.0.1:18080/v1/chat/completions"},
+    {"endpoint": "http://user@127.0.0.1:18080/v1"},
+    {"endpoint": "http://127.0.0.1:18080/v1?redirect=example.com"},
+    {"endpoint": "http://127.0.0.1:18080/v1#fragment"},
+    {"endpoint": "http://127.0.0.1:018080/v1"},
+    {"protocol": "anthropic"}, {"key_value": "local-secret"},
+])
+def test_local_configuration_rejects_nonliteral_or_credentialed_http(
+    tmp_path: Path, change: dict[str, str],
+) -> None:
+    registry = ProviderRegistry("defaults", user_data_root=tmp_path)
+    request = {
+        **_request(), "endpoint": "http://127.0.0.1:18080/v1", "key_value": "",
+    }
+    with pytest.raises(ValueError):
+        prepare_configuration(registry, {**request, **change})
+    assert not (tmp_path / "packs").exists()
+
+
+def test_local_configuration_failure_creates_no_credential_or_second_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = ProviderRegistry("defaults", user_data_root=tmp_path)
+    client = _Client(tmp_path)
+    request = {
+        **_request(), "endpoint": "http://127.0.0.1:18080/v1", "key_value": "",
+    }
+    plan = prepare_configuration(registry, request)
+    writes = 0
+
+    def fail(*args: Any, **kwargs: Any) -> Any:
+        nonlocal writes
+        writes += 1
+        raise OSError("fixture owner unavailable")
+
+    monkeypatch.setattr(registry, "save", fail)
+    with pytest.raises(RuntimeError, match="connection save was not confirmed"):
+        execute_configuration(
+            registry, client, {"request": request, "plan": plan},
+            consumer_pack_id="fixture.consumer",
+        )
+    assert writes == 1
+    assert client.calls == []
+    assert not registry.path.exists()
+
+
+def test_local_configuration_approval_describes_no_api_key(tmp_path: Path) -> None:
+    from core_runtime.interactive_effect_coordinator import (
+        INTERACTIVE_EFFECT_SPECS, _presentation_metadata,
+    )
+    from tobkiri_protocol.canonical import canonical_digest
+
+    request = {
+        **_request(), "endpoint": "http://127.0.0.1:18080/v1", "key_value": "",
+    }
+    plan = prepare_configuration(ProviderRegistry("defaults", user_data_root=tmp_path), request)
+    payload = {"request": request, "plan": plan}
+    metadata = _presentation_metadata(
+        INTERACTIVE_EFFECT_SPECS["provider_configure"],
+        SimpleNamespace(request_digest=canonical_digest(payload), normalized_payload=payload),
+    )
+    assert metadata["confirmation_phrase"] == "EXECUTE"
+    assert metadata["summary"] == "Update the local Provider connection."
+    assert "Local connection: No API key is stored." in metadata["detail"]
+    assert request["endpoint"] in metadata["detail"]

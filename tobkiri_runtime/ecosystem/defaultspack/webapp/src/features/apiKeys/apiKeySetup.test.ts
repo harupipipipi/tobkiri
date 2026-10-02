@@ -155,6 +155,36 @@ test("buildApiKeySavePayload accepts an explicit loopback no-key connection", ()
   assert.equal(payload?.options.baseUrl, "http://127.0.0.1:8000/v1");
 });
 
+test("local provider setup infers no-key mode only for canonical literal loopback", () => {
+  for (const base_url of ["http://127.0.0.1:8000", "http://127.0.0.1:65535/v1/", "http://[::1]:8000/v1"]) {
+    const payload = buildApiKeySavePayload({
+      provider_id: "openai_compatible", name: "local", value: "", kind: "llm",
+      protocol: "openai-compatible", base_url,
+    });
+    assert.equal(payload?.options.credentialMode, "none");
+    assert.equal(payload?.value, "");
+  }
+});
+
+test("no-key mode cannot authorize a remote endpoint or send a local credential", () => {
+  const local = {
+    provider_id: "openai_compatible", name: "local", value: "", kind: "llm" as const,
+    protocol: "openai-compatible" as const, base_url: "http://127.0.0.1:8000/v1",
+    credential_mode: "none" as const,
+  };
+  for (const base_url of [
+    "https://provider.example/v1", "http://localhost:8000/v1", "http://127.1:8000/v1",
+    "http://2130706433:8000/v1", "http://0x7f000001:8000/v1", "http://127.0.0.1:080/v1",
+    "http://127.0.0.1:0/v1", "http://127.0.0.1:65536/v1", "http://127.0.0.1:8000/other",
+    "http://127.0.0.1:8000/v1?x=1", "http://127.0.0.1:8000/v1#fragment",
+    "http://user@127.0.0.1:8000/v1", "http://[::ffff:127.0.0.1]:8000/v1",
+  ]) assert.equal(buildApiKeySavePayload({ ...local, base_url }), null, base_url);
+  assert.equal(buildApiKeySavePayload({ ...local, value: "secret" }), null);
+  assert.equal(buildApiKeySavePayload({ ...local, value: " " }), null);
+  assert.equal(buildApiKeySavePayload({ ...local, protocol: "anthropic" }), null);
+  assert.equal(buildApiKeySavePayload({ ...local, kind: "custom" }), null);
+});
+
 test("summarizeApiKeySetupForDiagnostics never exposes secret values", () => {
   const summary = summarizeApiKeySetupForDiagnostics({
     provider_id: "openai",

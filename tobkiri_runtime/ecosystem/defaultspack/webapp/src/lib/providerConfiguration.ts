@@ -12,6 +12,13 @@ export type ProviderConfigurationRequest = {
   key_value: string;
 };
 
+/** Match the Host's canonical local base before URL normalizes alternate IP forms. */
+export function allowsCredentialFreeLocalProvider(endpoint: string, protocol: string): boolean {
+  if (protocol !== "openai-compatible") return false;
+  const match = /^http:\/\/(?:127\.0\.0\.1|\[::1\]):([1-9][0-9]{0,4})(?:\/v1)?\/*$/.exec(endpoint);
+  return Boolean(match && match[0] === endpoint && Number(match[1]) <= 65535);
+}
+
 type Pending = { connection: string; effect: string | null; digest: string; correlation?: string };
 type Ports = {
   storage: Pick<Storage, "getItem" | "setItem" | "removeItem">;

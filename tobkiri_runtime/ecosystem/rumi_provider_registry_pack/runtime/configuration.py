@@ -10,6 +10,8 @@ import re
 from typing import Any, Mapping
 from urllib.parse import urlsplit
 
+from core_runtime.local_provider_transport import local_provider_base
+
 from core_runtime.global_contract_dispatch import GlobalContractClient
 from tobkiri_protocol.canonical import canonical_digest
 
@@ -33,10 +35,17 @@ def configuration_request(payload: Mapping[str, Any]) -> dict[str, str]:
     if (
         _NAME.fullmatch(name) is None
         or payload["protocol"] not in {"openai-compatible", "anthropic"}
-        or not key or len(key) > 16_384
+        or len(key) > 16_384
         or any(ord(char) < 32 or ord(char) == 127 for char in key)
         or len(endpoint) > 2_048
     ):
+        raise ValueError("provider configuration values are invalid")
+    if (
+        not key and payload["protocol"] == "openai-compatible"
+        and local_provider_base(endpoint)
+    ):
+        return dict(payload)
+    if not key:
         raise ValueError("provider configuration values are invalid")
     try:
         parsed = urlsplit(endpoint)
@@ -88,26 +97,28 @@ def execute_configuration(
     # connection changed since prepare, nor leave a key behind for that conflict.
     if dict(plan) != prepare_configuration(registry, request):
         raise PermissionError("provider configuration changed after preparation")
-    try:
-        created = client.invoke(CREDENTIAL_CONTRACT, CREDENTIAL_OPERATION, {
-            "operation": "create", "profile_id": registry.profile_id,
-            "secret_material": {"api_key": request["key_value"]},
-            "consumer_pack_id": consumer_pack_id,
-            "provider_instance_id": plan["provider_instance_id"],
-            "scopes": ["ai.generate", "ai.stream"],
-        })
-    except Exception:
-        # A missing ACK does not authorize another create. PendingEffect records
-        # the failed/ambiguous attempt and remains the retry/status authority.
-        raise RuntimeError("provider credential save was not confirmed") from None
-    handle = created.get("handle") if isinstance(created, Mapping) else None
-    if (
-        not isinstance(handle, str) or not handle.startswith("credential:")
-        or created.get("profile_id") != registry.profile_id
-        or created.get("provider_instance_id") != plan["provider_instance_id"]
-        or created.get("consumer_pack_id") != consumer_pack_id
-    ):
-        raise RuntimeError("provider credential save was not confirmed")
+    handle = None
+    if request["key_value"]:
+        try:
+            created = client.invoke(CREDENTIAL_CONTRACT, CREDENTIAL_OPERATION, {
+                "operation": "create", "profile_id": registry.profile_id,
+                "secret_material": {"api_key": request["key_value"]},
+                "consumer_pack_id": consumer_pack_id,
+                "provider_instance_id": plan["provider_instance_id"],
+                "scopes": ["ai.generate", "ai.stream"],
+            })
+        except Exception:
+            # A missing ACK does not authorize another create. PendingEffect
+            # records the uncertain attempt and remains its status authority.
+            raise RuntimeError("provider credential save was not confirmed") from None
+        handle = created.get("handle") if isinstance(created, Mapping) else None
+        if (
+            not isinstance(handle, str) or not handle.startswith("credential:")
+            or created.get("profile_id") != registry.profile_id
+            or created.get("provider_instance_id") != plan["provider_instance_id"]
+            or created.get("consumer_pack_id") != consumer_pack_id
+        ):
+            raise RuntimeError("provider credential save was not confirmed")
     record = {
         "provider_instance_id": plan["provider_instance_id"],
         "adapter_id": plan["adapter_id"], "endpoint": plan["endpoint"],
@@ -124,13 +135,14 @@ def execute_configuration(
         except Exception:
             raise RuntimeError("provider connection save was not confirmed") from None
         if len(matches) != 1 or any(matches[0].get(key) != value for key, value in record.items()):
-            try:
-                client.invoke(CREDENTIAL_CONTRACT, CREDENTIAL_OPERATION, {
-                    "operation": "revoke", "profile_id": registry.profile_id,
-                    "handle": handle,
-                })
-            except Exception:
-                raise RuntimeError("provider configuration cleanup was not confirmed") from None
+            if handle is not None:
+                try:
+                    client.invoke(CREDENTIAL_CONTRACT, CREDENTIAL_OPERATION, {
+                        "operation": "revoke", "profile_id": registry.profile_id,
+                        "handle": handle,
+                    })
+                except Exception:
+                    raise RuntimeError("provider configuration cleanup was not confirmed") from None
             raise RuntimeError("provider connection save was not confirmed") from None
     return {
         "configured": True,

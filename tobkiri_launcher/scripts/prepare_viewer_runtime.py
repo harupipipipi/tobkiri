@@ -22,6 +22,7 @@ sys.dont_write_bytecode = True
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TAURI_TARGET_ENV = "TAURI_ENV_TARGET_TRIPLE"
+CARGO_TARGET_DIR_ENV = "CARGO_TARGET_DIR"
 UV_PATH_ENV = "RUMI_UV_PATH"
 SOURCE_PROVENANCE_FILENAME = "packaging-source-provenance.v1.json"
 ISOLATED_MODULE_CODE = (
@@ -209,8 +210,31 @@ def prepare_dev(repo_root: Path, target: str) -> Path:
     return destination
 
 
+def _cargo_target_root(
+    project_dir: Path,
+    environ: Mapping[str, str] = os.environ,
+) -> Path:
+    """Resolve Cargo's development output using the Rust staging policy."""
+    project_dir = project_dir.resolve()
+    configured = environ.get(CARGO_TARGET_DIR_ENV)
+    target_root = Path(configured) if configured else Path("target")
+    if ".." in target_root.parts:
+        raise RuntimeError(f"{CARGO_TARGET_DIR_ENV} may not contain parent traversal")
+    if not target_root.is_absolute():
+        target_root = project_dir / target_root
+    for component in (target_root, *target_root.parents):
+        try:
+            metadata = component.lstat()
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        if _is_link_or_reparse(metadata) or not stat.S_ISDIR(metadata.st_mode):
+            raise RuntimeError(f"Cargo target root has an unsafe component: {component}")
+    return target_root
+
+
 def _target_shell_spec(repo_root: Path, target: str) -> dict[str, str | Path]:
-    target_root = repo_root / "tobkiri_launcher" / "src-tauri" / "target" / target / "debug"
+    project_dir = repo_root / "tobkiri_launcher" / "src-tauri"
+    target_root = _cargo_target_root(project_dir) / target / "debug"
     if target == "aarch64-apple-darwin":
         platform_name, architecture = "macos", "arm64"
     elif target == "x86_64-apple-darwin":

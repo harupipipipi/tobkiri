@@ -84,6 +84,19 @@ test("provider readiness distinguishes credential, health, and reachability", ()
   assert.match(html, /未検証/);
 });
 
+test("local no-key provider readiness does not claim health or a configured credential", () => {
+  const html = renderToStaticMarkup(createElement(ProviderReadiness, {
+    connection: {
+      provider_instance_id: "provider.openai_compatible.local", display_name: "Local",
+      credential_status: "not_required", health_status: "unverified", reachability: "unknown", observed_at: null,
+    },
+  }));
+  assert.match(html, /資格情報: 不要（ローカル接続）/);
+  assert.match(html, /到達性: 未確認/);
+  assert.match(html, /未検証/);
+  assert.doesNotMatch(html, /資格情報: 設定済み|資格情報: 未設定|到達性: 利用可能/);
+});
+
 function makeModelOption(index: number): ModelSelectOption {
   return {
     value: `demo/provider-model-${index}`,

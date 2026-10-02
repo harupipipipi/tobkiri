@@ -329,6 +329,72 @@ def test_macos_dev_shell_spec_uses_debug_unsigned_app(tmp_path):
     )
 
 
+@pytest.mark.parametrize("configured", [None, ""])
+def test_dev_cargo_target_root_defaults_to_project_target(tmp_path, configured):
+    module = _load_module()
+    project = tmp_path / "launcher"
+    environment = {} if configured is None else {"CARGO_TARGET_DIR": configured}
+
+    assert module._cargo_target_root(project, environment) == project / "target"
+
+
+def test_windows_dev_shell_spec_reuses_absolute_cargo_target_cache(tmp_path, monkeypatch):
+    module = _load_module()
+    cache = tmp_path / "existing Cargo cache"
+    cache.mkdir()
+    target = "x86_64-pc-windows-msvc"
+    artifact = cache / target / "debug" / "tobkiri-shell.exe"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_bytes(b"actual compiler output")
+    monkeypatch.setenv("CARGO_TARGET_DIR", str(cache))
+
+    spec = module._target_shell_spec(tmp_path / "checkout", target)
+
+    assert spec["artifact"] == artifact
+    assert spec["artifact"].read_bytes() == b"actual compiler output"
+    assert spec["relative_path"] == "tobkiri-shell.exe"
+
+
+def test_dev_cargo_target_root_resolves_relative_to_tauri_project(tmp_path):
+    module = _load_module()
+    project = tmp_path / "launcher"
+
+    assert module._cargo_target_root(
+        project, {"CARGO_TARGET_DIR": "shared cargo target"},
+    ) == project / "shared cargo target"
+
+
+@pytest.mark.parametrize("configured", ["../outside", "target/../outside"])
+def test_dev_cargo_target_root_rejects_parent_traversal(tmp_path, configured):
+    module = _load_module()
+
+    with pytest.raises(RuntimeError, match="parent traversal"):
+        module._cargo_target_root(tmp_path, {"CARGO_TARGET_DIR": configured})
+
+
+def test_dev_cargo_target_root_rejects_file_ancestor(tmp_path):
+    module = _load_module()
+    unsafe = tmp_path / "file"
+    unsafe.write_bytes(b"not a directory")
+
+    with pytest.raises(RuntimeError, match="unsafe component"):
+        module._cargo_target_root(tmp_path, {"CARGO_TARGET_DIR": str(unsafe / "target")})
+
+
+def test_dev_cargo_target_root_rejects_directory_link(tmp_path):
+    module = _load_module()
+    real = tmp_path / "real cache"
+    real.mkdir()
+    linked = tmp_path / "linked cache"
+    try:
+        linked.symlink_to(real, target_is_directory=True)
+    except OSError:
+        pytest.skip("Directory symlinks are unavailable for this account")
+
+    with pytest.raises(RuntimeError, match="unsafe component"):
+        module._cargo_target_root(tmp_path, {"CARGO_TARGET_DIR": str(linked / "target")})
+
+
 def test_prepare_dev_pack_shell_writes_verified_debug_digest(tmp_path, monkeypatch):
     module = _load_module()
     target = "aarch64-apple-darwin"

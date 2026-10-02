@@ -12,6 +12,7 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
 )
+from core_runtime.local_provider_transport import local_provider_base
 from ecosystem.rumi_provider_registry_pack.runtime.service import (
     ProviderRegistryService,
 )
@@ -226,7 +227,13 @@ def _provider_connection_snapshot(
             "credential_status": (
                 "configured"
                 if isinstance(credential_handle, str) and credential_handle
-                else "missing"
+                else (
+                    "not_required"
+                    if credential_handle is None
+                    and item.get("adapter_id") in {"openai", "openai-compatible"}
+                    and local_provider_base(item.get("endpoint"))
+                    else "missing"
+                )
             ),
             "health_status": "verified" if health_verified else "unverified",
             "reachability": reachability,

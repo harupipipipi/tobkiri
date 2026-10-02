@@ -793,6 +793,9 @@ test("custom LLM API setup exposes only supported protocol choices", () => {
   assert.match(html, /aria-label="Custom LLM protocol"/);
   assert.match(html, /value="openai-compatible"/);
   assert.match(html, /value="anthropic"/);
+  assert.match(html, /aria-label="Provider base URL"/);
+  assert.match(html, /http:\/\/127\.0\.0\.1:ポート/);
+  assert.match(html, /APIキーを空欄にします/);
 });
 
 test("Connections external-token setup omits LLM endpoint and model-route controls", () => {
@@ -836,7 +839,7 @@ test("Connections external-token setup omits LLM endpoint and model-route contro
   assert.match(html, /data-provider-scope="non_llm"/);
   assert.match(html, /placeholder="cloudflare token"/);
   assert.doesNotMatch(html, /Custom LLM protocol/);
-  assert.doesNotMatch(html, /Provider HTTPS base URL/);
+  assert.doesNotMatch(html, /Provider base URL/);
   assert.doesNotMatch(html, /接続先は選んだAIプロバイダーに合わせて自動で設定されます/);
   assert.doesNotMatch(html, /モデルルート作成/);
 });
@@ -898,7 +901,7 @@ test("Connections API credential template excludes AI provider keys", () => {
   assert.match(html, /placeholder="line token"/);
   assert.match(html, /外部サービス用トークンとして保存します/);
   assert.doesNotMatch(html, /loopback endpoint only/);
-  assert.doesNotMatch(html, /Provider HTTPS base URL/);
+  assert.doesNotMatch(html, /Provider base URL/);
 });
 
 test("Models places AI API registration before model API connections", () => {

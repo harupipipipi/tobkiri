@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import errno
+import io
 import math
-import os
+import select
 import socket
+import ssl
 import threading
 import time
-from typing import Callable
+from typing import Any, Callable, TypeVar
+
+_T = TypeVar("_T")
 
 
 class HttpRequestLifetime:
@@ -47,13 +52,18 @@ class HttpRequestLifetime:
 
     def check(self) -> None:
         """Reject expired or cancelled work before its next external effect."""
+        self._check_signal()
+        if not self._authority_active():
+            raise InterruptedError("HTTP request cancelled")
+
+    def _check_signal(self) -> None:
+        """Check cheap request fences below buffered IO and TLS retries."""
         if self._clock() >= self._deadline:
             raise TimeoutError("HTTP request deadline elapsed")
         if (
             self._done.is_set()
             or self._interrupted.is_set()
             or self._cancellation.is_set()
-            or not self._authority_active()
         ):
             raise InterruptedError("HTTP request cancelled")
 
@@ -67,6 +77,67 @@ class HttpRequestLifetime:
         with self._lock:
             self.check()
             self._socket = owned_socket
+
+    def http_socket(self, owned_socket: socket.socket) -> Any:
+        """Keep HTTP's buffered parser above owner-polled, nonblocking IO.
+
+        The returned socket interface defers native close until its reader is
+        released, matching socket.makefile ownership. It never exposes polling
+        timeouts to a buffered reader or repeats already sent request bytes.
+        """
+        self.attach(owned_socket)
+        owned_socket.setblocking(False)
+        return _LifetimeHttpSocket(owned_socket, self)
+
+    def connect(self, owned_socket: socket.socket, address: tuple[str, int]) -> None:
+        """Poll one numeric TCP connect in its IO owner's original budget."""
+        self.attach(owned_socket)
+        owned_socket.setblocking(False)
+        result = owned_socket.connect_ex(address)
+        if result not in {0, errno.EINPROGRESS, errno.EWOULDBLOCK, errno.EALREADY, errno.EINTR}:
+            raise OSError(result, "HTTP connection failed")
+        if result:
+            self._wait_io(owned_socket, writing=True, connecting=True)
+            error = owned_socket.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+            if error:
+                raise OSError(error, "HTTP connection failed")
+        self.check()
+
+    def handshake(self, owned_socket: ssl.SSLSocket) -> None:
+        """Complete verified TLS without an uninterruptible buffered wait."""
+        self.attach(owned_socket)
+        owned_socket.setblocking(False)
+        self._socket_call(owned_socket, owned_socket.do_handshake)
+        self.check()
+
+    def _socket_call(
+        self, peer: socket.socket, operation: Callable[[], _T], *, writing: bool = False,
+    ) -> _T:
+        while True:
+            self._check_signal()
+            try:
+                return operation()
+            except ssl.SSLWantReadError:
+                self._wait_io(peer, writing=False)
+            except ssl.SSLWantWriteError:
+                self._wait_io(peer, writing=True)
+            except (BlockingIOError, InterruptedError):
+                self._wait_io(peer, writing=writing)
+
+    def _wait_io(
+        self, peer: socket.socket, *, writing: bool, connecting: bool = False,
+    ) -> None:
+        while True:
+            self._check_signal()
+            remaining = self._deadline - self._clock()
+            readable, writable, exceptional = select.select(
+                [] if writing else [peer], [peer] if writing else [],
+                [peer] if connecting else [],
+                min(0.05, max(0.001, remaining)),
+            )
+            self._check_signal()
+            if readable or writable or exceptional:
+                return
 
     def close(self) -> None:
         """Join only the watchdog; the IO caller closes its own response/connection."""
@@ -84,23 +155,6 @@ class HttpRequestLifetime:
             ):
                 with self._lock:
                     self._interrupted.set()
-                    if self._socket is not None:
-                        try:
-                            self._socket.shutdown(socket.SHUT_RDWR)
-                        except OSError:
-                            pass
-                        if os.name == "nt":
-                            # Winsock shutdown need not wake a select-backed
-                            # buffered recv. Transfer the owned native handle
-                            # before closing it, so deferred SocketIO cleanup
-                            # cannot later close a reused handle. The reader
-                            # itself remains owned and closed by the IO thread.
-                            try:
-                                handle = self._socket.detach()
-                                if handle != -1:
-                                    socket.close(handle)
-                            except OSError:
-                                pass
                 return
 
     def _authority_active(self) -> bool:
@@ -110,3 +164,68 @@ class HttpRequestLifetime:
             return self._authority_check() is True
         except Exception:
             return False
+
+
+class _LifetimeHttpSocket:
+    """One IO worker owns the peer, buffered readers and every native close."""
+
+    def __init__(self, peer: socket.socket, lifetime: HttpRequestLifetime) -> None:
+        self._peer = peer
+        self._lifetime = lifetime
+        self._readers = 0
+        self._closed = False
+
+    def sendall(self, data: bytes) -> None:
+        if self._closed:
+            raise OSError("HTTP socket is closed")
+        remaining = memoryview(data)
+        while remaining:
+            sent = self._lifetime._socket_call(
+                self._peer, lambda: self._peer.send(remaining), writing=True,
+            )
+            if sent <= 0:
+                raise ConnectionError("HTTP socket closed during send")
+            remaining = remaining[sent:]
+
+    def makefile(self, mode: str = "rb", buffering: int = -1) -> io.BufferedReader:
+        if mode != "rb" or self._closed:
+            raise ValueError("HTTP socket reader is unavailable")
+        self._readers += 1
+        return io.BufferedReader(
+            _LifetimeSocketReader(self),
+            buffer_size=io.DEFAULT_BUFFER_SIZE if buffering < 0 else buffering,
+        )
+
+    def recv_into(self, buffer: Any) -> int:
+        return self._lifetime._socket_call(self._peer, lambda: self._peer.recv_into(buffer))
+
+    def close(self) -> None:
+        self._closed = True
+        if self._readers == 0:
+            self._peer.close()
+
+    def _release_reader(self) -> None:
+        self._readers -= 1
+        if self._closed and self._readers == 0:
+            self._peer.close()
+
+
+class _LifetimeSocketReader(io.RawIOBase):
+    def __init__(self, owner: _LifetimeHttpSocket) -> None:
+        super().__init__()
+        self._owner = owner
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: Any) -> int:
+        if self.closed:
+            raise ValueError("HTTP socket reader is closed")
+        return self._owner.recv_into(buffer)
+
+    def close(self) -> None:
+        if not self.closed:
+            try:
+                super().close()
+            finally:
+                self._owner._release_reader()
