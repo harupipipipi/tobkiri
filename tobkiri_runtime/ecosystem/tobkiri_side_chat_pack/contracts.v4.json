@@ -110,7 +110,7 @@
         "source_kind": "repository",
         "source_path": "ecosystem/tobkiri_side_chat_pack/pack-source.v1.json",
         "source_digest": "sha256:bd73370d85af96403a9875b9c74ef3d81bc525c8c3b95def0f8db7011d1ec756",
-        "repository_commit": "372f10c8a60180ffc6fe77b9f9d01fa5a05937c8",
+        "repository_commit": "4a4b1d3b8f47d12bbeb189d884174d634e3f6ce2",
         "repository_tree": "9b4a3b61cdfa635f9662f20a87310f70276a89c3590a969bdff611a8d1a9aca4",
         "generator": "tobkiri-protocol",
         "generator_version": "1.0.0",
@@ -118,7 +118,7 @@
         "evidence": [],
         "schema": "io.tobkiri.provenance.v1"
       },
-      "revision_digest": "sha256:7dc88c0144aaa76e276826968e10e87b1dbe2d0cd30d743b3247c5ed3eb7b616"
+      "revision_digest": "sha256:cab60a169cd344f051033f93b31b1b2a0fce27cdcfe70f55a1aa88d7d6af9f1a"
     },
     {
       "contract_api_version": "io.tobkiri.contract.v4",
@@ -211,7 +211,7 @@
         "source_kind": "repository",
         "source_path": "ecosystem/tobkiri_side_chat_pack/pack-source.v1.json",
         "source_digest": "sha256:bd73370d85af96403a9875b9c74ef3d81bc525c8c3b95def0f8db7011d1ec756",
-        "repository_commit": "372f10c8a60180ffc6fe77b9f9d01fa5a05937c8",
+        "repository_commit": "4a4b1d3b8f47d12bbeb189d884174d634e3f6ce2",
         "repository_tree": "9b4a3b61cdfa635f9662f20a87310f70276a89c3590a969bdff611a8d1a9aca4",
         "generator": "tobkiri-protocol",
         "generator_version": "1.0.0",
@@ -219,7 +219,7 @@
         "evidence": [],
         "schema": "io.tobkiri.provenance.v1"
       },
-      "revision_digest": "sha256:83431dde8344afcc49e540487c37da3583a2205166b5a2275ce0120bb4f2612e"
+      "revision_digest": "sha256:1c8ab65ddd57d6bcb075201b623e95e7426a6861e3b71d67c785ad10604c5916"
     },
     {
       "contract_api_version": "io.tobkiri.contract.v4",
@@ -365,7 +365,7 @@
         "source_kind": "repository",
         "source_path": "ecosystem/tobkiri_side_chat_pack/pack-source.v1.json",
         "source_digest": "sha256:bd73370d85af96403a9875b9c74ef3d81bc525c8c3b95def0f8db7011d1ec756",
-        "repository_commit": "372f10c8a60180ffc6fe77b9f9d01fa5a05937c8",
+        "repository_commit": "4a4b1d3b8f47d12bbeb189d884174d634e3f6ce2",
         "repository_tree": "9b4a3b61cdfa635f9662f20a87310f70276a89c3590a969bdff611a8d1a9aca4",
         "generator": "tobkiri-protocol",
         "generator_version": "1.0.0",
@@ -373,7 +373,7 @@
         "evidence": [],
         "schema": "io.tobkiri.provenance.v1"
       },
-      "revision_digest": "sha256:e75c1e733ed36889f817d2793b73afebc4e9c85c9e51354af0e1e01a50b1ef3d"
+      "revision_digest": "sha256:4bededdcaa55b8aa1599de00dd68ad37a193c34712f2dd1449b1d8e7e8f2cbb6"
     }
   ]
 }

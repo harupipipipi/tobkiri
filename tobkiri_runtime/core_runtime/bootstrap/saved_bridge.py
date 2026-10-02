@@ -34,7 +34,9 @@ from tobkiri_protocol.saved_context import (
 from tobkiri_protocol.conversation_lifecycle import (
     active_task_gap_context, saved_terminal_finish_reason, task_gap_prompt,
 )
-from tobkiri_protocol.conversation_context import resolve_request_context
+from tobkiri_protocol.conversation_context import (
+    context_link, resolve_request_context, resolved_thinking_level,
+)
 
 from ..authority.v4 import AuthorityDenied
 
@@ -402,6 +404,19 @@ class SavedBridgeCallbacks:
             raise AuthorityDenied("saved bridge conversation is unavailable")
         return conversation
 
+    def _recheck_linked_context(
+        self, outer: object, request: Mapping[str, Any], conversation: Mapping[str, Any],
+    ) -> None:
+        """Fence dependency-read changes immediately before effect admission."""
+        if context_link(conversation) is None:
+            return
+        fresh = self._conversation(outer, request)
+        if any(
+            fresh.get(field) != conversation.get(field)
+            for field in ("conversation_revision", "current_node_id")
+        ):
+            raise AuthorityDenied("saved bridge linked conversation changed before effect")
+
     def _tools(self, outer: object, request: Mapping[str, Any]) -> Mapping[str, Any]:
         if request.get("tool_selection", {}).get("mode", "none") == "none":
             return {"tools": [], "definitions": {}}
@@ -510,6 +525,7 @@ class SavedBridgeCallbacks:
                 raise AuthorityDenied(
                     "saved bridge selected AI strategy is unavailable"
                 )
+            self._recheck_linked_context(outer, request, conversation)
             return
         owner_messages = _messages(conversation, system_prompt=prompt)
         requires_image_input = _contains_inline_images(
@@ -532,6 +548,7 @@ class SavedBridgeCallbacks:
         }
         if len(canonical_json(payload)) > MAX_SAVED_INPUT_BYTES:
             raise AuthorityDenied("saved bridge readiness input exceeds budget")
+        self._recheck_linked_context(outer, request, conversation)
         outcome = self._dispatch(outer, READINESS, payload)
         value = outcome.get("value")
         if (
@@ -699,11 +716,12 @@ class SavedBridgeCallbacks:
             if _contains_inline_images(arguments["messages"]):
                 requirements["modalities"] = ["image", "text"]
             arguments["requirements"] = requirements
-            if "thinking_level" in request:
+            thinking_level = resolved_thinking_level(conversation, request)
+            if thinking_level is not None:
                 # The selected level comes from the validated initial request,
                 # never from the guest's AI intent or a resumed frame.
                 arguments["parameters"] = {
-                    "thinking_level": request["thinking_level"]
+                    "thinking_level": thinking_level
                 }
             if selected["tools"]:
                 if _requires_tool_calling(request):
@@ -756,6 +774,7 @@ class SavedBridgeCallbacks:
                 if strategy_reference is not None
                 else arguments
             )
+            self._recheck_linked_context(outer, request, conversation)
             outcome = self._dispatch(outer, target, dispatch_arguments)
             additions: dict[str, Any] = {}
             if (
@@ -783,6 +802,7 @@ class SavedBridgeCallbacks:
                 conversation, owner_revision, owner_current_node_id
             )
             self._require_targets(outer, TOOL_TARGETS)
+        self._recheck_linked_context(outer, request, conversation)
         return self._dispatch(outer, target, payload)
 
     @staticmethod

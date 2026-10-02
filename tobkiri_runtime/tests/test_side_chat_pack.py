@@ -26,6 +26,7 @@ from ecosystem.tobkiri_side_chat_pack.runtime.side_chat import (
 )
 from tests.test_conversation_lifecycle_saved_boundary import _exchange
 from tests.test_saved_bridge_callbacks import _frame
+from tests.test_conversation_lifecycle_pack import _confirm
 from tobkiri_protocol.conversation_context import (
     LINK_VERSION,
     context_binding,
@@ -87,6 +88,7 @@ class PublicClient:
             for _ in range(4):
                 exchange.step()
             exchange.host.finish(exchange.intent)
+            _confirm(self.store, payload)
             record = {
                 "id": payload["request"]["turn_id"],
                 "conversation_id": payload["request"]["conversation_id"],
@@ -380,6 +382,204 @@ def test_linked_turn_cannot_expand_parent_tool_selection(service: Any) -> None:
             "defaults",
             lambda _: parent,
         )
+
+
+@pytest.mark.parametrize("level", ["none", "medium", "xhigh"])
+def test_direct_saved_and_guest_request_cannot_override_parent_reasoning(
+    service: Any, level: str,
+) -> None:
+    side, client = service
+    client.store.update(
+        "conversation-1", {"metadata": {"thinking_level": "low"}},
+        expected_conversation_revision=1,
+    )
+    child = side.ensure("conversation-1", 2)
+    request = {
+        "turn_id": "side-turn", "conversation_id": child["conversation_id"],
+        "conversation_revision": 1, "content": "Hi",
+        "context_binding": child["context_binding"], "thinking_level": level,
+    }
+    client.exchange.outer.payload = {"request": request}
+    before = client.store.path.read_bytes()
+    with pytest.raises(AuthorityDenied, match="reasoning level"):
+        client.exchange.callback(client.exchange.outer, _frame(saved.start(request)))
+    assert client.store.path.read_bytes() == before
+    assert not any(target == saved.TARGETS[2] for target, _ in client.exchange.calls)
+    # The durable owner runs the same neutral resolver before any claim/AI call.
+    from core_runtime.global_contract_dispatch import GlobalContractClient
+    from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
+    from ecosystem.rumi_turn_runtime_pack.runtime.saved import SAVED_CONTRACTS, execute_saved_turn
+
+    transport = SimpleNamespace(
+        profile_id="defaults", provider_metadata=lambda _: (), invoke=client.invoke,
+    )
+    captured = GlobalContractClient(
+        session=transport, allowed_contract_ids=SAVED_CONTRACTS,
+        consumer_pack_id="rumi_turn_runtime_pack",
+    )
+    turns = DurableTurnRuntime("defaults", user_data_root=client.store.root.parents[3])
+    with pytest.raises(ValueError, match="reasoning level"):
+        execute_saved_turn(turns, {"request": request}, client=captured, guard=lambda: None)
+    assert not turns.path.exists()
+
+
+def test_omitted_child_reasoning_is_derived_from_bound_parent_in_host(service: Any) -> None:
+    side, client = service
+    client.store.update(
+        "conversation-1", {"metadata": {"thinking_level": "low"}},
+        expected_conversation_revision=1,
+    )
+    child = side.ensure("conversation-1", 2)
+    request = {
+        "turn_id": "side-turn", "conversation_id": child["conversation_id"],
+        "conversation_revision": 1, "content": "Hi",
+        "context_binding": child["context_binding"],
+    }
+    client.exchange.outer.payload = {"request": deepcopy(request)}
+    intent = saved.start(request)
+    for _ in range(3):
+        intent = saved.resume(
+            intent["state"], client.exchange.callback(client.exchange.outer, _frame(intent)),
+        )
+    ai = [payload for target, payload in client.exchange.calls if target == saved.TARGETS[2]][-1]
+    assert ai["parameters"]["thinking_level"] == "low"
+    assert client.exchange.outer.payload["request"] == request
+
+
+@pytest.mark.parametrize("stage", ["user", "ai"])
+def test_parent_change_during_prompt_read_rejects_before_effect(service: Any, stage: str) -> None:
+    from ecosystem.rumi_prompt_studio_pack.runtime.store import PromptStudioStore
+    from tobkiri_protocol.saved_context import PROMPT_TARGET
+
+    side, client = service
+    prompts = PromptStudioStore("defaults", user_data_root=client.store.root.parents[3])
+    prompts.save(
+        "system", "Parent instructions",
+        expected_body_hash="sha256:e3b0c44298fc1c149afbf4c8996fb924"
+        "27ae41e4649b934ca495991b7852b855",
+    )
+    client.store.update(
+        "conversation-1", {"system_prompt_id": "system"}, expected_conversation_revision=1,
+    )
+    child = side.ensure("conversation-1", 2)
+    request = {
+        "turn_id": "side-turn", "conversation_id": child["conversation_id"],
+        "conversation_revision": 1, "content": "Hi", "context_binding": child["context_binding"],
+    }
+    exchange = client.exchange
+    exchange.outer.payload = {"request": request}
+    intent = saved.start(request)
+    for _ in range({"user": 1, "ai": 2}[stage]):
+        intent = saved.resume(intent["state"], exchange.callback(exchange.outer, _frame(intent)))
+    dispatch = exchange.callback._dispatch
+
+    def mutate_parent(outer: Any, target: Any, payload: Any) -> Any:
+        outcome = dispatch(outer, target, payload)
+        if target == PROMPT_TARGET:
+            parent = client.store.get("conversation-1")
+            client.store.update(
+                "conversation-1", {"model_reference": "changed-model"},
+                expected_conversation_revision=parent["conversation_revision"],
+            )
+        return outcome
+
+    exchange.callback._dispatch = mutate_parent
+    before_messages = deepcopy(client.store.get(child["conversation_id"])["messages"])
+    with pytest.raises(AuthorityDenied, match="stale"):
+        exchange.callback(exchange.outer, _frame(intent))
+    assert client.store.get(child["conversation_id"])["messages"] == before_messages
+    assert not any(target == saved.TARGETS[2] for target, _ in exchange.calls)
+
+
+def test_parent_change_at_append_admission_is_atomically_rejected(service: Any) -> None:
+    side, client = service
+    child = side.ensure("conversation-1", 1)
+    exchange = client.exchange
+    exchange.outer.payload = {"request": {
+        "turn_id": "side-turn", "conversation_id": child["conversation_id"],
+        "conversation_revision": 1, "content": "Hi", "context_binding": child["context_binding"],
+    }}
+    intent = saved.start(exchange.outer.payload["request"])
+    intent = saved.resume(intent["state"], exchange.callback(exchange.outer, _frame(intent)))
+    dispatch = exchange.callback._dispatch
+
+    def mutate_before_append(outer: Any, target: Any, payload: Any) -> Any:
+        if target == saved.TARGETS[1]:
+            client.store.update(
+                "conversation-1", {"model_reference": "changed-model"},
+                expected_conversation_revision=2,
+            )
+        return dispatch(outer, target, payload)
+
+    exchange.callback._dispatch = mutate_before_append
+    with pytest.raises(ValueError, match="stale"):
+        exchange.callback(exchange.outer, _frame(intent))
+    assert client.store.get(child["conversation_id"])["messages"] == []
+
+
+def test_parent_change_during_tool_definition_read_cannot_call_model(service: Any) -> None:
+    from core_runtime.bootstrap.saved_bridge import DEFINITION
+    from tobkiri_host.saved_turn_plan import SavedToolFrame
+    from tobkiri_protocol.canonical import canonical_digest
+
+    side, client = service
+    selection = {"mode": "auto"}
+    client.store.update(
+        "conversation-1", {"metadata": {"tool_selection": selection}},
+        expected_conversation_revision=1,
+    )
+    child = side.ensure("conversation-1", 2)
+    request = {
+        "turn_id": "side-turn", "conversation_id": child["conversation_id"],
+        "conversation_revision": 1, "content": "Hi",
+        "context_binding": child["context_binding"], "tool_selection": selection,
+    }
+    exchange = client.exchange
+    exchange.outer.payload = {"request": request}
+    exchange.callback._require_targets = lambda *_: None
+    dispatch = exchange.callback._dispatch
+    armed = [False]
+
+    def selected_tools(outer: Any, target: Any, payload: Any) -> Any:
+        if target == DEFINITION:
+            if armed[0]:
+                client.store.update(
+                    "conversation-1", {"model_reference": "changed-model"},
+                    expected_conversation_revision=3,
+                )
+            return {"status": "ok", "value": {"tools": [], "definitions": {}}}
+        return dispatch(outer, target, payload)
+
+    exchange.callback._dispatch = selected_tools
+    intent = saved.start(request)
+
+    def checked(stage: str) -> Any:
+        conversation = client.store.get(child["conversation_id"])
+        return SavedToolFrame(
+            _frame(intent), canonical_digest({"request": request}), b"[]", stage,
+            conversation["conversation_revision"] if stage == "ai" else None,
+            conversation["current_node_id"] if stage == "ai" else None,
+        )
+
+    for stage in ("read", "user"):
+        intent = saved.resume(intent["state"], exchange.callback(exchange.outer, checked(stage)))
+    armed[0] = True
+    with pytest.raises(AuthorityDenied, match="stale"):
+        exchange.callback(exchange.outer, checked("ai"))
+    assert not any(target == saved.TARGETS[2] for target, _ in exchange.calls)
+
+
+def test_side_host_loads_under_digest_module_without_package_parent() -> None:
+    import importlib.util
+    from ecosystem.tobkiri_side_chat_pack.runtime import host
+
+    spec = importlib.util.spec_from_file_location("_tobkiri_host_provider_test", host.__file__)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert set(module.HOST_PROVIDER_FACTORY) == {
+        f"tobkiri_side_chat_pack.{kind}" for kind in ("resource", "manage", "turn")
+    }
 
 
 def test_cross_conversation_stop_events_reconcile_never_dispatch(service: Any) -> None:

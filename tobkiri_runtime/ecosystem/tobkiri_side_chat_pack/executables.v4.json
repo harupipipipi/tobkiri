@@ -7,7 +7,7 @@
       "variant_id": "tobkiri_side_chat_pack.resource.python",
       "function_id": "tobkiri_side_chat_pack.resource",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:e2e75aa927eeb1badc4adf6e9a63f87e5b7fc27a0121e142ed83da0d21cfcfad",
+      "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -19,7 +19,7 @@
         {
           "contract_id": "tobkiri.resource.side-chat.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:7dc88c0144aaa76e276826968e10e87b1dbe2d0cd30d743b3247c5ed3eb7b616",
+          "revision_digest": "sha256:cab60a169cd344f051033f93b31b1b2a0fce27cdcfe70f55a1aa88d7d6af9f1a",
           "operation_id": "tobkiri_side_chat_pack.side-chat-resource",
           "input_schema": {
             "type": "object",
@@ -101,7 +101,7 @@
       "variant_id": "tobkiri_side_chat_pack.manage.python",
       "function_id": "tobkiri_side_chat_pack.manage",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:e2e75aa927eeb1badc4adf6e9a63f87e5b7fc27a0121e142ed83da0d21cfcfad",
+      "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -113,7 +113,7 @@
         {
           "contract_id": "tobkiri.action.side-chat.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:83431dde8344afcc49e540487c37da3583a2205166b5a2275ce0120bb4f2612e",
+          "revision_digest": "sha256:1c8ab65ddd57d6bcb075201b623e95e7426a6861e3b71d67c785ad10604c5916",
           "operation_id": "tobkiri_side_chat_pack.side-chat-manage",
           "input_schema": {
             "type": "object",
@@ -178,7 +178,7 @@
       "variant_id": "tobkiri_side_chat_pack.turn.python",
       "function_id": "tobkiri_side_chat_pack.turn",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:e2e75aa927eeb1badc4adf6e9a63f87e5b7fc27a0121e142ed83da0d21cfcfad",
+      "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -190,7 +190,7 @@
         {
           "contract_id": "tobkiri.service.side-chat.turn.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:e75c1e733ed36889f817d2793b73afebc4e9c85c9e51354af0e1e01a50b1ef3d",
+          "revision_digest": "sha256:4bededdcaa55b8aa1599de00dd68ad37a193c34712f2dd1449b1d8e7e8f2cbb6",
           "operation_id": "tobkiri_side_chat_pack.side-chat-turn",
           "input_schema": {
             "type": "object",
@@ -305,5 +305,5 @@
       ]
     }
   ],
-  "catalog_digest": "sha256:c26751bb44817f7825b84bd02c91c259db0cf8bdd0b9bbf18859e7a2ba64d51c"
+  "catalog_digest": "sha256:8f64e094c7b240cf891bd8f07f2df63a14833fc415f516efb312b32886748db7"
 }

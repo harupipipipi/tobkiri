@@ -5,13 +5,13 @@
     "version": "1.0.0",
     "kind": "host_extension",
     "display_name": "Tobkiri Side Chat",
-    "artifact_digest": "sha256:604900bd81c0e3c9295afcb037465d3ccf44cb0f6b8ebfe14bf5a71b3dae9619"
+    "artifact_digest": "sha256:a1fd4eb893d66b55de72c5a8ee23473801cf3ff8413361133545e695e0f8a169"
   },
   "functions": [
     {
       "id": "tobkiri_side_chat_pack.resource",
-      "implementation_digest": "sha256:e2e75aa927eeb1badc4adf6e9a63f87e5b7fc27a0121e142ed83da0d21cfcfad",
-      "contract_revision_digest": "sha256:7dc88c0144aaa76e276826968e10e87b1dbe2d0cd30d743b3247c5ed3eb7b616",
+      "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
+      "contract_revision_digest": "sha256:cab60a169cd344f051033f93b31b1b2a0fce27cdcfe70f55a1aa88d7d6af9f1a",
       "operations": [
         "tobkiri_side_chat_pack.side-chat-resource"
       ],
@@ -19,8 +19,8 @@
     },
     {
       "id": "tobkiri_side_chat_pack.manage",
-      "implementation_digest": "sha256:e2e75aa927eeb1badc4adf6e9a63f87e5b7fc27a0121e142ed83da0d21cfcfad",
-      "contract_revision_digest": "sha256:83431dde8344afcc49e540487c37da3583a2205166b5a2275ce0120bb4f2612e",
+      "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
+      "contract_revision_digest": "sha256:1c8ab65ddd57d6bcb075201b623e95e7426a6861e3b71d67c785ad10604c5916",
       "operations": [
         "tobkiri_side_chat_pack.side-chat-manage"
       ],
@@ -28,8 +28,8 @@
     },
     {
       "id": "tobkiri_side_chat_pack.turn",
-      "implementation_digest": "sha256:e2e75aa927eeb1badc4adf6e9a63f87e5b7fc27a0121e142ed83da0d21cfcfad",
-      "contract_revision_digest": "sha256:e75c1e733ed36889f817d2793b73afebc4e9c85c9e51354af0e1e01a50b1ef3d",
+      "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
+      "contract_revision_digest": "sha256:4bededdcaa55b8aa1599de00dd68ad37a193c34712f2dd1449b1d8e7e8f2cbb6",
       "operations": [
         "tobkiri_side_chat_pack.side-chat-turn"
       ],
@@ -39,21 +39,21 @@
   "contracts": [
     {
       "contract_id": "tobkiri.resource.side-chat.v1",
-      "revision_digest": "sha256:7dc88c0144aaa76e276826968e10e87b1dbe2d0cd30d743b3247c5ed3eb7b616",
+      "revision_digest": "sha256:cab60a169cd344f051033f93b31b1b2a0fce27cdcfe70f55a1aa88d7d6af9f1a",
       "operations": [
         "tobkiri_side_chat_pack.side-chat-resource"
       ]
     },
     {
       "contract_id": "tobkiri.action.side-chat.v1",
-      "revision_digest": "sha256:83431dde8344afcc49e540487c37da3583a2205166b5a2275ce0120bb4f2612e",
+      "revision_digest": "sha256:1c8ab65ddd57d6bcb075201b623e95e7426a6861e3b71d67c785ad10604c5916",
       "operations": [
         "tobkiri_side_chat_pack.side-chat-manage"
       ]
     },
     {
       "contract_id": "tobkiri.service.side-chat.turn.v1",
-      "revision_digest": "sha256:e75c1e733ed36889f817d2793b73afebc4e9c85c9e51354af0e1e01a50b1ef3d",
+      "revision_digest": "sha256:4bededdcaa55b8aa1599de00dd68ad37a193c34712f2dd1449b1d8e7e8f2cbb6",
       "operations": [
         "tobkiri_side_chat_pack.side-chat-turn"
       ]
@@ -62,7 +62,7 @@
   "artifacts": [
     {
       "path": "runtime/host.py",
-      "digest": "sha256:e2e75aa927eeb1badc4adf6e9a63f87e5b7fc27a0121e142ed83da0d21cfcfad",
+      "digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
       "kind": "executable"
     },
     {
@@ -230,14 +230,14 @@
   ],
   "integrity": {
     "source_identity": "sha256:bd73370d85af96403a9875b9c74ef3d81bc525c8c3b95def0f8db7011d1ec756",
-    "artifact_set_digest": "sha256:8d1f1b5bd7233863454a62a1ffbc42cb5480703437a037f307ade23c071a3a56",
-    "contract_catalog_digest": "sha256:55eaa63b6447bf4385c57d0f28508b047cddd2e8fb3fee65f1a31a745776d641"
+    "artifact_set_digest": "sha256:1735188e470300039356d8458efcff69d9d4d304d65ac3f39989a12c6c687ecb",
+    "contract_catalog_digest": "sha256:9d13795c2dc632efaa580f9a0ce8cbac7724f82d034f29d963c74999d8b7a40d"
   },
   "provenance": {
     "source_kind": "repository",
     "source_path": "ecosystem/tobkiri_side_chat_pack/pack-source.v1.json",
     "source_digest": "sha256:bd73370d85af96403a9875b9c74ef3d81bc525c8c3b95def0f8db7011d1ec756",
-    "repository_commit": "372f10c8a60180ffc6fe77b9f9d01fa5a05937c8",
+    "repository_commit": "4a4b1d3b8f47d12bbeb189d884174d634e3f6ce2",
     "repository_tree": "9b4a3b61cdfa635f9662f20a87310f70276a89c3590a969bdff611a8d1a9aca4",
     "generator": "tobkiri-protocol",
     "generator_version": "1.0.0",

@@ -182,12 +182,23 @@ def resolve_request_context(
         raise ValueError("linked turn cannot expand parent tool selection")
     if request.get("strategy_reference") != options.get("strategy_reference"):
         raise ValueError("linked turn cannot change parent execution strategy")
+    if "thinking_level" in request and request["thinking_level"] != options.get("thinking_level"):
+        raise ValueError("linked turn cannot change parent reasoning level")
     return resolve_linked_conversation(
         conversation,
         parent,
         request.get("context_binding"),
         profile_id,
     )
+
+
+def resolved_thinking_level(
+    conversation: Mapping[str, Any], request: Mapping[str, Any],
+) -> str | None:
+    """Derive an omitted linked level from bound owner context, never client flags."""
+    if context_link(conversation) is not None:
+        return inherited_turn_options(conversation).get("thinking_level")
+    return request.get("thinking_level")
 
 
 def inherited_turn_options(parent: Mapping[str, Any]) -> dict[str, Any]:
