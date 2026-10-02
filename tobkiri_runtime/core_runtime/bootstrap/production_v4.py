@@ -101,6 +101,10 @@ from core_runtime.local_model_authority import (
     create_local_model_transport,
 )
 from core_runtime.dispatch_diagnostics import log_nested_dispatch_failure
+from core_runtime.captured_wake_v4 import (
+    CapturedWakeDeclarationV4, CapturedWakeDriverV4, LateBoundWakePortV4,
+)
+from core_runtime.production_wake_binding_v4 import bind_production_wake_v4
 
 from ..authority.pack_approval_binding import pack_approval_snapshot_digest
 from ..authority.v4 import (
@@ -2826,6 +2830,7 @@ def capture_production_dispatch(
         workspace_mutation_port: HostWorkspaceMutationPort | None,
         interactive_effect_port: LateBoundInteractiveEffectPort | None = None,
         declared_pack_data: tuple[CapturedHostPackDataV4, ...] = (),
+        wake_port: LateBoundWakePortV4 | None = None,
     ) -> HostProviderCaptureContextV4:
         """Build one narrow, activation-bound capture context for a Provider."""
 
@@ -2846,6 +2851,7 @@ def capture_production_dispatch(
             interactive_effect_port=interactive_effect_port,
             workspace_mutation_port=workspace_mutation_port,
             declared_pack_data=declared_pack_data,
+            wake_port=wake_port,
         )
 
     loaded_host_factories: list[tuple[str, tuple[ResolvedOperationBinding, ...], Any, str]] = []
@@ -2933,7 +2939,15 @@ def capture_production_dispatch(
     from core_runtime.host_provider_hooks_v4 import group_host_provider_captures
 
     host_provider_data = HostProviderDataCaptureV4(lock, ecosystem_root)
+    captured_wake_ports: list[tuple[LateBoundWakePortV4, CapturedWakeDeclarationV4,
+                                   ResolvedOperationBinding]] = []
     for captured_bindings, factory, backend_id in group_host_provider_captures(loaded_host_factories):
+        declaration = getattr(factory, "wake_declaration", None)
+        if declaration is not None and (
+            type(declaration) is not CapturedWakeDeclarationV4 or len(captured_bindings) != 1
+        ):
+            raise AuthorityDenied("captured wake declaration is invalid")
+        wake_port = LateBoundWakePortV4() if declaration is not None else None
         captured_provider = factory.capture(
             host_provider_capture_context(
                 captured_bindings,
@@ -2945,6 +2959,7 @@ def capture_production_dispatch(
                     and factory is interactive_effect_coordinator[2]
                     else None
                 ),
+                wake_port=wake_port,
             )
         )
         expected_keys = {
@@ -2962,6 +2977,8 @@ def capture_production_dispatch(
             captured_provider.contributions
         )
         close_callbacks.append(captured_provider.close)
+        if wake_port is not None and declaration is not None:
+            captured_wake_ports.append((wake_port, declaration, captured_bindings[0]))
     for backend_id, contributions in sorted(host_contributions_by_backend.items()):
         registered_backends += (
             ExactHostProviderBackendV4(
@@ -3429,6 +3446,13 @@ def capture_production_dispatch(
             raise AuthorityDenied("operation effect edge is ambiguous or outside the Profile")
         return candidates[0].ceilings.caller_effect.to_dict()
 
+    wake_drivers: list[CapturedWakeDriverV4] = []
+
+    def close_wake_drivers() -> None:
+        """Fence Host sources before any Broker shutdown or read restart."""
+        for driver in wake_drivers:
+            driver.close()
+
     dispatch = runtime.dispatch_session(
         broker=broker,
         context_for=context_for,
@@ -3448,11 +3472,76 @@ def capture_production_dispatch(
             ),
         ),
         stop_callbacks=(
+            close_wake_drivers,
             cancellation_handles.close,
             *((control_session.cancel_pending_reads,) if control_session is not None else ()),
         ),
+        before_close_callbacks=(close_wake_drivers,),
     )
     dispatch_holder.append(dispatch)
+    for wake_port, declaration, owner_binding in captured_wake_ports:
+        owner_id = owner_binding.principal_ref.value
+        candidates = tuple(edge for edge in captured_edges
+            if edge.caller.principal_id == owner_id
+            and edge.resolved_binding.operation.contract_id == declaration.contract_id
+            and edge.resolved_binding.operation.operation_id == declaration.operation_id)
+        # A declaration creates neither a selected edge nor a Grant. Missing
+        # or ambiguous routes keep only the unbound/unavailable public port.
+        if len(candidates) != 1:
+            continue
+        edge = candidates[0]
+        target_id = edge.target.principal_id
+        identity = {"profile_id": profile_id, "profile_revision": plan["profile_revision"],
+            "activation_id": activation_id, "activation_digest": activation_digest,
+            "plan_digest": plan["plan_digest"], "security_epoch": active.activation["security_epoch"],
+            "owner_artifact": owner_binding.artifact.digest,
+            "owner_implementation": owner_binding.function.implementation_digest,
+            "target_artifact": edge.resolved_binding.artifact.digest,
+            "target_implementation": edge.resolved_binding.function.implementation_digest}
+        state_key = canonical_digest({"profile_id": profile_id,
+            "function_id": owner_binding.function.function_id}).removeprefix("sha256:")
+
+        @contextmanager
+        def wake_context_scope(occurrence: str, *, caller_id: str = owner_id,
+                               fixed_declaration: CapturedWakeDeclarationV4 = declaration,
+                               fixed_target: str = target_id,
+                               session_key: str = state_key) -> Iterator[RequestContext]:
+            """Register a dedicated Host clock session for one fresh request."""
+            session_id = "wake." + canonical_digest({"registration": session_key,
+                "occurrence": occurrence}).removeprefix("sha256:")
+            owner_session = authority_session_id(session_id, caller_id)
+            resolved_session = bind_nested_session(session_id, caller_id,
+                                                   (caller_id, owner_session))
+            try:
+                context = context_for(fixed_declaration.contract_id,
+                                      fixed_declaration.operation_id, session_id)
+                expected_domain = dynamic_domain_ids.get((fixed_declaration.contract_id,
+                    fixed_declaration.operation_id, fixed_target))
+                if (context.caller_principal.value != caller_id
+                        or expected_domain != context.target_domain_id):
+                    raise AuthorityDenied("captured wake session edge changed")
+                yield context
+            finally:
+                release_nested_session(session_id, resolved_session)
+
+        def wake_effect_scope(context: RequestContext, *,
+                              fixed: CapturedWakeDeclarationV4 = declaration) -> Mapping[str, Any]:
+            return effect_scope_for(fixed.contract_id, fixed.operation_id,
+                                    fixed.payload, context)
+
+        try:
+            wake_drivers.append(bind_production_wake_v4(
+                port=wake_port, declaration=declaration, owner_principal_id=owner_id,
+                target_principal_id=target_id,
+                state_path=host_provider_state_root / "wakes" / f"{state_key}.sqlite3",
+                identity=identity, broker=broker, authority=authority_control,
+                authority_store=authority_store, context_scope=wake_context_scope,
+                effect_scope=wake_effect_scope,
+                assert_current=assert_current_capture,
+            ))
+        except Exception:
+            dispatch.close()
+            raise
     if control_session is not None and http_contract_bindings:
         if capability_binding_selector is None:
             dispatch.close()

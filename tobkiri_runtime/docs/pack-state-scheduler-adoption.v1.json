@@ -1138,7 +1138,10 @@
   },
   "source_dependencies": [
     "tobkiri_protocol/secondary_model_policy_v1.py",
-    "core_runtime/captured_wake_v4.py"
+    "core_runtime/captured_wake_v4.py",
+    "core_runtime/production_wake_binding_v4.py",
+    "core_runtime/bootstrap/production_v4.py",
+    "tobkiri_host/runtime.py"
   ],
   "required_contracts": {
     "rumi_schedule_store_pack": [],
@@ -1163,7 +1166,8 @@
     "No generated-only admissions, signature/receipt changes, or GREEN execution claims are included.",
     "fixture_packs_merge_entries is additive only: the model base operation is new. reviewed_schema_overrides modifies exact existing v3/source fixture operations without adding duplicates. Model shared input admits discriminator-based resource/policy calls or the existing gateway {identifier} wire; preserve generate/stream operations.",
     "The strict describe/dispatch/cancel/status adapter wire is v2/2.0.0. Existing v1 adapter schemas/providers remain untouched; canonical broker selects v2 only. Legacy noncanonical mode retains rumi.action.job.adapter.v1.",
-    "New clock Function is separately selected and needs a signed caller clock\u2192scheduler-control edge and exact recurring Grant. Host process-only adapter does not wake the machine. Registration is explicitly armed for a finite duration; absent adapter/edge/grant yields unarmed. Narrow production hook is reviewed separately."
+    "New clock Function is separately selected and needs a signed caller clock\u2192scheduler-control edge and exact recurring Grant. Host process-only adapter does not wake the machine. Registration is explicitly armed for a finite duration; absent adapter/edge/grant yields unarmed. Narrow production hook is reviewed separately.",
+    "Production capture now supplies only verified declared wake factories with a late-bound port, selects the exact clock caller edge, registers dedicated fresh Host sessions, checks current recurring Grant and real Broker static path, then uses normal final Broker authorization/audit and cancellation. Wake drivers are closed before Broker shutdown. Source declaration identity excludes fresh session IDs so legitimate restarts can restore finite registration intent."
   ],
   "reviewed_schema_overrides": {
     "rumi_schedule_store_pack": {
@@ -1944,6 +1948,10 @@
       "grant_requirement": "exact current clock-to-scheduler-control persistent_profile, workflow_revision or policy_ephemeral; no Shell/session or one-shot reuse",
       "source_dependencies": [
         "core_runtime/captured_wake_v4.py"
+      ],
+      "caller_effect_capabilities": [
+        "host:execute",
+        "scheduler.control"
       ]
     }
   ]

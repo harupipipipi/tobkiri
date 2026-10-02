@@ -119,6 +119,7 @@ class ProductionRuntimeV4:
         owned_authority_store: AuthorityStore | None = None,
         close_callbacks: tuple[Callable[[], None], ...] = (),
         stop_callbacks: tuple[Callable[[], None], ...] = (),
+        before_close_callbacks: tuple[Callable[[], None], ...] = (),
     ) -> "V4DispatchSession":
         """Bind request ports to identities from this captured composition."""
         return V4DispatchSession(
@@ -138,6 +139,7 @@ class ProductionRuntimeV4:
             owned_authority_store=owned_authority_store,
             close_callbacks=close_callbacks,
             stop_callbacks=stop_callbacks,
+            before_close_callbacks=before_close_callbacks,
         )
 
 
@@ -161,6 +163,7 @@ class V4DispatchSession:
     owned_authority_store: AuthorityStore | None = None
     close_callbacks: tuple[Callable[[], None], ...] = ()
     stop_callbacks: tuple[Callable[[], None], ...] = ()
+    before_close_callbacks: tuple[Callable[[], None], ...] = ()
     _close_lock: Any = field(default_factory=threading.RLock, init=False, repr=False, compare=False)
     _completed_closes: set[int] = field(default_factory=set, init=False, repr=False, compare=False)
 
@@ -175,6 +178,8 @@ class V4DispatchSession:
         """Fence dispatch and retry failed cleanup without skipping other owners."""
 
         with self._close_lock:
+            for callback in self.before_close_callbacks:
+                callback()
             self.broker.close()
             if isinstance(self.broker, RequestBroker) and self.broker.has_undrained_requests():
                 raise RuntimeError("captured Provider is still draining")

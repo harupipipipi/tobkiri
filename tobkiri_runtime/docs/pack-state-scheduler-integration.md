@@ -13,6 +13,7 @@ The source changes alone do not establish production admission or GUI evidence.
 | `tobkiri.action.schedule.v1` | `rumi_schedule_store_pack.schedule-action` | `rumi_schedule_store_pack.schedule-store.action`, same module |
 | `tobkiri.resource.scheduler.v1` | `rumi_scheduler_runtime_pack.scheduler-resource` | `rumi_scheduler_runtime_pack.scheduler.status`, `ecosystem.rumi_scheduler_runtime_pack.runtime.scheduler` |
 | `tobkiri.action.scheduler.v1` | `rumi_scheduler_runtime_pack.scheduler-control` | `rumi_scheduler_runtime_pack.scheduler.control`, same module |
+| `tobkiri.action.scheduler.clock.v1` | `rumi_scheduler_runtime_pack.scheduler-clock-control` | `rumi_scheduler_runtime_pack.scheduler.clock`, `ecosystem.rumi_scheduler_runtime_pack.runtime.clock` |
 | `tobkiri.action.job.v1` | `rumi_job_action_broker_pack.job-action-broker` | `rumi_job_action_broker_pack.job-action.broker`, `ecosystem.rumi_job_action_broker_pack.runtime.broker` |
 | `tobkiri.resource.ai.model.profile.v1` | `rumi_model_registry_pack.model-profile-resource` | `rumi_model_registry_pack.model-registry.profile`, `ecosystem.rumi_model_registry_pack.runtime.process` |
 | `tobkiri.resource.company.v1` | `rumi_company_state_store_pack.company-state-resource` | `rumi_company_state_store_pack.company-state.resource`, `ecosystem.rumi_company_state_store_pack.runtime.store` |
@@ -63,11 +64,33 @@ providers: an object with `operation` enum `describe|dispatch|cancel|status`,
 optional `profile_id`, `action_id`, object `payload`, `idempotency_key`,
 `schedule_id`, `lease_id`; each owner validates stricter per-operation fields.
 
+The strict adapter wire is a distinct v2 Contract at version 2.0.0, with a
+consumer range `>=2.0.0 <3.0.0`. Existing v1 adapter providers and their historical
+schemas are preserved; the canonical broker selects v2 only.
+
 `accepted`/`running` remains pending. After restart, an expired pending schedule
 polls the broker's durable entry and adapter status before deciding to complete
 or retry. No timer produces fabricated success. Missing/ambiguous adapters fail
 closed; sanitized exception types reach schedule state. Running schedules cannot
 be edited or paused; cancel invalidates the exact lease.
+
+## Finite Host clock source
+
+The separately selected clock Function declares a fixed public scheduler tick
+payload and a 60-second Host pump. `status`, `arm`, and `disarm` are its exact
+public operations; `arm` requires an explicit `duration_ms` from 60 seconds to
+one day. It is unarmed by default. A signed selected clock-to-scheduler-control
+edge and exact current recurring Grant are required; Shell sessions and expired
+provider invocations are never reused. The generic driver stores registration
+expiry, generation and wall deadline, reconstructs monotonic due time on restart,
+collapses missed periods and fences disabled/stale/expired callbacks. The wake
+kernel gate is consumed by the Host driver and is never a Broker execution lease;
+actual execution must use a fresh canonical audited Broker request.
+
+The explicit adapter scope is `host_process_only`: it runs while the Host process
+lives and does not wake a sleeping Mac. Missing adapters, bindings, grants or
+production hookup report unarmed/unavailable. The source driver and injected
+tests do not establish an armed production registration.
 
 ## Model-policy wire
 

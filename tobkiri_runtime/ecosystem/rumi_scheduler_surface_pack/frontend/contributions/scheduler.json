@@ -4,14 +4,14 @@
   "kind": "view",
   "mode": "declarative",
   "label": "Scheduled tasks",
-  "description": "Manage and run public Profile schedule records. Automatic timer admission remains unavailable.",
+  "description": "Manage public Profile schedules and explicitly enable a finite automatic check window.",
   "priority": 100,
   "view": {
     "version": "tobkiri.ui.view.v1",
     "slot": "workspace_tab",
     "renderer": "record_editor",
     "title": "Scheduled tasks",
-    "body": "Search and edit the actual public schedule records. Run now and Run due tasks dispatch through the selected scheduler and approval policy. Automatic wall-clock timer admission is unavailable in this source revision. Job context and model policy remain in the editable JSON payload.",
+    "body": "Search and edit actual task records. Run now and Run due tasks use the selected actions and approval policy. Enable automatic checks for one hour to run tasks at their configured times while Tobkiri is open. Unavailable clock actions stay disabled. Job context and model policy are included in the editable payload.",
     "data_source": {
       "contribution_id": "pack.rumi_schedule_store_pack.rumi_schedule_store_pack.schedule-resource",
       "contract_id": "tobkiri.resource.schedule.v1",
@@ -214,6 +214,33 @@
         "input": {
           "operation": "tick",
           "limit": 20
+        }
+      },
+      {
+        "id": "arm-clock",
+        "label": "Enable automatic checks for 1 hour",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.rumi_scheduler_runtime_pack.rumi_scheduler_runtime_pack.scheduler-clock-control",
+          "contract_id": "tobkiri.action.scheduler.clock.v1",
+          "operation_id": "rumi_scheduler_runtime_pack.scheduler-clock-control"
+        },
+        "input": {
+          "operation": "arm",
+          "duration_ms": 3600000
+        }
+      },
+      {
+        "id": "disarm-clock",
+        "label": "Disable automatic checks",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.rumi_scheduler_runtime_pack.rumi_scheduler_runtime_pack.scheduler-clock-control",
+          "contract_id": "tobkiri.action.scheduler.clock.v1",
+          "operation_id": "rumi_scheduler_runtime_pack.scheduler-clock-control"
+        },
+        "input": {
+          "operation": "disarm"
         }
       }
     ]

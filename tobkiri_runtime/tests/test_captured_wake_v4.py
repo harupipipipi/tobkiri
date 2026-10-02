@@ -46,8 +46,9 @@ def _driver(
         if allowed is not None and not allowed[0]:
             raise PermissionError("grant revoked")
 
-    def invoke(occurrence: str, fence: Any) -> dict[str, Any]:
+    def invoke(occurrence: str, fence: Any, cancellation: Any) -> dict[str, Any]:
         fence()
+        assert not cancellation.is_set()
         calls.append(occurrence)
         if failure:
             raise PermissionError("actual Broker grant missing")
@@ -149,4 +150,25 @@ def test_missing_or_stale_edges_never_remain_armed(tmp_path: Path, mode: str) ->
             driver.deliver_due()
     assert driver.status()["armed"] is False
     assert calls == (["1:101000"] if mode == "broker_failed" else [])
+    driver.close()
+
+
+def test_declaration_drift_fences_registered_source(tmp_path: Path) -> None:
+    clock, calls = [100.0, 5.0], []
+    driver = _driver(tmp_path, clock, calls)
+    driver.arm(5000)
+    object.__setattr__(driver._declaration, "payload", {"operation": "different"})
+    clock[:] = [101.0, 6.0]
+    driver.deliver_due()
+    assert calls == []
+    assert driver.status()["armed"] is False
+    driver.close()
+
+
+def test_status_revalidates_current_grant_before_showing_armed(tmp_path: Path) -> None:
+    allowed = [True]
+    driver = _driver(tmp_path, [100.0, 5.0], [], allowed=allowed)
+    driver.arm(5000)
+    allowed[0] = False
+    assert driver.status()["armed"] is False
     driver.close()
