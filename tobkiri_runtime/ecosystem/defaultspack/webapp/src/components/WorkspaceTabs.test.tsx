@@ -26,7 +26,7 @@ import {
   workspaceKindForPathname,
   workspaceUrlForKind,
 } from "../lib/workspaceRouting";
-import { workspaceTabShortcutAction } from "../lib/keyboardShortcuts";
+import { workspaceTabShortcutAction, workspaceTabShortcutDisposition } from "../lib/keyboardShortcuts";
 
 test("workspace tab options keep the extensible launch catalog", () => {
   assert.deepEqual(
@@ -312,4 +312,14 @@ test("extension tab close and restore preserve captured catalog identity without
   assert.equal(restored.restoredTab?.title, "Schedules");
   assert.equal(workspaceTabOption("extension").label, "Pack view");
   assert.equal(WORKSPACE_TAB_CREATE_OPTIONS.some((option) => option.kind === "extension"), false);
+});
+
+
+test("recognized workspace chords are consumed even when repeat or a UI guard prevents action", () => {
+  assert.deepEqual(workspaceTabShortcutDisposition({ metaKey: true, key: "w", repeat: true }), { action: null, consume: true });
+  assert.deepEqual(workspaceTabShortcutDisposition({ ctrlKey: true, shiftKey: true, key: "T", repeat: true }), { action: null, consume: true });
+  assert.deepEqual(workspaceTabShortcutDisposition({ ctrlKey: true, key: "t" }), { action: "create_chat", consume: true });
+  assert.deepEqual(workspaceTabShortcutDisposition({ ctrlKey: true, key: "t", isComposing: true }), { action: null, consume: false });
+  assert.deepEqual(workspaceTabShortcutDisposition({ metaKey: true, key: "w", defaultPrevented: true }), { action: null, consume: false });
+  assert.deepEqual(workspaceTabShortcutDisposition({ ctrlKey: true, altKey: true, key: "t" }), { action: null, consume: false });
 });

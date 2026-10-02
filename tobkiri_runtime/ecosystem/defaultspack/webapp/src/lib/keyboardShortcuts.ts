@@ -131,6 +131,20 @@ export function workspaceTabShortcutAction(
   return null;
 }
 
+/** Consume recognized repeats without letting the browser close its own window. */
+export function workspaceTabShortcutDisposition(event: KeyboardEventLike): {
+  action: WorkspaceTabShortcutAction | null;
+  consume: boolean;
+} {
+  const chord = workspaceTabShortcutAction({
+    key: event.key, altKey: event.altKey, ctrlKey: event.ctrlKey,
+    metaKey: event.metaKey, shiftKey: event.shiftKey,
+    defaultPrevented: event.defaultPrevented, isComposing: event.isComposing,
+    repeat: false,
+  });
+  return { action: event.repeat ? null : chord, consume: chord !== null };
+}
+
 function normalizeShortcutKey(value: string): string {
   const trimmed = String(value || "").trim();
   if (!trimmed) return "";
