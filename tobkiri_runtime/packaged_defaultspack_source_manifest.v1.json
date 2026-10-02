@@ -1149,7 +1149,7 @@
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
       "size": 58484,
-      "sha256": "4423c0252b241af6d9677fec36e3a6c4a1104ebb85400f3d5197f6ddb69b6f6b",
+      "sha256": "b8208fb6f62ce8836593ff390d30d62998ccc90a26affacd877e232051ba6d59",
       "executable": false
     },
     {
@@ -1170,7 +1170,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
       "size": 50574,
-      "sha256": "3995a8c203e726440cb9a45e8b8f41c59d91bd2fdcf5c52016fd5521c642256f",
+      "sha256": "ddb6f4cd4d3be2c2fcff01bfc5fa5135983dbbadd4ad998d687653423403e003",
       "executable": false
     },
     {
@@ -1184,7 +1184,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
       "size": 65890,
-      "sha256": "52f412b98402d6bc48f8ef82ef9783688460cc8e099d02c0fb257823861fae58",
+      "sha256": "e11db3eb8dfe48e068f926a127fd4b867189f35edfc6e6a887bb6ef10a40cac7",
       "executable": false
     },
     {
@@ -1828,14 +1828,14 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_conversation_store_pack.executables.v4.json",
       "type": "regular-file",
       "size": 7021,
-      "sha256": "33e3ddbe5621d73d6545236fe8f5cb89e162d7d4a8f41fd7a8e4ae88a669d12a",
+      "sha256": "95f4b947c5b00a34f6562fbbec00323d47fa8a1ce6e0e85184fd6f84aac4af49",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_conversation_store_pack.pack.v4.json",
       "type": "regular-file",
       "size": 10946,
-      "sha256": "db487ce389d0f6f38daaaef86692093cb539ce72fe7dc5196e83cdc6d3a7dd78",
+      "sha256": "0b37c5a56d0e29b2e3a9a4e074724e130cc980941c52f34126c7bcd222ba2b14",
       "executable": false
     },
     {
@@ -3600,6 +3600,13 @@
       "type": "regular-file",
       "size": 18099,
       "sha256": "7fddaa782eef7e39b4040167c64fc6c917e30d83a7a1b97d83462abc8225c764",
+      "executable": false
+    },
+    {
+      "path": "tobkiri_protocol/conversation_lifecycle.py",
+      "type": "regular-file",
+      "size": 5659,
+      "sha256": "a3eb057c52fa4bfc99e6a9a4eb679fe43639466d7af1b9f85a65b6462a3b7619",
       "executable": false
     },
     {
