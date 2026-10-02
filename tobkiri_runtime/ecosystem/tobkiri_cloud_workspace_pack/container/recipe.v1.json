@@ -1,0 +1,40 @@
+{
+  "version": "tobkiri.workspace-container-recipe.v1",
+  "files": [
+    {
+      "path": "container/Dockerfile",
+      "digest": "sha256:a3fbc537756ea95b0e68b5efbcf4612d06ee8337aa1311757f72553a1e39e5ab"
+    },
+    {
+      "path": "container/runtime.py",
+      "digest": "sha256:11d137b46fb789f2ff403651c8bc6d9ba09cbb43d5991da5a6eeef2143bb07cb"
+    },
+    {
+      "path": "runtime/capsule.py",
+      "digest": "sha256:b2875bdaf5dab1927bc37c0173c2a53d99f3a86da8539d832c22e9bad20a0286"
+    }
+  ],
+  "runtime_user": "65532:65532",
+  "privileged": false,
+  "base_image_policy": "approved-host-resolved-oci-digest-required",
+  "container_port": 8765,
+  "container_execution": "unverified",
+  "required_mounts": {
+    "capsule": "/input/workspace.zip:ro",
+    "workspace": "/workspace:rw"
+  },
+  "health_route": "/health",
+  "start_command": [
+    "python",
+    "-B",
+    "/opt/tobkiri/workspace_runtime.py",
+    "--capsule",
+    "/input/workspace.zip",
+    "--workspace",
+    "/workspace",
+    "--listen",
+    "0.0.0.0",
+    "--port",
+    "8765"
+  ]
+}
