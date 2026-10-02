@@ -1,0 +1,392 @@
+"""Current v4 view and mediated operation contracts, independent of Pack internals."""
+
+from __future__ import annotations
+
+import json
+import time
+import uuid
+from pathlib import Path
+from typing import Any, Mapping
+
+import pytest
+
+from core_runtime.global_contracts.capability_capture import (
+    capture_capability_binding_snapshot,
+)
+from core_runtime.global_contracts.http_contract_dispatch import HTTPContractBinding
+from ecosystem.defaultspack.defaultspack.http_dynamic_targets import (
+    defaultspack_dynamic_capability_targets,
+)
+from ecosystem.defaultspack.defaultspack.http_surface_presentation import (
+    DefaultspackHTTPPresentation,
+)
+from ecosystem.defaultspack.defaultspack.v4_view_contract import (
+    validate_catalog_view,
+    validate_public_input,
+)
+from tests.test_v4_frontend_contributions import (
+    DESCRIPTOR,
+    PACK_ID,
+    _admit_fixture,
+    _digest,
+    _project,
+    _write,
+)
+from core_runtime.pack_sdk import refresh_scaffold_artifacts, scaffold_pack
+from tobkiri_protocol.canonical import canonical_digest
+
+
+SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["profile_id", "settings"],
+    "properties": {
+        "profile_id": {"type": "string"},
+        "settings": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["enabled"],
+            "properties": {"enabled": {"type": "boolean"}},
+        },
+    },
+}
+
+
+def _catalog(schema: Mapping[str, Any] = SCHEMA) -> dict[str, Any]:
+    return {
+        "packs": [
+            {
+                "pack_id": "qa.logic",
+                "enabled": True,
+                "approved": True,
+                "artifact_digest": "sha256:logic",
+                "operations": [
+                    {
+                        "contract_id": "qa.logic.v1",
+                        "operation_id": "settings.update",
+                        "provider_id": "qa.logic.update",
+                        "function_id": "qa.logic.update",
+                        "invokable": True,
+                        "input_schema": schema,
+                    }
+                ],
+            }
+        ]
+    }
+
+
+class _Session:
+    profile_id = "profile"
+    profile_revision = "revision"
+    activation_id = "activation"
+    plan_digest = "plan"
+
+    def __init__(self, *, ready: bool = True, current: bool = True) -> None:
+        self.ready = ready
+        self.current = current
+
+    def assert_current(self) -> None:
+        if not self.current:
+            raise RuntimeError("stale capture")
+
+    def provider_metadata(self, contract_id: str) -> tuple[Mapping[str, Any], ...]:
+        return (
+            (
+                {
+                    "provider_id": "qa.logic.update",
+                    "function_id": "qa.logic.update",
+                    "operation_id": "settings.update",
+                    "artifact_digest": "sha256:logic",
+                    "profile_id": self.profile_id,
+                    "profile_revision": self.profile_revision,
+                    "activation_id": self.activation_id,
+                    "plan_digest": self.plan_digest,
+                },
+            )
+            if contract_id == "qa.logic.v1"
+            else ()
+        )
+
+    def assert_operation_ready(self, contract_id: str, operation_id: str) -> None:
+        if not self.ready:
+            raise RuntimeError("provider unavailable")
+
+
+def _binding() -> HTTPContractBinding:
+    return HTTPContractBinding(
+        method="POST", path="/api/ui/capability/invoke", presentation="capability", targets=()
+    )
+
+
+def _snapshot(session: _Session, catalog: Mapping[str, object] | None = None):
+    return capture_capability_binding_snapshot(
+        _binding(),
+        session=session,
+        catalog=catalog or _catalog(),
+        dynamic_target_factory=defaultspack_dynamic_capability_targets,
+    )
+
+
+def _body(snapshot) -> dict[str, Any]:
+    return {
+        "request_id": str(uuid.uuid4()),
+        "expires_at": time.time() + 30,
+        "profile_id": "profile",
+        "profile_revision": "revision",
+        "activation_id": "activation",
+        "plan_hash": "plan",
+        "catalog_hash": snapshot.catalog_hash,
+        "contribution_id": "pack.qa.logic.settings.update",
+        "owner_pack_id": "qa.logic",
+        "contract_id": "qa.logic.v1",
+        "payload": {"settings": {"enabled": True}},
+    }
+
+
+def test_nested_operation_schema_is_captured_and_profile_is_host_derived() -> None:
+    session = _Session()
+    snapshot = _snapshot(session)
+    assert len(snapshot.targets) == 1
+    target = snapshot.targets[0]
+    assert target.allowed_payload_keys == {"settings"}
+    assert json.loads(target.input_schema) == SCHEMA
+    presented = DefaultspackHTTPPresentation().normalize_payload(
+        target,
+        {"settings": {"enabled": True}},
+        session=session,
+        workspace_binding_resolver=None,
+    )
+    assert presented == {"profile_id": "profile", "settings": {"enabled": True}}
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"settings": {"enabled": "true"}},
+        {"settings": {"enabled": True, "undeclared": 1}},
+        {"settings": {"enabled": True, "approved": True}},
+        {"profile_id": "another", "settings": {"enabled": True}},
+        {"settings": {"enabled": True, "_session_id": "forged"}},
+        {"settings": {"enabled": True, "constructor": {}}},
+        {},
+    ],
+)
+def test_nested_forged_and_invalid_input_is_rejected(payload: Mapping[str, object]) -> None:
+    session = _Session()
+    target = _snapshot(session).targets[0]
+    with pytest.raises(ValueError):
+        DefaultspackHTTPPresentation().normalize_payload(
+            target,
+            payload,
+            session=session,
+            workspace_binding_resolver=None,
+        )
+
+
+@pytest.mark.parametrize("change", ["disabled", "unapproved", "unready", "digest", "collision"])
+def test_disabled_unapproved_unready_changed_or_ambiguous_operations_are_removed(
+    change: str,
+) -> None:
+    catalog = _catalog()
+    session = _Session(ready=change != "unready")
+    pack = catalog["packs"][0]
+    if change == "disabled":
+        pack["enabled"] = False
+    if change == "unapproved":
+        pack["approved"] = False
+    if change == "digest":
+        pack["artifact_digest"] = "changed"
+    if change == "collision":
+        pack["operations"].append({**pack["operations"][0], "contract_id": "other.v1"})
+    assert _snapshot(session, catalog).targets == ()
+
+
+def test_schema_digest_changes_the_catalog_and_external_refs_are_not_admitted() -> None:
+    first = _snapshot(_Session())
+    second = _snapshot(
+        _Session(),
+        _catalog(
+            {
+                **SCHEMA,
+                "required": ["settings"],
+            }
+        ),
+    )
+    assert first.catalog_hash != second.catalog_hash
+    assert (
+        _snapshot(
+            _Session(),
+            _catalog(
+                {
+                    **SCHEMA,
+                    "$ref": "https://example.test/schema.json",
+                }
+            ),
+        ).targets
+        == ()
+    )
+    assert (
+        _snapshot(
+            _Session(),
+            _catalog(
+                {
+                    "type": "object",
+                    "additionalProperties": True,
+                    "properties": {},
+                }
+            ),
+        ).targets
+        == ()
+    )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"profile_id": "other"},
+        {"profile_revision": "other"},
+        {"activation_id": "other"},
+        {"plan_hash": "other"},
+        {"catalog_hash": "other"},
+        {"owner_pack_id": "surface"},
+        {"contract_id": "other.v1"},
+        {"contribution_id": "unregistered"},
+        {"expires_at": 0},
+        {"expires_at": float("inf")},
+        {"approved": True},
+    ],
+)
+def test_capability_envelope_keeps_exact_capture_expiry_and_owner_binding(
+    change: dict[str, Any],
+) -> None:
+    session = _Session()
+    snapshot = _snapshot(session)
+    body = {**_body(snapshot), **change}
+    assert (
+        DefaultspackHTTPPresentation().decode_request(
+            _binding(),
+            body=body,
+            query={},
+            session=session,
+            snapshot=snapshot,
+        )
+        is None
+    )
+
+
+def test_stale_capture_denies_before_dispatch() -> None:
+    session = _Session(current=False)
+    snapshot = _snapshot(session)
+    assert (
+        DefaultspackHTTPPresentation().decode_request(
+            _binding(),
+            body=_body(snapshot),
+            query={},
+            session=session,
+            snapshot=snapshot,
+        )
+        is None
+    )
+
+
+def _view() -> dict[str, Any]:
+    return {
+        "version": "tobkiri.ui.view.v1",
+        "slot": "sidebar",
+        "renderer": "panel",
+        "title": "Independent view",
+        "data_source": {
+            "contribution_id": "pack.qa.logic.settings.update",
+            "contract_id": "qa.logic.v1",
+            "operation_id": "settings.update",
+            "input": {"settings": {"enabled": True}},
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    "slot",
+    [
+        "workspace_tab",
+        "sidebar",
+        "settings",
+        "chat_header",
+        "composer_above",
+        "composer_below",
+    ],
+)
+def test_all_public_slots_validate_without_admitting_an_operation(slot: str) -> None:
+    view = {**_view(), "slot": slot}
+    validate_catalog_view(view)
+
+
+@pytest.mark.parametrize(
+    "input_value",
+    [
+        {"nested": {"approved": True}},
+        {"profile_id": "forged"},
+        {"nested": {"_session_id": "forged"}},
+        {"count": float("nan")},
+    ],
+)
+def test_view_inputs_cannot_claim_authority(input_value: object) -> None:
+    with pytest.raises(ValueError):
+        validate_public_input(input_value)
+
+
+def test_selected_signed_view_is_projected_and_unregister_has_no_stale_route(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    root = tmp_path / PACK_ID
+    scaffold_pack(root, pack_id=PACK_ID, display_name="Public view fixture")
+    (root / DESCRIPTOR).parent.mkdir(parents=True)
+    payload = {
+        "version": "rumi.ui.contribution.v1",
+        "id": "qa.frontend.route.view",
+        "kind": "view",
+        "mode": "declarative",
+        "label": "Independent view",
+        "priority": 0,
+        "view": _view(),
+        "accessibility": {"name": "Independent view", "keyboard": True},
+    }
+    _write(root / DESCRIPTOR, payload)
+    refresh_scaffold_artifacts(root)
+    manifest = json.loads((root / "pack.v4.json").read_text())
+    next(item for item in manifest["artifacts"] if item["path"] == DESCRIPTOR)[
+        "kind"
+    ] = "ui.contribution"
+    digest = canonical_digest(manifest["artifacts"])
+    manifest["pack"]["artifact_digest"] = digest
+    manifest["integrity"]["artifact_set_digest"] = digest
+    _write(root / "pack.v4.json", manifest)
+    index = json.loads((root / "artifact-index.v4.json").read_text())
+    index["artifact_set_digest"] = digest
+    next(item for item in index["artifacts"] if item["path"] == "pack.v4.json")[
+        "digest"
+    ] = _digest(root / "pack.v4.json")
+    index["integrity_seal"]["signed_digest"] = canonical_digest(
+        {key: value for key, value in index.items() if key != "integrity_seal"}
+    )
+    _write(root / "artifact-index.v4.json", index)
+    digest = manifest["pack"]["artifact_digest"]
+    _admit_fixture(monkeypatch, root)
+    projected, diagnostics, quarantined = _project(digest)
+    assert diagnostics == []
+    assert quarantined == []
+    assert projected[0]["kind"] == "view"
+    assert projected[0]["view"] == _view()
+    assert "action_contract" not in projected[0]
+    from ecosystem.defaultspack.defaultspack.v4_frontend_contributions import (
+        project_selected_declarative_routes,
+    )
+
+    assert project_selected_declarative_routes(
+        [],
+        [],
+        profile_id="profile",
+        profile_revision="revision",
+        activation_id="activation",
+        plan_digest="plan",
+    ) == ([], [], [])
