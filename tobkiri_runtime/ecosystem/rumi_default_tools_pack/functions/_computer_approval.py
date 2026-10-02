@@ -19,13 +19,13 @@ except ImportError:  # pragma: no cover - direct function execution fallback
     from domain.tool.browser_computer import BrowserComputerController
 
 
-def has_computer_action_approval(context, payload: dict, action: str) -> bool:
-    """Return True only for server-validated or stored computer action approval."""
-    if isinstance(context, dict) and (
-        context.get("_tool_server_approval_token_valid") is True
-        or context.get("_tool_server_approved") is True
-    ):
-        return True
+def has_computer_action_approval(
+    context: object, payload: dict, action: str
+) -> bool:
+    """Verify the operation token at the standalone function boundary."""
+    # Subprocess context is serializable input, not the in-process Host seal.
+    # Even server-looking flags cannot replace the action/arguments token check.
+    del context
     controller = BrowserComputerController()
     safe_payload = controller._safe_payload(payload)
     return controller._consume_approval(payload, action, safe_payload)

@@ -20,11 +20,7 @@ input_data:
     "total": int,
   }
 """
-import sys
-import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from blocks._common import ok, error
 from domain.tool.disclaimer_manager import DisclaimerManager

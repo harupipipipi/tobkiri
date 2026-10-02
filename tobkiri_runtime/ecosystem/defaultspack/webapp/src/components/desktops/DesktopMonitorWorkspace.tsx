@@ -9,6 +9,7 @@ import { useDesktopInstances } from "../../features/sandboxes/useSandboxInstance
 import { useRuntimeDoctor } from "../../features/sandboxes/useRuntimeDoctor";
 import { useSandboxTemplates } from "../../features/sandboxes/useSandboxTemplates";
 import { cn } from "../../lib/cn";
+import { ErrorNotice } from "../ErrorNotice";
 import { DesktopCreateDialog } from "./DesktopCreateDialog";
 import { DesktopGrid } from "./DesktopGrid";
 import { DesktopInspector } from "./DesktopInspector";
@@ -321,14 +322,17 @@ export function DesktopMonitorWorkspace() {
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         <div className="grid gap-2">
           {providerNotice}
-          {surfaceError && (
-            <div className={cn(
-              "rounded-lg border px-3 py-2 text-xs",
-              setupMessage ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-100" : "border-red-500/25 bg-red-500/10 text-red-100",
-            )}>
-              {surfaceError}
+          {setupMessage ? (
+            <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+              {setupMessage}
             </div>
-          )}
+          ) : surfaceError ? (
+            <ErrorNotice
+              className="text-xs"
+              copyLabel="デスクトップワークスペースのエラーをコピー"
+              message={surfaceError}
+            />
+          ) : null}
 
           {showDesktopList && (
             <div className="grid min-h-0 gap-2 min-[1280px]:grid-cols-[minmax(0,1fr)_300px] min-[1536px]:grid-cols-[minmax(0,1fr)_340px]">

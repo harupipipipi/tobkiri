@@ -10,9 +10,6 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
 from domain.components.registry import DomainComponentRegistry, build_domain_component_roots  # noqa: E402
-from domain.webhook.endpoint_resolver import ProviderEndpointResolver  # noqa: E402
-from domain.webhook.endpoint_store import WebhookEndpointStore  # noqa: E402
-from transport.registry import build_fallback_http_routes  # noqa: E402
 
 
 class _FakeServer:
@@ -85,20 +82,16 @@ def test_prompt_layer_does_not_import_provider_or_tool_internals():
             assert token not in source, f"{path} imports prompt coupling token {token}"
 
 
-def test_legacy_ids_and_routes_still_resolve(tmp_path):
-    store = WebhookEndpointStore(tmp_path / "endpoints.json")
-    resolver = ProviderEndpointResolver(store)
+def test_legacy_ids_and_routes_are_physically_absent(tmp_path):
+    del tmp_path
+    from tests.v4_batch_support import assert_route_cutover
 
-    assert resolver.resolve("line").id == "line-main"
-    assert resolver.resolve("discord").id == "discord-main"
-    assert resolver.resolve("slack").id == "slack-main"
-
-    route_pairs = {
-        (method, compiled.pattern)
-        for method, compiled, *_rest in build_fallback_http_routes(_FakeServer())
-    }
-    assert any(method == "POST" and "api/integrations/line/webhook" in pattern for method, pattern in route_pairs)
-    assert any(method == "GET" and "api/ui/catalog" in pattern for method, pattern in route_pairs)
+    assert_route_cutover(
+        "POST",
+        "/api/integrations/line/webhook",
+        "tobkiri.integration.line.v1",
+        "defaultspack.integration.line.receive",
+    )
 
 
 def test_compatibility_shims_import_successfully():

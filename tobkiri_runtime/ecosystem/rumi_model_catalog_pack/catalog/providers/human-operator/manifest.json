@@ -1,0 +1,79 @@
+{
+  "id": "human-operator",
+  "provider_id": "human-operator",
+  "category": "providers",
+  "kind": "llm_provider",
+  "version": "1",
+  "status": "experimental",
+  "display_name": "Human Operator",
+  "description": "Local command-only provider that opens a manual canvas so a human can inspect AI context and write both sides of the conversation.",
+  "entrypoints": {
+    "adapter": "../ai_client/providers/human_operator_provider.py",
+    "models": "models.json"
+  },
+  "security": {
+    "credential_required": false,
+    "privacy": "local_only"
+  },
+  "provider_metadata": {
+    "display_name": "Human Operator",
+    "kind": "local",
+    "description": "Local command-only provider for manual AI roleplay and context inspection.",
+    "env_vars": [],
+    "base_url_envs": [],
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_base_url": "local://human-operator",
+    "default_model": "command-canvas",
+    "default_model_for": {
+      "chat": "command-canvas",
+      "local": "command-canvas"
+    },
+    "catalog_features": [
+      "chat",
+      "streaming",
+      "tool_calls"
+    ]
+  },
+  "provider_manifest": {
+    "id": "human-operator",
+    "category": "llm_provider",
+    "version": "1",
+    "display_name": "Human Operator",
+    "description": "Local command-only provider for manual AI roleplay and context inspection.",
+    "enabled": true,
+    "priority": 45,
+    "adapter": "python_entrypoint",
+    "entrypoint": "domain.ai_client.providers.human_operator_provider:HumanOperatorProvider",
+    "credential_required": false,
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_base_url": "local://human-operator",
+    "default_model": "command-canvas",
+    "default_model_for": {
+      "chat": "command-canvas",
+      "local": "command-canvas"
+    },
+    "config": {
+      "local_only": true,
+      "command_only": true
+    }
+  },
+  "aliases": {
+    "provider_ids": [
+      "human-operator"
+    ]
+  },
+  "compatibility": {
+    "legacy_ids": [
+      "human-operator",
+      "human-operator/command-canvas"
+    ]
+  },
+  "source_pack_id": "rumi_model_catalog_pack",
+  "catalog_features": [
+    "chat",
+    "streaming",
+    "tool_calls"
+  ]
+}

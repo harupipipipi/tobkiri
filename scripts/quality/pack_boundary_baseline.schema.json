@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tobkiri.dev/schemas/pack-boundary-baseline.v1.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "baseline_api_version": {
+      "const": "io.tobkiri.pack-boundary-baseline.v1"
+    },
+    "policy": {
+      "const": "exact-current-shrink-only-from-reference"
+    },
+    "summary": {
+      "additionalProperties": false,
+      "properties": {
+        "by_rule": {
+          "additionalProperties": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "total": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "by_rule",
+        "total"
+      ],
+      "type": "object"
+    },
+    "violations": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "type": "object"
+          },
+          "fingerprint": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "line": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "path": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "rule_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence",
+          "fingerprint",
+          "line",
+          "path",
+          "rule_id"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "baseline_api_version",
+    "policy",
+    "summary",
+    "violations"
+  ],
+  "title": "Tobkiri Pack Boundary Baseline v1",
+  "type": "object"
+}

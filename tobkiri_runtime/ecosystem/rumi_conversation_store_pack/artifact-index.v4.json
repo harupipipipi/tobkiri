@@ -1,0 +1,57 @@
+{
+  "artifact_set_digest": "sha256:47dc428cd2ef5e9d7f50eecaec2c6f646564ef32ec4f26f7ed887fc4e5889cd0",
+  "artifacts": [
+    {
+      "digest": "sha256:55b7adb10da02657154af0241dfb49ed2c03e1964963e1b52b229090cf9e8851",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:13450607d28a3f35495fc099377076e93d3d5303dd7509d12464b327d208c056",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:c22f41c44b10a76cfb5e53d6ae57580310ac019dce1f30ac72045c76bb2c8e2e",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:3e7e269f403cb628ae8ec7a374b6068a079588b7e44d78c8992aaa0185be1e01",
+      "path": "runtime/completion_host.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:e4f8763040b57b54d86f609804993d5c2935506d67e0566cbf7783fb2e992062",
+      "path": "runtime/host.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:6cf18a8d563d7ee11102c7c1eef1c229813b5767af77262bd3f122c1d59f2981",
+      "path": "runtime/manage_host.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:114882d4816bb9bd069710b88c3b0d9a2a2eb1dac7eaa318f15691f1bbea7f71",
+      "path": "runtime/message_host.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:bc21ef07c019161d7160e1b407495312aec79e530e83da522df952b792fe8a41",
+      "path": "runtime/saved_receipt.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:53c56b649b1d09537d84a2a85cbc565a4cd0edaa1b3684a071bc0ba8af522312",
+      "path": "runtime/store.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:17c2cc2b11a7e388a98f3be37b32e2e84d11d5a1ee545fdc2fae5c2d3eb25c68"
+  },
+  "pack_id": "rumi_conversation_store_pack",
+  "source_identity": "sha256:0be702c0f126b8084db1d2df28477af3c29d7dc3bd2515742a867e5416068a84"
+}
