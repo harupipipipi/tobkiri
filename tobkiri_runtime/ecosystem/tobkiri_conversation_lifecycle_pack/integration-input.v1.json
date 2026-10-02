@@ -250,23 +250,9 @@
         ],
         "schemas": {
           "input": {
+            "type": "object",
             "additionalProperties": false,
             "properties": {
-              "_session_id": {
-                "type": "string"
-              },
-              "action_id": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "idempotency_key": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "lease_id": {
-                "minLength": 1,
-                "type": "string"
-              },
               "operation": {
                 "enum": [
                   "describe",
@@ -275,24 +261,39 @@
                   "status"
                 ]
               },
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "action_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
               "payload": {
-                "maxProperties": 0,
                 "type": "object"
               },
-              "profile_id": {
+              "idempotency_key": {
+                "type": "string",
                 "minLength": 1,
-                "type": "string"
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
               },
               "schedule_id": {
-                "minLength": 1,
-                "type": "string"
+                "type": "string",
+                "maxLength": 256
+              },
+              "lease_id": {
+                "type": "string",
+                "maxLength": 256
               }
             },
             "required": [
-              "profile_id",
               "operation"
-            ],
-            "type": "object"
+            ]
           },
           "output": {
             "type": "object"
@@ -407,23 +408,9 @@
         "implementation_path": "runtime/host.py",
         "schemas": {
           "input": {
+            "type": "object",
             "additionalProperties": false,
             "properties": {
-              "_session_id": {
-                "type": "string"
-              },
-              "action_id": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "idempotency_key": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "lease_id": {
-                "minLength": 1,
-                "type": "string"
-              },
               "operation": {
                 "enum": [
                   "describe",
@@ -432,24 +419,39 @@
                   "status"
                 ]
               },
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "action_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
               "payload": {
-                "maxProperties": 0,
                 "type": "object"
               },
-              "profile_id": {
+              "idempotency_key": {
+                "type": "string",
                 "minLength": 1,
-                "type": "string"
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
               },
               "schedule_id": {
-                "minLength": 1,
-                "type": "string"
+                "type": "string",
+                "maxLength": 256
+              },
+              "lease_id": {
+                "type": "string",
+                "maxLength": 256
               }
             },
             "required": [
-              "profile_id",
               "operation"
-            ],
-            "type": "object"
+            ]
           },
           "output": {
             "type": "object"

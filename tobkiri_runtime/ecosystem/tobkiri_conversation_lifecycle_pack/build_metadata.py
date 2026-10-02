@@ -70,6 +70,11 @@ def build() -> dict[str, dict[str, Any]]:
         }
         output_schema = {"type": "object"}
         error_schema = {"type": "object"}
+        if declaration.get("action_ids"):
+            shared = source["shared_job_adapter_schemas"]
+            input_schema = shared["input"]
+            output_schema = shared["output"]
+            error_schema = shared["error"]
         schema_catalog = {
             canonical_digest(schema): schema
             for schema in (input_schema, output_schema, error_schema)
