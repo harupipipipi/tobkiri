@@ -23,7 +23,7 @@ from ecosystem.tobkiri_conversation_lifecycle_pack.runtime.lifecycle import (
 PACK_ID = "tobkiri_conversation_lifecycle_pack"
 STATUS_CONTRACT = "tobkiri.resource.conversation.lifecycle.v1"
 MANAGE_CONTRACT = "tobkiri.action.conversation.lifecycle.v1"
-JOB_CONTRACT = "tobkiri.action.job.adapter.v1"
+JOB_CONTRACT = "tobkiri.action.job.adapter.v2"
 OPERATIONS = {
     f"{PACK_ID}.status": (STATUS_CONTRACT, f"{PACK_ID}.lifecycle-status"),
     f"{PACK_ID}.manage": (MANAGE_CONTRACT, f"{PACK_ID}.lifecycle-manage"),
@@ -43,12 +43,13 @@ class LifecycleHostFactoryV4:
             raise PermissionError("lifecycle capture is incomplete")
         binding = context.provider_bindings[0]
         contract_id, operation_id = OPERATIONS[self.function_id]
+        contract_version = "2.0.0" if contract_id == JOB_CONTRACT else "1.0.0"
         operation = binding.operation
         if (
             binding.function.function_id != self.function_id
             or operation.contract_id != contract_id
             or operation.operation_id != operation_id
-            or operation.contract_version != "1.0.0"
+            or operation.contract_version != contract_version
         ):
             raise PermissionError("lifecycle capture binding is invalid")
         domain_id = context.domain_ids.get(
@@ -136,7 +137,7 @@ class LifecycleHostFactoryV4:
             (
                 HostProviderContributionV4(
                     contract_id=contract_id,
-                    contract_version="1.0.0",
+                    contract_version=contract_version,
                     operation_id=operation_id,
                     principal_id=binding.principal_ref.value,
                     artifact_digest=binding.artifact.digest,

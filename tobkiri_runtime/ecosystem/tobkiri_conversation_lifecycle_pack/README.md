@@ -26,7 +26,7 @@ The scheduler clock must be running for wakeups to execute; a saved setting
 alone is not execution evidence. Scans have minute-level delivery latency and
 never archive before the exact 3,600-second boundary.
 
-Public operations, all version `1.0.0`:
+Public operations (status/manage version `1.0.0`, job adapter version `2.0.0`):
 
 - `tobkiri.resource.conversation.lifecycle.v1` /
   `tobkiri_conversation_lifecycle_pack.lifecycle-status`: `operation: get`,
@@ -34,7 +34,7 @@ Public operations, all version `1.0.0`:
 - `tobkiri.action.conversation.lifecycle.v1` /
   `tobkiri_conversation_lifecycle_pack.lifecycle-manage`: `operation: configure`,
   `profile_id`, `conversation_id`, `mode: manual | archive_after_completion`.
-- `tobkiri.action.job.adapter.v1` /
+- `tobkiri.action.job.adapter.v2` /
   `tobkiri_conversation_lifecycle_pack.archive-job-adapter`: `describe` exposes
   action `conversation-lifecycle.archive-due`; `dispatch`, `cancel`, and `status`
   use the scheduler's exact job envelope. Unknown past outcomes stay unknown.

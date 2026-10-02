@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:c3530d564b8ca04ac8e9ca2a178c9605ba63485bcbc1a007f634c4c7af89e78b",
+  "catalog_digest": "sha256:f8b64eb1f6c50083cf104d89e2e3a012446c5ea7a4ad7230638970983daa65ac",
   "pack_id": "tobkiri_conversation_lifecycle_pack",
-  "source_identity": "sha256:1540023c74bea2ba36bbebee67caf6f1237bdae8e8f5be051bd3548ea520a64f",
+  "source_identity": "sha256:b3ee8db441c81d140f1290f258ec2910aafdb55aa54c56402e6577db0e5ac3a4",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri_conversation_lifecycle_pack.status",
-      "implementation_digest": "sha256:ef4bd6ba24c4b0a7c8edffd38e1acf962aae92c0d309e0e1f1ecb6a77b07495a",
+      "implementation_digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -51,7 +51,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:2153a87b4a8416a9c9464ca4e1dfc0b60ce9eb5ae582944f934abeae777f659b",
+          "revision_digest": "sha256:4bc3b88e023480947e3bbf9a5668a707301d13005d55c7a3e0ab17169ff04beb",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }
@@ -66,7 +66,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri_conversation_lifecycle_pack.manage",
-      "implementation_digest": "sha256:ef4bd6ba24c4b0a7c8edffd38e1acf962aae92c0d309e0e1f1ecb6a77b07495a",
+      "implementation_digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -114,7 +114,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:eb2a7705f3eb379b985c46708345b9d2315c1e1589e1ab3d7d5035a46c17cf11",
+          "revision_digest": "sha256:09edadfed8333374d03977e25f4203c7e4e3c66367e1e53a362eae8b56bc4849",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }
@@ -129,13 +129,13 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri_conversation_lifecycle_pack.archive-job",
-      "implementation_digest": "sha256:ef4bd6ba24c4b0a7c8edffd38e1acf962aae92c0d309e0e1f1ecb6a77b07495a",
+      "implementation_digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
         {
-          "contract_id": "tobkiri.action.job.adapter.v1",
-          "contract_version": "1.0.0",
+          "contract_id": "tobkiri.action.job.adapter.v2",
+          "contract_version": "2.0.0",
           "effect_class": "write",
           "error_schema": {
             "type": "object"
@@ -191,7 +191,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:3cd700172901931f15b6a100d809c44d9f545fcde007475215839f3fe20125e6",
+          "revision_digest": "sha256:023c9504c82201f499275a7d72850916efbe0c7161b327f0dd42c9f430906fa2",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }
