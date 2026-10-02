@@ -7,6 +7,8 @@ Intents are not authority; registration and the captured Broker remain required.
 
 from __future__ import annotations
 
+from tobkiri_protocol.turn_progress_v1 import AI_STREAM
+
 import base64
 import hashlib
 import json
@@ -58,7 +60,7 @@ _STATE_FIELDS = {
     "seen_tools",
     "system_prompt_digest",
     "user_content",
-    "user_content_digest",
+    "user_content_digest", "ai_mode",
 }
 
 
@@ -342,7 +344,7 @@ def _intent(
         strategy_reference = request.get("strategy_reference")
         if strategy_reference is None:
             payload = request_payload
-            target = _STAGE_TARGETS[stage]
+            target = AI_STREAM if state["ai_mode"] == "incremental" else _STAGE_TARGETS[stage]
         else:
             payload = {
                 "strategy_reference": strategy_reference,
@@ -459,6 +461,7 @@ def start(payload: dict[str, Any]) -> dict[str, Any]:
             "system_prompt_digest": None,
             "user_content": user_content,
             "user_content_digest": None,
+            "ai_mode": "buffered",
         }
     )
 
@@ -466,6 +469,8 @@ def start(payload: dict[str, Any]) -> dict[str, Any]:
 def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
     """Advance from one acknowledged result, without replaying an uncertain effect."""
     _json(state)
+    state = dict(state)
+    state.setdefault("ai_mode", "buffered")
     if type(state) is not dict or set(state) != _STATE_FIELDS:
         raise ValueError("saved continuation fields are invalid")
     state = json.loads(_json(state))
@@ -526,6 +531,9 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
             elif "system_prompt_digest" in value:
                 raise ValueError("unexpected saved system prompt")
             state["model_reference"] = model
+            state["ai_mode"] = value.get("delivery_mode", "buffered")
+            if state["ai_mode"] not in {"buffered", "incremental"}:
+                raise ValueError("saved AI delivery mode is invalid")
             user_content = state["user_content"]
             if (
                 not _saved_user_content(user_content)

@@ -21,6 +21,7 @@ class HttpRequestLifetime:
         self, *, timeout: float, deadline: float | None = None,
         cancellation: threading.Event | None = None,
         clock: Callable[[], float] = time.monotonic,
+        authority_check: Callable[[], bool] | None = None,
     ) -> None:
         now = clock()
         if not math.isfinite(timeout) or timeout <= 0:
@@ -31,6 +32,7 @@ class HttpRequestLifetime:
         if not math.isfinite(self._deadline):
             raise ValueError("HTTP request deadline is invalid")
         self._clock = clock
+        self._authority_check = authority_check
         self._cancellation = cancellation or threading.Event()
         self._done = threading.Event()
         self._interrupted = threading.Event()
@@ -52,6 +54,14 @@ class HttpRequestLifetime:
             or self._cancellation.is_set()
         ):
             raise InterruptedError("HTTP request cancelled")
+        if not self._authorized():
+            raise PermissionError("HTTP request authority is no longer active")
+
+    def _authorized(self) -> bool:
+        try:
+            return self._authority_check is None or self._authority_check()
+        except Exception:
+            return False
 
     def remaining(self) -> float:
         """Return the remaining socket timeout without refreshing the budget."""
@@ -73,7 +83,11 @@ class HttpRequestLifetime:
 
     def _watch(self) -> None:
         while not self._done.wait(0.025):
-            if self._cancellation.is_set() or self._clock() >= self._deadline:
+            if (
+                self._cancellation.is_set()
+                or self._clock() >= self._deadline
+                or not self._authorized()
+            ):
                 with self._lock:
                     self._interrupted.set()
                     if self._socket is not None:

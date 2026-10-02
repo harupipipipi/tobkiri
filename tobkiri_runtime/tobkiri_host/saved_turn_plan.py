@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
+from tobkiri_protocol.turn_progress_v1 import AI_STREAM
 from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_CALLS, saved_tool_logs, saved_tool_messages
 
 READ = ("tobkiri.resource.conversation.v1", "rumi_conversation_store_pack.conversation-resource")
@@ -30,6 +31,7 @@ class SavedToolFrame:
     stage: str
     expected_conversation_revision: int | None
     expected_current_node_id: str | None
+    ai_mode: str = "buffered"
 
 
 class SavedTurnPlan:
@@ -46,6 +48,7 @@ class SavedTurnPlan:
         self.seen: set[str] = set()
         self.failed = False
         self.strategy_reference = request.get("strategy_reference")
+        self.ai_mode = "buffered"
 
     @property
     def target(self) -> tuple[str, str]:
@@ -53,7 +56,7 @@ class SavedTurnPlan:
         return {
             "read": READ,
             "user": APPEND,
-            "ai": STRATEGY if self.strategy_reference is not None else AI,
+            "ai": STRATEGY if self.strategy_reference is not None else AI_STREAM if self.ai_mode == "incremental" else AI,
             "tool": TOOL,
             "assistant": APPEND,
         }[self.stage]
@@ -80,6 +83,9 @@ class SavedTurnPlan:
             return
         value = outcome["value"]
         if self.stage == "read":
+            self.ai_mode = value.get("delivery_mode", "buffered")
+            if self.ai_mode not in {"buffered", "incremental"}:
+                raise ValueError("saved AI delivery mode is invalid")
             self.stage = "user"
         elif self.stage == "user":
             self.stage = "ai"
