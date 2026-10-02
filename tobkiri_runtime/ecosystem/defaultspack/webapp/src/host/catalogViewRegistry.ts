@@ -48,6 +48,7 @@ export type ConversationThreadDefinition = {
   model_reference_path?: string;
   send: ConversationThreadRequest & { content_key: "content" };
   stop?: ConversationThreadRequest; events?: ConversationThreadRequest;
+  reconcile?: ConversationThreadRequest;
 };
 export type ViewField = {
   label: string; path: string; kind: "text" | "status" | "progress";
@@ -244,17 +245,17 @@ function validThreadRequest(value: unknown, send: boolean): boolean {
       claimed.add(inputKey);
     }
   }
-  return !claimed.has("turn_id") && (!send || !claimed.has("content"));
+  return !claimed.has("turn_id") && !claimed.has("content");
 }
 
 /** A thread uses canonical data and fixed text/turn keys, never model authority. */
 export function parseConversationThread(value: unknown): ConversationThreadDefinition | null {
   if (!record(value) || !keys(value, [
-    "conversation_path", "messages_path", "pending_turn_path", "model_reference_path", "send", "stop", "events",
+    "conversation_path", "messages_path", "pending_turn_path", "model_reference_path", "send", "stop", "events", "reconcile",
   ]) || !["conversation_path", "messages_path", "pending_turn_path"].every((key) => validViewPath(value[key]))
     || (own(value, "model_reference_path") && !validViewPath(value.model_reference_path))
     || !validThreadRequest(value.send, true)
-    || ["stop", "events"].some((key) => own(value, key) && !validThreadRequest(value[key], false))) return null;
+    || ["stop", "events", "reconcile"].some((key) => own(value, key) && !validThreadRequest(value[key], false))) return null;
   return value as unknown as ConversationThreadDefinition;
 }
 
@@ -380,6 +381,7 @@ export function viewOperationRequest(
     registered.view.conversation_thread?.send.operation,
     registered.view.conversation_thread?.stop?.operation,
     registered.view.conversation_thread?.events?.operation,
+    registered.view.conversation_thread?.reconcile?.operation,
   ];
   if (!declared.some((item) => item
     && item.contribution_id === operation.contribution_id
@@ -479,6 +481,7 @@ export function viewContextKey(
     registered.view.conversation_thread?.send,
     registered.view.conversation_thread?.stop,
     registered.view.conversation_thread?.events,
+    registered.view.conversation_thread?.reconcile,
   ];
   const consumed = new Set(requests.flatMap((request) =>
     Object.values(request?.context_bindings ?? {})));

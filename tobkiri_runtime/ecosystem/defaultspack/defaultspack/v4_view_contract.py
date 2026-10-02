@@ -183,7 +183,7 @@ def validate_catalog_view(view: Mapping[str, Any]) -> None:
             "conversation_path", "messages_path", "pending_turn_path", "model_reference_path"
         ):
             _validate_path(thread.get(key))
-        for key in ("send", "stop", "events"):
+        for key in ("send", "stop", "events", "reconcile"):
             request = thread.get(key)
             if not isinstance(request, Mapping):
                 continue
@@ -200,7 +200,7 @@ def validate_catalog_view(view: Mapping[str, Any]) -> None:
                 if binding == "source_bindings":
                     for path in mapping.values():
                         _validate_path(path)
-            if "turn_id" in claimed or (key == "send" and "content" in claimed):
+            if "turn_id" in claimed or "content" in claimed:
                 raise ValueError("thread fixed input binding conflicts")
 
 

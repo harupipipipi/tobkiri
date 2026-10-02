@@ -223,6 +223,8 @@ const thread: ConversationThreadDefinition = {
     content_key: "content", turn_id_key: "turn_id",
     source_bindings: { conversation_id: "conversation_id", expected_child_revision: "revision" } },
   events: { operation, turn_id_key: "turn_id" },
+  reconcile: { operation: { ...operation, operation_id: "logic.reconcile", contribution_id: "pack.logic.logic.reconcile" },
+    input: { operation: "reconcile" }, turn_id_key: "turn_id", source_bindings: { conversation_id: "conversation_id" } },
 };
 test("thread grammar admits only canonical text/turn keys and exact declared requests", () => {
   const declared = { ...view, renderer: "conversation_thread", conversation_thread: thread };
@@ -235,6 +237,12 @@ test("thread grammar admits only canonical text/turn keys and exact declared req
     { ...thread, send: { ...thread.send, context_bindings: { content: "conversation_id" } } },
     { ...thread, send: { ...thread.send, source_bindings: { profile_id: "thread.id" } } },
     { ...thread, events: { ...thread.events, content_key: "content" } },
+    { ...thread, reconcile: { ...thread.reconcile, content_key: "content" } },
+    { ...thread, reconcile: { ...thread.reconcile, input: { content: "forged" } } },
+    { ...thread, reconcile: { ...thread.reconcile, source_bindings: { content: "thread.draft" } } },
+    { ...thread, reconcile: { ...thread.reconcile, input: { turn_id: "forged" } } },
+    { ...thread, reconcile: { ...thread.reconcile, source_bindings: { profile_id: "conversation_id" } } },
+    { ...thread, reconcile: { ...thread.reconcile, context_bindings: { conversation_id: "conversation_id" } } },
   ]) assert.equal(parseCatalogView({ ...declared, conversation_thread: unsafe }), null);
   assert.equal(parseCatalogView({ ...declared, data_source: undefined }), null);
   assert.equal(parseCatalogView({ ...view, conversation_thread: thread }), null);
@@ -242,12 +250,17 @@ test("thread grammar admits only canonical text/turn keys and exact declared req
   value.contributions[0].view = declared;
   value.contributions.push(contribution({ kind: "action", contribution_id: thread.send.operation.contribution_id,
     owner_pack_id: "logic", action_contract: operation.contract_id, operation_id: "logic.send", view: null }));
+  value.contributions.push(contribution({ kind: "action", contribution_id: thread.reconcile!.operation.contribution_id,
+    owner_pack_id: "logic", action_contract: operation.contract_id, operation_id: "logic.reconcile", view: null }));
   const registered = viewsForSlot(value, "sidebar", "plan")[0];
   assert.ok(viewOperationRequest(value, registered, thread.send.operation, { content: "hello", turn_id: "ticket" }));
   assert.equal(viewOperationRequest(value, registered, thread.send.operation,
     { content: "hello", turn_id: "ticket", nested: { model: "override" } }), null);
   assert.equal(viewReadRequest(value, registered, thread.send.operation, {}), null);
   assert.ok(viewReadRequest(value, registered, thread.events!.operation, { turn_id: "ticket" }));
+  assert.ok(viewOperationRequest(value, registered, thread.reconcile!.operation,
+    { operation: "reconcile", conversation_id: "child", turn_id: "ticket" }));
+  assert.equal(viewReadRequest(value, registered, thread.reconcile!.operation, { turn_id: "ticket" }), null);
 });
 
 test("thread descriptors and bound payloads cannot choose models, tools, approval, or workspaces", () => {

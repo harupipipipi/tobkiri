@@ -33,12 +33,14 @@ export function ConversationThreadView({
   const [draft, setDraft] = useState("");
   const [ticket, setTicket] = useState<ThreadTicket | null>(null);
   const [busy, setBusy] = useState(false);
+  const [recovering, setRecovering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const active = useRef(true);
   const pending = useRef(false);
   const reading = useRef(false);
   const stopping = useRef(false);
+  const reconciling = useRef(false);
   const state = useRef({ draft, ticket, activeTurnId: thread?.turn?.id });
   state.current = { draft, ticket, activeTurnId: ticket?.turnId ?? thread?.turn?.id };
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -46,7 +48,7 @@ export function ConversationThreadView({
   const ownerId = JSON.stringify([registered.reference, "conversation_thread", viewContextKey(registered, context)]);
   const canLeave = useCallback(() => {
     const current = state.current;
-    if (pending.current || current.ticket) return false;
+    if (pending.current || reconciling.current || current.ticket) return false;
     return !current.draft || window.confirm("Discard this unsent message?");
   }, []);
   useEffect(() => {
@@ -56,7 +58,7 @@ export function ConversationThreadView({
   }, [onDirtyChange, ownerId, canLeave]);
   useEffect(() => {
     const guard = (event: BeforeUnloadEvent) => {
-      if (!pending.current && !state.current.ticket && !state.current.draft) return;
+      if (!pending.current && !reconciling.current && !state.current.ticket && !state.current.draft) return;
       event.preventDefault(); event.returnValue = "";
     };
     window.addEventListener("beforeunload", guard);
@@ -165,6 +167,40 @@ export function ConversationThreadView({
     } finally { stopping.current = false; }
   };
 
+  const recoveryPayload = descriptor?.reconcile && ticket
+    ? threadRequestPayload(descriptor.reconcile, ticket.source, context, ticket.turnId) : null;
+  const recoveryRequest = descriptor?.reconcile && recoveryPayload
+    ? viewOperationRequest(catalog, registered, descriptor.reconcile.operation, recoveryPayload) : null;
+  const reconcile = async () => {
+    const captured = state.current.ticket;
+    if (!captured || !descriptor?.reconcile || pending.current || reconciling.current) return;
+    const payload = threadRequestPayload(descriptor.reconcile, captured.source, context, captured.turnId);
+    const request = payload ? viewOperationRequest(catalog, registered, descriptor.reconcile.operation, payload) : null;
+    if (!request) return;
+    reconciling.current = true;
+    setRecovering(true); setError(null); setFeedback(null);
+    try {
+      const result = await capabilities.invokeAction(request);
+      if (!active.current || state.current.ticket?.turnId !== captured.turnId) return;
+      const outcome = viewOperationOutcome(result);
+      if (outcome === "failed") throw new Error("recovery_failed");
+      const turn = readThreadEventTurn(result, captured.conversationId, captured.turnId);
+      if (turn) setTicket((current) => current?.turnId === captured.turnId
+        ? mergeThreadTicketTurn(current, turn) : current);
+      setFeedback(outcome === "approval"
+        ? "Tobkiri の承認画面で確認を待っています。入力内容と送信IDを保持しています。"
+        : "復旧操作が戻りました。保存された実行記録と会話の一致を確認しています。");
+      onRefresh();
+    } catch {
+      if (active.current && state.current.ticket?.turnId === captured.turnId) {
+        setError("復旧結果を確認できません。入力内容と送信IDを保持し、自動再送しません。");
+      }
+    } finally {
+      reconciling.current = false;
+      if (active.current) setRecovering(false);
+    }
+  };
+
   if (!descriptor || !thread) return <p role="status">この会話はまだ利用できません。利用可能な操作で会話を作成するか、再読み込みしてください。</p>;
   const messages = orderConversationMessages(thread.messages).map((message) => chatMessageToUiMessage(message));
   const start = thread.turn?.started_at_ms;
@@ -182,7 +218,12 @@ export function ConversationThreadView({
         unknownBlockStrategy="placeholder" showActivityInMessages showWidgets={false}
         onSuggestionClick={(value) => { if (!running) setDraft(value); }} />
     </div>
-    {ticket && <button type="button" onClick={() => { void readEvents(); }} className="min-h-11 rounded border border-zinc-700 px-3 text-sm">実行結果を照合</button>}
+    {ticket && <button type="button" onClick={() => { void readEvents(); }} className="min-h-11 rounded border border-zinc-700 px-3 text-sm">実行記録を再読み込み</button>}
+    {ticket && descriptor.reconcile && <button type="button"
+      disabled={!recoveryRequest || busy || recovering} onClick={() => { void reconcile(); }}
+      className="min-h-11 rounded border border-zinc-700 px-3 text-sm">
+      {recovering ? "復旧結果を待っています…" : "この送信結果を復旧"}
+    </button>}
     <ComposerRenderer surfaceMode="thread" input={draft} placeholder="メッセージを入力…"
       isGenerating={running} submissionDisabled={!sourceReady || !parsed}
       selectedProfile={null} favoriteProfiles={[]} thinkingLevel={null}

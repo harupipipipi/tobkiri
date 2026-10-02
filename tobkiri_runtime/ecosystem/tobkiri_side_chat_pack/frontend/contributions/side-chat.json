@@ -73,6 +73,20 @@
           "conversation_id": "conversation_id"
         },
         "turn_id_key": "turn_id"
+      },
+      "reconcile": {
+        "operation": {
+          "contribution_id": "pack.tobkiri_side_chat_pack.tobkiri_side_chat_pack.side-chat-turn",
+          "contract_id": "tobkiri.service.side-chat.turn.v1",
+          "operation_id": "tobkiri_side_chat_pack.side-chat-turn"
+        },
+        "input": {
+          "operation": "reconcile"
+        },
+        "source_bindings": {
+          "conversation_id": "conversation_id"
+        },
+        "turn_id_key": "turn_id"
       }
     },
     "controls": [
@@ -93,6 +107,23 @@
         },
         "context_bindings": {
           "parent_conversation_id": "conversation_id"
+        }
+      },
+      {
+        "id": "reconcile",
+        "label": "最新の実行を復旧",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.tobkiri_side_chat_pack.tobkiri_side_chat_pack.side-chat-turn",
+          "contract_id": "tobkiri.service.side-chat.turn.v1",
+          "operation_id": "tobkiri_side_chat_pack.side-chat-turn"
+        },
+        "input": {
+          "operation": "reconcile"
+        },
+        "input_bindings": {
+          "conversation_id": "conversation_id",
+          "turn_id": "thread.pending_turn.id"
         }
       }
     ]

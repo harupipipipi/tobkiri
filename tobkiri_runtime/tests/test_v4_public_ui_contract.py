@@ -409,6 +409,12 @@ def _thread_view() -> dict[str, Any]:
                 "source_bindings": {"expected_child_revision": "revision"},
             },
             "events": {"operation": operation, "turn_id_key": "turn_id"},
+            "reconcile": {
+                "operation": operation,
+                "input": {"operation": "reconcile"},
+                "source_bindings": {"conversation_id": "conversation_id"},
+                "turn_id_key": "turn_id",
+            },
         },
     }
 
@@ -416,6 +422,34 @@ def _thread_view() -> dict[str, Any]:
 def test_thread_view_grammar_preserves_canonical_operations_and_fixed_keys() -> None:
     """A descriptor supplies inert mappings, not model/turn execution authority."""
     validate_catalog_view(_thread_view())
+
+
+@pytest.mark.parametrize("scenario", [
+    "content", "content_constant", "content_binding", "turn", "scope", "model",
+    "collision", "prototype",
+])
+def test_thread_reconcile_keeps_the_same_finite_request_boundary(scenario: str) -> None:
+    """Explicit recovery cannot acquire send content or execution authority."""
+    view = _thread_view()
+    request = view["conversation_thread"]["reconcile"]
+    if scenario == "content":
+        request["content_key"] = "content"
+    elif scenario == "content_constant":
+        request["input"]["content"] = "forged"
+    elif scenario == "content_binding":
+        request["source_bindings"]["content"] = "thread.draft"
+    elif scenario == "turn":
+        request["input"]["turn_id"] = "forged"
+    elif scenario == "scope":
+        request["source_bindings"]["profile_id"] = "conversation_id"
+    elif scenario == "model":
+        request["input"]["nested"] = {"model": "override"}
+    elif scenario == "collision":
+        request["context_bindings"] = {"conversation_id": "conversation_id"}
+    else:
+        request["source_bindings"]["conversation_id"] = "constructor.id"
+    with pytest.raises((ValidationError, ValueError)):
+        validate_catalog_view(view)
 
 
 @pytest.mark.parametrize("scenario", [
