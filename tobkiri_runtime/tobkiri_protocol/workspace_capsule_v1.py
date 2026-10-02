@@ -164,7 +164,7 @@ def make_capsule(
 ) -> tuple[dict[str, Any], dict[str, bytes]]:
     """Seal work files and public provenance, excluding authority and host paths."""
     blobs: dict[str, bytes] = {}
-    entries = []
+    entries: list[dict[str, Any]] = []
     for path, data in sorted(files.items()):
         safe_path(path)
         if not isinstance(data, bytes) or len(data) > MAX_FILE_BYTES:
@@ -172,7 +172,7 @@ def make_capsule(
         key = digest(data)
         blobs[key] = data
         entries.append({"path": path, "digest": key, "size": len(data), "mode": 420})
-    manifest = {
+    manifest: dict[str, Any] = {
         "version": VERSION,
         "workspace_id": identifier(workspace_id),
         "source": {
@@ -224,7 +224,8 @@ def validate_capsule(
     entries = manifest["files"]
     if not isinstance(entries, list) or not 1 <= len(entries) <= MAX_FILES:
         raise ValueError("capsule file count is invalid")
-    paths, keys = set(), set()
+    paths: set[str] = set()
+    keys: set[str] = set()
     summed = 0
     for entry in entries:
         if not isinstance(entry, Mapping) or set(entry) != {
