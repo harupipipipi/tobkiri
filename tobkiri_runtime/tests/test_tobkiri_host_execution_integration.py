@@ -1579,11 +1579,20 @@ def test_request_scoped_worker_cleanup_precedes_resource_release(
         else:
             fixture.broker.invoke(frame(), context(), effect_scope={"user": "u1"})
     finally:
-        fixture.broker.close()
-    assert fixture.events.count("worker_cleanup") == 1
+        if failure_at == "release":
+            with pytest.raises(RuntimeError, match="cleanup remains pending"):
+                fixture.broker.close()
+        else:
+            fixture.broker.close()
+    assert fixture.events.count("worker_cleanup") == (2 if failure_at == "release" else 1)
     if failure_at == "release":
         assert not fixture.admission.released
         assert "request-1" in fixture.authority.fenced
+        assert fixture.broker.has_undrained_requests()
+        fixture.backend.release_materialization = lambda _reservation: None
+        fixture.broker.retry_resource_drains()
+        assert fixture.admission.released
+        assert not fixture.broker.has_undrained_requests()
     else:
         assert fixture.events.index("worker_cleanup") < fixture.events.index("reservation_released")
     if failure_at in ("materialize", "authorize"):

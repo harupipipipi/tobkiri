@@ -43,7 +43,7 @@ def test_owner_release_runs_once_after_resources_or_unadmitted_failure(
             "on_resources_drained": lambda: calls.append("owner"),
         }
         if prepared:
-            invalid = replace(snapshot, request_digest="invalid")
+            invalid = replace(snapshot, request_digest="sha256:" + "0" * 64)
             return fixture.broker.invoke_prepared(
                 invalid if failure == "schema" else snapshot,
                 context(),
@@ -147,7 +147,16 @@ def test_unadmitted_dispatch_context_error_uses_broker_cleanup_ledger() -> None:
     def context_for(*_args: Any) -> Any:
         raise AuthorizationError("context unavailable")
 
-    dispatch = V4DispatchSession(fixture.broker, context_for, lambda *_args: {}, {})
+    dispatch = V4DispatchSession(
+        broker=fixture.broker,
+        context_for=context_for,
+        effect_scope_for=lambda *_args: {},
+        providers={},
+        profile_id="profile-1",
+        plan_digest="plan",
+        profile_revision="revision",
+        activation_id="activation-1",
+    )
     try:
         with pytest.raises(AuthorizationError, match="context unavailable"):
             dispatch.invoke(
