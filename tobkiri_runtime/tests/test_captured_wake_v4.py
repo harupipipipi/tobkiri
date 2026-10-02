@@ -1,13 +1,24 @@
 """Injected-clock, isolated finite wake/lease tests without production claims."""
 
+from dataclasses import replace
 from pathlib import Path
+import threading
 from typing import Any
 
 import pytest
 
-from core_runtime.captured_wake_v4 import CapturedWakeDeclarationV4, CapturedWakeDriverV4
+from core_runtime.captured_wake_v4 import (
+    CapturedWakeDeclarationV4,
+    CapturedWakeDriverV4,
+    _OccurrenceGate,
+)
 from tobkiri_host.models import OpaqueAuthorityRef
-from tobkiri_host.triggers import TriggerRegistration, WakeAdapterStatus, WakeRegistrationLease
+from tobkiri_host.triggers import (
+    TriggerDelivery,
+    TriggerRegistration,
+    WakeAdapterStatus,
+    WakeRegistrationLease,
+)
 
 
 class _Adapter:
@@ -172,3 +183,87 @@ def test_status_revalidates_current_grant_before_showing_armed(tmp_path: Path) -
     allowed[0] = False
     assert driver.status()["armed"] is False
     driver.close()
+
+
+@pytest.mark.parametrize("mismatch", ["registration", "occurrence", "target", "epoch", "expiry"])
+def test_wake_gate_rejects_other_occurrences_and_consumes_failed_tokens(mismatch: str) -> None:
+    clock = [5.0]
+    gate = _OccurrenceGate(lambda: None, lambda: clock[0])
+    registration = TriggerRegistration(
+        "clock", "example.action.v1", "example.tick", OpaqueAuthorityRef("target"), "activation", 1
+    )
+    lease = gate.issue_trigger_lease("clock", "occurrence", registration.target, 1)
+    original = TriggerDelivery(registration, "occurrence", 1, lease)
+    changed = original
+    if mismatch == "registration":
+        changed = replace(original, registration=replace(registration, registration_id="other"))
+    elif mismatch == "occurrence":
+        changed = replace(original, occurrence_id="other")
+    elif mismatch == "target":
+        changed = replace(
+            original, registration=replace(registration, target=OpaqueAuthorityRef("other"))
+        )
+    elif mismatch == "epoch":
+        changed = replace(original, registration=replace(registration, security_epoch=2))
+    else:
+        clock[0] = 35.0
+    with pytest.raises(PermissionError):
+        gate.consume(changed)
+    with pytest.raises(PermissionError):
+        gate.consume(original)
+
+
+def test_wake_gate_is_one_shot_for_the_exact_occurrence() -> None:
+    gate = _OccurrenceGate(lambda: None, lambda: 5.0)
+    registration = TriggerRegistration(
+        "clock", "example.action.v1", "example.tick", OpaqueAuthorityRef("target"), "activation", 1
+    )
+    lease = gate.issue_trigger_lease("clock", "occurrence", registration.target, 1)
+    delivery = TriggerDelivery(registration, "occurrence", 1, lease)
+    gate.consume(delivery)
+    with pytest.raises(PermissionError):
+        gate.consume(delivery)
+
+
+@pytest.mark.parametrize("explicit_disarm", [False, True])
+def test_rearm_cancels_old_delivery_without_disabling_new_generation(
+    tmp_path: Path, explicit_disarm: bool
+) -> None:
+    clock, calls = [100.0, 5.0], []
+    driver = _driver(tmp_path, clock, calls)
+    entered, release = threading.Event(), threading.Event()
+    cancellations: list[threading.Event] = []
+
+    def invoke(occurrence: str, fence: Any, cancellation: threading.Event) -> dict[str, Any]:
+        calls.append(occurrence)
+        cancellations.append(cancellation)
+        if len(calls) == 1:
+            entered.set()
+            assert release.wait(5.0)
+        fence()
+        return {"status": "ok"}
+
+    driver._invoke = invoke
+    driver.arm(5000)
+    clock[:] = [101.0, 6.0]
+    worker = threading.Thread(target=driver.deliver_due)
+    worker.start()
+    try:
+        assert entered.wait(5.0)
+        if explicit_disarm:
+            driver.disarm()
+        driver.arm(5000)
+        assert cancellations[0].is_set()
+        release.set()
+        worker.join(5.0)
+        assert not worker.is_alive()
+        assert driver.status()["armed"] is True
+        clock[:] = [102.0, 7.0]
+        driver.deliver_due()
+        generation = 3 if explicit_disarm else 2
+        assert calls == ["1:101000", f"{generation}:102000"]
+        assert driver.status()["armed"] is True
+    finally:
+        release.set()
+        worker.join(5.0)
+        driver.close()
