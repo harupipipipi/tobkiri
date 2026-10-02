@@ -202,7 +202,7 @@ def test_production_capture_rejects_rehashed_caller_selector_claims(
         activation=activation,
     )
     with AuthorityStore(user_data / "authority/v4.sqlite3") as authority:
-        assert authority.list_grants() == ()
+        assert not authority.list_grants()
         with pytest.raises(AuthorityDenied, match="not bound to the captured"):
             _capture(claimed, authority)
-        assert authority.list_grants() == ()
+        assert not authority.list_grants()
