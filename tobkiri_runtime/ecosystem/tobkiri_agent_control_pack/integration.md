@@ -35,6 +35,10 @@ ack hook has been removed. Only canonical saved_receipt acceptance authorizes ac
 No App feature branch is needed. Regenerate the neutral saved input schema into
 saved_complete and turn-saved source declarations, executable schemas and guest
 protocol source closure. Ordinary user content is never rewritten.
+The turn owner's optional context hook binds the selected projection to a durable
+source-input digest before begin_saved. Retries recover that exact captured
+projection before optional provider discovery. The source identity rejects changed
+original input, and recovery does not prepare another batch or restart execution.
 
 UI: two frontend/contributions descriptors bind generic sidebar and settings slots.
 Each action derives missing per-request IDs from authenticated Host request identity.

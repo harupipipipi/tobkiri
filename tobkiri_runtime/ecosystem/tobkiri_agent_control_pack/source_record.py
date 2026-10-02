@@ -89,10 +89,6 @@ def schemas() -> dict[str, dict[str, Any]]:
             "reviewer": {"anyOf": [ID, {"type": "null"}]},
             "model_policy": model,
             "thinking_policy": thinking,
-            "snapshot_receipt": obj(
-                {"resolved_profile_id": ID, "store_revision": INTEGER},
-                ["resolved_profile_id", "store_revision"],
-            ),
         },
         [],
     )

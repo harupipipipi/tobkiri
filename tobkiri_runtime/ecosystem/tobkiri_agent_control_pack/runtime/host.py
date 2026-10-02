@@ -16,11 +16,19 @@ from tobkiri_protocol.work_plan_v1 import (
     REPLACE_CONTRACT,
     RESOURCE_CONTRACT,
 )
-from .ports import SAVED, CONVERSATION, GENERATE, MODEL
-from .schedules import SCHEDULE_ACTION, SCHEDULE_RESOURCE
-from .service import Actor, WorkPlanService
-from .store import PlanStore, digest, identifier, new_plan
-from .workflow import WORKFLOW, REVIEW, ReviewWorkflow
+from ecosystem.tobkiri_agent_control_pack.runtime.ports import SAVED, CONVERSATION, GENERATE, MODEL
+from ecosystem.tobkiri_agent_control_pack.runtime.schedules import (
+    SCHEDULE_ACTION,
+    SCHEDULE_RESOURCE,
+)
+from ecosystem.tobkiri_agent_control_pack.runtime.service import Actor, WorkPlanService
+from ecosystem.tobkiri_agent_control_pack.runtime.store import (
+    PlanStore,
+    digest,
+    identifier,
+    new_plan,
+)
+from ecosystem.tobkiri_agent_control_pack.runtime.workflow import WORKFLOW, REVIEW, ReviewWorkflow
 
 PACK_ID = "tobkiri_agent_control_pack"
 CONTRACTS = {
@@ -229,17 +237,13 @@ class WorkPlanHostFactory:
                     return ReviewWorkflow(client).status(
                         key, cancel=values["operation"] == "cancel"
                     )
-                if values["operation"] == "cancel":
-                    return {
-                        "status": "cancelled"
-                        if plan["status"] != "active"
-                        else "cancellation_requested"
-                    }
-                finding = plan["review_occurrences"].get(key)
-                return {
-                    "status": "completed" if finding else "reconciliation_required",
-                    "finding": finding,
-                }
+                if values.get("action_id") != "agent-control.remind":
+                    raise ValueError("job action is unknown")
+                return service.reminder_job_status(
+                    {**values, "occurrence_id": key},
+                    actor,
+                    cancel=values["operation"] == "cancel",
+                )
             if values.pop("operation", None) != "dispatch":
                 raise ValueError("job operation is invalid")
             values["occurrence_id"] = (

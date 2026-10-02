@@ -105,7 +105,11 @@ class Ports:
             ],
             "parameters": {
                 "max_tokens": 2048,
-                "thinking_level": model.get("thinking_level"),
+                **(
+                    {"thinking_level": model["thinking_level"]}
+                    if model.get("thinking_level") is not None
+                    else {}
+                ),
             },
             "tools": [],
             "requirements": {"tool_calling": False},
