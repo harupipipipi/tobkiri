@@ -1,0 +1,265 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/tobkiri.ui.view.v1.json",
+  "title": "Tobkiri catalog-bound view v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "slot",
+    "renderer"
+  ],
+  "properties": {
+    "version": {
+      "const": "tobkiri.ui.view.v1"
+    },
+    "slot": {
+      "enum": [
+        "workspace_tab",
+        "sidebar",
+        "settings",
+        "chat_header",
+        "composer_above",
+        "composer_below"
+      ]
+    },
+    "renderer": {
+      "enum": [
+        "panel",
+        "status",
+        "entity_picker"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 256
+    },
+    "body": {
+      "type": "string",
+      "maxLength": 4096
+    },
+    "data_source": {
+      "$ref": "#/$defs/request"
+    },
+    "fields": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/$defs/field"
+      }
+    },
+    "controls": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "$ref": "#/$defs/control"
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+      "maxLength": 256
+    },
+    "path": {
+      "type": "string",
+      "maxLength": 256,
+      "pattern": "^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,15}$"
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contribution_id",
+        "contract_id",
+        "operation_id"
+      ],
+      "properties": {
+        "contribution_id": {
+          "$ref": "#/$defs/id"
+        },
+        "contract_id": {
+          "$ref": "#/$defs/id"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/id"
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "maxProperties": 32
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contribution_id",
+        "contract_id",
+        "operation_id"
+      ],
+      "properties": {
+        "contribution_id": {
+          "$ref": "#/$defs/id"
+        },
+        "contract_id": {
+          "$ref": "#/$defs/id"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/id"
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        },
+        "context_bindings": {
+          "$ref": "#/$defs/context_bindings"
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "path",
+        "kind"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "status",
+            "progress"
+          ]
+        },
+        "total_path": {
+          "$ref": "#/$defs/path"
+        }
+      }
+    },
+    "control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "kind",
+        "operation"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "kind": {
+          "enum": [
+            "button",
+            "toggle",
+            "text",
+            "choice"
+          ]
+        },
+        "operation": {
+          "$ref": "#/$defs/operation"
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        },
+        "input_bindings": {
+          "type": "object",
+          "maxProperties": 32,
+          "additionalProperties": {
+            "$ref": "#/$defs/path"
+          }
+        },
+        "value_key": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$"
+        },
+        "value_path": {
+          "$ref": "#/$defs/path"
+        },
+        "options_path": {
+          "$ref": "#/$defs/path"
+        },
+        "id_path": {
+          "$ref": "#/$defs/path"
+        },
+        "label_path": {
+          "$ref": "#/$defs/path"
+        },
+        "disabled_path": {
+          "$ref": "#/$defs/path"
+        },
+        "multiple": {
+          "type": "boolean"
+        },
+        "context_bindings": {
+          "$ref": "#/$defs/context_bindings"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "toggle",
+                  "text",
+                  "choice"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "value_key"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "choice"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "options_path",
+              "id_path",
+              "label_path"
+            ]
+          }
+        }
+      ]
+    },
+    "context_bindings": {
+      "type": "object",
+      "maxProperties": 16,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]{0,63}$"
+      },
+      "additionalProperties": {
+        "enum": [
+          "conversation_id",
+          "turn_id"
+        ]
+      }
+    }
+  }
+}

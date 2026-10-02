@@ -180,11 +180,12 @@ def capture_target_identity(
         allowed_payload_keys=target.allowed_payload_keys,
         owner_pack_id=target.owner_pack_id,
         artifact_digest=artifact_digest,
+        input_schema=target.input_schema,
     )
 
 
 def _target_digest_payload(target: HTTPContractTarget) -> dict[str, str]:
-    return {
+    payload = {
         "contribution_id": target.contribution_id,
         "contract_id": target.contract_id,
         "operation_id": target.operation_id,
@@ -192,6 +193,11 @@ def _target_digest_payload(target: HTTPContractTarget) -> dict[str, str]:
         "function_id": target.function_id,
         "artifact_digest": target.artifact_digest,
     }
+    if target.input_schema:
+        import hashlib
+
+        payload["input_schema_digest"] = "sha256:" + hashlib.sha256(target.input_schema).hexdigest()
+    return payload
 
 
 __all__ = [
