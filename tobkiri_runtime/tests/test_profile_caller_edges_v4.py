@@ -11,13 +11,18 @@ import zipfile
 
 import pytest
 
-from core_runtime.authority.v4 import AuthorityDenied, FunctionPrincipal
+from core_runtime.authority.v4 import (
+    AuthorityDenied,
+    AuthorityScope,
+    AuthorityStore,
+    FunctionPrincipal,
+)
 from core_runtime.bootstrap.profile_source_update import profile_source_additions
 from core_runtime.profile_caller_edges_v4 import (
     SelectedCallerOperationV4,
     resolve_selected_caller,
 )
-from ecosystem.defaultspack.domain.runtime_v4 import resolve_default_profile
+from ecosystem.defaultspack.domain.runtime_v4 import ActivationStore, resolve_default_profile
 from ecosystem.defaultspack.domain.runtime_v4.service import ProfileResolutionDenied
 from tobkiri_protocol.canonical import canonical_digest
 from tobkiri_protocol.errors import ProtocolError, SchemaValidationError
@@ -29,6 +34,10 @@ from tobkiri_protocol.profile_edges import (
     require_profile_edge_bindings,
 )
 from tobkiri_protocol.validation import validate_document
+from tobkiri_host.composition import AuthorityCeilings, HostV4Composition
+from tobkiri_host.contracts import OperationRoute
+from tobkiri_host.errors import ResolutionError
+from tobkiri_host.models import OpaqueAuthorityRef
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = "tobkiri.action.workflow.run.v1"
@@ -320,3 +329,195 @@ def test_normal_compiler_does_not_accept_an_unselected_operation(
             authority_bindings=references,
             security_epoch=1,
         )
+
+
+def test_normal_compiler_rejects_two_selectors_for_one_actual_caller_edge(
+    selected_profile_result: Any,
+) -> None:
+    """An optional revision pin cannot duplicate one already selected authority."""
+    catalog, result, _ = selected_profile_result
+    candidate = deepcopy(catalog)
+    source = candidate.profiles["defaults"]
+    edge = deepcopy(
+        next(
+            row
+            for row in source["requested_edges"]
+            if row.get("caller_operation_id") == "rumi_file_inspect_pack.file-inspect"
+        )
+    )
+    selected = next(
+        row
+        for row in result.plan["bindings"]
+        if row["function_principal"]["function_id"] == edge["caller_function_id"]
+        and row["operation_id"] == edge["caller_operation_id"]
+    )
+    edge["caller_contract_revision_digest"] = selected["function_principal"][
+        "contract_revision_digest"
+    ]
+    source["requested_edges"].append(edge)
+    references = {
+        profile_edge_key(row): "authority-ref:test."
+        + canonical_digest(profile_edge_key(row)).removeprefix("sha256:")
+        for row in source["requested_edges"]
+    }
+    with pytest.raises(ProfileResolutionDenied, match="duplicate selected caller"):
+        resolve_default_profile(
+            candidate,
+            "defaults",
+            approved_artifact_digests={
+                item["pack"]["artifact_digest"] for item in candidate.packs.values()
+            },
+            authority_snapshot_digest=DIGEST,
+            authority_bindings=references,
+            security_epoch=1,
+        )
+
+
+@pytest.fixture
+def selected_capture_inputs(
+    selected_profile_result: Any,
+    tmp_path: Path,
+) -> dict[str, Any]:
+    """Use the normal durable activation and selected route capture fixtures."""
+    from tests.test_tobkiri_host_v4_composition import _artifacts
+
+    catalog, result, _ = selected_profile_result
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    with AuthorityStore(tmp_path / "authority.sqlite3") as authority:
+        store = ActivationStore(
+            tmp_path / "state",
+            workspace,
+            profile_id="defaults",
+            authority=authority,
+        )
+        activation = store.activate(
+            result,
+            activation_id="activation:caller-selector",
+            created_at="2026-10-03T00:00:00Z",
+        )
+        captured = store.load_active_snapshot().resolved
+    artifacts = _artifacts(catalog, {row["identity"] for row in captured.lock["effective_set"]})
+    candidates = [
+        SelectedCallerOperationV4(
+            binding["contract_id"], FunctionPrincipal.from_dict(binding["function_principal"])
+        )
+        for binding in captured.plan["bindings"]
+    ]
+    for artifact in artifacts:
+        if artifact.pack_id != captured.profile["shell"]["pack_id"]:
+            continue
+        for function in artifact.functions:
+            for operation in function.operations:
+                candidates.append(
+                    SelectedCallerOperationV4(
+                        operation.contract_id,
+                        FunctionPrincipal(
+                            artifact.digest,
+                            function.implementation_digest,
+                            function.function_id,
+                            operation.revision_digest,
+                            operation.operation_id,
+                        ),
+                    )
+                )
+    scope = AuthorityScope(capability="operation.invoke", semantics_digest=DIGEST)
+    bindings = {profile_edge_key(binding): binding for binding in captured.plan["bindings"]}
+    ceilings = {}
+    for edge in captured.profile["requested_edges"]:
+        caller = resolve_selected_caller(edge, candidates)
+        target = FunctionPrincipal.from_dict(bindings[profile_edge_key(edge)]["function_principal"])
+        ceilings[
+            (
+                "defaults",
+                activation["activation_id"],
+                caller.principal_id,
+                target.principal_id,
+                edge["contract_id"],
+                edge["operation_id"],
+            )
+        ] = AuthorityCeilings(scope, scope, scope)
+    routes = []
+    for binding in captured.plan["bindings"]:
+        principal = FunctionPrincipal.from_dict(binding["function_principal"])
+        function = next(
+            function
+            for artifact in artifacts
+            for function in artifact.functions
+            if function.function_id == principal.function_id
+        )
+        routes.append(
+            OperationRoute(
+                contract_id=binding["contract_id"],
+                operation_id=binding["operation_id"],
+                artifact_digest=binding["artifact_digest"],
+                function_id=principal.function_id,
+                variant_id=function.variant_id,
+                execution_domain_profile="verified.v4",
+                materialization_mode="on_demand",
+                target_principal_ref=OpaqueAuthorityRef(principal.principal_id),
+            )
+        )
+    return {
+        "profile": captured.profile,
+        "lock": captured.lock,
+        "plan": captured.plan,
+        "activation": activation,
+        "artifacts": artifacts,
+        "routes": routes,
+        "authority_ceilings": ceilings,
+    }
+
+
+def test_host_capture_keeps_distinct_selected_callers_for_the_same_target(
+    selected_capture_inputs: dict[str, Any],
+) -> None:
+    """Real Host composition capture accepts both explicit operation principals."""
+    composition = HostV4Composition.capture(**selected_capture_inputs)
+    explicit = [
+        binding for binding in composition.plan["bindings"] if "caller_operation_id" in binding
+    ]
+    assert {binding["caller_operation_id"] for binding in explicit} == {
+        "rumi_file_inspect_pack.file-inspect",
+        "rumi_file_inspect_pack.file-inspect.for-media",
+    }
+    candidates = [
+        SelectedCallerOperationV4(
+            row["contract_id"],
+            FunctionPrincipal.from_dict(row["function_principal"]),
+        )
+        for row in composition.plan["bindings"]
+    ]
+    callers = {resolve_selected_caller(binding, candidates).principal_id for binding in explicit}
+    assert len(callers) == 2
+    assert callers <= {key[2] for key in selected_capture_inputs["authority_ceilings"]}
+
+
+@pytest.mark.parametrize("replacement", [None, "rumi_file_inspect_pack.file-inspect.for-media"])
+def test_host_capture_rejects_rehashed_plan_selector_replacement(
+    selected_capture_inputs: dict[str, Any],
+    replacement: str | None,
+) -> None:
+    """Recomputing plan/lock/activation digests cannot replace signed Profile bytes."""
+    candidate = deepcopy(selected_capture_inputs)
+    binding = next(
+        row
+        for row in candidate["plan"]["bindings"]
+        if row.get("caller_operation_id") == "rumi_file_inspect_pack.file-inspect"
+    )
+    if replacement is None:
+        binding.pop("caller_contract_id")
+        binding.pop("caller_operation_id")
+    else:
+        binding["caller_operation_id"] = replacement
+    plan = candidate["plan"]
+    plan["plan_digest"] = canonical_digest(
+        {key: value for key, value in plan.items() if key != "plan_digest"}
+    )
+    candidate["lock"]["plan_digest"] = plan["plan_digest"]
+    candidate["lock"]["lock_digest"] = canonical_digest(
+        {key: value for key, value in candidate["lock"].items() if key != "lock_digest"}
+    )
+    candidate["activation"]["plan_digest"] = plan["plan_digest"]
+    with pytest.raises((ResolutionError, SchemaValidationError)):
+        HostV4Composition.capture(**candidate)
