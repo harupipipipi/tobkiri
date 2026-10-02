@@ -67,7 +67,14 @@ export function parseHistoryOrganization(raw: string): HistoryOrganizationV1 {
   for (const value of Object.values(chatOrder)) {
     if (!isStringArray(value)) throw new Error("History chat order is invalid.");
   }
-  return parsed as HistoryOrganizationV1;
+  return {
+    schemaVersion: 1,
+    revision: Number(record.revision),
+    updatedAt: record.updatedAt,
+    groupChildren: Object.assign(Object.create(null), groupChildren),
+    chatGroups: Object.assign(Object.create(null), chatGroups),
+    chatOrder: Object.assign(Object.create(null), chatOrder),
+  };
 }
 
 function defaultStorage(): StorageLike | null {
@@ -102,9 +109,10 @@ export function organizationFromGroups<TChat extends { id: string }>(
   revision: number,
   updatedAt = new Date().toISOString(),
 ): HistoryOrganizationV1 {
-  const groupChildren: Record<string, string[]> = { [HISTORY_ORGANIZATION_ROOT]: groups.map((group) => group.id) };
-  const chatGroups: Record<string, string> = {};
-  const chatOrder: Record<string, string[]> = {};
+  const groupChildren: Record<string, string[]> = Object.create(null);
+  groupChildren[HISTORY_ORGANIZATION_ROOT] = groups.map((group) => group.id);
+  const chatGroups: Record<string, string> = Object.create(null);
+  const chatOrder: Record<string, string[]> = Object.create(null);
   const visit = (group: HistoryOrganizationGroup<TChat>) => {
     groupChildren[group.id] = group.subGroups.map((child) => child.id);
     chatOrder[group.id] = group.chats.map((chat) => chat.id);

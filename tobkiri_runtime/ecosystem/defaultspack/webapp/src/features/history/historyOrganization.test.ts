@@ -128,3 +128,31 @@ test("organization apply rejects stored parent cycles and keeps every group reac
   visit(restored);
   assert.deepEqual(ids.sort(), ["alpha", "beta"]);
 });
+
+
+test("Profile history organization survives restart without mixing identical conversation ids", () => {
+  const stored = new Map<string, string>();
+  const storage = { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, raw: string) => { stored.set(key, raw); }, removeItem: (key: string) => { stored.delete(key); } };
+  const groupsA = [{ id: "project-a", chats: [{ id: "same-chat" }], subGroups: [] }];
+  const groupsB = [{ id: "project-b", chats: [{ id: "same-chat" }], subGroups: [] }];
+  assert.equal(saveHistoryOrganization(groupsA, 0, storage, "now", "profile/a").ok, true);
+  assert.equal(loadHistoryOrganization(storage, "profile-b").status, "empty");
+  assert.equal(saveHistoryOrganization(groupsB, 0, storage, "now", "profile-b").ok, true);
+  const restartedA = loadHistoryOrganization(storage, "profile/a");
+  const restartedB = loadHistoryOrganization(storage, "profile-b");
+  assert.equal(restartedA.status, "ready");
+  assert.equal(restartedB.status, "ready");
+  if (restartedA.status === "ready" && restartedB.status === "ready") {
+    assert.equal(restartedA.organization.chatGroups["same-chat"], "project-a");
+    assert.equal(restartedB.organization.chatGroups["same-chat"], "project-b");
+  }
+});
+
+test("History maps preserve prototype-shaped ids as data and ignore inherited membership", () => {
+  const groups = [{ id: "constructor", chats: [{ id: "__proto__" }], subGroups: [] }];
+  const organization = organizationFromGroups(groups, 1);
+  const parsed = parseHistoryOrganization(JSON.stringify(organization));
+  assert.equal(parsed.chatGroups["__proto__"], "constructor");
+  assert.equal(parsed.chatGroups["toString"], undefined);
+  assert.deepEqual(applyHistoryOrganization(groups, parsed), groups);
+});
