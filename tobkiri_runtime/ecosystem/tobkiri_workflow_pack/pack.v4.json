@@ -1,0 +1,453 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:981110c65d6f6a849e104413ea25737cbc6b6bf95e6053de8d94da6b56708c11",
+      "kind": "asset",
+      "path": "backend-integrity.v4.json"
+    },
+    {
+      "digest": "sha256:ef08aed1a3b67f94352f05d947c93d932904735a038a55143859df72f98fbf1c",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:26cef1a25d1184d03285cf1a261372e73cf47d9a4ff0b65cee1acf55366fdb86",
+      "kind": "asset",
+      "path": "frontend_contract_map.v4.json"
+    },
+    {
+      "digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+      "kind": "executable",
+      "path": "runtime/provider.py"
+    },
+    {
+      "digest": "sha256:6f8979544b0979978815aecc6c59f1372f036e6d128318687a0e4e71ba6f8b9e",
+      "kind": "schema",
+      "path": "schemas/frontend-contract-map.v4.schema.json"
+    },
+    {
+      "digest": "sha256:6ce340ccfa37ae1f4bb14106d80e202d98b618b92a646eb8e1cbbedcc44f8fcd",
+      "kind": "schema",
+      "path": "schemas/workflow-definition.v4.schema.json"
+    },
+    {
+      "digest": "sha256:f53591d6733669515655f01feae9d3dc249dc72666bf62c9a494b4b1d915a63e",
+      "kind": "schema",
+      "path": "schemas/workflow-error.v4.schema.json"
+    },
+    {
+      "digest": "sha256:e4e9d62afc0f41dd9ac026010f588e9e6829933ba87e71b31e9cf3b67c5cad4e",
+      "kind": "schema",
+      "path": "schemas/workflow-operation.v4.schema.json"
+    },
+    {
+      "digest": "sha256:59ae8ec6c690bc6f11025fdd8a31d4d7d23d8e1138d87f77da49a6e02a277580",
+      "kind": "schema",
+      "path": "schemas/workflow-result.v4.schema.json"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.workflow.v4",
+      "operations": [
+        "definition.archive",
+        "definition.create",
+        "definition.delete",
+        "definition.get",
+        "definition.list",
+        "definition.publish",
+        "definition.update",
+        "definition.validate",
+        "definition.compile-preview",
+        "operation.palette",
+        "run.cancel",
+        "run.advance",
+        "run.create",
+        "run.get",
+        "run.pause",
+        "run.reconcile-recovery",
+        "run.resume",
+        "run.step.execute",
+        "run.step.resume",
+        "run.step.retry"
+      ],
+      "revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:6edd3594528abb71a078924d0479388eff2f0c22da481f4887bd027b72736a31",
+      "id": "tobkiri.workflow.provider",
+      "implementation_digest": "sha256:792b96b8f9912b8edce4b85bf9218c9afad9d654a4ff1e038cf2f024a2dda0e3",
+      "isolation": "dedicated_process",
+      "operations": [
+        "definition.archive",
+        "definition.create",
+        "definition.delete",
+        "definition.get",
+        "definition.list",
+        "definition.publish",
+        "definition.update",
+        "definition.validate",
+        "definition.compile-preview",
+        "operation.palette",
+        "run.cancel",
+        "run.advance",
+        "run.create",
+        "run.get",
+        "run.pause",
+        "run.reconcile-recovery",
+        "run.resume",
+        "run.step.execute",
+        "run.step.resume",
+        "run.step.retry"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:102ba424d6048109af3d3abab0462c8a0d3740c86393bebadb0b100ed54c0a8f",
+    "contract_catalog_digest": "sha256:a72750d21c16d0b0dff192da7dbb495c6c23b60d0eda12b27e340f79a0584137",
+    "source_identity": "sha256:8378c6f70e659bce336f2fc9a1e7d63e9a57cb18a491dc26dfa4408d2f6d295c"
+  },
+  "migration": {
+    "compatibility": "none",
+    "legacy_ids": [],
+    "removal_wave": 13,
+    "sunset_at": "2026-08-10"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "definition.archive",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "definition.compile-preview",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "definition.create",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "definition.delete",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "definition.get",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "definition.list",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "definition.publish",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "definition.update",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "definition.validate",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "operation.palette",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "run.advance",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "run.cancel",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "run.create",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "run.get",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "run.pause",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "run.reconcile-recovery",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "run.resume",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "run.step.execute",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "run.step.resume",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "effect_ceiling": [
+        "capability:workflow.definition.write",
+        "capability:workflow.run.control",
+        "capability:workflow.step.authority.reserve",
+        "host:brokered-execution"
+      ],
+      "operation_id": "run.step.retry",
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:102ba424d6048109af3d3abab0462c8a0d3740c86393bebadb0b100ed54c0a8f",
+    "display_name": "Tobkiri Workflow Pack",
+    "id": "tobkiri_workflow_pack",
+    "kind": "host_extension",
+    "version": "4.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:8378c6f70e659bce336f2fc9a1e7d63e9a57cb18a491dc26dfa4408d2f6d295c",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:8378c6f70e659bce336f2fc9a1e7d63e9a57cb18a491dc26dfa4408d2f6d295c",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_workflow_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.workflow.v4",
+      "operations": [
+        "definition.archive",
+        "definition.create",
+        "definition.delete",
+        "definition.get",
+        "definition.list",
+        "definition.publish",
+        "definition.update",
+        "definition.validate",
+        "definition.compile-preview",
+        "operation.palette",
+        "run.cancel",
+        "run.advance",
+        "run.create",
+        "run.get",
+        "run.pause",
+        "run.reconcile-recovery",
+        "run.resume",
+        "run.step.execute",
+        "run.step.resume",
+        "run.step.retry"
+      ],
+      "owner": "tobkiri_workflow_pack",
+      "provider_id": "tobkiri.workflow.provider"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "workflow.definition.write",
+      "workflow.run.control",
+      "workflow.step.authority.reserve"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

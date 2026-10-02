@@ -1,4 +1,10 @@
-import type { ComposerWidgetAction, ComposerWidgetKind } from "./api";
+import {
+  defaultspackCanonicalRouteKey,
+  isDefaultspackRouteKey,
+  type ComposerWidgetAction,
+  type ComposerWidgetKind,
+  type SidebarItem,
+} from "./api";
 import type { ComposerExtensionItem, ComposerSkillItem, DroppedWidget } from "../renderers/types";
 import { extractMentionTokens, hasUnescapedMentionSyntax } from "./mentionContract";
 import { supportedComposerDropKind, supportsComposerToggleDrop } from "./toolUi";
@@ -20,15 +26,37 @@ export type ReconciledComposerSemanticDraft = {
   selectedToolIds: string[];
 };
 
-const COMPOSER_ENDPOINT_ACTION_ALLOWLIST = new Set(["GET /api/coding/git/status"]);
+export function composerExtensionItems(items: SidebarItem[]): ComposerExtensionItem[] {
+  return items
+    .filter((item) => item.category === "tool" || item.category === "capability")
+    .map((item) => ({
+      id: item.id,
+      label: item.label,
+      category: item.category,
+      description: item.description,
+      tags: item.tags ?? [],
+      ui: item.ui,
+      presentation: item.presentation,
+    }));
+}
+
+const COMPOSER_ENDPOINT_ACTION_ALLOWLIST = new Set([
+  `GET ${defaultspackCanonicalRouteKey("api/coding/git/status")}`,
+]);
 
 function composerWidgetTypeForKind(kind: ComposerWidgetKind): DroppedWidget["type"] {
   return kind === "tool_toggle" ? "tool" : kind;
 }
 
+function presentationFromItem(item: ComposerExtensionItem): DroppedWidget["presentation"] {
+  const iconAttention = item.presentation?.icon_attention ?? item.ui?.icon_attention;
+  return iconAttention === undefined ? undefined : { icon_attention: iconAttention };
+}
+
 function trustedComposerWidgetFromItem(item: ComposerExtensionItem, kind: ComposerWidgetKind, enabled = true): DroppedWidget {
   const label = item.ui?.composer_label ?? item.label ?? item.id;
   const description = item.ui?.composer_description ?? item.description;
+  const presentation = presentationFromItem(item);
   return {
     id: item.id,
     type: composerWidgetTypeForKind(kind),
@@ -39,6 +67,7 @@ function trustedComposerWidgetFromItem(item: ComposerExtensionItem, kind: Compos
     sourceItemId: item.id,
     description,
     icon: item.ui?.composer_icon ?? item.ui?.item_icon ?? item.ui?.group_icon,
+    ...(presentation ? { presentation } : {}),
     metadata: {
       source: "composer_catalog_drop",
       tool: {
@@ -109,9 +138,10 @@ export function composerToolMentionDisplay(item: ComposerExtensionItem): { label
   return { label, description: description && description !== label ? description : undefined };
 }
 
-export function composerToolMentionWidget(item: ComposerExtensionItem): DroppedWidget {
+export function composerToolMentionWidget(item: ComposerExtensionItem, syntaxOverride?: string): DroppedWidget {
   const label = item.ui?.composer_label ?? item.label ?? item.id;
   const description = item.ui?.composer_description ?? item.description;
+  const presentation = presentationFromItem(item);
   return {
     id: item.id,
     type: "tool",
@@ -122,13 +152,14 @@ export function composerToolMentionWidget(item: ComposerExtensionItem): DroppedW
     sourceItemId: item.id,
     description,
     icon: item.ui?.composer_icon ?? item.ui?.item_icon ?? item.ui?.group_icon,
+    ...(presentation ? { presentation } : {}),
     metadata: {
       source: "composer_at_mention",
       mention: {
         id: item.id,
         kind: "tool",
         label,
-        syntax: `@${label}`,
+        syntax: syntaxOverride || `@${label}`,
         tool_id: item.id,
       },
       tool: {
@@ -140,6 +171,19 @@ export function composerToolMentionWidget(item: ComposerExtensionItem): DroppedW
         ui: item.ui ?? null,
       },
     },
+  };
+}
+
+export function widgetWithCurrentPresentation(
+  widget: DroppedWidget,
+  items: ComposerExtensionItem[],
+): DroppedWidget {
+  if (widget.type !== "tool" && widget.widgetKind !== "tool_toggle") return widget;
+  const itemId = widget.sourceItemId || widget.id;
+  const current = items.find((item) => item.id === itemId);
+  return {
+    ...widget,
+    presentation: current ? presentationFromItem(current) : undefined,
   };
 }
 
@@ -168,7 +212,7 @@ export function composerSkillMentionDisplay(item: ComposerSkillItem): { label: s
   };
 }
 
-export function composerSkillMentionWidget(item: ComposerSkillItem): DroppedWidget {
+export function composerSkillMentionWidget(item: ComposerSkillItem, syntaxOverride?: string): DroppedWidget {
   const label = item.label || item.id;
   return {
     id: item.id,
@@ -184,7 +228,7 @@ export function composerSkillMentionWidget(item: ComposerSkillItem): DroppedWidg
         id: item.id,
         kind: "skill",
         label,
-        syntax: `@${label}`,
+        syntax: syntaxOverride || `@${label}`,
         skill_id: item.id,
       },
       skill: {
@@ -199,7 +243,7 @@ export function composerSkillMentionWidget(item: ComposerSkillItem): DroppedWidg
   };
 }
 
-export function composerFileMentionWidget(file: string): DroppedWidget {
+export function composerFileMentionWidget(file: string, syntaxOverride?: string): DroppedWidget {
   return {
     id: `mention-file:${file}`,
     type: "file",
@@ -215,7 +259,7 @@ export function composerFileMentionWidget(file: string): DroppedWidget {
         id: file,
         kind: "file",
         label: file,
-        syntax: `@${file}`,
+        syntax: syntaxOverride || `@${file}`,
       },
     },
   };
@@ -566,7 +610,7 @@ export function skillMentionIdsFromText(text: string, items: ComposerSkillItem[]
 }
 
 export function isSafeLocalEndpoint(endpoint: string): boolean {
-  return endpoint.startsWith("/api/") && !endpoint.startsWith("//") && !/^https?:\/\//i.test(endpoint);
+  return isDefaultspackRouteKey(endpoint) && !endpoint.startsWith("//") && !/^https?:\/\//i.test(endpoint);
 }
 
 function composerEndpointActionKey(action: Extract<ComposerWidgetAction, { type: "call_endpoint" }>): string {

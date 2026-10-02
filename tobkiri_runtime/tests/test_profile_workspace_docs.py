@@ -23,7 +23,7 @@ def test_profile_workspace_docs_exist_and_cover_required_topics():
         assert "profile" in content.lower() or name != "profile_workspace.md"
 
     profile_doc = (docs_dir / "profile_workspace.md").read_text(encoding="utf-8")
-    for phrase in ["profile.yaml", "user_data", "database", "startup", "flows", "prompts", "permissions", "migration"]:
+    for phrase in ["workspaces/<profile_id>", "state/", "activation/", "artifacts/", "snapshots/", "audit/events.jsonl", "not Profile authorities"]:
         assert phrase in profile_doc
     for phrase in [
         "resolve_runtime_database_path",
@@ -31,7 +31,7 @@ def test_profile_workspace_docs_exist_and_cover_required_topics():
         "ChatStore",
         "MemoryStore",
         "Attachments",
-        "does not migrate every runtime store",
+        "must never fall back",
     ]:
         assert phrase in profile_doc
 

@@ -11,9 +11,6 @@ input_data:
     context_limit : int (任意) コンテキスト上限（デフォルト 128000）
 """
 
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from blocks._common import ok, error
 from domain.agent.role_registry import RoleRegistry

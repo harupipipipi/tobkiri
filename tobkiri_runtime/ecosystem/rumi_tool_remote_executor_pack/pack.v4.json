@@ -1,0 +1,121 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:2d9bda3a4bed0a40647be0e2ebba743a3a6ca395b714d34f481c722ddd4f9d1e",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:e60e67ca506a45acb77f711333f6b73c8987121466f479dc0c2e125526d6989a",
+      "kind": "executable",
+      "path": "runtime/executor.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.tool.execute.v1",
+      "operations": [
+        "rumi_tool_remote_executor_pack.tool-remote-execute"
+      ],
+      "revision_digest": "sha256:6a91b911d926084884afb7f9ee2321af5d226af60c1438c5f6398b408c0240dd"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:6a91b911d926084884afb7f9ee2321af5d226af60c1438c5f6398b408c0240dd",
+      "id": "rumi_tool_remote_executor_pack.tool-executor.remote",
+      "implementation_digest": "sha256:e60e67ca506a45acb77f711333f6b73c8987121466f479dc0c2e125526d6989a",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_remote_executor_pack.tool-remote-execute"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:7ee28a7ef8da430033f103c3ba8b9ca0929562b87a6e4bf48526230026eb53f8",
+    "contract_catalog_digest": "sha256:26e45232bf6c11fd12b7ff893dbff38ae161917b281162eb91d248f7f2df6cc1",
+    "source_identity": "sha256:bb47f63458185304712a21e1c98755d6684997a730ab915678365e2c8a48eddf"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.tool.execute.v1",
+      "rumi:ecosystem/rumi_tool_remote_executor_pack",
+      "rumi_tool_remote_executor_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.service.tool.execute.v1",
+      "effect_ceiling": [
+        "capability:tool.execute",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_tool_remote_executor_pack.tool-remote-execute",
+      "owner": "rumi_tool_remote_executor_pack",
+      "provider_id": "rumi_tool_remote_executor_pack.tool-executor.remote",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:7ee28a7ef8da430033f103c3ba8b9ca0929562b87a6e4bf48526230026eb53f8",
+    "display_name": "Rumi Tool Remote Executor",
+    "id": "rumi_tool_remote_executor_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:bb47f63458185304712a21e1c98755d6684997a730ab915678365e2c8a48eddf",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:bb47f63458185304712a21e1c98755d6684997a730ab915678365e2c8a48eddf",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_tool_remote_executor_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.service.tool.execute.v1",
+      "operations": [
+        "rumi_tool_remote_executor_pack.tool-remote-execute"
+      ],
+      "owner": "rumi_tool_remote_executor_pack",
+      "provider_id": "rumi_tool_remote_executor_pack.tool-executor.remote"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "tool.execute"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.service.tool.remote.operation.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

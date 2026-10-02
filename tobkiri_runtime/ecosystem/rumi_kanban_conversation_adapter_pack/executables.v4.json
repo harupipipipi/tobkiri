@@ -1,0 +1,42 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:5ccfca807ecb47a7c42b66814bd1ad2df4a4134322614c91578666b3efecf05e",
+  "pack_id": "rumi_kanban_conversation_adapter_pack",
+  "source_identity": "sha256:436cd3064556cb4d77fd7328e24bce4e4e6f6d4a8057b0c23d0603a0a7dd1d32",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_kanban_conversation_adapter_pack.kanban-conversation.import",
+      "implementation_digest": "sha256:3a1c4b115c1f07a423aaf32cb281452ef21e0d79a559ac6b6a24f5c99711296f",
+      "implementation_path": "runtime/adapter.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.kanban.conversation_import.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_kanban_conversation_adapter_pack.kanban-conversation-import",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:078bb6d96ff420cbefa4d7b7b2fc61b28b1a8b419e002c34d406edfc463557b3",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_kanban_conversation_adapter_pack.kanban-conversation.import.python"
+    }
+  ]
+}

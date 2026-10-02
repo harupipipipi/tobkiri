@@ -23,9 +23,9 @@ class CLIAdapter:
         return self._session_id
 
     def send_message(self, chat_id: str, content: str) -> Dict[str, Any]:
-        from ..chat.chat_manager import get_chat_manager
+        from ..chat.chat_manager import Message, get_chat_manager
         mgr = get_chat_manager()
-        return mgr.add_message(chat_id, "user", content)
+        return mgr.add_message(chat_id, Message(role="user", content=content)).to_dict()
 
     def list_conversations(self) -> List[Dict[str, Any]]:
         from ..chat.chat_manager import get_chat_manager
@@ -33,7 +33,7 @@ class CLIAdapter:
 
     def list_tools(self) -> List[Dict[str, Any]]:
         from ..tool.tool_manager import get_tool_manager
-        return get_tool_manager().list_all()
+        return [tool.to_dict() for tool in get_tool_manager().list_all()]
 
     def list_prompts(self) -> List[Dict[str, Any]]:
         from ..prompt.prompt_manager import get_prompt_manager

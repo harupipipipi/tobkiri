@@ -137,23 +137,22 @@ def test_provider_tool_schema_compacts_large_definition_payloads():
     }
 
 
-def test_provider_tool_schema_falls_back_when_flat_payload_still_exceeds_budget():
-    from domain.tool.schema_adapter import sanitize_provider_tool_schema
+def test_provider_tool_schema_fails_closed_when_flat_payload_exceeds_budget():
+    from domain.tool.schema_adapter import ToolSchemaError, sanitize_provider_tool_schema
 
-    schema = sanitize_provider_tool_schema(
-        {
-            "type": "object",
-            "properties": {
-                f"field_{index:04}": {
-                    "type": "string",
-                    "description": "large generated field",
-                }
-                for index in range(500)
-            },
-        }
-    )
-
-    assert schema == {"type": "object", "properties": {}, "required": []}
+    with pytest.raises(ToolSchemaError, match="exceeds the provider budget"):
+        sanitize_provider_tool_schema(
+            {
+                "type": "object",
+                "properties": {
+                    f"field_{index:04}": {
+                        "type": "string",
+                        "description": "large generated field",
+                    }
+                    for index in range(500)
+                },
+            }
+        )
 
 
 def test_function_tool_adapter_sanitizes_existing_function_parameters():
@@ -209,14 +208,11 @@ def test_provider_adapter_and_manifest_helper_use_safe_parameters():
     }
 
 
-def test_provider_tool_schema_rejects_singleton_null_directly_but_adapters_fall_back():
+def test_provider_tool_schema_rejects_singleton_null_at_every_adapter_boundary():
     from domain.tool.schema_adapter import ToolSchemaError, provider_tool_parameters, sanitize_provider_tool_schema
 
     with pytest.raises(ToolSchemaError):
         sanitize_provider_tool_schema({"type": "null"})
 
-    assert provider_tool_parameters({"type": "null"}) == {
-        "type": "object",
-        "properties": {},
-        "required": [],
-    }
+    with pytest.raises(ToolSchemaError):
+        provider_tool_parameters({"type": "null"})
