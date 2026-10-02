@@ -18,6 +18,10 @@ from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
 from core_runtime.authority.v4 import AuthorityScope
+from core_runtime.workspace_task_effect import (
+    workspace_task_payload,
+    workspace_task_snapshot,
+)
 from tobkiri_host.broker import PreparedInvocation, RequestBroker
 from tobkiri_host.interactive_effects import (
     PendingEffectController,
@@ -32,6 +36,7 @@ from tobkiri_host.ports import (
     InteractiveEffectStatus,
 )
 from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.workspace_task_v1 import EXECUTE, PREPARE, TASK_CONTRACT
 
 
 class InteractiveEffectUnavailable(PermissionError):
@@ -54,6 +59,13 @@ class InteractiveEffectSpec:
 
 
 INTERACTIVE_EFFECT_SPECS: Mapping[str, InteractiveEffectSpec] = {
+    "workspace_task": InteractiveEffectSpec(
+        kind="workspace_task",
+        prepare_contract_id=TASK_CONTRACT,
+        prepare_operation_id=PREPARE,
+        execute_contract_id=TASK_CONTRACT,
+        execute_operation_id=EXECUTE,
+    ),
     "mcp_connect": InteractiveEffectSpec(
         kind="mcp_connect",
         prepare_contract_id="tobkiri.service.mcp.connection.v1",
@@ -210,9 +222,19 @@ class HostInteractiveEffectService(InteractiveEffectPort):
                 self._MAX_REQUEST_BYTES,
             )
             _reject_authority_fields(request, self._FORBIDDEN_AUTHORITY_FIELDS)
-            execute_payload = _execute_payload(route.spec, request, prepared_result)
+            execute_payload = _execute_payload(
+                route.spec,
+                request,
+                prepared_result,
+                context=command.context,
+                now=self._clock(),
+            )
             execute_context = self._context_for_execute(route, command.context)
             self._validate_execute_context(execute_context, route)
+            if route.spec.kind == "workspace_task":
+                self._validate_outer_context(
+                    execute_context, route.coordinator_principal
+                )
             prepared = self._broker.prepare(
                 InvocationFrame(
                     contract_id=route.spec.execute_contract_id,
@@ -230,6 +252,22 @@ class HostInteractiveEffectService(InteractiveEffectPort):
                 or prepared.binding.principal_ref != route.execute_target_principal
             ):
                 raise InteractiveEffectUnavailable("interactive effect is unavailable")
+            expires_at = self._clock() + self._EXPIRY_SECONDS
+            if route.spec.kind == "workspace_task":
+                frozen_payload = _json_mapping(
+                    prepared.normalized_payload, self._MAX_REQUEST_BYTES
+                )
+                if frozen_payload != execute_payload:
+                    raise InteractiveEffectUnavailable(
+                        "interactive effect is unavailable"
+                    )
+                expires_at = min(
+                    expires_at, execute_payload["task_plan"]["expires_at_ms"] / 1000
+                )
+                if expires_at <= self._clock():
+                    raise InteractiveEffectUnavailable(
+                        "interactive effect is unavailable"
+                    )
             effect_scope = _effect_scope(
                 route.execute_ceiling,
                 request_digest=prepared.request_digest,
@@ -251,7 +289,7 @@ class HostInteractiveEffectService(InteractiveEffectPort):
                 # request digest which become the durable PendingEffect, not
                 # the browser's optional presentation copy.
                 presentation_metadata=_presentation_metadata(route.spec, prepared),
-                expires_at=self._clock() + self._EXPIRY_SECONDS,
+                expires_at=expires_at,
                 typed_confirmation_phrase="EXECUTE",
                 correlation_id=command.correlation_id,
             )
@@ -411,9 +449,24 @@ def _execute_payload(
     spec: InteractiveEffectSpec,
     request: Mapping[str, Any],
     prepared_result: Mapping[str, Any],
+    *,
+    context: RequestContext | None = None,
+    now: float | None = None,
 ) -> dict[str, Any]:
     """Turn a Provider-produced prepare result into one fixed execute payload."""
 
+    if spec.kind == "workspace_task":
+        try:
+            return workspace_task_payload(
+                request,
+                prepared_result,
+                context=context,
+                now=time.time() if now is None else now,
+            )
+        except (TypeError, ValueError, KeyError) as exc:
+            raise InteractiveEffectUnavailable(
+                "interactive effect is unavailable"
+            ) from exc
     if spec.kind == "mcp_connect":
         mcp_plan = _json_mapping(prepared_result, HostInteractiveEffectService._MAX_REQUEST_BYTES)
         if (
@@ -594,6 +647,23 @@ def _presentation_metadata(
         prepared.normalized_payload,
         HostInteractiveEffectService._MAX_REQUEST_BYTES,
     )
+    if spec.kind == "workspace_task":
+        try:
+            plan = workspace_task_snapshot(payload)
+        except (TypeError, ValueError, KeyError) as exc:
+            raise InteractiveEffectUnavailable(
+                "interactive effect is unavailable"
+            ) from exc
+        return _presentation(
+            action="Run workspace container task",
+            summary="Run the prepared container task in its captured workspace.",
+            detail=(
+                f"Workspace: {_display_text(plan['workspace_id'])}\n"
+                f"Image: {_display_text(plan['image_reference'])}\n"
+                f"argv: {_display_argv(plan['argv'])}\n"
+                f"Timeout: {plan['timeout_seconds']} seconds"
+            ),
+        )
     if spec.kind == "mcp_connect":
         plan, request = payload.get("plan"), payload.get("request")
         if not isinstance(plan, Mapping) or not isinstance(request, Mapping):
