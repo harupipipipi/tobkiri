@@ -5,28 +5,80 @@ from __future__ import annotations
 import hashlib
 import time
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from core_runtime.authority.v4 import AuthorityStore, FunctionPrincipal, LeaseState
+from core_runtime.local_model_transport import LocalModelBinding, LocalModelTransport
 from tobkiri_host.broker import RequestEnvelope
+from tobkiri_host.contracts import ResolvedOperationBinding
 from tobkiri_protocol.canonical import strict_loads
 from tobkiri_protocol.secure_persistence import SecureDirectory
 
-from core_runtime.authority.v4 import AuthorityStore, FunctionPrincipal, LeaseState
-from core_runtime.local_model_transport import LocalModelBinding, LocalModelTransport
-
 LOCAL_ADAPTER = "local-openai-compatible"
 ALLOWLIST_VERSION = "tobkiri.host.local-models.v1"
-_LOCAL_OPERATIONS = {
-    "rumi_provider_adapters_pack.provider.compatibility.generate": (
-        "rumi_provider_adapters_pack.provider-generate",
-        "tobkiri.service.ai.provider.generate.v1",
-    ),
-    "rumi_provider_adapters_pack.provider.compatibility.stream": (
-        "rumi_provider_adapters_pack.provider-stream",
-        "tobkiri.service.ai.provider.stream.v1",
-    ),
-}
+LOCAL_REGISTRY_CONTRACT = "tobkiri.resource.ai.provider.registry.v1"
+_LOCAL_CONTRACTS = frozenset({
+    "tobkiri.service.ai.provider.generate.v1",
+    "tobkiri.service.ai.provider.stream.v1",
+})
+
+
+@dataclass(frozen=True)
+class LocalModelRequest:
+    """Static local-inference declaration from a verified Host factory."""
+
+    contract_id: str
+    registry_operation_id: str
+
+
+@dataclass(frozen=True)
+class LocalModelInvocationBinding:
+    """Exact captured Host function and its caller-bound registry dependency."""
+
+    principal: FunctionPrincipal
+    contract_id: str
+    contract_version: str
+    registry_principal: FunctionPrincipal
+    registry_operation_id: str
+
+
+def capture_local_model_binding(
+    binding: ResolvedOperationBinding,
+    registry_binding: ResolvedOperationBinding,
+) -> LocalModelInvocationBinding:
+    """Validate canonical semantics after the Host resolves the exact Plan edge."""
+    if (
+        binding.operation.contract_id not in _LOCAL_CONTRACTS
+        or binding.operation.contract_version != "1.0.0"
+        or registry_binding.operation.contract_id != LOCAL_REGISTRY_CONTRACT
+        or registry_binding.operation.contract_version != "1.0.0"
+    ):
+        raise PermissionError("local model contract binding is invalid")
+    principal = FunctionPrincipal(
+        parent_artifact_digest=binding.artifact.digest,
+        function_implementation_digest=binding.function.implementation_digest,
+        function_id=binding.function.function_id,
+        contract_revision_digest=binding.operation.revision_digest,
+        operation_id=binding.operation.operation_id,
+    )
+    if principal.principal_id != binding.principal_ref.value:
+        raise PermissionError("local model principal binding is invalid")
+    registry_principal = FunctionPrincipal(
+        parent_artifact_digest=registry_binding.artifact.digest,
+        function_implementation_digest=registry_binding.function.implementation_digest,
+        function_id=registry_binding.function.function_id,
+        contract_revision_digest=registry_binding.operation.revision_digest,
+        operation_id=registry_binding.operation.operation_id,
+    )
+    if registry_principal.principal_id != registry_binding.principal_ref.value:
+        raise PermissionError("local model registry principal binding is invalid")
+    return LocalModelInvocationBinding(
+        principal, binding.operation.contract_id,
+        binding.operation.contract_version, registry_principal,
+        registry_binding.operation.operation_id,
+    )
 
 
 def create_local_model_transport(
@@ -37,12 +89,15 @@ def create_local_model_transport(
     user_data_root: Path,
     registry_snapshot: Callable[[], Mapping[str, Any]],
     assert_current: Callable[[], None],
+    binding: LocalModelInvocationBinding | None = None,
 ) -> LocalModelTransport | None:
-    """Give only the exact trusted chat adapter its credential-free capability."""
+    """Give only an exact captured Host function its credential-free capability."""
     if (
-        principal.function_id not in _LOCAL_OPERATIONS
-        or (envelope.operation_id, envelope.contract_id)
-        != _LOCAL_OPERATIONS.get(principal.function_id)
+        binding is None
+        or principal != binding.principal
+        or binding.contract_id not in _LOCAL_CONTRACTS
+        or envelope.contract_id != binding.contract_id
+        or envelope.contract_version != binding.contract_version
         or principal.operation_id != envelope.operation_id
         or envelope.target_principal.value != principal.principal_id
     ):

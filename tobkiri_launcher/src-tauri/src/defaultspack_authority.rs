@@ -474,7 +474,7 @@ impl SignedApplicationResolver {
         if let Some(kind) = reconfirmation {
             #[cfg(target_os = "macos")]
             if selected_variant.platform == "macos" {
-                let artifact = pack_root
+                let artifact = application_pack_root
                     .join("platform-artifacts")
                     .join(safe_relative(&selected_variant.artifact_ref)?);
                 let status = std::process::Command::new("/usr/bin/codesign")

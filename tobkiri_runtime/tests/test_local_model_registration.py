@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 from core_runtime.local_model_authority import ALLOWLIST_VERSION, LOCAL_ADAPTER
+from core_runtime.local_model_registration import register as register_with_port
 from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
 
 ENDPOINT = "http://127.0.0.1:18080/v1"
@@ -18,10 +19,57 @@ MODEL = "local-model"
 PROVIDER = "provider.existing"
 
 
+@pytest.mark.parametrize("profile", ["../defaults", " defaults ", "a..b", "", None])
+def test_generic_port_cannot_bypass_canonical_profile(
+    tmp_path: Path, profile: Any,
+) -> None:
+    class Registry:
+        profile_id = profile
+
+        def snapshot(self):
+            raise AssertionError("invalid identity must fail before registry access")
+
+    with pytest.raises((ValueError, TypeError)):
+        register_with_port(
+            user_data=tmp_path, profile=profile, provider=PROVIDER,
+            endpoint=ENDPOINT, model=MODEL, registry=Registry(),
+        )
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("snapshot", [
+    None,
+    {"profile_id": "foreign", "providers": [], "revision": 0},
+    {"profile_id": "defaults", "providers": {}, "revision": 0},
+    {"profile_id": "defaults", "providers": [None], "revision": 0},
+    {"profile_id": "defaults", "providers": [], "revision": True},
+    {"profile_id": "defaults", "providers": [], "revision": -1},
+])
+def test_generic_port_rejects_invalid_snapshot_before_allowlist_write(
+    tmp_path: Path, snapshot: Any,
+) -> None:
+    class Registry:
+        profile_id = "defaults"
+
+        def snapshot(self):
+            return snapshot
+
+        def save(self, *_args, **_kwargs):
+            raise AssertionError("invalid snapshot must never save")
+
+    with pytest.raises(ValueError, match="snapshot"):
+        register_with_port(
+            user_data=tmp_path, profile="defaults", provider=PROVIDER,
+            endpoint=ENDPOINT, model=MODEL, registry=Registry(),
+        )
+    assert not (tmp_path / "host_local_models/allowlist.json").exists()
+
+
 @pytest.fixture(scope="module")
 def registration_script() -> ModuleType:
     """Load the operator tool without invoking its command-line entrypoint."""
-    path = Path(__file__).resolve().parents[2] / "scripts/register_local_model.py"
+    path = (Path(__file__).resolve().parents[1]
+            / "ecosystem/rumi_provider_registry_pack/tools/register_local_model.py")
     spec = importlib.util.spec_from_file_location("local_model_registration", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

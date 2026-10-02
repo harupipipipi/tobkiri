@@ -19,6 +19,7 @@ from core_runtime.global_contract_dispatch import GlobalContractInvocationError
 from core_runtime.local_model_authority import (
     ALLOWLIST_VERSION,
     LOCAL_ADAPTER,
+    LocalModelInvocationBinding,
     create_local_model_transport,
 )
 from ecosystem.rumi_provider_adapters_pack.runtime.adapter import (
@@ -46,6 +47,13 @@ def _principal(kind: str = "generate") -> FunctionPrincipal:
         function_id=ADAPTER_FUNCTION + kind,
         contract_revision_digest=_digest("contract-" + kind),
         operation_id=ADAPTER_OPERATION + kind,
+    )
+
+
+def _captured_binding(kind: str = "generate") -> LocalModelInvocationBinding:
+    return LocalModelInvocationBinding(
+        _principal(kind), f"tobkiri.service.ai.provider.{kind}.v1", "1.0.0",
+        _principal("registry"), "fixture.registry.read",
     )
 
 
@@ -93,6 +101,7 @@ class AuthorityHarness:
     snapshot: dict[str, Any]
     directory: SecureDirectory
     document: dict[str, Any]
+    binding: LocalModelInvocationBinding
     current_error: Exception | None = None
     current_checks: int = 0
 
@@ -112,6 +121,7 @@ class AuthorityHarness:
             user_data_root=self.root,
             registry_snapshot=lambda: self.snapshot,
             assert_current=self.assert_current,
+            binding=self.binding,
         )
 
     def post(self, transport: Any | None = None, **body_changes: Any) -> Any:
@@ -146,6 +156,7 @@ def authority(tmp_path: Path) -> AuthorityHarness:
         context=context,
         operation_id=principal.operation_id,
         contract_id="tobkiri.service.ai.provider.generate.v1",
+        contract_version="1.0.0",
         target_principal=SimpleNamespace(value=principal.principal_id),
         target_domain=SimpleNamespace(value=context.target_domain_id),
         request_digest=_digest("request"),
@@ -187,6 +198,7 @@ def authority(tmp_path: Path) -> AuthorityHarness:
         snapshot,
         directory,
         document,
+        _captured_binding(),
     )
     harness.write_allowlist()
     return harness
@@ -260,6 +272,7 @@ def test_real_adapter_function_and_operation_receive_local_transport(
     kind: str,
 ) -> None:
     authority.principal = _principal(kind)
+    authority.binding = _captured_binding(kind)
     authority.envelope.operation_id = authority.principal.operation_id
     authority.envelope.contract_id = f"tobkiri.service.ai.provider.{kind}.v1"
     authority.envelope.target_principal.value = authority.principal.principal_id
@@ -283,6 +296,59 @@ def test_other_functions_never_receive_local_transport(
     authority.envelope.contract_id = f"tobkiri.service.ai.provider.{kind}.v1"
     authority.envelope.target_principal.value = authority.principal.principal_id
     assert authority.transport() is None
+    assert not wire.created
+
+
+def test_captured_text_provider_does_not_require_a_product_pack_name(
+    authority: AuthorityHarness, wire: Any,
+) -> None:
+    principal = replace(
+        authority.principal, function_id="third_party.text.generate",
+        operation_id="third_party.text.infer",
+    )
+    authority.principal = principal
+    authority.binding = replace(authority.binding, principal=principal)
+    authority.envelope.operation_id = principal.operation_id
+    authority.envelope.target_principal.value = principal.principal_id
+    authority.store.durable.target = principal
+    assert authority.post()["choices"]
+    assert len(wire.sent) == 1
+
+
+@pytest.mark.parametrize("field", [
+    "parent_artifact_digest", "function_implementation_digest",
+    "contract_revision_digest", "operation_id",
+])
+def test_changed_identity_cannot_reuse_captured_local_transport(
+    authority: AuthorityHarness, wire: Any, field: str,
+) -> None:
+    value = "third_party.other-operation" if field == "operation_id" else _digest(field)
+    principal = replace(authority.principal, **{field: value})
+    authority.principal = principal
+    authority.envelope.operation_id = principal.operation_id
+    authority.envelope.target_principal.value = principal.principal_id
+    authority.store.durable.target = principal
+    assert authority.transport() is None
+    assert not wire.created
+
+
+def test_contract_version_must_match_the_captured_binding(
+    authority: AuthorityHarness, wire: Any,
+) -> None:
+    authority.envelope.contract_version = "2.0.0"
+    assert authority.transport() is None
+    assert not wire.created
+
+
+def test_absent_capture_never_receives_local_transport(
+    authority: AuthorityHarness, wire: Any,
+) -> None:
+    assert create_local_model_transport(
+        envelope=authority.envelope, principal=authority.principal,
+        authority_store=authority.store, user_data_root=authority.root,
+        registry_snapshot=lambda: authority.snapshot,
+        assert_current=authority.assert_current,
+    ) is None
     assert not wire.created
 
 
@@ -605,6 +671,7 @@ def test_local_adapter_uses_credential_free_host_transport(
 ) -> None:
     if streaming:
         authority.principal = _principal("stream")
+        authority.binding = _captured_binding("stream")
         authority.envelope.operation_id = authority.principal.operation_id
         authority.envelope.contract_id = "tobkiri.service.ai.provider.stream.v1"
         authority.envelope.target_principal.value = authority.principal.principal_id
@@ -725,6 +792,7 @@ def test_withdrawal_during_nested_registry_read_is_fenced(
         user_data_root=authority.root,
         registry_snapshot=snapshot,
         assert_current=authority.assert_current,
+        binding=authority.binding,
     )
     expected_error = FileNotFoundError if mutation == "allowlist_deleted" else PermissionError
     with pytest.raises(expected_error):

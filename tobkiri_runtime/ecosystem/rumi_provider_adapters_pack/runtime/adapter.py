@@ -16,6 +16,7 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
 )
+from core_runtime.local_model_authority import LocalModelRequest
 
 REGISTRY_CONTRACT = "tobkiri.resource.ai.provider.registry.v1"
 REGISTRY_GENERATE_OPERATION = (
@@ -522,6 +523,15 @@ class ProviderAdapterHostFactoryV4:
 
     def __init__(self, function_id: str) -> None:
         self.function_id = function_id
+        operation_factory = _PROVIDER_OPERATIONS[function_id][1]
+        self.local_model_request = (
+            LocalModelRequest(
+                "tobkiri.service.ai.provider.generate.v1", REGISTRY_GENERATE_OPERATION,
+            ) if operation_factory is create_generate_operation else
+            LocalModelRequest(
+                "tobkiri.service.ai.provider.stream.v1", REGISTRY_STREAM_OPERATION,
+            ) if operation_factory is create_stream_operation else None
+        )
 
     def capture(
         self,

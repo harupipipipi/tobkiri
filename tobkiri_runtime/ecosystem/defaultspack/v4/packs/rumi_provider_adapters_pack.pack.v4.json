@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:508a6db8b0374a728036c6ae4de8496566e81a2ba06559676fb7174ffa57ced3",
+      "digest": "sha256:5e1cfe601e7c3dd71f32438af2ad2f8ae5c057b683f224d9fd240beeef7147ab",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -11,7 +11,7 @@
       "path": "runtime/__init__.py"
     },
     {
-      "digest": "sha256:8c5548a610d73021193bc1d135204e5c5f916eb1337a4d9dea90f41b8902a6f4",
+      "digest": "sha256:638df28e85042c3cd1d6438bc8fa1805d7d39b8d3ad18a2eab00246fceff9320",
       "kind": "executable",
       "path": "runtime/adapter.py"
     }
@@ -50,7 +50,7 @@
     {
       "contract_revision_digest": "sha256:db8ee8dcc31de8027c11e5365957d215bc0232445215c887b687c284f6fe5900",
       "id": "rumi_provider_adapters_pack.provider.compatibility.embedding",
-      "implementation_digest": "sha256:8c5548a610d73021193bc1d135204e5c5f916eb1337a4d9dea90f41b8902a6f4",
+      "implementation_digest": "sha256:638df28e85042c3cd1d6438bc8fa1805d7d39b8d3ad18a2eab00246fceff9320",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_provider_adapters_pack.provider-embedding"
@@ -60,7 +60,7 @@
     {
       "contract_revision_digest": "sha256:729e08de33262fe2c1b9269ed22d4090f0fcd29321301c46d093c808c9211e95",
       "id": "rumi_provider_adapters_pack.provider.compatibility.generate",
-      "implementation_digest": "sha256:8c5548a610d73021193bc1d135204e5c5f916eb1337a4d9dea90f41b8902a6f4",
+      "implementation_digest": "sha256:638df28e85042c3cd1d6438bc8fa1805d7d39b8d3ad18a2eab00246fceff9320",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_provider_adapters_pack.provider-generate"
@@ -70,7 +70,7 @@
     {
       "contract_revision_digest": "sha256:52384fb3134e7721abccba551ecbf00ca5522c4512709746d8b781b4266f9376",
       "id": "rumi_provider_adapters_pack.provider.compatibility.image",
-      "implementation_digest": "sha256:8c5548a610d73021193bc1d135204e5c5f916eb1337a4d9dea90f41b8902a6f4",
+      "implementation_digest": "sha256:638df28e85042c3cd1d6438bc8fa1805d7d39b8d3ad18a2eab00246fceff9320",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_provider_adapters_pack.provider-image"
@@ -80,7 +80,7 @@
     {
       "contract_revision_digest": "sha256:8fd2fa8b32bf0d21ffbf0ca8976feeefe042ed54a3e8c6ef93bf00bb9cba971d",
       "id": "rumi_provider_adapters_pack.provider.compatibility.stream",
-      "implementation_digest": "sha256:8c5548a610d73021193bc1d135204e5c5f916eb1337a4d9dea90f41b8902a6f4",
+      "implementation_digest": "sha256:638df28e85042c3cd1d6438bc8fa1805d7d39b8d3ad18a2eab00246fceff9320",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_provider_adapters_pack.provider-stream"
@@ -89,8 +89,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:8214c6b1db04ef99b080d8bfbf42ce00e44e20b500e73cabbca541c7df6e0063",
-    "artifact_set_digest": "sha256:7c986b4506e21b264e051a89a19a9f2a4be9400a2bcbd82969d63b7ed1a546dc",
+    "source_identity": "sha256:cc901acd29e1a2daaff9e36f5077c6a02d1f864dcd3d9a57c0705fd89dc9b0d3",
+    "artifact_set_digest": "sha256:1a62cc3655a0d1f209b1790403b3619157c8846013fe862a79b06e96d608856c",
     "contract_catalog_digest": "sha256:85dc56b135ead0454993a94a079726d8b2eef17c516cfc68537bbafa11e0399c"
   },
   "migration": {
@@ -141,7 +141,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:35bec0e8115572e5624a0d0ddd3c1397f210ee23dc46f09c789685cc5890e579",
+    "artifact_digest": "sha256:ece292bf05178438fe3a183c91c5527522727d804e426055b71150123e37ab77",
     "display_name": "Rumi Provider Adapters",
     "id": "rumi_provider_adapters_pack",
     "kind": "host_extension",
@@ -152,15 +152,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_provider_adapters_pack/pack.v4.json",
-    "source_digest": "sha256:8214c6b1db04ef99b080d8bfbf42ce00e44e20b500e73cabbca541c7df6e0063",
+    "source_digest": "sha256:cc901acd29e1a2daaff9e36f5077c6a02d1f864dcd3d9a57c0705fd89dc9b0d3",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:c6509999b0e8c5a0d90568a6dd521f03ccf5c43e4da7ab327b97b27a5530c4b6",
+    "content_root_digest": "sha256:b73ea79dc4da973d2f67963055c281391f5da8e57bf211a06d0633795f8c3a6f",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
-    "input_inventory_digest": "sha256:5293070ee4a2f2e1ee8915cff3c587ca8ac8b9c4e0be08c5ed955b39a3820192",
+    "input_inventory_digest": "sha256:03cfb5c0628e6eeb7b4bebdd4e6e54a8123a872e1b329b2a31f513fc67a8911b",
     "normative": true,
     "evidence": [
       {
@@ -171,7 +171,7 @@
       {
         "path": "ecosystem/rumi_provider_adapters_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:8214c6b1db04ef99b080d8bfbf42ce00e44e20b500e73cabbca541c7df6e0063"
+        "digest": "sha256:cc901acd29e1a2daaff9e36f5077c6a02d1f864dcd3d9a57c0705fd89dc9b0d3"
       }
     ]
   },

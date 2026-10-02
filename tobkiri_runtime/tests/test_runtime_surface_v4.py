@@ -239,6 +239,9 @@ def _normalize_flow_ui_envelope(
     volatile_keys = (
         "artifact_digest", "invocation_catalog_hash", "catalog_digest",
         "activation_id", "function_principal_id", "authority_reference",
+        # This ID includes the complete source-bound Function principal.
+        # Its real binding is checked before comparing the presentation fixture.
+        "contribution_id",
     )
     for key in volatile_keys:
         normalized_operation[key] = fixture_operation[key]
@@ -499,6 +502,21 @@ def test_operations_flow_ui_fixture_comes_from_the_real_surface(
     fixture = json.loads(FLOW_UI_FIXTURE.read_text(encoding="utf-8"))
     normalized, real_operation, real_pack, real_edge = (
         _normalize_flow_ui_envelope(envelope, fixture)
+    )
+    exact_binding = next(
+        binding for binding in active_runtime.resolved.plan["bindings"]
+        if binding["caller_function_id"] == real_operation["caller_function_id"]
+        and binding["contract_id"] == real_operation["contract_id"]
+        and binding["operation_id"] == real_operation["operation_id"]
+    )
+    expected_contribution = canonical_digest({
+        "pack_id": exact_binding["pack_id"],
+        "contract_id": exact_binding["contract_id"],
+        "operation_id": exact_binding["operation_id"],
+        "function_principal": exact_binding["function_principal"],
+    })
+    assert real_operation["contribution_id"] == (
+        "operation::" + expected_contribution.removeprefix("sha256:")
     )
     assert real_operation["invocation_catalog_hash"] == capability["catalog_hash"]
     assert real_operation["catalog_digest"] == envelope["catalog_revision"]

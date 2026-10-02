@@ -38,7 +38,7 @@ Once the runner is ready, invoke the operator-only helper against the actual
 Tobkiri Host user-data directory and the intended Profile:
 
 ```sh
-python -B scripts/register_local_model.py \
+python -B tobkiri_runtime/ecosystem/rumi_provider_registry_pack/tools/register_local_model.py \
   --user-data /absolute/path/to/the/actual/host-user-data \
   --profile defaults \
   --provider provider.liquid-local \

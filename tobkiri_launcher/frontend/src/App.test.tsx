@@ -88,6 +88,51 @@ test('verification gate exposes an accessible blocked state after runtime failur
   assert.doesNotMatch(html, /unsafe runtime page/);
 });
 
+test('fresh browser storage does not override current verified Host ceremony', () => {
+  const props = gateProps({
+    isSetupDone: false,
+    runtimeReady: true,
+    runtimeStatus: 'runtime_ready',
+    hostCatalogVerified: true,
+    profileCeremonyAvailable: true,
+  });
+  const html = renderToStaticMarkup(
+    <MemoryRouter>
+      <SetupVerificationBanner {...props} />
+      <SetupVerificationGate {...props}><p>verified runtime page</p></SetupVerificationGate>
+    </MemoryRouter>,
+  );
+  assert.match(html, /verified runtime page/);
+  assert.doesNotMatch(html, /Complete setup to continue/);
+});
+
+for (const override of [
+  {runtimeDisconnected: true},
+  {runtimeStatus: 'error' as const},
+  {runtimeStatus: 'profile_reconfirmation_required' as const},
+  {defaultsBootstrapRequired: true},
+  {hostCatalogVerified: false},
+  {profileCeremonyAvailable: false},
+]) {
+  test(`fresh storage keeps authority gate closed: ${JSON.stringify(override)}`, () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <SetupVerificationGate {...gateProps({
+          isSetupDone: false,
+          runtimeReady: true,
+          runtimeStatus: 'runtime_ready',
+          hostCatalogVerified: true,
+          profileCeremonyAvailable: true,
+          ...override,
+        })}>
+          <p>unsafe runtime page</p>
+        </SetupVerificationGate>
+      </MemoryRouter>,
+    );
+    assert.doesNotMatch(html, /unsafe runtime page/);
+  });
+}
+
 test('verification banner keeps the recovery link visible without exposing runtime children', () => {
   const html = renderToStaticMarkup(
     <MemoryRouter>

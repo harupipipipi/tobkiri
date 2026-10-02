@@ -110,6 +110,7 @@ type ApiMockOptions = {
   onConversationCreate?: (payload: Record<string, unknown>) => void;
   onStreamRequest?: (payload: Record<string, unknown>) => void;
   onSavedTurnRequest?: (payload: { request: SavedTurnRequest }) => void;
+  onSettingsWrite?: (payload: Record<string, unknown>) => void;
   beforeSavedTurnResponse?: () => Promise<void> | void;
   modelProfiles?: ModelProfile[];
   applicationBuiltinChat?: boolean;
@@ -864,6 +865,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
         values?: Record<string, Record<string, unknown>>;
         patches?: Array<{ section: string; field: string; value: unknown }>;
       };
+      options.onSettingsWrite?.(payload);
       if (payload.values) {
         currentSettingsValues = JSON.parse(JSON.stringify(payload.values));
       } else {
@@ -1836,14 +1838,9 @@ test("composer tool mode menu offers supported modes and opens manual tool setti
 
 test("composer per-turn no-tools mode reaches the request and locks during generation without settings writes", async ({ page }) => {
   const savedTurnRequests: Array<{ request: SavedTurnRequest }> = [];
-  const settingsWrites: string[] = [];
+  const settingsWrites: Array<Record<string, unknown>> = [];
   let releaseSavedTurn: (() => void) | undefined;
   const savedTurnGate = new Promise<void>((resolve) => { releaseSavedTurn = resolve; });
-  page.on("request", (request) => {
-    if (request.method() === "PUT" && requestTarget(new URL(request.url())) === "/api/ui/settings") {
-      settingsWrites.push(request.url());
-    }
-  });
   await installDefaultspackApiMocks(page, {
     modelProfiles: [smokeProfile],
     applicationBuiltinChat: true,
@@ -1852,6 +1849,7 @@ test("composer per-turn no-tools mode reaches the request and locks during gener
       conversation.tags = [];
     },
     onSavedTurnRequest: (payload) => savedTurnRequests.push(payload),
+    onSettingsWrite: (payload) => settingsWrites.push(payload),
     beforeSavedTurnResponse: () => savedTurnGate,
   });
   // Select the production ChatApp through its Host-admitted builtin binding.

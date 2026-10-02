@@ -49,6 +49,8 @@ export default function App() {
   const runtimeStatus = useAppStore(state => state.runtimeStatus);
   const runtimeDisconnected = useAppStore(state => state.runtimeDisconnected);
   const defaultsBootstrapRequired = useAppStore(state => state.defaultsBootstrapRequired);
+  const hostCatalogVerified = useAppStore(state => state.hostCatalogVerified);
+  const profileCeremonyAvailable = useAppStore(state => state.profileCeremonyAvailable);
   const addToast = useAppStore(state => state.addToast);
   const refreshRuntimeHealth = useAppStore(state => state.refreshRuntimeHealth);
 
@@ -124,6 +126,8 @@ export default function App() {
         runtimeStatus={runtimeStatus}
         runtimeDisconnected={runtimeDisconnected}
         defaultsBootstrapRequired={defaultsBootstrapRequired}
+        hostCatalogVerified={hostCatalogVerified}
+        profileCeremonyAvailable={profileCeremonyAvailable}
         onRetryRuntimeHealth={refreshRuntimeHealth}
       />
       <ToastContainer />
@@ -139,6 +143,8 @@ export interface SetupVerificationGateProps {
   runtimeStatus: RuntimeStatus;
   runtimeDisconnected: boolean;
   defaultsBootstrapRequired: boolean;
+  hostCatalogVerified?: boolean;
+  profileCeremonyAvailable?: boolean;
   onRetry?: () => void | Promise<void>;
   /** Render a compact blocker inside the already-mounted panel layout. */
   embedded?: boolean;
@@ -150,6 +156,8 @@ export interface SetupVerificationBannerProps {
   runtimeStatus: RuntimeStatus;
   runtimeDisconnected: boolean;
   defaultsBootstrapRequired: boolean;
+  hostCatalogVerified?: boolean;
+  profileCeremonyAvailable?: boolean;
   onRetry?: () => void | Promise<void>;
 }
 
@@ -306,6 +314,8 @@ function useSetupVerification({
   runtimeStatus,
   runtimeDisconnected,
   defaultsBootstrapRequired,
+  hostCatalogVerified,
+  profileCeremonyAvailable,
   onRetry,
 }: SetupVerificationBannerProps) {
   const state = resolveSetupVerificationState({
@@ -314,6 +324,8 @@ function useSetupVerification({
     runtimeStatus,
     runtimeDisconnected,
     defaultsBootstrapRequired,
+    hostCatalogVerified,
+    profileCeremonyAvailable,
   });
   const [retrying, setRetrying] = useState(false);
   const retry = () => {
@@ -333,6 +345,8 @@ export function SetupVerificationBanner({
   runtimeStatus,
   runtimeDisconnected,
   defaultsBootstrapRequired,
+  hostCatalogVerified,
+  profileCeremonyAvailable,
   onRetry,
 }: SetupVerificationBannerProps) {
   const {state, retrying, retry} = useSetupVerification({
@@ -341,6 +355,8 @@ export function SetupVerificationBanner({
     runtimeStatus,
     runtimeDisconnected,
     defaultsBootstrapRequired,
+    hostCatalogVerified,
+    profileCeremonyAvailable,
     onRetry,
   });
 
@@ -431,6 +447,8 @@ export function SetupVerificationGate({
   runtimeStatus,
   runtimeDisconnected,
   defaultsBootstrapRequired,
+  hostCatalogVerified,
+  profileCeremonyAvailable,
   onRetry,
   embedded = false,
 }: SetupVerificationGateProps) {
@@ -440,6 +458,8 @@ export function SetupVerificationGate({
     runtimeStatus,
     runtimeDisconnected,
     defaultsBootstrapRequired,
+    hostCatalogVerified,
+    profileCeremonyAvailable,
     onRetry,
   });
 
@@ -476,6 +496,8 @@ export function RouteTree({
   runtimeStatus,
   runtimeDisconnected,
   defaultsBootstrapRequired,
+  hostCatalogVerified,
+  profileCeremonyAvailable,
   onRetryRuntimeHealth,
 }: {
   isSetupDone: boolean;
@@ -483,6 +505,8 @@ export function RouteTree({
   runtimeStatus: RuntimeStatus;
   runtimeDisconnected: boolean;
   defaultsBootstrapRequired: boolean;
+  hostCatalogVerified?: boolean;
+  profileCeremonyAvailable?: boolean;
   onRetryRuntimeHealth: () => Promise<void>;
 }) {
   const location = useLocation();
@@ -494,6 +518,8 @@ export function RouteTree({
       runtimeStatus={runtimeStatus}
       runtimeDisconnected={runtimeDisconnected}
       defaultsBootstrapRequired={defaultsBootstrapRequired}
+      hostCatalogVerified={hostCatalogVerified}
+      profileCeremonyAvailable={profileCeremonyAvailable}
       onRetry={onRetryRuntimeHealth}
     />
   );
@@ -504,6 +530,8 @@ export function RouteTree({
       runtimeStatus={runtimeStatus}
       runtimeDisconnected={runtimeDisconnected}
       defaultsBootstrapRequired={defaultsBootstrapRequired}
+      hostCatalogVerified={hostCatalogVerified}
+      profileCeremonyAvailable={profileCeremonyAvailable}
       onRetry={onRetryRuntimeHealth}
       embedded
     >

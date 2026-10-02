@@ -93,7 +93,13 @@ from tobkiri_protocol.secure_persistence import (
     SecurePersistenceError,
 )
 
-from core_runtime.local_model_authority import create_local_model_transport
+from core_runtime.local_model_authority import (
+    LOCAL_REGISTRY_CONTRACT,
+    LocalModelInvocationBinding,
+    LocalModelRequest,
+    capture_local_model_binding,
+    create_local_model_transport,
+)
 from core_runtime.dispatch_diagnostics import log_nested_dispatch_failure
 
 from ..authority.pack_approval_binding import pack_approval_snapshot_digest
@@ -2535,6 +2541,7 @@ def capture_production_dispatch(
     close_callbacks: list[Callable[[], None]] = []
     cancellation_handles = OwnedCancellationHandles()
     cancellation_roles: dict[str, tuple[str, str, str]] = {}
+    local_model_bindings: dict[str, LocalModelInvocationBinding] = {}
     close_callbacks.append(cancellation_handles.close)
     credential_store_binding = (
         credential_store_factory(user_data_root=authority_user_data)
@@ -2769,19 +2776,20 @@ def capture_production_dispatch(
                     self._presentation_owner_session_id,
                 ),
             )
+            local_binding = local_model_bindings.get(provider_principal.principal_id)
             local_transport = create_local_model_transport(
                 envelope=self._envelope, principal=provider_principal,
                 authority_store=authority_store, user_data_root=authority_user_data,
                 registry_snapshot=lambda: invocation_session.invoke(
-                    "tobkiri.resource.ai.provider.registry.v1",
-                    "rumi_provider_registry_pack.provider-registry-resource."
-                    + ("stream" if provider_principal.function_id.endswith(".stream") else "generate"),
+                    LOCAL_REGISTRY_CONTRACT,
+                    local_binding.registry_operation_id,
                     {"profile_id": profile_id},
                 ),
                 assert_current=self.assert_current,
+                binding=local_binding,
             ) if (
-                consumer_pack_id == "rumi_provider_adapters_pack"
-                and "tobkiri.resource.ai.provider.registry.v1" in allowed_contract_ids
+                local_binding is not None
+                and LOCAL_REGISTRY_CONTRACT in allowed_contract_ids
             ) else None
             self._client = GlobalContractClient(
                 session=invocation_session,
@@ -2853,6 +2861,28 @@ def capture_production_dispatch(
         if factory.function_id != function_id:
             raise AuthorityDenied("Host Provider hook Function identity changed")
         loaded_host_factories.append((function_id, captured_bindings, factory, backend_id))
+        local_request = getattr(factory, "local_model_request", None)
+        if local_request is not None:
+            if type(local_request) is not LocalModelRequest:
+                raise AuthorityDenied("Host local model declaration is invalid")
+            for binding in captured_bindings:
+                principal = _binding_principal(binding)
+                matches = tuple(
+                    edge for edge in captured_edges
+                    if edge.caller == principal
+                    and edge.resolved_binding.operation.contract_id == LOCAL_REGISTRY_CONTRACT
+                    and edge.resolved_binding.operation.operation_id == local_request.registry_operation_id
+                )
+                if (
+                    binding.operation.contract_id != local_request.contract_id
+                    or len(matches) != 1
+                    or matches[0].target != _binding_principal(matches[0].resolved_binding)
+                    or principal.principal_id in local_model_bindings
+                ):
+                    raise AuthorityDenied("Host local model dependency binding is invalid")
+                local_model_bindings[principal.principal_id] = capture_local_model_binding(
+                    binding, matches[0].resolved_binding,
+                )
         cancellation_group = getattr(factory, "cancellation_group", None)
         if cancellation_group is not None:
             role = getattr(factory, "cancellation_role", None)

@@ -1,41 +1,44 @@
-"""Register one explicitly approved local text runner for a desktop test.
-
-This operator tool does not download or launch programs, replace existing
-bindings, change OS permissions, or configure cloud credentials. Run only after
-starting an approved loopback runner. It is not exposed as a Pack contract.
-"""
+"""Operator-owned local model admission independent of registry Pack ownership."""
 
 from __future__ import annotations
 
-import argparse
 import json
 import re
-import sys
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any, Protocol
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tobkiri_runtime"))
-
-from core_runtime.local_model_authority import (
-    ALLOWLIST_VERSION,
-    LOCAL_ADAPTER,
-)
+from core_runtime.local_model_authority import ALLOWLIST_VERSION, LOCAL_ADAPTER
 from core_runtime.local_model_transport import LocalModelBinding
+from core_runtime.profile_workspace import validate_profile_id
 from core_runtime.runtime_locks import NamedLock
-from ecosystem.rumi_provider_registry_pack.runtime.registry import (
-    ProviderRegistry,
-)
 from tobkiri_protocol.canonical import strict_loads
 from tobkiri_protocol.secure_persistence import SecureDirectory
 
 
+class LocalModelRegistryPort(Protocol):
+    """Registry operations supplied explicitly by the owning operator composition."""
+
+    @property
+    def profile_id(self) -> str:
+        """Return the canonical Profile identity."""
+
+    def snapshot(self) -> Mapping[str, Any]:
+        """Read the current provider registry and revision."""
+
+    def save(self, record: Mapping[str, Any], *, expected_revision: int) -> Any:
+        """Save through the registry owner's revision-checked operation."""
+
+
 def register(
-    *, user_data: Path, profile: str, provider: str, endpoint: str, model: str
+    *, user_data: Path, profile: str, provider: str, endpoint: str, model: str,
+    registry: LocalModelRegistryPort
 ) -> None:
     """Add one exact tuple, refusing to replace any existing configuration."""
-    registry = ProviderRegistry(profile, user_data_root=user_data)
     if (
-        profile != registry.profile_id
+        not isinstance(profile, str)
+        or profile != validate_profile_id(profile)
+        or profile != registry.profile_id
         or not isinstance(provider, str)
         or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}", provider) is None
     ):
@@ -73,6 +76,15 @@ def register(
                 "existing Host registration differs; explicit replacement is required"
             )
         snapshot = registry.snapshot()
+        if (
+            not isinstance(snapshot, Mapping)
+            or snapshot.get("profile_id") != profile
+            or type(snapshot.get("revision")) is not int
+            or snapshot["revision"] < 0
+            or not isinstance(snapshot.get("providers"), list)
+            or any(not isinstance(item, Mapping) for item in snapshot["providers"])
+        ):
+            raise ValueError("local model registry snapshot is invalid")
         records = [
             item
             for item in snapshot["providers"]
@@ -102,31 +114,8 @@ def register(
             registry.save(
                 {
                     **expected,
-                    "display_name": "Local Liquid AI test model",
+                    "display_name": "Local text model",
                     "data_residency": "local",
                 },
                 expected_revision=snapshot["revision"],
             )
-
-
-def main() -> None:
-    """Register only the exact operator-supplied Profile and loopback model."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--user-data", type=Path, required=True)
-    parser.add_argument("--profile", required=True)
-    parser.add_argument("--provider", default="provider.liquid-local")
-    parser.add_argument("--endpoint", required=True)
-    parser.add_argument("--model", required=True)
-    args = parser.parse_args()
-    register(
-        user_data=args.user_data,
-        profile=args.profile,
-        provider=args.provider,
-        endpoint=args.endpoint,
-        model=args.model,
-    )
-    print("Local model registered. Select its connection and model in Tobkiri.")
-
-
-if __name__ == "__main__":
-    main()
