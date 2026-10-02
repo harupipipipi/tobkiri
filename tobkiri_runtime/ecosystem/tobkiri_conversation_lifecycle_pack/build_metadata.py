@@ -32,6 +32,7 @@ def build() -> dict[str, dict[str, Any]]:
         function_id = declaration["function_id"]
         operation_id = declaration["operation_id"]
         contract_id = declaration["contract_id"]
+        contract_version = declaration.get("contract_version", "1.0.0")
         properties: dict[str, Any] = {
             "profile_id": {"type": "string", "minLength": 1},
             "operation": {"type": "string"},
@@ -83,7 +84,7 @@ def build() -> dict[str, dict[str, Any]]:
         contract = {
             "contract_api_version": "io.tobkiri.contract.v4",
             "contract_id": contract_id,
-            "version": "1.0.0",
+            "version": contract_version,
             "owner": pack_id,
             "status": "accepted",
             "operations": [
@@ -159,7 +160,7 @@ def build() -> dict[str, dict[str, Any]]:
                 "operations": [
                     {
                         "contract_id": contract_id,
-                        "contract_version": "1.0.0",
+                        "contract_version": contract_version,
                         "revision_digest": revision,
                         "operation_id": operation_id,
                         "input_schema": input_schema,

@@ -71,7 +71,7 @@
     ],
     "runtime_artifacts": [
       {
-        "digest": "sha256:ef4bd6ba24c4b0a7c8edffd38e1acf962aae92c0d309e0e1f1ecb6a77b07495a",
+        "digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3",
         "kind": "executable",
         "path": "runtime/host.py"
       },
@@ -86,7 +86,7 @@
         "path": "frontend/contributions/lifecycle.json"
       },
       {
-        "digest": "sha256:795c9a2657cb1397e16eb44852b4382000ed8b2fcb3bad431b5b59d729b83a9d",
+        "digest": "sha256:b2a504c8f0495a06d3049988ee361dcf8570bb2cf2f2589313660e21c17805fa",
         "kind": "sidecar",
         "path": "pack-source.v1.json"
       }
@@ -95,7 +95,7 @@
       {
         "path": "ecosystem/tobkiri_conversation_lifecycle_pack/pack-source.v1.json",
         "rule_id": "reviewed-conversation-lifecycle-source",
-        "digest": "sha256:375a93379507251a5583405ec74231288e293f559bb8e8a8ba5a2a7f33d25606"
+        "digest": "sha256:b2a504c8f0495a06d3049988ee361dcf8570bb2cf2f2589313660e21c17805fa"
       }
     ],
     "source_provenance": {
@@ -124,7 +124,7 @@
           {
             "id": "tobkiri_conversation_lifecycle_pack.lifecycle-status",
             "entrypoint_id": "lifecycle-status",
-            "implementation_digest": "sha256:ef4bd6ba24c4b0a7c8edffd38e1acf962aae92c0d309e0e1f1ecb6a77b07495a"
+            "implementation_digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3"
           }
         ],
         "schemas": {
@@ -181,7 +181,7 @@
           {
             "id": "tobkiri_conversation_lifecycle_pack.lifecycle-manage",
             "entrypoint_id": "lifecycle-manage",
-            "implementation_digest": "sha256:ef4bd6ba24c4b0a7c8edffd38e1acf962aae92c0d309e0e1f1ecb6a77b07495a"
+            "implementation_digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3"
           }
         ],
         "schemas": {
@@ -226,8 +226,8 @@
         }
       },
       {
-        "contract_id": "tobkiri.action.job.adapter.v1",
-        "version": "1.0.0",
+        "contract_id": "tobkiri.action.job.adapter.v2",
+        "version": "2.0.0",
         "owner": "tobkiri_conversation_lifecycle_pack",
         "provider_id": "tobkiri_conversation_lifecycle_pack.archive-job",
         "cardinality": "many",
@@ -245,7 +245,7 @@
           {
             "id": "tobkiri_conversation_lifecycle_pack.archive-job-adapter",
             "entrypoint_id": "archive-job-adapter",
-            "implementation_digest": "sha256:ef4bd6ba24c4b0a7c8edffd38e1acf962aae92c0d309e0e1f1ecb6a77b07495a"
+            "implementation_digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3"
           }
         ],
         "schemas": {
@@ -403,8 +403,8 @@
         "operation_ids": [
           "tobkiri_conversation_lifecycle_pack.archive-job-adapter"
         ],
-        "contract_id": "tobkiri.action.job.adapter.v1",
-        "contract_version": "1.0.0",
+        "contract_id": "tobkiri.action.job.adapter.v2",
+        "contract_version": "2.0.0",
         "implementation_path": "runtime/host.py",
         "schemas": {
           "input": {
