@@ -70,3 +70,11 @@ A no-network deterministic fixture can be run from `tobkiri_runtime` with
 `python -B -m pytest --noconftest tests/test_deepthink_strategy_pack.py -q`.
 This isolates the strategy state machine and does not verify installation,
 signed Profile activation, PackVM supervision, live model behavior, or UI.
+
+## Direct HTTP source acceptance
+
+A bounded real OpenRouter source probe passed with the actual strategy
+controller and normal provider compiler. See
+[the sanitized acceptance report](docs/direct-http-source-acceptance.md)
+for phase outputs, cost, tokens, and cancellation evidence. This result does
+not establish installed/admitted PackVM or Launcher GUI acceptance.
