@@ -213,6 +213,7 @@ export type ComposerRendererProps = {
   modelStatusIndicators?: ComposerModelStatusIndicator[];
   voiceInputEnabled?: boolean;
   voiceInputUseAi?: boolean;
+  voiceScopeKey?: string;
   manualRuntimeModeSelectionEnabled?: boolean;
   mode?: AppMode;
   codingContext?: CodingContext | null;

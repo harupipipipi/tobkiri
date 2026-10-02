@@ -311,7 +311,7 @@ def _bridge_request(
     request = checked_state["request"]
     if pending["kind"] == "quote":
         target = _QUOTE_TARGET
-        bridge_payload = _quote_payload(request, pending["messages"])
+        bridge_payload = _quote_payload(request, pending["messages"], pending["tools"])
     else:
         target = _GENERATE_TARGET
         bridge_payload = _generate_payload(request, pending)
@@ -346,12 +346,16 @@ def _bridge_request(
 
 
 def _quote_payload(
-    request: Mapping[str, Any], messages: list[dict[str, Any]]
+    request: Mapping[str, Any],
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "messages": messages,
         "requirements": dict(request.get("requirements") or {}),
     }
+    if tools:
+        payload["requirements"]["tool_calling"] = True
     for key in ("model_profile_id", "model_reference"):
         if request.get(key) is not None:
             payload[key] = request[key]
@@ -365,6 +369,8 @@ def _generate_payload(
     if not isinstance(quote, Mapping):
         raise ValueError("AI strategy quote state is invalid")
     requirements = dict(request.get("requirements") or {})
+    if pending["tools"]:
+        requirements["tool_calling"] = True
     requirements["preferred_model_id"] = quote["model_id"]
     requirements["preferred_provider_instance_id"] = quote[
         "provider_instance_id"
@@ -909,6 +915,7 @@ def _review(result: Mapping[str, Any]) -> dict[str, Any]:
         raise StrategyBudgetError("strategy reviewer returned invalid JSON") from exc
     if (
         not isinstance(value, Mapping)
+        or set(value) != {"approved", "feedback"}
         or type(value.get("approved")) is not bool
         or not isinstance(value.get("feedback"), str)
     ):
