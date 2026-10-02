@@ -146,7 +146,7 @@ class ChatStore:
         for raw in self._snapshot()["conversations"]:
             item = _legacy_conversation(raw)
             metadata = item.get("metadata") or {}
-            if metadata.get("hidden") is True:
+            if _hidden_for_display(item):
                 continue
             if required_tags.difference(item.get("tags") or []):
                 continue
@@ -415,6 +415,7 @@ class ChatStore:
             copy.deepcopy(message)
             for conversation in values
             if conversation
+            and (conversation_id is not None or not _hidden_for_display(conversation))
             for message in conversation.get("messages") or []
             if needle in _message_text(message).casefold()
         ]
@@ -574,6 +575,14 @@ class ChatStore:
             raise RuntimeError("global conversation owner is unavailable")
         profile_id = captured_profile_id(session)
         return Path(USER_DATA_DIR) / "compatibility" / "conversation_artifacts" / profile_id
+
+
+def _hidden_for_display(conversation: Mapping[str, Any]) -> bool:
+    """Honor neutral visibility metadata only in display/search projections."""
+    metadata = conversation.get("metadata")
+    return isinstance(metadata, Mapping) and (
+        metadata.get("hidden") is True or metadata.get("is_hidden") is True
+    )
 
 
 def _invoke(contract_id: str, operation: str, payload: Mapping[str, Any]) -> Any:
