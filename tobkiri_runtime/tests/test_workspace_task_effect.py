@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import replace
 import json
+import time
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 from typing import Any, Iterator, Mapping
@@ -127,7 +128,7 @@ def test_workspace_task_rejects_malformed_and_authority_bearing_request(
         _execute_payload(
             INTERACTIVE_EFFECT_SPECS["workspace_task"],
             request,
-            _result(context, request),
+            _result(context, _request(context)),
             context=context,
             now=100.0,
         )
@@ -236,7 +237,8 @@ def test_workspace_task_presentation_uses_only_a_frozen_redacted_plan() -> None:
     metadata = _presentation_metadata(
         INTERACTIVE_EFFECT_SPECS["workspace_task"],
         SimpleNamespace(
-            normalized_payload=frozen, request_digest=canonical_digest(plan)
+            normalized_payload=frozen,
+            request_digest=canonical_digest(result["task_plan"]),
         ),
     )
     assert metadata["action"] == "Run workspace container task"
@@ -296,6 +298,7 @@ def host_workspace_task(
         semantics_digest=canonical_digest({"workspace-task": 1}),
     )
     harness = _Harness(tmp_path, scope=scope)
+    harness.clock.value = time.time()
     edge = approval_tests._InteractiveEdge(harness)
     adapter = AuthorityV4Adapter(
         harness.kernel,
@@ -511,7 +514,11 @@ def test_workspace_task_direct_broker_execute_has_no_profile_grant(
     payload = _execute_payload(
         INTERACTIVE_EFFECT_SPECS["workspace_task"],
         request,
-        _result(fixture.outer, request, expires_at_ms=1_060_000),
+        _result(
+            fixture.outer,
+            request,
+            expires_at_ms=int(fixture.harness.clock() * 1000) + 60_000,
+        ),
         context=fixture.outer,
         now=fixture.harness.clock(),
     )
