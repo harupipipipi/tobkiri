@@ -275,7 +275,7 @@ test("loading activity renders semantic track without bounce dots", () => {
 
   assert.match(html, /role="status"/);
   assert.match(html, /aria-label="応答を準備しています"/);
-  assert.match(html, /rumi-loading-bars/);
+  assert.match(html, /rumi-loading-pixels/);
   assert.match(html, /aria-hidden="true" class="shrink-0 font-mono/);
   assert.doesNotMatch(html, /animate-bounce/);
 });

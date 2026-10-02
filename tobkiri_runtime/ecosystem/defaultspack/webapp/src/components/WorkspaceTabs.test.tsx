@@ -7,6 +7,8 @@ import {
   DEFAULT_WORKSPACE_TAB_ID,
   WORKSPACE_TAB_CREATE_OPTIONS,
   closeWorkspaceTab,
+  CLOSED_WORKSPACE_TAB_LIMIT,
+  rememberClosedWorkspaceTab,
   WorkspaceTabBar,
   createWorkspaceTab,
   restoreLastClosedWorkspaceTab,
@@ -255,5 +257,40 @@ test("workspace routing preserves every enabled workspace kind", () => {
     );
     assert.equal(initialWorkspaceTabsForPathname(`/${kind}`, 42).at(-1)?.kind, kind);
     assert.equal(initialActiveWorkspaceTabIdForPathname(`/${kind}`), `workspace-tab-route-${kind}`);
+  }
+});
+
+
+test("closed workspace history keeps only the newest bounded entries", () => {
+  let history: Parameters<typeof rememberClosedWorkspaceTab>[0] = [];
+  for (let index = 0; index < CLOSED_WORKSPACE_TAB_LIMIT + 9; index += 1) {
+    history = rememberClosedWorkspaceTab(history, {
+      index: 0,
+      tab: createWorkspaceTab("chat", { id: `closed-${index}` }, index),
+    });
+  }
+  assert.equal(history.length, CLOSED_WORKSPACE_TAB_LIMIT);
+  assert.equal(history[0].tab.id, "closed-9");
+  assert.equal(restoreLastClosedWorkspaceTab([], history).restoredTab?.id, `closed-${CLOSED_WORKSPACE_TAB_LIMIT + 8}`);
+});
+
+test("cancelled conversations and unread idle updates are never reported as failures or success", () => {
+  const cancelled = buildConversationPresentations([{ id: "cancelled", title: "Cancel", updated_at: 0, metadata: { status: "cancelled" } }]).cancelled;
+  assert.equal(cancelled.activity, "cancelled");
+  assert.equal(cancelled.accessibleStatusLabel, "Cancelled");
+  const idle = buildConversationPresentations([{ id: "idle", title: "Idle", updated_at: 0, metadata: { unread: true } }]).idle;
+  assert.equal(idle.activity, "idle");
+  assert.equal(idle.accessibleStatusLabel, "Unread update");
+});
+
+test("conversation icon dictionaries reject inherited keys without rendering arbitrary markup", () => {
+  for (const iconId of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
+    const presentations = buildConversationPresentations([{ id: "safe", title: "Safe", updated_at: 0, metadata: { icon_id: iconId } }]);
+    const html = renderToStaticMarkup(createElement(WorkspaceTabBar, {
+      tabs: [createWorkspaceTab("chat", { conversationId: "safe" })],
+      activeTabId: "none", conversationPresentations: presentations,
+      onSelect: () => undefined, onClose: () => undefined, onCreate: () => undefined,
+    }));
+    assert.match(html, /lucide-message-square/);
   }
 });

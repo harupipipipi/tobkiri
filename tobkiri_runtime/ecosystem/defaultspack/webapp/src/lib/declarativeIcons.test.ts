@@ -29,3 +29,10 @@ test("declarative icon normalization is bounded and unknown values use fallback"
   assert.equal(declarativeIconForName("<svg onload=alert(1)>"), null);
   assert.equal(declarativeIconForName(null), null);
 });
+
+
+test("notification icon aliases reject Object prototype properties", () => {
+  for (const name of ["constructor", "__proto__", "toString", "valueOf"]) {
+    assert.equal(declarativeIconForName(name), null);
+  }
+});

@@ -1,3 +1,4 @@
+import { RuntimeActivityIndicator, useActivityClock as useActivityNow } from "../components/RuntimeActivityIndicator";
 import { Check, Box, Calculator, ChevronRight, CircleAlert, Clock, Copy, ExternalLink, FileText, GitBranch, Globe2, Image as ImageIcon, Loader2, Monitor, RefreshCw, Terminal, Wrench, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -1101,16 +1102,6 @@ function activityPhase(status: string | null | undefined, toolNames: string[]): 
   return { label: "考えています", detail: status || "応答を組み立てています" };
 }
 
-function useActivityNow(enabled: boolean): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!enabled) return undefined;
-    const interval = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(interval);
-  }, [enabled]);
-  return now;
-}
-
 function RumiActivityLoading({
   status,
   toolNames,
@@ -1123,25 +1114,8 @@ function RumiActivityLoading({
   compact?: boolean;
 }) {
   const phase = activityPhase(status, toolNames);
-  const now = useActivityNow(Boolean(startedAt));
-  const elapsed = startedAt ? elapsedDurationLabel(startedAt, now) : "";
   const statusLabel = status || phase.detail || phase.label;
-  return (
-    <div
-      className={cn("rumi-activity-loading flex max-w-full items-center gap-3 px-2 py-2 text-zinc-300", compact ? "w-fit" : "w-[min(680px,calc(100vw-48px))]")}
-      role="status"
-      aria-live="polite"
-      aria-label={statusLabel}
-    >
-      <div className="rumi-loading-bars" aria-hidden="true">
-        <span />
-      </div>
-      <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="min-w-[10rem] flex-1 break-words text-[15px] font-medium leading-5 text-zinc-200">{statusLabel}</span>
-        {elapsed && <span aria-hidden="true" className="shrink-0 font-mono text-[12px] leading-none text-zinc-500">{elapsed}</span>}
-      </div>
-    </div>
-  );
+  return <RuntimeActivityIndicator label={statusLabel} startedAt={startedAt} compact={compact} />;
 }
 
 function screenshotPreviewDetails(screenshot: BrowserScreenshot): ImagePreviewDetail[] {
@@ -1407,7 +1381,7 @@ function BrowserScreenshotStrip({
   if (!canFetchStoredScreenshots && hasRunningBrowserActivity) {
     return (
       <div className="mb-3 flex w-fit items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-[11px] text-zinc-400">
-        <Loader2 size={12} className="animate-spin text-blue-300" />
+        <Loader2 size={12} className="animate-spin text-blue-300 motion-reduce:animate-none" />
         <span>画面操作を実行中</span>
       </div>
     );
@@ -1595,7 +1569,7 @@ function ToolActivityPanel({
   if (items.length === 0) return null;
   const previewableCallIds = previewableToolActivityKeys(message.events ?? []);
   return (
-    <section className="rumi-tool-activity mb-3 grid w-full max-w-full gap-1 text-zinc-300" aria-label="ツール履歴">
+    <section className="rumi-tool-activity rumi-runtime-task-card mb-3 grid w-full max-w-full gap-1 text-zinc-300" aria-label="ツール履歴">
       <button
         type="button"
         aria-expanded={isOpen}
@@ -1603,7 +1577,7 @@ function ToolActivityPanel({
         className="flex w-fit min-w-0 max-w-full items-center gap-2 rounded px-0.5 py-1 text-left transition-colors hover:bg-zinc-900/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-600"
         onClick={onToggle}
       >
-        <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", summary.failedCount > 0 ? "bg-red-400" : summary.runningCount > 0 ? "animate-pulse bg-blue-300" : "bg-zinc-600")} />
+        <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", summary.failedCount > 0 ? "bg-red-400" : summary.runningCount > 0 ? "animate-pulse bg-blue-300 motion-reduce:animate-none" : "bg-zinc-600")} />
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-2">
             <span className="min-w-0 truncate text-[12px] font-medium leading-4 text-zinc-300">{summary.visibleTitle || `${items.length}件の作業`}</span>
@@ -1649,14 +1623,14 @@ function PendingToolTray({
   return (
     <div className={cn("mt-2 w-[min(820px,calc(100vw-64px))] px-1 py-2", inline ? "" : "ml-5")}>
       <div className="mb-2 flex items-center gap-2 text-[11px] font-medium text-zinc-400">
-        <Loader2 size={12} className="animate-spin text-blue-300" />
+        <Loader2 size={12} className="animate-spin text-blue-300 motion-reduce:animate-none" />
         <span>見込まれた tool</span>
       </div>
       <div className="flex flex-wrap gap-1.5">
         {summary.visibleNames.map((name) => {
           const folder = toolFolderFor(name);
           return (
-            <span key={name} className="inline-flex max-w-[220px] items-baseline gap-1.5 rounded-md bg-zinc-900/50 px-2 py-1 text-[11px] text-zinc-300" title={folder.label}>
+            <span key={name} className="inline-flex max-w-[220px] items-baseline gap-1.5 rumi-runtime-tool-chip rounded-full border border-[var(--rumi-border-subtle)] bg-zinc-900/50 px-2.5 py-1 text-[11px] text-zinc-300" title={folder.label}>
               <span className="truncate">{name}</span>
               {toolStartedAt[name] && <span className="font-mono text-[10px] text-zinc-600">{elapsedDurationLabel(toolStartedAt[name], now)}</span>}
             </span>
