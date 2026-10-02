@@ -1,14 +1,16 @@
-# Rumi Model Catalog Pack
+# Tobkiri Model Catalog Pack
 
-This pack is the authoritative declarative owner of the provider and model
-catalog that previously lived under defaultspack. Wave 5 relocates the existing
-catalog unchanged; it adds no provider and changes no model catalog entry.
+This Pack owns the declarative provider and model catalogs used by Tobkiri
+Defaults. It verifies the resource digest before returning routing descriptors.
+The bounded public OpenRouter inventory remains authoritative when explicitly
+queried; stale snapshots never become fresh execution capability evidence.
 
-The global catalog operation verifies the complete resource-tree digest before
-returning normalized, provider-neutral routing descriptors. It never imports
-provider execution code, reads credentials, probes remote services, or claims
-remote availability. Execution adapter versions remain independent.
+`catalog/provider-setup.json` contains hosted endpoint presets and the complete
+model choices imported by `scripts/sync_provider_model_catalog.py`. Sources,
+retrieval dates and input digests are recorded in the JSON. models.dev data is
+MIT licensed; the full notice is in `catalog/licenses/models.dev-MIT.txt`.
+The Defaults UI projection is generated from this file. No startup or build
+network request is needed to display provider or model choices.
 
-Validation was not executed by the implementation agent. Independent testing
-is required before merge, including startup, complete catalog equivalence,
-integrity rejection, pack removal, routing joins, and rollback.
+The JSON contains no credentials. A catalog choice does not assert account
+access, Provider health, tool capability trust or execution approval.

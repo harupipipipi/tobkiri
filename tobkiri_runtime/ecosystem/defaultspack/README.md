@@ -902,3 +902,12 @@ defaults 単体で以下と同等以上のユーザー体験を提供する:
 - **VS Code Extension** — defaults の handler を呼び出す Pack で実現可能
 
 これらは全て defaultspack の handler + user_data のコンテンツ（Asset、tool、agent、prompt）の組み合わせで実現される。
+
+### Hosted provider setup
+
+Open **Settings → API keys**, choose a provider, and save its API name and key.
+The connection URL and protocol are preset. Choose a model from the searchable
+list to use it in chat; model IDs and route IDs are filled automatically.
+The provider catalog is shipped as JSON, including the complete OpenRouter
+public model inventory captured during refresh. See
+[AI providers](docs/ai-providers.md) for source, license and refresh details.

@@ -102,19 +102,36 @@ def list_provider_catalog() -> List[Dict[str, Any]]:
     connection_items = connection_items if isinstance(connection_items, list) else []
     if not providers:
         return _selected_provider_fallback()
-    configured = {
-        str(item.get("provider_instance_id") or "")
-        for item in connection_items
-        if isinstance(item, dict) and item.get("enabled", True)
-    }
-    return [
-        _with_legacy_provider_fields(
-            provider,
-            configured=f"provider.{provider.get('provider_id')}" in configured,
-        )
-        for provider in providers
-        if isinstance(provider, dict)
-    ]
+    projected = []
+    for provider in providers:
+        if not isinstance(provider, dict):
+            continue
+        provider_id = str(provider.get("provider_id") or "")
+        matches = []
+        for connection in connection_items:
+            if not isinstance(connection, dict) or not connection.get("enabled", True):
+                continue
+            metadata = connection.get("metadata")
+            metadata = metadata if isinstance(metadata, dict) else {}
+            catalog_id = connection.get("catalog_provider_id") or metadata.get(
+                "catalog_provider_id"
+            )
+            instance_id = str(connection.get("provider_instance_id") or "")
+            if catalog_id == provider_id or instance_id == f"provider.{provider_id}":
+                matches.append(connection)
+        item = _with_legacy_provider_fields(provider, configured=bool(matches))
+        item["configured_api_count"] = len(matches)
+        item["named_apis"] = [
+            {
+                "api_id": str(connection.get("provider_instance_id") or ""),
+                "name": str(connection.get("display_name") or "default"),
+                "provider_instance_id": connection["provider_instance_id"],
+                "configured": True,
+            }
+            for connection in matches
+        ]
+        projected.append(item)
+    return projected
 
 
 def _selected_provider_fallback() -> List[Dict[str, Any]]:

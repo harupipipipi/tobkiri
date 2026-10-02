@@ -19,6 +19,7 @@ import {
   supportsSimpleProviderSetup,
 } from "../../../lib/providerPresets";
 import { settingsApiResources } from "../../../features/settings/resources/settingsApiResources";
+import { ModelRouteSetup } from "../../../features/models/ModelRouteSetup";
 import { availabilityCopy, type ModelAvailabilityAfterKeySave } from "../../../features/settings/resources/useModelAvailability";
 import type { SettingsFieldRendererProps } from "../fieldRendererRegistry";
 import { SearchableProviderField } from "./providerSelectField";
@@ -61,6 +62,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [saveError, setSaveError] = useState("");
   const [availability, setAvailability] = useState<ModelAvailabilityAfterKeySave | null>(null);
+  const [savedConnectionId, setSavedConnectionId] = useState("");
   const [credentialTransfer, setCredentialTransfer] = useState<{
     providerId: string;
     providerLabel?: string;
@@ -116,6 +118,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
           payload.value,
           payload.options,
         );
+        setSavedConnectionId(result.provider_instance_id ?? "");
         setAvailability(result.model_availability ?? {
           status: "route_required",
           provider_id: payload.provider_id,
@@ -191,6 +194,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
                 }}
               />
               <input
+                aria-label="APIの名前"
                 value={apiName}
                 onChange={(event) => {
                   setApiName(event.target.value);
@@ -202,6 +206,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
               <div className="flex rounded-lg border border-zinc-800 bg-zinc-900 focus-within:border-zinc-600">
                 <input
                   type="password"
+                  aria-label={savesExternalToken ? "サービスのトークン" : "APIキー"}
                   autoComplete="off"
                   value={secret}
                   onChange={(event) => {
@@ -299,6 +304,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
             message={saveError}
           />
         )}
+        {!savesExternalToken && <ModelRouteSetup preferredConnectionId={savedConnectionId} />}
         {credentialTransfer && (
           <CredentialTransferModal
             providerId={credentialTransfer.providerId}

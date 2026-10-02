@@ -2205,7 +2205,7 @@ test("saveProviderApiKey fills a known provider endpoint before the approved con
   }) as typeof fetch;
   try {
     await api.saveProviderApiKey("openai", "fixture-private-key", { apiId: "main" });
-    assert.deepEqual(bodies[0].request, f.configuration);
+    assert.deepEqual(bodies[0].request, { ...f.configuration, catalog_provider_id: "openai" });
     assert.equal(bodies[0].effect_kind, "provider_configure");
     assert.doesNotMatch(JSON.stringify(bodies.slice(1)), /fixture-private-key|https:/);
   } finally {

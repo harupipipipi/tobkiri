@@ -21,15 +21,31 @@ PREPARE_OPERATION = "rumi_provider_registry_pack.provider-configure-prepare"
 EXECUTE_OPERATION = "rumi_provider_registry_pack.provider-configure"
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}\Z")
 _FIELDS = {"connection_name", "protocol", "endpoint", "key_value"}
+_OPTIONAL_FIELDS = {"catalog_provider_id", "display_name"}
 
 
 def configuration_request(payload: Mapping[str, Any]) -> dict[str, str]:
     """Validate setup data without accepting Profile or authority selections."""
-    if set(payload) != _FIELDS or any(type(value) is not str for value in payload.values()):
+    if (
+        not _FIELDS.issubset(payload)
+        or set(payload) - (_FIELDS | _OPTIONAL_FIELDS)
+        or any(type(value) is not str for value in payload.values())
+    ):
         raise ValueError("provider configuration fields are invalid")
     name = payload["connection_name"]
     key = payload["key_value"]
     endpoint = payload["endpoint"]
+    catalog_provider_id = payload.get("catalog_provider_id")
+    display_name = payload.get("display_name")
+    if (
+        (catalog_provider_id is not None
+         and _NAME.fullmatch(catalog_provider_id) is None)
+        or (display_name is not None and (
+            not display_name.strip() or len(display_name) > 200
+            or any(ord(char) < 32 or ord(char) == 127 for char in display_name)
+        ))
+    ):
+        raise ValueError("provider catalog identity or display name is invalid")
     if (
         _NAME.fullmatch(name) is None
         or payload["protocol"] not in {"openai-compatible", "anthropic"}
@@ -50,6 +66,8 @@ def configuration_request(payload: Mapping[str, Any]) -> dict[str, str]:
         or (port is not None and not 1 <= port <= 65_535)
         or any(char.isspace() for char in endpoint)
         or key in endpoint or key in name
+        or (display_name is not None and key in display_name)
+        or (catalog_provider_id is not None and key in catalog_provider_id)
     ):
         raise ValueError("provider endpoint is invalid")
     return dict(payload)
@@ -108,11 +126,19 @@ def execute_configuration(
         or created.get("consumer_pack_id") != consumer_pack_id
     ):
         raise RuntimeError("provider credential save was not confirmed")
-    record = {
+    record: dict[str, Any] = {
         "provider_instance_id": plan["provider_instance_id"],
         "adapter_id": plan["adapter_id"], "endpoint": plan["endpoint"],
         "credential_handle": handle,
     }
+    if request.get("display_name"):
+        record["display_name"] = request["display_name"]
+    if request.get("catalog_provider_id"):
+        # Discovery metadata does not attest account access or capabilities.
+        # It is covered by the frozen request digest and never grants authority.
+        record["metadata"] = {
+            "catalog_provider_id": request["catalog_provider_id"],
+        }
     try:
         registry.save(record, expected_revision=plan["expected_revision"])
     except Exception:

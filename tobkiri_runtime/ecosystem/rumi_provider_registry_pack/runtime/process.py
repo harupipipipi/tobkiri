@@ -232,6 +232,13 @@ def _provider_connection_snapshot(
             "reachability": reachability,
             "observed_at": observed_at,
         })
+        metadata = item.get("metadata")
+        catalog_provider_id = (
+            metadata.get("catalog_provider_id")
+            if isinstance(metadata, Mapping) else None
+        )
+        if isinstance(catalog_provider_id, str) and catalog_provider_id:
+            projected[-1]["catalog_provider_id"] = catalog_provider_id
     return {"revision": revision, "providers": projected}
 
 

@@ -10,6 +10,8 @@ export type ProviderConfigurationRequest = {
   protocol: "openai-compatible" | "anthropic";
   endpoint: string;
   key_value: string;
+  catalog_provider_id?: string;
+  display_name?: string;
 };
 
 type Pending = { connection: string; effect: string | null; digest: string; correlation?: string };
