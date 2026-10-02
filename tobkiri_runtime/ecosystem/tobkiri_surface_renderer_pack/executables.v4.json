@@ -1,0 +1,7 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:be45f6b7f0e3fbf99198667e84e1be635cbd79fe84378752cd10457eb5e88f76",
+  "pack_id": "tobkiri_surface_renderer_pack",
+  "source_identity": "sha256:b1dcfd8ea91ee035b86de276bc92da2210c65923990b045bcdb80329e4958fbf",
+  "variants": []
+}

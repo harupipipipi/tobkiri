@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:2c22ca0b93daeb6ea7553d08854c79fe29b08ce43ea5ee14fe86a2e3b6246dd2",
+      "digest": "sha256:5b3fe4980573ae0ab3a34abdd5994159d5092f283553e0e3d5bbce73187d61b8",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -31,7 +31,7 @@
       "path": "runtime/conversation.py"
     },
     {
-      "digest": "sha256:f1b25aaf986c02261897936ced097683f3c47cb9439bc7560fc3a4fc49009055",
+      "digest": "sha256:4435f3d3409a01be4c3fecc46eaf45b706deaebddfcb5ccbb5a342baef343c4c",
       "kind": "executable",
       "path": "runtime/saved_conversation.py"
     },
@@ -673,7 +673,7 @@
     {
       "contract_revision_digest": "sha256:e6e5c3a88086f5d3edf4adca597c92d4d6aa55a4551de84668bedb4950f0fac3",
       "id": "defaultspack.conversation.saved",
-      "implementation_digest": "sha256:f1b25aaf986c02261897936ced097683f3c47cb9439bc7560fc3a4fc49009055",
+      "implementation_digest": "sha256:4435f3d3409a01be4c3fecc46eaf45b706deaebddfcb5ccbb5a342baef343c4c",
       "isolation": "pack_vm",
       "operations": [
         "saved_complete"
@@ -682,9 +682,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:93e7dafe11b09149da6add97439203c450df5e628e11e0fa4bae3b273f8dbb9f",
-    "contract_catalog_digest": "sha256:51e2dc228b19a8a635af2910765f9e941e873c96f0f5ad9b914e1e659474c3ef",
-    "source_identity": "sha256:efd2d17407f42a4130521a262219701d9704911984b53e2d42f297c7d9f129c9"
+    "artifact_set_digest": "sha256:b8b8eb6f3149532bb85e100fa91032facb42b2e5096abcf2913e792fbde0a759",
+    "contract_catalog_digest": "sha256:33a4f7698df52524822271c86cabd9c706dccee8732c5bd392e4ce1c5a2725ce",
+    "source_identity": "sha256:ae7ec7ba07f28b2cf9372391ca80c305ce66f73c81e825980a5d1d1ba9fe69dd"
   },
   "migration": {
     "compatibility": "none",
@@ -719,7 +719,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:93e7dafe11b09149da6add97439203c450df5e628e11e0fa4bae3b273f8dbb9f",
+    "artifact_digest": "sha256:b8b8eb6f3149532bb85e100fa91032facb42b2e5096abcf2913e792fbde0a759",
     "display_name": "Tobkiri Defaults Providers",
     "id": "defaultspack",
     "kind": "normal_sandbox",
@@ -729,7 +729,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:efd2d17407f42a4130521a262219701d9704911984b53e2d42f297c7d9f129c9",
+        "digest": "sha256:ae7ec7ba07f28b2cf9372391ca80c305ce66f73c81e825980a5d1d1ba9fe69dd",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -740,7 +740,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:efd2d17407f42a4130521a262219701d9704911984b53e2d42f297c7d9f129c9",
+    "source_digest": "sha256:ae7ec7ba07f28b2cf9372391ca80c305ce66f73c81e825980a5d1d1ba9fe69dd",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
   },
@@ -776,6 +776,15 @@
     "contract_dependencies": [
       {
         "cardinality": "one",
+        "contract_id": "tobkiri.action.turn.progress.v1",
+        "operations": [
+          "rumi_turn_runtime_pack.turn-progress"
+        ],
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
         "contract_id": "tobkiri.resource.ai.strategy.catalog.v1",
         "optional": true,
         "version_range": ">=1.0.0 <2.0.0"
@@ -785,6 +794,15 @@
         "contract_id": "tobkiri.resource.prompt.studio.v1",
         "optional": true,
         "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.turn.progress.v1",
+        "operations": [
+          "rumi_turn_runtime_pack.turn-progress-resource"
+        ],
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
       },
       {
         "cardinality": "one",

@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:e40c16e9a57b62b77f4d1a18ce62b2dedf9a3b72cedbae109217a2fbfdf5b0bb",
+  "source_identity": "sha256:bf504b7d04105dd332c72f1eeb27d2ca2d8ed2abaf1b4b576b7eb517d6155fe5",
   "variants": [
     {
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.generate.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:5cdf9f981ed0c123cf28796f2554204260dde5f3f9b7f343642c89bc8f53a88d",
+      "implementation_digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -41,7 +41,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.route-quote.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
       "implementation_path": "runtime/route_quote.py",
-      "implementation_digest": "sha256:44be6a6f20a8e90e9ab30b7540e13ca2dfda50aed21932a035f7eac979777494",
+      "implementation_digest": "sha256:efb1761895c8b3577813c48cea9d996f4c4ab4859e158445a51778c9968c9ec2",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -53,7 +53,7 @@
         {
           "contract_id": "tobkiri.resource.ai.route.quote.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:6a931c71d36a3560524844a3051277d6bff8772db77f759a82fd7eb7497fe1b0",
+          "revision_digest": "sha256:fd30d5ee7dc57aae6f8a968a52015109157bef92bc516ec83b53ec3edaf56038",
           "operation_id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
           "input_schema": {
             "additionalProperties": false,
@@ -70,6 +70,12 @@
               }
             ],
             "properties": {
+              "delivery_mode": {
+                "enum": [
+                  "buffered",
+                  "incremental"
+                ]
+              },
               "messages": {
                 "items": {
                   "type": "object"
@@ -257,7 +263,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:5cdf9f981ed0c123cf28796f2554204260dde5f3f9b7f343642c89bc8f53a88d",
+      "implementation_digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -291,7 +297,7 @@
       "variant_id": "rumi_ai_gateway_pack.ai-gateway.stream.python",
       "function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
       "implementation_path": "runtime/gateway.py",
-      "implementation_digest": "sha256:5cdf9f981ed0c123cf28796f2554204260dde5f3f9b7f343642c89bc8f53a88d",
+      "implementation_digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -322,6 +328,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:c650e8bd6e284dfc91d04c75c1b398cae4eceb1cef059e913b18df69a8f39b20",
-  "catalog_digest": "sha256:76400d64f805697a977c8d62c2c51f639f188569ecc3121af0751afad644ead9"
+  "materialization_catalog_digest": "sha256:44048c0e3d7ed4320afa3f5b3f8f4a5da991753f7bfde2f8185b8dffda179753",
+  "catalog_digest": "sha256:af1b1fa691cf78144a3738172d21c9f3db4748cd1be560e7da1f2b3dfc54b9b2"
 }

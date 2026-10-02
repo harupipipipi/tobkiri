@@ -173,7 +173,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
-    "source_digest": "sha256:27e432f96e7ac1996abe91e4c9d2e12ad84374b1fd77449ca60bc2eddd35777d",
+    "source_digest": "sha256:3165e08530151f9d7d5d5d7bfb8327b703c3ce7092d70f2f7fdc55229a8871db",
     "repository_commit": "working-tree",
     "repository_tree": "c873994334bc031353714592c0fa391f71780b036e87a26e44d4f4a6b7f19ae6",
     "generator": "tobkiri-profile-artifacts",
@@ -700,7 +700,7 @@
       "operation_id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:6a931c71d36a3560524844a3051277d6bff8772db77f759a82fd7eb7497fe1b0",
+        "semantics_digest": "sha256:fd30d5ee7dc57aae6f8a968a52015109157bef92bc516ec83b53ec3edaf56038",
         "dimensions": {
           "contract": [
             "tobkiri.resource.ai.route.quote.v1"

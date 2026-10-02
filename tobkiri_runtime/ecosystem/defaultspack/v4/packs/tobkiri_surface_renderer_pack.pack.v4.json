@@ -1,0 +1,82 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:11d19857ab66c8b61e253dda23a4ac161408c066abf87cdfa514ebe66499aead",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:72df438c365d1687a88c0f1e731d7094b93de5aeeb6544742543d601fb72d022",
+      "kind": "sidecar",
+      "path": "frontend/contributions/compact.json"
+    },
+    {
+      "digest": "sha256:7377967d3a5ba624cbc0443a2e7311f971ceae4e79540e43cf3cb78e0733d18d",
+      "kind": "sidecar",
+      "path": "frontend/contributions/standard.json"
+    }
+  ],
+  "contracts": [],
+  "functions": [],
+  "integrity": {
+    "source_identity": "sha256:cb4b5b8c4dad196a70771aa9910c241fca430c64d0677710a2cc0bfab50d7428",
+    "artifact_set_digest": "sha256:0e195dda639b54a1c4f52bbaa3113105daca715f188bf7e83d49f0998b388af5",
+    "contract_catalog_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [],
+    "removal_wave": 0,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [],
+  "pack": {
+    "artifact_digest": "sha256:c02d31f77bbc8c35e172b383f111c88a648dd9a82e1bd0a4f8ac5a656232c42e",
+    "display_name": "Tobkiri Surface Renderers",
+    "id": "tobkiri_surface_renderer_pack",
+    "kind": "normal_sandbox",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/tobkiri_surface_renderer_pack/pack.v4.json",
+    "source_digest": "sha256:cb4b5b8c4dad196a70771aa9910c241fca430c64d0677710a2cc0bfab50d7428",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:7bd96117ff80246eb905312eccdce1db9f4af330688839b04577ec5719fdaa7a",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
+    "input_inventory_digest": "sha256:43930c46b9cb0d2970db02b10cf8db40cf71e4d042c5b450035236567e36d006",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
+      },
+      {
+        "path": "ecosystem/tobkiri_surface_renderer_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:cb4b5b8c4dad196a70771aa9910c241fca430c64d0677710a2cc0bfab50d7428"
+      }
+    ]
+  },
+  "provider_catalog": [],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [],
+    "contract_dependencies": [],
+    "execution_boundary": "declarative_only",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "none"
+  }
+}

@@ -24,7 +24,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3",
+            "digest": "sha256:77b0756596e0f0060b7f4554f41f6f5db3848cab1bfd1751c329f870f1185afe",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -35,7 +35,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3",
+        "source_digest": "sha256:77b0756596e0f0060b7f4554f41f6f5db3848cab1bfd1751c329f870f1185afe",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -65,6 +65,423 @@
     },
     {
       "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.turn.progress.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:turn.manage",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:3a9fc90bcf8ed5c8864c44b2976870624088e9e4e7c064bab946d8429b1f0bec",
+          "operation_id": "rumi_turn_runtime_pack.turn-progress",
+          "output_schema_digest": "sha256:c0b0db91fe1c63a35b12232d8d277fc31d248a78da0926b946f963ddf34c1551",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_turn_runtime_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:77b0756596e0f0060b7f4554f41f6f5db3848cab1bfd1751c329f870f1185afe",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:77b0756596e0f0060b7f4554f41f6f5db3848cab1bfd1751c329f870f1185afe",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_turn_runtime_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.progress",
+        "required_capabilities": [
+          "turn.manage"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:113f57670f0c69f51115462095ff4895dda5a68f317f8f2e65e4b4f4fd18dbc7",
+      "schema_catalog": {
+        "sha256:3a9fc90bcf8ed5c8864c44b2976870624088e9e4e7c064bab946d8429b1f0bec": {
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "phase": {
+                  "const": "ready"
+                }
+              },
+              "required": [
+                "phase"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "ai_input_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "conversation_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "input_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "parent_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "phase": {
+                  "const": "begin"
+                },
+                "request_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "turn_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "phase",
+                "turn_id",
+                "conversation_id",
+                "parent_id",
+                "request_id",
+                "conversation_revision",
+                "input_digest",
+                "ai_input_digest"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "phase": {
+                  "const": "bind"
+                },
+                "producer": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "producer_input_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "progress_id": {
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "phase",
+                "progress_id",
+                "producer",
+                "producer_input_digest"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "phase": {
+                  "const": "claim"
+                },
+                "progress_id": {
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "phase",
+                "progress_id"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "cursor": {
+                  "maximum": 4096,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "event": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "delta": {
+                          "maxLength": 16384,
+                          "type": "string"
+                        },
+                        "type": {
+                          "enum": [
+                            "text_delta",
+                            "thinking_delta"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "delta"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "finish_reason": {
+                          "enum": [
+                            "stop",
+                            "length",
+                            "tool_calls",
+                            "end_turn",
+                            "max_tokens",
+                            "tool_use"
+                          ]
+                        },
+                        "type": {
+                          "const": "finish"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "finish_reason"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "phase": {
+                  "const": "publish"
+                },
+                "progress_id": {
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "phase",
+                "progress_id",
+                "cursor",
+                "event"
+              ],
+              "type": "object"
+            }
+          ],
+          "properties": {
+            "ai_input_digest": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "conversation_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+              "type": "string"
+            },
+            "conversation_revision": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "cursor": {
+              "maximum": 4096,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "event": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "delta": {
+                      "maxLength": 16384,
+                      "type": "string"
+                    },
+                    "type": {
+                      "enum": [
+                        "text_delta",
+                        "thinking_delta"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "delta"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "finish_reason": {
+                      "enum": [
+                        "stop",
+                        "length",
+                        "tool_calls",
+                        "end_turn",
+                        "max_tokens",
+                        "tool_use"
+                      ]
+                    },
+                    "type": {
+                      "const": "finish"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "finish_reason"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "input_digest": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "parent_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+              "type": "string"
+            },
+            "phase": {
+              "enum": [
+                "ready",
+                "begin",
+                "bind",
+                "claim",
+                "publish"
+              ]
+            },
+            "producer": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "producer_input_digest": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "progress_id": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "request_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+              "type": "string"
+            },
+            "turn_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:c0b0db91fe1c63a35b12232d8d277fc31d248a78da0926b946f963ddf34c1551": {
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "maxProperties": 1,
+              "required": [
+                "ready"
+              ]
+            },
+            {
+              "maxProperties": 1,
+              "required": [
+                "progress_id"
+              ]
+            },
+            {
+              "maxProperties": 1,
+              "required": [
+                "bound"
+              ]
+            },
+            {
+              "maxProperties": 1,
+              "required": [
+                "claimed"
+              ]
+            },
+            {
+              "maxProperties": 1,
+              "required": [
+                "cursor"
+              ]
+            }
+          ],
+          "properties": {
+            "bound": {
+              "const": true
+            },
+            "claimed": {
+              "const": true
+            },
+            "cursor": {
+              "maximum": 4096,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "progress_id": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "ready": {
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
       "contract_id": "tobkiri.action.turn.reconcile.v1",
       "operations": [
         {
@@ -86,7 +503,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3",
+            "digest": "sha256:77b0756596e0f0060b7f4554f41f6f5db3848cab1bfd1751c329f870f1185afe",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -97,7 +514,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3",
+        "source_digest": "sha256:77b0756596e0f0060b7f4554f41f6f5db3848cab1bfd1751c329f870f1185afe",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -182,7 +599,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3",
+            "digest": "sha256:77b0756596e0f0060b7f4554f41f6f5db3848cab1bfd1751c329f870f1185afe",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -193,7 +610,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3",
+        "source_digest": "sha256:77b0756596e0f0060b7f4554f41f6f5db3848cab1bfd1751c329f870f1185afe",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -631,7 +1048,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3",
+            "digest": "sha256:77b0756596e0f0060b7f4554f41f6f5db3848cab1bfd1751c329f870f1185afe",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -642,7 +1059,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3",
+        "source_digest": "sha256:77b0756596e0f0060b7f4554f41f6f5db3848cab1bfd1751c329f870f1185afe",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -769,7 +1186,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3",
+            "digest": "sha256:77b0756596e0f0060b7f4554f41f6f5db3848cab1bfd1751c329f870f1185afe",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -780,7 +1197,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3",
+        "source_digest": "sha256:77b0756596e0f0060b7f4554f41f6f5db3848cab1bfd1751c329f870f1185afe",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -801,6 +1218,258 @@
       },
       "revision_digest": "sha256:c65360507f2da991fbea5d83a09e510e9d148287f975b8c8d765c2f1dc1485e6",
       "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.resource.turn.progress.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:turn.manage",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:2f7bfeecbf17dd5002490aef1fd0ed6ffaff90837a5f102e9b90d84f70143dc5",
+          "operation_id": "rumi_turn_runtime_pack.turn-progress-resource",
+          "output_schema_digest": "sha256:58163c7aeb19dcccc3a70237756d1758722f95a2999b10164041d52fc622d8da",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_turn_runtime_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:77b0756596e0f0060b7f4554f41f6f5db3848cab1bfd1751c329f870f1185afe",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:77b0756596e0f0060b7f4554f41f6f5db3848cab1bfd1751c329f870f1185afe",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_turn_runtime_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.progress-resource",
+        "required_capabilities": [
+          "turn.manage"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:892e73bf7bc262859915c65509a2dfdb0aef0e6d3ce51e879bbdec22e718e662",
+      "schema_catalog": {
+        "sha256:2f7bfeecbf17dd5002490aef1fd0ed6ffaff90837a5f102e9b90d84f70143dc5": {
+          "additionalProperties": false,
+          "properties": {
+            "conversation_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+              "type": "string"
+            },
+            "cursor": {
+              "maximum": 4096,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "turn_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "turn_id",
+            "conversation_id",
+            "cursor"
+          ],
+          "type": "object"
+        },
+        "sha256:58163c7aeb19dcccc3a70237756d1758722f95a2999b10164041d52fc622d8da": {
+          "additionalProperties": false,
+          "properties": {
+            "binding": {
+              "additionalProperties": false,
+              "properties": {
+                "ai_input_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "conversation_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "input_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "parent_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "request_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                },
+                "turn_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "turn_id",
+                "conversation_id",
+                "parent_id",
+                "request_id",
+                "conversation_revision",
+                "input_digest",
+                "ai_input_digest"
+              ],
+              "type": "object"
+            },
+            "canonical_turn_status": {
+              "enum": [
+                "queued",
+                "running",
+                "waiting",
+                "completed",
+                "failed",
+                "cancelled",
+                null
+              ]
+            },
+            "cursor": {
+              "maximum": 4096,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "events": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "cursor": {
+                    "maximum": 4096,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "event": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "delta": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "type": {
+                            "enum": [
+                              "text_delta",
+                              "thinking_delta"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "delta"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "finish_reason": {
+                            "enum": [
+                              "stop",
+                              "length",
+                              "tool_calls",
+                              "end_turn",
+                              "max_tokens",
+                              "tool_use"
+                            ]
+                          },
+                          "type": {
+                            "const": "finish"
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "finish_reason"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "cursor",
+                  "event"
+                ],
+                "type": "object"
+              },
+              "maxItems": 128,
+              "type": "array"
+            },
+            "expires_at_ms": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "provider_complete": {
+              "type": "boolean"
+            },
+            "provisional": {
+              "const": true
+            },
+            "version": {
+              "const": "tobkiri.turn-progress.v1"
+            }
+          },
+          "required": [
+            "version",
+            "provisional",
+            "binding",
+            "events",
+            "cursor",
+            "provider_complete",
+            "expires_at_ms",
+            "canonical_turn_status"
+          ],
+          "type": "object"
+        },
         "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
           "type": "object"
         }
@@ -831,7 +1500,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3",
+            "digest": "sha256:77b0756596e0f0060b7f4554f41f6f5db3848cab1bfd1751c329f870f1185afe",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -842,7 +1511,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3",
+        "source_digest": "sha256:77b0756596e0f0060b7f4554f41f6f5db3848cab1bfd1751c329f870f1185afe",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
       },
@@ -872,5 +1541,5 @@
     }
   ],
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3"
+  "source_identity": "sha256:77b0756596e0f0060b7f4554f41f6f5db3848cab1bfd1751c329f870f1185afe"
 }

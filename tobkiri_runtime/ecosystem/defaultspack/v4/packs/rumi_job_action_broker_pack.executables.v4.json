@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_job_action_broker_pack",
-  "source_identity": "sha256:523e79282155dd9ada6d6c580284cc5ea7cef99a69e750f931f3cbecfb159b5b",
+  "source_identity": "sha256:f76850c07d01621555f5a81101c3c27007944069a0486b4821974ade0031d949",
   "variants": [
     {
       "variant_id": "rumi_job_action_broker_pack.job-action.broker.python",
       "function_id": "rumi_job_action_broker_pack.job-action.broker",
       "implementation_path": "runtime/broker.py",
-      "implementation_digest": "sha256:51bcd27448a1c0e24a7108436d83c6a589c9c005639707959b89562c3ae19595",
+      "implementation_digest": "sha256:2f2226bfa6c28d2a1e8c653351b8b793aedd227daef8455a7d6ec8d342ebf6a6",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -81,6 +81,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:43d55927c1855670f437abbe5cf9738854f9cd6e652f972b789848d34dc6f48d",
-  "catalog_digest": "sha256:b6fbc094db560b23bb44261ff061ab79d37888a9d453e0324af3dfc974475b3d"
+  "materialization_catalog_digest": "sha256:c71c4206759ad95445a434d86f89ded2c8fe1d44e4339f6204371bcc9d370630",
+  "catalog_digest": "sha256:2e9fe032055da47d6da817a8ba0e7ec38b8fafa3fcefbf897bfeb66a7dcd18d1"
 }

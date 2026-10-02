@@ -1,13 +1,13 @@
 {
-  "artifact_set_digest": "sha256:995c6d5790f40f7fe90a29c519d20eec1c7549732940c1ce76a2ef7773e94b87",
+  "artifact_set_digest": "sha256:85b1bee3cbb8b4d5663463c61d6d965a497fea9d067ba0d20ca02da9accb5efe",
   "artifacts": [
     {
-      "digest": "sha256:c7fd30891f1d435a98755059fba1eb809cdb0a65c6ecf87757427fff4e20bbc4",
+      "digest": "sha256:0ab4f3634bb3fb1211ddb91a47be30b9214f5fb3fb97929468bff29c61ec0286",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:5c234155eff5d9f5e25ceb5c52e76d1594819b71ae5fb0c8c852f318fe61dcd9",
+      "digest": "sha256:8418492deb1d3509f37b190ddce9d1316ee4aef4f413bf1a8e29c6c76afb8cce",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -22,7 +22,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:3ddff5a990944565042007d6597965833d67de92c483e3fa5ba8c1ed502df51b",
+      "digest": "sha256:dff0e3ed185f15371886af478cb7966c9d2a2067235750e089b930d2b1ca4fa8",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -57,12 +57,12 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:43ffa17fe1ecf646c52031d2236d0adfdb937f7fe8d134c475ee20451428d40b",
+      "digest": "sha256:fd1dd6463d96d227be63593b2f33217b4e69f6d2ed0b5f45f62a2838bcb58e05",
       "path": "runtime/schedules.py",
       "role": "runtime"
     },
     {
-      "digest": "sha256:e3379e1478cef4e36d892a677c7c95602b2f51d1b1d3be57ad953bfe26af971c",
+      "digest": "sha256:d7078330058fb15d5d171a268fd4266c6dc34a0c3b628d432251297599972287",
       "path": "runtime/service.py",
       "role": "runtime"
     },
@@ -77,7 +77,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:f1b71aa2ceca78b78dfd6ba754a13509e3a2c16e4a68b75b5f10380cbb7447a3",
+      "digest": "sha256:a9995687fce245180865119fb804bd2e36a17c46448d2e1990ff002549de5c62",
       "path": "runtime/workflow.py",
       "role": "runtime"
     }
@@ -85,8 +85,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:112a56db2861f72566068311d15664ec1f34633d81d38f9e495cbc8ec5fd674b"
+    "signed_digest": "sha256:44bacaed9f763f0f9e4e51ff7e4f6a5241e5ff851854435f5919da6e40da9e4f"
   },
   "pack_id": "tobkiri_agent_control_pack",
-  "source_identity": "sha256:7bc79fea47b8f676ad0dd9d651adf16cbbc23e0339adca5642496f3052fda11b"
+  "source_identity": "sha256:a388a8c300163cf5fd4ec2550464a35eac814bc51685bffd933991e74227399d"
 }

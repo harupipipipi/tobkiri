@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "tobkiri_agent_control_pack",
-  "source_identity": "sha256:3ddff5a990944565042007d6597965833d67de92c483e3fa5ba8c1ed502df51b",
+  "source_identity": "sha256:dff0e3ed185f15371886af478cb7966c9d2a2067235750e089b930d2b1ca4fa8",
   "variants": [
     {
       "variant_id": "tobkiri_agent_control_pack.work-plan.action.python",
@@ -423,7 +423,7 @@
         {
           "contract_id": "tobkiri.action.agent.inbox.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:da9a52691f947c7d457618ba15e8744af62700aec6473ee5b0afd7ea4414593d",
+          "revision_digest": "sha256:87581689bba958266d14e9ff1ba6bd5f19262b7139d4e39b7c1fe6542544dee2",
           "operation_id": "tobkiri_agent_control_pack.inbox-action",
           "input_schema": {
             "additionalProperties": false,
@@ -498,6 +498,49 @@
                             "type": "array"
                           }
                         ]
+                      },
+                      "context_binding": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "context_digest": {
+                            "pattern": "^sha256:[0-9a-f]{64}$",
+                            "type": "string"
+                          },
+                          "parent_conversation_id": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "not": {
+                              "pattern": "[^A-Za-z0-9._:-]"
+                            },
+                            "pattern": "^[A-Za-z0-9]",
+                            "type": "string"
+                          },
+                          "parent_revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "profile_id": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "not": {
+                              "pattern": "[^A-Za-z0-9._:-]"
+                            },
+                            "pattern": "^[A-Za-z0-9]",
+                            "type": "string"
+                          },
+                          "version": {
+                            "const": "tobkiri.conversation-context-binding.v1"
+                          }
+                        },
+                        "required": [
+                          "version",
+                          "profile_id",
+                          "parent_conversation_id",
+                          "parent_revision",
+                          "context_digest"
+                        ],
+                        "type": "object"
                       },
                       "conversation_id": {
                         "maxLength": 256,
@@ -1392,6 +1435,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:a2e6f210cf2dcde2be538a82e69a708bb755d75b0b81501b468f5abd94365d8b",
-  "catalog_digest": "sha256:9f715a99034d6f8f8bb82f34ce7df864cd38e1bcdee71cbe763475f742f2fd49"
+  "materialization_catalog_digest": "sha256:443f53cdbac6bc4a54b280f0131f3d3c2da1b6584dcd1b6105a28b1de51b9009",
+  "catalog_digest": "sha256:fe3b8c03cf685aa17ca3700df376dcc391dbc57e371f9280117bc80f0b1dd9e4"
 }

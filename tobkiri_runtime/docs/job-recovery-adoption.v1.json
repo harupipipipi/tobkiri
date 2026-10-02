@@ -7,9 +7,11 @@
     {
       "pack_id": "rumi_job_action_broker_pack",
       "path": "runtime/dispatch_envelope.py",
-      "kind": "runtime",
+      "kind": "executable",
       "implementation_entrypoint": "runtime/broker.py",
-      "reason": "Finite immutable dispatch envelope validation; no new function or authority"
+      "reason": "Finite immutable dispatch envelope validation; no new function or authority",
+      "index_role": "runtime",
+      "digest": "sha256:316ffe851f4ad830f47614245b8a4f1cdea3c391de992167d42f5a0179aee611"
     }
   ],
   "source_refresh": [
