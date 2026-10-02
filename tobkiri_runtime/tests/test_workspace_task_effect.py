@@ -471,9 +471,12 @@ def test_workspace_task_approval_resumes_the_exact_snapshot_once(
         == "succeeded"
     )
     assert fixture.backend.invocations == 1
-    assert [event["event_state"] for event in fixture.harness.store.audit_events()][
-        -3:
-    ] == [
+    execution_states = [
+        event["event_state"]
+        for event in fixture.harness.store.audit_events()
+        if event["event_state"] in {"reserved", "dispatched", "committed"}
+    ]
+    assert execution_states == [
         "reserved",
         "dispatched",
         "committed",
@@ -533,6 +536,28 @@ def test_workspace_task_direct_broker_execute_has_no_profile_grant(
             fixture.inner,
             effect_scope=fixture.harness.scope.to_dict(),
         )
+    assert fixture.backend.invocations == 0
+
+
+def test_workspace_task_revoked_approval_grant_cannot_dispatch(
+    host_workspace_task: SimpleNamespace,
+) -> None:
+    fixture = host_workspace_task
+    pending = _prepare(fixture)
+    _decide(fixture, pending.approval_request_id, "approve")
+    decision = fixture.harness.store.get_interactive_approval_decision(
+        pending.approval_request_id
+    )
+    assert decision is not None and decision.grant_id is not None
+    fixture.adapter.revoke(
+        target_kind="grant", target_id=decision.grant_id, reason="test revocation"
+    )
+    assert (
+        fixture.service.resume_interactive_effect(
+            _owner(fixture, pending.effect_id)
+        ).state
+        == "stale"
+    )
     assert fixture.backend.invocations == 0
 
 
