@@ -18,7 +18,10 @@ from ecosystem.tobkiri_cloud_workspace_pack.runtime.capsule import (
     make_capsule,
     safe_path,
 )
-from ecosystem.tobkiri_cloud_workspace_pack.runtime.store import Conflict, WorkspaceStore
+from ecosystem.tobkiri_cloud_workspace_pack.runtime.store import (
+    Conflict,
+    WorkspaceStore,
+)
 from ecosystem.tobkiri_cloud_workspace_pack.runtime.recipe import RECIPE_DIGEST
 
 WORKSPACE = "tobkiri.resource.workspace.v1"
@@ -57,6 +60,7 @@ class CloudWorkspace:
             "total_bytes": 0,
             "status": "not_initialized",
             "container_status": "not_started",
+            "writer_epoch": 0,
         }
         return {
             "workspace": workspace,
@@ -85,6 +89,7 @@ class CloudWorkspace:
         conversation_id = identifier(values["conversation_id"])
         workspace_id = self.workspace_id(conversation_id)
         expected = integer(values["expected_revision"])
+        writer_epoch = integer(values["expected_writer_epoch"])
         fingerprint = digest(
             canonical(
                 {
@@ -102,6 +107,8 @@ class CloudWorkspace:
         current = self.store.get(workspace_id)
         if (current["revision"] if current else 0) != expected:
             raise Conflict("workspace checkpoint revision is stale")
+        if (current["writer_epoch"] if current else 0) != writer_epoch:
+            raise Conflict("workspace writer epoch is stale")
         if action in {"initialize", "capture", "import"}:
             if action == "initialize":
                 if current is not None:
@@ -111,7 +118,10 @@ class CloudWorkspace:
                 files = self._capture(values["paths"])
             else:
                 raw = values["archive_base64"]
-                if not isinstance(raw, str) or len(raw) > (MAX_ARCHIVE_BYTES + 2) // 3 * 4:
+                if (
+                    not isinstance(raw, str)
+                    or len(raw) > (MAX_ARCHIVE_BYTES + 2) // 3 * 4
+                ):
                     raise ValueError("capsule import exceeds the size limit")
                 try:
                     archive = base64.b64decode(raw, validate=True)
@@ -122,7 +132,9 @@ class CloudWorkspace:
                     raise ValueError("capsule recipe is unsupported")
                 # Foreign provenance never activates a Profile/Plan. A new
                 # local checkpoint seals these files to the captured Host.
-                files = {entry["path"]: blobs[entry["digest"]] for entry in imported["files"]}
+                files = {
+                    entry["path"]: blobs[entry["digest"]] for entry in imported["files"]
+                }
             manifest, blobs = make_capsule(
                 workspace_id=workspace_id,
                 profile_id=self.store.profile_id,
@@ -136,6 +148,7 @@ class CloudWorkspace:
                 manifest,
                 blobs,
                 expected_revision=expected,
+                expected_writer_epoch=writer_epoch,
                 actor=self.actor,
                 request_id=self.request_id,
                 fingerprint=fingerprint,
@@ -151,6 +164,7 @@ class CloudWorkspace:
             self.store.release_writer(
                 workspace_id,
                 expected_revision=expected,
+                expected_writer_epoch=writer_epoch,
                 actor=self.actor,
                 guard=self.guard,
             )
@@ -197,7 +211,9 @@ class CloudWorkspace:
             {"operation": "list", "profile_id": self.store.profile_id},
         )
         selected = identifier(before["selected_workspace_id"])
-        selected_mount = next((m for m in before["mounts"] if m["id"] == selected), None)
+        selected_mount = next(
+            (m for m in before["mounts"] if m["id"] == selected), None
+        )
         if selected_mount is None:
             raise LookupError("select a Host workspace before capturing files")
         files = {}

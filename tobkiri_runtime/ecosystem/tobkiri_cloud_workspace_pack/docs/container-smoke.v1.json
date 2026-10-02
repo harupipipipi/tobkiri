@@ -1,0 +1,37 @@
+{
+  "schema": "tobkiri.workspace-container-smoke.v1",
+  "tested_at": "2026-10-02T16:48:51.356714+00:00",
+  "recipe_digest": "sha256:4e6a254c45ff20d38409dd16af51a3a2c43058803cea9e5c406a5f7bbe228f6b",
+  "base_image": "rumiai/mimo-coding-company-worker@sha256:1c4c9e219f46c9311bc4cba2f328303208ff24d95e2e39f769ba12383ef075ec",
+  "base_python": "3.10.12",
+  "base_source": "existing local cache; no pull",
+  "test_image_digest": "sha256:4f150710f8960c660492fa5087331a21cfbbf8aa662c0fb95d1a9dbf68a9e91d",
+  "container_id": "04d10620e72298bf6a6a934907c59b759b49915ef5b3bd9a03e1a1512458cbe5",
+  "container_status": "healthy",
+  "network": "none",
+  "read_only_root": true,
+  "memory_limit_bytes": 134217728,
+  "cpus": 1,
+  "pids_limit": 64,
+  "capabilities_dropped": "ALL",
+  "no_new_privileges": true,
+  "result": {
+    "uid": 65532,
+    "health": {
+      "checkpoint_digest": "sha256:71c80acaa73d9b9306f45b8d5d98140d1a2a70ee4a384c619b80890f1c778f0b",
+      "status": "ready"
+    },
+    "workspace": {
+      "checkpoint_digest": "sha256:71c80acaa73d9b9306f45b8d5d98140d1a2a70ee4a384c619b80890f1c778f0b",
+      "execution": "local_container",
+      "file_count": 1,
+      "remote_ingress": "unconfigured",
+      "version": "tobkiri.workspace-runtime.v1",
+      "workspace_id": "container-smoke"
+    },
+    "restored_sha256": "5cccf8203a7225dcc278779aa07e9b1416fe304bace5377b8ee391befca51eed"
+  },
+  "production_host_provisioning": "unavailable",
+  "cloud_execution": "not_performed",
+  "test_container_removed": true
+}

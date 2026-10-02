@@ -44,7 +44,10 @@ def serve(workspace: Path, manifest: dict[str, Any], listen: str, port: int) -> 
         def do_GET(self) -> None:
             """Respond to the fixed health and workspace descriptor routes."""
             if self.path == "/health":
-                result = {"status": "ready", "checkpoint_digest": manifest["manifest_digest"]}
+                result = {
+                    "status": "ready",
+                    "checkpoint_digest": manifest["manifest_digest"],
+                }
             elif self.path == "/workspace":
                 result = {
                     "version": "tobkiri.workspace-runtime.v1",
@@ -76,7 +79,9 @@ def main() -> int:
     parser.add_argument("--healthcheck", action="store_true")
     parser.add_argument("--capsule", type=Path, default=Path("/input/workspace.zip"))
     parser.add_argument("--workspace", type=Path, default=Path("/workspace"))
-    parser.add_argument("--listen", choices=["127.0.0.1", "0.0.0.0"], default="127.0.0.1")
+    parser.add_argument(
+        "--listen", choices=["127.0.0.1", "0.0.0.0"], default="127.0.0.1"
+    )
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:

@@ -35,7 +35,13 @@ class WorkspaceStore:
         self.profile_id = identifier(profile_id)
         if not root.is_absolute():
             raise PermissionError("workspace state root must be Host-owned")
-        self.root = root / "packs" / "tobkiri_cloud_workspace_pack" / "profiles" / self.profile_id
+        self.root = (
+            root
+            / "packs"
+            / "tobkiri_cloud_workspace_pack"
+            / "profiles"
+            / self.profile_id
+        )
         self.path = self.root / "workspace.sqlite3"
 
     @contextmanager
@@ -102,7 +108,9 @@ class WorkspaceStore:
             rows = connection.execute("SELECT value FROM heads ORDER BY id").fetchall()
         return [parse_json(row[0]) for row in rows]
 
-    def read_capsule(self, manifest_digest: str) -> tuple[dict[str, Any], dict[str, bytes]]:
+    def read_capsule(
+        self, manifest_digest: str
+    ) -> tuple[dict[str, Any], dict[str, bytes]]:
         """Load and reverify immutable bytes, detecting corrupt retained content."""
         with self.connection() as connection:
             row = connection.execute(
@@ -140,6 +148,7 @@ class WorkspaceStore:
         blobs: Mapping[str, bytes],
         *,
         expected_revision: int,
+        expected_writer_epoch: int,
         actor: str,
         request_id: str,
         fingerprint: str,
@@ -159,9 +168,13 @@ class WorkspaceStore:
             replayed = _replay(prior, fingerprint)
             if replayed is not None:
                 return replayed
-            row = connection.execute("SELECT * FROM heads WHERE id=?", (workspace_id,)).fetchone()
+            row = connection.execute(
+                "SELECT * FROM heads WHERE id=?", (workspace_id,)
+            ).fetchone()
             if (row["revision"] if row else 0) != expected:
                 raise Conflict("workspace checkpoint revision is stale")
+            if (row["fence"] if row else 0) != integer(expected_writer_epoch):
+                raise Conflict("workspace writer epoch is stale")
             if row and row["owner"] != actor and row["expiry"] > now:
                 raise Conflict("workspace has another active local writer")
             if manifest["revision"] != expected + 1:
@@ -173,7 +186,8 @@ class WorkspaceStore:
             )
             if (
                 row is None
-                and connection.execute("SELECT count(*) FROM heads").fetchone()[0] >= MAX_WORKSPACES
+                and connection.execute("SELECT count(*) FROM heads").fetchone()[0]
+                >= MAX_WORKSPACES
             ):
                 raise ValueError("workspace retention capacity exceeded")
             retained = connection.execute(
@@ -204,6 +218,7 @@ class WorkspaceStore:
                 "total_bytes": manifest["total_bytes"],
                 "status": "checkpointed_locally",
                 "container_status": "not_started",
+                "writer_epoch": fence,
             }
             guard()
             connection.execute(
@@ -219,7 +234,8 @@ class WorkspaceStore:
                 ),
             )
             connection.execute(
-                "INSERT INTO replay VALUES (?,?,?)", (request_id, fingerprint, canonical(result))
+                "INSERT INTO replay VALUES (?,?,?)",
+                (request_id, fingerprint, canonical(result)),
             )
         return result
 
@@ -228,6 +244,7 @@ class WorkspaceStore:
         workspace_id: str,
         *,
         expected_revision: int,
+        expected_writer_epoch: int,
         actor: str,
         guard: Callable[[], None],
     ) -> None:
@@ -240,13 +257,20 @@ class WorkspaceStore:
                 raise Conflict("workspace checkpoint revision is stale")
             if row["owner"] != actor:
                 raise Conflict("only the current local writer can release")
+            if row["fence"] != integer(expected_writer_epoch):
+                raise Conflict("workspace writer epoch is stale")
+            value = parse_json(row["value"])
+            value["writer_epoch"] = row["fence"] + 1
+            value["status"] = "handoff_prepared_locally"
             guard()
             connection.execute(
-                "UPDATE heads SET expiry=0,fence=fence+1 WHERE id=?",
-                (workspace_id,),
+                "UPDATE heads SET expiry=0,fence=fence+1,value=? WHERE id=?",
+                (canonical(value), workspace_id),
             )
 
-    def restore_local(self, checkpoint: str, *, guard: Callable[[], None]) -> dict[str, Any]:
+    def restore_local(
+        self, checkpoint: str, *, guard: Callable[[], None]
+    ) -> dict[str, Any]:
         """Restore verified files into a new Pack-owned directory, never a Host path."""
         manifest, blobs = self.read_capsule(checkpoint)
         guard()

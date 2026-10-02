@@ -3,15 +3,15 @@
   "files": [
     {
       "path": "container/Dockerfile",
-      "digest": "sha256:a3fbc537756ea95b0e68b5efbcf4612d06ee8337aa1311757f72553a1e39e5ab"
+      "digest": "sha256:ea2581e55223a9fbfcc0bbdd7bf8006aa5295cca3e0eb6b9fa6ae51f6aa53e29"
     },
     {
       "path": "container/runtime.py",
-      "digest": "sha256:11d137b46fb789f2ff403651c8bc6d9ba09cbb43d5991da5a6eeef2143bb07cb"
+      "digest": "sha256:d41df57726f6c649f3556376ad643d19ae47e9fbde928cadd14ed6eff3c64ff0"
     },
     {
       "path": "runtime/capsule.py",
-      "digest": "sha256:b2875bdaf5dab1927bc37c0173c2a53d99f3a86da8539d832c22e9bad20a0286"
+      "digest": "sha256:2bedefe682b7d37175d2111c4af98cb4766ee63bdcfe325f4716efdde6cf2591"
     }
   ],
   "runtime_user": "65532:65532",
@@ -25,7 +25,7 @@
   },
   "health_route": "/health",
   "start_command": [
-    "python",
+    "python3",
     "-B",
     "/opt/tobkiri/workspace_runtime.py",
     "--capsule",

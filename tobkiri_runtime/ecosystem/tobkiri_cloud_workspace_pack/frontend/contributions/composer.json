@@ -5,7 +5,11 @@
   "mode": "declarative",
   "label": "Cloud workspace",
   "priority": 90,
-  "accessibility": {"name": "Cloud workspace", "keyboard": true, "live": "polite"},
+  "accessibility": {
+    "name": "Cloud workspace",
+    "keyboard": true,
+    "live": "polite"
+  },
   "view": {
     "version": "tobkiri.ui.view.v1",
     "slot": "composer_above",
@@ -16,13 +20,29 @@
       "contribution_id": "pack.tobkiri_cloud_workspace_pack.tobkiri_cloud_workspace_pack.workspace-resource",
       "contract_id": "tobkiri.resource.cloud.workspace.v1",
       "operation_id": "tobkiri_cloud_workspace_pack.workspace-resource",
-      "input": {"operation": "get_for_conversation"},
-      "context_bindings": {"conversation_id": "conversation_id"}
+      "input": {
+        "operation": "get_for_conversation"
+      },
+      "context_bindings": {
+        "conversation_id": "conversation_id"
+      }
     },
     "fields": [
-      {"label": "Workspace", "path": "workspace.status", "kind": "status"},
-      {"label": "Container", "path": "container.status", "kind": "status"},
-      {"label": "Cloud", "path": "cloud.status", "kind": "status"}
+      {
+        "label": "Workspace",
+        "path": "workspace.status",
+        "kind": "status"
+      },
+      {
+        "label": "Container",
+        "path": "container.status",
+        "kind": "status"
+      },
+      {
+        "label": "Cloud",
+        "path": "cloud.status",
+        "kind": "status"
+      }
     ],
     "controls": [
       {
@@ -34,9 +54,16 @@
           "contract_id": "tobkiri.action.cloud.workspace.v1",
           "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage"
         },
-        "input": {"operation": "initialize"},
-        "input_bindings": {"expected_revision": "workspace.revision"},
-        "context_bindings": {"conversation_id": "conversation_id"}
+        "input": {
+          "operation": "initialize"
+        },
+        "input_bindings": {
+          "expected_revision": "workspace.revision",
+          "expected_writer_epoch": "workspace.writer_epoch"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        }
       }
     ]
   }

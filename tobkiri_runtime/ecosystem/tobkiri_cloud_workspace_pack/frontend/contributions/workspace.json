@@ -5,7 +5,11 @@
   "mode": "declarative",
   "label": "Cloud workspace",
   "priority": 90,
-  "accessibility": {"name": "Cloud workspace", "keyboard": true, "live": "polite"},
+  "accessibility": {
+    "name": "Cloud workspace",
+    "keyboard": true,
+    "live": "polite"
+  },
   "view": {
     "version": "tobkiri.ui.view.v1",
     "slot": "workspace_tab",
@@ -16,72 +20,140 @@
       "contribution_id": "pack.tobkiri_cloud_workspace_pack.tobkiri_cloud_workspace_pack.workspace-resource",
       "contract_id": "tobkiri.resource.cloud.workspace.v1",
       "operation_id": "tobkiri_cloud_workspace_pack.workspace-resource",
-      "input": {"operation": "get_for_conversation"},
-      "context_bindings": {"conversation_id": "conversation_id"}
+      "input": {
+        "operation": "get_for_conversation"
+      },
+      "context_bindings": {
+        "conversation_id": "conversation_id"
+      }
     },
     "fields": [
-      {"label": "State", "path": "workspace.status", "kind": "status"},
-      {"label": "Checkpoint", "path": "workspace.checkpoint_digest", "kind": "text"},
-      {"label": "Files", "path": "workspace.file_count", "kind": "text"},
-      {"label": "Container", "path": "container.reason", "kind": "text"},
-      {"label": "Cloud", "path": "cloud.reason", "kind": "text"}
+      {
+        "label": "State",
+        "path": "workspace.status",
+        "kind": "status"
+      },
+      {
+        "label": "Checkpoint",
+        "path": "workspace.checkpoint_digest",
+        "kind": "text"
+      },
+      {
+        "label": "Files",
+        "path": "workspace.file_count",
+        "kind": "text"
+      },
+      {
+        "label": "Container",
+        "path": "container.reason",
+        "kind": "text"
+      },
+      {
+        "label": "Cloud",
+        "path": "cloud.reason",
+        "kind": "text"
+      }
     ],
     "controls": [
       {
-        "id": "capture", "label": "Checkpoint selected workspace files (relative names)",
-        "kind": "text", "value_key": "paths",
+        "id": "capture",
+        "label": "Checkpoint selected workspace files (relative names)",
+        "kind": "text",
+        "value_key": "paths",
         "operation": {
           "contribution_id": "pack.tobkiri_cloud_workspace_pack.tobkiri_cloud_workspace_pack.workspace-manage",
           "contract_id": "tobkiri.action.cloud.workspace.v1",
           "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage"
         },
-        "input": {"operation": "capture"},
-        "input_bindings": {"expected_revision": "workspace.revision"},
-        "context_bindings": {"conversation_id": "conversation_id"}
+        "input": {
+          "operation": "capture"
+        },
+        "input_bindings": {
+          "expected_revision": "workspace.revision",
+          "expected_writer_epoch": "workspace.writer_epoch"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        }
       },
       {
-        "id": "import", "label": "Import a capsule (base64 ZIP)",
-        "kind": "text", "value_key": "archive_base64",
+        "id": "import",
+        "label": "Import a capsule (base64 ZIP)",
+        "kind": "text",
+        "value_key": "archive_base64",
         "operation": {
           "contribution_id": "pack.tobkiri_cloud_workspace_pack.tobkiri_cloud_workspace_pack.workspace-manage",
           "contract_id": "tobkiri.action.cloud.workspace.v1",
           "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage"
         },
-        "input": {"operation": "import"},
-        "input_bindings": {"expected_revision": "workspace.revision"},
-        "context_bindings": {"conversation_id": "conversation_id"}
+        "input": {
+          "operation": "import"
+        },
+        "input_bindings": {
+          "expected_revision": "workspace.revision",
+          "expected_writer_epoch": "workspace.writer_epoch"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        }
       },
       {
-        "id": "verify", "label": "Verify local checkpoint", "kind": "button",
+        "id": "verify",
+        "label": "Verify local checkpoint",
+        "kind": "button",
         "operation": {
           "contribution_id": "pack.tobkiri_cloud_workspace_pack.tobkiri_cloud_workspace_pack.workspace-resource",
           "contract_id": "tobkiri.resource.cloud.workspace.v1",
           "operation_id": "tobkiri_cloud_workspace_pack.workspace-resource"
         },
-        "input": {"operation": "verify"},
-        "input_bindings": {"workspace_id": "workspace.id", "expected_revision": "workspace.revision"}
+        "input": {
+          "operation": "verify"
+        },
+        "input_bindings": {
+          "workspace_id": "workspace.id",
+          "expected_revision": "workspace.revision"
+        }
       },
       {
-        "id": "restore", "label": "Restore local copy", "kind": "button",
+        "id": "restore",
+        "label": "Restore local copy",
+        "kind": "button",
         "operation": {
           "contribution_id": "pack.tobkiri_cloud_workspace_pack.tobkiri_cloud_workspace_pack.workspace-manage",
           "contract_id": "tobkiri.action.cloud.workspace.v1",
           "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage"
         },
-        "input": {"operation": "restore"},
-        "input_bindings": {"expected_revision": "workspace.revision"},
-        "context_bindings": {"conversation_id": "conversation_id"}
+        "input": {
+          "operation": "restore"
+        },
+        "input_bindings": {
+          "expected_revision": "workspace.revision",
+          "expected_writer_epoch": "workspace.writer_epoch"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        }
       },
       {
-        "id": "handoff", "label": "Prepare future handoff", "kind": "button",
+        "id": "handoff",
+        "label": "Prepare future handoff",
+        "kind": "button",
         "operation": {
           "contribution_id": "pack.tobkiri_cloud_workspace_pack.tobkiri_cloud_workspace_pack.workspace-manage",
           "contract_id": "tobkiri.action.cloud.workspace.v1",
           "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage"
         },
-        "input": {"operation": "prepare_handoff", "expected_receiver_head": ""},
-        "input_bindings": {"expected_revision": "workspace.revision"},
-        "context_bindings": {"conversation_id": "conversation_id"}
+        "input": {
+          "operation": "prepare_handoff",
+          "expected_receiver_head": ""
+        },
+        "input_bindings": {
+          "expected_revision": "workspace.revision",
+          "expected_writer_epoch": "workspace.writer_epoch"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        }
       }
     ]
   }

@@ -41,6 +41,7 @@ _PROTECTED = {
     "__pycache__",
 }
 _SECRET_NAMES = {
+    "capsule-manifest.json",
     ".dockercfg",
     ".git-credentials",
     ".npmrc",
@@ -117,7 +118,10 @@ def safe_path(value: Any) -> str:
         name in _SECRET_NAMES
         or name.startswith(".env")
         or name.endswith((".key", ".pem", ".p12", ".pfx", ".crt"))
-        or any(re.fullmatch(r"(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?", p) for p in lowered)
+        or any(
+            re.fullmatch(r"(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?", p)
+            for p in lowered
+        )
     ):
         raise PermissionError("capsule contains a secret or reserved path")
     return value
@@ -217,7 +221,12 @@ def validate_capsule(
     paths, keys = set(), set()
     summed = 0
     for entry in entries:
-        if not isinstance(entry, Mapping) or set(entry) != {"path", "digest", "size", "mode"}:
+        if not isinstance(entry, Mapping) or set(entry) != {
+            "path",
+            "digest",
+            "size",
+            "mode",
+        }:
             raise ValueError("capsule file fields are invalid")
         path = safe_path(entry["path"])
         alias = path.casefold()
@@ -228,7 +237,11 @@ def validate_capsule(
         paths.add(alias)
         key = content_digest(entry["digest"])
         size = integer(entry["size"])
-        if size > MAX_FILE_BYTES or entry["mode"] != 420 or type(entry["mode"]) is not int:
+        if (
+            size > MAX_FILE_BYTES
+            or entry["mode"] != 420
+            or type(entry["mode"]) is not int
+        ):
             raise ValueError("capsule file bounds or mode are invalid")
         data = blobs.get(key)
         if not isinstance(data, bytes) or len(data) != size or digest(data) != key:
@@ -277,7 +290,8 @@ def import_archive(data: bytes) -> tuple[dict[str, Any], dict[str, bytes]]:
                     entry.filename in names
                     or entry.is_dir()
                     or entry.flag_bits & 1
-                    or entry.compress_type not in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
+                    or entry.compress_type
+                    not in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
                     or stat.S_IFMT(entry.external_attr >> 16) not in {0, stat.S_IFREG}
                     or entry.file_size > max(MAX_FILE_BYTES, MAX_MANIFEST_BYTES)
                     or entry.file_size > max(1, entry.compress_size) * 100
@@ -289,7 +303,10 @@ def import_archive(data: bytes) -> tuple[dict[str, Any], dict[str, bytes]]:
                     raise ValueError("capsule archive contains an unsafe entry")
                 names.add(entry.filename)
                 total += entry.file_size
-            if "manifest.json" not in names or total > MAX_TOTAL_BYTES + MAX_MANIFEST_BYTES:
+            if (
+                "manifest.json" not in names
+                or total > MAX_TOTAL_BYTES + MAX_MANIFEST_BYTES
+            ):
                 raise ValueError("capsule archive aggregate size is invalid")
             manifest = parse_json(archive.read("manifest.json"))
             blobs = {
