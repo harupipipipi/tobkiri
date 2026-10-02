@@ -377,7 +377,8 @@ class SavedBridgeCallbacks:
         conversation = self._read_conversation(outer, request["conversation_id"])
         try:
             return resolve_request_context(
-                conversation, request, outer.context.profile_id,
+                conversation, request,
+                getattr(getattr(outer, "context", None), "profile_id", ""),
                 lambda parent_id: self._read_conversation(outer, parent_id),
             )
         except ValueError as error:

@@ -250,6 +250,8 @@ class SideChat:
         result = self.client.invoke(*SAVED, initial)
         if (
             not isinstance(result, Mapping)
+            or result.get("status")
+            not in {"completed", "existing", "reconciliation_required"}
             or not isinstance(result.get("turn"), Mapping)
             or (
                 result["turn"].get("id") != payload["turn_id"]
@@ -279,7 +281,7 @@ class SideChat:
         ):
             raise ValueError("turn does not belong to the child conversation")
         if action == "events":
-            return self.client.invoke(
+            result = self.client.invoke(
                 *EVENTS,
                 {
                     "profile_id": self.profile_id,
@@ -288,11 +290,37 @@ class SideChat:
                     "turn_id": turn_id,
                 },
             )
+            if (
+                not isinstance(result, Mapping)
+                or result.get("id") != turn_id
+                or (result.get("conversation_id") != conversation_id)
+            ):
+                raise LookupError("turn events are unconfirmed")
+            return result
         if action not in {"stop", "reconcile"}:
             raise ValueError("side turn operation is invalid")
-        return self.client.invoke(
+        result = self.client.invoke(
             *(STOP if action == "stop" else RECONCILE),
             {
                 "turn_id": turn_id,
             },
         )
+        if not isinstance(result, Mapping):
+            raise LookupError("turn response is unconfirmed")
+        if action == "stop" and (
+            result.get("turn_id") != turn_id
+            or type(result.get("stopped")) is not bool
+            or (result.get("status"), result.get("stopped"))
+            not in {
+                ("cancellation_requested", False),
+                ("stopped_confirmed", True),
+            }
+        ):
+            raise LookupError("turn cancellation is unconfirmed")
+        if action == "reconcile" and (
+            not isinstance(result.get("turn"), Mapping)
+            or result["turn"].get("id") != turn_id
+            or result["turn"].get("conversation_id") != conversation_id
+        ):
+            raise LookupError("turn reconciliation is unconfirmed")
+        return result

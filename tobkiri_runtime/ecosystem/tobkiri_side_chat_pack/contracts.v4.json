@@ -1,0 +1,379 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "pack_id": "tobkiri_side_chat_pack",
+  "source_identity": "sha256:bd73370d85af96403a9875b9c74ef3d81bc525c8c3b95def0f8db7011d1ec756",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.resource.side-chat.v1",
+      "version": "1.0.0",
+      "owner": "tobkiri_side_chat_pack",
+      "status": "accepted",
+      "operations": [
+        {
+          "operation_id": "tobkiri_side_chat_pack.side-chat-resource",
+          "input_schema_digest": "sha256:e87cb16d24b010076d23aac02d6cdde43151d391354ef8e12897f2e30e35f644",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "effect_ceiling": [
+            "capability:conversation.side.read"
+          ],
+          "scope_semantics": "host_broker",
+          "idempotency": {
+            "mode": "none"
+          }
+        }
+      ],
+      "schema_catalog": {
+        "sha256:e87cb16d24b010076d23aac02d6cdde43151d391354ef8e12897f2e30e35f644": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "profile_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+            },
+            "operation": {
+              "type": "string"
+            },
+            "_session_id": {
+              "type": "string"
+            },
+            "parent_conversation_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+            },
+            "conversation_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+            },
+            "turn_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+            }
+          },
+          "required": [
+            "profile_id",
+            "operation"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "operation": {
+                  "const": "get"
+                }
+              },
+              "required": [
+                "parent_conversation_id"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "events"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "turn_id"
+              ]
+            }
+          ]
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "provider_semantics": {
+        "provider_id": "tobkiri_side_chat_pack.resource",
+        "cardinality": "one",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "required_capabilities": [
+          "conversation.side.read"
+        ],
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "data_owner": "tobkiri_side_chat_pack"
+        }
+      },
+      "provenance": {
+        "source_kind": "repository",
+        "source_path": "ecosystem/tobkiri_side_chat_pack/pack-source.v1.json",
+        "source_digest": "sha256:bd73370d85af96403a9875b9c74ef3d81bc525c8c3b95def0f8db7011d1ec756",
+        "repository_commit": "372f10c8a60180ffc6fe77b9f9d01fa5a05937c8",
+        "repository_tree": "9b4a3b61cdfa635f9662f20a87310f70276a89c3590a969bdff611a8d1a9aca4",
+        "generator": "tobkiri-protocol",
+        "generator_version": "1.0.0",
+        "normative": false,
+        "evidence": [],
+        "schema": "io.tobkiri.provenance.v1"
+      },
+      "revision_digest": "sha256:7dc88c0144aaa76e276826968e10e87b1dbe2d0cd30d743b3247c5ed3eb7b616"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.side-chat.v1",
+      "version": "1.0.0",
+      "owner": "tobkiri_side_chat_pack",
+      "status": "accepted",
+      "operations": [
+        {
+          "operation_id": "tobkiri_side_chat_pack.side-chat-manage",
+          "input_schema_digest": "sha256:5e8873b75c4eb1fbc1f15f1f2ef12d938fb1af6bf0e970f8196a1789b6360f8b",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "effect_ceiling": [
+            "capability:conversation.side.manage",
+            "host:brokered-execution"
+          ],
+          "scope_semantics": "host_broker",
+          "idempotency": {
+            "mode": "none"
+          }
+        }
+      ],
+      "schema_catalog": {
+        "sha256:5e8873b75c4eb1fbc1f15f1f2ef12d938fb1af6bf0e970f8196a1789b6360f8b": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "profile_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+            },
+            "operation": {
+              "type": "string"
+            },
+            "_session_id": {
+              "type": "string"
+            },
+            "parent_conversation_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+            },
+            "expected_parent_revision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "profile_id",
+            "operation"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "operation": {
+                  "const": "ensure"
+                }
+              },
+              "required": [
+                "parent_conversation_id",
+                "expected_parent_revision"
+              ]
+            }
+          ]
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "provider_semantics": {
+        "provider_id": "tobkiri_side_chat_pack.manage",
+        "cardinality": "one",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "required_capabilities": [
+          "conversation.side.manage"
+        ],
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "data_owner": "tobkiri_side_chat_pack"
+        }
+      },
+      "provenance": {
+        "source_kind": "repository",
+        "source_path": "ecosystem/tobkiri_side_chat_pack/pack-source.v1.json",
+        "source_digest": "sha256:bd73370d85af96403a9875b9c74ef3d81bc525c8c3b95def0f8db7011d1ec756",
+        "repository_commit": "372f10c8a60180ffc6fe77b9f9d01fa5a05937c8",
+        "repository_tree": "9b4a3b61cdfa635f9662f20a87310f70276a89c3590a969bdff611a8d1a9aca4",
+        "generator": "tobkiri-protocol",
+        "generator_version": "1.0.0",
+        "normative": false,
+        "evidence": [],
+        "schema": "io.tobkiri.provenance.v1"
+      },
+      "revision_digest": "sha256:83431dde8344afcc49e540487c37da3583a2205166b5a2275ce0120bb4f2612e"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.side-chat.turn.v1",
+      "version": "1.0.0",
+      "owner": "tobkiri_side_chat_pack",
+      "status": "accepted",
+      "operations": [
+        {
+          "operation_id": "tobkiri_side_chat_pack.side-chat-turn",
+          "input_schema_digest": "sha256:6776fc8082f97b7bd78d28cba88d740d410acb8a146b6d2dbed35ecccf68e8e7",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "effect_ceiling": [
+            "capability:conversation.side.turn",
+            "host:brokered-execution"
+          ],
+          "scope_semantics": "host_broker",
+          "idempotency": {
+            "mode": "none"
+          }
+        }
+      ],
+      "schema_catalog": {
+        "sha256:6776fc8082f97b7bd78d28cba88d740d410acb8a146b6d2dbed35ecccf68e8e7": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "profile_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+            },
+            "operation": {
+              "type": "string"
+            },
+            "_session_id": {
+              "type": "string"
+            },
+            "conversation_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+            },
+            "turn_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+            },
+            "expected_parent_revision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "expected_child_revision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "content": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 61440
+                },
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 3,
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "profile_id",
+            "operation"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "operation": {
+                  "const": "send"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "turn_id",
+                "expected_parent_revision",
+                "expected_child_revision",
+                "content"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "stop"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "turn_id"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "reconcile"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "turn_id"
+              ]
+            }
+          ]
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "provider_semantics": {
+        "provider_id": "tobkiri_side_chat_pack.turn",
+        "cardinality": "one",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "required_capabilities": [
+          "conversation.side.turn"
+        ],
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "data_owner": "tobkiri_side_chat_pack"
+        }
+      },
+      "provenance": {
+        "source_kind": "repository",
+        "source_path": "ecosystem/tobkiri_side_chat_pack/pack-source.v1.json",
+        "source_digest": "sha256:bd73370d85af96403a9875b9c74ef3d81bc525c8c3b95def0f8db7011d1ec756",
+        "repository_commit": "372f10c8a60180ffc6fe77b9f9d01fa5a05937c8",
+        "repository_tree": "9b4a3b61cdfa635f9662f20a87310f70276a89c3590a969bdff611a8d1a9aca4",
+        "generator": "tobkiri-protocol",
+        "generator_version": "1.0.0",
+        "normative": false,
+        "evidence": [],
+        "schema": "io.tobkiri.provenance.v1"
+      },
+      "revision_digest": "sha256:e75c1e733ed36889f817d2793b73afebc4e9c85c9e51354af0e1e01a50b1ef3d"
+    }
+  ]
+}
