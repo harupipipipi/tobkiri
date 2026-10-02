@@ -1,6 +1,6 @@
 # Search Home Pack
 
-`search_home_pack` is a Startup Profile surface pack that gives Rumi a local
+`search_home_pack` is a Startup Profile surface pack that gives Tobkiri a local
 search-first home screen while reusing `defaultspack` for AI classification,
 chat responses, and web search.
 
@@ -26,7 +26,24 @@ Those stay inside `defaultspack`, which remains the source of truth.
 - `GET /health`
 - `GET /api/health`
 - `POST /api/route`
-- `POST /api/ask`
+- `POST /api/answer`
+
+The control-panel frontend reaches these operations through the captured
+Search Home Host contract route. It does not discover or invoke a legacy Pack
+endpoint directly.
+
+## Failure Recovery
+
+Routing and answer failures remain next to the search box with the backend's
+human-readable cause plus Retry and Dismiss actions. Retrying uses the exact
+failed query, action, and model snapshot; the current input and attachment are
+not cleared.
+
+Catalog and saved-model failures remain distinct inside the model control and
+can be retried together. If saving a preferred model fails, Search Home restores
+the previous selection, marks the attempted selection as unsaved, and offers a
+targeted save retry. Error text is bounded and redacted before it is rendered so
+credentials from provider or transport diagnostics are not exposed.
 
 ## Webapp
 
