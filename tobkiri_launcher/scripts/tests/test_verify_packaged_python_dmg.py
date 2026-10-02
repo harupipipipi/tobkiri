@@ -152,6 +152,8 @@ def test_attach_retries_only_bounded_resource_unavailability(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Bind explicit fixture tools even when the host has no macOS hdiutil.
+    _fake_tools(tmp_path, "normal", monkeypatch)
     dmg = tmp_path / "fixture.dmg"
     dmg.write_bytes(b"fixture")
     parent = tmp_path / "mount-parent"
@@ -206,6 +208,8 @@ def test_attach_does_not_retry_other_failures(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Bind explicit fixture tools even when the host has no macOS hdiutil.
+    _fake_tools(tmp_path, "normal", monkeypatch)
     dmg = tmp_path / "fixture.dmg"
     dmg.write_bytes(b"fixture")
     parent = tmp_path / "mount-parent"
@@ -238,6 +242,8 @@ def test_attach_stops_after_bounded_transient_attempts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Bind explicit fixture tools even when the host has no macOS hdiutil.
+    _fake_tools(tmp_path, "normal", monkeypatch)
     dmg = tmp_path / "fixture.dmg"
     dmg.write_bytes(b"fixture")
     parent = tmp_path / "mount-parent"

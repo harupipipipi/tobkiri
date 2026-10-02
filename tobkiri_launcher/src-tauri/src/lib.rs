@@ -3231,7 +3231,7 @@ fn stop_managed_runtimes(
         if let Some(kernel_manager) = kernel_manager {
             let _kernel_stop = scope.spawn(|| match kernel_manager.lock() {
                 Ok(mut kernel) => {
-                    if let Err(error) = kernel.stop() {
+                    if let Err(error) = kernel.shutdown() {
                         error!("Failed to stop kernel during shutdown: {error}");
                     }
                 }
@@ -4171,6 +4171,9 @@ fn exit_after_setup_failure(
         startup_stage_name(&ctx.startup_stage)
     );
     eprintln!("Tobkiri Launcher could not start: {error:#}");
+    if let Some(shutdown_state) = app.try_state::<ShutdownState>() {
+        claim_shutdown(&shutdown_state.inner().0);
+    }
     // The background bootstrap thread may already have spawned managed
     // children before the late setup step failed; stop whichever runtime
     // state was registered so they cannot outlive the process.

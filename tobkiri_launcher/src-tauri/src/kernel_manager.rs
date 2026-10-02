@@ -202,6 +202,9 @@ pub struct KernelManager {
     /// the exit monitor cannot lose restart eligibility by consuming the
     /// exit status before the Kernel is running again.
     restart_owed: bool,
+    /// Final application cleanup fences every later start on this manager.
+    /// Ordinary stop/restart operations deliberately do not set this flag.
+    shutdown_requested: bool,
     /// Consecutive `start()` failures while `restart_owed` was set.
     restart_start_failures: u32,
     /// Monotonically increasing successful-start generation used to fence
@@ -218,6 +221,7 @@ impl KernelManager {
             last_exit_code: None,
             restart_count: 0,
             restart_owed: false,
+            shutdown_requested: false,
             restart_start_failures: 0,
             launch_generation: 0,
         }
@@ -230,6 +234,9 @@ impl KernelManager {
     /// root, preventing ambient imports and writes inside the app bundle.
     /// Stdout and stderr are redirected to `{log_dir}/kernel.log`.
     pub fn start(&mut self) -> Result<()> {
+        if self.shutdown_requested {
+            bail!("Kernel launch was requested after shutdown");
+        }
         if self.is_running() {
             info!("Kernel already running, skipping start");
             self.restart_owed = false;
@@ -472,6 +479,19 @@ impl KernelManager {
         Ok(())
     }
 
+    /// Permanently prevent future starts, then stop the owned Kernel.
+    ///
+    /// The caller holds the same manager lock used by startup and restart, so
+    /// a deferred start cannot run after final cleanup has completed. Retain
+    /// the fence even when stopping the current child returns an error.
+    pub fn shutdown(&mut self) -> Result<()> {
+        self.shutdown_requested = true;
+        self.restart_owed = false;
+        self.last_exit_code = None;
+        self.restart_start_failures = 0;
+        self.stop()
+    }
+
     /// Stop then start. Resets the restart counter.
     pub fn restart(&mut self) -> Result<()> {
         self.stop()?;
@@ -485,6 +505,11 @@ impl KernelManager {
     /// is retained as `restart_owed` until `start()` produces a running
     /// Kernel, so a transient `start()` failure cannot consume it.
     pub fn wait_and_handle_restart(&mut self) -> Result<bool> {
+        if self.shutdown_requested {
+            self.restart_owed = false;
+            self.last_exit_code = None;
+            return Ok(false);
+        }
         if let Some(child) = self.child.as_mut() {
             let status = child.wait().context("failed to wait on Kernel")?;
             let code = status.code().unwrap_or(-1);
@@ -531,7 +556,9 @@ impl KernelManager {
         match self.child.as_mut() {
             Some(child) => match child.try_wait() {
                 Ok(Some(status)) => {
-                    self.last_exit_code = status.code();
+                    // Preserve signal termination after try_wait reaps the child.
+                    // The restart monitor must observe it just like the wait path.
+                    self.last_exit_code = Some(status.code().unwrap_or(-1));
                     self.child = None;
                     false
                 }
@@ -1214,6 +1241,137 @@ mod tests {
         let mut km = KernelManager::new(&config, "test-bootstrap".into());
         let result = km.wait_and_handle_restart().unwrap();
         assert!(!result);
+    }
+
+    fn lifecycle_test_config() -> AppConfig {
+        AppConfig {
+            app_dir: PathBuf::new(),
+            rumi_home: PathBuf::new(),
+            python_dir: PathBuf::new(),
+            uv_path: PathBuf::new(),
+            venv_dir: PathBuf::new(),
+            user_data_dir: PathBuf::new(),
+            log_dir: PathBuf::new(),
+            kernel_port: 0,
+            dev_workspace_root: None,
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn is_running_preserves_signal_exit_for_supervised_restart() {
+        let config = lifecycle_test_config();
+        let mut kernel = KernelManager::new(&config, "test-bootstrap".into());
+        let mut child = std::process::Command::new("/bin/sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        // On Unix, std::process::Child::kill sends SIGKILL. Use the raw Child so
+        // KernelManager::is_running is the first observer of the process exit.
+        child.kill().unwrap();
+        kernel.child = Some(crate::python_env::PythonChild::development(child));
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while kernel.is_running() {
+            assert!(
+                Instant::now() < deadline,
+                "signal-terminated fixture did not exit promptly"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        assert!(kernel.child.is_none());
+        assert_eq!(kernel.last_exit_code, Some(-1));
+        assert!(kernel.wait_and_handle_restart().unwrap());
+        assert!(kernel.restart_owed());
+        assert_eq!(kernel.restart_count, 1);
+        assert!(kernel.last_exit_code.is_none());
+
+        // The monitor polls repeatedly during restart backoff. One observed exit
+        // must create persistent debt while consuming only one crash-budget slot.
+        assert!(!kernel.is_running());
+        assert!(kernel.wait_and_handle_restart().unwrap());
+        assert!(kernel.restart_owed());
+        assert_eq!(kernel.restart_count, 1);
+    }
+
+    #[test]
+    fn shutdown_fence_rejects_start_and_restart_and_clears_exit_debt() {
+        let mut kernel = KernelManager::new(&lifecycle_test_config(), "test".into());
+        kernel.last_exit_code = Some(RESTART_EXIT_CODE);
+        kernel.restart_owed = true;
+        kernel.restart_start_failures = 2;
+
+        kernel.shutdown().unwrap();
+        assert!(kernel.shutdown_requested);
+        assert!(kernel.last_exit_code.is_none());
+        assert!(!kernel.restart_owed());
+        assert_eq!(kernel.restart_start_failures, 0);
+        assert!(!kernel.wait_and_handle_restart().unwrap());
+        assert!(kernel
+            .start()
+            .unwrap_err()
+            .to_string()
+            .contains("after shutdown"));
+        assert!(kernel
+            .restart()
+            .unwrap_err()
+            .to_string()
+            .contains("after shutdown"));
+        assert!(kernel.child.is_none());
+        kernel.shutdown().unwrap();
+    }
+
+    #[test]
+    fn shutdown_fence_blocks_a_deferred_start_after_cleanup() {
+        use std::sync::{mpsc, Arc, Mutex};
+        let kernel = Arc::new(Mutex::new(KernelManager::new(
+            &lifecycle_test_config(),
+            "test".into(),
+        )));
+        let deferred = Arc::clone(&kernel);
+        let (resume, paused) = mpsc::channel();
+        let startup = std::thread::spawn(move || {
+            paused.recv().unwrap();
+            deferred
+                .lock()
+                .unwrap()
+                .start()
+                .map_err(|error| error.to_string())
+        });
+
+        // Models startup / restart finishing its unlocked preparation after
+        // the final cleanup has returned. No runtime is launched by this test.
+        crate::stop_managed_runtimes(None, Some(kernel.as_ref()));
+        resume.send(()).unwrap();
+        assert!(startup
+            .join()
+            .unwrap()
+            .unwrap_err()
+            .contains("after shutdown"));
+        let kernel = kernel.lock().unwrap();
+        assert!(kernel.child.is_none());
+        assert!(!kernel.restart_owed());
+    }
+
+    #[test]
+    fn shutdown_fence_is_not_set_by_an_ordinary_stop() {
+        let mut kernel = KernelManager::new(&lifecycle_test_config(), "test".into());
+        kernel.stop().unwrap();
+        assert!(!kernel.shutdown_requested);
+        assert!(!kernel
+            .start()
+            .unwrap_err()
+            .to_string()
+            .contains("after shutdown"));
+        assert!(!kernel
+            .restart()
+            .unwrap_err()
+            .to_string()
+            .contains("after shutdown"));
+        kernel.last_exit_code = Some(RESTART_EXIT_CODE);
+        assert!(kernel.wait_and_handle_restart().unwrap());
+        assert!(kernel.restart_owed());
     }
 
     #[test]
