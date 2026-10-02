@@ -10397,6 +10397,205 @@
       "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
       "implementation_path": "runtime/bridge.py",
       "input_schema": {
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "correlation_id": {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "effect_kind": {
+                "enum": [
+                  "provider_configure",
+                  "shell_execute",
+                  "git_commit",
+                  "git_restore",
+                  "git_apply_patch",
+                  "git_push",
+                  "mcp_connect"
+                ]
+              },
+              "phase": {
+                "const": "prepare"
+              },
+              "request": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "phase",
+              "effect_kind",
+              "request"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "correlation_id": {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "effect_kind": {
+                "const": "workspace_task"
+              },
+              "phase": {
+                "const": "prepare"
+              },
+              "request": {
+                "additionalProperties": false,
+                "properties": {
+                  "argv": {
+                    "items": {
+                      "maxLength": 8192,
+                      "pattern": "^[^\\u0000]*$",
+                      "type": "string"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "expected_revision": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "expected_writer_epoch": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "profile_id": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                    "type": "string"
+                  },
+                  "task_request_id": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                    "type": "string"
+                  },
+                  "timeout_seconds": {
+                    "maximum": 120,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "workspace_id": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "task_request_id",
+                  "profile_id",
+                  "workspace_id",
+                  "expected_revision",
+                  "expected_writer_epoch",
+                  "argv",
+                  "timeout_seconds"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "phase",
+              "effect_kind",
+              "request"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "correlation_id": {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "effect_kind": {
+                "enum": [
+                  "provider_configure",
+                  "shell_execute",
+                  "git_commit",
+                  "git_restore",
+                  "git_apply_patch",
+                  "git_push",
+                  "mcp_connect",
+                  "workspace_task"
+                ]
+              },
+              "phase": {
+                "const": "lookup"
+              }
+            },
+            "required": [
+              "phase",
+              "effect_kind",
+              "correlation_id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "effect_id": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "phase": {
+                "enum": [
+                  "status",
+                  "resume",
+                  "cancel"
+                ]
+              }
+            },
+            "required": [
+              "phase",
+              "effect_id"
+            ],
+            "type": "object"
+          }
+        ],
+        "properties": {
+          "correlation_id": {
+            "maxLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "effect_id": {
+            "maxLength": 255,
+            "type": "string"
+          },
+          "effect_kind": {
+            "enum": [
+              "provider_configure",
+              "shell_execute",
+              "git_commit",
+              "git_restore",
+              "git_apply_patch",
+              "git_push",
+              "mcp_connect",
+              "workspace_task"
+            ]
+          },
+          "phase": {
+            "enum": [
+              "prepare",
+              "resume",
+              "status",
+              "cancel",
+              "lookup"
+            ]
+          },
+          "request": {
+            "type": "object"
+          }
+        },
         "type": "object"
       },
       "operation_id": "interactive_effect.manage",
@@ -10411,6 +10610,205 @@
           "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
+            "additionalProperties": false,
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "correlation_id": {
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "effect_kind": {
+                    "enum": [
+                      "provider_configure",
+                      "shell_execute",
+                      "git_commit",
+                      "git_restore",
+                      "git_apply_patch",
+                      "git_push",
+                      "mcp_connect"
+                    ]
+                  },
+                  "phase": {
+                    "const": "prepare"
+                  },
+                  "request": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "phase",
+                  "effect_kind",
+                  "request"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "correlation_id": {
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "effect_kind": {
+                    "const": "workspace_task"
+                  },
+                  "phase": {
+                    "const": "prepare"
+                  },
+                  "request": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "argv": {
+                        "items": {
+                          "maxLength": 8192,
+                          "pattern": "^[^\\u0000]*$",
+                          "type": "string"
+                        },
+                        "maxItems": 64,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "expected_revision": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "expected_writer_epoch": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "profile_id": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                        "type": "string"
+                      },
+                      "task_request_id": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                        "type": "string"
+                      },
+                      "timeout_seconds": {
+                        "maximum": 120,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "workspace_id": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "task_request_id",
+                      "profile_id",
+                      "workspace_id",
+                      "expected_revision",
+                      "expected_writer_epoch",
+                      "argv",
+                      "timeout_seconds"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "phase",
+                  "effect_kind",
+                  "request"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "correlation_id": {
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "effect_kind": {
+                    "enum": [
+                      "provider_configure",
+                      "shell_execute",
+                      "git_commit",
+                      "git_restore",
+                      "git_apply_patch",
+                      "git_push",
+                      "mcp_connect",
+                      "workspace_task"
+                    ]
+                  },
+                  "phase": {
+                    "const": "lookup"
+                  }
+                },
+                "required": [
+                  "phase",
+                  "effect_kind",
+                  "correlation_id"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "effect_id": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "phase": {
+                    "enum": [
+                      "status",
+                      "resume",
+                      "cancel"
+                    ]
+                  }
+                },
+                "required": [
+                  "phase",
+                  "effect_id"
+                ],
+                "type": "object"
+              }
+            ],
+            "properties": {
+              "correlation_id": {
+                "maxLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "effect_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "effect_kind": {
+                "enum": [
+                  "provider_configure",
+                  "shell_execute",
+                  "git_commit",
+                  "git_restore",
+                  "git_apply_patch",
+                  "git_push",
+                  "mcp_connect",
+                  "workspace_task"
+                ]
+              },
+              "phase": {
+                "enum": [
+                  "prepare",
+                  "resume",
+                  "status",
+                  "cancel",
+                  "lookup"
+                ]
+              },
+              "request": {
+                "type": "object"
+              }
+            },
             "type": "object"
           },
           "kind": "legacy-explicit-entrypoint",
@@ -24427,7 +24825,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:cc230080490d218bb39bbf5062ffccb79c89581e584cefec2a9ca3cf5533811c",
+    "input_digest": "sha256:57e08169188025a53e768f28a3229174fdc6e6c523b22b5ac8fe687ea7061c31",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -25178,7 +25576,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:d16b2fe8330d80ca81c4c48df783fe091073c0297de930ed31bb6921828ca4f9",
+        "digest": "sha256:964912c0f1fac1108626cc791ccbb2b2f0e5b913cb1759234fca552b7ced9058",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },

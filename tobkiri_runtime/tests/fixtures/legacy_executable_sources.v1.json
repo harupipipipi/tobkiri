@@ -1700,7 +1700,206 @@
           "implementation_path": "runtime/bridge.py",
           "schemas": {
             "input": {
-              "type": "object"
+              "additionalProperties": false,
+              "properties": {
+                "correlation_id": {
+                  "maxLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
+                "effect_id": {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                "effect_kind": {
+                  "enum": [
+                    "provider_configure",
+                    "shell_execute",
+                    "git_commit",
+                    "git_restore",
+                    "git_apply_patch",
+                    "git_push",
+                    "mcp_connect",
+                    "workspace_task"
+                  ]
+                },
+                "phase": {
+                  "enum": [
+                    "prepare",
+                    "resume",
+                    "status",
+                    "cancel",
+                    "lookup"
+                  ]
+                },
+                "request": {
+                  "type": "object"
+                }
+              },
+              "type": "object",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "phase",
+                    "effect_kind",
+                    "request"
+                  ],
+                  "properties": {
+                    "phase": {
+                      "const": "prepare"
+                    },
+                    "effect_kind": {
+                      "enum": [
+                        "provider_configure",
+                        "shell_execute",
+                        "git_commit",
+                        "git_restore",
+                        "git_apply_patch",
+                        "git_push",
+                        "mcp_connect"
+                      ]
+                    },
+                    "request": {
+                      "type": "object"
+                    },
+                    "correlation_id": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "phase",
+                    "effect_kind",
+                    "request"
+                  ],
+                  "properties": {
+                    "phase": {
+                      "const": "prepare"
+                    },
+                    "effect_kind": {
+                      "const": "workspace_task"
+                    },
+                    "request": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "task_request_id",
+                        "profile_id",
+                        "workspace_id",
+                        "expected_revision",
+                        "expected_writer_epoch",
+                        "argv",
+                        "timeout_seconds"
+                      ],
+                      "properties": {
+                        "task_request_id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                        },
+                        "profile_id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                        },
+                        "workspace_id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                        },
+                        "expected_revision": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "expected_writer_epoch": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "argv": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 64,
+                          "items": {
+                            "type": "string",
+                            "maxLength": 8192,
+                            "pattern": "^[^\\u0000]*$"
+                          }
+                        },
+                        "timeout_seconds": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 120
+                        }
+                      }
+                    },
+                    "correlation_id": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "phase",
+                    "effect_kind",
+                    "correlation_id"
+                  ],
+                  "properties": {
+                    "phase": {
+                      "const": "lookup"
+                    },
+                    "effect_kind": {
+                      "enum": [
+                        "provider_configure",
+                        "shell_execute",
+                        "git_commit",
+                        "git_restore",
+                        "git_apply_patch",
+                        "git_push",
+                        "mcp_connect",
+                        "workspace_task"
+                      ]
+                    },
+                    "correlation_id": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "phase",
+                    "effect_id"
+                  ],
+                  "properties": {
+                    "phase": {
+                      "enum": [
+                        "status",
+                        "resume",
+                        "cancel"
+                      ]
+                    },
+                    "effect_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 255
+                    }
+                  }
+                }
+              ]
             },
             "output": {
               "type": "object"

@@ -29,7 +29,7 @@
     {
       "path": "packs/rumi-host-authority-bridge.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:b032eb057354f91f5a6e706455070b83f13ccd73236d0bd47f4dbdf2f0f70e0d"
+      "digest": "sha256:3f9a126e50c5c078261064eab45bda22a05ce7604eb33806b6efe16a90968f3c"
     },
     {
       "path": "packs/rumi-workspace-mount.pack.v4.json",
@@ -674,7 +674,7 @@
     {
       "path": "packs/rumi_host_authority_bridge_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:0dacbf610211f0b81d48c823f19ad053e86a66192613038d9f3822b8e85eebaa"
+      "digest": "sha256:679f04efdbc5366ad9dd4662c972d36954fa1c59f99c46ecd269513e3a87dd7f"
     },
     {
       "path": "packs/rumi_host_capabilities_pack.executables.v4.json",
@@ -1514,7 +1514,7 @@
     {
       "path": "defaults.profile.v5.json",
       "kind": "profile",
-      "digest": "sha256:eec4a89412d769147103241f481c289c894d3478f52145a07b571ca4fd2798eb"
+      "digest": "sha256:35b0e8663fe6e313bde4db7d5543ce10d4fbb057e952e03971722401116bd893"
     }
   ]
 }
