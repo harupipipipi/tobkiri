@@ -23,6 +23,7 @@ from ecosystem.defaultspack.defaultspack.http_surface_presentation import (
 from ecosystem.defaultspack.defaultspack.v4_view_contract import (
     validate_catalog_view,
     validate_public_input,
+    validate_schema_declared_profile_targets,
 )
 from tests.test_v4_frontend_contributions import (
     DESCRIPTOR,
@@ -50,6 +51,20 @@ SCHEMA = {
         },
     },
 }
+
+
+def test_domain_target_schema_walk_bounds_cyclic_local_alternatives() -> None:
+    """Repeated refs cannot exponentially expand the schema-only path walk."""
+    schema = {
+        "properties": {"policy": {"$ref": "#/$defs/target"}},
+        "$defs": {"target": {
+            "anyOf": [{"$ref": "#/$defs/target"}, {"$ref": "#/$defs/target"}],
+            "properties": {"profile_id": {"type": "string"}},
+        }},
+    }
+    validate_schema_declared_profile_targets(
+        {"policy": {"profile_id": "model-target"}}, schema
+    )
 
 
 def _catalog(schema: Mapping[str, Any] = SCHEMA) -> dict[str, Any]:
