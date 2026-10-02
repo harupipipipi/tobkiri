@@ -1487,7 +1487,7 @@
       "path": "frontend/contributions/settings.json"
     },
     {
-      "digest": "sha256:d34b55745b1ed78cbe44c94b190d4f5b5251d02f773075f9fb005e82c6de1a4e",
+      "digest": "sha256:11197d5a41a7164cd5790a686eb360569d01ea5e9d9c6c67ce6305247ab02dfb",
       "kind": "sidecar",
       "path": "frontend/contributions/work-plan.json"
     },
@@ -1507,17 +1507,17 @@
       "path": "runtime/host.py"
     },
     {
-      "digest": "sha256:ff9f83e294c5f4b43d37f1335410831e35212bbf7d48fcd4346fb1c5b85c5b12",
+      "digest": "sha256:9b521eda829b2a63f686c812024db93c8dedd4ac95b24befa0a90d3f904d639f",
       "kind": "executable",
       "path": "runtime/inbox.py"
     },
     {
-      "digest": "sha256:145b16e6c83708c7019d20b7d7fc5ae01c96699c41d1abb799d1d813332d366e",
+      "digest": "sha256:793366f76a5a5b57bcf60bd4eee52c9b2ccb63597757560d334346a0b8f09607",
       "kind": "executable",
       "path": "runtime/ports.py"
     },
     {
-      "digest": "sha256:60727529f3d60cffa426e92df3400c1880e3f7b159850dc15931f0bad36c9ea0",
+      "digest": "sha256:cfe3216ae85da1a52947eeb9f11f64838637a43a9910f0fac666fa6fef31aa92",
       "kind": "executable",
       "path": "runtime/review.py"
     },
@@ -1527,7 +1527,7 @@
       "path": "runtime/schedules.py"
     },
     {
-      "digest": "sha256:d98a761f4248e69753e3076eca7357bb25ea3bc8f9d35bff569f9c61ff70666d",
+      "digest": "sha256:e3379e1478cef4e36d892a677c7c95602b2f51d1b1d3be57ad953bfe26af971c",
       "kind": "executable",
       "path": "runtime/service.py"
     },

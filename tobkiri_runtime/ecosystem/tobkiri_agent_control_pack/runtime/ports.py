@@ -93,6 +93,9 @@ class Ports:
         request_id: str,
     ) -> dict[str, Any]:
         """Run a bounded independent context through the public AI gateway."""
+        body = json.dumps(data)
+        if len(body.encode("utf-8")) > 128 * 1024:
+            raise ValueError("independent review context exceeds its bounded budget")
         model = self.resolve_model(plan["settings"], conversation)
         request = {
             "request_id": request_id,
@@ -101,7 +104,7 @@ class Ports:
             "model_profile_id": model["resolved_profile_id"],
             "messages": [
                 {"role": "system", "content": instruction},
-                {"role": "user", "content": json.dumps(data)},
+                {"role": "user", "content": body},
             ],
             "parameters": {
                 "max_tokens": 2048,

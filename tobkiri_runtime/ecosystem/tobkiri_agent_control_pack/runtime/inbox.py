@@ -42,14 +42,6 @@ def deliver(
         raise ValueError("instruction lifetime is invalid")
     if value["expires_at_ms"] is not None:
         integer(value["expires_at_ms"])
-    old = next((x for x in plan["inbox"] if x["id"] == event_id), None)
-    if old:
-        compare = {k: v for k, v in value.items() if k not in {"at_ms", "status", "input_id"}}
-        if any(old[k] != v for k, v in compare.items()):
-            raise Conflict("inbox event ID was rebound")
-        return {"status": old["status"], "event": deepcopy(old), "deduplicated": True}
-    if len(plan["inbox"]) >= 10000:
-        raise ValueError("inbox retention capacity exceeded")
     if source == "review" and value["finding_id"]:
         pending = next(
             (
@@ -58,6 +50,7 @@ def deliver(
                 if x["finding_id"] == value["finding_id"]
                 and x["status"] in {"pending", "received", "applied"}
                 and x["generation"] == plan["generation"]
+                and not x.get("resolved_at_ms")
             ),
             None,
         )
@@ -67,6 +60,14 @@ def deliver(
                 "event": deepcopy(pending),
                 "deduplicated": True,
             }
+    old = next((x for x in plan["inbox"] if x["id"] == event_id), None)
+    if old:
+        compare = {k: v for k, v in value.items() if k not in {"at_ms", "status", "input_id"}}
+        if any(old[k] != v for k, v in compare.items()):
+            raise Conflict("inbox event ID was rebound")
+        return {"status": old["status"], "event": deepcopy(old), "deduplicated": True}
+    if len(plan["inbox"]) >= 10000:
+        raise ValueError("inbox retention capacity exceeded")
     plan["inbox"].append(value)
     return {"status": "pending", "event": deepcopy(value)}
 
@@ -83,6 +84,8 @@ def prepare_input(plan: dict[str, Any], values: Mapping[str, Any], now_ms: int) 
     current_goal = plan["goal"]["revision"] if plan["goal"] else None
     for event in plan["inbox"]:
         if event["agent_binding"] != binding:
+            continue
+        if event.get("resolved_at_ms"):
             continue
         if (
             event["generation"] != plan["generation"]
