@@ -5,19 +5,21 @@ import {
 import type { FrontendCapabilityInvoker, FrontendCatalog } from "./frontendContracts";
 import {
   choicePayload, controlPayload, matchesViewReference, readViewPath,
-  viewChoices, viewOperationRequest, viewsForSlot, requestContextInput,
+  viewChoices, viewOperationRequest, viewsForSlot, requestContextInput, viewContextKey,
   type CatalogViewReference, type RegisteredCatalogView,
-  type ViewControl, type ViewSlot, type ViewInputContext,
+  type ViewControl, type ViewSlot, type ViewInputContext, type ViewNavigationGuardChange,
 } from "./catalogViewRegistry";
 
 /** Render approved slot declarations through code shipped by the Application. */
 export function FrontendViewSlot({
   catalog, slot, activePlanHash, capabilities, contributionId, reference, context = {},
+  onNavigationGuardChange,
 }: {
   catalog: FrontendCatalog; slot: ViewSlot; activePlanHash: string;
   capabilities: FrontendCapabilityInvoker; contributionId?: string;
   reference?: CatalogViewReference;
   context?: ViewInputContext;
+  onNavigationGuardChange?: ViewNavigationGuardChange;
 }) {
   const views = useMemo(() => viewsForSlot(catalog, slot, activePlanHash)
     .filter((registered) => !contributionId || registered.item.contribution_id === contributionId)
@@ -26,9 +28,10 @@ export function FrontendViewSlot({
   if (contributionId && views.length !== 1) return <UnavailableView />;
   return <div data-tobkiri-view-slot={slot} className="flex min-w-0 flex-col gap-2">
     {views.map((registered) => <ViewBoundary
-      key={JSON.stringify([registered.reference, context])}
+      key={JSON.stringify([registered.reference, viewContextKey(registered, context)])}
       fallback={<UnavailableView />}>
-      <CatalogViewHost registered={registered} catalog={catalog} capabilities={capabilities} context={context} />
+      <CatalogViewHost registered={registered} catalog={catalog} capabilities={capabilities}
+        context={context} onNavigationGuardChange={onNavigationGuardChange} />
     </ViewBoundary>)}
   </div>;
 }
@@ -55,11 +58,12 @@ function safeText(value: unknown): string {
 }
 
 function CatalogViewHost({
-  registered, catalog, capabilities, context,
+  registered, catalog, capabilities, context, onNavigationGuardChange,
 }: {
   registered: RegisteredCatalogView; catalog: FrontendCatalog;
   capabilities: FrontendCapabilityInvoker;
   context: ViewInputContext;
+  onNavigationGuardChange?: ViewNavigationGuardChange;
 }) {
   const [snapshot, setSnapshot] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
@@ -116,10 +120,12 @@ function CatalogViewHost({
       })}
     </dl>
     <div className="mt-2 flex min-w-0 flex-wrap gap-2">
+      {registered.view.renderer === "record_editor" && <UnavailableView />}
       {(registered.view.controls ?? []).map((control) => <CatalogControl
         key={control.id} control={control} snapshot={snapshot}
         registered={registered} catalog={catalog} capabilities={capabilities}
         context={context}
+        onNavigationGuardChange={onNavigationGuardChange}
         sourceReady={sourceAvailable && !loading && !sourceError && (!source || snapshot !== null)}
         onRefresh={refresh} />)}
     </div>
@@ -128,11 +134,13 @@ function CatalogViewHost({
 
 function CatalogControl({
   control, snapshot, registered, catalog, capabilities, sourceReady, onRefresh, context,
+  onNavigationGuardChange,
 }: {
   control: ViewControl; snapshot: unknown; registered: RegisteredCatalogView;
   catalog: FrontendCatalog; capabilities: FrontendCapabilityInvoker;
   sourceReady: boolean; onRefresh: () => void;
   context: ViewInputContext;
+  onNavigationGuardChange?: ViewNavigationGuardChange;
 }) {
   const authoritative = readViewPath(snapshot, control.value_path);
   const [draft, setDraft] = useState("");
@@ -144,6 +152,13 @@ function CatalogControl({
   const active = useRef(true);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   useEffect(() => { setDraft(typeof authoritative === "string" ? authoritative : ""); }, [authoritative]);
+  const ownerId = JSON.stringify([registered.reference, control.id, viewContextKey(registered, context)]);
+  useEffect(() => {
+    const dirty = control.kind === "text" && draft !== (typeof authoritative === "string" ? authoritative : "");
+    onNavigationGuardChange?.(ownerId, busy ? () => false : dirty
+      ? () => window.confirm("Discard unsaved changes to " + control.label + "?") : null);
+    return () => onNavigationGuardChange?.(ownerId, null);
+  }, [ownerId, control.kind, control.label, draft, authoritative, busy, onNavigationGuardChange]);
   const base = controlPayload(control, snapshot, control.kind === "toggle"
     ? authoritative !== true : control.kind === "text" ? draft : null, context);
   const available = base !== null && viewOperationRequest(catalog, registered, control.operation, base) !== null;
@@ -168,7 +183,6 @@ function CatalogControl({
     } catch {
       if (active.current) {
         setFailed(true);
-        setDraft(typeof authoritative === "string" ? authoritative : "");
       }
     } finally {
       pending.current = false;
