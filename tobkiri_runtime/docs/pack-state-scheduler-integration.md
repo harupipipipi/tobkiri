@@ -15,6 +15,8 @@ The source changes alone do not establish production admission or GUI evidence.
 | `tobkiri.action.scheduler.v1` | `rumi_scheduler_runtime_pack.scheduler-control` | `rumi_scheduler_runtime_pack.scheduler.control`, same module |
 | `tobkiri.action.job.v1` | `rumi_job_action_broker_pack.job-action-broker` | `rumi_job_action_broker_pack.job-action.broker`, `ecosystem.rumi_job_action_broker_pack.runtime.broker` |
 | `tobkiri.resource.ai.model.profile.v1` | `rumi_model_registry_pack.model-profile-resource` | `rumi_model_registry_pack.model-registry.profile`, `ecosystem.rumi_model_registry_pack.runtime.process` |
+| `tobkiri.resource.company.v1` | `rumi_company_state_store_pack.company-state-resource` | `rumi_company_state_store_pack.company-state.resource`, `ecosystem.rumi_company_state_store_pack.runtime.store` |
+| `tobkiri.action.company.state.v1` | `rumi_company_state_store_pack.company-state-action` | `rumi_company_state_store_pack.company-state.action`, same module |
 
 Each module exports `HOST_PROVIDER_FACTORY`, keyed by the exact Function IDs.
 New scheduler/store/job variants require Host-extension admission, like the
@@ -95,6 +97,13 @@ There is no implicit fallback. Snapshot consumers persist the full initial
 receipt; subsequent calls pass it as `snapshot_receipt`, retaining model and
 thinking while still validating current availability and capabilities.
 
+Existing gateway generation and streaming operations retain their exact IDs and
+native `{identifier: saved_profile_or_alias}` input. The shared model resource
+schema admits that wire as well as discriminator-based list/get/resolve/policy
+calls. Current provider connections are read without secret values; saved profile
+metadata `requires_credentials` checks a live opaque credential handle. The
+resolution receipt never contains that handle.
+
 The receipt version is `tobkiri.secondary-model-policy.v1`; it records requested
 policies, resolved profile, model ID, thinking level/source/translation, source
 and profile record revision, resolution source, fallback reason, and a stable
@@ -110,6 +119,12 @@ with per-Team/entity CAS, fenced leases, durable idempotency, stable timeline
 pagination, and private migration backups/quarantine. Compatibility adapters
 read the exact Team revision rather than a profile-wide revision; retryable
 conflicts remain retryable rather than becoming failed work.
+
+The public resource supports `list`, `get`, and `timeline`. The action requires
+the exact `company_id` and its `expected_revision`. `task.claim` additionally
+requires `task_id`, `member_id`, `idempotency_key`, and `lease_duration_ms`;
+`lease.renew` requires the same task/member and the exact `fencing_token`.
+Changes to another Team do not advance this Team's CAS revision.
 
 Legacy migration is explicitly opt-in with `migrate_legacy=True` in isolated
 fixtures. Production owner construction with unactivated legacy JSON/SQLite
@@ -137,3 +152,11 @@ SQLite/filesystem transitions and dispatch through a public fake adapter; they
 do not establish a packaged Profile, real GUI operation, or real model result.
 Integrated packaged tests and actual Pack UI testing remain required after the
 root regenerates source-authoritative artifacts.
+
+The generic application-owned `RecordEditorView` renders strict public catalog
+descriptors. It retains the original CAS snapshot throughout editing, preserves
+drafts on approval/error/conflict, and clears a saved draft only after an
+authoritative refresh contains the same update. Navigation guard confirmation
+does not erase the draft until navigation actually unmounts the view. This source
+module alone does not admit the old isolated scheduler iframe or establish GUI
+evidence.

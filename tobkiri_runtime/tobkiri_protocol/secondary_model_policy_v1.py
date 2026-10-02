@@ -183,7 +183,9 @@ def _unavailable(profile: Mapping[str, Any] | None, required: list[str]) -> str:
         return "MODEL_API_KEY_MISSING"
     if availability.get("active") is False:
         return "MODEL_PROFILE_UNAVAILABLE"
-    if metadata.get("requires_api_key") is True and not profile.get("credential_handle"):
+    if (
+        metadata.get("requires_api_key") is True or metadata.get("requires_credentials") is True
+    ) and not profile.get("credential_handle"):
         return "MODEL_API_KEY_MISSING"
     capabilities = metadata.get("capabilities", profile.get("capabilities", []))
     if isinstance(capabilities, Mapping):

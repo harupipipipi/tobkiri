@@ -6,6 +6,13 @@ import json
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from core_runtime.host_provider_backend_v4 import (
+    CapturedHostProviderV4,
+    HostProviderCaptureContextV4,
+    HostProviderContributionV4,
+    HostProviderInvocationContextV4,
+)
+
 from core_runtime.paths import USER_DATA_DIR
 from core_runtime.profile_workspace import validate_profile_id
 
@@ -65,7 +72,7 @@ def create_company_action(client: Any) -> Callable[[str, Mapping[str, Any]], Any
     def operation(name: str, payload: Mapping[str, Any]) -> Any:
         arguments = _arguments(name, payload)
         _redeem(client, payload, name, arguments)
-        return CompanyStateStore(_profile(payload)).apply(name, arguments)
+        return _apply_company_action(CompanyStateStore(_profile(payload)), name, arguments)
 
     return operation
 
@@ -88,18 +95,26 @@ def _arguments(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         "task.upsert",
         "task.delete",
         "task.transition",
+        "task.claim",
+        "lease.renew",
         "inbound.append",
         "message.append",
         "migration.operations.import",
     }
     if name not in allowed:
         raise ValueError(f"unknown Company action: {name}")
+    revision = payload.get("expected_revision")
+    if type(revision) is not int or revision < 0:
+        raise ValueError("Team expected_revision must be a nonnegative integer")
     arguments: dict[str, Any] = {
         "company_id": str(payload.get("company_id") or ""),
-        "expected_revision": max(0, int(payload.get("expected_revision") or 0)),
+        "expected_revision": revision,
     }
     if "expected_entity_revision" in payload:
-        arguments["expected_entity_revision"] = max(0, int(payload["expected_entity_revision"]))
+        entity_revision = payload["expected_entity_revision"]
+        if type(entity_revision) is not int or entity_revision < 0:
+            raise ValueError("Team entity revision must be a nonnegative integer")
+        arguments["expected_entity_revision"] = entity_revision
     if name == "company.create":
         arguments.update(
             {
@@ -128,6 +143,20 @@ def _arguments(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
             updates[key] = dict(_mapping(updates[key]))
         arguments["updates"] = updates
         arguments["replace_settings"] = bool(payload.get("replace_settings"))
+    elif name in {"task.claim", "lease.renew"}:
+        arguments["record_id"] = str(payload.get("task_id") or "")
+        duration = payload.get("lease_duration_ms")
+        if type(duration) is not int or not 1 <= duration <= 3_600_000:
+            raise ValueError("Team lease_duration_ms must be a bounded integer")
+        arguments["lease_duration_ms"] = duration
+        if name == "task.claim":
+            arguments["member_id"] = str(payload.get("member_id") or "")
+            arguments["idempotency_key"] = str(payload.get("idempotency_key") or "")
+        else:
+            fence = payload.get("fencing_token")
+            if type(fence) is not int or fence < 1:
+                raise ValueError("Team fencing token is invalid")
+            arguments["fencing_token"] = fence
     elif name == "agent.upsert":
         arguments["role"] = dict(_mapping(payload.get("role")))
         arguments["member"] = dict(_mapping(payload.get("member")))
@@ -222,3 +251,155 @@ def _mapping(value: Any) -> Mapping[str, Any]:
 
 def _profile(payload: Mapping[str, Any]) -> str:
     return str(payload.get("profile_id") or "default")
+
+
+_V4_ROUTES = {
+    "rumi_company_state_store_pack.company-state.action": (
+        "tobkiri.action.company.state.v1",
+        "rumi_company_state_store_pack.company-state-action",
+    ),
+    "rumi_company_state_store_pack.company-state.resource": (
+        "tobkiri.resource.company.v1",
+        "rumi_company_state_store_pack.company-state-resource",
+    ),
+}
+
+
+def _apply_company_action(
+    store: CompanyStateStore, name: str, arguments: Mapping[str, Any]
+) -> Mapping[str, Any]:
+    if name == "task.claim":
+        return store.claim_work(
+            str(arguments["company_id"]),
+            str(arguments["record_id"]),
+            str(arguments["member_id"]),
+            expected_revision=int(arguments["expected_revision"]),
+            lease_duration_ms=int(arguments["lease_duration_ms"]),
+            idempotency_key=str(arguments["idempotency_key"]),
+        )
+    if name == "lease.renew":
+        return store.renew_lease(
+            str(arguments["company_id"]),
+            str(arguments["record_id"]),
+            expected_revision=int(arguments["expected_revision"]),
+            lease_duration_ms=int(arguments["lease_duration_ms"]),
+            fencing_token=int(arguments["fencing_token"]),
+        )
+    return store.apply(name, arguments)
+
+
+def _invoke_v4_owner(
+    function_id: str, context: Any, payload: Mapping[str, Any], invocation: Any
+) -> Mapping[str, Any]:
+    store = CompanyStateStore(context.profile_id, root=context.user_data_root)
+    operation = str(payload.get("operation") or "")
+    if function_id.endswith(".resource"):
+        allowed = {
+            "operation",
+            "profile_id",
+            "company_id",
+            "kind",
+            "limit",
+            "cursor",
+            "after_sequence",
+        }
+        if set(payload) - allowed:
+            raise PermissionError("Team resource payload is invalid")
+        if operation == "list":
+            return store.snapshot(
+                limit=int(payload.get("limit", 1000)), cursor=str(payload.get("cursor") or "")
+            )
+        if operation == "get":
+            return {"company": store.get(str(payload.get("company_id") or ""))}
+        if operation == "timeline":
+            return store.list_timeline(
+                str(payload.get("company_id") or ""),
+                kind=str(payload.get("kind") or "message"),
+                limit=int(payload.get("limit", 100)),
+                after_sequence=int(payload.get("after_sequence", 0)),
+            )
+        raise ValueError("Team resource operation is invalid")
+    arguments = _arguments(operation, payload)
+    if (
+        set(payload)
+        - set(arguments)
+        - {
+            "operation",
+            "profile_id",
+            "agent_id",
+            "task_id",
+        }
+    ):
+        raise PermissionError("Team action payload is invalid")
+    invocation.assert_current()
+    return _apply_company_action(store, operation, arguments)
+
+
+class _OwnerHostFactoryV4:
+    """Capture only exact, verified operations for this owner Function."""
+
+    def __init__(self, function_id: str) -> None:
+        self.function_id = function_id
+
+    def capture(self, context: HostProviderCaptureContextV4) -> CapturedHostProviderV4:
+        """Bind operations and persistence to the selected Profile activation."""
+        if (
+            context.user_data_root is None
+            or not context.profile_id
+            or not context.provider_bindings
+            or any(
+                binding.function.function_id != self.function_id
+                for binding in context.provider_bindings
+            )
+        ):
+            raise PermissionError("owner capture scope is incomplete")
+        expected_contract, expected_operation = _V4_ROUTES[self.function_id]
+        if any(
+            binding.operation.contract_id != expected_contract
+            or binding.operation.operation_id != expected_operation
+            for binding in context.provider_bindings
+        ):
+            raise PermissionError("owner operation binding is invalid")
+
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            if operation_id != expected_operation or (
+                "profile_id" in payload and payload["profile_id"] != context.profile_id
+            ):
+                raise PermissionError("owner invocation scope is invalid")
+            invocation.assert_current()
+            result = _invoke_v4_owner(self.function_id, context, payload, invocation)
+            invocation.assert_current()
+            return result
+
+        contributions = []
+        for binding in context.provider_bindings:
+            key = (
+                binding.operation.contract_id,
+                binding.operation.operation_id,
+                binding.principal_ref.value,
+            )
+            domain_id = context.domain_ids.get(key)
+            if domain_id is None:
+                raise PermissionError("owner domain binding is unavailable")
+            contributions.append(
+                HostProviderContributionV4(
+                    contract_id=binding.operation.contract_id,
+                    contract_version=binding.operation.contract_version,
+                    operation_id=binding.operation.operation_id,
+                    principal_id=binding.principal_ref.value,
+                    artifact_digest=binding.artifact.digest,
+                    implementation_digest=binding.function.implementation_digest,
+                    domain_id=domain_id,
+                    invoke=invoke,
+                )
+            )
+        return CapturedHostProviderV4(tuple(contributions), lambda: None)
+
+
+HOST_PROVIDER_FACTORY = {
+    function_id: _OwnerHostFactoryV4(function_id) for function_id in _V4_ROUTES
+}
