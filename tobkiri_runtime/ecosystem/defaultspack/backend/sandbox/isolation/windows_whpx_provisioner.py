@@ -20,7 +20,7 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import (
@@ -33,6 +33,7 @@ from cryptography.hazmat.primitives.serialization import (
 from core_runtime.hmac_key_manager import generate_or_load_signing_key
 from core_runtime.process_identity import process_start_identity
 from tobkiri_host.sparse_copy import copy_verified_stream
+from tobkiri_host.windows_abi_types import WindowsCRuntime
 from tobkiri_host.windows_whpx_probe import whpx_capability
 from tobkiri_host.windows_whpx_security import private_directory, stable_file
 from tobkiri_protocol.canonical import canonical_digest, canonical_json
@@ -217,6 +218,7 @@ class WindowsWHPXProvisioner:
                         "previous_config_digest": previous["config_digest"],
                         "previous_guest_runner_digest": previous["guest_runner_digest"],
                         "previous_host_build_digest": previous["host_build_digest"],
+                        "asset_manifest_digest": assets.manifest_digest,
                     }
             except (OSError, ValueError, KeyError):
                 reason = reason or "Windows PackVM existing registration requires recovery"
@@ -930,16 +932,18 @@ def _exclusive_file_lock(fd: int) -> Iterator[None]:
     if os.name == "nt":
         import msvcrt
 
+        crt = cast(WindowsCRuntime, msvcrt)
+
         os.lseek(fd, 0, os.SEEK_SET)
         try:
-            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            crt.locking(fd, crt.LK_NBLCK, 1)
         except OSError as exc:
             raise PackVMGateBusyError("Windows PackVM lifecycle operation is busy") from exc
         try:
             yield
         finally:
             os.lseek(fd, 0, os.SEEK_SET)
-            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            crt.locking(fd, crt.LK_UNLCK, 1)
     else:
         # Cross-platform deterministic tests only. The production capability
         # check above never admits a non-Windows host to this provisioner.

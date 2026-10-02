@@ -97,6 +97,7 @@ import {
   modelSelectorSchemaForSurface,
 } from "../features/models";
 import { ActionApprovalControl } from "../features/tools/ActionApprovalControl";
+import { ToolModeControl } from "../features/tools/ToolModeControl";
 import { ProjectPicker } from "../features/projects/ProjectPicker";
 import { ToolOverrideChips } from "../features/tools/ToolOverrideChips";
 import { ToolSelectionReviewCard } from "../features/tools/ToolSelectionReviewCard";
@@ -2970,6 +2971,7 @@ export function ComposerRenderer({
   entityReferences = [],
   selectedToolIds = [],
   actionApprovalMode = "ask",
+  toolSelectionMode = "auto",
   toolSelectionTargets = [],
   toolSelectionReview = null,
   keyboardButtonNavigation = true,
@@ -2981,6 +2983,7 @@ export function ComposerRenderer({
   onOpenModelManager,
   onOpenToolSettings,
   onActionApprovalModeChange,
+  onToolSelectionModeChange,
   onToolSelectionTargetRemove,
   onToolSelectionReviewApprove,
   onToolSelectionReviewEdit,
@@ -4400,6 +4403,27 @@ export function ComposerRenderer({
           tabIndex={chromeButtonTabIndex}
           onModeChange={(nextMode) => onActionApprovalModeChange?.(nextMode)}
           onOpenSettings={onOpenToolSettings}
+        />
+      ),
+    },
+    {
+      id: "tool-selection-control",
+      slot: "leading",
+      homeSlot: "toolbar-leading",
+      order: 52,
+      visible: Boolean(onToolSelectionModeChange),
+      width: { basis: "auto", min: "4rem", max: "8.5rem", shrink: 1 },
+      className: "rumi-composer-dock-control",
+      render: () => (
+        <ToolModeControl
+          mode={toolSelectionMode}
+          availableModes={["auto", "manual", "none"]}
+          manualCount={selectedToolIds.length}
+          disabled={isGenerating}
+          surfaceClassName={COMPOSER_CONTROL_SURFACE_CLASSNAME}
+          tabIndex={chromeButtonTabIndex}
+          onModeChange={(nextMode) => onToolSelectionModeChange?.(nextMode)}
+          onOpenPicker={onOpenToolSettings}
         />
       ),
     },

@@ -203,7 +203,10 @@ write_files:
       import os
       import stat
       port = "/dev/virtio-ports/io.tobkiri.packvm.agent"
-      descriptor = os.open(port, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+      # O_PATH inspects identity without opening the virtio data stream. An
+      # ordinary open/close advertises PORT_OPEN, then discards queued Host
+      # bytes on close before the real guest service can read its challenge.
+      descriptor = os.open(port, os.O_PATH | os.O_CLOEXEC)
       try:
           metadata = os.fstat(descriptor)
           if (not stat.S_ISCHR(metadata.st_mode) or metadata.st_uid != 0

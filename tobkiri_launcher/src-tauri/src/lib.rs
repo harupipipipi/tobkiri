@@ -3,13 +3,13 @@
 //! V2: Full implementation with setup hook, commands, tray menu, and navigation guard.
 
 mod artifact_integrity;
-mod packvm_bundle;
 mod ci_e2e_app_data;
 mod config;
 mod debug_approval;
 mod defaultspack_authority;
 mod defaultspack_manager;
 mod desktop_system_info;
+mod development_packvm;
 mod frontend_entry;
 mod health_check;
 mod host_audit;
@@ -22,6 +22,8 @@ mod kernel_manager;
 mod packvm_acceptance;
 #[cfg(any(test, all(unix, any(debug_assertions, tobkiri_ci_e2e_artifact))))]
 mod packvm_acceptance_path;
+mod packvm_bundle;
+mod preparation_budget;
 mod presentation;
 mod process_utils;
 mod python_env;
@@ -2576,10 +2578,36 @@ fn request_panel_bootstrap_code_with_retry_for(
     bootstrap_secret: &str,
     presenter_request_id: Option<&str>,
 ) -> AnyResult<String> {
+    request_panel_bootstrap_code_with_retry_for_until(
+        port,
+        bootstrap_secret,
+        presenter_request_id,
+        std::time::Instant::now() + Duration::from_secs(300),
+    )
+}
+
+pub(crate) fn request_panel_bootstrap_code_with_retry_until(
+    port: u16,
+    bootstrap_secret: &str,
+    deadline: std::time::Instant,
+) -> AnyResult<String> {
+    request_panel_bootstrap_code_with_retry_for_until(
+        port,
+        bootstrap_secret,
+        None,
+        deadline.min(std::time::Instant::now() + Duration::from_secs(300)),
+    )
+}
+
+fn request_panel_bootstrap_code_with_retry_for_until(
+    port: u16,
+    bootstrap_secret: &str,
+    presenter_request_id: Option<&str>,
+    deadline: std::time::Instant,
+) -> AnyResult<String> {
     // A committed activation can replace the Kernel between health and this
     // request. Fast connection refusals must not exhaust the recovery budget
     // before the replacement finishes its verified cold capture.
-    let deadline = std::time::Instant::now() + Duration::from_secs(300);
     let retry_delay = Duration::from_millis(500);
     loop {
         let remaining = deadline.saturating_duration_since(std::time::Instant::now());
@@ -2592,7 +2620,10 @@ fn request_panel_bootstrap_code_with_retry_for(
             presenter_request_id,
             remaining.min(Duration::from_secs(10)),
         ) {
-            Ok(code) => return Ok(code),
+            Ok(code) => {
+                crate::preparation_budget::check(deadline)?;
+                return Ok(code);
+            }
             Err(error) => {
                 let remaining = deadline.saturating_duration_since(std::time::Instant::now());
                 if remaining.is_zero() {
@@ -4423,6 +4454,23 @@ mod tests {
             "replacement-code"
         );
         server.join().unwrap();
+    }
+
+    #[test]
+    fn expired_shared_bootstrap_budget_sends_no_request() {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(super::request_panel_bootstrap_code_with_retry_until(
+            port,
+            "test-bootstrap-secret",
+            std::time::Instant::now(),
+        )
+        .is_err());
+        assert_eq!(
+            listener.accept().unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
     }
     use super::*;
     use std::path::PathBuf;

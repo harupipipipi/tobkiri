@@ -84,6 +84,42 @@ test("provider readiness distinguishes credential, health, and reachability", ()
   assert.match(html, /未検証/);
 });
 
+test("keyless local readiness labels credentials unnecessary while reachability stays unverified", () => {
+  const html = renderToStaticMarkup(createElement(ProviderReadiness, {
+    connection: {
+      provider_instance_id: "connection/ollama:local",
+      display_name: "Local Ollama",
+      credential_status: "not_required",
+      health_status: "unverified",
+      reachability: "unknown",
+      observed_at: null,
+    },
+  }));
+
+  assert.match(html, /資格情報: 不要（ローカルモデル）/);
+  assert.match(html, /到達性: 未確認/);
+  assert.match(html, /未検証/);
+  assert.doesNotMatch(html, /資格情報: 未設定|資格情報: 設定済み|到達性: 利用可能|検証済み/);
+});
+
+test("keyless local readiness preserves verified failure evidence", () => {
+  const html = renderToStaticMarkup(createElement(ProviderReadiness, {
+    connection: {
+      provider_instance_id: "connection/ollama:local",
+      display_name: "Local Ollama",
+      credential_status: "not_required",
+      health_status: "verified",
+      reachability: "unavailable",
+      observed_at: 123.5,
+    },
+  }));
+
+  assert.match(html, /資格情報: 不要（ローカルモデル）/);
+  assert.match(html, /到達性: 利用不可/);
+  assert.match(html, /検証済み/);
+  assert.doesNotMatch(html, /到達性: 利用可能|到達性: 未確認|未検証/);
+});
+
 function makeModelOption(index: number): ModelSelectOption {
   return {
     value: `demo/provider-model-${index}`,

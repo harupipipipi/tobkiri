@@ -5,10 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ecosystem.defaultspack.backend.sandbox.isolation.windows_whpx_assets import WindowsWHPXAssets
 from tobkiri_protocol.canonical import canonical_digest
 
 from .macos_vz_supervisor import MacOSVZHelperIdentity, MacOSVZSupervisorDriver
+from .qemu_asset_ports import VerifiedQemuAssets
 from .qemu_supervisor_transport import QemuRuntime, QemuSupervisorTransport
 from .windows_whpx_probe import whpx_capability
 
@@ -19,7 +19,7 @@ class WindowsWHPXSupervisorDriver(MacOSVZSupervisorDriver):
     substrate_id = "windows-whpx"
     _platform_prefix = "windows-"
 
-    def __init__(self, *, assets: WindowsWHPXAssets, **kwargs: Any) -> None:
+    def __init__(self, *, assets: VerifiedQemuAssets, **kwargs: Any) -> None:
         self._windows_assets = assets
         if "identity_verifier" in kwargs or "platform" in kwargs or "runtime" in kwargs:
             raise ValueError("Windows PackVM identity verifier cannot be overridden")

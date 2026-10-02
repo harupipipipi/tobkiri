@@ -101,6 +101,13 @@ test("the five adapter commands branch before legacy frontend command execution"
   assert.doesNotMatch(appSource.slice(adapterBranch, legacyBranch), /api\.executeResolvedUiCommand\(/);
 });
 
+test("ordinary commands do not start an unpublished background event stream", () => {
+  const appSource = readFileSync(resolve(import.meta.dirname, "..", "App.tsx"), "utf8");
+  assert.match(appSource, /await api\.executeResolvedUiCommand\(/);
+  assert.doesNotMatch(appSource, /followCommandProgress|api\.streamCommandInvocationEvents\(/);
+  assert.doesNotMatch(appSource, /commandProgressEvents/);
+});
+
 test("reload restoration opens each native high-risk approval window once", () => {
   const appSource = readFileSync(resolve(import.meta.dirname, "..", "App.tsx"), "utf8");
   const restoreStart = appSource.indexOf("void api.listHighRiskCommands()");

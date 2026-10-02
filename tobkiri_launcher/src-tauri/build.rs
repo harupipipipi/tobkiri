@@ -474,6 +474,7 @@ fn capture_local_development_authority(
         &staged_root.join("ecosystem/defaultspack"),
         &runtime_root,
     )?;
+    stage_local_development_packvm_bundle(&staged_root)?;
     write_runtime_resource_manifest(&staged_root)?;
     let manifest = fs::read(staged_root.join(RUNTIME_RESOURCE_MANIFEST))?;
     Ok((staged_root, format!("{:x}", Sha256::digest(manifest))))
@@ -2344,6 +2345,21 @@ fn write_runtime_resource_manifest(staged_root: &Path) -> io::Result<()> {
         staged_root.join(RUNTIME_RESOURCE_MANIFEST),
         [payload, b"\n".to_vec()].concat(),
     )
+}
+
+fn stage_local_development_packvm_bundle(staged_root: &Path) -> io::Result<()> {
+    // No ambient compile-time pin may survive an explicitly unbound dev build.
+    println!("cargo:rustc-env=TOBKIRI_QEMU_PACKVM_MANIFEST_SHA256=");
+    match (
+        std::env::var_os(packvm_bundle::SOURCE_ENV),
+        std::env::var_os(packvm_bundle::DIGEST_ENV),
+    ) {
+        (None, None) => Ok(()),
+        (Some(_), Some(_)) => stage_portable_packvm_bundle(staged_root),
+        _ => Err(invalid_release(
+            "local development PackVM requires both its source and expected manifest digest",
+        )),
+    }
 }
 
 fn stage_portable_packvm_bundle(staged_root: &Path) -> io::Result<()> {
@@ -6951,8 +6967,236 @@ mod tests {
         fs::read(source_catalog).unwrap()
     }
 
+    fn write_local_development_packvm_fixture(root: &Path, accelerator: &str) -> String {
+        fs::create_dir(root).unwrap();
+        let mut files = serde_json::Map::new();
+        for slot in [
+            "agent",
+            "bubblewrap",
+            "bubblewrap_descriptor",
+            "config",
+            "firmware_code",
+            "firmware_vars",
+            "image",
+            "qemu",
+            "service",
+        ] {
+            let bytes = format!("reviewed fixture {slot}").into_bytes();
+            fs::write(root.join(slot), &bytes).unwrap();
+            files.insert(
+                slot.to_owned(),
+                serde_json::json!({
+                    "path": slot,
+                    "sha256": format!("sha256:{:x}", Sha256::digest(&bytes)),
+                    "size_bytes": bytes.len(),
+                }),
+            );
+        }
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "schema": "io.tobkiri.packvm-qemu-provisioning.v1",
+            "architecture": "amd64",
+            "accelerator": accelerator,
+            "files": files,
+            "image_source": "https://example.invalid/reviewed-fixture.raw",
+            "qemu_dependencies": [],
+        }))
+        .unwrap();
+        fs::write(root.join(packvm_bundle::MANIFEST), &bytes).unwrap();
+        format!("{:x}", Sha256::digest(&bytes))
+    }
+
+    #[test]
+    fn local_development_packvm_stage_allows_absent_pair_and_rejects_partial_pair() {
+        let _environment = environment_lock();
+        let _source = EnvironmentGuard::clear(packvm_bundle::SOURCE_ENV);
+        let _digest = EnvironmentGuard::clear(packvm_bundle::DIGEST_ENV);
+        let _target = EnvironmentGuard::set_value("CARGO_CFG_TARGET_OS", "linux");
+        let tree = TestTree::new("local-packvm-optional-inputs");
+        let stage = tree.path().join("stage");
+        fs::create_dir(&stage).unwrap();
+        stage_local_development_packvm_bundle(&stage).unwrap();
+        assert!(!stage.join(packvm_bundle::DIRECTORY).exists());
+
+        {
+            let _source_only = EnvironmentGuard::set_path(
+                packvm_bundle::SOURCE_ENV,
+                &tree.path().join("reviewed-source"),
+            );
+            let error = stage_local_development_packvm_bundle(&stage).unwrap_err();
+            assert!(error.to_string().contains("requires both"));
+        }
+        {
+            let _digest_only =
+                EnvironmentGuard::set_value(packvm_bundle::DIGEST_ENV, &"1".repeat(64));
+            let error = stage_local_development_packvm_bundle(&stage).unwrap_err();
+            assert!(error.to_string().contains("requires both"));
+        }
+        assert!(!stage.join(packvm_bundle::DIRECTORY).exists());
+    }
+
+    #[test]
+    fn local_development_packvm_stage_matches_linux_and_windows_target_pins() {
+        let _environment = environment_lock();
+        let _signer =
+            EnvironmentGuard::set_value("TOBKIRI_WINDOWS_SIGNER_CERT_SHA256", &"a".repeat(64));
+        for (target, accelerator) in [("linux", "kvm"), ("windows", "whpx")] {
+            let _target = EnvironmentGuard::set_value("CARGO_CFG_TARGET_OS", target);
+            let tree = TestTree::new(&format!("local-packvm-{target}"));
+            let source = tree.path().join("reviewed-source");
+            let digest = write_local_development_packvm_fixture(&source, accelerator);
+            let _source = EnvironmentGuard::set_path(packvm_bundle::SOURCE_ENV, &source);
+            let _digest =
+                EnvironmentGuard::set_value(packvm_bundle::DIGEST_ENV, &format!("sha256:{digest}"));
+            let stage = tree.path().join("stage");
+            fs::create_dir(&stage).unwrap();
+            stage_local_development_packvm_bundle(&stage).unwrap();
+            packvm_bundle::verify(&stage.join(packvm_bundle::DIRECTORY), &digest, accelerator)
+                .unwrap();
+            assert_eq!(
+                fs::read(stage.join(packvm_bundle::DIRECTORY).join("config")).unwrap(),
+                fs::read(source.join("config")).unwrap(),
+            );
+        }
+    }
+
+    #[test]
+    fn local_development_packvm_stage_rejects_wrong_pin_and_target_accelerator() {
+        let _environment = environment_lock();
+        let _target = EnvironmentGuard::set_value("CARGO_CFG_TARGET_OS", "linux");
+        let tree = TestTree::new("local-packvm-wrong-pin");
+        let source = tree.path().join("reviewed-source");
+        let digest = write_local_development_packvm_fixture(&source, "kvm");
+        let _source = EnvironmentGuard::set_path(packvm_bundle::SOURCE_ENV, &source);
+        let _digest = EnvironmentGuard::set_value(packvm_bundle::DIGEST_ENV, &digest);
+        let stage = tree.path().join("stage");
+        fs::create_dir(&stage).unwrap();
+        {
+            let _wrong_pin =
+                EnvironmentGuard::set_value(packvm_bundle::DIGEST_ENV, &"0".repeat(64));
+            let error = stage_local_development_packvm_bundle(&stage).unwrap_err();
+            assert!(error.to_string().contains("build-pinned identity"));
+        }
+        {
+            let _wrong_target = EnvironmentGuard::set_value("CARGO_CFG_TARGET_OS", "windows");
+            let _signer =
+                EnvironmentGuard::set_value("TOBKIRI_WINDOWS_SIGNER_CERT_SHA256", &"a".repeat(64));
+            let error = stage_local_development_packvm_bundle(&stage).unwrap_err();
+            assert!(error.to_string().contains("unsupported or incomplete"));
+        }
+        assert!(!stage.join(packvm_bundle::DIRECTORY).exists());
+    }
+
+    #[test]
+    fn local_development_packvm_stage_rejects_corrupt_and_unlisted_source_assets() {
+        let _environment = environment_lock();
+        let _target = EnvironmentGuard::set_value("CARGO_CFG_TARGET_OS", "linux");
+        let tree = TestTree::new("local-packvm-corrupt-inputs");
+        let source = tree.path().join("reviewed-source");
+        let digest = write_local_development_packvm_fixture(&source, "kvm");
+        let _source = EnvironmentGuard::set_path(packvm_bundle::SOURCE_ENV, &source);
+        let _digest = EnvironmentGuard::set_value(packvm_bundle::DIGEST_ENV, &digest);
+        let stage = tree.path().join("stage");
+        fs::create_dir(&stage).unwrap();
+        let original = fs::read(source.join("image")).unwrap();
+        fs::write(source.join("image"), b"substituted").unwrap();
+        assert!(stage_local_development_packvm_bundle(&stage).is_err());
+        fs::write(source.join("image"), &original).unwrap();
+        fs::write(source.join("rogue.dll"), b"unlisted code").unwrap();
+        assert!(stage_local_development_packvm_bundle(&stage).is_err());
+        assert!(!stage.join(packvm_bundle::DIRECTORY).exists());
+    }
+
+    #[test]
+    fn local_development_packvm_stage_does_not_bind_an_unsupported_target() {
+        let _environment = environment_lock();
+        let _target = EnvironmentGuard::set_value("CARGO_CFG_TARGET_OS", "macos");
+        let tree = TestTree::new("local-packvm-unsupported-target");
+        let source = tree.path().join("reviewed-source");
+        let digest = write_local_development_packvm_fixture(&source, "kvm");
+        let _source = EnvironmentGuard::set_path(packvm_bundle::SOURCE_ENV, &source);
+        let _digest = EnvironmentGuard::set_value(packvm_bundle::DIGEST_ENV, &digest);
+        let stage = tree.path().join("stage");
+        fs::create_dir(&stage).unwrap();
+        stage_local_development_packvm_bundle(&stage).unwrap();
+        assert!(!stage.join(packvm_bundle::DIRECTORY).exists());
+    }
+
+    #[test]
+    fn local_authority_stage_seals_packvm_snapshot_and_isolates_source_changes() {
+        let _environment = environment_lock();
+        let _target = EnvironmentGuard::set_value("CARGO_CFG_TARGET_OS", "linux");
+        let tree = TestTree::new("local-authority-packvm-seal");
+        let repo_root = tree.path();
+        let project_dir = repo_root.join("tobkiri_launcher/src-tauri");
+        let defaults = project_dir.join("target/dev-defaults");
+        let pack = repo_root.join("tobkiri_runtime/ecosystem/defaultspack");
+        let output = tree.path().join("out");
+        fs::create_dir_all(defaults.join("v4/packs")).unwrap();
+        fs::create_dir_all(defaults.join("platform-artifacts")).unwrap();
+        fs::create_dir_all(&pack).unwrap();
+        fs::create_dir_all(&output).unwrap();
+        write_local_development_catalog_fixture(&project_dir);
+        let artifact = defaults.join("platform-artifacts/shell.exe");
+        fs::write(&artifact, b"shell").unwrap();
+        fs::write(
+            defaults.join("v4/shell.tauri.default.shell.v1.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "availability": "verified",
+                "launch": {"variants": [{
+                    "relative_path": "shell.exe",
+                    "artifact_digest": release_artifact_digest(&artifact).unwrap().0,
+                }]},
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        fs::write(pack.join("pack.v4.json"), b"materialized-pack").unwrap();
+        let source = tree.path().join("reviewed-source");
+        let digest = write_local_development_packvm_fixture(&source, "kvm");
+        let _source = EnvironmentGuard::set_path(packvm_bundle::SOURCE_ENV, &source);
+        let _digest = EnvironmentGuard::set_value(packvm_bundle::DIGEST_ENV, &digest);
+
+        let (stage, outer_digest) =
+            capture_local_development_authority(&project_dir, repo_root, &output).unwrap();
+        let assets = stage.join(packvm_bundle::DIRECTORY);
+        packvm_bundle::verify(&assets, &digest, "kvm").unwrap();
+        let manifest_bytes = fs::read(stage.join(RUNTIME_RESOURCE_MANIFEST)).unwrap();
+        assert_eq!(
+            outer_digest,
+            format!("{:x}", Sha256::digest(&manifest_bytes))
+        );
+        let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes).unwrap();
+        let entries = manifest["entries"].as_array().unwrap();
+        for entry in fs::read_dir(&source).unwrap() {
+            let filename = entry.unwrap().file_name();
+            let relative = format!(
+                "{}/{}",
+                packvm_bundle::DIRECTORY,
+                filename.to_str().unwrap(),
+            );
+            let sealed = entries
+                .iter()
+                .find(|entry| entry["path"] == relative)
+                .expect("every reviewed VM file must appear in the build-bound outer seal");
+            let (sha256, size) = packvm_bundle::hash_regular(&assets.join(&filename)).unwrap();
+            assert_eq!(sealed["sha256"], sha256);
+            assert_eq!(sealed["size"].as_u64(), Some(size));
+        }
+        let original_image = fs::read(assets.join("image")).unwrap();
+        fs::write(source.join("image"), b"changed source after build").unwrap();
+        assert_eq!(fs::read(assets.join("image")).unwrap(), original_image);
+        assert_eq!(
+            fs::read(stage.join(RUNTIME_RESOURCE_MANIFEST)).unwrap(),
+            manifest_bytes,
+        );
+        packvm_bundle::verify(&assets, &digest, "kvm").unwrap();
+    }
+
     #[test]
     fn local_authority_stage_captures_defaults_catalog_and_pack_in_one_seal() {
+        let _environment = environment_lock();
+        let _packvm_source = EnvironmentGuard::clear(packvm_bundle::SOURCE_ENV);
+        let _packvm_digest = EnvironmentGuard::clear(packvm_bundle::DIGEST_ENV);
         let tree = TestTree::new("local-authority-stage");
         let repo_root = tree.path();
         let project_dir = repo_root.join("tobkiri_launcher/src-tauri");
@@ -7048,6 +7292,9 @@ mod tests {
 
     #[test]
     fn local_authority_stage_rejects_prepared_pack_from_older_checkout() {
+        let _environment = environment_lock();
+        let _packvm_source = EnvironmentGuard::clear(packvm_bundle::SOURCE_ENV);
+        let _packvm_digest = EnvironmentGuard::clear(packvm_bundle::DIGEST_ENV);
         let tree = TestTree::new("local-authority-stale-pack");
         let repo_root = tree.path();
         let project_dir = repo_root.join("tobkiri_launcher/src-tauri");

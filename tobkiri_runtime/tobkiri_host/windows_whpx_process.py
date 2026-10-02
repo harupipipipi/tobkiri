@@ -17,9 +17,11 @@ import time
 from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from .errors import BackendUnavailableError
-from .linux_qemu_process import LinuxQemuProcess, _deadline, _remaining
+from .qemu_process_core import QemuProcessCore, _deadline, _remaining
+from .windows_abi_types import WindowsCTypes
 from .windows_whpx_native import WindowsJobProcess
 from .windows_whpx_probe import whpx_capability
 from .windows_whpx_security import _stream_hash, private_directory, stable_file
@@ -96,7 +98,7 @@ class WindowsWHPXLaunchConfig:
             raise BackendUnavailableError("Windows WHPX immutable identity is invalid")
 
 
-class WindowsWHPXProcess(LinuxQemuProcess):
+class WindowsWHPXProcess(QemuProcessCore[WindowsWHPXLaunchConfig, WindowsJobProcess]):
     """Share bounded challenge correlation, replacing every platform operation.
 
     The inherited methods implement only canonical framing, challenge limits,
@@ -105,7 +107,7 @@ class WindowsWHPXProcess(LinuxQemuProcess):
     """
 
     def __init__(self, config: WindowsWHPXLaunchConfig) -> None:
-        super().__init__(config)  # type: ignore[arg-type]
+        super().__init__(config)
         self._pins = ExitStack()
         self._writers: set[threading.Thread] = set()
 
@@ -242,8 +244,8 @@ class WindowsWHPXProcess(LinuxQemuProcess):
         """Check pipe/process ownership; only signed guest replies prove readiness."""
         _deadline(timeout)
         with self._lock:
-            self._require_running()
-            if self._process.stdin is None or self._process.stdout is None:
+            process = self._require_running()
+            if process.stdin is None or process.stdout is None:
                 raise BackendUnavailableError("Windows WHPX private pipes are unavailable")
 
     def _send_frame(self, encoded: bytes, deadline: float) -> None:
@@ -255,8 +257,11 @@ class WindowsWHPXProcess(LinuxQemuProcess):
                 view = memoryview(encoded)
                 while view:
                     with self._lock:
-                        self._require_running()
-                    size = self._process.stdin.write(view[:65536])
+                        process = self._require_running()
+                        output = process.stdin
+                        if output is None:
+                            raise BackendUnavailableError("Windows WHPX input pipe is unavailable")
+                    size = output.write(view[:65536])
                     if not size:
                         raise BrokenPipeError("Windows WHPX guest pipe ended")
                     view = view[size:]
@@ -286,9 +291,12 @@ class WindowsWHPXProcess(LinuxQemuProcess):
                 with self._lock:
                     if self._stopping or self._failure is not None:
                         return
-                    self._require_running()
-                chunk = self._process.stdout.read(
-                    min(65536, self.config.max_response_bytes + 1 - len(content))
+                    process = self._require_running()
+                    source = process.stdout
+                    if source is None:
+                        raise BackendUnavailableError("Windows WHPX output pipe is unavailable")
+                chunk = source.read(
+                    min(65536, self._frame_capacity() + 1 - len(content))
                 )
                 if not chunk:
                     raise BackendUnavailableError("Windows WHPX guest pipe ended")
@@ -297,11 +305,9 @@ class WindowsWHPXProcess(LinuxQemuProcess):
                     frame, _, rest = content.partition(b"\n")
                     content = bytearray(rest)
                     self._deliver_frame(bytes(frame))
-                if len(content) > self.config.max_response_bytes:
+                if len(content) > self._frame_capacity():
                     raise BackendUnavailableError("Windows WHPX guest frame exceeds size limit")
-                with self._lock:
-                    if content and not self._pending:
-                        raise BackendUnavailableError("Windows WHPX unsolicited guest frame")
+                self._validate_partial_frame(content)
         except (OSError, ValueError, BackendUnavailableError) as exc:
             self._fail_channel(exc)
 
@@ -309,6 +315,7 @@ class WindowsWHPXProcess(LinuxQemuProcess):
         with self._lock:
             if self._failure is None:
                 self._failure = error
+            self._ready_event.set()
             for pending in self._pending.values():
                 pending.error = BackendUnavailableError("Windows WHPX guest channel failed")
                 pending.event.set()
@@ -343,7 +350,7 @@ def _system_root() -> str:
     """Resolve Windows itself through the OS, never mutable PATH/SystemRoot."""
     import ctypes
 
-    api = ctypes.WinDLL("kernel32", use_last_error=True, winmode=0x800)
+    api = cast(WindowsCTypes, ctypes).WinDLL("kernel32", use_last_error=True, winmode=0x800)
     api.GetWindowsDirectoryW.argtypes = (ctypes.c_wchar_p, ctypes.c_uint32)
     api.GetWindowsDirectoryW.restype = ctypes.c_uint32
     result = ctypes.create_unicode_buffer(32768)

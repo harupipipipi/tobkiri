@@ -207,6 +207,13 @@ export function useToolSelectionController({
     if (!keepSelectedTools) setSelectedToolIds([]);
   };
 
+  const resetDraft = () => {
+    setTurnModeOverride(null);
+    setTurnExclude([]);
+    setPendingReview(null);
+    setLatestDecision(null);
+  };
+
   return {
     state: {
       effectiveMode,
@@ -227,6 +234,7 @@ export function useToolSelectionController({
     continueWithoutTools,
     cancelReview,
     clearTurnStateAfterSend,
+    resetDraft,
   };
 }
 

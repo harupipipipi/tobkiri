@@ -148,6 +148,11 @@ test('PackVM plan normalization accepts only strict fail-closed unavailable evid
     guest_runner_digest: digest('0'),
     host_build_digest: digest('0'),
   });
+  assert.equal(normalizePackVMPlan({...unavailablePlan, image_size_bytes: 0}).image_size_bytes, 0);
+  for (const image_size_bytes of [-1, 0.5, NaN, Infinity, null, '0']) {
+    assert.throws(() => normalizePackVMPlan({...unavailablePlan, image_size_bytes}));
+  }
+  assert.throws(() => normalizePackVMPlan({...planPayload, image_size_bytes: 0}));
   assert.equal(unavailablePlan.image_source, 'unavailable');
   assert.equal(unavailablePlan.runtime_path_status, 'unsafe');
   assert.match(unavailablePlan.launcher_reason ?? '', /production-signed/);

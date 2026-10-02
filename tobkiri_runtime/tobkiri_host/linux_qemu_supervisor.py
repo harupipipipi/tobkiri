@@ -11,13 +11,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ecosystem.defaultspack.backend.sandbox.isolation.linux_qemu_assets import (
-    LinuxQemuAssets,
-    kvm_capability,
-)
 from tobkiri_protocol.canonical import canonical_digest
 
+from .linux_kvm_probe import kvm_capability
 from .macos_vz_supervisor import MacOSVZHelperIdentity, MacOSVZSupervisorDriver
+from .qemu_asset_ports import VerifiedQemuAssets
 from .qemu_supervisor_transport import QemuRuntime, QemuSupervisorTransport
 
 
@@ -27,7 +25,7 @@ class LinuxQemuSupervisorDriver(MacOSVZSupervisorDriver):
     substrate_id = "linux-qemu"
     _platform_prefix = "linux-"
 
-    def __init__(self, *, assets: LinuxQemuAssets, **kwargs: Any) -> None:
+    def __init__(self, *, assets: VerifiedQemuAssets, **kwargs: Any) -> None:
         self._linux_assets = assets
         if "identity_verifier" in kwargs or "platform" in kwargs or "runtime" in kwargs:
             raise ValueError("Linux PackVM identity verification cannot be overridden")

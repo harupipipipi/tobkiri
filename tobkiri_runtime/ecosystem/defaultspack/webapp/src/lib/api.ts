@@ -1663,7 +1663,7 @@ export type ModelProfile = {
 export type RegisteredProviderConnection = {
   provider_instance_id: string;
   display_name: string;
-  credential_status: "configured" | "missing";
+  credential_status: "configured" | "missing" | "not_required";
   health_status: "verified" | "unverified";
   reachability: "available" | "unavailable" | "unknown";
   observed_at: number | null;
@@ -2661,7 +2661,7 @@ function isProviderConnectionSnapshot(
     provider_instance_id: string;
     display_name: string;
     enabled: boolean;
-    credential_status: "configured" | "missing";
+    credential_status: "configured" | "missing" | "not_required";
     health_status: "verified" | "unverified";
     reachability: "available" | "unavailable" | "unknown";
     observed_at: number | null;
@@ -2686,7 +2686,8 @@ function isProviderConnectionSnapshot(
       && hasNonEmptyString(item, "display_name")
       && typeof item.enabled === "boolean"
       && (item.credential_status === "configured"
-        || item.credential_status === "missing")
+        || item.credential_status === "missing"
+        || item.credential_status === "not_required")
       && (item.health_status === "verified"
         || item.health_status === "unverified")
       && ["available", "unavailable", "unknown"].includes(String(item.reachability))
@@ -3908,6 +3909,9 @@ async function nativeCodingApprovalOperatorForDigest(
 }
 
 export const api = {
+  // The current v4 frontend contract map has no steer operation. Do not send
+  // legacy requests or imply that a saved turn can accept extra instructions.
+  supportsConversationSteering: false,
   listConversations(options?: ConversationListOptions) {
     return request<{ conversations: Conversation[]; total: number }>(
       withQuery(defaultspackContractRoute("api/chat/conversations"), options),
@@ -4293,7 +4297,7 @@ export const api = {
         provider_instance_id: string;
         display_name: string;
         enabled: boolean;
-        credential_status: "configured" | "missing";
+        credential_status: "configured" | "missing" | "not_required";
         health_status: "verified" | "unverified";
         reachability: "available" | "unavailable" | "unknown";
         observed_at: number | null;
@@ -4355,11 +4359,8 @@ export const api = {
     });
   },
 
-  conversationSteer(payload: Record<string, unknown>) {
-    return request<ConversationSteerResponse>(defaultspackContractRoute("api/chat/steer"), {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+  conversationSteer(_payload: Record<string, unknown>): Promise<ConversationSteerResponse> {
+    return Promise.reject(new Error("この会話への追加指示はまだ対応していません。入力は保持しています。"));
   },
 
   health() {
@@ -4593,11 +4594,16 @@ export const api = {
     client_sequence?: number;
     expected_revision?: number;
   } & Partial<Omit<CommandInvocationRequest, "command_ref" | "args" | "conversation_id">>): Promise<ComposerCommandExecuteResult> {
+    const { command, conversation_id, ...invocation } = payload;
     const result = await request<CommandProtocolInvocationResult>(
       defaultspackContractRoute("api/command-protocol/v1/invoke"),
       {
         method: "POST",
-        body: JSON.stringify({ ...payload, command_ref: payload.command }),
+        body: JSON.stringify({
+          ...invocation,
+          command_ref: command,
+          ...(conversation_id == null ? {} : { conversation_id }),
+        }),
       },
     );
     if (result.status === "failed") {

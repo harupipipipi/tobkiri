@@ -1562,7 +1562,10 @@ def _migration_status(
         return "generated-draft"
     if effective_status != "semantically-reviewed":
         return "generated-draft"
-    release_entry = {**effective_entry, "status": "release-verified"}
+    # Validate the generated receipt against its original generated document.
+    # The release validator applies the independently bound curated semantics
+    # itself; pre-overlaying here invalidates an otherwise genuine receipt.
+    release_entry = {**entry, "status": "release-verified"}
     if review is not None and not _pack_release_proof_errors(
         pack_id,
         release_entry,
@@ -3939,3 +3942,28 @@ def test_independent_migration_proof_rejects_tampered_signature(
 
     assert not proof
     assert findings[0]["rule"] == "independent_migration_proof_invalid"
+
+
+def test_curated_overlay_preserves_original_generated_receipt_validation() -> None:
+    proof, findings = _load_independent_migration_proof()
+    assert not findings
+    pack_id = "rumi_provider_adapters_pack"
+    reviews, receipts, evidence_findings = _load_release_evidence()
+    assert not evidence_findings
+    entry = proof[pack_id]
+    assert entry.get("migration_receipt_digest")
+    effective = _entry_with_curated_semantics(entry, reviews[pack_id])
+    assert effective["semantic_comparison"] != entry["semantic_comparison"]
+    assert not _pack_release_proof_errors(
+        pack_id, {**entry, "status": "release-verified"},
+        curated_reviews=reviews, runtime_receipts=receipts,
+    )
+    assert _migration_status(pack_id, RUNTIME / "ecosystem" / pack_id, proof) == "release-verified"
+
+
+def test_curated_overlay_does_not_hide_a_tampered_generated_receipt() -> None:
+    proof, findings = _load_independent_migration_proof()
+    assert not findings
+    pack_id = "rumi_provider_adapters_pack"
+    changed = {**proof, pack_id: {**proof[pack_id], "migration_receipt_digest": "sha256:" + "0" * 64}}
+    assert _migration_status(pack_id, RUNTIME / "ecosystem" / pack_id, changed) != "release-verified"

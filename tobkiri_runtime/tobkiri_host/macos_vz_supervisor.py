@@ -288,6 +288,14 @@ class MacOSVZLaunchAssets:
         }
 
 
+class SupervisorRuntime(Protocol):
+    """Serialized resource configuration shared by authenticated supervisors."""
+
+    def to_dict(self) -> Mapping[str, str | int]:
+        """Return the platform-specific runtime fields bound into each launch."""
+        ...
+
+
 @dataclass(frozen=True)
 class MacOSVZRuntime:
     """Host-selected resource limits for one direct VZ guest."""
@@ -566,9 +574,13 @@ class MacOSVZSupervisorDriver:
         launch_assets: MacOSVZLaunchAssets,
         agent_identity: MacOSVZAgentIdentity,
         domain_allocator: MacOSVZDomainAllocator | None,
-        runtime: MacOSVZRuntime | None = None,
+        runtime: SupervisorRuntime | None = None,
         platform: str = "macos-arm64",
-        identity_verifier: MacOSVZHelperIdentityVerifier | None = None,
+        identity_verifier: (
+            MacOSVZHelperIdentityVerifier
+            | Callable[[Path, MacOSVZHelperIdentity], tuple[bool, str | None]]
+            | None
+        ) = None,
         nonce_factory: Callable[[], str] | None = None,
         guest_challenge_factory: Callable[[], str] | None = None,
         channel_key_factory: Callable[[], bytes] | None = None,

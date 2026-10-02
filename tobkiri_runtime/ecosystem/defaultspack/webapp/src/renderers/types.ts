@@ -9,7 +9,7 @@ import type { LocaleSetting } from "../lib/i18n";
 import type { RuntimeCapabilitySnapshot, ToolFilterEntry } from "../lib/toolStatus";
 import type { WorkspaceTab, WorkspaceTabCreateOption, WorkspaceTabKind } from "../components/WorkspaceTabs";
 import type { ActionApprovalMode } from "../features/tools/ActionApprovalControl";
-import type { PendingToolReview, ToolSelectionChip } from "../features/tools/types";
+import type { PendingToolReview, ToolSelectionChip, ToolSelectionMode } from "../features/tools/types";
 import type { ComposerMentionMetadata } from "../lib/composerWidgets";
 import type { ComposerEntityReference } from "../lib/composerReferences";
 import type { WidgetConversationContext } from "../lib/widgetContext";
@@ -222,6 +222,7 @@ export type ComposerRendererProps = {
   entityReferences?: ComposerEntityReference[];
   selectedToolIds?: string[];
   actionApprovalMode?: ActionApprovalMode;
+  toolSelectionMode?: ToolSelectionMode;
   toolSelectionTargets?: ToolSelectionChip[];
   toolSelectionReview?: PendingToolReview | null;
   keyboardButtonNavigation?: boolean;
@@ -233,6 +234,7 @@ export type ComposerRendererProps = {
   onOpenModelManager?: () => void;
   onOpenToolSettings?: () => void;
   onActionApprovalModeChange?: (mode: ActionApprovalMode) => void;
+  onToolSelectionModeChange?: (mode: ToolSelectionMode) => void;
   onToolSelectionTargetRemove?: (target: ToolTarget) => void;
   onToolSelectionReviewApprove?: () => void;
   onToolSelectionReviewEdit?: () => void;

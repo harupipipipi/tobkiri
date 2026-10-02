@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "01b0925822b61565d441ee7ad0a3bd955061aad368ada5f31b1df45dc4892b48",
+    "digest": "c51cf21ce2c9fdd65c201e0478997a84da258b0c4c3e80c4d244068fdde783c2",
     "entries": [
       {
         "path": "index.html",
@@ -115,8 +115,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 344640,
-        "sha256": "6ee2cf93a438ae78cf0d576ce116e4e7ff85de768453f3ac1c5f0b5f74cd2695"
+        "size": 343413,
+        "sha256": "47eb6008f27cff3a93926c765d0590f1b333ccc8bb98f9633a68ce23a7d9b99e"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -880,8 +880,8 @@
       },
       {
         "path": "src/features/models/ModelRouteSetup.tsx",
-        "size": 6378,
-        "sha256": "589fca74ef2912a368842b930b4926b73c69f4b1e410cee3cb1960040f1cc8e1"
+        "size": 6492,
+        "sha256": "4221f73f2657cb54bc3e05bb200f8ef919400716febebf8e0a252b614988aa65"
       },
       {
         "path": "src/features/models/ModelSearchPicker.tsx",
@@ -895,8 +895,8 @@
       },
       {
         "path": "src/features/models/modelSelect.test.ts",
-        "size": 11091,
-        "sha256": "e566d19e393388102ab857705027a8fd838d343422fc45e2020fcec8b8713f76"
+        "size": 12462,
+        "sha256": "1d3da53c3818e5c9eb8012c079c18fa1ed52140c4d6693b2625e3a22744731d6"
       },
       {
         "path": "src/features/models/modelSelect.ts",
@@ -1035,8 +1035,8 @@
       },
       {
         "path": "src/features/tools/ToolModeControl.tsx",
-        "size": 7410,
-        "sha256": "7e984e29eb5232a795426513e4ced4f5f48143d742ca7928197cc76ccbbd98c1"
+        "size": 7556,
+        "sha256": "e4c6560a2ce452127da56faf0ee88d54b7002c6467f480e65e7f2c43297edd6b"
       },
       {
         "path": "src/features/tools/ToolOverrideChips.tsx",
@@ -1060,8 +1060,8 @@
       },
       {
         "path": "src/features/tools/useToolSelectionController.ts",
-        "size": 9106,
-        "sha256": "96cc958c8ad708ba1e0d67bd88170caa49dd37276cf8db14523e126c42cbf829"
+        "size": 9269,
+        "sha256": "2dea94b6db5fef2021f68b5c061f1d49db0bea66bd728f50279b7407ad44dae0"
       },
       {
         "path": "src/features/voice/composerVoice.test.ts",
@@ -1160,13 +1160,13 @@
       },
       {
         "path": "src/lib/api.test.ts",
-        "size": 156972,
-        "sha256": "11f185c726219c072e3f442eec1942fca949a35d8e2bbe0b09fee73a1536fbf7"
+        "size": 162933,
+        "sha256": "63f78113bc3e9cfe8e9a6d822f6d146fa9a707b6028a9aa54376ccec5d049163"
       },
       {
         "path": "src/lib/api.ts",
-        "size": 217253,
-        "sha256": "29f921d0690d393c4d4a3f94b4c2c2c0cff2ad4804847ac809c08ee77e4cc44a"
+        "size": 217727,
+        "sha256": "127d3421d882c72e663d9def82cc050fd2ef2ccca068e29df8e94eb4bbd38920"
       },
       {
         "path": "src/lib/appLoadFailures.test.ts",
@@ -1465,8 +1465,8 @@
       },
       {
         "path": "src/lib/highRiskCommand.test.ts",
-        "size": 4706,
-        "sha256": "7874457ddd302722271668766e57d559c9af818968c46242f73ddb7315ea210e"
+        "size": 5109,
+        "sha256": "dc9bc3289213cda279774727b1389c4fd43e30b234e58ff0683d1dba28b9d808"
       },
       {
         "path": "src/lib/highRiskCommand.ts",
@@ -1785,13 +1785,13 @@
       },
       {
         "path": "src/renderers/ComposerRenderer.test.ts",
-        "size": 73227,
-        "sha256": "3d6308e61e902daa115b841659e44f2c3281c0f82aa85c2a614ff7b61094a445"
+        "size": 78865,
+        "sha256": "0a03ecd791af41553d363475694967bbb46108691604691e1457e1438de859dd"
       },
       {
         "path": "src/renderers/ComposerRenderer.tsx",
-        "size": 218044,
-        "sha256": "7a06774dc4104b5271bdabc6bd135e6d8019a2548d283de873d7dfe97017b93f"
+        "size": 218929,
+        "sha256": "719f0f40769aa58338d86ca92e714293ea6fea110132aa09d954df91abdbfd67"
       },
       {
         "path": "src/renderers/HistoryBoardRenderer.tsx",
@@ -1925,8 +1925,8 @@
       },
       {
         "path": "src/renderers/types.ts",
-        "size": 14366,
-        "sha256": "1127374824b7c739e65a47371f975c0032bbea063a18fc0b9a8e1b3d243fcf1a"
+        "size": 14491,
+        "sha256": "d521a225bcb329dda0e45cfa7d124c30e416315205732280e674423ac8d504a7"
       },
       {
         "path": "src/settings/controlCenter.test.ts",
@@ -2021,7 +2021,7 @@
     ]
   },
   "bundle": {
-    "digest": "804c97e5de2928a81cae734f00df1edc9bd583222e5cfc743f0611bcccb70718",
+    "digest": "b0cbf5b9488c534b937ba9400b0e500845fdff658cdb040111dd0cae55f26c96",
     "entries": [
       {
         "path": "shell-app.css",
@@ -2035,8 +2035,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2254819,
-        "sha256": "6697de4b7171a721d8792116a3924d97ba17e620720adb6ad07420533c72712e"
+        "size": 2259234,
+        "sha256": "153bc8e3b29f613b4471f4a42e63a8139e419c3f9a3491f7cf41107fc12f7c76"
       },
       {
         "path": "shell-rolldown-runtime.js",

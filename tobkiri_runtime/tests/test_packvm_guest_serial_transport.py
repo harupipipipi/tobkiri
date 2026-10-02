@@ -3,29 +3,32 @@
 from __future__ import annotations
 
 import base64
-from collections.abc import Iterator
-from contextlib import contextmanager
-from dataclasses import dataclass
 import hashlib
 import json
 import os
-from pathlib import Path
 import socket
 import stat
 import sys
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
+from pathlib import Path
 from types import SimpleNamespace
 from typing import BinaryIO
 
+import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import (
-    Encoding, NoEncryption, PrivateFormat,
+    Encoding,
+    NoEncryption,
+    PrivateFormat,
 )
-import pytest
 
 from ecosystem.defaultspack.backend.sandbox.isolation.resources import (
     packvm_guest_runner as runner,
 )
+from tobkiri_protocol.packvm_serial import SERIAL_READY_FRAME
 
 
 class _TestSigner:
@@ -122,6 +125,7 @@ def _agent(
     thread = threading.Thread(target=serve, daemon=True)
     thread.start()
     try:
+        assert reader.readline(len(SERIAL_READY_FRAME) + 2) == SERIAL_READY_FRAME + b"\n"
         yield _Harness(client, reader, errors)
     finally:
         reader.close()
@@ -479,6 +483,7 @@ def test_serial_production_rejects_unsafe_device_and_closes_fd(
         assert flags == os.O_RDWR | os.O_CLOEXEC | os.O_NONBLOCK
         return descriptor
 
+    monkeypatch.setattr(runner, "_emit_serial_console_phase", lambda _code: None)
     monkeypatch.setattr(runner.os, "open", open_fixed_device)
     monkeypatch.setattr(
         runner.os, "fstat", lambda _fd: SimpleNamespace(st_mode=mode, st_uid=uid),
@@ -515,6 +520,8 @@ def test_serial_production_checks_key_then_serves_fixed_root_owned_device(
         assert not os.get_inheritable(fd)
         return 0
 
+    phases: list[str] = []
+    monkeypatch.setattr(runner, "_emit_serial_console_phase", phases.append)
     monkeypatch.setattr(runner.os, "open", open_device)
     monkeypatch.setattr(
         runner.os, "fstat",
@@ -522,6 +529,7 @@ def test_serial_production_checks_key_then_serves_fixed_root_owned_device(
     )
     monkeypatch.setattr(runner, "_serve_authenticated_serial_agent", serve)
     assert runner._serve_virtio_serial_agent() == 0
+    assert phases == ["serial-config-loaded", "serial-key-verified", "serial-device-verified"]
     with pytest.raises(OSError):
         os.get_inheritable(descriptor)
 
@@ -538,3 +546,81 @@ def test_serial_main_failure_has_nonzero_status_without_raw_diagnostics(
     output = capsys.readouterr()
     assert output.out == ""
     assert output.err == "PackVM virtio-serial agent stopped.\n"
+
+
+@pytest.mark.parametrize("write_fails", [False, True])
+def test_serial_console_diagnostics_are_fixed_nonblocking_and_best_effort(monkeypatch, write_fails):
+    calls = []
+
+    def write(fd, payload):
+        calls.append(("write", fd, payload))
+        if write_fails:
+            raise OSError("private-error-not-to-be-logged")
+        return len(payload)
+
+    monkeypatch.setattr(runner, "os", SimpleNamespace(
+        O_WRONLY=1, O_CLOEXEC=2, O_NONBLOCK=4,
+        open=lambda path, flags: calls.append(("open", path, flags)) or 7,
+        write=write, close=lambda fd: calls.append(("close", fd)),
+    ))
+    runner._emit_serial_console_phase("private-key-path-must-not-be-logged")
+    assert calls == []
+    runner._emit_serial_console_phase("serial-stream-ready")
+    assert calls == [
+        ("open", "/dev/ttyS0", 7),
+        ("write", 7, b"TOBKIRI_AGENT:serial-stream-ready\n"),
+        ("close", 7),
+    ]
+
+
+def test_serial_startup_error_phase_never_contains_exception_details(monkeypatch, capsys):
+    phases = []
+    monkeypatch.setattr(runner, "_emit_serial_console_phase", phases.append)
+    monkeypatch.setattr(runner.sys, "argv", ["runner", "--serve-virtio-serial"])
+
+    def fail():
+        raise ValueError("private-token-must-not-be-logged")
+
+    monkeypatch.setattr(runner, "_serve_virtio_serial_agent", fail)
+    assert runner.main() == 1
+    assert phases == ["serial-service-start", "serial-startup-validation-rejected"]
+    output = capsys.readouterr()
+    assert "private-token" not in output.out + output.err
+
+
+def test_raw_guest_runner_import_does_not_require_qemu_protocol_package(tmp_path):
+    import subprocess
+
+    source = Path(runner.__file__)
+    result = subprocess.run(
+        [sys.executable, "-I", "-B", "-c",
+         "import runpy,sys; runpy.run_path(sys.argv[1], run_name='guest_import_probe')",
+         str(source)],
+        cwd=tmp_path, capture_output=True, text=True, timeout=20, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_guest_ready_write_failure_dispatches_nothing_and_fences_stream(monkeypatch):
+    streams = []
+
+    class BrokenReadyStream:
+        def __init__(self, descriptor, stopped):
+            self.stopped = stopped
+            self.write_lock = threading.Lock()
+            streams.append(self)
+
+        def write_response(self, payload):
+            assert payload == SERIAL_READY_FRAME
+            raise OSError("ready write failed")
+
+        def read_request(self):
+            raise AssertionError("read before startup ready completed")
+
+    signer = _TestSigner()
+    monkeypatch.setattr(runner, "_SerialAgentStream", BrokenReadyStream)
+    monkeypatch.setattr(runner, "_emit_serial_console_phase", lambda _code: None)
+    with pytest.raises(OSError, match="ready write failed"):
+        runner._serve_authenticated_serial_agent(7, _config(), signer, max_requests=1)
+    assert streams[0].stopped.is_set()
+    assert signer.payloads == []

@@ -281,7 +281,7 @@ def build_portable_bundle(
             source_root = str(Path(__file__).resolve().parents[1])
             sys.path.insert(0, source_root)
             try:
-                from ecosystem.defaultspack.backend.sandbox.isolation.windows_whpx_assets import (
+                from tobkiri_host.windows_pe_dependencies import (
                     verify_windows_qemu_dependency_closure,
                 )
 

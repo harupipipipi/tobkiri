@@ -19,8 +19,6 @@ from __future__ import annotations
 import errno
 import hashlib
 import hmac
-import json
-import math
 import os
 import re
 import select
@@ -31,21 +29,19 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-
-from tobkiri_protocol.canonical import canonical_json, strict_loads
 
 from .errors import BackendUnavailableError
+from .qemu_process_diagnostics import QemuProcessDiagnostics
+from .qemu_process_core import QemuProcessCore, _deadline, _remaining
+from .qemu_process_core import (
+    _PendingExchange as _PendingExchange,  # noqa: PLC0414 - compatibility export
+)
 
 _DIGEST = re.compile(r"sha256:[a-f0-9]{64}\Z")
-_CHALLENGE = re.compile(r"[a-f0-9]{64}\Z")
 _MACHINE = re.compile(r"(?:q35|pc|pc-(?:q35|i440fx)-[0-9]+\.[0-9]+)\Z")
 _PORT_NAME = "io.tobkiri.packvm.agent"
-_MAX_PENDING = 8
-_MAX_CHALLENGES = 256
 _POLL_SECONDS = 0.05
 _EXEC_LAUNCHER = """
 import ctypes, os, resource, signal, sys
@@ -145,15 +141,9 @@ class LinuxQemuLaunchConfig:
             _check_path_syntax(path)
 
 
-@dataclass
-class _PendingExchange:
-    event: threading.Event = field(default_factory=threading.Event)
-    response: dict[str, Any] | None = None
-    error: Exception | None = None
-    is_cancel: bool = False
 
 
-class LinuxQemuProcess:
+class LinuxQemuProcess(QemuProcessCore[LinuxQemuLaunchConfig, subprocess.Popen[bytes]]):
     """Own one QEMU child and one multiplexed, fail-closed guest stream.
 
     ``exchange`` supports concurrent invoke/cancel calls. Correlation is by
@@ -164,30 +154,14 @@ class LinuxQemuProcess:
     """
 
     def __init__(self, config: LinuxQemuLaunchConfig) -> None:
-        self.config = config
-        self._process: subprocess.Popen[bytes] | None = None
+        super().__init__(config)
         self._channel: socket.socket | None = None
-        self._reader: threading.Thread | None = None
         self._owner: threading.Thread | None = None
-        self._lock = threading.RLock()
-        self._connect_lock = threading.Lock()
-        self._write_lock = threading.Lock()
-        self._pending: dict[str, _PendingExchange] = {}
-        self._used_challenges: set[str] = set()
-        self._failure: Exception | None = None
-        self._started = False
-        self._stopping = False
         self._socket_identity: tuple[int, int] | None = None
+        self._run_root_fd: int | None = None
+        self._diagnostics = QemuProcessDiagnostics()
 
-    @property
-    def pid(self) -> int | None:
-        """Return the owned child PID, or None before launch."""
-        return self._process.pid if self._process is not None else None
 
-    @property
-    def domain_directory(self) -> Path:
-        """Return the allocation directory owned by the upstream provisioner."""
-        return self.config.run_root
 
     @property
     def socket_path(self) -> Path:
@@ -197,16 +171,20 @@ class LinuxQemuProcess:
     def start(self) -> None:
         """Verify local launch files and spawn QEMU without elevated rights."""
         with self._lock:
-            if self._started or self._stopping:
+            if self._started or self._stopping or self._process is not None:
                 raise BackendUnavailableError("Linux QEMU process cannot be restarted")
             if not sys.platform.startswith("linux") or os.geteuid() == 0:
                 raise BackendUnavailableError("Linux QEMU requires an unprivileged Linux UID")
             descriptors: list[int] = []
             try:
-                _validate_directory(self.config.run_root, private=True)
-                if len(os.fsencode(self.socket_path)) > 107:
-                    raise BackendUnavailableError("Linux QEMU socket path is too long")
-                if os.path.lexists(self.socket_path):
+                self._run_root_fd = _open_private_directory(self.config.run_root)
+                try:
+                    os.stat(
+                        "agent.sock", dir_fd=self._require_run_root_fd(), follow_symlinks=False
+                    )
+                except FileNotFoundError:
+                    pass
+                else:
                     raise BackendUnavailableError("Linux QEMU socket path already exists")
                 executable = _open_regular(self.config.qemu_path, executable=True)
                 descriptors.append(executable)
@@ -252,6 +230,17 @@ class LinuxQemuProcess:
                 def own_child() -> None:
                     # Linux PDEATHSIG follows the parent *thread*. Keep the
                     # spawning thread alive for the entire VM lifetime.
+                    stderr = None
+
+                    def drain_stderr() -> None:
+                        if stderr is not None:
+                            try:
+                                self._diagnostics.drain(stderr)
+                            except Exception:
+                                # Diagnostics must never end the owning thread
+                                # while its child is alive (PDEATHSIG).
+                                pass
+
                     try:
                         self._process = subprocess.Popen(
                             [
@@ -269,20 +258,36 @@ class LinuxQemuProcess:
                             ],
                             stdin=subprocess.DEVNULL,
                             stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
+                            stderr=subprocess.PIPE,
                             cwd=self.config.run_root,
                             env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"},
                             close_fds=True,
-                            pass_fds=tuple(descriptors),
+                            pass_fds=(*descriptors, self._require_run_root_fd()),
                             start_new_session=True,
                             umask=0o077,
                         )
+                        candidate = self._process.stderr
+                        if candidate is not None:
+                            try:
+                                os.set_blocking(candidate.fileno(), False)
+                            except Exception:
+                                candidate.close()
+                                raise
+                            stderr = candidate
                     except Exception as exc:  # noqa: BLE001 - forward thread failure to spawning caller
                         errors.append(exc)
                     finally:
                         spawned.set()
-                    while self._process is not None and self._process.poll() is None:
-                        time.sleep(_POLL_SECONDS)
+                    try:
+                        # EOF on stderr must not end this owning thread: Linux
+                        # PDEATHSIG follows the spawning thread, not the process.
+                        while self._process is not None and self._process.poll() is None:
+                            drain_stderr()
+                            time.sleep(_POLL_SECONDS)
+                        drain_stderr()
+                    finally:
+                        if stderr is not None:
+                            stderr.close()
 
                 self._owner = threading.Thread(
                     target=own_child,
@@ -299,6 +304,19 @@ class LinuxQemuProcess:
             finally:
                 for descriptor in descriptors:
                     os.close(descriptor)
+                if not self._started and self._process is None:
+                    self._close_run_root()
+
+    def _require_run_root_fd(self) -> int:
+        if self._run_root_fd is None:
+            raise BackendUnavailableError("Linux QEMU allocation directory is not pinned")
+        return self._run_root_fd
+
+    def _close_run_root(self) -> None:
+        with self._lock:
+            descriptor, self._run_root_fd = self._run_root_fd, None
+        if descriptor is not None:
+            os.close(descriptor)
 
     def _command(self, files: list[int], firmware: int) -> list[str]:
         config = self.config
@@ -346,7 +364,7 @@ class LinuxQemuProcess:
             "-device",
             "virtio-serial-pci,id=packserial,romfile=",
             "-chardev",
-            f"socket,id=agent,path={self.socket_path},server=on,wait=off",
+            f"socket,id=agent,path={_socket_address(self._require_run_root_fd())},server=on,wait=off",
             "-device",
             f"virtserialport,bus=packserial.0,chardev=agent,name={_PORT_NAME}",
         ]
@@ -367,20 +385,22 @@ class LinuxQemuProcess:
                 if self._channel is not None:
                     return
             while True:
+                _remaining(deadline)
                 with self._lock:
                     self._require_running()
-                _remaining(deadline)
-                connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                    directory = os.dup(self._require_run_root_fd())
+                connection: socket.socket | None = None
                 try:
+                    connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                     connection.settimeout(min(_POLL_SECONDS, _remaining(deadline)))
-                    metadata = self.socket_path.lstat()
+                    metadata = os.stat("agent.sock", dir_fd=directory, follow_symlinks=False)
                     if (
                         not stat.S_ISSOCK(metadata.st_mode)
                         or metadata.st_uid != os.geteuid()
                         or stat.S_IMODE(metadata.st_mode) & 0o077
                     ):
                         raise BackendUnavailableError("Linux QEMU socket ownership is unsafe")
-                    connection.connect(str(self.socket_path))
+                    connection.connect(_socket_address(directory))
                     pid, uid, _gid = struct.unpack(
                         "3i",
                         connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12),
@@ -402,70 +422,22 @@ class LinuxQemuProcess:
                         self._reader.start()
                     return
                 except OSError as exc:
-                    connection.close()
+                    if connection is not None:
+                        connection.close()
                     if exc.errno not in {errno.ENOENT, errno.ECONNREFUSED}:
                         raise BackendUnavailableError(
                             "Linux QEMU serial connection failed"
                         ) from exc
                     time.sleep(min(_POLL_SECONDS, _remaining(deadline)))
                 except Exception:
-                    connection.close()
+                    if connection is not None:
+                        connection.close()
                     raise
+                finally:
+                    os.close(directory)
         finally:
             self._connect_lock.release()
 
-    def exchange(
-        self,
-        envelope: Mapping[str, Any],
-        timeout: float = 30.0,
-    ) -> dict[str, Any]:
-        """Exchange canonical NDJSON with bounded, out-of-order correlation."""
-        deadline = _deadline(timeout)
-        challenge = envelope.get("guest_challenge")
-        if not isinstance(challenge, str) or _CHALLENGE.fullmatch(challenge) is None:
-            raise BackendUnavailableError("Linux QEMU guest challenge is invalid")
-        try:
-            encoded = canonical_json(dict(envelope)) + b"\n"
-        except (ValueError, TypeError, RecursionError) as exc:
-            raise BackendUnavailableError("Linux QEMU request is not canonical JSON") from exc
-        if len(encoded) > self.config.max_request_bytes:
-            raise BackendUnavailableError("Linux QEMU request exceeds size limit")
-        self.wait_for_serial(_remaining(deadline))
-        pending = _PendingExchange(is_cancel=envelope.get("operation") == "cancel")
-        with self._lock:
-            self._require_running()
-            if (
-                challenge in self._used_challenges
-                or len(self._used_challenges) >= _MAX_CHALLENGES
-                or len(self._pending) >= _MAX_PENDING
-                or (
-                    not pending.is_cancel
-                    and sum(not item.is_cancel for item in self._pending.values())
-                    >= _MAX_PENDING - 1
-                )
-            ):
-                raise BackendUnavailableError("Linux QEMU request concurrency or replay limit")
-            self._used_challenges.add(challenge)
-            self._pending[challenge] = pending
-        try:
-            if not self._write_lock.acquire(timeout=_remaining(deadline)):
-                raise TimeoutError("Linux QEMU serial write timed out")
-            try:
-                self._send_frame(encoded, deadline)
-            finally:
-                self._write_lock.release()
-            if not pending.event.wait(_remaining(deadline)):
-                raise TimeoutError("Linux QEMU guest response timed out")
-            if pending.error is not None:
-                raise pending.error
-            assert pending.response is not None
-            return pending.response
-        except Exception as exc:
-            self._fail_channel(exc)
-            raise
-        finally:
-            with self._lock:
-                self._pending.pop(challenge, None)
 
     def _send_frame(self, encoded: bytes, deadline: float) -> None:
         sent = 0
@@ -504,7 +476,7 @@ class LinuxQemuProcess:
                     chunk = connection.recv(
                         min(
                             65536,
-                            self.config.max_response_bytes + 1 - len(content),
+                            self._frame_capacity() + 1 - len(content),
                         )
                     )
                 except BlockingIOError:
@@ -516,46 +488,20 @@ class LinuxQemuProcess:
                     frame, _, rest = content.partition(b"\n")
                     content = bytearray(rest)
                     self._deliver_frame(bytes(frame))
-                if len(content) > self.config.max_response_bytes:
+                if len(content) > self._frame_capacity():
                     raise BackendUnavailableError("Linux QEMU response exceeds size limit")
-                with self._lock:
-                    if content and not self._pending:
-                        raise BackendUnavailableError("Linux QEMU unsolicited response")
+                self._validate_partial_frame(content)
         except Exception as exc:  # noqa: BLE001 - fail every pending exchange, never swallow
             self._fail_channel(exc)
 
-    def _deliver_frame(self, frame: bytes) -> None:
-        if len(frame) > self.config.max_response_bytes:
-            raise BackendUnavailableError("Linux QEMU response exceeds size limit")
-        response = strict_loads(frame, max_bytes=self.config.max_response_bytes)
-        if not isinstance(response, dict) or not hmac.compare_digest(
-            frame,
-            json.dumps(
-                response, ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":")
-            ).encode("utf-8"),
-        ):
-            raise BackendUnavailableError("Linux QEMU response is not canonical JSON")
-        challenge = response.get("guest_challenge")
-        with self._lock:
-            pending = self._pending.get(challenge) if isinstance(challenge, str) else None
-            if pending is None or pending.event.is_set():
-                raise BackendUnavailableError("Linux QEMU response correlation failed")
-            pending.response = response
-            pending.event.set()
 
-    def _require_running(self) -> None:
-        if self._failure is not None:
-            raise BackendUnavailableError("Linux QEMU serial channel is retired") from self._failure
-        if self._stopping or self._process is None:
-            raise BackendUnavailableError("Linux QEMU process is not running")
-        code = self._process.poll()
-        if code is not None:
-            raise BackendUnavailableError(f"Linux QEMU process exited with status {code}")
 
     def _fail_channel(self, error: Exception) -> None:
         with self._lock:
             if self._failure is None:
                 self._failure = error
+                self._capture_failure_diagnostics(error, phase="serial")
+            self._ready_event.set()
             connection, self._channel = self._channel, None
             for pending in self._pending.values():
                 pending.error = BackendUnavailableError("Linux QEMU guest channel failed")
@@ -567,10 +513,22 @@ class LinuxQemuProcess:
                 pass
             connection.close()
 
-    def alive(self) -> bool:
-        """Report child process liveness, independently of stream health."""
-        with self._lock:
-            return self._process is not None and self._process.poll() is None
+    def _capture_failure_diagnostics(
+        self, error: Exception, *, phase: str = "launch",
+    ) -> None:
+        """Preserve private pre-cleanup evidence without changing the failure."""
+        try:
+            with self._lock:
+                process = self._process
+                self._diagnostics.capture(
+                    error, phase=phase, pid=process.pid if process is not None else None,
+                    returncode=process.poll() if process is not None else None,
+                )
+        except Exception:
+            # Evidence is best-effort; it must never prevent retirement/reaping
+            # or replace the original startup/transport failure.
+            pass
+
 
     def stop(self, timeout: float = 5.0) -> None:
         """Close transport, terminate and reap the child within a deadline.
@@ -611,25 +569,73 @@ class LinuxQemuProcess:
             if owner.is_alive():
                 raise BackendUnavailableError("Linux QEMU owner thread did not stop")
         self._unlink_socket()
+        self._close_run_root()
 
     def _unlink_socket(self) -> None:
+        with self._lock:
+            directory = (
+                os.dup(self._run_root_fd) if self._run_root_fd is not None else None
+            )
+        if directory is None:
+            try:
+                self.socket_path.lstat()
+            except FileNotFoundError:
+                return
+            raise BackendUnavailableError("Linux QEMU socket cleanup has no pinned allocation")
         try:
-            metadata = self.socket_path.lstat()
-        except FileNotFoundError:
-            return
+            try:
+                metadata = os.stat("agent.sock", dir_fd=directory, follow_symlinks=False)
+            except FileNotFoundError:
+                return
+            if (
+                self._socket_identity is not None
+                and (metadata.st_dev, metadata.st_ino) != self._socket_identity
+            ):
+                raise BackendUnavailableError("Linux QEMU socket changed before cleanup")
+            if (
+                not stat.S_ISSOCK(metadata.st_mode)
+                or metadata.st_uid != os.geteuid()
+                or stat.S_IMODE(metadata.st_mode) & 0o077
+                or self._process is None
+            ):
+                raise BackendUnavailableError("Linux QEMU socket cleanup is unsafe")
+            try:
+                os.unlink("agent.sock", dir_fd=directory)
+            except FileNotFoundError:
+                # A concurrent successful stop may already have removed it.
+                return
+        finally:
+            os.close(directory)
+
+
+def _socket_address(directory: int) -> str:
+    """Use a kernel-owned descriptor alias without moving the private socket.
+
+    Both processes retain the directory descriptor while binding/connecting.
+    The original allocation can exceed sockaddr_un's 107-byte pathname limit.
+    No process-wide chdir, public temporary socket, or abstract namespace is used.
+    """
+    return f"/proc/self/fd/{directory}/agent.sock"
+
+
+def _open_private_directory(path: Path) -> int:
+    """Pin the validated allocation directory for the VM and transport lifetime."""
+    _validate_directory(path, private=True)
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        opened = os.fstat(descriptor)
+        current = path.lstat()
         if (
-            self._socket_identity is not None
-            and (metadata.st_dev, metadata.st_ino) != self._socket_identity
+            not stat.S_ISDIR(opened.st_mode)
+            or (opened.st_dev, opened.st_ino) != (current.st_dev, current.st_ino)
+            or opened.st_uid != os.geteuid()
+            or stat.S_IMODE(opened.st_mode) & 0o077
         ):
-            raise BackendUnavailableError("Linux QEMU socket changed before cleanup")
-        if (
-            not stat.S_ISSOCK(metadata.st_mode)
-            or metadata.st_uid != os.geteuid()
-            or stat.S_IMODE(metadata.st_mode) & 0o077
-            or self._process is None
-        ):
-            raise BackendUnavailableError("Linux QEMU socket cleanup is unsafe")
-        self.socket_path.unlink()
+            raise BackendUnavailableError("Linux QEMU allocation directory changed or is unsafe")
+        return descriptor
+    except Exception:
+        os.close(descriptor)
+        raise
 
 
 def _check_path_syntax(path: Path) -> None:
@@ -720,16 +726,3 @@ def _check_kvm() -> None:
             raise BackendUnavailableError("Linux KVM ABI is unsupported")
     finally:
         os.close(descriptor)
-
-
-def _deadline(timeout: float) -> float:
-    if type(timeout) not in {int, float} or not math.isfinite(timeout) or timeout <= 0:
-        raise ValueError("Linux QEMU timeout must be finite and positive")
-    return time.monotonic() + timeout
-
-
-def _remaining(deadline: float) -> float:
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        raise TimeoutError("Linux QEMU deadline expired")
-    return remaining

@@ -956,6 +956,10 @@ class CapturedPackControlSession:
         active_pack_ids = [str(item) for item in profile.get("packs") or []]
         if pack_id == str(profile.get("base_pack") or ""):
             raise PackControlUnapproved("the active Base Pack approval cannot be revoked")
+        remaining_pack_ids = (
+            _remaining_pack_roots(pack_id, active_pack_ids, self._binding)
+            if pack_id in active_pack_ids else active_pack_ids
+        )
         artifact_digest = _pack_manifest_artifact_digest(pack_id)
         from .authority.v4 import AuthorityStore
 
@@ -975,8 +979,7 @@ class CapturedPackControlSession:
 
         try:
             if pack_id in active_pack_ids:
-                active_pack_ids.remove(pack_id)
-                _activate_pack_set(state, active_pack_ids)
+                _activate_pack_set(state, remaining_pack_ids)
             _persist_revoked_approval(
                 pack_id,
                 approval,
@@ -1017,41 +1020,7 @@ class CapturedPackControlSession:
         if not enabled and pack_id in packs:
             if pack_id == str(profile.get("base_pack") or ""):
                 raise PackControlUnapproved("the active Base Pack cannot be disabled")
-            packs.remove(pack_id)
-            # A Pack still declared as a signed dependency of an enabled Pack
-            # would be re-admitted through that Pack's dependency graph during
-            # resolution, so reporting it as disabled would lie.  Require the
-            # covering Pack to be disabled first.
-            from .bootstrap.profile_capture import host_profile_catalog
-
-            _remaining_catalog, remaining_closure = catalog_with_admitted_pack_closure(
-                host_profile_catalog(), packs
-            )
-            if pack_id in remaining_closure:
-                raise PackControlConflict(
-                    "Pack is required by an enabled Pack dependency graph"
-                )
-            # Packs admitted only through a signed dependency graph hold no
-            # install or approval receipt.  They cannot remain selected as
-            # roots once their covering Pack leaves, so they drop out of the
-            # requested set instead of failing the receipt gate.
-            required_ids = _required_profile_pack_ids(self._binding.profile_id)
-            installed = _read_control_state(self._binding.profile_id)
-            records = load_pack_catalog()
-            retained: list[str] = []
-            for candidate in packs:
-                if candidate in required_ids:
-                    retained.append(candidate)
-                    continue
-                candidate_record = records.get(candidate)
-                if candidate not in installed or candidate_record is None:
-                    continue
-                approved, _reason = _approval_status(
-                    candidate, candidate_record, self._binding, read_only=True
-                )
-                if approved:
-                    retained.append(candidate)
-            packs = retained
+            packs = _remaining_pack_roots(pack_id, packs, self._binding)
         _activate_pack_set(state, packs)
         try:
             self._recapture()
@@ -2048,6 +2017,49 @@ def _activate_pack_set(state: Mapping[str, Any], pack_ids: list[str]) -> None:
             raise PackControlOutcomeUnknown(
                 "Profile activation outcome requires reconciliation"
             ) from error
+
+
+def _remaining_pack_roots(
+    removed_pack_id: str, active_pack_ids: list[str], binding: _Binding
+) -> list[str]:
+    """Retain approved roots and rebuild their closure before removing a Pack.
+
+    The active Profile stores the effective set, including dependencies with
+    no independent approval receipt. Keeping those dependencies as requested
+    roots would either reject removal or invent independent authority. Shared
+    dependencies are reintroduced by the surviving roots during resolution.
+    """
+    from .bootstrap.profile_capture import host_profile_catalog
+
+    required_ids = _required_profile_pack_ids(binding.profile_id)
+    installed = _read_control_state(binding.profile_id)
+    records = load_pack_catalog()
+    retained: list[str] = []
+    for candidate in active_pack_ids:
+        if candidate == removed_pack_id:
+            continue
+        if candidate in required_ids:
+            retained.append(candidate)
+            continue
+        record = records.get(candidate)
+        if candidate not in installed or record is None:
+            continue
+        approved, _reason = _approval_status(
+            candidate, record, binding, read_only=True
+        )
+        if approved:
+            retained.append(candidate)
+    _catalog, remaining_closure = catalog_with_admitted_pack_closure(
+        host_profile_catalog(), retained
+    )
+    if removed_pack_id in remaining_closure:
+        # Check before authority revocation, which is durable even if the
+        # subsequent Profile transaction fails. The surviving covering Pack
+        # must be removed first rather than silently re-admitting this Pack.
+        raise PackControlConflict(
+            "Pack is required by an enabled Pack dependency graph"
+        )
+    return retained
 
 
 def _control_state_path(profile_id: str) -> Path:

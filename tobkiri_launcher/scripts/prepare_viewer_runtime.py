@@ -9,6 +9,7 @@ import importlib.util
 import json
 import os
 import platform
+import re
 import shutil
 import stat
 import subprocess
@@ -209,6 +210,41 @@ def prepare_dev(repo_root: Path, target: str) -> Path:
     return destination
 
 
+def _linux_appimage_name(repo_root: Path) -> str:
+    """Resolve amd64 output from this project's literal name/version config."""
+    config_root = repo_root / "tobkiri_launcher" / "src-tauri"
+    identity: dict[str, object] = {}
+    for name in ("tauri.conf.json", "tauri.linux.conf.json", "tauri.shell.conf.json"):
+        path = config_root / name
+        if name == "tauri.linux.conf.json" and not path.exists():
+            continue
+        try:
+            document = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as error:
+            raise RuntimeError(f"Invalid Tauri configuration: {path}") from error
+        if not isinstance(document, dict):
+            raise RuntimeError(f"Invalid Tauri configuration: {path}")
+        # These identity fields are top-level scalars in the same merge order
+        # used by Tauri: base, target platform, explicit Shell configuration.
+        for key in ("productName", "version"):
+            if key in document:
+                identity[key] = document[key]
+    for key in ("productName", "version"):
+        value = identity.get(key)
+        if (
+            not isinstance(value, str) or not value.strip()
+            or any(character in value for character in ("/", "\\", "\x00"))
+            or any(ord(character) < 32 for character in value)
+        ):
+            raise RuntimeError(f"Invalid Tauri AppImage {key}")
+    if re.fullmatch(
+        r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?",
+        str(identity["version"]),
+    ) is None:
+        raise RuntimeError("Development AppImage requires a literal Tauri version")
+    return f"{identity['productName']}_{identity['version']}_amd64.AppImage"
+
+
 def _target_shell_spec(repo_root: Path, target: str) -> dict[str, str | Path]:
     target_root = repo_root / "tobkiri_launcher" / "src-tauri" / "target" / target / "debug"
     if target == "aarch64-apple-darwin":
@@ -234,8 +270,7 @@ def _target_shell_spec(repo_root: Path, target: str) -> dict[str, str | Path]:
         }
     if platform_name == "linux":
         artifact_dir = target_root / "bundle" / "appimage"
-        candidates = sorted(artifact_dir.glob("*.AppImage"))
-        artifact = candidates[0] if len(candidates) == 1 else artifact_dir / "Tobkiri.AppImage"
+        artifact = artifact_dir / _linux_appimage_name(repo_root)
         return {
             "platform": platform_name,
             "architecture": architecture,

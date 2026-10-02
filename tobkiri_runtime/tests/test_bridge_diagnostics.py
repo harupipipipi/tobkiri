@@ -14,6 +14,13 @@ from core_runtime.global_contract_dispatch import GlobalContractInvocationError
     [
         (RuntimeError("secret prompt"), "internal_error"),
         (TimeoutError("secret URL"), "timeout"),
+        *[
+            (GlobalContractInvocationError(code, "secret payload"), code)
+            for code in (
+                "denied", "incompatible", "invalid_request", "not_configured",
+                "route_binding_invalid", "route_binding_stale", "route_binding_conflict",
+            )
+        ],
         (
             GlobalContractInvocationError("missing_provider", "secret token"),
             "missing_provider",

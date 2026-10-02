@@ -28,7 +28,7 @@ const DEFAULTSPACK_DEFAULT_PORT: u16 = 8766;
 // the Launcher does not terminate a healthy child just as it starts serving.
 const DEFAULTSPACK_READY_TIMEOUT: Duration = Duration::from_secs(120);
 const DEFAULTSPACK_READY_POLL_INTERVAL: Duration = Duration::from_millis(250);
-const SHELL_RUNTIME_READY_TIMEOUT: Duration = Duration::from_secs(30);
+const SHELL_RUNTIME_READY_TIMEOUT: Duration = Duration::from_secs(300);
 static DEFAULTSPACK_LAUNCH_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 /// The authenticated Defaultspack listener explicitly reported that its
@@ -53,20 +53,40 @@ impl ShellRuntimeBackendUnavailable {
 }
 
 fn with_defaultspack_launch_coordination<T>(
+    deadline: Instant,
     operation: impl FnOnce() -> AnyResult<T>,
 ) -> AnyResult<T> {
     let lock = DEFAULTSPACK_LAUNCH_LOCK.get_or_init(|| Mutex::new(()));
+    with_defaultspack_launch_lock(lock, deadline, operation)
+}
+
+fn with_defaultspack_launch_lock<T>(
+    lock: &Mutex<()>,
+    deadline: Instant,
+    operation: impl FnOnce() -> AnyResult<T>,
+) -> AnyResult<T> {
     let started = Instant::now();
-    let _guard = lock
-        .lock()
-        .map_err(|error| anyhow!("Defaultspack launch coordination lock was poisoned: {error}"))?;
-    if started.elapsed().as_millis() > 0 {
-        info!(
-            "launch_defaultspack_desktop_impl: launch coordination acquired after {} ms",
-            started.elapsed().as_millis()
-        );
+    loop {
+        crate::preparation_budget::check(deadline)?;
+        match lock.try_lock() {
+            Ok(_guard) => {
+                crate::preparation_budget::check(deadline)?;
+                info!(
+                    "Defaultspack launch coordination acquired after {} ms",
+                    started.elapsed().as_millis()
+                );
+                return operation();
+            }
+            Err(std::sync::TryLockError::Poisoned(error)) => {
+                bail!("Defaultspack launch coordination lock was poisoned: {error}");
+            }
+            Err(std::sync::TryLockError::WouldBlock) => {
+                thread::sleep(
+                    Duration::from_millis(25).min(crate::preparation_budget::remaining(deadline)?),
+                );
+            }
+        }
     }
-    operation()
 }
 
 #[derive(Debug, Clone)]
@@ -299,80 +319,103 @@ fn read_defaultspack_port(env_vars: &[(String, String)]) -> AnyResult<u16> {
     Ok(DEFAULTSPACK_DEFAULT_PORT)
 }
 
-fn is_defaultspack_http_ready(port: u16, bootstrap_secret: &str) -> bool {
-    crate::health_check::check_authenticated_health(port, bootstrap_secret).unwrap_or(false)
+fn is_defaultspack_http_ready(
+    port: u16,
+    bootstrap_secret: &str,
+    deadline: Instant,
+) -> AnyResult<bool> {
+    crate::health_check::check_authenticated_health_until(port, bootstrap_secret, deadline)
 }
 
 fn wait_for_defaultspack_http_ready(
     port: u16,
     bootstrap_secret: &str,
     manager: &DefaultspackManager,
+    deadline: Instant,
 ) -> AnyResult<()> {
-    let deadline = Instant::now() + DEFAULTSPACK_READY_TIMEOUT;
-    let mut poll_count: u32 = 0;
-
-    loop {
-        poll_count += 1;
-        if is_defaultspack_http_ready(port, bootstrap_secret) {
-            info!(
-                "wait_for_defaultspack_http_ready: ready after {poll_count} polls on port {port}"
-            );
-            return Ok(());
-        }
-
-        if Instant::now() >= deadline {
-            warn!(
-                "wait_for_defaultspack_http_ready: timed out after {poll_count} polls; stopping managed pack-shell"
-            );
-            if let Err(error) = manager.stop() {
-                warn!("wait_for_defaultspack_http_ready: failed to stop timed out pack-shell: {error:#}");
-            }
-            bail!(
-                "Defaultspack local server did not become ready at {} within {} seconds",
-                defaultspack_health_url(port),
-                DEFAULTSPACK_READY_TIMEOUT.as_secs()
-            );
-        }
-
-        if poll_count.is_multiple_of(20) {
-            info!("wait_for_defaultspack_http_ready: still waiting (poll #{poll_count}) on port {port}...");
-        }
-
-        thread::sleep(DEFAULTSPACK_READY_POLL_INTERVAL);
-    }
+    wait_for_defaultspack_http_ready_with(
+        deadline,
+        DEFAULTSPACK_READY_TIMEOUT,
+        |probe_deadline| is_defaultspack_http_ready(port, bootstrap_secret, probe_deadline),
+        || manager.stop(),
+    )
+    .with_context(|| {
+        format!(
+            "Defaultspack listener readiness failed at {}",
+            defaultspack_health_url(port)
+        )
+    })
 }
 
-fn wait_for_shell_runtime_ready_with(
-    timeout: Duration,
-    mut probe: impl FnMut() -> AnyResult<crate::health_check::AuthenticatedRuntimeReadiness>,
+fn wait_for_defaultspack_http_ready_with(
+    deadline: Instant,
+    stage_timeout: Duration,
+    mut probe: impl FnMut(Instant) -> AnyResult<bool>,
+    mut stop: impl FnMut() -> AnyResult<()>,
 ) -> AnyResult<()> {
-    use crate::health_check::AuthenticatedRuntimeReadiness;
-
-    let deadline = Instant::now() + timeout;
+    let stage_deadline = deadline.min(Instant::now() + stage_timeout);
+    let mut polls = 0;
     loop {
-        match probe()? {
-            AuthenticatedRuntimeReadiness::Ready => return Ok(()),
-            AuthenticatedRuntimeReadiness::Failed => {
-                return Err(ShellRuntimeBackendUnavailable.into());
-            }
-            AuthenticatedRuntimeReadiness::Pending => {}
-        }
-        if Instant::now() >= deadline {
+        // Global exhaustion never terminates a healthy child still warming up.
+        crate::preparation_budget::check(deadline)?;
+        if Instant::now() >= stage_deadline {
+            stop().context("failed to stop listener after its readiness phase expired")?;
             bail!(
-                "Defaultspack runtime did not become ready within {} seconds",
-                timeout.as_secs()
+                "Defaultspack local server did not become ready within {} seconds",
+                stage_timeout.as_secs()
             );
+        }
+        polls += 1;
+        let ready = probe(stage_deadline);
+        crate::preparation_budget::check(deadline)?;
+        if Instant::now() >= stage_deadline {
+            continue;
+        }
+        if ready? {
+            info!("Defaultspack authenticated listener ready after {polls} polls");
+            return Ok(());
         }
         thread::sleep(
             DEFAULTSPACK_READY_POLL_INTERVAL
-                .min(deadline.saturating_duration_since(Instant::now())),
+                .min(crate::preparation_budget::remaining(stage_deadline)?),
         );
     }
 }
 
-fn wait_for_shell_runtime_ready(port: u16, bootstrap_secret: &str) -> AnyResult<()> {
-    wait_for_shell_runtime_ready_with(SHELL_RUNTIME_READY_TIMEOUT, || {
-        crate::health_check::check_authenticated_runtime_readiness(port, bootstrap_secret)
+fn wait_for_shell_runtime_ready_with(
+    deadline: Instant,
+    mut probe: impl FnMut(Duration) -> AnyResult<crate::health_check::AuthenticatedRuntimeReadiness>,
+) -> AnyResult<()> {
+    use crate::health_check::AuthenticatedRuntimeReadiness;
+    loop {
+        let remaining = crate::preparation_budget::remaining(deadline)?;
+        let readiness = probe(remaining.min(Duration::from_secs(30)));
+        crate::preparation_budget::check(deadline)?;
+        match readiness? {
+            AuthenticatedRuntimeReadiness::Ready => return Ok(()),
+            AuthenticatedRuntimeReadiness::Failed => {
+                return Err(ShellRuntimeBackendUnavailable.into())
+            }
+            AuthenticatedRuntimeReadiness::Pending => {}
+        }
+        thread::sleep(
+            DEFAULTSPACK_READY_POLL_INTERVAL.min(crate::preparation_budget::remaining(deadline)?),
+        );
+    }
+}
+
+fn wait_for_shell_runtime_ready(
+    port: u16,
+    bootstrap_secret: &str,
+    deadline: Instant,
+) -> AnyResult<()> {
+    let deadline = deadline.min(Instant::now() + SHELL_RUNTIME_READY_TIMEOUT);
+    wait_for_shell_runtime_ready_with(deadline, |_remaining| {
+        crate::health_check::check_authenticated_runtime_readiness_until(
+            port,
+            bootstrap_secret,
+            deadline,
+        )
     })
 }
 
@@ -433,19 +476,26 @@ pub(crate) fn prepare_defaultspack_shell_runtime_url(
     app: &AppHandle,
     config: &AppConfig,
     frontend_entry: &crate::frontend_entry::VerifiedFrontendEntry,
+    deadline: Instant,
 ) -> AnyResult<PreparedShellRuntime> {
     let launch_route = &frontend_entry.entry.route;
     crate::health_check::validate_application_route(launch_route)?;
-    with_defaultspack_launch_coordination(|| {
-        let (metadata, bootstrap_secret) = ensure_defaultspack_desktop_ready(app, config)?;
+    with_defaultspack_launch_coordination(deadline, || {
+        let (metadata, bootstrap_secret) =
+            ensure_defaultspack_desktop_ready(app, config, deadline)?;
         // A panel-ready listener can still have a failed conversation backend.
         // Shell admission requires the authenticated runtime-ready transition.
-        wait_for_shell_runtime_ready(metadata.port, &bootstrap_secret)?;
+        wait_for_shell_runtime_ready(metadata.port, &bootstrap_secret, deadline)?;
         if metadata.frontend_entry != *frontend_entry {
             bail!("active Application frontend entry changed during launch");
         }
-        let code = crate::request_panel_bootstrap_code_with_retry(metadata.port, &bootstrap_secret)
-            .context("failed to issue a Defaultspack shell bootstrap code")?;
+        let code = crate::request_panel_bootstrap_code_with_retry_until(
+            metadata.port,
+            &bootstrap_secret,
+            deadline,
+        )
+        .context("failed to issue a Defaultspack shell bootstrap code")?;
+        crate::preparation_budget::check(deadline)?;
         Ok(PreparedShellRuntime {
             url: application_url_with_bootstrap_code(
                 metadata.port,
@@ -472,8 +522,10 @@ pub(crate) fn prepare_defaultspack_guardian_impl(
     app: &AppHandle,
     config: &AppConfig,
 ) -> AnyResult<()> {
-    with_defaultspack_launch_coordination(|| {
-        ensure_defaultspack_desktop_ready(app, config)?;
+    let deadline = Instant::now() + crate::preparation_budget::TIMEOUT;
+    with_defaultspack_launch_coordination(deadline, || {
+        ensure_defaultspack_desktop_ready(app, config, deadline)?;
+        crate::preparation_budget::check(deadline)?;
         Ok(())
     })
 }
@@ -579,6 +631,7 @@ fn is_launcher_owned_defaultspack_listener(
 fn recover_authenticated_stale_defaultspack_listener(
     manager: &DefaultspackManager,
     metadata: &DefaultspackDesktopMetadata,
+    deadline: Instant,
 ) -> AnyResult<bool> {
     let Some(listener) = detect_port_listener(metadata.port)? else {
         return Ok(false);
@@ -595,6 +648,7 @@ fn recover_authenticated_stale_defaultspack_listener(
         listener.pid,
         listener.summary()
     );
+    crate::preparation_budget::check(deadline)?;
     terminate_external_listener(listener.pid, metadata.port).with_context(|| {
         format!(
             "failed to stop authenticated stale Defaultspack listener pid {} on port {}",
@@ -604,7 +658,10 @@ fn recover_authenticated_stale_defaultspack_listener(
     Ok(true)
 }
 
-fn recover_stale_defaultspack_listener(metadata: &DefaultspackDesktopMetadata) -> AnyResult<()> {
+fn recover_stale_defaultspack_listener(
+    metadata: &DefaultspackDesktopMetadata,
+    deadline: Instant,
+) -> AnyResult<()> {
     let listener = detect_port_listener(metadata.port)?.ok_or_else(|| {
         anyhow!(
             "Defaultspack port {} is occupied, but Viewer could not identify the listener. Viewer did not stop it. Close that process or free port {}.",
@@ -627,6 +684,7 @@ fn recover_stale_defaultspack_listener(metadata: &DefaultspackDesktopMetadata) -
         listener.pid,
         listener.summary()
     );
+    crate::preparation_budget::check(deadline)?;
     terminate_external_listener(listener.pid, metadata.port).with_context(|| {
         format!(
             "failed to stop stale owned Defaultspack listener pid {} on port {}",
@@ -646,11 +704,13 @@ fn publish_active_host_contract(
     metadata: &DefaultspackDesktopMetadata,
     panel_bootstrap_secret: &str,
     desktop_api_token: Option<&str>,
+    deadline: Instant,
 ) -> AnyResult<()> {
-    let active_identity = crate::health_check::authenticated_runtime_identity(
+    let active_identity = crate::health_check::authenticated_runtime_identity_until(
         config.kernel_port,
         panel_bootstrap_secret,
         &metadata.contract_namespace,
+        deadline,
     )
     .context("failed to capture the active execution Profile identity")?;
     if !active_identity.matches(metadata.execution_identity()) {
@@ -677,6 +737,7 @@ fn publish_active_host_contract(
     if let Some(token) = desktop_api_token {
         values.push(("desktop_api_token", token.to_owned()));
     }
+    crate::preparation_budget::check(deadline)?;
     crate::host_contract::write_contract(config, metadata.execution_identity(), values)
         .context("failed to publish the active Host contract")?;
     Ok(())
@@ -685,7 +746,9 @@ fn publish_active_host_contract(
 fn ensure_defaultspack_desktop_ready(
     app: &AppHandle,
     config: &AppConfig,
+    deadline: Instant,
 ) -> AnyResult<(DefaultspackDesktopMetadata, String)> {
+    crate::preparation_budget::check(deadline)?;
     let manager = app.state::<Arc<DefaultspackManager>>();
     let api_token = read_desktop_api_token_from_config(config)
         .context("failed to read Viewer local auth token for Defaultspack launch")?;
@@ -706,6 +769,7 @@ fn ensure_defaultspack_desktop_ready(
         &metadata,
         &panel_bootstrap_secret,
         Some(api_token.as_str()),
+        deadline,
     )?;
     let base_url = application_origin(metadata.port);
     info!("launch_defaultspack_desktop_impl: Defaultspack window URL will be {base_url}");
@@ -713,14 +777,17 @@ fn ensure_defaultspack_desktop_ready(
     let managed_process = manager
         .has_managed_process()
         .context("failed to inspect managed Defaultspack process")?;
-    let mut server_ready = is_defaultspack_http_ready(metadata.port, &panel_bootstrap_secret);
+    let mut server_ready =
+        is_defaultspack_http_ready(metadata.port, &panel_bootstrap_secret, deadline)?;
     if server_ready {
-        let observed_identity = crate::health_check::authenticated_runtime_identity(
+        let observed_identity = crate::health_check::authenticated_runtime_identity_until(
             metadata.port,
             &panel_bootstrap_secret,
             &metadata.contract_namespace,
+            deadline,
         )
         .context("authenticated Defaultspack identity is unavailable")?;
+        crate::preparation_budget::check(deadline)?;
         if !observed_identity.matches(metadata.execution_identity()) {
             warn!(
                 "Authenticated Defaultspack listener identity differs from the active execution Profile; it will not be reused"
@@ -728,7 +795,10 @@ fn ensure_defaultspack_desktop_ready(
             server_ready = false;
         }
     }
-    if server_ready && recover_authenticated_stale_defaultspack_listener(&manager, &metadata)? {
+    crate::preparation_budget::check(deadline)?;
+    if server_ready
+        && recover_authenticated_stale_defaultspack_listener(&manager, &metadata, deadline)?
+    {
         server_ready = false;
     }
     if server_ready {
@@ -740,15 +810,17 @@ fn ensure_defaultspack_desktop_ready(
                 "Stopping authenticated Defaultspack listener that is not descended from this Launcher: pid {}",
                 listener.pid
             );
+            crate::preparation_budget::check(deadline)?;
             terminate_external_listener(listener.pid, metadata.port)?;
             server_ready = false;
         }
     }
     if server_ready
         && matches!(
-            crate::health_check::check_authenticated_runtime_readiness(
+            crate::health_check::check_authenticated_runtime_readiness_until(
                 metadata.port,
                 &panel_bootstrap_secret,
+                deadline,
             ),
             Ok(crate::health_check::AuthenticatedRuntimeReadiness::Failed)
         )
@@ -756,6 +828,7 @@ fn ensure_defaultspack_desktop_ready(
         // A panel-only child records backend failure at startup. Provisioning
         // PackVM later cannot refresh that child, so retry with a fresh capture.
         warn!("Restarting Defaultspack after its captured runtime backend failed");
+        crate::preparation_budget::check(deadline)?;
         manager.stop()?;
         server_ready = false;
     }
@@ -766,9 +839,11 @@ fn ensure_defaultspack_desktop_ready(
         );
     } else {
         if !managed_process && detect_port_listener(metadata.port)?.is_some() {
-            recover_stale_defaultspack_listener(&metadata)?;
+            crate::preparation_budget::check(deadline)?;
+            recover_stale_defaultspack_listener(&metadata, deadline)?;
         }
         info!("launch_defaultspack_desktop_impl: health check indicates server not ready; ensuring supervised pack-shell is running...");
+        crate::preparation_budget::check(deadline)?;
         if let Err(error) = manager.start_or_reuse(metadata.clone()) {
             error!("launch_defaultspack_desktop_impl: failed to start supervised pack-shell: {error:#}");
             info!(
@@ -784,6 +859,7 @@ fn ensure_defaultspack_desktop_ready(
             metadata.port,
             &panel_bootstrap_secret,
             manager.inner(),
+            deadline,
         ) {
             Ok(()) => info!("launch_defaultspack_desktop_impl: server became ready at {base_url}"),
             Err(e) => {
@@ -793,6 +869,7 @@ fn ensure_defaultspack_desktop_ready(
         }
     }
 
+    crate::preparation_budget::check(deadline)?;
     let mut listener = detect_port_listener(metadata.port)?
         .ok_or_else(|| anyhow!("authenticated Defaultspack listener identity is unavailable"))?;
     if !is_launcher_owned_defaultspack_listener(&manager, &listener, &metadata)? {
@@ -803,22 +880,32 @@ fn ensure_defaultspack_desktop_ready(
             "Replacing authenticated Defaultspack listener that won the startup race without Launcher ownership: pid {}",
             listener.pid
         );
+        crate::preparation_budget::check(deadline)?;
         terminate_external_listener(listener.pid, metadata.port)?;
+        crate::preparation_budget::check(deadline)?;
         manager.stop()?;
+        crate::preparation_budget::check(deadline)?;
         manager.start_or_reuse(metadata.clone())?;
-        wait_for_defaultspack_http_ready(metadata.port, &panel_bootstrap_secret, manager.inner())?;
+        wait_for_defaultspack_http_ready(
+            metadata.port,
+            &panel_bootstrap_secret,
+            manager.inner(),
+            deadline,
+        )?;
         listener = detect_port_listener(metadata.port)?
             .ok_or_else(|| anyhow!("replacement Defaultspack listener identity is unavailable"))?;
     }
     if !is_launcher_owned_defaultspack_listener(&manager, &listener, &metadata)? {
         bail!("replacement Defaultspack listener is not owned by this Launcher");
     }
-    let observed_identity = crate::health_check::authenticated_runtime_identity(
+    let observed_identity = crate::health_check::authenticated_runtime_identity_until(
         metadata.port,
         &panel_bootstrap_secret,
         &metadata.contract_namespace,
+        deadline,
     )
     .context("authenticated Defaultspack identity is unavailable after readiness")?;
+    crate::preparation_budget::check(deadline)?;
     if !observed_identity.matches(metadata.execution_identity()) {
         manager
             .stop()
@@ -830,9 +917,11 @@ fn ensure_defaultspack_desktop_ready(
             // A Kernel-restored server won the bind race. It is still a
             // Launcher child, but the losing pack-shell monitor must not own
             // (and later unregister) its guardian record.
+            crate::preparation_budget::check(deadline)?;
             manager.stop()?;
         }
     }
+    crate::preparation_budget::check(deadline)?;
     manager.register_launcher_owned_listener(&metadata, listener.pid, listener.command)?;
     if let Err(error) = write_guardian_ready_audit(config, &metadata) {
         manager
@@ -840,7 +929,9 @@ fn ensure_defaultspack_desktop_ready(
             .context("failed to stop an unaudited Defaultspack guardian")?;
         return Err(error);
     }
-
+    // Registration and its mandatory audit finish together, even if the
+    // admission budget expires during that safety finalization.
+    crate::preparation_budget::check(deadline)?;
     Ok((metadata, panel_bootstrap_secret))
 }
 
@@ -1806,7 +1897,12 @@ mod tests {
             stream.write_all(response.as_bytes()).unwrap();
         });
 
-        assert!(is_defaultspack_http_ready(port, "bootstrap-secret"));
+        assert!(is_defaultspack_http_ready(
+            port,
+            "bootstrap-secret",
+            Instant::now() + Duration::from_secs(30)
+        )
+        .unwrap());
         server.join().unwrap();
     }
 
@@ -1815,15 +1911,117 @@ mod tests {
         use crate::health_check::AuthenticatedRuntimeReadiness::{Failed, Pending, Ready};
 
         let mut probes = [Pending, Ready].into_iter();
-        wait_for_shell_runtime_ready_with(Duration::from_secs(1), || Ok(probes.next().unwrap()))
-            .unwrap();
+        wait_for_shell_runtime_ready_with(Instant::now() + Duration::from_secs(1), |_| {
+            Ok(probes.next().unwrap())
+        })
+        .unwrap();
 
         let error =
-            wait_for_shell_runtime_ready_with(Duration::from_secs(1), || Ok(Failed)).unwrap_err();
+            wait_for_shell_runtime_ready_with(Instant::now() + Duration::from_secs(1), |_| {
+                Ok(Failed)
+            })
+            .unwrap_err();
         assert!(error.to_string().contains("prepare PackVM"));
 
-        let error = wait_for_shell_runtime_ready_with(Duration::ZERO, || Ok(Pending)).unwrap_err();
-        assert!(error.to_string().contains("did not become ready"));
+        let error = wait_for_shell_runtime_ready_with(Instant::now(), |_| Ok(Pending)).unwrap_err();
+        assert!(error.to_string().contains("deadline expired"));
+    }
+
+    #[test]
+    fn expired_coordination_never_runs_an_operation_even_with_a_free_lock() {
+        let lock = Mutex::new(());
+        let invoked = std::cell::Cell::new(false);
+        let operation = || {
+            invoked.set(true);
+            Ok(())
+        };
+        assert!(with_defaultspack_launch_lock(&lock, Instant::now(), operation).is_err());
+        assert!(!invoked.get());
+        let held = lock.lock().unwrap();
+        assert!(with_defaultspack_launch_lock(&lock, Instant::now(), operation).is_err());
+        drop(held);
+        assert!(with_defaultspack_launch_lock(
+            &lock,
+            Instant::now() + Duration::from_secs(1),
+            operation
+        )
+        .is_ok());
+        assert!(invoked.get());
+    }
+
+    #[test]
+    fn global_listener_expiry_never_probes_or_stops_the_backend() {
+        let probes = std::cell::Cell::new(0);
+        let stops = std::cell::Cell::new(0);
+        assert!(wait_for_defaultspack_http_ready_with(
+            Instant::now(),
+            Duration::from_secs(120),
+            |_| {
+                probes.set(probes.get() + 1);
+                Ok(true)
+            },
+            || {
+                stops.set(stops.get() + 1);
+                Ok(())
+            },
+        )
+        .is_err());
+        assert_eq!(probes.get(), 0);
+        assert_eq!(stops.get(), 0);
+    }
+
+    #[test]
+    fn independent_listener_phase_expiry_retains_its_cleanup_policy() {
+        let stops = std::cell::Cell::new(0);
+        assert!(wait_for_defaultspack_http_ready_with(
+            Instant::now() + Duration::from_secs(1),
+            Duration::ZERO,
+            |_| panic!("expired phase must not probe"),
+            || {
+                stops.set(stops.get() + 1);
+                Ok(())
+            },
+        )
+        .is_err());
+        assert_eq!(stops.get(), 1);
+    }
+
+    #[test]
+    fn expired_runtime_readiness_does_not_accept_a_ready_probe() {
+        assert!(
+            wait_for_shell_runtime_ready_with(Instant::now(), |_| panic!(
+                "expired budget must not probe"
+            ),)
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn late_ready_does_not_override_global_expiry_or_stop_a_warming_backend() {
+        let deadline = Instant::now() + Duration::from_millis(20);
+        let stopped = std::cell::Cell::new(false);
+        let result = wait_for_defaultspack_http_ready_with(
+            deadline,
+            Duration::from_secs(120),
+            |_| {
+                thread::sleep(Duration::from_millis(30));
+                Ok(true)
+            },
+            || {
+                stopped.set(true);
+                Ok(())
+            },
+        );
+        assert!(result.is_err());
+        assert!(!stopped.get());
+        assert!(wait_for_shell_runtime_ready_with(
+            Instant::now() + Duration::from_millis(20),
+            |_| {
+                thread::sleep(Duration::from_millis(30));
+                Ok(crate::health_check::AuthenticatedRuntimeReadiness::Ready)
+            },
+        )
+        .is_err());
     }
 
     #[test]

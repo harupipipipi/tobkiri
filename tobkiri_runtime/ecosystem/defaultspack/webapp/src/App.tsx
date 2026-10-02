@@ -2623,7 +2623,6 @@ export function ChatApp() {
   const [settledBrowserApprovalKeys, setSettledBrowserApprovalKeys] = useState<string[]>([]);
   const [pendingCommandApproval, setPendingCommandApproval] = useState<PendingCommandApproval | null>(null);
   const [pendingHighRiskCommand, setPendingHighRiskCommand] = useState<PendingHighRiskCommand | null>(null);
-  const [commandProgressEvents, setCommandProgressEvents] = useState<Array<Record<string, unknown>>>([]);
   const [health, setHealth] = useState<Awaited<ReturnType<typeof api.health>> | null>(null);
   const [backendConnectionState, setBackendConnectionState] = useState<BackendConnectionState>("online");
   const [backendConnectionNote, setBackendConnectionNote] = useState<string | null>(null);
@@ -4269,6 +4268,7 @@ export function ChatApp() {
   }, [pendingRequests, activeConversationId]);
 
   const handleNewTask = (options?: HistoryBoardNewTaskOptions) => {
+    toolSelectionController.resetDraft();
     const nextContext = workspaceContextFromHistoryOptions(options);
     const nextTab = createWorkspaceTab("chat", { title: "New Conversation" });
     if (workspaceTabsEnabled) {
@@ -4867,8 +4867,9 @@ export function ChatApp() {
 
   const refreshSteerQueue = useCallback(async (conversationIdOverride?: string) => {
     const conversationId = conversationIdOverride ?? activeConversationId;
-    if (!conversationId) {
+    if (!api.supportsConversationSteering || !conversationId) {
       setSteerItems([]);
+      setModelSteerStatus(null);
       return;
     }
     setModelSteerBusy(true);
@@ -5303,17 +5304,6 @@ export function ChatApp() {
     return applied.appliedPaths;
   };
 
-  const followCommandProgress = async (invocationId: string) => {
-    try {
-      for await (const event of api.streamCommandInvocationEvents(invocationId)) {
-        setCommandProgressEvents((current) => [...current, event].slice(-12));
-      }
-    } catch (streamError) {
-      if (streamError instanceof DOMException && streamError.name === "AbortError") return;
-      setError(streamError instanceof Error ? streamError.message : "Command progress stream failed.");
-    }
-  };
-
   const executeComposerCommand = async (commandId: string, rawInput = `/${commandId}`): Promise<boolean | void> => {
     const parsed = parseSlashCommandInput(rawInput, effectiveCommandCatalog) ?? {
       command: effectiveCommandCatalog.find((command) => command.id === commandId || command.name === commandId),
@@ -5386,7 +5376,6 @@ export function ChatApp() {
       }
       const resolvedCommandName = parsed.command.canonical_id ?? parsed.command.name ?? parsed.command.id;
       const invocationId = createCommandInvocationId(parsed.command.id);
-      void followCommandProgress(invocationId);
       const result: ComposerCommandExecuteResult = await api.executeResolvedUiCommand({
         command: resolvedCommandName,
         args: commandArgs,
@@ -7059,6 +7048,7 @@ export function ChatApp() {
       entityReferences={composerEntityReferences}
       selectedToolIds={selectedToolIds}
       actionApprovalMode={actionApprovalMode}
+      toolSelectionMode={toolSelectionController.state.effectiveMode}
       toolSelectionTargets={toolSelectionController.state.overrideChips}
       toolSelectionReview={toolSelectionController.state.pendingReview}
       keyboardButtonNavigation={keyboardButtonNavigation}
@@ -7070,6 +7060,7 @@ export function ChatApp() {
       onOpenModelManager={() => openSettingsSection("models")}
       onOpenToolSettings={() => openSettingsSection("tools")}
       onActionApprovalModeChange={handleActionApprovalModeChange}
+      onToolSelectionModeChange={toolSelectionController.setTurnMode}
       onToolSelectionTargetRemove={handleToolSelectionTargetRemove}
       onToolSelectionReviewApprove={handleToolReviewApprove}
       onToolSelectionReviewEdit={handleToolReviewEdit}
@@ -7389,18 +7380,6 @@ export function ChatApp() {
                     </button>
                   </section>
                 )}
-                {commandProgressEvents.length > 0 && (
-                  <section className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3" aria-label="Command progress">
-                    <h3 className="text-xs font-semibold text-zinc-300">Command progress</h3>
-                    <ol className="mt-2 space-y-1 text-[11px] text-zinc-500">
-                      {commandProgressEvents.map((event, index) => (
-                        <li key={`${String(event.invocation_id ?? "invocation")}:${String(event.sequence ?? index)}`}>
-                          {String(event.sequence ?? "•")} · {String(event.type ?? "progress")}
-                        </li>
-                      ))}
-                    </ol>
-                  </section>
-                )}
                 {commandProtocolInfo && (
                   <details className="rumi-composer-companion mx-auto rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
                     <summary className="cursor-pointer text-xs font-semibold text-zinc-300">
@@ -7410,7 +7389,6 @@ export function ChatApp() {
                       <dt>revision</dt><dd className="font-mono">{commandProtocolInfo.catalog_revision}</dd>
                       <dt>rollout</dt><dd>{commandProtocolInfo.rollout?.phase ?? "unavailable"}</dd>
                       <dt>diagnostics</dt><dd>{commandProtocolInfo.diagnostics?.length ?? 0}</dd>
-                      <dt>events</dt><dd>{commandProgressEvents.length}</dd>
                     </dl>
                   </details>
                 )}

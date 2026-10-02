@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createElement } from "react";
+import { createElement, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { CodingWorkspacePicker } from "../components/coding/CodingWorkspacePicker";
 import { installKeyboardOnlyFocusRings } from "../lib/focusModality";
+import { useToolSelectionController } from "../features/tools/useToolSelectionController";
+import type { ConversationToolPreferences } from "../features/tools/types";
 import {
   composerMenuCommands,
   composerMentionSkills,
@@ -64,7 +66,7 @@ import {
 import { COMPOSER_BUTTON_DROP, COMPOSER_PANEL_DROP, COMPOSER_SELECTOR_DROP, COMPOSER_TOGGLE_DROP } from "../lib/toolUi";
 import type { ComposerCommandItem } from "../lib/api";
 import type { ComposerAtMentionCandidate } from "./ComposerRenderer";
-import type { ComposerExtensionItem, ComposerSkillItem, ToolGroup } from "./types";
+import type { ComposerExtensionItem, ComposerRendererProps, ComposerSkillItem, ToolGroup } from "./types";
 
 test("composer file mention filters string context files", () => {
   const files = ["README.md", "src/App.tsx", "docs/context.md"];
@@ -1461,6 +1463,144 @@ test("composer renders action approval control and review card", () => {
   assert.match(html, /承認/);
   assert.match(html, /使用する機能を確認/);
   assert.match(html, /この内容で続ける/);
+});
+
+function renderToolModeComposer(overrides: Partial<ComposerRendererProps> = {}): string {
+  return renderToStaticMarkup(createElement(ComposerRenderer, {
+    input: "Tool mode draft",
+    placeholder: "Message Tobkiri",
+    isGenerating: false,
+    selectedProfile: {
+      profile_id: "stub/default",
+      display_name: "Stub Default",
+      provider_id: "stub",
+      model_id: "default",
+    },
+    favoriteProfiles: [],
+    inlineExtensions: [],
+    belowExtensions: [],
+    thinkingLevel: null,
+    contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+    onInputChange: () => undefined,
+    onSubmit: () => undefined,
+    onModelProfileSelect: () => undefined,
+    onThinkingLevelChange: () => undefined,
+    onToolSelectionModeChange: () => undefined,
+    ...overrides,
+  }));
+}
+
+test("composer renders the effective tool mode independently of action approval", () => {
+  const modes = [
+    ["auto", "機能 自動"],
+    ["manual", "機能 手動"],
+    ["none", "機能 なし"],
+  ] as const;
+
+  for (const [toolSelectionMode, label] of modes) {
+    const html = renderToolModeComposer({ toolSelectionMode, actionApprovalMode: "ask" });
+    assert.match(html, /data-composer-widget="tool-selection-control"/);
+    assert.match(html, /aria-label="機能の使い方"/);
+    assert.ok(html.includes(label));
+    assert.match(html, /data-composer-widget="action-approval-control"/);
+    assert.match(html, /アクションの承認方法/);
+    assert.match(html, />承認</);
+  }
+});
+
+test("composer displays persistent tool selection count in manual mode", () => {
+  const html = renderToolModeComposer({
+    toolSelectionMode: "manual",
+    selectedToolIds: ["web_search", "github_issue_search"],
+  });
+
+  const modeButton = html.match(/<button\b[^>]*aria-label="機能の使い方"[^>]*>[\s\S]*?<\/button>/)?.[0];
+  assert.ok(modeButton, "The manual mode button must be rendered");
+  assert.match(modeButton, />2<\/span>/);
+});
+
+test("composer disables changing tool mode while generating", () => {
+  const html = renderToolModeComposer({ isGenerating: true });
+  const modeButton = html.match(/<button\b[^>]*aria-label="機能の使い方"[^>]*>/)?.[0];
+  assert.ok(modeButton, "The mode button remains visible while generating");
+  assert.match(modeButton, /\bdisabled=""/);
+
+  const idleHtml = renderToolModeComposer();
+  const idleModeButton = idleHtml.match(/<button\b[^>]*aria-label="機能の使い方"[^>]*>/)?.[0];
+  assert.ok(idleModeButton);
+  assert.doesNotMatch(idleModeButton, /\bdisabled=/);
+});
+
+test("composer hides the tool mode control when the surface cannot change modes", () => {
+  const html = renderToolModeComposer({ onToolSelectionModeChange: undefined });
+  assert.doesNotMatch(html, /data-composer-widget="tool-selection-control"/);
+  assert.doesNotMatch(html, /aria-label="機能の使い方"/);
+});
+
+test("new draft reset clears the actual controller mode and exclusions without clearing selected tools", () => {
+  const settingsValues = { tools: { default_mode: "auto" } };
+  const conversationPreferences: ConversationToolPreferences = {
+    mode: "manual",
+    include: [{ kind: "service", id: "github" }],
+    exclude: [{ kind: "tool", id: "computer_control" }],
+  };
+  const snapshots: Array<{
+    state: ReturnType<typeof useToolSelectionController>["state"];
+    selectedToolIds: string[];
+    request: ReturnType<ReturnType<typeof useToolSelectionController>["buildRequest"]>;
+  }> = [];
+
+  // Server rendering supports render-phase state transitions. Each pass uses
+  // the real hook state, rather than a source-string or mocked-setter assertion.
+  function Harness() {
+    const [phase, setPhase] = useState(0);
+    const [selectedToolIds, setSelectedToolIds] = useState(["web_search"]);
+    const controller = useToolSelectionController({
+      settingsValues,
+      selectedToolIds,
+      setSelectedToolIds,
+      conversationPreferences,
+    });
+    snapshots.push({
+      state: controller.state,
+      selectedToolIds: [...selectedToolIds],
+      request: controller.buildRequest({ toolIds: selectedToolIds }),
+    });
+    if (phase === 0) {
+      controller.setTurnMode("none");
+      const pinnedTarget = controller.state.overrideChips.find((chip) => chip.id === "github");
+      assert.ok(pinnedTarget);
+      controller.removeTarget(pinnedTarget);
+      setPhase(1);
+    } else if (phase === 1) {
+      controller.resetDraft();
+      setPhase(2);
+    }
+    return null;
+  }
+
+  renderToStaticMarkup(createElement(Harness));
+  assert.equal(snapshots.length, 3);
+  assert.equal(snapshots[1].state.effectiveMode, "none");
+  assert.deepEqual(snapshots[1].state.turnExclude.map(({ kind, id }) => ({ kind, id })), [
+    { kind: "service", id: "github" },
+  ]);
+  assert.deepEqual(snapshots[1].request.include, []);
+
+  const reset = snapshots[2];
+  assert.equal(reset.state.effectiveMode, "manual");
+  assert.equal(reset.state.turnModeOverride, null);
+  assert.deepEqual(reset.state.turnExclude, []);
+  assert.deepEqual(reset.selectedToolIds, ["web_search"]);
+  assert.deepEqual(reset.state.conversationPreferences, conversationPreferences);
+  assert.deepEqual(reset.request, {
+    mode: "manual",
+    include: [{ kind: "service", id: "github" }, { kind: "tool", id: "web_search" }],
+    exclude: [{ kind: "tool", id: "computer_control" }],
+    scope: "turn",
+    must_use: true,
+  });
+  assert.deepEqual(settingsValues, { tools: { default_mode: "auto" } });
 });
 
 test("new conversation composer input is not locked to one visual line", () => {

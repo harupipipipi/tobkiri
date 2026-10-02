@@ -23,6 +23,7 @@ def host_path(value: str) -> PurePath:
     # Launcher canonicalization may add the Win32 extended local-drive prefix.
     # Normalize only that spelling; UNC and other device namespaces still fail.
     value = value.removeprefix("\\\\?\\")
+    path: PurePath
     if value.startswith("/"):
         path = PurePosixPath(value)
     else:

@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import type { ChatMessage, ModelProfile, SavedTurnRequest, SavedTurnResult } from "../src/lib/api";
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -105,8 +106,13 @@ type ApiMockOptions = {
   beforeCommandCatalogResponse?: () => Promise<void> | void;
   beforeWorkspaceFileReadResponse?: (payload: Record<string, unknown>) => Promise<void> | void;
   initialSettingsValues?: Record<string, Record<string, unknown>>;
+  initialSelectedToolIds?: string[];
   onConversationCreate?: (payload: Record<string, unknown>) => void;
   onStreamRequest?: (payload: Record<string, unknown>) => void;
+  onSavedTurnRequest?: (payload: { request: SavedTurnRequest }) => void;
+  beforeSavedTurnResponse?: () => Promise<void> | void;
+  modelProfiles?: ModelProfile[];
+  applicationBuiltinChat?: boolean;
   streamEvents?: (message: Record<string, unknown>) => Record<string, unknown>[];
   conversationMutator?: (conversation: ReturnType<typeof smokeConversation>) => void;
   onApprovalDecision?: (decision: "approve" | "deny", payload: Record<string, unknown>) => void;
@@ -139,6 +145,7 @@ function ok(data: unknown) {
 function smokeConversation() {
   return {
     id: "c-smoke",
+    conversation_revision: 1,
     title: "Preview Calendar Chat",
     created_at: now - 60_000,
     updated_at: now,
@@ -232,7 +239,7 @@ function smokeConversation() {
  * fixture keeps the production /chat route on the same verified-contribution
  * contract as the Host instead of silently falling back to legacy UI.
  */
-function dynamicHostCatalog() {
+function dynamicHostCatalog(applicationBuiltinChat = false) {
   const profileId = "defaults";
   const profileRevision = "e2e-profile-revision";
   const activationId = "e2e-activation";
@@ -243,10 +250,12 @@ function dynamicHostCatalog() {
     profile_revision: profileRevision,
     activation_id: activationId,
     plan_hash: planHash,
+    selected_entry_route: "/chat",
     contributions: [{
       contribution_id: "defaults.conversation.complete",
       kind: "route" as const,
-      mode: "declarative" as const,
+      mode: applicationBuiltinChat ? "application_builtin" as const : "declarative" as const,
+      ...(applicationBuiltinChat ? { implementation: "defaultspack.chat" } : {}),
       label: "Tobkiri Conversation",
       description: "Start a conversation with Tobkiri.",
       priority: 0,
@@ -283,6 +292,7 @@ const smokeProfile = {
   supports_tool_calling: true,
   supports_vision: false,
   local: true,
+  route_configured: true,
   availability: { local: true, configured: true },
 };
 
@@ -643,10 +653,16 @@ async function fulfillStreamEvents(route: Route, events: Record<string, unknown>
 }
 
 async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions = {}) {
-  await page.addInitScript(() => {
+  await page.route("**/health", (route) => fulfill(route, {
+    status: "ok", runtime_ready: true, runtime_status: "ready", active_profile_ready: true,
+  }));
+  await page.addInitScript((selectedToolIds: string[]) => {
     localStorage.clear();
     sessionStorage.clear();
-  });
+    if (selectedToolIds.length) {
+      localStorage.setItem("rumi-selected-tool-ids", JSON.stringify(selectedToolIds));
+    }
+  }, options.initialSelectedToolIds ?? []);
   await page.addInitScript(() => {
     const fixtureWindow = window as Window & {
       __approvalRendererFixture?: {
@@ -724,6 +740,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
     },
   }));
   let conversationToolPreferences: Record<string, unknown> = {};
+  let completedSavedTurn: SavedTurnRequest | null = null;
   let codingApprovalRequest: Record<string, unknown> | null = null;
   let interactiveApprovalRequest: InteractiveApprovalFixture | null = options.interactiveApproval
     ? {
@@ -747,6 +764,35 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
     const method = request.method();
     const conversation = smokeConversation();
     options.conversationMutator?.(conversation);
+    if (completedSavedTurn) {
+      conversation.conversation_revision = completedSavedTurn.conversation_revision + 1;
+      const request = completedSavedTurn;
+      const userText = typeof request.content === "string" ? request.content : request.content[0].text;
+      const savedMessages: ChatMessage[] = [
+        {
+          id: "m-saved-user",
+          role: "user",
+          content: [{ type: "text", text: userText }],
+          raw_text: userText,
+          created_at: now + 1_000,
+          conversation_id: request.conversation_id,
+          sequence_number: 3,
+          metadata: { turn_id: request.turn_id },
+        },
+        {
+          id: "m-saved-assistant",
+          role: "assistant",
+          content: [{ type: "text", text: "Saved response accepted." }],
+          raw_text: "Saved response accepted.",
+          created_at: now + 2_000,
+          conversation_id: request.conversation_id,
+          sequence_number: 4,
+          finish_reason: "stop",
+          metadata: { turn_id: request.turn_id },
+        },
+      ];
+      (conversation.messages as ChatMessage[]).push(...savedMessages);
+    }
     const conversationMessages = conversation.messages as Array<{ events?: Record<string, unknown>[] }>;
     for (const message of conversationMessages) {
       if (!message.events) continue;
@@ -776,7 +822,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
 
     if (path === routeKey("api/ui/catalog") || path === routeKey("api/ui/full-catalog")) {
       return fulfill(route, {
-        dynamic_host: dynamicHostCatalog(),
+        dynamic_host: dynamicHostCatalog(options.applicationBuiltinChat),
         app: { id: "defaultspack", name: "Rumi", account: { display_name: "Smoke User", plan_label: "Local" } },
         agent_service: { profiles: [], capabilities: [], presets: [] },
         sidebar: {
@@ -828,11 +874,11 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
           };
         }
       }
-      return fulfill(route, { sections: settingsSections, values: currentSettingsValues });
+      return fulfill(route, { sections: settingsSections, values: currentSettingsValues, document_revision: 1 });
     }
 
     if (path === routeKey("api/ui/settings")) {
-      return fulfill(route, { sections: settingsSections, values: currentSettingsValues });
+      return fulfill(route, { sections: settingsSections, values: currentSettingsValues, document_revision: 1 });
     }
 
     if (path === routeKey("api/command-protocol/v1/catalog")) {
@@ -922,7 +968,19 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
     }
 
     if (path === routeKey("api/ai/profiles")) {
-      return fulfill(route, { profiles: [smokeProfile, googleProfile, opencodeProfile, opencodeZenProfile], count: 4 });
+      const profiles = options.modelProfiles ?? [smokeProfile, googleProfile, opencodeProfile, opencodeZenProfile];
+      return fulfill(route, { profiles, count: profiles.length, registry_revision: 1 });
+    }
+
+    if (path === routeKey("api/ai/strategies")) {
+      return fulfill(route, {
+        api_version: "tobkiri.strategies/v1",
+        strategies: [],
+        count: 0,
+        catalog_revision: "e2e-strategy-revision-1",
+        diagnostics: [],
+        quarantined_pack_ids: [],
+      });
     }
 
     if (path === routeKey("api/ai/models/search") && method === "POST") {
@@ -962,12 +1020,40 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
     }
 
     if (path === routeKey("api/chat/conversations") && method === "GET") {
-      return fulfill(route, { conversations: [{ ...conversation, messages: [] }], total: 1 });
+      return fulfill(route, { conversations: [{ ...conversation, messages: [] }], total: 1, store_revision: 1 });
     }
 
     if (path === routeKey("api/chat/conversations") && method === "POST") {
       options.onConversationCreate?.(request.postDataJSON() as Record<string, unknown>);
       return fulfill(route, conversation);
+    }
+
+    if (path === routeKey("api/chat/conversation") && method === "GET") {
+      return fulfill(route, conversation);
+    }
+
+    if (path === routeKey("api/chat/turn") && method === "POST") {
+      const payload = request.postDataJSON() as { request: SavedTurnRequest };
+      options.onSavedTurnRequest?.(payload);
+      await options.beforeSavedTurnResponse?.();
+      completedSavedTurn = payload.request;
+      const result: SavedTurnResult = {
+        status: "completed",
+        turn: {
+          id: payload.request.turn_id,
+          conversation_id: payload.request.conversation_id,
+          status: "completed",
+          revision: 3,
+          result_reference: {
+            conversation_id: payload.request.conversation_id,
+            conversation_revision: payload.request.conversation_revision + 1,
+            user_message_id: "m-saved-user",
+            assistant_message_id: "m-saved-assistant",
+            outcome_digest: `sha256:${"f".repeat(64)}`,
+          },
+        },
+      };
+      return fulfill(route, result);
     }
 
     if (path === routeKey("api/command-protocol/v1/invocations/events/query") && method === "POST") {
@@ -1699,7 +1785,7 @@ test("tool hub search suggestions close on outside click while keeping filtered 
   await expect(page.locator(".rumi-composer-frame")).toContainText("Web Search");
 });
 
-test("composer approval menu opens action permissions while selection modes live in settings", async ({ page }) => {
+test("composer approval menu opens action permissions independently of tool selection modes", async ({ page }) => {
   await openDefaultspack(page);
 
   await page.getByRole("button", { name: "アクションの承認方法" }).click();
@@ -1719,6 +1805,149 @@ test("composer approval menu opens action permissions while selection modes live
   await expect(page.getByText("MCP servers and tool sources define callable actions. Account login, OAuth tokens, and access tokens remain in Accounts & Connections.")).toBeVisible();
   await expect(page.getByText("Safety rules")).toBeVisible();
   await expect(page.getByText("Tool source → Tools & MCP")).toBeVisible();
+});
+
+test("composer tool mode menu offers supported modes and opens manual tool settings", async ({ page }) => {
+  await openDefaultspack(page);
+
+  const mode = page.getByRole("button", { name: "機能の使い方", exact: true });
+  await expect(mode).toBeVisible();
+  await expect(mode).toContainText("機能 自動");
+  await mode.click();
+  const menu = page.getByRole("menu", { name: "機能の使い方" });
+  await expect(menu.getByRole("menuitemradio")).toHaveCount(3);
+  await expect(menu.getByRole("menuitemradio", { name: /自動で選ぶ/ })).toHaveAttribute("aria-checked", "true");
+  await expect(menu.getByRole("menuitemradio", { name: /自分で選ぶ/ })).toBeVisible();
+  await expect(menu.getByRole("menuitemradio", { name: /機能を使わない/ })).toBeVisible();
+  await expect(menu.getByRole("menuitemradio", { name: /使う前に確認/ })).toHaveCount(0);
+
+  await menu.getByRole("menuitemradio", { name: /自分で選ぶ/ }).click();
+  await expect(mode).toContainText("機能 手動");
+  await expect(menu).toBeHidden();
+  await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tools", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close settings" }).click();
+
+  await mode.click();
+  await menu.getByRole("menuitemradio", { name: /自動で選ぶ/ }).click();
+  await expect(mode).toContainText("機能 自動");
+  await expect(page.getByRole("button", { name: "アクションの承認方法" })).toContainText("承認");
+});
+
+test("composer per-turn no-tools mode reaches the request and locks during generation without settings writes", async ({ page }) => {
+  const savedTurnRequests: Array<{ request: SavedTurnRequest }> = [];
+  const settingsWrites: string[] = [];
+  let releaseSavedTurn: (() => void) | undefined;
+  const savedTurnGate = new Promise<void>((resolve) => { releaseSavedTurn = resolve; });
+  page.on("request", (request) => {
+    if (request.method() === "PUT" && requestTarget(new URL(request.url())) === "/api/ui/settings") {
+      settingsWrites.push(request.url());
+    }
+  });
+  await installDefaultspackApiMocks(page, {
+    modelProfiles: [smokeProfile],
+    applicationBuiltinChat: true,
+    conversationMutator: (conversation) => {
+      conversation.conversation_kind = "chat";
+      conversation.tags = [];
+    },
+    onSavedTurnRequest: (payload) => savedTurnRequests.push(payload),
+    beforeSavedTurnResponse: () => savedTurnGate,
+  });
+  // Select the production ChatApp through its Host-admitted builtin binding.
+  // The separate declarative conversation_v4 view has different controls.
+  await page.goto("/p/defaults/chat?chat=c-smoke");
+  await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
+
+  const mode = page.getByRole("button", { name: "機能の使い方", exact: true });
+  await mode.click();
+  await page.getByRole("menuitemradio", { name: /機能を使わない/ }).click();
+  await expect(mode).toContainText("機能 なし");
+  await page.locator("textarea.rumi-composer-textarea").fill("Answer using no external tools.");
+  await expect(mode).toContainText("機能 なし");
+  await page.getByRole("button", { name: "メッセージを送信" }).click();
+
+  try {
+    await expect.poll(() => savedTurnRequests.length).toBe(1);
+    expect(savedTurnRequests[0].request).toMatchObject({
+      conversation_id: "c-smoke",
+      conversation_revision: 1,
+      content: [{ type: "text", text: "Answer using no external tools." }],
+    });
+    expect(savedTurnRequests[0].request.tool_selection).toMatchObject({
+      mode: "none",
+      include: [],
+      must_use: false,
+    });
+    await expect(mode).toBeDisabled();
+    expect(settingsWrites).toEqual([]);
+  } finally {
+    releaseSavedTurn?.();
+  }
+
+  await expect(mode).toBeEnabled();
+  await expect(mode).toContainText("機能 自動");
+  await expect(page.getByText("Saved response accepted.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "アクションの承認方法" })).toContainText("承認");
+  expect(settingsWrites).toEqual([]);
+});
+
+test("new chat resets the draft tool mode and keeps persistent selected tools", async ({ page }) => {
+  await installDefaultspackApiMocks(page, { initialSelectedToolIds: ["web_search"] });
+  await page.goto("/static/chat");
+  await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
+
+  const mode = page.getByRole("button", { name: "機能の使い方", exact: true });
+  await mode.click();
+  await page.getByRole("menuitemradio", { name: /機能を使わない/ }).click();
+  await expect(mode).toContainText("機能 なし");
+  await page.getByRole("button", { name: "New Chat", exact: true }).click();
+
+  await expect(mode).toContainText("機能 自動");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
+    .toBe('["web_search"]');
+});
+
+test("tool selection controller resets transient draft state while preserving persistent preferences", async ({ page }) => {
+  await installDefaultspackApiMocks(page);
+  await page.goto("/static/chat");
+  const snapshots = await page.evaluate(async () => {
+    const fixturePath = "/e2e/tool-selection-controller.fixture.tsx";
+    const fixture = await import(/* @vite-ignore */ fixturePath);
+    return fixture.exerciseToolSelectionControllerReset();
+  });
+
+  expect(snapshots.beforeReset).toMatchObject({
+    effectiveMode: "review",
+    turnModeOverride: "review",
+    turnExclude: [{ kind: "service", id: "github" }],
+    pendingReview: { previewId: "controller-reset-preview" },
+    latestDecision: { selected_tools: ["web_search"] },
+  });
+  expect(snapshots.afterReset).toMatchObject({
+    effectiveMode: "manual",
+    turnModeOverride: null,
+    turnExclude: [],
+    pendingReview: null,
+    latestDecision: null,
+    selectedToolIds: ["web_search"],
+    request: {
+      mode: "manual",
+      include: [{ kind: "service", id: "github" }, { kind: "tool", id: "web_search" }],
+      exclude: [{ kind: "tool", id: "computer_control" }],
+      must_use: true,
+    },
+  });
+  expect(snapshots.afterNewConversation).toMatchObject({
+    effectiveMode: "auto",
+    turnModeOverride: null,
+    turnExclude: [],
+    pendingReview: null,
+    latestDecision: null,
+    selectedToolIds: ["web_search"],
+    request: { mode: "manual", include: [{ kind: "tool", id: "web_search" }], exclude: [], must_use: true },
+  });
+  expect(snapshots.settingsValues).toEqual({ tools: { default_mode: "auto" } });
 });
 
 test("slash yolo toggles Full Access back to Ask without a duplicate status chip", async ({ page }) => {

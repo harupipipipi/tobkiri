@@ -47,6 +47,12 @@ hex = "0.4"
 ed25519-dalek = "2"
 shell-words = "1"
 
+# Development startup authenticates large VM images too. Optimize the digest
+# implementation rather than omitting any seal/inventory verification pass.
+# Release packaging retains its existing profile below.
+[profile.dev.package.sha2]
+opt-level = 3
+
 [profile.release]
 strip = true
 lto = true

@@ -16,26 +16,27 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from core_runtime.pack_sdk import (  # noqa: E402
+from core_runtime.pack_sdk import (
     PackSdkGenerator,
+    ensure_scaffold_refresh_safe,
     refresh_scaffold_artifacts,
     scaffold_pack,
     validate_pack_manifest,
 )
-from scripts.offline_legacy_projection import (  # noqa: E402
-    generate_legacy_ecosystem_projection,
+from core_runtime.pack_signature import (
+    SIGNED_MANIFEST_RELATIVE,
+    build_signed_manifest,
+    sign_manifest,
+    verify_signed_pack,
 )
-from core_runtime.pack_templates import (  # noqa: E402
+from core_runtime.pack_templates import (
     COMPONENT_KINDS,
     PROFILES,
     scaffold_component,
     validate_template_components,
 )
-from core_runtime.pack_signature import (  # noqa: E402
-    SIGNED_MANIFEST_RELATIVE,
-    build_signed_manifest,
-    sign_manifest,
-    verify_signed_pack,
+from scripts.offline_legacy_projection import (
+    generate_legacy_ecosystem_projection,
 )
 
 DEFAULT_SCHEMAS = [
@@ -168,6 +169,7 @@ def _init(args: argparse.Namespace) -> dict[str, object]:
 
 
 def _add(args: argparse.Namespace) -> dict[str, object]:
+    ensure_scaffold_refresh_safe(args.pack_root)
     paths = scaffold_component(
         args.pack_root,
         kind=args.kind,

@@ -114,6 +114,12 @@ def test_stopped_registration_resumes_only_after_exact_update_consent(registrati
     p.stop(f"STOP {module.INSTANCE}")
     plan = p.prepare()
     assert plan.registration_update is not None
+    assert set(plan.registration_update) == {
+        "previous_attestation_digest", "previous_config_digest",
+        "previous_guest_runner_digest", "previous_host_build_digest",
+        "asset_manifest_digest",
+    }
+    assert plan.registration_update["asset_manifest_digest"] == p._assets().manifest_digest
     missing = PackVMProvisioningRequest(plan.plan_digest, plan.ceremony_nonce, plan.confirmation)
     with pytest.raises(ValueError, match="update consent"):
         p.provision(missing)

@@ -1169,6 +1169,10 @@ def _capture_bootstrap_profile(
                 catalog=catalog,
             )
             if resolved_reconciliation is not None:
+                if confirmation is None:
+                    raise ProfileResolutionDenied(
+                        "bootstrap activation confirmation is required"
+                    )
                 predecessor = None
                 try:
                     predecessor = store.load_active_snapshot()

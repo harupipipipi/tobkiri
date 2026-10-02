@@ -38,6 +38,9 @@ class GuestProcess:
     def wait_for_serial(self, timeout):
         assert timeout > 0
 
+    def wait_for_guest_ready(self, timeout):
+        assert timeout > 0
+
     def exchange(self, request, timeout):
         assert timeout > 0
         self.requests.append(request)
@@ -73,8 +76,7 @@ class GuestProcess:
         return signed
 
 
-@pytest.fixture
-def transport():
+def _make_transport():
     key = Ed25519PrivateKey.generate()
     allocation = SimpleNamespace(
         domain_id="domain.test",
@@ -140,14 +142,23 @@ def transport():
     return transport, process, envelope
 
 
+@pytest.fixture
+def transport():
+    return _make_transport()
+
+
 def test_real_guest_attest_accepts_correct_request_protocol_and_signature(transport):
     supervisor, process, _envelope = transport
     assert process.requests[0]["protocol"] == guest.PROTOCOL
     assert supervisor.alive()
 
 
-def test_real_guest_invoke_envelope_handles_no_host_deadline(transport):
+@pytest.mark.parametrize("monotonic_now", [None, 1000.123456789, 1e12 + 0.125])
+def test_real_guest_invoke_envelope_handles_no_host_deadline(transport, monkeypatch, monotonic_now):
     supervisor, process, envelope = transport
+    if monotonic_now is not None:
+        monkeypatch.setattr("tobkiri_host.qemu_supervisor_transport.time.monotonic", lambda: monotonic_now)
+        monkeypatch.setattr(supervisor._requests, "_clock", lambda: monotonic_now)
     reply = supervisor.exchange(
         envelope(
             "invoke",
@@ -288,3 +299,54 @@ def test_linux_driver_attests_real_guest_signatures_over_fake_vm(tmp_path, monke
     assert proof.platform == "linux-amd64"
     driver.terminate("domain.linux")
     assert len(allocator.released) == 1
+
+
+def test_launch_uses_one_budget_for_start_ready_and_attestation(monkeypatch):
+    now = [1000.0]
+    budgets = []
+    original_start = GuestProcess.start
+    original_exchange = GuestProcess.exchange
+
+    def start(self):
+        original_start(self)
+        now[0] += 10
+
+    def ready(self, timeout):
+        budgets.append(("ready", timeout))
+        now[0] += 20
+
+    def exchange(self, request, timeout):
+        budgets.append(("attest", timeout))
+        return original_exchange(self, request, timeout)
+
+    monkeypatch.setattr("tobkiri_host.qemu_supervisor_transport.time.monotonic", lambda: now[0])
+    monkeypatch.setattr(GuestProcess, "start", start)
+    monkeypatch.setattr(GuestProcess, "wait_for_guest_ready", ready)
+    monkeypatch.setattr(GuestProcess, "exchange", exchange)
+    supervisor, process, _ = _make_transport()
+    assert supervisor.alive() and process.requests[0]["operation"] == "attest"
+    assert budgets == [("ready", 170.0), ("attest", 150.0)]
+
+
+def test_diagnostic_failure_cannot_mask_startup_error_or_skip_cleanup(monkeypatch):
+    stopped = []
+    original = RuntimeError("startup failed")
+
+    def ready(self, timeout):
+        raise original
+
+    def capture(self, error):
+        assert error is original
+        raise OSError("diagnostic failed")
+
+    def stop(self):
+        self.running = False
+        stopped.append(self)
+
+    monkeypatch.setattr(GuestProcess, "wait_for_guest_ready", ready)
+    monkeypatch.setattr(GuestProcess, "_capture_failure_diagnostics", capture, raising=False)
+    monkeypatch.setattr(GuestProcess, "stop", stop)
+    with pytest.raises(RuntimeError, match="startup failed") as result:
+        _make_transport()
+    assert result.value is original
+    assert len(stopped) == 1 and not stopped[0].running

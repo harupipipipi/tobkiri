@@ -1067,6 +1067,25 @@ fn packaged_packvm_bundle_binding(config: &AppConfig) -> Result<Option<PackVMBun
 fn packaged_packvm_bundle_binding_from_app_dir(
     configured_app_dir: &Path,
 ) -> Result<Option<PackVMBundleBinding>> {
+    // The native platform selects the trust boundary, never path depth or a
+    // caller-controlled .app/Contents/Resources spelling on another OS.
+    #[cfg(target_os = "macos")]
+    {
+        macos_packvm_bundle_binding_from_app_dir(configured_app_dir)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let app_dir = configured_app_dir
+            .canonicalize()
+            .context("packaged application resource root is unavailable")?;
+        portable_packvm_bundle_binding(&app_dir)
+    }
+}
+
+#[cfg(any(test, target_os = "macos"))]
+fn macos_packvm_bundle_binding_from_app_dir(
+    configured_app_dir: &Path,
+) -> Result<Option<PackVMBundleBinding>> {
     let app_dir = configured_app_dir
         .canonicalize()
         .context("packaged application resource root is unavailable")?;
@@ -1084,7 +1103,7 @@ fn packaged_packvm_bundle_binding_from_app_dir(
         || contents.file_name() != Some(OsStr::new("Contents"))
         || bundle.extension() != Some(OsStr::new("app"))
     {
-        return portable_packvm_bundle_binding(&app_dir);
+        return Ok(None);
     }
     let resources = bundle.join("Contents/Resources");
     let provisioning = read_bounded_regular(
@@ -1113,6 +1132,7 @@ fn packaged_packvm_bundle_binding_from_app_dir(
     }))
 }
 
+#[cfg(not(target_os = "macos"))]
 fn portable_packvm_bundle_binding(app_dir: &Path) -> Result<Option<PackVMBundleBinding>> {
     let accelerator = if cfg!(target_os = "linux") {
         "kvm"
@@ -3991,7 +4011,7 @@ mod tests {
     }
 
     #[test]
-    fn packaged_packvm_binding_is_derived_from_exact_outer_bundle_bytes() {
+    fn macos_packvm_binding_is_derived_from_exact_outer_bundle_bytes() {
         let root = std::env::temp_dir().join(format!(
             "tobkiri-packvm-bundle-binding-{}-{}",
             std::process::id(),
@@ -4009,7 +4029,7 @@ mod tests {
         .unwrap();
         fs::write(resources.join("packvm-vz-helper.manifest.v1.json"), helper).unwrap();
 
-        let binding = packaged_packvm_bundle_binding_from_app_dir(&app_dir)
+        let binding = macos_packvm_bundle_binding_from_app_dir(&app_dir)
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -4024,25 +4044,69 @@ mod tests {
             b"substituted",
         )
         .unwrap();
-        let substituted = packaged_packvm_bundle_binding_from_app_dir(&app_dir)
+        let substituted = macos_packvm_bundle_binding_from_app_dir(&app_dir)
             .unwrap()
             .unwrap();
         assert_ne!(substituted.provisioning_sha256, binding.provisioning_sha256);
         fs::remove_dir_all(root).unwrap();
     }
 
+    #[cfg(any(target_os = "linux", windows))]
     #[test]
-    fn non_bundle_runtime_has_no_packvm_binding() {
+    fn portable_binding_does_not_skip_a_shallow_resource_root() {
+        let temporary = std::env::temp_dir().canonicalize().unwrap();
+        let filesystem_root = temporary.ancestors().last().unwrap();
+        assert!(packaged_packvm_bundle_binding_from_app_dir(filesystem_root).is_err());
+    }
+
+    #[cfg(any(target_os = "linux", windows))]
+    #[test]
+    fn portable_binding_does_not_accept_a_foreign_macos_layout() {
+        let root = std::env::temp_dir().join(format!(
+            "tobkiri-packvm-foreign-layout-{}-{}",
+            std::process::id(),
+            random_nonce()
+        ));
+        let app_dir = root.join("Foreign.app/Contents/Resources/app");
+        fs::create_dir_all(&app_dir).unwrap();
+        let resources = app_dir.parent().unwrap();
+        fs::write(resources.join("packvm-vz-provisioning.v1.json"), b"{}").unwrap();
+        fs::write(resources.join("packvm-vz-helper.manifest.v1.json"), b"{}").unwrap();
+        let result = packaged_packvm_bundle_binding_from_app_dir(&app_dir);
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            result.is_err(),
+            "portable targets must reject VZ-only bindings"
+        );
+    }
+
+    #[test]
+    fn unbound_runtime_uses_platform_specific_packvm_binding_policy() {
         let root = std::env::temp_dir().join(format!(
             "tobkiri-packvm-unbundled-{}-{}",
             std::process::id(),
             random_nonce()
         ));
         fs::create_dir_all(&root).unwrap();
-        assert!(packaged_packvm_bundle_binding_from_app_dir(&root)
+        let result = packaged_packvm_bundle_binding_from_app_dir(&root);
+        if cfg!(any(target_os = "linux", windows)) {
+            assert!(
+                result.is_err(),
+                "portable packaged roles require bound VM assets"
+            );
+        } else {
+            assert!(result.unwrap().is_none());
+        }
+        assert!(macos_packvm_bundle_binding_from_app_dir(&root)
             .unwrap()
             .is_none());
-        fs::remove_dir(root).unwrap();
+        let nested = root.join("nested/application/resources");
+        fs::create_dir_all(&nested).unwrap();
+        if cfg!(any(target_os = "linux", windows)) {
+            assert!(packaged_packvm_bundle_binding_from_app_dir(&nested).is_err());
+        }
+        assert!(packaged_packvm_bundle_binding_from_app_dir(&root.join("missing")).is_err());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

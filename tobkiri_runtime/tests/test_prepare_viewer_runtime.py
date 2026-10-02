@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -39,6 +40,97 @@ def test_run_command_preserves_explicit_environment_and_disables_bytecode(monkey
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     assert environment["PYTHONDONTWRITEBYTECODE"] == "0"
+
+
+@pytest.mark.parametrize("old_names", [
+    [], ["Unrelated.AppImage"],
+    ["Tobkiri_0.9.0_amd64.AppImage", "Tobkiri_1.0.0_arm64.AppImage"],
+])
+def test_linux_shell_name_is_deterministic_before_first_build(tmp_path, old_names):
+    module = _load_module()
+    config_root = tmp_path / "tobkiri_launcher/src-tauri"
+    config_root.mkdir(parents=True)
+    (config_root / "tauri.conf.json").write_text(json.dumps({
+        "productName": "Tobkiri Launcher", "version": "1.0.0-beta.3",
+    }))
+    (config_root / "tauri.shell.conf.json").write_text(json.dumps({
+        "productName": "Tobkiri",
+    }))
+    output = config_root / "target/x86_64-unknown-linux-gnu/debug/bundle/appimage"
+    output.mkdir(parents=True)
+    for name in old_names:
+        (output / name).write_bytes(b"stale output")
+    spec = module._target_shell_spec(tmp_path, "x86_64-unknown-linux-gnu")
+    assert spec["artifact"] == output / "Tobkiri_1.0.0-beta.3_amd64.AppImage"
+    assert not spec["artifact"].exists()
+    assert spec["relative_path"] == spec["entrypoint"] == "Tobkiri.AppImage"
+
+
+def test_linux_bundle_identity_uses_platform_then_explicit_shell_override(tmp_path):
+    module = _load_module()
+    config_root = tmp_path / "tobkiri_launcher/src-tauri"
+    config_root.mkdir(parents=True)
+    for name, value in {
+        "tauri.conf.json": {"productName": "Base", "version": "1.0.0"},
+        "tauri.linux.conf.json": {"productName": "Linux", "version": "2.0.0"},
+        "tauri.shell.conf.json": {"productName": "Tobkiri", "version": "3.0.0"},
+    }.items():
+        (config_root / name).write_text(json.dumps(value))
+    assert module._linux_appimage_name(tmp_path) == "Tobkiri_3.0.0_amd64.AppImage"
+    (config_root / "tauri.shell.conf.json").write_text('{"version":"package.json"}')
+    with pytest.raises(RuntimeError, match="requires a literal Tauri version"):
+        module._linux_appimage_name(tmp_path)
+    (config_root / "tauri.shell.conf.json").write_text('{"version":')
+    with pytest.raises(RuntimeError, match="Invalid Tauri configuration"):
+        module._linux_appimage_name(tmp_path)
+    (config_root / "tauri.shell.conf.json").write_text('{"productName":"../escape"}')
+    with pytest.raises(RuntimeError, match="Invalid Tauri AppImage productName"):
+        module._linux_appimage_name(tmp_path)
+
+
+@pytest.mark.parametrize("produce_current", [False, True])
+def test_linux_prepare_requires_this_builds_exact_output(
+    tmp_path, monkeypatch, produce_current,
+):
+    module = _load_module()
+    config_root = tmp_path / "tobkiri_launcher/src-tauri"
+    config_root.mkdir(parents=True)
+    (config_root / "tauri.conf.json").write_text(
+        '{"productName":"Tobkiri Launcher","version":"1.0.0-beta.3"}',
+    )
+    (config_root / "tauri.shell.conf.json").write_text('{"productName":"Tobkiri"}')
+    target = "x86_64-unknown-linux-gnu"
+    expected = module._target_shell_spec(tmp_path, target)["artifact"]
+    expected.parent.mkdir(parents=True)
+    (expected.parent / "Unrelated.AppImage").write_bytes(b"stale")
+    runtime = tmp_path / "tobkiri_runtime"
+    (runtime / "ecosystem/defaultspack/v4").mkdir(parents=True)
+    (runtime / "packaged_defaultspack_source_manifest.v1.json").write_text("{}\n")
+    python = tmp_path / ".venv/bin/python3"
+    python.parent.mkdir(parents=True)
+    python.write_bytes(b"fixture")
+    packaged = []
+
+    def command(arguments, **kwargs):
+        parts = [os.fspath(part) for part in arguments]
+        if parts[:3] == ["cargo", "tauri", "build"] and produce_current:
+            expected.write_bytes(b"current build")
+        if "scripts.generate_packaged_defaultspack_v4_bundle" in parts:
+            packaged.append(parts)
+        stdout = "a" * 40 + "\n" if parts[:3] == ["git", "rev-parse", "--verify"] else ""
+        return subprocess.CompletedProcess(arguments, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(module, "run_command", command)
+    if not produce_current:
+        with pytest.raises(RuntimeError, match="Development Tauri Shell was not produced"):
+            module.prepare_dev_defaults(tmp_path, target)
+        assert not packaged
+    else:
+        module.prepare_dev_defaults(tmp_path, target)
+        staged = runtime / "bundled/dev-shell/Tobkiri.AppImage"
+        assert staged.read_bytes() == b"current build"
+        assert len(packaged) == 1
+        assert packaged[0][packaged[0].index("--source-artifact") + 1] == str(staged)
 
 
 def test_prepare_dev_defaults_refuses_false_clean_source_provenance(tmp_path, monkeypatch):

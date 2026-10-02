@@ -9,6 +9,7 @@ import pytest
 from tests.test_windows_whpx_support import config
 from tobkiri_host.windows_whpx_process import WindowsWHPXProcess
 from tobkiri_protocol.canonical import canonical_json
+from tobkiri_protocol.packvm_serial import SERIAL_READY_FRAME
 
 
 class PipeChild:
@@ -42,13 +43,16 @@ class PipeChild:
 
 
 @pytest.fixture
-def pipes(tmp_path):
+def pipes(tmp_path, request):
     transport = WindowsWHPXProcess(config(tmp_path))
     child = PipeChild()
     transport._process = child
     transport._started = True
     transport._reader = threading.Thread(target=transport._read_responses, daemon=True)
     transport._reader.start()
+    if getattr(request, "param", True):
+        child.guest_output.write(SERIAL_READY_FRAME + b"\n")
+        transport.wait_for_guest_ready(2)
     yield transport, child
     transport.stop()
 
@@ -95,3 +99,34 @@ def test_noncanonical_guest_response_is_never_promoted(pipes):
         transport.exchange({"guest_challenge": "3" * 64, "operation": "invoke"}, timeout=2)
     worker.join(2)
     assert child.running is False
+
+
+@pytest.mark.parametrize("pipes", [False], indirect=True)
+@pytest.mark.parametrize("split", [1, 2, 30, len(SERIAL_READY_FRAME)])
+def test_real_pipe_reader_accepts_fragmented_ready_before_request(pipes, split):
+    transport, child = pipes
+    prefix_seen = threading.Event()
+    original = transport._validate_partial_frame
+
+    def partial(content):
+        original(content)
+        if bytes(content) == SERIAL_READY_FRAME[:split]:
+            prefix_seen.set()
+
+    transport._validate_partial_frame = partial
+    child.guest_output.write(SERIAL_READY_FRAME[:split])
+    assert prefix_seen.wait(1)
+    child.guest_output.write(SERIAL_READY_FRAME[split:] + b"\n")
+    transport.wait_for_guest_ready(1)
+    assert transport._ready_received
+    assert not transport._pending and not transport._used_challenges
+
+
+@pytest.mark.parametrize("pipes", [False], indirect=True)
+@pytest.mark.parametrize("payload", [SERIAL_READY_FRAME + b"\n" + SERIAL_READY_FRAME + b"\n", SERIAL_READY_FRAME + b"\ntrailing", b"{invalid\n"])
+def test_real_pipe_reader_retires_duplicate_or_unsolicited_startup(pipes, payload):
+    transport, child = pipes
+    child.guest_output.write(payload)
+    transport._reader.join(1)
+    assert not transport._reader.is_alive()
+    assert transport._failure is not None and child.running is False

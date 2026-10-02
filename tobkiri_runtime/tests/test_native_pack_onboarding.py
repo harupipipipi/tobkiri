@@ -130,15 +130,19 @@ def test_host_policy_writes_publisher_and_install_together(monkeypatch, tmp_path
     assert snapshot["policy_generation"] == 1
 
 
+@pytest.mark.parametrize("shared_policy_directory", [False, True])
 def test_qa_frontend_pack_onboards_through_preview_commit_and_cas(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path, monkeypatch, shared_policy_directory: bool,
 ) -> None:
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user-data"))
     source = tmp_path / PACK_ID
     public_key = tmp_path / f"{PACK_ID}.public.pem"
     build_signed_qa_pack(source, public_key)
-    trust_dir = tmp_path / "host-policy"
-    trust_dir.mkdir(mode=0o700)
+    trust_dir = (
+        tmp_path / "user-data" / "pack_control"
+        if shared_policy_directory else tmp_path / "host-policy"
+    )
+    trust_dir.mkdir(parents=True, mode=0o700)
     trust_store = trust_dir / "publisher-trust.json"
 
     preview = native_pack_onboarding.preview_signed_pack(source, public_key)

@@ -4,7 +4,7 @@
 //! A 200 response means the Kernel is ready to serve requests.
 
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 use log::info;
@@ -95,6 +95,15 @@ fn health_client() -> &'static reqwest::blocking::Client {
 }
 
 fn fetch_authenticated_health(port: u16, bootstrap_secret: &str) -> Result<Option<HealthPayload>> {
+    fetch_authenticated_health_with_deadline(port, bootstrap_secret, None)
+}
+
+fn fetch_authenticated_health_with_deadline(
+    port: u16,
+    bootstrap_secret: &str,
+    deadline: Option<Instant>,
+) -> Result<Option<HealthPayload>> {
+    let timeout = crate::preparation_budget::request_timeout(deadline, Duration::from_secs(30))?;
     if bootstrap_secret.is_empty() {
         return Ok(None);
     }
@@ -104,20 +113,29 @@ fn fetch_authenticated_health(port: u16, bootstrap_secret: &str) -> Result<Optio
     let resp = match health_client()
         .get(&url)
         .header(DESKTOP_HEALTH_CHALLENGE_HEADER, &challenge)
+        .timeout(timeout)
         .send()
     {
         Ok(resp) => resp,
-        Err(_) => return Ok(None),
+        Err(_) => {
+            crate::preparation_budget::check_optional(deadline)?;
+            return Ok(None);
+        }
     };
 
+    crate::preparation_budget::check_optional(deadline)?;
     if !resp.status().is_success() {
         return Ok(None);
     }
 
     let envelope: ApiEnvelope<HealthPayload> = match resp.json() {
         Ok(payload) => payload,
-        Err(_) => return Ok(None),
+        Err(_) => {
+            crate::preparation_budget::check_optional(deadline)?;
+            return Ok(None);
+        }
     };
+    crate::preparation_budget::check_optional(deadline)?;
     if !envelope.success {
         return Ok(None);
     }
@@ -137,6 +155,7 @@ fn fetch_authenticated_health(port: u16, bootstrap_secret: &str) -> Result<Optio
     {
         return Ok(None);
     }
+    crate::preparation_budget::check_optional(deadline)?;
     Ok(Some(payload))
 }
 
@@ -150,7 +169,30 @@ pub(crate) fn authenticated_runtime_identity(
     bootstrap_secret: &str,
     contract_namespace: &str,
 ) -> Result<ExecutionProfileIdentity> {
-    let health = fetch_authenticated_health(port, bootstrap_secret)?
+    authenticated_runtime_identity_with_deadline(port, bootstrap_secret, contract_namespace, None)
+}
+
+pub(crate) fn authenticated_runtime_identity_until(
+    port: u16,
+    bootstrap_secret: &str,
+    contract_namespace: &str,
+    deadline: Instant,
+) -> Result<ExecutionProfileIdentity> {
+    authenticated_runtime_identity_with_deadline(
+        port,
+        bootstrap_secret,
+        contract_namespace,
+        Some(deadline),
+    )
+}
+
+fn authenticated_runtime_identity_with_deadline(
+    port: u16,
+    bootstrap_secret: &str,
+    contract_namespace: &str,
+    deadline: Option<Instant>,
+) -> Result<ExecutionProfileIdentity> {
+    let health = fetch_authenticated_health_with_deadline(port, bootstrap_secret, deadline)?
         .context("authenticated runtime health is unavailable")?;
     if let Some(identity) = identity_from_health(&health)? {
         return Ok(identity);
@@ -158,7 +200,7 @@ pub(crate) fn authenticated_runtime_identity(
     validate_contract_namespace(contract_namespace)?;
 
     let origin = format!("http://127.0.0.1:{port}");
-    let cookie = exchange_panel_session(port, bootstrap_secret)?;
+    let cookie = exchange_panel_session(port, bootstrap_secret, deadline)?;
     let profile = health_client()
         .get(format!(
             "{origin}/api/contracts/{contract_namespace}/GET%20%2Fapi%2Fruntime-surface%2Fprofile"
@@ -168,8 +210,13 @@ pub(crate) fn authenticated_runtime_identity(
             format!("rumi_panel_session={cookie}"),
         )
         .header("X-Tobkiri-Request-ID", random_uuid_v4())
+        .timeout(crate::preparation_budget::request_timeout(
+            deadline,
+            Duration::from_secs(30),
+        )?)
         .send()
         .context("canonical runtime profile read failed")?;
+    crate::preparation_budget::check_optional(deadline)?;
     if !profile.status().is_success() {
         bail!(
             "canonical runtime profile read returned {}",
@@ -179,6 +226,7 @@ pub(crate) fn authenticated_runtime_identity(
     let envelope: ApiEnvelope<Value> = profile
         .json()
         .context("canonical runtime profile response is malformed")?;
+    crate::preparation_budget::check_optional(deadline)?;
     if !envelope.success {
         bail!("canonical runtime profile read was rejected");
     }
@@ -194,16 +242,30 @@ struct PanelExchangeRequest {
     code: String,
 }
 
-fn exchange_panel_session(port: u16, bootstrap_secret: &str) -> Result<String> {
-    let code = crate::request_panel_bootstrap_code_with_retry(port, bootstrap_secret)
-        .context("failed to issue a profile identity bootstrap code")?;
+fn exchange_panel_session(
+    port: u16,
+    bootstrap_secret: &str,
+    deadline: Option<Instant>,
+) -> Result<String> {
+    let code = match deadline {
+        Some(deadline) => {
+            crate::request_panel_bootstrap_code_with_retry_until(port, bootstrap_secret, deadline)
+        }
+        None => crate::request_panel_bootstrap_code_with_retry(port, bootstrap_secret),
+    }
+    .context("failed to issue a profile identity bootstrap code")?;
     let origin = format!("http://127.0.0.1:{port}");
     let exchange = health_client()
         .post(format!("{origin}/api/panel/auth/exchange"))
         .header("Origin", &origin)
         .json(&PanelExchangeRequest { code })
+        .timeout(crate::preparation_budget::request_timeout(
+            deadline,
+            Duration::from_secs(30),
+        )?)
         .send()
         .context("profile identity panel exchange failed")?;
+    crate::preparation_budget::check_optional(deadline)?;
     if !exchange.status().is_success() {
         bail!(
             "profile identity panel exchange returned {}",
@@ -418,6 +480,14 @@ pub fn check_authenticated_health(port: u16, bootstrap_secret: &str) -> Result<b
     Ok(fetch_authenticated_health(port, bootstrap_secret)?.is_some())
 }
 
+pub(crate) fn check_authenticated_health_until(
+    port: u16,
+    bootstrap_secret: &str,
+    deadline: Instant,
+) -> Result<bool> {
+    Ok(fetch_authenticated_health_with_deadline(port, bootstrap_secret, Some(deadline))?.is_some())
+}
+
 /// Return whether an authenticated Kernel has completed runtime activation.
 pub fn check_authenticated_runtime_ready(port: u16, bootstrap_secret: &str) -> Result<bool> {
     Ok(fetch_authenticated_health(port, bootstrap_secret)?
@@ -452,6 +522,16 @@ pub(crate) fn check_authenticated_runtime_readiness(
         port,
         bootstrap_secret,
     )?))
+}
+
+pub(crate) fn check_authenticated_runtime_readiness_until(
+    port: u16,
+    bootstrap_secret: &str,
+    deadline: Instant,
+) -> Result<AuthenticatedRuntimeReadiness> {
+    Ok(runtime_readiness_from_health(
+        fetch_authenticated_health_with_deadline(port, bootstrap_secret, Some(deadline))?,
+    ))
 }
 
 /// Send a single health-check request.
@@ -517,6 +597,27 @@ pub fn wait_for_healthy(port: u16, timeout_secs: u64) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn expired_preparation_budget_rejects_all_authenticated_reads() {
+        let deadline = Instant::now();
+        assert!(check_authenticated_health_until(0, "secret", deadline)
+            .unwrap_err()
+            .to_string()
+            .contains("deadline expired"));
+        assert!(
+            check_authenticated_runtime_readiness_until(0, "secret", deadline)
+                .unwrap_err()
+                .to_string()
+                .contains("deadline expired")
+        );
+        assert!(
+            authenticated_runtime_identity_until(0, "secret", "defaultspack", deadline)
+                .unwrap_err()
+                .to_string()
+                .contains("deadline expired")
+        );
+    }
 
     #[test]
     fn health_waits_for_inflight_profile_verification() {

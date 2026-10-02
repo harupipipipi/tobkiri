@@ -221,6 +221,7 @@ class LinuxQemuProvisioner:
                         "previous_config_digest": previous["config_digest"],
                         "previous_guest_runner_digest": previous["guest_runner_digest"],
                         "previous_host_build_digest": previous["host_build_digest"],
+                        "asset_manifest_digest": assets.manifest_digest,
                     }
             except (OSError, ValueError, KeyError):
                 reason = reason or "Linux PackVM existing registration requires recovery"

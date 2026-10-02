@@ -59,6 +59,8 @@ def _operation(client: GlobalContractClient, *, streaming: bool):
             raise ValueError(f"unknown provider adapter operation: {name}")
         request = dict(payload)
         connection = _connection(client, request, streaming=streaming)
+        if connection.get("adapter_id") == "local-openai-compatible":
+            return _local_openai(client, request, connection, streaming=streaming)
         credential_handle = _credential_handle(
             request,
             connection,
@@ -250,6 +252,65 @@ def _openai_compatible(
         "finish_reason": (first.get("finish_reason") if isinstance(first, Mapping) else None),
     }
     return _stream_result(result) if streaming else result
+
+
+def _local_openai(
+    client: GlobalContractClient, request: Mapping[str, Any],
+    connection: Mapping[str, Any], *, streaming: bool,
+) -> dict[str, Any]:
+    """Execute plain text only via the independent Host-local allowlist."""
+    if request.get("credential_handle") is not None or connection.get("credential_handle") is not None:
+        raise GlobalContractInvocationError("denied", "local model routes do not accept credentials")
+    parameters = request.get("parameters") or {}
+    if not isinstance(parameters, Mapping) or set(parameters) & {"model", "messages", "stream"}:
+        raise GlobalContractInvocationError("denied", "local model parameters override routing")
+    if request.get("tools"):
+        raise GlobalContractInvocationError("incompatible", "local model route supports plain text only")
+    body = {
+        **dict(parameters), "model": _provider_model_id(request),
+        "messages": _local_text_messages(request.get("messages")), "stream": False,
+    }
+    try:
+        value = client.post_local_model_chat(
+            provider_instance_id=str(connection["provider_instance_id"]),
+            body=body, deadline=float(request.get("deadline") or 0),
+        )
+    except (OSError, PermissionError, RuntimeError, ValueError, TypeError):
+        raise GlobalContractInvocationError("provider_unavailable", "local model request failed") from None
+    choices = value.get("choices")
+    first = choices[0] if isinstance(choices, list) and choices else None
+    message = first.get("message") if isinstance(first, Mapping) else None
+    if not isinstance(message, Mapping) or not isinstance(message.get("content"), str) or message.get("tool_calls"):
+        raise GlobalContractInvocationError("invalid_response", "local model returned invalid text")
+    usage = value.get("usage") or {}
+    if not isinstance(first, Mapping) or not isinstance(usage, Mapping):
+        raise GlobalContractInvocationError("invalid_response", "local model returned invalid metadata")
+    result = {
+        "output": message["content"], "tool_intents": [],
+        "usage": dict(usage), "finish_reason": first.get("finish_reason"),
+    }
+    return _stream_result(result) if streaming else result
+
+
+def _local_text_messages(value: Any) -> list[dict[str, str]]:
+    """Project only exact saved plain-text blocks; never fetch media URLs."""
+    if not isinstance(value, list):
+        raise GlobalContractInvocationError("invalid_request", "local model messages are invalid")
+    messages: list[dict[str, str]] = []
+    for message in value:
+        if not isinstance(message, Mapping) or set(message) != {"role", "content"}:
+            raise GlobalContractInvocationError("incompatible", "local model requires plain text messages")
+        content = message["content"]
+        if isinstance(content, list) and content and all(
+            isinstance(part, Mapping) and set(part) == {"type", "text"}
+            and part["type"] == "text" and isinstance(part["text"], str)
+            for part in content
+        ):
+            content = "".join(part["text"] for part in content)
+        if not isinstance(content, str) or message["role"] not in {"system", "user", "assistant"}:
+            raise GlobalContractInvocationError("incompatible", "local model requires plain text messages")
+        messages.append({"role": message["role"], "content": content})
+    return messages
 
 
 def _anthropic(

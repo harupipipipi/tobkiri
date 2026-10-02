@@ -68,7 +68,6 @@ use windows_sys::Win32::System::IO::OVERLAPPED;
 
 // ---------------------------------------------------------------------------
 // Constants
-const DEVELOPMENT_PACKVM_BUNDLE_ROOT_ENV: &str = "TOBKIRI_DEVELOPMENT_PACKVM_BUNDLE_ROOT";
 // ---------------------------------------------------------------------------
 
 /// Pinned CPython patch version. Avoid resolving a mutable latest patch at startup.
@@ -345,14 +344,23 @@ where
     if !config.is_dev_workspace() {
         return crate::sealed_python::spawn_packaged_role(config, role, role_arguments, configure);
     }
+    let preparation_started = Instant::now();
     let mut command = process_utils::isolated_python(config.venv_python());
-    command.env_remove(DEVELOPMENT_PACKVM_BUNDLE_ROOT_ENV);
-    if let Some(bundle_root) = development_packvm_bundle_root(config) {
-        // Debug .app bundles may carry the same ad-hoc-signed VZ helper used
-        // by macOS CI. Pass only the enclosing bundle selected by Tauri;
-        // direct checkout launches have no bundle and receive no override.
-        command.env(DEVELOPMENT_PACKVM_BUNDLE_ROOT_ENV, bundle_root);
-    }
+    let portable = crate::defaultspack_authority::local_development_packvm_binding(config)?;
+    info!(
+        "Development Python role={role:?} phase=verified-bindings elapsed_ms={}",
+        preparation_started.elapsed().as_millis()
+    );
+    let macos_root = if portable.is_none() {
+        development_packvm_bundle_root(config)
+    } else {
+        None
+    };
+    crate::development_packvm::configure_environment(
+        &mut command,
+        portable.as_ref(),
+        macos_root.as_deref(),
+    );
     match role {
         PythonRole::Kernel => {
             command
@@ -383,9 +391,18 @@ where
         configure(&mut role_command)?;
         role_command.take_output_log()
     };
+    let spawn_started = Instant::now();
     let mut spawned = command
         .spawn()
         .context("failed to spawn development Python role")?;
+    // This marks the actual OS spawn return, before the manager's later
+    // identity verification and guardian-registration completion message.
+    info!(
+        "Development Python role={role:?} phase=spawn-return pid={} spawn_elapsed_ms={} preparation_elapsed_ms={}",
+        spawned.id(),
+        spawn_started.elapsed().as_millis(),
+        preparation_started.elapsed().as_millis()
+    );
     // Drain piped output immediately at spawn rather than leaving it to the
     // caller, so a fast-emitting child can never fill its pipe buffer and
     // wedge before the drains attach.

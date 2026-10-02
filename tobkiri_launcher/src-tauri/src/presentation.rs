@@ -42,7 +42,7 @@ const LAUNCHER_PANEL_PORT: u16 = 8765;
 // settle, so keep this larger than either of those bounds.  The handoff is not
 // created until preparation completes, leaving every Shell the full receipt
 // window below.
-const SHELL_PREPARATION_TIMEOUT: Duration = Duration::from_secs(180);
+const SHELL_PREPARATION_TIMEOUT: Duration = crate::preparation_budget::TIMEOUT;
 const MACOS_LAUNCH_COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 const SHELL_RECEIPT_TIMEOUT: Duration = Duration::from_secs(45);
 const LAUNCH_POLL_INTERVAL: Duration = Duration::from_millis(25);
@@ -537,25 +537,34 @@ pub(crate) fn launch_selected_presentation_impl(
     app: &AppHandle,
     config: &AppConfig,
 ) -> AnyResult<PresentationLaunchResponse> {
-    with_presentation_launch_coordination(|| launch_selected_presentation_serialized(app, config))
+    let deadline = Instant::now() + SHELL_PREPARATION_TIMEOUT;
+    with_presentation_launch_coordination(deadline, || {
+        launch_selected_presentation_serialized(app, config, deadline)
+    })
 }
 
 fn with_presentation_launch_coordination<T>(
+    deadline: Instant,
     operation: impl FnOnce() -> AnyResult<T>,
 ) -> AnyResult<T> {
     let launch_lock = PRESENTATION_LAUNCH_LOCK.get_or_init(|| Mutex::new(()));
-    with_presentation_launch_lock(launch_lock, SHELL_PREPARATION_TIMEOUT, operation)
+    with_presentation_launch_lock(launch_lock, deadline, operation)
 }
 
 fn with_presentation_launch_lock<T>(
     launch_lock: &Mutex<()>,
-    timeout: Duration,
+    deadline: Instant,
     operation: impl FnOnce() -> AnyResult<T>,
 ) -> AnyResult<T> {
-    let deadline = Instant::now() + timeout;
     loop {
+        if Instant::now() >= deadline {
+            bail!("another Shell launch is still preparing; preparation deadline expired");
+        }
         match launch_lock.try_lock() {
-            Ok(_guard) => return operation(),
+            Ok(_guard) => {
+                crate::preparation_budget::check(deadline)?;
+                return operation();
+            }
             Err(std::sync::TryLockError::Poisoned(error)) => {
                 return Err(anyhow!("presentation launch lock was poisoned: {error}"));
             }
@@ -565,7 +574,9 @@ fn with_presentation_launch_lock<T>(
                 );
             }
             Err(std::sync::TryLockError::WouldBlock) => {
-                thread::sleep(LAUNCH_POLL_INTERVAL);
+                thread::sleep(
+                    LAUNCH_POLL_INTERVAL.min(crate::preparation_budget::remaining(deadline)?),
+                );
             }
         }
     }
@@ -574,11 +585,12 @@ fn with_presentation_launch_lock<T>(
 fn launch_selected_presentation_serialized(
     app: &AppHandle,
     config: &AppConfig,
+    deadline: Instant,
 ) -> AnyResult<PresentationLaunchResponse> {
     let target = run_shell_rotation_sequence(
         || resolve_verified_presentation_target(config),
         VerifiedPresentationTarget::same_security_binding,
-        |target| launch_verified_target_once(app, config, target),
+        |target| launch_verified_target_once(app, config, target, deadline),
     )?;
 
     Ok(successful_shell_launch_response(&target))
@@ -723,14 +735,19 @@ fn launch_verified_target_once(
     app: &AppHandle,
     config: &AppConfig,
     target: &VerifiedPresentationTarget,
+    deadline: Instant,
 ) -> AnyResult<crate::shell_handoff::ShellHandoffReceiptStatus> {
     // Runtime readiness and local authentication are resolved only after the
     // exact verified Shell artifact has passed pre-admission. The authenticated
     // URL never crosses argv or the environment; only an owner-only one-shot
     // handoff path is passed to the presentation process.
-    let prepared_runtime =
-        prepare_defaultspack_shell_runtime_with_deadline(app, config, &target.frontend_entry)
-            .context(ShellRuntimePreparationFailed)?;
+    let prepared_runtime = prepare_defaultspack_shell_runtime_with_deadline(
+        app,
+        config,
+        &target.frontend_entry,
+        deadline,
+    )
+    .context(ShellRuntimePreparationFailed)?;
     if !target
         .execution_identity
         .matches(&prepared_runtime.identity)
@@ -761,6 +778,7 @@ fn launch_verified_target_once(
         &app.config().identifier,
         &config.user_data_dir,
     )?;
+    crate::preparation_budget::check(deadline).context(ShellRuntimePreparationFailed)?;
     let ticket = crate::shell_handoff::create_shell_handoff(
         config,
         crate::shell_handoff::ShellHandoffBinding {
@@ -773,6 +791,10 @@ fn launch_verified_target_once(
         },
         &prepared_runtime.url,
     )?;
+    if let Err(error) = crate::preparation_budget::check(deadline) {
+        crate::shell_handoff::discard_shell_handoff(&ticket);
+        return Err(error).context(ShellRuntimePreparationFailed);
+    }
     // Do not charge guardian lock/runtime preparation against admission. The
     // handoff now exists, so the Shell gets the entire fixed receipt window.
     let receipt_deadline = shell_receipt_deadline(Instant::now());
@@ -812,7 +834,9 @@ fn prepare_defaultspack_shell_runtime_with_deadline(
     app: &AppHandle,
     config: &AppConfig,
     frontend_entry: &crate::frontend_entry::VerifiedFrontendEntry,
+    deadline: Instant,
 ) -> AnyResult<crate::dock_registration::PreparedShellRuntime> {
+    crate::preparation_budget::check(deadline)?;
     SHELL_PREPARATION_IN_FLIGHT
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
         .map_err(|_| {
@@ -834,6 +858,7 @@ fn prepare_defaultspack_shell_runtime_with_deadline(
                     &app,
                     &config,
                     &frontend_entry,
+                    deadline,
                 )
             };
             // The requester can time out before the bounded worker exits. In
@@ -846,18 +871,22 @@ fn prepare_defaultspack_shell_runtime_with_deadline(
         return Err(error).context("failed to start Defaultspack Shell preparation");
     }
 
-    await_shell_preparation_result(receiver, SHELL_PREPARATION_TIMEOUT)
+    await_shell_preparation_result(receiver, deadline)
 }
 
 fn await_shell_preparation_result<T>(
     receiver: mpsc::Receiver<AnyResult<T>>,
-    timeout: Duration,
+    deadline: Instant,
 ) -> AnyResult<T> {
+    let timeout = deadline.saturating_duration_since(Instant::now());
     match receiver.recv_timeout(timeout) {
-        Ok(result) => result.context("Defaultspack Shell preparation failed"),
+        Ok(result) => {
+            crate::preparation_budget::check(deadline)?;
+            result.context("Defaultspack Shell preparation failed")
+        }
         Err(mpsc::RecvTimeoutError::Timeout) => bail!(
             "Defaultspack Shell preparation timed out after {} seconds; retry after it finishes or restart Tobkiri Launcher",
-            timeout.as_secs()
+            SHELL_PREPARATION_TIMEOUT.as_secs()
         ),
         Err(mpsc::RecvTimeoutError::Disconnected) => {
             bail!("Defaultspack Shell preparation stopped before it returned")
@@ -3670,7 +3699,8 @@ mod tests {
         sender.send(Ok("prepared")).unwrap();
 
         assert_eq!(
-            await_shell_preparation_result(receiver, Duration::from_secs(1)).unwrap(),
+            await_shell_preparation_result(receiver, Instant::now() + Duration::from_secs(1))
+                .unwrap(),
             "prepared"
         );
     }
@@ -3678,7 +3708,7 @@ mod tests {
     #[test]
     fn shell_preparation_deadline_is_independent_and_fails_closed() {
         let (_sender, receiver) = mpsc::sync_channel::<AnyResult<()>>(1);
-        let error = await_shell_preparation_result(receiver, Duration::ZERO).unwrap_err();
+        let error = await_shell_preparation_result(receiver, Instant::now()).unwrap_err();
 
         assert!(error
             .to_string()
@@ -3687,12 +3717,19 @@ mod tests {
     }
 
     #[test]
+    fn queued_preparation_success_after_expiry_cannot_create_a_handoff() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        sender.send(Ok("late runtime")).unwrap();
+        assert!(await_shell_preparation_result(receiver, Instant::now()).is_err());
+    }
+
+    #[test]
     fn waiting_for_another_shell_preparation_is_bounded() {
         let launch_lock = Mutex::new(());
         let _held_launch = launch_lock.lock().unwrap();
         let invoked = Cell::new(false);
 
-        let error = with_presentation_launch_lock(&launch_lock, Duration::ZERO, || {
+        let error = with_presentation_launch_lock(&launch_lock, Instant::now(), || {
             invoked.set(true);
             Ok(())
         })
@@ -3838,13 +3875,16 @@ mod tests {
             let maximum = Arc::clone(&maximum);
             threads.push(std::thread::spawn(move || {
                 barrier.wait();
-                with_presentation_launch_coordination(|| {
-                    let current = active.fetch_add(1, Ordering::SeqCst) + 1;
-                    maximum.fetch_max(current, Ordering::SeqCst);
-                    std::thread::yield_now();
-                    active.fetch_sub(1, Ordering::SeqCst);
-                    Ok(())
-                })
+                with_presentation_launch_coordination(
+                    Instant::now() + SHELL_PREPARATION_TIMEOUT,
+                    || {
+                        let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+                        maximum.fetch_max(current, Ordering::SeqCst);
+                        std::thread::yield_now();
+                        active.fetch_sub(1, Ordering::SeqCst);
+                        Ok(())
+                    },
+                )
                 .unwrap();
             }));
         }

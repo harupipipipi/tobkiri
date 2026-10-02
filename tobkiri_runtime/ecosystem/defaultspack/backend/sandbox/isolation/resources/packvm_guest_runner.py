@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+
 import base64
 import binascii
 from collections import OrderedDict
@@ -199,9 +200,14 @@ def main() -> int:
             return 1
 
     if sys.argv[1:] == ["--serve-virtio-serial"]:
+        _emit_serial_console_phase("serial-service-start")
         try:
             return _serve_virtio_serial_agent()
-        except (OSError, ValueError):
+        except (OSError, ValueError) as error:
+            _emit_serial_console_phase(
+                "serial-startup-oserror" if isinstance(error, OSError)
+                else "serial-startup-validation-rejected"
+            )
             # Device loss is fatal: systemd restarts the root service, while
             # bubblewrap's --die-with-parent tears down its sandbox children.
             # Never put request bytes, key paths, or signing diagnostics here.
@@ -1292,7 +1298,9 @@ def _serve_virtio_serial_agent() -> int:
     if os.geteuid() != 0:
         raise ValueError("PackVM guest agent requires the root-owned supervisor")
     config = _load_vsock_agent_config(PACKVM_GUEST_AGENT_CONFIG)
+    _emit_serial_console_phase("serial-config-loaded")
     _assert_root_only_regular_file(config.private_key_path, "PackVM guest agent key")
+    _emit_serial_console_phase("serial-key-verified")
     # /dev/virtio-ports contains kernel/udev-managed symlinks to /dev/vport*.
     # Inspect the opened target, rather than forbidding those normal symlinks.
     descriptor = os.open(
@@ -1308,6 +1316,7 @@ def _serve_virtio_serial_agent() -> int:
         ):
             raise ValueError("PackVM guest agent serial device is unsafe")
         os.set_inheritable(descriptor, False)
+        _emit_serial_console_phase("serial-device-verified")
         return _serve_authenticated_serial_agent(
             descriptor, config, _OpenSSLAgentSigner(config.private_key_path),
         )
@@ -1422,6 +1431,9 @@ def _serve_authenticated_serial_agent(
     stream. Only the production wrapper opens the root-only character device.
     """
 
+    # QEMU uses the finite zipapp. Keep raw VZ/vsock imports self-contained.
+    from tobkiri_protocol.packvm_serial import SERIAL_READY_FRAME
+
     if max_requests is not None and (
         type(max_requests) is not int or max_requests < 0
     ):
@@ -1437,10 +1449,20 @@ def _serve_authenticated_serial_agent(
     state = threading.Condition()
     active = {"cancel": 0, "other": 0}
     failure: list[Exception] = []
+    response_logged = False
 
     def respond(response: dict[str, object]) -> None:
-        signed = _sign_agent_response(response, signer)
+        nonlocal response_logged
+        try:
+            signed = _sign_agent_response(response, signer)
+        except Exception:
+            _emit_serial_console_phase("serial-signing-failed")
+            raise
         stream.write_response(_bridge_canonical_json(signed))
+        with state:
+            if not response_logged:
+                response_logged = True
+                _emit_serial_console_phase("serial-first-response-sent")
 
     def serve_request(request: dict[str, object], lane: str) -> None:
         try:
@@ -1460,9 +1482,15 @@ def _serve_authenticated_serial_agent(
                 state.notify_all()
 
     served = 0
+    _emit_serial_console_phase("serial-stream-ready")
     try:
+        # Opening the real virtio port must precede the Host's first byte.
+        # This is a transport-ordering marker, never an attestation or grant.
+        stream.write_response(SERIAL_READY_FRAME)
         while max_requests is None or served < max_requests:
             request = stream.read_request()
+            if served == 0:
+                _emit_serial_console_phase("serial-first-request-read")
             lane = "cancel" if request.get("operation") == "cancel" else "other"
             limit = 1 if lane == "cancel" else max_active_requests - 1
             with state:
@@ -1499,6 +1527,28 @@ def _serve_authenticated_serial_agent(
         # stopped before doing I/O even if an invocation is still unwinding.
         with stream.write_lock:
             pass
+
+
+_SERIAL_CONSOLE_PHASES = frozenset({
+    "serial-service-start", "serial-config-loaded", "serial-key-verified",
+    "serial-device-verified", "serial-stream-ready", "serial-first-request-read",
+    "serial-first-response-sent", "serial-signing-failed",
+    "serial-startup-oserror", "serial-startup-validation-rejected",
+})
+
+
+def _emit_serial_console_phase(code: str) -> None:
+    """Emit fixed, non-secret startup milestones to an optional QEMU console."""
+    if code not in _SERIAL_CONSOLE_PHASES:
+        return
+    try:
+        descriptor = os.open("/dev/ttyS0", os.O_WRONLY | os.O_CLOEXEC | os.O_NONBLOCK)
+        try:
+            os.write(descriptor, b"TOBKIRI_AGENT:" + code.encode("ascii") + b"\n")
+        finally:
+            os.close(descriptor)
+    except OSError:
+        pass
 
 
 def _emit_vsock_console_phase(code: str) -> None:

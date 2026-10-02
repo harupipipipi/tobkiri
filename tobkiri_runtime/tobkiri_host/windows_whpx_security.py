@@ -9,16 +9,18 @@ import stat
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, cast
 
 from tobkiri_protocol.secure_persistence import SecureDirectory
+
+from .windows_abi_types import WindowsCRuntime, WindowsCTypes, WindowsOS
 
 _HANDLE = ctypes.c_void_p
 _DWORD = ctypes.c_uint32
 
 
 def _security_api() -> tuple[Any, Any]:
-    loader = ctypes.WinDLL
+    loader = cast(WindowsCTypes, ctypes).WinDLL
     advapi = loader("advapi32", use_last_error=True, winmode=0x800)
     kernel = loader("kernel32", use_last_error=True, winmode=0x800)
     specifications = {
@@ -82,7 +84,10 @@ def _user_sid() -> Iterator[tuple[Any, Any, Any, str]]:
         if not advapi.ConvertSidToStringSidW(sid, ctypes.byref(value)):
             raise OSError("Windows current-user SID cannot be encoded")
         try:
-            yield advapi, kernel, sid, value.value
+            sid_text = value.value
+            if not sid_text:
+                raise OSError("Windows current-user SID encoding is empty")
+            yield advapi, kernel, sid, sid_text
         finally:
             kernel.LocalFree(ctypes.cast(value, _HANDLE))
     finally:
@@ -137,19 +142,25 @@ def private_directory(path: Path, *, create: bool = True) -> SecureDirectory:
                 or not dacl
             ):
                 raise ValueError("PackVM directory ownership or ACL protection changed")
+            dacl_address = dacl.value
+            if dacl_address is None:
+                raise ValueError("PackVM directory ACL is null")
             # ACL header: revision, sbz1, size, ace_count, sbz2.
-            count = ctypes.c_uint16.from_address(dacl.value + 4).value
+            count = ctypes.c_uint16.from_address(dacl_address + 4).value
             ace = _HANDLE()
             if count != 1 or not advapi.GetAce(dacl, 0, ctypes.byref(ace)):
                 raise ValueError("PackVM directory ACL contains unexpected principals")
-            kind = ctypes.c_ubyte.from_address(ace.value).value
-            flags = ctypes.c_ubyte.from_address(ace.value + 1).value
-            rights = _DWORD.from_address(ace.value + 4).value
+            ace_address = ace.value
+            if ace_address is None:
+                raise ValueError("PackVM directory ACL entry is null")
+            kind = ctypes.c_ubyte.from_address(ace_address).value
+            flags = ctypes.c_ubyte.from_address(ace_address + 1).value
+            rights = _DWORD.from_address(ace_address + 4).value
             if (
                 kind != 0
                 or flags != 3
                 or rights != 0x1F01FF
-                or not advapi.EqualSid(ace.value + 8, sid)
+                or not advapi.EqualSid(ace_address + 8, sid)
             ):
                 raise ValueError("PackVM directory ACL is not owner-only inheritable access")
         finally:
@@ -184,7 +195,7 @@ def _stable_file(path: Path) -> Iterator[BinaryIO]:
             api.CloseHandle(handle)
             raise ValueError("PackVM asset identity is unsafe")
         try:
-            fd = msvcrt.open_osfhandle(int(handle), os.O_RDONLY | os.O_BINARY)
+            fd = cast(WindowsCRuntime, msvcrt).open_osfhandle(int(handle), os.O_RDONLY | cast(WindowsOS, os).O_BINARY)
         except BaseException:
             api.CloseHandle(handle)
             raise

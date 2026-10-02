@@ -853,7 +853,8 @@ def _scan_literal_paths(
 def _scan_runtime_policy(root: Path, path: Path, text: str, source_pack: str) -> set[Violation]:
     """Detect discovery, secret, and kernel domain-policy bypasses."""
     found: set[Violation] = set()
-    normalized = path.as_posix()
+    # Checkout and temporary-directory names are not product architecture.
+    normalized = path.relative_to(root).as_posix()
     discovery_surface = any(
         marker in normalized.lower()
         for marker in ("pack", "profile", "discover", "manifest", "startup")

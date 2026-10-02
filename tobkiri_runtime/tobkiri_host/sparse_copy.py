@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from .windows_abi_types import WindowsCRuntime, WindowsCTypes
+
+import ctypes
 import hashlib
 import os
 import stat
@@ -10,14 +16,13 @@ from typing import BinaryIO
 _BLOCK_SIZE = 64 * 1024
 
 
-def _sparse_control(output: BinaryIO, code: int, data: object = None) -> None:
+def _sparse_control(output: BinaryIO, code: int, data: ctypes.Structure | None = None) -> None:
     if os.name != "nt":
         return
-    import ctypes
     import msvcrt
     from ctypes import wintypes
 
-    control = ctypes.WinDLL("kernel32", use_last_error=True).DeviceIoControl
+    control = cast("WindowsCTypes", ctypes).WinDLL("kernel32", use_last_error=True).DeviceIoControl
     control.argtypes = [
         wintypes.HANDLE,
         wintypes.DWORD,
@@ -31,7 +36,7 @@ def _sparse_control(output: BinaryIO, code: int, data: object = None) -> None:
     control.restype = wintypes.BOOL
     returned = wintypes.DWORD()
     if not control(
-        msvcrt.get_osfhandle(output.fileno()),
+        cast("WindowsCRuntime", msvcrt).get_osfhandle(output.fileno()),
         code,
         ctypes.byref(data) if data is not None else None,
         ctypes.sizeof(data) if data is not None else 0,
@@ -40,7 +45,7 @@ def _sparse_control(output: BinaryIO, code: int, data: object = None) -> None:
         ctypes.byref(returned),
         None,
     ):
-        error = ctypes.get_last_error()
+        error = cast("WindowsCTypes", ctypes).get_last_error()
         raise OSError(
             error,
             "PackVM destination cannot perform sparse file operation; "
@@ -56,7 +61,6 @@ def _enable_sparse(output: BinaryIO) -> None:
 def _deallocate_zero_ranges(output: BinaryIO, ranges: list[tuple[int, int]]) -> None:
     if os.name != "nt":
         return
-    import ctypes
 
     class ZeroData(ctypes.Structure):
         _fields_ = [("FileOffset", ctypes.c_int64), ("BeyondFinalZero", ctypes.c_int64)]

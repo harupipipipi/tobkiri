@@ -3241,6 +3241,7 @@ def test_sealed_basename_alone_does_not_select_packaged_imports(
     old_ecosystem = sys.modules.get("ecosystem")
     old_defaultspack = sys.modules.get("ecosystem.defaultspack")
     module = types.ModuleType("sealed_desktop_test")
+    monkeypatch.setitem(sys.modules, module.__name__, module)
     module.__file__ = str(desktop_path)
     module.__package__ = ""
     source = desktop_path.read_text(encoding="utf-8")
@@ -3328,6 +3329,7 @@ def test_explicit_scope_selects_custom_named_snapshot_for_defaultspack(
     ):
         sys.modules.pop(module_name, None)
     module = types.ModuleType("custom_snapshot_desktop_test")
+    monkeypatch.setitem(sys.modules, module.__name__, module)
     module.__file__ = str(desktop_path)
     module.__package__ = ""
     core_runtime = types.ModuleType("core_runtime")

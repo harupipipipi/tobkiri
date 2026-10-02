@@ -246,3 +246,57 @@ def test_cloud_init_preserves_identity_and_sandbox_checks() -> None:
     assert "dpkg --audit" in script
     assert "/dev/ttyS0" in script
     assert "arm64" not in template
+
+
+@pytest.mark.parametrize(
+    "mode,uid,gid,accepted",
+    [(0o20600, 0, 0, True), (0o20644, 0, 0, False),
+     (0o20600, 1000, 0, False), (0o20600, 0, 1000, False),
+     (0o100600, 0, 0, False)],
+)
+def test_bootstrap_port_probe_never_opens_guest_data_stream(mode, uid, gid, accepted):
+    import builtins
+    import stat
+    from types import SimpleNamespace
+
+    document = yaml.safe_load(TEMPLATE.read_text())
+    script = next(
+        item["content"] for item in document["write_files"]
+        if item["path"] == "/usr/local/sbin/tobkiri-packvm-bootstrap"
+    )
+    source = script.split("python3 - <<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+    pending_challenge = [b"authenticated-attestation-request"]
+    calls = []
+    path_only = 0x200000
+
+    def open_port(path, flags):
+        calls.append(("open", path, flags))
+        if not flags & path_only:
+            pending_challenge.clear()  # driver release discards unread input
+        return 7
+
+    fake_os = SimpleNamespace(
+        O_PATH=path_only, O_CLOEXEC=0x80000, O_RDONLY=0, O_NONBLOCK=0x800,
+        open=open_port,
+        fstat=lambda fd: SimpleNamespace(st_mode=mode, st_uid=uid, st_gid=gid),
+        close=lambda fd: calls.append(("close", fd)),
+    )
+
+    def import_module(name, *args, **kwargs):
+        if name == "os":
+            return fake_os
+        if name == "stat":
+            return stat
+        raise AssertionError(f"unexpected bootstrap probe import: {name}")
+
+    namespace = {"__builtins__": {**vars(builtins), "__import__": import_module}}
+    if accepted:
+        exec(compile(source, str(TEMPLATE), "exec"), namespace)  # noqa: S102 - execute repository-owned probe
+    else:
+        with pytest.raises(SystemExit, match="ownership or mode"):
+            exec(compile(source, str(TEMPLATE), "exec"), namespace)  # noqa: S102 - execute repository-owned probe
+    assert pending_challenge == [b"authenticated-attestation-request"]
+    assert calls == [
+        ("open", "/dev/virtio-ports/io.tobkiri.packvm.agent", path_only | 0x80000),
+        ("close", 7),
+    ]

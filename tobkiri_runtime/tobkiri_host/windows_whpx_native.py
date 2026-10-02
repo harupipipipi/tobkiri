@@ -13,7 +13,15 @@ import subprocess
 import threading
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, cast
+
+from .windows_abi_types import (
+    WindowsAPI,
+    WindowsCRuntime,
+    WindowsCTypes,
+    WindowsOS,
+    WindowsSubprocess,
+)
 
 _SPAWN_LOCK = threading.Lock()
 _DWORD = ctypes.c_uint32
@@ -61,7 +69,7 @@ class _ExtendedLimits(ctypes.Structure):
 
 
 def _kernel() -> Any:
-    dll = ctypes.WinDLL("kernel32", use_last_error=True, winmode=0x800)
+    dll = cast(WindowsCTypes, ctypes).WinDLL("kernel32", use_last_error=True, winmode=0x800)
     signatures = {
         "CreateJobObjectW": ([_HANDLE, ctypes.c_wchar_p], _HANDLE),
         "SetInformationJobObject": ([_HANDLE, ctypes.c_int, _HANDLE, _DWORD], ctypes.c_int),
@@ -100,7 +108,7 @@ class WindowsJobProcess:
         import _winapi
         import msvcrt
 
-        self._api = _winapi
+        self._api = cast(WindowsAPI, _winapi)
         self._kernel = _kernel()
         self._process: Any = None
         self._job: Any = None
@@ -131,11 +139,11 @@ class WindowsJobProcess:
             descriptors.extend((child_read, parent_write))
             parent_read, child_write = os.pipe()
             descriptors.extend((parent_read, child_write))
-            null = os.open(os.devnull, os.O_WRONLY | os.O_BINARY)
+            null = os.open(os.devnull, os.O_WRONLY | cast(WindowsOS, os).O_BINARY)
             descriptors.append(null)
-            child_handles = [msvcrt.get_osfhandle(fd) for fd in (child_read, child_write, null)]
-            startup = subprocess.STARTUPINFO()
-            startup.dwFlags = subprocess.STARTF_USESTDHANDLES
+            child_handles = [cast(WindowsCRuntime, msvcrt).get_osfhandle(fd) for fd in (child_read, child_write, null)]
+            startup = cast(WindowsSubprocess, subprocess).STARTUPINFO()
+            startup.dwFlags = cast(WindowsSubprocess, subprocess).STARTF_USESTDHANDLES
             startup.hStdInput, startup.hStdOutput, startup.hStdError = child_handles
             startup.lpAttributeList = {"handle_list": child_handles}
             # CPython's _winapi adds EXTENDED_STARTUPINFO_PRESENT for the handle
@@ -144,8 +152,8 @@ class WindowsJobProcess:
             with _SPAWN_LOCK:
                 try:
                     for handle in child_handles:
-                        os.set_handle_inheritable(handle, True)
-                    self._process, thread, self.pid, _ = _winapi.CreateProcess(
+                        cast(WindowsOS, os).set_handle_inheritable(handle, True)
+                    self._process, thread, self.pid, _ = self._api.CreateProcess(
                         str(executable),
                         subprocess.list2cmdline(list(arguments)),
                         None,
@@ -158,12 +166,12 @@ class WindowsJobProcess:
                     )
                 finally:
                     for handle in child_handles:
-                        os.set_handle_inheritable(handle, False)
+                        cast(WindowsOS, os).set_handle_inheritable(handle, False)
             if not self._kernel.AssignProcessToJobObject(self._job, self._process):
                 raise _error("QEMU could not be assigned to its ownership Job")
             if self._kernel.ResumeThread(thread) == 0xFFFFFFFF:
                 raise _error("QEMU suspended thread could not resume")
-            _winapi.CloseHandle(thread)
+            self._api.CloseHandle(thread)
             thread = None
             for fd in (child_read, child_write, null):
                 os.close(fd)
@@ -178,15 +186,15 @@ class WindowsJobProcess:
             try:
                 if self._process is not None:
                     try:
-                        _winapi.TerminateProcess(self._process, 1)
+                        self._api.TerminateProcess(self._process, 1)
                     finally:
-                        _winapi.WaitForSingleObject(self._process, 5000)
+                        self._api.WaitForSingleObject(self._process, 5000)
             finally:
                 if self._job:
                     self._kernel.CloseHandle(self._job)
                     self._job = None
                 if self._process is not None:
-                    _winapi.CloseHandle(self._process)
+                    self._api.CloseHandle(self._process)
                     self._process = None
                 for stream in (self.stdin, self.stdout):
                     if stream is not None:
@@ -194,7 +202,7 @@ class WindowsJobProcess:
             raise
         finally:
             if thread is not None:
-                _winapi.CloseHandle(thread)
+                self._api.CloseHandle(thread)
             for fd in descriptors:
                 os.close(fd)
 
@@ -217,6 +225,8 @@ class WindowsJobProcess:
         )
         status = self._api.WaitForSingleObject(self._process, milliseconds)
         if status == 0x102:
+            if timeout is None:
+                raise _error("QEMU infinite process wait unexpectedly timed out")
             raise subprocess.TimeoutExpired("Tobkiri QEMU", timeout)
         if status != 0:
             raise _error("QEMU process wait failed")

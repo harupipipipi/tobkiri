@@ -50,7 +50,7 @@ const PACKVM_RECOVERY_MESSAGES: Record<PackVMRecoveryCode, string> = {
   DIGEST_MISMATCH: 'Integrity verification failed: the Profile, Pack v4 lock, and presentation catalog do not agree.',
   UNAPPROVED: 'Host approval is required; no PackVM operation was replayed.',
   TIMEOUT: 'PackVM reconciliation timed out; no PackVM operation was replayed.',
-  UNSUPPORTED_PLATFORM: 'This build can provision PackVM only on macOS on Apple Silicon. Use a supported macOS host.',
+  UNSUPPORTED_PLATFORM: 'This build does not support PackVM on this host platform. Use a supported platform and verified runtime bundle.',
   API_FAILURE: 'PackVM reconciliation could not be verified; retry only after the Host is healthy.',
 };
 
@@ -115,7 +115,10 @@ export function classifyPackVMRecoveryCode(error: unknown): PackVMRecoveryCode {
   if (text.includes('timeout') || text.includes('timed out') || text.includes('aborted')) {
     return 'TIMEOUT';
   }
-  if (text.includes('this build can provision packvm only on macos on apple silicon')) {
+  if (
+    text.includes('this build does not support packvm on this host platform')
+    || text.includes('this build can provision packvm only on macos on apple silicon')
+  ) {
     return 'UNSUPPORTED_PLATFORM';
   }
   return 'API_FAILURE';
@@ -327,7 +330,9 @@ export function normalizePackVMPlan(value: unknown): ApiPackVMProvisioningPlan {
     architecture: stringField(payload, 'architecture', {identifier: true}),
     image_source: normalizedImageSource,
     image_digest: imageDigest,
-    image_size_bytes: positiveIntegerField(payload, 'image_size_bytes'),
+    image_size_bytes: normalizedImageSource === 'unavailable' && payload.image_size_bytes === 0
+      ? 0
+      : positiveIntegerField(payload, 'image_size_bytes'),
     image_download_required: imageDownloadRequired,
     host_free_space_required_bytes: positiveIntegerField(
       payload,

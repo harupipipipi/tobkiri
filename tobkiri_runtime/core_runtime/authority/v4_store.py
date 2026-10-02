@@ -55,6 +55,7 @@ from .v4_models import (
     authority_digest,
     canonical_json,
 )
+from .pack_approval_binding import pack_approval_snapshot_digest
 
 
 class AuthorityStoreError(RuntimeError):
@@ -1643,16 +1644,19 @@ class AuthorityStore:
                     raise AuthorityStoreError(
                         "legacy Host Extension provider IDs do not match"
                     )
-                providers = [
-                    self.get_provider_authority(item)
-                    for item in state["provider_record_ids"]
-                ]
+                providers: list[ProviderAuthorityRecord] = []
+                for item in state["provider_record_ids"]:
+                    provider = self.get_provider_authority(item)
+                    if provider is None:
+                        raise AuthorityStoreError(
+                            "legacy Host Extension authority does not match"
+                        )
+                    providers.append(provider)
                 if (
                     trust is None
                     or trust.parent_artifact_digest != state["artifact_digest"]
                     or not providers
                     or len(trust.provider_principal_ids) != len(providers)
-                    or any(provider is None for provider in providers)
                     or set(trust.provider_principal_ids)
                     != {provider.provider.principal_id for provider in providers}
                     or any(
@@ -3020,7 +3024,8 @@ class AuthorityStore:
 
         The approval revision is a replay fence. Grants are selected from the
         authenticated authority records by exact Profile, activation, and target
-        artifact, so a Pack-control caller cannot name arbitrary Grant IDs.
+        artifact or authenticated root-approval snapshot. The latter also
+        fences signed dependency edges whose target is not the root artifact.
         """
 
         if not all(
@@ -3062,7 +3067,12 @@ class AuthorityStore:
                     if (
                         grant.profile_id == profile_id
                         and grant.activation_id == activation_id
-                        and grant.target.parent_artifact_digest == artifact_digest
+                        and (
+                            grant.target.parent_artifact_digest == artifact_digest
+                            or self._grant_uses_pack_approval(
+                                connection, grant, approval_revision
+                            )
+                        )
                     ):
                         grant_ids.append(grant.grant_id)
                 now = self._clock()
@@ -3130,6 +3140,55 @@ class AuthorityStore:
         except sqlite3.Error as exc:
             raise AuthorityStoreError("Pack approval revocation failed") from exc
         return revocation_id, tuple(grant_ids)
+
+    def _grant_uses_pack_approval(
+        self, connection: _IdentityBoundConnection, grant: GrantRecord,
+        approval_revision: str,
+    ) -> bool:
+        """Verify root provenance without parsing IDs or widening artifact scope."""
+        if grant.approval_id is None:
+            return False
+        row = connection.execute(
+            "SELECT record_digest, encrypted_payload FROM authority_records"
+            " WHERE record_type='approval' AND record_id=?",
+            (grant.approval_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        value = self._decrypt(row["encrypted_payload"])
+        if not hmac.compare_digest(str(row["record_digest"]), authority_digest(value)):
+            raise AuthorityStoreError("authority record digest mismatch")
+        approval = ApprovalRecord.from_dict(value)
+        if (
+            approval.approval_id != grant.approval_id
+            or approval.profile_id != grant.profile_id
+            or approval.caller != grant.caller
+            or approval.target != grant.target
+            or approval.security_epoch != grant.security_epoch
+            or approval.decision != "approved"
+        ):
+            return False
+        activation = connection.execute(
+            "SELECT plan_digest FROM activation_reservations"
+            " WHERE activation_id=? AND profile_id=? AND profile_authority_digest=?"
+            " AND security_epoch=? AND state='active'",
+            (
+                grant.activation_id, grant.profile_id,
+                grant.profile_authority_digest, grant.security_epoch,
+            ),
+        ).fetchone()
+        if activation is None:
+            return False
+        expected = pack_approval_snapshot_digest(
+            profile_id=grant.profile_id,
+            activation_id=grant.activation_id,
+            plan_digest=str(activation["plan_digest"]),
+            profile_authority_digest=grant.profile_authority_digest,
+            security_epoch=grant.security_epoch,
+            scope=grant.scope.to_dict(),
+            approval_revision=approval_revision,
+        )
+        return hmac.compare_digest(approval.snapshot_digest, expected)
 
     @_process_owned
     def is_revoked(self, target_kind: str, target_id: str) -> bool:
@@ -3493,8 +3552,54 @@ class AuthorityStore:
                     raise AuthorityDenied("InvocationLease digest does not match")
                 if lease.digest != expected_digest:
                     raise AuthorityDenied("InvocationLease payload was altered")
-                if self._clock() >= lease.expires_at:
+                now = self._clock()
+                if now >= lease.expires_at:
                     raise AuthorityDenied("InvocationLease expired")
+                # Older leases may outlive the authority that issued them.
+                # Read backing records inside this dispatch transaction so
+                # neither a stale token nor an admission/dispatch delay can
+                # extend their declared validity window.
+                backing: list[tuple[
+                    str, str,
+                    type[GrantRecord] | type[ProviderAuthorityRecord] | type[HostExtensionTrustRecord],
+                ]] = [
+                    ("grant", lease.grant_id, GrantRecord),
+                    (
+                        "provider_authority", lease.provider_authority_id,
+                        ProviderAuthorityRecord,
+                    ),
+                ]
+                if lease.host_extension_id != "runtime-tcb":
+                    backing.append((
+                        "host_extension_trust", lease.host_extension_id,
+                        HostExtensionTrustRecord,
+                    ))
+                for record_type, record_id, record_class in backing:
+                    authority_row = connection.execute(
+                        "SELECT record_digest, encrypted_payload FROM authority_records"
+                        " WHERE record_type=? AND record_id=?",
+                        (record_type, record_id),
+                    ).fetchone()
+                    if authority_row is None:
+                        raise AuthorityDenied("InvocationLease backing authority is unavailable")
+                    authority_value = self._decrypt(authority_row["encrypted_payload"])
+                    if not hmac.compare_digest(
+                        str(authority_row["record_digest"]), authority_digest(authority_value)
+                    ):
+                        raise AuthorityStoreError("authority record digest mismatch")
+                    record = record_class.from_dict(authority_value)
+                    valid_from = (
+                        record.issued_at if isinstance(record, GrantRecord)
+                        else record.valid_from
+                    )
+                    if (
+                        self._record_id(record) != record_id
+                        or record.revoked
+                        or record.security_epoch != lease.security_epoch
+                        or valid_from > now
+                        or (record.expires_at is not None and now >= record.expires_at)
+                    ):
+                        raise AuthorityDenied("InvocationLease backing authority is not current")
                 epoch_row = connection.execute(
                     "SELECT value FROM authority_meta WHERE key='security_epoch'"
                 ).fetchone()

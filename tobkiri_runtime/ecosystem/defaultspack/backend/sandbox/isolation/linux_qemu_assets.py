@@ -7,17 +7,19 @@ release discovery deliberately has no environment-variable fallback.
 
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import json
 import os
-import platform
 import stat
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
+
+from tobkiri_host.linux_kvm_probe import (
+    kvm_capability as kvm_capability,  # noqa: PLC0414 - compatibility export
+)
 
 SCHEMA = "io.tobkiri.packvm-qemu-provisioning.v1"
 MANIFEST_NAME = "packvm-qemu-provisioning.v1.json"
@@ -79,31 +81,6 @@ def file_digest(path: Path) -> str:
         ) != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns):
             raise ValueError("Linux PackVM asset changed while hashing")
     return "sha256:" + result
-
-
-def kvm_capability() -> tuple[bool, str | None]:
-    """Probe KVM read-only configuration; never enable or change permissions."""
-    if platform.system() != "Linux" or platform.machine() not in ("x86_64", "amd64"):
-        return False, "Linux PackVM currently requires Linux x86_64"
-    if os.geteuid() == 0:
-        return False, "Linux PackVM must run as an unprivileged user"
-    try:
-        info = Path("/dev/kvm").lstat()
-        if not stat.S_ISCHR(info.st_mode):
-            return False, "Linux PackVM requires the /dev/kvm character device"
-        fd = os.open("/dev/kvm", os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW)
-        try:
-            if fcntl.ioctl(fd, 0xAE00, 0) != 12:  # KVM_GET_API_VERSION
-                return False, "Linux PackVM requires KVM API version 12"
-        finally:
-            os.close(fd)
-    except FileNotFoundError:
-        return False, "Linux PackVM requires /dev/kvm; TCG is not a production isolation fallback"
-    except PermissionError:
-        return False, "Linux PackVM cannot access /dev/kvm; host setup must grant access"
-    except OSError:
-        return False, "Linux PackVM KVM capability could not be verified"
-    return True, None
 
 
 @dataclass(frozen=True)

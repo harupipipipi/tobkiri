@@ -187,19 +187,33 @@ class QemuSupervisorTransport:
             self._binding = dict(binding)
             self._started = True
         try:
+            deadline = time.monotonic() + 180
             self._process.start()
-            self._process.wait_for_serial(timeout=180)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("QEMU PackVM startup deadline expired")
+            self._process.wait_for_guest_ready(timeout=remaining)
             request = self._base_guest_request(
                 "attest", f"attest-{self._allocation.domain_id}", envelope["guest_challenge"]
             )
             request["attestation_nonce"] = envelope["host_nonce"]
-            reply = self._process.exchange(request, timeout=180)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("QEMU PackVM startup deadline expired")
+            reply = self._process.exchange(request, timeout=remaining)
             self._verify_guest_reply(request, reply)
             # The outer driver repeats the full evidence checks independently.
             if isinstance(reply.get("data"), dict):
                 self._guest_identity = reply["data"].get("guest_artifact_identity")
             return reply
-        except Exception:
+        except Exception as error:
+            try:
+                capture = getattr(self._process, "_capture_failure_diagnostics", None)
+                if callable(capture):
+                    capture(error)
+            except Exception:
+                # Diagnostic collection cannot suppress owned-child cleanup.
+                pass
             self._process.stop()
             raise
 
@@ -250,6 +264,9 @@ class QemuSupervisorTransport:
             if not math.isfinite(deadline) or deadline <= now:
                 raise BackendUnavailableError("QEMU PackVM invocation deadline expired")
             deadline = min(deadline + 5, now + 605)
+            # A default relative budget must not grow through floating-point
+            # cancellation when reconstructed from an absolute monotonic time.
+            budget_limit = 65 if value is None else 600
             saved = (raw["contract_id"], raw["contract_version"], raw["operation_id"]) == (
                 "conversation.saved-turn.v1",
                 "1.0.0",
@@ -267,7 +284,7 @@ class QemuSupervisorTransport:
                 "materialization_digest": self._binding["artifact"]["materialization_digest"],
                 "guest_artifact_identity": self._guest_identity,
                 "cancel_token": secrets.token_hex(32),
-                "budget_seconds": format(min(600, max(0, deadline - now)), ".17g"),
+                "budget_seconds": format(min(budget_limit, max(0, deadline - now)), ".17g"),
             }
         elif operation == "bridge_result":
             raw = envelope.get("host_bridge_result")

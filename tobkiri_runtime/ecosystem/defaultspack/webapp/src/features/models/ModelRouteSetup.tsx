@@ -35,7 +35,9 @@ export function ProviderReadiness({
 }) {
   const credential = connection.credential_status === "configured"
     ? "資格情報: 設定済み"
-    : "資格情報: 未設定";
+    : connection.credential_status === "not_required"
+      ? "資格情報: 不要（ローカルモデル）"
+      : "資格情報: 未設定";
   const reachability = connection.reachability === "available"
     ? "到達性: 利用可能"
     : connection.reachability === "unavailable"

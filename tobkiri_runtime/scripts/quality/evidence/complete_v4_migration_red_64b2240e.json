@@ -114,7 +114,9 @@
     "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_executable_source_registry_covers_every_executable_operation",
     "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_migration_status_promotes_only_pack_specific_semantic_proof",
     "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_current_sha_evidence_is_green_when_pack_semantics_are_proved",
-    "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_independent_migration_proof_rejects_tampered_signature"
+    "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_independent_migration_proof_rejects_tampered_signature",
+    "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_curated_overlay_preserves_original_generated_receipt_validation",
+    "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_curated_overlay_does_not_hide_a_tampered_generated_receipt"
   ],
   "pack_inventory": {
     "canonical_source_ids": [
@@ -2151,8 +2153,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "ec2fd0f7e42c1aa8cc1839f2366e9f520231f574",
-    "semantic_digest": "sha256:b39e0d63b16686778a7e658179217dcdd8e2fa320bd9fc744a16182d408d24fc",
+    "observed_head_sha": "3aeea65bb2839ddae3fdac2d304c337508a76ff2",
+    "semantic_digest": "sha256:0121f48b8669cdf02aabc9594ed67f8ef3f021602e78ae3cd28395aa24217a32",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }

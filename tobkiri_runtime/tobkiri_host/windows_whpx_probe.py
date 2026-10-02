@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import ctypes
 import platform
-from typing import Any
+from typing import Any, cast
+
+from .windows_abi_types import WindowsCTypes
 
 
 def _hypervisor_present(library: Any) -> bool:
@@ -39,7 +41,7 @@ def whpx_capability() -> tuple[bool, str | None]:
     ):
         return False, "Windows PackVM currently requires Windows x86_64"
     try:
-        loader = ctypes.WinDLL
+        loader = cast(WindowsCTypes, ctypes).WinDLL
         # LOAD_LIBRARY_SEARCH_SYSTEM32 prevents a DLL from the current directory
         # or PATH from masquerading as the operating-system hypervisor API.
         api = loader("WinHvPlatform.dll", use_last_error=True, winmode=0x800)

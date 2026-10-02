@@ -38,7 +38,9 @@ class HostPolicyLock:
 
     target: Path
     parent_descriptor: int
-    parent_identity: tuple[int, int, int, int]
+    parent_identity: tuple[int, int, int, int, int]
+    lock_descriptor: int
+    lock_identity: tuple[int, int, int, int, int]
 
 
 def verify_declared_artifacts(
@@ -892,7 +894,11 @@ def exclusive_host_policy_lock(path: Path) -> Iterator[HostPolicyLock]:
         yield HostPolicyLock(
             target=target,
             parent_descriptor=parent_descriptor,
-            parent_identity=_file_identity(os.fstat(parent_descriptor)),
+            parent_identity=_policy_directory_identity(os.fstat(parent_descriptor)),
+            lock_descriptor=lock_descriptor,
+            lock_identity=_verified_policy_lock_identity(
+                parent_descriptor, target.name, lock_descriptor
+            ),
         )
     finally:
         if lock_descriptor is not None:
@@ -1115,17 +1121,51 @@ def _policy_parent_descriptor(
         return _open_verified_directory_chain(target.parent)
     if target != policy_lock.target:
         raise ValueError("Host policy lock target does not match")
+    # Sibling lock creation and atomic policy publication legitimately change
+    # directory size/timestamps. Pin the directory object and security metadata,
+    # and rewalk every ancestor without following links before using its anchor.
+    descriptor = _open_verified_directory_chain(target.parent)
     try:
-        current_parent = target.parent.stat(follow_symlinks=False)
-    except OSError as exc:
-        raise ValueError("Host policy directory changed while locked") from exc
-    if _file_identity(current_parent) != policy_lock.parent_identity:
-        raise ValueError("Host policy directory changed while locked")
-    descriptor = os.dup(policy_lock.parent_descriptor)
-    if _file_identity(os.fstat(descriptor)) != policy_lock.parent_identity:
+        for metadata in (
+            os.fstat(descriptor), os.fstat(policy_lock.parent_descriptor)
+        ):
+            _require_safe_directory(metadata, str(target.parent))
+            if _policy_directory_identity(metadata) != policy_lock.parent_identity:
+                raise ValueError("Host policy directory changed while locked")
+        if _verified_policy_lock_identity(
+            descriptor, target.name, policy_lock.lock_descriptor
+        ) != policy_lock.lock_identity:
+            raise ValueError("Host policy lock changed while held")
+        return descriptor
+    except Exception:
         os.close(descriptor)
-        raise ValueError("Host policy directory changed while locked")
-    return descriptor
+        raise
+
+
+def _policy_directory_identity(
+    metadata: os.stat_result,
+) -> tuple[int, int, int, int, int]:
+    return (
+        int(metadata.st_dev), int(metadata.st_ino), int(metadata.st_mode),
+        int(metadata.st_uid), int(metadata.st_gid),
+    )
+
+
+def _verified_policy_lock_identity(
+    parent_descriptor: int,
+    policy_name: str,
+    lock_descriptor: int,
+) -> tuple[int, int, int, int, int]:
+    held = os.fstat(lock_descriptor)
+    named = os.stat(
+        f".{policy_name}.lock", dir_fd=parent_descriptor, follow_symlinks=False
+    )
+    _require_private_regular(held, "Host policy lock")
+    _require_private_regular(named, "Host policy lock")
+    identity = _policy_file_identity(held)
+    if identity != _policy_file_identity(named):
+        raise ValueError("Host policy lock changed while held")
+    return identity
 
 
 def _policy_file_identity(

@@ -741,12 +741,12 @@ jobs:
             python ../scripts/quality/compact_test_runner.py \
               --log-dir "$RUNNER_TEMP" \
               --log-file "package-pytest-${GITHUB_JOB}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-py${{ matrix.python-version }}.log" \
-              -- pytest tests/test_complete_v4_migration_gate.py tests/test_pack_control_v4.py tests/test_defaultspack_extension_registry.py tests/test_defaultspack_provider_foundation.py tests/test_defaultspack_provider_program.py tests/test_defaultspack_opencode_zen_provider.py tests/test_defaultspack_agent_run_store.py tests/test_agent_engine_tools.py tests/test_company_contract_facade.py -v
+              -- pytest tests/test_external_profile_catalog.py tests/test_external_dispatch_cold_capture.py tests/test_host_policy_lock.py tests/test_native_pack_onboarding.py tests/test_runtime_version_resolution.py tests/test_complete_v4_migration_gate.py tests/test_pack_control_v4.py tests/test_defaultspack_extension_registry.py tests/test_defaultspack_provider_foundation.py tests/test_defaultspack_provider_program.py tests/test_defaultspack_opencode_zen_provider.py tests/test_defaultspack_agent_run_store.py tests/test_agent_engine_tools.py tests/test_company_contract_facade.py -v
           else
             python ../scripts/quality/compact_test_runner.py \
               --log-dir "$RUNNER_TEMP" \
               --log-file "package-pytest-${GITHUB_JOB}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-py${{ matrix.python-version }}.log" \
-              -- pytest tests/test_complete_v4_migration_gate.py tests/test_pack_control_v4.py tests/test_defaultspack_extension_registry.py tests/test_defaultspack_provider_foundation.py tests/test_defaultspack_provider_program.py tests/test_defaultspack_opencode_zen_provider.py tests/test_defaultspack_agent_run_store.py -v
+              -- pytest tests/test_external_profile_catalog.py tests/test_external_dispatch_cold_capture.py tests/test_host_policy_lock.py tests/test_native_pack_onboarding.py tests/test_runtime_version_resolution.py tests/test_complete_v4_migration_gate.py tests/test_pack_control_v4.py tests/test_defaultspack_extension_registry.py tests/test_defaultspack_provider_foundation.py tests/test_defaultspack_provider_program.py tests/test_defaultspack_opencode_zen_provider.py tests/test_defaultspack_agent_run_store.py -v
           fi
 
       - name: Upload package pytest log

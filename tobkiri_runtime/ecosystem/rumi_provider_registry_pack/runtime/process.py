@@ -224,7 +224,9 @@ def _provider_connection_snapshot(
             "display_name": display_name,
             "enabled": enabled,
             "credential_status": (
-                "configured"
+                "not_required"
+                if item.get("adapter_id") == "local-openai-compatible" and credential_handle is None
+                else "configured"
                 if isinstance(credential_handle, str) and credential_handle
                 else "missing"
             ),
