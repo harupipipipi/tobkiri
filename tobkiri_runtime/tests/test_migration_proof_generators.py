@@ -118,7 +118,7 @@ def test_source_registry_is_complete_without_v4_catalog_inputs() -> None:
     for function_id, pack_id, operation_id, implementation_path in (
         ("rumi_default_tools_pack.calculator", "rumi_default_tools_pack", "rumi_default_tools_pack.calculator-evaluate", "runtime/calculator.py"),
         ("defaultspack.conversation.saved", "defaultspack", "saved_complete", "runtime/saved_conversation.py"),
-        ("rumi_ai_gateway_pack.ai-gateway.preflight", "rumi_ai_gateway_pack", "rumi_ai_gateway_pack.ai-gateway.preflight", "runtime/preflight.py"),
+        ("rumi_ai_gateway_pack.ai-gateway.route-quote", "rumi_ai_gateway_pack", "rumi_ai_gateway_pack.ai-gateway.route-quote", "runtime/route_quote.py"),
         ("tobkiri.ui.preferences.write", "tobkiri_ui_settings_pack", "tobkiri_ui_settings_pack.preferences-write", "runtime/settings.py"),
         ("rumi_turn_runtime_pack.turn-runtime.saved", "rumi_turn_runtime_pack", "rumi_turn_runtime_pack.turn-saved", "runtime/host.py"),
         ("rumi_turn_runtime_pack.turn-runtime.reconcile", "rumi_turn_runtime_pack", "rumi_turn_runtime_pack.turn-reconcile", "runtime/host.py"),
@@ -504,12 +504,17 @@ def test_independent_proof_preserves_named_identity_and_transactional_receipt() 
     # Durable captured execution differs from the old in-process lifecycle;
     # retain draft status until its new semantics have independent proof.
     assert proof["packs"]["rumi_turn_runtime_pack"]["status"] == "generated-draft"
-    draft_count = len(proof["packs"]) - 75
-    assert statuses == {"semantically-reviewed": 75, "generated-draft": draft_count}
+    # The captured clock has new authority semantics. It must remain draft,
+    # rather than inheriting the historical scheduler's equivalence receipt.
+    scheduler = proof["packs"]["rumi_scheduler_runtime_pack"]
+    assert scheduler["status"] == "generated-draft"
+    assert scheduler["semantic_comparison"]["equivalent"] is False
+    draft_count = len(proof["packs"]) - 74
+    assert statuses == {"semantically-reviewed": 74, "generated-draft": draft_count}
     assert source["migration_status_counts"] == {
         "generated-draft": draft_count,
         "release-verified": 0,
-        "semantically-reviewed": 75,
+        "semantically-reviewed": 74,
     }
 
 
