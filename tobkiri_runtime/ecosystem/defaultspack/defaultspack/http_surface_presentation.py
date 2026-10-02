@@ -776,6 +776,7 @@ def _action_contribution(
         "provider_id": target.provider_id,
         "function_id": target.function_id,
         "action_contract": target.contract_id,
+        "read_only": target.read_only,
         "owner_pack_id": target.owner_pack_id,
         "owner_pack_hash": target.artifact_digest,
     }

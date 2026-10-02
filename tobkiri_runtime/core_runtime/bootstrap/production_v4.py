@@ -3274,6 +3274,7 @@ def capture_production_dispatch(
                 "implementation_digest": resolved_binding.function.implementation_digest,
                 "contract_id": binding["contract_id"],
                 "operation_id": binding["operation_id"],
+                "effect_class": resolved_binding.operation.effect_class.value,
                 "artifact_digest": binding["artifact_digest"],
                 **(
                     {
