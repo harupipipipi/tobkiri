@@ -451,6 +451,34 @@ def test_thread_view_rejects_injected_scope_and_unsupported_execution(
         validate_catalog_view(view)
 
 
+@pytest.mark.parametrize("key", [
+    "model", "provider_id", "system_prompt", "tool_selection", "thinking_level",
+    "strategy_reference", "approval_mode", "permissions", "grants", "workspace_id",
+    "model_policy",
+])
+def test_thread_view_rejects_constant_and_bound_execution_overrides(key: str) -> None:
+    """Neutral threads inherit execution authority instead of selecting it."""
+    view = _thread_view()
+    for location in ("input", "source_bindings", "context_bindings"):
+        request = view["conversation_thread"]["send"]
+        original = request.get(location)
+        request[location] = {key: "conversation_id" if location == "context_bindings"
+                             else "thread.context.model_reference"}
+        with pytest.raises(ValueError):
+            validate_catalog_view(view)
+        if original is None:
+            del request[location]
+        else:
+            request[location] = original
+    view["conversation_thread"]["send"]["input"] = {"nested": {key: "override"}}
+    with pytest.raises(ValueError):
+        validate_catalog_view(view)
+    view = _thread_view()
+    view["data_source"]["input"] = {key: "override"}
+    with pytest.raises(ValueError):
+        validate_catalog_view(view)
+
+
 @pytest.mark.parametrize(
     "slot",
     [
