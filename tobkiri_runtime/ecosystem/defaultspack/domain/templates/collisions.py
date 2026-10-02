@@ -167,6 +167,9 @@ def _collision_diagnostic(
                     if str(item.get("_source") or item.get("source_path") or "").strip()
                 }
             ),
+            "source_pack_ids": sorted(
+                {str(item.get("source_pack_id") or "defaultspack") for item in group}
+            ),
         },
     )
 
