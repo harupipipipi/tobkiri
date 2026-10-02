@@ -262,7 +262,7 @@ class HostWorkflowAttemptServiceV4:
         prepared = self._config.broker.prepare(
             InvocationFrame(
                 contract_id=route.binding.operation.contract_id,
-                version_range=route.binding.operation.contract_version,
+                version_range=f"=={route.binding.operation.contract_version}",
                 operation_id=route.binding.operation.operation_id,
                 payload=request["input"],
                 timeout_ms=request["timeout_ms"],

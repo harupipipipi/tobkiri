@@ -35,11 +35,16 @@ class WorkflowAttemptStoreV4:
         with self._locked():
             if not self._directory.exists(self._key_name):
                 self._directory.write_bytes_atomic(self._key_name, Fernet.generate_key())
-            key = self._directory.read_bytes_bounded(self._key_name, max_bytes=44)
-            descriptor = self._directory.open_lock(self._key_name)
+            descriptor = os.open(
+                self._directory.root / self._key_name,
+                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+            )
             try:
+                self._directory.validate_open_file(self._key_name, descriptor)
                 if os.fstat(descriptor).st_mode & 0o077:
                     raise WorkflowDenied("Workflow attempt key is not private")
+                key = os.read(descriptor, 45)
+                self._directory.validate_open_file(self._key_name, descriptor)
             finally:
                 os.close(descriptor)
             self._cipher = Fernet(key)
