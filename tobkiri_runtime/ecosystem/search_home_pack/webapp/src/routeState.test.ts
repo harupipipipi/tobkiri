@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   clearDecisionSessionStorage,
   coerceRouteDecision,
+  isFreshRestoredRouteState,
   loadDecisionFromSessionStorage,
   ROUTE_DECISION_STORAGE_KEY,
   saveDecisionToSessionStorage,
@@ -79,12 +80,38 @@ test("loading removes corrupt storage and falls back to the compact session reco
       selected_index: 0,
       target_candidates: [{ url: "https://example.com/", final_url: "https://example.com/", title: "A", domain: "example.com" }],
       updated_at: new Date().toISOString(),
+      state_id: "0123456789abcdef0123456789abcdef",
+      issued_at: new Date(Date.now() - 1_000).toISOString(),
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
     }),
   );
   const restored = loadDecisionFromSessionStorage(storage);
   assert.ok(restored);
   assert.equal(restored.query, "restored");
   assert.equal(storage.getItem(ROUTE_DECISION_STORAGE_KEY), null);
+});
+
+test("restored route state rejects expired, future, oversized, and unidentified records", () => {
+  const now = Date.parse("2026-08-24T00:00:00.000Z");
+  const valid = {
+    state_id: "0123456789abcdef0123456789abcdef",
+    issued_at: "2026-08-23T23:59:00.000Z",
+    expires_at: "2026-08-24T00:05:00.000Z",
+  };
+  assert.equal(isFreshRestoredRouteState(valid, now), true);
+  assert.equal(
+    isFreshRestoredRouteState({ ...valid, expires_at: "2026-08-23T23:59:59.000Z" }, now),
+    false,
+  );
+  assert.equal(
+    isFreshRestoredRouteState({ ...valid, issued_at: "2026-08-24T00:01:00.000Z" }, now),
+    false,
+  );
+  assert.equal(
+    isFreshRestoredRouteState({ ...valid, issued_at: "2026-08-23T17:00:00.000Z" }, now),
+    false,
+  );
+  assert.equal(isFreshRestoredRouteState({ ...valid, state_id: "short" }, now), false);
 });
 
 test("clear removes every retained route record", () => {
