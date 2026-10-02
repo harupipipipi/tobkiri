@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import 'authority_approval_screen.dart';
+import 'mobile_chat_screen.dart';
 import 'models.dart';
 import 'rumi_api_client.dart';
 import 'secure_settings_store.dart';
@@ -278,6 +279,11 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
         title: const Text('Rumi Remote'),
         actions: [
           IconButton(
+            tooltip: 'Tobkiri Chat',
+            icon: const Icon(Icons.forum_outlined),
+            onPressed: _openChat,
+          ),
+          IconButton(
             tooltip: 'Refresh',
             icon: const Icon(Icons.refresh),
             onPressed: _busy ? null : () => _refresh(),
@@ -432,6 +438,21 @@ class _RumiRemoteHomeState extends State<RumiRemoteHome> {
           },
         );
       },
+    );
+  }
+
+  void _openChat() {
+    if (_settings.token.trim().isEmpty) {
+      _showSnack('Tobkiri Chatを開くにはBearer tokenを設定してください。');
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MobileChatScreen(
+          baseUrl: _settings.baseUrl,
+          bearerToken: _settings.token,
+        ),
+      ),
     );
   }
 }

@@ -26,4 +26,6 @@
 - [ ] Add read-only mode that hides mutation buttons unless explicitly enabled.
 - [ ] Add push/local notifications for defaultspack migration and pack request
       changes.
+- [x] Add canonical chat transport through the stable authenticated
+      `/api/mobile/v1/conversations` contract, without a legacy fallback.
 - [ ] Add screenshot-based golden tests after Flutter SDK is available locally.

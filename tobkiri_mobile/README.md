@@ -164,6 +164,20 @@ normal pairing tests.
 TestFlight and App Store builds are **coming soon**. The **Settings → アプリ**
 panel in the defaultspack control panel reflects this state.
 
+## Tobkiri Chat
+
+The chat button opens the canonical mobile conversation surface backed by the
+finite `/api/mobile/v1/conversations` routes. The app never falls back to a
+host-side or legacy chat transport.
+
+During streaming, the timeline follows new tokens and activity only while the
+viewport is within 96 logical pixels of the bottom. Scrolling upward pauses
+follow mode and exposes the labeled **最新へ** control. Returning to the bottom
+or activating that control resumes following; reduced-motion preferences use
+an immediate jump instead of animated movement. Loading earlier messages,
+message reflow, rotation, and keyboard resizing preserve the visible message
+anchor while follow mode is paused.
+
 ## Development
 
 ```powershell
