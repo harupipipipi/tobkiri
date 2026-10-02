@@ -250,3 +250,44 @@ def test_saved_context_rejects_scope_or_control_authority(
                 }
             }
         )
+
+
+def test_actual_saved_host_bridge_keeps_original_user_content_separate_from_context(
+    tmp_path: Path,
+) -> None:
+    from ecosystem.defaultspack.runtime import saved_conversation as guest
+    from tests.test_saved_host_exchange import _Exchange
+
+    exchange = _Exchange(tmp_path)
+    request = exchange.outer.payload["request"]
+    original = deepcopy(request["content"])
+    request["task_context"] = {
+        "version": "tobkiri.saved-task-context.v1",
+        "source_id": "plan",
+        "conversation_id": request["conversation_id"],
+        "recipient_id": "conversation:" + request["conversation_id"],
+        "input_id": request["turn_id"],
+        "source_revision": 1,
+        "generation": 1,
+        "items": [
+            {
+                "id": "instruction-one",
+                "kind": "instruction",
+                "body": "Preserve the Goal constraints.",
+            }
+        ],
+    }
+    exchange.intent = guest.start(request)
+    for _ in range(4):
+        exchange.step()
+    exchange.host.finish(exchange.intent)
+    source = exchange.store.get(request["conversation_id"])
+    assert source["messages"][0]["content"] == original
+    generated = next(
+        payload
+        for target, payload in exchange.calls
+        if target[0] == "tobkiri.service.ai.generate.v1"
+    )
+    assert generated["messages"][-1]["role"] == "user"
+    assert "lower-authority" in generated["messages"][-1]["content"]
+    assert original == generated["messages"][-2]["content"]

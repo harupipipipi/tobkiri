@@ -190,8 +190,12 @@ class WorkPlanHostFactory:
                         ),
                         None,
                     )
-                    if plan is None:
+                    if plan is None or plan["settings"]["executor"] is None:
                         return {"status": "unconfigured"}
+                    if plan["status"] != "active":
+                        return {"status": plan["status"]}
+                    if plan["settings"]["executor"] != f"conversation:{plan['conversation_id']}":
+                        return {"status": "unavailable", "reason": "assigned_agent_not_supported"}
                     values.update(
                         plan_id=plan["id"],
                         expected_revision=plan["revision"],

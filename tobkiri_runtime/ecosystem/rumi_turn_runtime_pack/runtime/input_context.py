@@ -55,6 +55,8 @@ def execute_with_input_context(
             initial = validate_saved_conversation_input(initial)
         elif projection.get("status") not in {"unconfigured", "paused", "cancelled", "unavailable"}:
             raise RuntimeError("optional input context is unavailable")
+        else:
+            initial["request"].pop("task_context", None)
     outcome = dict(execute(initial))
     context_receipt = {
         "source_input_digest": canonical_digest(source),

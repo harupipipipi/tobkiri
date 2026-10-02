@@ -499,6 +499,7 @@ class WorkPlanService:
         if pending and any(self.clock() < x.get("expires_at_ms", 0) for x in pending):
             return {"status": "waiting", "reason": "review_already_running"}
         if pending:
+
             def expire_reviews(current: dict[str, Any]) -> Mapping[str, Any]:
                 for effect in current["effects"].values():
                     if effect["status"] == "reviewing":
@@ -506,7 +507,10 @@ class WorkPlanService:
                 return {"status": "review_failed"}
 
             plan = self._internal(
-                plan, "review-expired", {"at_ms": self.clock()}, expire_reviews,
+                plan,
+                "review-expired",
+                {"at_ms": self.clock()},
+                expire_reviews,
             )["plan"]
         # The durable claim is written before the external generation. Lost
         # results remain review_failed/reconciliation, never optimistic on_track.

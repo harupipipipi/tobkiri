@@ -79,7 +79,7 @@ def prepare_input(plan: dict[str, Any], values: Mapping[str, Any], now_ms: int) 
     input_id = identifier(values["input_id"])
     if plan["status"] != "active":
         return {"status": plan["status"], "instructions": [], "context": None}
-    result = []
+    result: list[dict[str, Any]] = []
     current_goal = plan["goal"]["revision"] if plan["goal"] else None
     for event in plan["inbox"]:
         if event["agent_binding"] != binding:
@@ -95,11 +95,14 @@ def prepare_input(plan: dict[str, Any], values: Mapping[str, Any], now_ms: int) 
         if event["status"] == "received" and event["input_id"] != input_id:
             continue  # An ambiguous prior input must be reconciled explicitly.
         if event["status"] in {"pending", "received"}:
+            if len(result) >= 98:
+                continue
             event["status"] = "received"
             event["input_id"] = input_id
             result.append(deepcopy(event))
         elif event["status"] == "applied" and event["lifetime"] == "until_task_end":
-            result.append(deepcopy(event))
+            if len(result) < 98:
+                result.append(deepcopy(event))
     return {
         "status": "received",
         "input_id": input_id,

@@ -92,6 +92,7 @@ def record_review(
         "id": finding_id,
         "occurrence_id": snapshot["occurrence_id"],
         "run_context_id": result.get("run_context_id") if independent else None,
+        "model_resolution": deepcopy(result.get("model_resolution")) if independent else None,
     }
     plan["review"] = finding
     plan["review_occurrences"][snapshot["occurrence_id"]] = deepcopy(finding)
