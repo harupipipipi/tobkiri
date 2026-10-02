@@ -439,7 +439,8 @@ class VoiceSession:
 
     async def _observe_turn(self, value: Any, generation: int) -> None:
         if (
-            not isinstance(value, Mapping)
+            not isinstance(self.turn_id, str)
+            or not isinstance(value, Mapping)
             or value.get("id") != self.turn_id
             or value.get("conversation_id") != self.scope.conversation_id
             or value.get("conversation_revision") != self.conversation_revision
@@ -465,8 +466,12 @@ class VoiceSession:
             self.error_code = "voice_turn_failed" if status == "failed" else None
             return
         reference = value.get("result_reference")
-        if status != "completed" or not _valid_reference(
-            reference, self.scope.conversation_id, self.conversation_revision
+        if (
+            status != "completed"
+            or not isinstance(reference, Mapping)
+            or not _valid_reference(
+                reference, self.scope.conversation_id, self.conversation_revision
+            )
         ):
             raise _VoiceFailure("voice_turn_unconfirmed")
         conversation = await self._invoke(

@@ -6,6 +6,19 @@ This module is staged as a Pack asset. The UI and transport do not invoke it yet
 from __future__ import annotations
 
 import re
+from typing import TypedDict
+
+
+class SpeechSegment(TypedDict):
+    """One bounded spoken segment in a provider-neutral playback plan."""
+
+    delay: float
+    text: str
+
+
+SpeechPlan = TypedDict(
+    "SpeechPlan", {"segments": list[SpeechSegment], "continue": bool, "finish": bool}
+)
 
 _COLON = re.compile(r"(?:(?<=^)|(?<=[\s　]))(SAY|WAIT|SCHEDULE|ASK)\s*:", re.IGNORECASE)
 _BARE = re.compile(r"(?<!\S)(CONTINUE|FINISH|ASK)(?=\s*$)", re.IGNORECASE | re.MULTILINE)
@@ -52,9 +65,9 @@ def _seconds(raw: str) -> float:
     return min(float(match.group(1)) if match else 0.0, _MAX_DELAY)
 
 
-def speech_plan(raw: str) -> dict[str, object]:
+def speech_plan(raw: str) -> SpeechPlan:
     """Build a bounded playback plan; the first terminal directive wins."""
-    segments: list[dict[str, float | str]] = []
+    segments: list[SpeechSegment] = []
     delay = 0.0
     for kind, argument in parse_directives(raw):
         if kind == "wait":
