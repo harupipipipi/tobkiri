@@ -1,14 +1,39 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:b07bd0063259bada53259395f19d8c374a63f8b6fc1e943a694249867a8a8e11",
-      "kind": "sidecar",
-      "path": "executables.v4.json"
+      "digest": "sha256:16c911e5cee58b57187d96ac70c1451da610d4f5da673ea4ab69d09cbd24746d",
+      "kind": "executable",
+      "path": "runtime/__init__.py"
     },
     {
       "digest": "sha256:8fab76d8f3a830cb634c186ffa32c4ffc3d067c9bbdd671baa2f55e256725f2f",
       "kind": "executable",
       "path": "runtime/sandbox.py"
+    },
+    {
+      "digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
+      "kind": "executable",
+      "path": "runtime/host_v4.py"
+    },
+    {
+      "digest": "sha256:600d2b9765ad75c3f8c877ea062a783011459105f4f71b8066a8c5306404e20f",
+      "kind": "executable",
+      "path": "runtime/task_state.py"
+    },
+    {
+      "digest": "sha256:6848ff057a2e3d7debfe3c0c666f57d464c918249ac1c375be47037184ab4a2f",
+      "kind": "executable",
+      "path": "runtime/task_container.py"
+    },
+    {
+      "digest": "sha256:db35f79aa7d7e794c443df7d677aac3735326d36fb98b64526f48ffe818eb65b",
+      "kind": "sidecar",
+      "path": "pack-source.v1.json"
+    },
+    {
+      "digest": "sha256:7fc3fa56d16a6cdc23a1b821cb452fbc95a2be04424eb929be3f08d14e9a7945",
+      "kind": "sidecar",
+      "path": "compatibility-source.v1.json"
     }
   ],
   "contracts": [
@@ -25,6 +50,21 @@
         "rumi_coding_sandbox_service_pack.sandbox-observe"
       ],
       "revision_digest": "sha256:7ec7f0ac8fe5436e28ee5f8f14bed393318b440ee5c53ae8cd1fc369195bcdd9"
+    },
+    {
+      "contract_id": "tobkiri.action.workspace.container.v1",
+      "operations": [
+        "rumi_coding_sandbox_service_pack.task-prepare",
+        "rumi_coding_sandbox_service_pack.task-execute"
+      ],
+      "revision_digest": "sha256:f6a3790a4fef577b72ec311dd0fcb3a89bd50478a7b6996f1ac82ae2b357b20b"
+    },
+    {
+      "contract_id": "tobkiri.resource.workspace.container-task.v1",
+      "operations": [
+        "rumi_coding_sandbox_service_pack.task-resource"
+      ],
+      "revision_digest": "sha256:c16ddebdbeae826e61d3dd0add3f050034b5101eab704c3944033e6507717d37"
     }
   ],
   "functions": [
@@ -47,12 +87,39 @@
         "rumi_coding_sandbox_service_pack.sandbox-observe"
       ],
       "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:f6a3790a4fef577b72ec311dd0fcb3a89bd50478a7b6996f1ac82ae2b357b20b",
+      "id": "rumi_coding_sandbox_service_pack.task-prepare",
+      "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
+      "operations": [
+        "rumi_coding_sandbox_service_pack.task-prepare"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:f6a3790a4fef577b72ec311dd0fcb3a89bd50478a7b6996f1ac82ae2b357b20b",
+      "id": "rumi_coding_sandbox_service_pack.task-execute",
+      "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
+      "operations": [
+        "rumi_coding_sandbox_service_pack.task-execute"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:c16ddebdbeae826e61d3dd0add3f050034b5101eab704c3944033e6507717d37",
+      "id": "rumi_coding_sandbox_service_pack.task-resource",
+      "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
+      "operations": [
+        "rumi_coding_sandbox_service_pack.task-resource"
+      ],
+      "role": "host_capability_provider"
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:69b5e64e9d88a843fe57c8dea829fcba8498aa43f554fffa3795b77b0e9a18bb",
-    "contract_catalog_digest": "sha256:c00bb33e35579fae8f10eaed7957218d7f3132565ca3133f94491a53a3b9af94",
-    "source_identity": "sha256:6d4a480cc879d085ca5b7ee5d05cd5ff87490e95884c9897f62612aab2752545"
+    "artifact_set_digest": "sha256:619888b8cbe013e315840dd872458f5ced64f7a76e8a78ee533c8c2237e442ae",
+    "contract_catalog_digest": "sha256:7a2939ac94d151ecc7f0955be99bc3afadbb1a9900f8d9167f4793be6785fabc",
+    "source_identity": "sha256:cc040cb5a7a023583ca8cfb9d1c861629d0bab2ec881f3403b95be802ff04243"
   },
   "migration": {
     "compatibility": "read_only",
@@ -87,33 +154,61 @@
       "owner": "rumi_coding_sandbox_service_pack",
       "provider_id": "rumi_coding_sandbox_service_pack.coding-sandbox.observe",
       "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.action.workspace.container.v1",
+      "effect_ceiling": [
+        "capability:coding.sandbox.task.prepare",
+        "host:brokered-execution",
+        "capability:cloud.workspace.resource"
+      ],
+      "operation_id": "rumi_coding_sandbox_service_pack.task-prepare",
+      "owner": "rumi_coding_sandbox_service_pack",
+      "provider_id": "rumi_coding_sandbox_service_pack.task-prepare",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.action.workspace.container.v1",
+      "effect_ceiling": [
+        "capability:coding.sandbox.task.execute",
+        "host:brokered-execution",
+        "capability:cloud.workspace.resource"
+      ],
+      "operation_id": "rumi_coding_sandbox_service_pack.task-execute",
+      "owner": "rumi_coding_sandbox_service_pack",
+      "provider_id": "rumi_coding_sandbox_service_pack.task-execute",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.workspace.container-task.v1",
+      "effect_ceiling": [
+        "capability:coding.sandbox.task.read"
+      ],
+      "operation_id": "rumi_coding_sandbox_service_pack.task-resource",
+      "owner": "rumi_coding_sandbox_service_pack",
+      "provider_id": "rumi_coding_sandbox_service_pack.task-resource",
+      "source_kind": "canonical_v4_contract"
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:69b5e64e9d88a843fe57c8dea829fcba8498aa43f554fffa3795b77b0e9a18bb",
-    "display_name": "Rumi Coding Sandbox Service",
+    "artifact_digest": "sha256:84e68367b31264f4ffa4ae828a555318a3cdb8e0d938cbc30fd18e4f4031e495",
+    "display_name": "Tobkiri Coding Sandbox Service",
     "id": "rumi_coding_sandbox_service_pack",
     "kind": "host_extension",
     "version": "1.0.0"
   },
   "pack_api_version": "io.tobkiri.pack.v4",
   "provenance": {
-    "evidence": [
-      {
-        "digest": "sha256:6d4a480cc879d085ca5b7ee5d05cd5ff87490e95884c9897f62612aab2752545",
-        "path": "schemas/pack_v4_catalog.v1.json",
-        "rule_id": "canonical-pack-v4-source-record"
-      }
-    ],
-    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "evidence": [],
+    "generator": "tobkiri-protocol",
     "generator_version": "1.0.0",
-    "normative": true,
-    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
-    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "normative": false,
+    "repository_commit": "410f8373d9dbfad117840ea4f9a9e9e80a61931d",
+    "repository_tree": "5dd3d2bd97df68e66c69eb766e3668c24ac17fadb8bd56fc3dd8d2ca0f83a5de",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:6d4a480cc879d085ca5b7ee5d05cd5ff87490e95884c9897f62612aab2752545",
-    "source_kind": "migration",
-    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_coding_sandbox_service_pack"
+    "source_digest": "sha256:cc040cb5a7a023583ca8cfb9d1c861629d0bab2ec881f3403b95be802ff04243",
+    "source_kind": "repository",
+    "source_path": "ecosystem/rumi_coding_sandbox_service_pack/pack-source.v1.json"
   },
   "provider_catalog": [
     {
@@ -131,13 +226,41 @@
       ],
       "owner": "rumi_coding_sandbox_service_pack",
       "provider_id": "rumi_coding_sandbox_service_pack.coding-sandbox.observe"
+    },
+    {
+      "contract_reference": "tobkiri.action.workspace.container.v1",
+      "operations": [
+        "rumi_coding_sandbox_service_pack.task-prepare"
+      ],
+      "owner": "rumi_coding_sandbox_service_pack",
+      "provider_id": "rumi_coding_sandbox_service_pack.task-prepare"
+    },
+    {
+      "contract_reference": "tobkiri.action.workspace.container.v1",
+      "operations": [
+        "rumi_coding_sandbox_service_pack.task-execute"
+      ],
+      "owner": "rumi_coding_sandbox_service_pack",
+      "provider_id": "rumi_coding_sandbox_service_pack.task-execute"
+    },
+    {
+      "contract_reference": "tobkiri.resource.workspace.container-task.v1",
+      "operations": [
+        "rumi_coding_sandbox_service_pack.task-resource"
+      ],
+      "owner": "rumi_coding_sandbox_service_pack",
+      "provider_id": "rumi_coding_sandbox_service_pack.task-resource"
     }
   ],
   "requirements": {
     "approval_policy": "capability_gated",
     "capabilities": [
+      "cloud.workspace.resource",
       "coding.sandbox.control",
       "coding.sandbox.observe",
+      "coding.sandbox.task.execute",
+      "coding.sandbox.task.prepare",
+      "coding.sandbox.task.read",
       "host.authority.consume",
       "workspace.metadata.read"
     ],
@@ -152,6 +275,15 @@
         "cardinality": "one",
         "contract_id": "tobkiri.service.host.authorize.v1",
         "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.cloud.workspace.v1",
+        "operations": [
+          "tobkiri_cloud_workspace_pack.workspace-resource"
+        ],
+        "optional": true,
         "version_range": ">=1.0.0 <2.0.0"
       }
     ],

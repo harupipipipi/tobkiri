@@ -1,5 +1,41 @@
 # Tobkiri Cloud Workspace
 
+The optional local task path prepares JSON argv such as `["python3", "main.py"]`
+against one checkpoint. The ordinary Host approval window presents that immutable
+plan. After approval, Resume starts one COW container through the existing bounded
+Host process runner in the Coding Sandbox Service Pack. Apply verified output
+publishes a new capsule only if the opening revision, parent and writer epoch are
+still current. This performs a local coding task; AWS upload/deploy remains deferred.
+
+The task recipe is source-reviewed and pins the cached
+`rumiai/mimo-coding-company-worker` OCI digest. Its host provider never pulls or
+builds an image, runs a Host shell, redeems legacy receipts, or trusts client
+`approved` flags. It uses nonroot UID/GID, no network, no capabilities, a read-only
+root, a bounded temporary directory, fixed memory/CPU/PID limits and one private
+work mount. Input is limited to 4 MiB of work, with a 5 MiB archive bound. stdout
+and stderr are each capped at 32 KiB. Task plans expire after 60 seconds and bind
+the captured Profile, Plan, security epoch, exact argv, image and checkpoint.
+The journal permits at most 16 retained tasks and 32 MiB of retained capsules.
+
+Task execution is consumed once. The same nonce with a different request is
+rejected; retries return the sealed plan or retained receipt. An interrupted
+running journal is never automatically executed again. Cancellation/current
+capture fencing stops the Docker CLI and then removes only its journal-owned
+container name. A Docker daemon state observation establishes whether the workload
+started. Verified absence after cleanup is required before reading output through
+bounded descriptor-pinned file inspection. Unverified cleanup remains ambiguous
+and produces no output capsule. Output rejects links, secret paths, special files,
+nonportable names and excess directory entries.
+
+The composer source contribution and workspace tab expose prepare/resume/status/
+cancel/apply controls. They require reviewed optional Pack selection and the
+finite signed edges in `docs/task-adoption.v1.json`; declarations create no grants
+or automatic activation. Missing current recipe data, approval routes, Docker or
+the cached pinned image fail closed. No legacy execution fallback is used.
+The Host still coordinates the work. A self-contained Tobkiri agent inside the
+metadata service image, background PC synchronization and a shared PC/mobile
+cloud session remain outside this first local task checkpoint.
+
 This optional Pack prepares local work for a portable container. It does not
 connect to a cloud account. AWS upload/deploy, public ingress, remote secrets,
 PC/mobile authentication, background synchronization and remote execution belong
@@ -56,8 +92,9 @@ has no write API, login, cloud client or secret mount. The Dockerfile fixes the 
 line; the recipe digest includes those bytes and the base reference. The approved
 Host must supply resource limits, drop privileges,
 isolate networking, bind the input read-only and own the writable workspace.
-The current Pack has no bound provisioning port, so it always reports container
-start as unavailable. Developer Docker smoke evidence is separate from production
+This metadata recipe has no bound provisioning port, so its start remains
+unavailable. The captured task provider executes work in a separate COW container
+and reports its own task state. Developer Docker smoke evidence is separate from production
 Host support and does not substitute for the Tobkiri PackVM backend.
 `docs/container-smoke.v1.json` records a historical local Docker build and healthy
 nonroot run using a digest-pinned cached worker base with Python 3.10.12. No image

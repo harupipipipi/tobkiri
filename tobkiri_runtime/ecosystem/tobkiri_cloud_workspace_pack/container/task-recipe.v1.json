@@ -1,0 +1,10 @@
+{
+  "version": "tobkiri.workspace-task-recipe.v1",
+  "image_reference": "rumiai/mimo-coding-company-worker@sha256:1c4c9e219f46c9311bc4cba2f328303208ff24d95e2e39f769ba12383ef075ec",
+  "portable_recipe_digest": "sha256:0666b1a60f7d2b613dfa9691da7740baf70d0126ec70cc13abd0f1daaadd99c2",
+  "network": "none",
+  "nonroot": true,
+  "read_only_root": true,
+  "max_timeout_seconds": 120,
+  "max_work_bytes": 4194304
+}

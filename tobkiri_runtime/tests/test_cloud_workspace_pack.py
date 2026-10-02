@@ -534,6 +534,7 @@ def test_host_factory_fails_closed_on_foreign_scope_and_authority_fields(
             context=captured, target_principal=SimpleNamespace(value="provider")
         ),
         presentation_owner_principal_id="actor",
+        presentation_owner_session_id="session",
         contract_client=lambda **kw: None,
     )
     request = {

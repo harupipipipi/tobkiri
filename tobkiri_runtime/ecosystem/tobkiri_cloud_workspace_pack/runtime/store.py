@@ -84,6 +84,10 @@ class WorkspaceStore:
                     "CREATE TABLE IF NOT EXISTS restores "
                     "(digest TEXT PRIMARY KEY, total_bytes INTEGER NOT NULL)"
                 )
+                connection.execute(
+                    "CREATE TABLE IF NOT EXISTS tasks "
+                    "(workspace_id TEXT PRIMARY KEY, owner TEXT, value BLOB)"
+                )
             yield connection
             if write:
                 connection.commit()
@@ -276,6 +280,89 @@ class WorkspaceStore:
             connection.execute(
                 "UPDATE heads SET expiry=0,fence=fence+1,value=? WHERE id=?",
                 (canonical(value), workspace_id),
+            )
+
+    def assert_writer(
+        self,
+        workspace_id: str,
+        revision: int,
+        epoch: int,
+        actor: str,
+        *,
+        now_ms: int | None = None,
+    ) -> None:
+        """Require a current live local writer before exposing task source bytes."""
+        now = int(time.time() * 1000) if now_ms is None else integer(now_ms)
+        with self.connection() as db:
+            row = db.execute(
+                "SELECT * FROM heads WHERE id=?", (identifier(workspace_id),)
+            ).fetchone()
+        if (
+            row is None
+            or row["revision"] != integer(revision, 1)
+            or row["fence"] != integer(epoch, 1)
+            or row["owner"] != actor
+            or row["expiry"] <= now
+        ):
+            raise Conflict("workspace task writer is stale or expired")
+
+    def renew_task_writer(
+        self,
+        workspace_id: str,
+        revision: int,
+        epoch: int,
+        actor: str,
+        guard: Callable[[], None],
+    ) -> int:
+        """Renew one existing writer for approval plus a bounded task; fence expiry."""
+        now = int(time.time() * 1000)
+        with self.connection(write=True) as db:
+            row = db.execute(
+                "SELECT * FROM heads WHERE id=?", (workspace_id,)
+            ).fetchone()
+            if (
+                row is None
+                or row["revision"] != integer(revision, 1)
+                or row["fence"] != integer(epoch, 1)
+                or row["owner"] != actor
+            ):
+                raise Conflict("workspace task writer is stale")
+            fence = row["fence"] + int(row["expiry"] <= now)
+            value = parse_json(row["value"])
+            value["writer_epoch"] = fence
+            guard()
+            db.execute(
+                "UPDATE heads SET fence=?,expiry=?,value=? WHERE id=?",
+                (fence, now + 300_000, canonical(value), workspace_id),
+            )
+        return fence
+
+    def task(self, workspace_id: str, actor: str) -> dict[str, Any] | None:
+        """Read only this writer's public effect correlation and task reference."""
+        if not self.path.exists() or self.path.stat().st_size == 0:
+            return None
+        with self.connection() as db:
+            try:
+                row = db.execute(
+                    "SELECT * FROM tasks WHERE workspace_id=?", (workspace_id,)
+                ).fetchone()
+            except sqlite3.OperationalError:
+                return None
+        return parse_json(row["value"]) if row and row["owner"] == actor else None
+
+    def record_task(
+        self,
+        workspace_id: str,
+        actor: str,
+        value: Mapping[str, Any],
+        guard: Callable[[], None],
+    ) -> None:
+        """Retain one bounded task correlation without exporting owner authority."""
+        with self.connection(write=True) as db:
+            guard()
+            db.execute(
+                "INSERT OR REPLACE INTO tasks VALUES (?,?,?)",
+                (workspace_id, actor, canonical(value)),
             )
 
     def restore_local(

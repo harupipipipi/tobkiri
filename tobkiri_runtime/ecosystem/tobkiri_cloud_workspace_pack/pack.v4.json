@@ -5,13 +5,13 @@
     "version": "1.0.0",
     "kind": "host_extension",
     "display_name": "Tobkiri Cloud Workspace",
-    "artifact_digest": "sha256:dc37a2b04032d9e3ff84dfd0dc4dbf24265ae94a8d5c66e0c1a4b72d07cb98f2"
+    "artifact_digest": "sha256:5b4a2e3d6f41e647e6b18ea41b1c3d403fa8de92e82bdd7bd6abe659d74a60d7"
   },
   "functions": [
     {
       "id": "tobkiri_cloud_workspace_pack.resource",
-      "implementation_digest": "sha256:3ebfb5695037c2a7cff6c15cc2f92aeee2f3ea6bf605564e9cc6d29d7384cc28",
-      "contract_revision_digest": "sha256:029fe3600b2bd9c1d9596d7fe7e5815b0beda89add2ea013a30da731ca5a6f5e",
+      "implementation_digest": "sha256:7998f8a586f083338a3ed1dad38bfc4a6cbdb3d0be84303bf9b883a5f9afe947",
+      "contract_revision_digest": "sha256:978c00e28bc9e616c2a736023bfd13ef0d7a76f85a464e2bde329213b009733e",
       "operations": [
         "tobkiri_cloud_workspace_pack.workspace-resource"
       ],
@@ -19,8 +19,8 @@
     },
     {
       "id": "tobkiri_cloud_workspace_pack.manage",
-      "implementation_digest": "sha256:3ebfb5695037c2a7cff6c15cc2f92aeee2f3ea6bf605564e9cc6d29d7384cc28",
-      "contract_revision_digest": "sha256:c00e5fbec12d341f2b92e3812cb260fea92ddfea3c860fd330b949d5460fe521",
+      "implementation_digest": "sha256:7998f8a586f083338a3ed1dad38bfc4a6cbdb3d0be84303bf9b883a5f9afe947",
+      "contract_revision_digest": "sha256:77bcd52911245237c3f10122ef9dfe03f668bd228cdd240c1166f0789adcd9f4",
       "operations": [
         "tobkiri_cloud_workspace_pack.workspace-manage"
       ],
@@ -30,14 +30,14 @@
   "contracts": [
     {
       "contract_id": "tobkiri.resource.cloud.workspace.v1",
-      "revision_digest": "sha256:029fe3600b2bd9c1d9596d7fe7e5815b0beda89add2ea013a30da731ca5a6f5e",
+      "revision_digest": "sha256:978c00e28bc9e616c2a736023bfd13ef0d7a76f85a464e2bde329213b009733e",
       "operations": [
         "tobkiri_cloud_workspace_pack.workspace-resource"
       ]
     },
     {
       "contract_id": "tobkiri.action.cloud.workspace.v1",
-      "revision_digest": "sha256:c00e5fbec12d341f2b92e3812cb260fea92ddfea3c860fd330b949d5460fe521",
+      "revision_digest": "sha256:77bcd52911245237c3f10122ef9dfe03f668bd228cdd240c1166f0789adcd9f4",
       "operations": [
         "tobkiri_cloud_workspace_pack.workspace-manage"
       ]
@@ -51,32 +51,37 @@
     },
     {
       "path": "runtime/host.py",
-      "digest": "sha256:3ebfb5695037c2a7cff6c15cc2f92aeee2f3ea6bf605564e9cc6d29d7384cc28",
+      "digest": "sha256:7998f8a586f083338a3ed1dad38bfc4a6cbdb3d0be84303bf9b883a5f9afe947",
       "kind": "executable"
     },
     {
       "path": "runtime/capsule.py",
-      "digest": "sha256:1e0103b8c3c4d6fe3f6f8ea72d5df36e6ab27ce2d7e8a69c415e8a34497c90a8",
+      "digest": "sha256:87db32b4880940d02f82b206bc7785972982796bd170b96cd82ff0dc2cd0ef7d",
       "kind": "executable"
     },
     {
       "path": "runtime/store.py",
-      "digest": "sha256:d8c50f86dd0d0b73303214198f4e42c572c1825b4cabd38e819531020e4256ba",
+      "digest": "sha256:8916aeef71db86c83315d209b6b070b2050153147352749dd08b5e7f417cf366",
       "kind": "executable"
     },
     {
       "path": "runtime/service.py",
-      "digest": "sha256:3d69b5941fa17a1261d2829973a9d22920439641dcf00673b07bd1eaa931d271",
+      "digest": "sha256:8e88be48e6e007abe71df6278784cad1561c50d92bc9efa24b065e0f75f4ddbb",
+      "kind": "executable"
+    },
+    {
+      "path": "runtime/task.py",
+      "digest": "sha256:c6fa1fae2c42904c73a36e320c1f2bf23031e40e231d44ea7a914c021933d3d4",
       "kind": "executable"
     },
     {
       "path": "runtime/recipe.py",
-      "digest": "sha256:fcc38b1cd5f5af3730e4db5a2506eae34c8f23940cff8ea74fd46a3d976af7fa",
+      "digest": "sha256:7ca35f6158be921c04322995818b5469ebb4094d68cc7991f03040568b1b082f",
       "kind": "executable"
     },
     {
       "path": "container/Dockerfile",
-      "digest": "sha256:3d5115328dab16a358312566b0933b2d257e6bde5b9824cb27ee0aaf3739b9e7",
+      "digest": "sha256:60fa57140cb083f7a83b83423bca9e738eebca7b6eef4eb2d4039fa0ba4df270",
       "kind": "sidecar"
     },
     {
@@ -86,28 +91,56 @@
     },
     {
       "path": "container/recipe.v1.json",
-      "digest": "sha256:e2c2604cc6ba50715cf43901220a24ec3e14672c8945c7f0c431f4fb56a8ea84",
+      "digest": "sha256:e8e672fe5fe0d5f0a759df85e900a89ec56259e27454cba99c6e5c8ba9f4fa4d",
+      "kind": "sidecar"
+    },
+    {
+      "path": "container/task-recipe.v1.json",
+      "digest": "sha256:39227f084d948f46b40ef0e405ad98b133d8958d075bbbe00584c7992c3921d3",
+      "kind": "sidecar"
+    },
+    {
+      "path": "container/workspace_capsule_v1.py",
+      "digest": "sha256:27ac7545ce0ad483b7d0847a60c3b70d600f5bad2499d9beb502f0a81e34163a",
       "kind": "sidecar"
     },
     {
       "path": "pack-source.v1.json",
-      "digest": "sha256:f3a7e897d863f3916d8899f5e203522659a770a527c13706c67e33500c7f4231",
+      "digest": "sha256:de8c4ae2c8bb2501c4a2a383a08127eb099135004996ea4861fa6ca0209925ba",
       "kind": "sidecar"
     },
     {
       "path": "frontend/contributions/composer.json",
-      "digest": "sha256:d1cffed385bd8ce925a8b142772043376d1dd15297ec6121a10fdf8dbf644eed",
+      "digest": "sha256:bbdc7f1bdc619f607b06297a19bfff319d1e2ee4ac86c1da4af0f9f8e1eb1583",
       "kind": "sidecar"
     },
     {
       "path": "frontend/contributions/workspace.json",
-      "digest": "sha256:892c919f3a5171b0e3135771a2128eabf8930b8e51f4dbce5e1b8b52752c3c09",
+      "digest": "sha256:a1cf408caea3d2222fd7f068f82e43b2675226ae9e06d968a281851c2a1bacb5",
       "kind": "sidecar"
     }
   ],
   "requirements": {
     "pack_dependencies": {},
     "contract_dependencies": [
+      {
+        "contract_id": "tobkiri.service.interactive-effect.v1",
+        "version_range": ">=1.0.0 <2.0.0",
+        "cardinality": "one",
+        "optional": true,
+        "operations": [
+          "interactive_effect.manage"
+        ]
+      },
+      {
+        "contract_id": "tobkiri.resource.workspace.container-task.v1",
+        "version_range": ">=1.0.0 <2.0.0",
+        "cardinality": "one",
+        "optional": true,
+        "operations": [
+          "rumi_coding_sandbox_service_pack.task-resource"
+        ]
+      },
       {
         "contract_id": "tobkiri.resource.workspace.v1",
         "version_range": ">=1.0.0 <2.0.0",
@@ -130,6 +163,8 @@
     "capabilities": [
       "workspace.metadata.read",
       "file.inspect",
+      "coding.sandbox.task.read",
+      "host.authority.consume",
       "cloud.workspace.resource",
       "cloud.workspace.manage"
     ],
@@ -184,16 +219,16 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:a76668949060e273f85baa07d5e4228d51a24b0acc35891db1fb860bbb37afa6",
-    "artifact_set_digest": "sha256:a13feaf6f4784dedab54ff8cc49b99794c537db61cc4e4be2c43dbdb4be38224",
-    "contract_catalog_digest": "sha256:f705cd4b4c05362a580c4e59e6090b4e459edcb6ba6dac02f21c348a47af0c61"
+    "source_identity": "sha256:96f2664b7d2a20be644cd82efcb65f440248bcb0d58eab8245c406e3476f662e",
+    "artifact_set_digest": "sha256:1520d454d5eb4f32f7045bf104180f21490ffb33de3efa426f69c12964e898fe",
+    "contract_catalog_digest": "sha256:5d884adda97c639782483bbce1df017bf35ea32a63df0c27c7ebe859b32c0081"
   },
   "provenance": {
     "source_kind": "repository",
     "source_path": "ecosystem/tobkiri_cloud_workspace_pack/pack-source.v1.json",
-    "source_digest": "sha256:a76668949060e273f85baa07d5e4228d51a24b0acc35891db1fb860bbb37afa6",
-    "repository_commit": "f8e29844f012b74c1ef0e303e856015188739e36",
-    "repository_tree": "414377e61aedb69b64a993e93bb5e053bbb4272a007c6ca0c33490b1ddf9f5a1",
+    "source_digest": "sha256:96f2664b7d2a20be644cd82efcb65f440248bcb0d58eab8245c406e3476f662e",
+    "repository_commit": "410f8373d9dbfad117840ea4f9a9e9e80a61931d",
+    "repository_tree": "9e49e099091f308abc67e4ec7abb5e5b99a8576724dc9223790a72bba4526a54",
     "generator": "tobkiri-protocol",
     "generator_version": "1.0.0",
     "normative": false,

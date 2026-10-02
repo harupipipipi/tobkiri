@@ -1,196 +1,46 @@
 {
-  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
-  "contracts": [
+  "compatibility_source": "compatibility-source.v1.json",
+  "declared_pack_data": [
     {
-      "contract_api_version": "io.tobkiri.contract.v4",
-      "contract_id": "tobkiri.action.coding.sandbox.v1",
-      "operations": [
-        {
-          "effect_ceiling": [
-            "capability:coding.sandbox.control",
-            "host:brokered-execution"
-          ],
-          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-          "idempotency": {
-            "mode": "none"
-          },
-          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-          "operation_id": "rumi_coding_sandbox_service_pack.sandbox-control",
-          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-          "scope_semantics": "host_broker"
-        }
-      ],
-      "owner": "rumi_coding_sandbox_service_pack",
-      "provenance": {
-        "evidence": [
-          {
-            "digest": "sha256:6d4a480cc879d085ca5b7ee5d05cd5ff87490e95884c9897f62612aab2752545",
-            "path": "schemas/pack_v4_catalog.v1.json",
-            "rule_id": "canonical-pack-v4-source-record"
-          }
-        ],
-        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
-        "generator_version": "1.0.0",
-        "normative": true,
-        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
-        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
-        "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:6d4a480cc879d085ca5b7ee5d05cd5ff87490e95884c9897f62612aab2752545",
-        "source_kind": "migration",
-        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_coding_sandbox_service_pack"
-      },
-      "provider_semantics": {
-        "cardinality": "one",
-        "failure": "fail_closed",
-        "isolation": "process",
-        "lifecycle": {
-          "data_owner": "rumi_coding_sandbox_service_pack",
-          "deprecated": false,
-          "introduced": "1.0.0"
-        },
-        "provider_id": "rumi_coding_sandbox_service_pack.coding-sandbox.control",
-        "required_capabilities": [
-          "coding.sandbox.control"
-        ],
-        "security": "restricted"
-      },
-      "revision_digest": "sha256:5b2cb141571d65f7245368128e3f9dca762537ceb23f7a43dcbe456942dec352",
-      "schema_catalog": {
-        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
-          "type": "object"
-        }
-      },
-      "status": "accepted",
-      "version": "1.0.0"
+      "pack_id": "tobkiri_cloud_workspace_pack",
+      "path_prefix": "container/"
+    }
+  ],
+  "display_name": "Tobkiri Coding Sandbox Service",
+  "factory_symbol": "HOST_PROVIDER_FACTORY",
+  "implementation_path": "runtime/host_v4.py",
+  "network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "pack_id": "rumi_coding_sandbox_service_pack",
+  "protocol_sources": [
+    {
+      "digest": "sha256:27ac7545ce0ad483b7d0847a60c3b70d600f5bad2499d9beb502f0a81e34163a",
+      "path": "tobkiri_protocol/workspace_capsule_v1.py"
     },
     {
-      "contract_api_version": "io.tobkiri.contract.v4",
-      "contract_id": "tobkiri.resource.coding.sandbox.v1",
-      "operations": [
-        {
-          "effect_ceiling": [
-            "capability:coding.sandbox.observe",
-            "host:brokered-execution"
-          ],
-          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-          "idempotency": {
-            "mode": "none"
-          },
-          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-          "operation_id": "rumi_coding_sandbox_service_pack.sandbox-observe",
-          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-          "scope_semantics": "host_broker"
-        }
-      ],
-      "owner": "rumi_coding_sandbox_service_pack",
-      "provenance": {
-        "evidence": [
-          {
-            "digest": "sha256:6d4a480cc879d085ca5b7ee5d05cd5ff87490e95884c9897f62612aab2752545",
-            "path": "schemas/pack_v4_catalog.v1.json",
-            "rule_id": "canonical-pack-v4-source-record"
-          }
-        ],
-        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
-        "generator_version": "1.0.0",
-        "normative": true,
-        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
-        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
-        "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:6d4a480cc879d085ca5b7ee5d05cd5ff87490e95884c9897f62612aab2752545",
-        "source_kind": "migration",
-        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_coding_sandbox_service_pack"
-      },
-      "provider_semantics": {
-        "cardinality": "one",
-        "failure": "fail_closed",
-        "isolation": "process",
-        "lifecycle": {
-          "data_owner": "rumi_coding_sandbox_service_pack",
-          "deprecated": false,
-          "introduced": "1.0.0"
-        },
-        "provider_id": "rumi_coding_sandbox_service_pack.coding-sandbox.observe",
-        "required_capabilities": [
-          "coding.sandbox.observe"
-        ],
-        "security": "sensitive"
-      },
-      "revision_digest": "sha256:7ec7f0ac8fe5436e28ee5f8f14bed393318b440ee5c53ae8cd1fc369195bcdd9",
-      "schema_catalog": {
-        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
-          "type": "object"
-        }
-      },
-      "status": "accepted",
-      "version": "1.0.0"
-    },
+      "digest": "sha256:672ec1832aefca81a2c970513986e85f9af3aa518012b2f582d3a9b0d7fb0af3",
+      "path": "tobkiri_protocol/workspace_task_v1.py"
+    }
+  ],
+  "providers": [
     {
-      "contract_api_version": "io.tobkiri.contract.v4",
+      "capability": "coding.sandbox.task.prepare",
       "contract_id": "tobkiri.action.workspace.container.v1",
-      "operations": [
-        {
-          "effect_ceiling": [
-            "capability:coding.sandbox.task.prepare",
-            "host:brokered-execution",
-            "capability:cloud.workspace.resource"
-          ],
-          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-          "idempotency": {
-            "mode": "none"
-          },
-          "input_schema_digest": "sha256:01f6dfea3bdabb9e2e418ab78fe43ff7392c8d54a43d141b5db83d11756f6aa8",
-          "operation_id": "rumi_coding_sandbox_service_pack.task-prepare",
-          "output_schema_digest": "sha256:a823109cb7e66e4e5171f1edb19e821a758566d096a3187acf6a0e4fa74d581e",
-          "scope_semantics": "host_broker"
-        },
-        {
-          "effect_ceiling": [
-            "capability:coding.sandbox.task.execute",
-            "host:brokered-execution",
-            "capability:cloud.workspace.resource"
-          ],
-          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-          "idempotency": {
-            "mode": "none"
-          },
-          "input_schema_digest": "sha256:9b9cb03c07cad1b3b71d65223f198b315d6f5494c8ac9456422a96d9c41d1164",
-          "operation_id": "rumi_coding_sandbox_service_pack.task-execute",
-          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-          "scope_semantics": "host_broker"
-        }
+      "effect_ceiling": [
+        "capability:coding.sandbox.task.prepare",
+        "host:brokered-execution",
+        "capability:cloud.workspace.resource"
       ],
-      "owner": "rumi_coding_sandbox_service_pack",
-      "provenance": {
-        "evidence": [],
-        "generator": "tobkiri-protocol",
-        "generator_version": "1.0.0",
-        "normative": false,
-        "repository_commit": "410f8373d9dbfad117840ea4f9a9e9e80a61931d",
-        "repository_tree": "5dd3d2bd97df68e66c69eb766e3668c24ac17fadb8bd56fc3dd8d2ca0f83a5de",
-        "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:cc040cb5a7a023583ca8cfb9d1c861629d0bab2ec881f3403b95be802ff04243",
-        "source_kind": "repository",
-        "source_path": "ecosystem/rumi_coding_sandbox_service_pack/pack-source.v1.json"
-      },
-      "provider_semantics": {
-        "cardinality": "one",
-        "failure": "fail_closed",
-        "isolation": "in_process",
-        "lifecycle": {
-          "data_owner": "rumi_coding_sandbox_service_pack",
-          "introduced": "1.0.0"
+      "effect_class": "read",
+      "function_id": "rumi_coding_sandbox_service_pack.task-prepare",
+      "operation_id": "rumi_coding_sandbox_service_pack.task-prepare",
+      "schemas": {
+        "error": {
+          "type": "object"
         },
-        "provider_id": "rumi_coding_sandbox_service_pack.task-execute",
-        "required_capabilities": [
-          "coding.sandbox.task.prepare",
-          "coding.sandbox.task.execute"
-        ],
-        "security": "restricted"
-      },
-      "revision_digest": "sha256:f6a3790a4fef577b72ec311dd0fcb3a89bd50478a7b6996f1ac82ae2b357b20b",
-      "schema_catalog": {
-        "sha256:01f6dfea3bdabb9e2e418ab78fe43ff7392c8d54a43d141b5db83d11756f6aa8": {
+        "input": {
           "additionalProperties": false,
           "properties": {
             "argv": {
@@ -247,129 +97,7 @@
           ],
           "type": "object"
         },
-        "sha256:9b9cb03c07cad1b3b71d65223f198b315d6f5494c8ac9456422a96d9c41d1164": {
-          "additionalProperties": false,
-          "properties": {
-            "task_plan": {
-              "additionalProperties": false,
-              "properties": {
-                "argv": {
-                  "items": {
-                    "maxLength": 8192,
-                    "type": "string"
-                  },
-                  "maxItems": 64,
-                  "minItems": 1,
-                  "type": "array"
-                },
-                "checkpoint_digest": {
-                  "pattern": "^sha256:[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "expected_revision": {
-                  "maximum": 9007199254740991,
-                  "minimum": 1,
-                  "type": "integer"
-                },
-                "expected_writer_epoch": {
-                  "maximum": 9007199254740991,
-                  "minimum": 1,
-                  "type": "integer"
-                },
-                "expires_at_ms": {
-                  "maximum": 9007199254740991,
-                  "minimum": 1,
-                  "type": "integer"
-                },
-                "image_reference": {
-                  "maxLength": 272,
-                  "type": "string"
-                },
-                "plan_digest": {
-                  "pattern": "^sha256:[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "profile_id": {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
-                  "type": "string"
-                },
-                "recipe_digest": {
-                  "pattern": "^sha256:[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "request_digest": {
-                  "pattern": "^sha256:[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "security_epoch": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "task_id": {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
-                  "type": "string"
-                },
-                "task_request_id": {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
-                  "type": "string"
-                },
-                "timeout_seconds": {
-                  "maximum": 120,
-                  "minimum": 1,
-                  "type": "integer"
-                },
-                "version": {
-                  "const": "tobkiri.workspace-task-plan.v1"
-                },
-                "workspace_id": {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "argv",
-                "checkpoint_digest",
-                "expected_revision",
-                "expected_writer_epoch",
-                "expires_at_ms",
-                "image_reference",
-                "plan_digest",
-                "profile_id",
-                "recipe_digest",
-                "request_digest",
-                "security_epoch",
-                "task_id",
-                "task_request_id",
-                "timeout_seconds",
-                "version",
-                "workspace_id"
-              ],
-              "type": "object"
-            },
-            "task_plan_digest": {
-              "pattern": "^sha256:[0-9a-f]{64}$",
-              "type": "string"
-            }
-          },
-          "required": [
-            "task_plan",
-            "task_plan_digest"
-          ],
-          "type": "object"
-        },
-        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
-          "type": "object"
-        },
-        "sha256:a823109cb7e66e4e5171f1edb19e821a758566d096a3187acf6a0e4fa74d581e": {
+        "output": {
           "additionalProperties": false,
           "properties": {
             "executed": {
@@ -492,61 +220,161 @@
           ],
           "type": "object"
         }
-      },
-      "status": "accepted",
-      "version": "1.0.0"
+      }
     },
     {
-      "contract_api_version": "io.tobkiri.contract.v4",
-      "contract_id": "tobkiri.resource.workspace.container-task.v1",
-      "operations": [
-        {
-          "effect_ceiling": [
-            "capability:coding.sandbox.task.read"
-          ],
-          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-          "idempotency": {
-            "mode": "none"
-          },
-          "input_schema_digest": "sha256:f2b5f93fe158b3b318f467587316dd3421d1414a2b5caada3fab39a74a64a8c6",
-          "operation_id": "rumi_coding_sandbox_service_pack.task-resource",
-          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-          "scope_semantics": "host_broker"
-        }
+      "capability": "coding.sandbox.task.execute",
+      "contract_id": "tobkiri.action.workspace.container.v1",
+      "effect_ceiling": [
+        "capability:coding.sandbox.task.execute",
+        "host:brokered-execution",
+        "capability:cloud.workspace.resource"
       ],
-      "owner": "rumi_coding_sandbox_service_pack",
-      "provenance": {
-        "evidence": [],
-        "generator": "tobkiri-protocol",
-        "generator_version": "1.0.0",
-        "normative": false,
-        "repository_commit": "410f8373d9dbfad117840ea4f9a9e9e80a61931d",
-        "repository_tree": "5dd3d2bd97df68e66c69eb766e3668c24ac17fadb8bd56fc3dd8d2ca0f83a5de",
-        "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:cc040cb5a7a023583ca8cfb9d1c861629d0bab2ec881f3403b95be802ff04243",
-        "source_kind": "repository",
-        "source_path": "ecosystem/rumi_coding_sandbox_service_pack/pack-source.v1.json"
-      },
-      "provider_semantics": {
-        "cardinality": "one",
-        "failure": "fail_closed",
-        "isolation": "in_process",
-        "lifecycle": {
-          "data_owner": "rumi_coding_sandbox_service_pack",
-          "introduced": "1.0.0"
-        },
-        "provider_id": "rumi_coding_sandbox_service_pack.task-resource",
-        "required_capabilities": [
-          "coding.sandbox.task.read"
-        ],
-        "security": "restricted"
-      },
-      "revision_digest": "sha256:c16ddebdbeae826e61d3dd0add3f050034b5101eab704c3944033e6507717d37",
-      "schema_catalog": {
-        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+      "effect_class": "write",
+      "function_id": "rumi_coding_sandbox_service_pack.task-execute",
+      "operation_id": "rumi_coding_sandbox_service_pack.task-execute",
+      "schemas": {
+        "error": {
           "type": "object"
         },
-        "sha256:f2b5f93fe158b3b318f467587316dd3421d1414a2b5caada3fab39a74a64a8c6": {
+        "input": {
+          "additionalProperties": false,
+          "properties": {
+            "task_plan": {
+              "additionalProperties": false,
+              "properties": {
+                "argv": {
+                  "items": {
+                    "maxLength": 8192,
+                    "type": "string"
+                  },
+                  "maxItems": 64,
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "checkpoint_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "expected_revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "expected_writer_epoch": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "expires_at_ms": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "image_reference": {
+                  "maxLength": 272,
+                  "type": "string"
+                },
+                "plan_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "profile_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "type": "string"
+                },
+                "recipe_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "request_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "security_epoch": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "task_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "type": "string"
+                },
+                "task_request_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "type": "string"
+                },
+                "timeout_seconds": {
+                  "maximum": 120,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "version": {
+                  "const": "tobkiri.workspace-task-plan.v1"
+                },
+                "workspace_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "argv",
+                "checkpoint_digest",
+                "expected_revision",
+                "expected_writer_epoch",
+                "expires_at_ms",
+                "image_reference",
+                "plan_digest",
+                "profile_id",
+                "recipe_digest",
+                "request_digest",
+                "security_epoch",
+                "task_id",
+                "task_request_id",
+                "timeout_seconds",
+                "version",
+                "workspace_id"
+              ],
+              "type": "object"
+            },
+            "task_plan_digest": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_plan",
+            "task_plan_digest"
+          ],
+          "type": "object"
+        },
+        "output": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "capability": "coding.sandbox.task.read",
+      "contract_id": "tobkiri.resource.workspace.container-task.v1",
+      "effect_ceiling": [
+        "capability:coding.sandbox.task.read"
+      ],
+      "effect_class": "read",
+      "function_id": "rumi_coding_sandbox_service_pack.task-resource",
+      "operation_id": "rumi_coding_sandbox_service_pack.task-resource",
+      "schemas": {
+        "error": {
+          "type": "object"
+        },
+        "input": {
           "additionalProperties": false,
           "oneOf": [
             {
@@ -601,12 +429,57 @@
             "operation"
           ],
           "type": "object"
+        },
+        "output": {
+          "type": "object"
         }
-      },
-      "status": "accepted",
-      "version": "1.0.0"
+      }
     }
   ],
-  "pack_id": "rumi_coding_sandbox_service_pack",
-  "source_identity": "sha256:cc040cb5a7a023583ca8cfb9d1c861629d0bab2ec881f3403b95be802ff04243"
+  "public_capabilities": [
+    "cloud.workspace.resource"
+  ],
+  "public_dependencies": [
+    {
+      "contract_id": "tobkiri.resource.cloud.workspace.v1",
+      "operation_id": "tobkiri_cloud_workspace_pack.workspace-resource",
+      "optional": true,
+      "version_range": ">=1.0.0 <2.0.0"
+    }
+  ],
+  "runtime_artifacts": [
+    {
+      "kind": "executable",
+      "path": "runtime/__init__.py"
+    },
+    {
+      "kind": "executable",
+      "path": "runtime/sandbox.py"
+    },
+    {
+      "kind": "executable",
+      "path": "runtime/host_v4.py"
+    },
+    {
+      "kind": "executable",
+      "path": "runtime/task_state.py"
+    },
+    {
+      "kind": "executable",
+      "path": "runtime/task_container.py"
+    },
+    {
+      "kind": "sidecar",
+      "path": "pack-source.v1.json"
+    },
+    {
+      "kind": "sidecar",
+      "path": "compatibility-source.v1.json"
+    }
+  ],
+  "runtime_module": "ecosystem.rumi_coding_sandbox_service_pack.runtime.host_v4",
+  "secrets": [],
+  "source_api_version": "tobkiri.pack-source.v1",
+  "ui_contributions": [],
+  "version": "1.0.0"
 }

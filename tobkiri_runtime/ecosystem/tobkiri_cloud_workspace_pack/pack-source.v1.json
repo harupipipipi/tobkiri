@@ -34,7 +34,8 @@
               "enum": [
                 "get_for_conversation",
                 "export",
-                "verify"
+                "verify",
+                "task_source"
               ]
             },
             "conversation_id": {
@@ -50,6 +51,11 @@
               "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
             },
             "expected_revision": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "expected_writer_epoch": {
               "type": "integer",
               "minimum": 0,
               "maximum": 9007199254740991
@@ -91,6 +97,18 @@
                 "expected_revision",
                 "workspace_id"
               ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "task_source"
+                }
+              },
+              "required": [
+                "expected_revision",
+                "expected_writer_epoch",
+                "workspace_id"
+              ]
             }
           ]
         },
@@ -130,7 +148,12 @@
                 "capture",
                 "import",
                 "restore",
-                "prepare_handoff"
+                "prepare_handoff",
+                "task_prepare",
+                "task_resume",
+                "task_status",
+                "task_cancel",
+                "task_apply"
               ]
             },
             "conversation_id": {
@@ -153,6 +176,11 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 32768
+            },
+            "argv_json": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 24000
             },
             "archive_base64": {
               "type": "string",
@@ -232,6 +260,67 @@
                 "expected_revision",
                 "expected_writer_epoch"
               ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "task_prepare"
+                }
+              },
+              "required": [
+                "argv_json",
+                "conversation_id",
+                "expected_revision",
+                "expected_writer_epoch"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "task_resume"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "expected_revision",
+                "expected_writer_epoch"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "task_status"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "expected_revision",
+                "expected_writer_epoch"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "task_cancel"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "expected_revision",
+                "expected_writer_epoch"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "task_apply"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "expected_revision",
+                "expected_writer_epoch"
+              ]
             }
           ]
         },
@@ -266,6 +355,10 @@
       "kind": "executable"
     },
     {
+      "path": "runtime/task.py",
+      "kind": "executable"
+    },
+    {
       "path": "runtime/recipe.py",
       "kind": "executable"
     },
@@ -279,6 +372,14 @@
     },
     {
       "path": "container/recipe.v1.json",
+      "kind": "sidecar"
+    },
+    {
+      "path": "container/task-recipe.v1.json",
+      "kind": "sidecar"
+    },
+    {
+      "path": "container/workspace_capsule_v1.py",
       "kind": "sidecar"
     },
     {
@@ -296,9 +397,23 @@
   ],
   "public_capabilities": [
     "workspace.metadata.read",
-    "file.inspect"
+    "file.inspect",
+    "coding.sandbox.task.read",
+    "host.authority.consume"
   ],
   "public_dependencies": [
+    {
+      "contract_id": "tobkiri.service.interactive-effect.v1",
+      "version_range": ">=1.0.0 <2.0.0",
+      "operation_id": "interactive_effect.manage",
+      "optional": true
+    },
+    {
+      "contract_id": "tobkiri.resource.workspace.container-task.v1",
+      "version_range": ">=1.0.0 <2.0.0",
+      "operation_id": "rumi_coding_sandbox_service_pack.task-resource",
+      "optional": true
+    },
     {
       "contract_id": "tobkiri.resource.workspace.v1",
       "version_range": ">=1.0.0 <2.0.0",

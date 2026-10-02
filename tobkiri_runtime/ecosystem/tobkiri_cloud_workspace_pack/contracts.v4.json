@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
   "pack_id": "tobkiri_cloud_workspace_pack",
-  "source_identity": "sha256:a76668949060e273f85baa07d5e4228d51a24b0acc35891db1fb860bbb37afa6",
+  "source_identity": "sha256:96f2664b7d2a20be644cd82efcb65f440248bcb0d58eab8245c406e3476f662e",
   "contracts": [
     {
       "contract_api_version": "io.tobkiri.contract.v4",
@@ -12,7 +12,7 @@
       "operations": [
         {
           "operation_id": "tobkiri_cloud_workspace_pack.workspace-resource",
-          "input_schema_digest": "sha256:67ac4ab1b321da602e2834b877b80df3636c9650e1e5dda115719fb532fb0590",
+          "input_schema_digest": "sha256:320981b0c996dcc3697fa2e895f40b66f5a7e797dcface5a47cd8de90d0d9c14",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "effect_ceiling": [
@@ -25,7 +25,7 @@
         }
       ],
       "schema_catalog": {
-        "sha256:67ac4ab1b321da602e2834b877b80df3636c9650e1e5dda115719fb532fb0590": {
+        "sha256:320981b0c996dcc3697fa2e895f40b66f5a7e797dcface5a47cd8de90d0d9c14": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
@@ -39,7 +39,8 @@
               "enum": [
                 "get_for_conversation",
                 "export",
-                "verify"
+                "verify",
+                "task_source"
               ]
             },
             "conversation_id": {
@@ -55,6 +56,11 @@
               "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
             },
             "expected_revision": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "expected_writer_epoch": {
               "type": "integer",
               "minimum": 0,
               "maximum": 9007199254740991
@@ -96,6 +102,18 @@
                 "expected_revision",
                 "workspace_id"
               ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "task_source"
+                }
+              },
+              "required": [
+                "expected_revision",
+                "expected_writer_epoch",
+                "workspace_id"
+              ]
             }
           ]
         },
@@ -120,16 +138,16 @@
       "provenance": {
         "source_kind": "repository",
         "source_path": "ecosystem/tobkiri_cloud_workspace_pack/pack-source.v1.json",
-        "source_digest": "sha256:a76668949060e273f85baa07d5e4228d51a24b0acc35891db1fb860bbb37afa6",
-        "repository_commit": "f8e29844f012b74c1ef0e303e856015188739e36",
-        "repository_tree": "414377e61aedb69b64a993e93bb5e053bbb4272a007c6ca0c33490b1ddf9f5a1",
+        "source_digest": "sha256:96f2664b7d2a20be644cd82efcb65f440248bcb0d58eab8245c406e3476f662e",
+        "repository_commit": "410f8373d9dbfad117840ea4f9a9e9e80a61931d",
+        "repository_tree": "9e49e099091f308abc67e4ec7abb5e5b99a8576724dc9223790a72bba4526a54",
         "generator": "tobkiri-protocol",
         "generator_version": "1.0.0",
         "normative": false,
         "evidence": [],
         "schema": "io.tobkiri.provenance.v1"
       },
-      "revision_digest": "sha256:029fe3600b2bd9c1d9596d7fe7e5815b0beda89add2ea013a30da731ca5a6f5e"
+      "revision_digest": "sha256:978c00e28bc9e616c2a736023bfd13ef0d7a76f85a464e2bde329213b009733e"
     },
     {
       "contract_api_version": "io.tobkiri.contract.v4",
@@ -140,7 +158,7 @@
       "operations": [
         {
           "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage",
-          "input_schema_digest": "sha256:b2f36da2acb4d702eb8124f8329a3a29e97dca1af3e33f1db9a4722afdab603a",
+          "input_schema_digest": "sha256:c0141a66809e2614bacf289a992898dc03962c2651151c59761b3c1a70676c71",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "effect_ceiling": [
@@ -154,7 +172,7 @@
         }
       ],
       "schema_catalog": {
-        "sha256:b2f36da2acb4d702eb8124f8329a3a29e97dca1af3e33f1db9a4722afdab603a": {
+        "sha256:c0141a66809e2614bacf289a992898dc03962c2651151c59761b3c1a70676c71": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
@@ -170,7 +188,12 @@
                 "capture",
                 "import",
                 "restore",
-                "prepare_handoff"
+                "prepare_handoff",
+                "task_prepare",
+                "task_resume",
+                "task_status",
+                "task_cancel",
+                "task_apply"
               ]
             },
             "conversation_id": {
@@ -193,6 +216,11 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 32768
+            },
+            "argv_json": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 24000
             },
             "archive_base64": {
               "type": "string",
@@ -272,6 +300,67 @@
                 "expected_revision",
                 "expected_writer_epoch"
               ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "task_prepare"
+                }
+              },
+              "required": [
+                "argv_json",
+                "conversation_id",
+                "expected_revision",
+                "expected_writer_epoch"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "task_resume"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "expected_revision",
+                "expected_writer_epoch"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "task_status"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "expected_revision",
+                "expected_writer_epoch"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "task_cancel"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "expected_revision",
+                "expected_writer_epoch"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "task_apply"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "expected_revision",
+                "expected_writer_epoch"
+              ]
             }
           ]
         },
@@ -296,16 +385,16 @@
       "provenance": {
         "source_kind": "repository",
         "source_path": "ecosystem/tobkiri_cloud_workspace_pack/pack-source.v1.json",
-        "source_digest": "sha256:a76668949060e273f85baa07d5e4228d51a24b0acc35891db1fb860bbb37afa6",
-        "repository_commit": "f8e29844f012b74c1ef0e303e856015188739e36",
-        "repository_tree": "414377e61aedb69b64a993e93bb5e053bbb4272a007c6ca0c33490b1ddf9f5a1",
+        "source_digest": "sha256:96f2664b7d2a20be644cd82efcb65f440248bcb0d58eab8245c406e3476f662e",
+        "repository_commit": "410f8373d9dbfad117840ea4f9a9e9e80a61931d",
+        "repository_tree": "9e49e099091f308abc67e4ec7abb5e5b99a8576724dc9223790a72bba4526a54",
         "generator": "tobkiri-protocol",
         "generator_version": "1.0.0",
         "normative": false,
         "evidence": [],
         "schema": "io.tobkiri.provenance.v1"
       },
-      "revision_digest": "sha256:c00e5fbec12d341f2b92e3812cb260fea92ddfea3c860fd330b949d5460fe521"
+      "revision_digest": "sha256:77bcd52911245237c3f10122ef9dfe03f668bd228cdd240c1166f0789adcd9f4"
     }
   ]
 }
