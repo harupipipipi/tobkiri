@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+import contextvars
 import re
 import secrets
 import time
@@ -327,12 +328,28 @@ class WorkflowEngineV4:
             run = self.store.transition_run(
                 run_id, expected={RunState.QUEUED}, target=RunState.RUNNING
             )
-        if RunState(run["state"]) is not RunState.RUNNING:
+        if RunState(run["state"]) not in {
+            RunState.RUNNING,
+            RunState.WAITING_APPROVAL,
+        }:
             raise WorkflowConflict("workflow run cannot advance")
         definition = self.store.get_revision(run["revision_digest"])
         compiled = require_mapping(definition.get("compiled"), "compiled definition")
         self._validate_run_snapshot(run, compiled)
         attempts = self.store.list_attempts(run_id)
+        if RunState(run["state"]) is RunState.WAITING_APPROVAL:
+            waiting = next(
+                (
+                    item
+                    for item in attempts
+                    if item["state"] == StepAttemptState.WAITING_APPROVAL.value
+                ),
+                None,
+            )
+            if waiting is None:
+                raise WorkflowConflict("workflow approval checkpoint is unavailable")
+            result = self.execute_step(run_id, waiting["step_id"])
+            return {"run": self.store.get_run(run_id), "attempts": [result]}
         succeeded = {
             item["step_id"]
             for item in attempts
@@ -359,7 +376,11 @@ class WorkflowEngineV4:
         with ThreadPoolExecutor(
             max_workers=concurrency, thread_name_prefix="workflow-v4"
         ) as executor:
-            results = list(executor.map(lambda item: self.execute_step(run_id, item), ready))
+            futures = [
+                executor.submit(contextvars.copy_context().run, self.execute_step, run_id, item)
+                for item in ready
+            ]
+            results = [future.result() for future in futures]
         return {"run": self.store.get_run(run_id), "attempts": results}
 
     def pause_run(self, run_id: str) -> dict[str, Any]:

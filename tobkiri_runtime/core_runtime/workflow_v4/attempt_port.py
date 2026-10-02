@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import threading
 import time
-from typing import TYPE_CHECKING, Any, Callable, ContextManager, Mapping, Protocol
+from typing import TYPE_CHECKING, Any, Callable, ContextManager, Literal, Mapping, Protocol
 
 from core_runtime.authority.v4 import AuthorityScope
 from core_runtime.workflow_v4.models import (
@@ -23,7 +23,7 @@ from core_runtime.workflow_v4.models import (
 from tobkiri_host.broker import RequestBroker
 from tobkiri_host.contracts import ResolvedOperationBinding
 from tobkiri_host.models import OpaqueAuthorityRef, RequestContext
-from tobkiri_host.ports import InteractiveApprovalPort
+from tobkiri_host.ports import AuthorityPort, InteractiveApprovalPort
 from tobkiri_protocol.canonical import canonical_digest
 
 if TYPE_CHECKING:
@@ -81,6 +81,11 @@ class CapturedWorkflowAttemptRouteV4:
     caller_principal: OpaqueAuthorityRef
     binding: ResolvedOperationBinding
     caller_effect_ceiling: AuthorityScope
+    authority_mode: Literal["profile_grant", "interactive_only"]
+
+    def __post_init__(self) -> None:
+        if self.authority_mode not in {"profile_grant", "interactive_only"}:
+            raise WorkflowDenied("Workflow attempt authority mode is invalid")
 
     @property
     def key(self) -> tuple[str, str, str, str]:
@@ -236,6 +241,7 @@ class WorkflowAttemptServiceConfigV4:
     """Host assembly inputs, never a Pack/client-controlled configuration."""
 
     broker: RequestBroker
+    authority: AuthorityPort
     approvals: InteractiveApprovalPort
     routes: tuple[CapturedWorkflowAttemptRouteV4, ...]
     context_for_attempt: Callable[
