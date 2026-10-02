@@ -26,6 +26,7 @@ export interface PresentationSelectorProps {
   selection: ApiPresentationSelection | null;
   saving?: boolean;
   launching?: boolean;
+  runtimeBlockedReason?: string | null;
   error?: string | null;
   onSelectionChange: (selection: ApiPresentationSelection | null) => void;
   onSave: (selection: ApiPresentationSelection) => void | Promise<void>;
@@ -140,6 +141,7 @@ export function PresentationSelector({
   selection,
   saving = false,
   launching = false,
+  runtimeBlockedReason = null,
   error = null,
   onSelectionChange,
   onSave,
@@ -163,7 +165,7 @@ export function PresentationSelector({
             ? 'The selected Shell production artifact is not verified.'
             : null;
   const canSave = saveBlockedReason === null && !saving && !launching;
-  const launchReason = launchDisabledReasonForSelection(
+  const launchReason = runtimeBlockedReason || launchDisabledReasonForSelection(
     state.materialization,
     state.selection,
     selection,

@@ -7,6 +7,8 @@ import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
 import {PresentationSelector} from '@/src/components/presentation/PresentationSelector';
 import {TobkiriLoader, TobkiriLoadingMark} from '@/src/components/ui/TobkiriLoader';
 import {panelRoutes} from '@/src/lib/routes';
+import {profileLaunchBlockedReason} from '@/src/lib/packVmLaunchReadiness';
+import {profileLaunchFailure} from '@/src/lib/profileLaunchFailure';
 import {
   activateDefaultsProfile,
   fetchDefaultsSetupState,
@@ -43,6 +45,12 @@ export function Setup() {
   const setSetupDone = useAppStore((state) => state.setSetupDone);
   const addToast = useAppStore((state) => state.addToast);
   const runtimeStatus = useAppStore((state) => state.runtimeStatus);
+  const activeProfileReady = useAppStore((state) => state.activeProfileReady);
+  const launchReady = useAppStore((state) => state.launchReady);
+  const packVmDoctor = useAppStore((state) => state.packVmDoctor);
+  const runtimeLaunchBlockedReason = profileLaunchBlockedReason({
+    activeProfileReady, launchReady, packVmDoctor,
+  });
   const refreshRuntimeHealth = useAppStore((state) => state.refreshRuntimeHealth);
   const refreshPackVMDoctor = useAppStore((state) => state.refreshPackVMDoctor);
   const loadPacks = useAppStore((state) => state.loadPacks);
@@ -65,6 +73,7 @@ export function Setup() {
   const [presentationError, setPresentationError] = useState<string | null>(null);
   const [complete, setComplete] = useState(false);
   const activationInFlightRef = useRef(false);
+  const presentationLaunchInFlightRef = useRef(false);
   const profileReconfirmationRequired = runtimeStatus === 'profile_reconfirmation_required';
   const desktopShell = isDesktopShellAvailable();
 
@@ -214,7 +223,7 @@ export function Setup() {
     if (failure) addToast(failure, 'error');
   }, [addToast, completeBrowserSetup, desktopShell, loadPresentation]);
 
-  const recoverActivation = useCallback(async () => {
+  const recoverActivation = useCallback(async (reviewVerifiedActive = false) => {
     if (activationInFlightRef.current) return;
     activationInFlightRef.current = true;
     setActivating(true);
@@ -225,14 +234,19 @@ export function Setup() {
         fetchAuthoritativeSetup: (remainingMs) => fetchDefaultsSetupState({waitForRestart: true, timeoutMs: remainingMs}),
         reconcileActiveRuntime,
         onActiveStateVerified: () => setActivationPhase('reconciling'),
-      }, {committedActivation: activationCommitted});
+      }, {
+        // A fresh review of a previously verified active Profile may expose a
+        // successor ceremony. It is not recovery of an indeterminate POST.
+        committedActivation: reviewVerifiedActive && setup?.state === 'active'
+          ? false : activationCommitted,
+      });
       await applyRecoveryResult(result);
     } finally {
       activationInFlightRef.current = false;
       setActivating(false);
       setActivationPhase('idle');
     }
-  }, [activationCommitted, applyRecoveryResult, reconcileActiveRuntime]);
+  }, [activationCommitted, applyRecoveryResult, reconcileActiveRuntime, setup?.state]);
 
   const activate = async () => {
     if (activationCommitted || !setup || setup.state !== 'review_required' || !reviewed) return;
@@ -270,7 +284,7 @@ export function Setup() {
       setPresentation(next);
       setSelection(next.selection ?? nextSelection);
       setSetupDone(true);
-      addToast('Presentation selection saved. The verified Shell is ready to launch.', 'success');
+      addToast('Presentation selection saved. Launch will verify and prepare the required runtime.', 'success');
     } catch (error) {
       setPresentationError(message(error, 'Presentation selection could not be saved.'));
     } finally {
@@ -279,6 +293,13 @@ export function Setup() {
   };
 
   const launchPresentation = async () => {
+    if (presentationLaunchInFlightRef.current) return;
+    const blocked = profileLaunchBlockedReason(useAppStore.getState());
+    if (blocked) {
+      setPresentationError(blocked);
+      return;
+    }
+    presentationLaunchInFlightRef.current = true;
     setPresentationLaunching(true);
     setPresentationError(null);
     try {
@@ -287,8 +308,9 @@ export function Setup() {
       setComplete(true);
       window.setTimeout(() => navigate(panelRoutes.home), 500);
     } catch (error) {
-      setPresentationError(message(error, 'Selected Shell launch was blocked.'));
+      setPresentationError(profileLaunchFailure(error).message);
     } finally {
+      presentationLaunchInFlightRef.current = false;
       setPresentationLaunching(false);
     }
   };
@@ -326,6 +348,7 @@ export function Setup() {
         selection={selection}
         saving={presentationSaving}
         launching={presentationLaunching}
+        runtimeBlockedReason={runtimeLaunchBlockedReason}
         error={presentationError}
         onSelectionChange={setSelection}
         onSave={savePresentation}
@@ -333,6 +356,16 @@ export function Setup() {
       /> : <div role="status" className="flex items-center gap-2 rounded-xl border border-border bg-bg-card p-6 text-sm text-text-muted">
         <TobkiriLoadingMark />
         Loading selected presentation…
+      </div>}
+      {runtimeLaunchBlockedReason && !reconciliationError && <div className="mt-4">
+        <Button
+          variant="outline"
+          onClick={() => void recoverActivation(true)}
+          loading={activating}
+          data-testid="review-launch-readiness"
+        >
+          Review launch readiness
+        </Button>
       </div>}
       {presentation?.selection && !reconciliationError && <div className="mt-4">
         <Button variant="outline" onClick={() => navigate(panelRoutes.packs)}>

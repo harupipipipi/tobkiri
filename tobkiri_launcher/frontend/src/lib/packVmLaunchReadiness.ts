@@ -16,3 +16,15 @@ export function packVmLaunchBlockedReason(
   }
   return null;
 }
+
+/** Keep Profile authorization separate from recoverable launch preparation. */
+export function profileLaunchBlockedReason(input: {
+  activeProfileReady: boolean;
+  launchReady: boolean;
+  packVmDoctor: ApiPackVMDoctor | null;
+}): string | null {
+  if (!input.activeProfileReady || !input.launchReady) {
+    return 'The active Profile is not ready to launch. Verify its activation before trying again.';
+  }
+  return packVmLaunchBlockedReason(input.packVmDoctor);
+}

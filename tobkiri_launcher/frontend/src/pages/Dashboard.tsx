@@ -31,8 +31,9 @@ import {fetchDashboard} from '@/src/lib/defaultspackClient';
 import {ApiContractError, ApiRequestTimeoutError} from '@/src/lib/apiTransport';
 import {RequestTimeoutError} from '@/src/lib/getRequestCoordinator';
 import {isDesktopShellAvailable, launchSelectedPresentation, openExternalUrl} from '@/src/lib/desktopHost';
-import {packVmLaunchBlockedReason, WINDOWS_PACKVM_ISSUE_URL} from '@/src/lib/packVmLaunchReadiness';
+import {packVmLaunchBlockedReason, profileLaunchBlockedReason, WINDOWS_PACKVM_ISSUE_URL} from '@/src/lib/packVmLaunchReadiness';
 import {panelRoutes} from '@/src/lib/routes';
+import {profileLaunchFailure, type ProfileLaunchFailure} from '@/src/lib/profileLaunchFailure';
 import {
   buildNamedProfileView,
   filterAndSortNamedProfiles,
@@ -86,54 +87,6 @@ function profileHref(profileId: string, hash?: string): string {
 
 function sortModeFromParam(value: string | null): NamedProfileSortMode {
   return value === 'recent' || value === 'name' ? value : 'recommended';
-}
-
-interface ProfileLaunchFailure {
-  message: string;
-  recovery: 'packs' | 'profile' | null;
-}
-
-function profileLaunchFailure(error: unknown): ProfileLaunchFailure {
-  const raw = typeof error === 'string' ? error : error instanceof Error ? error.message : '';
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const result = parsed as Record<string, unknown>;
-      if (
-        result.code === 'RUNTIME_BACKEND_UNAVAILABLE'
-        && result.action === 'open_packs_to_prepare_packvm'
-      ) {
-        return {
-          message: 'The required runtime backend is unavailable. Open Packs to check PackVM readiness, then try launching again.',
-          recovery: 'packs',
-        };
-      }
-      if (
-        result.code === 'RUNTIME_PREPARATION_FAILED'
-        && result.action === 'review_packs_and_retry'
-      ) {
-        return {
-          message: 'The Launcher could not prepare the Defaultspack runtime. Open Packs to review its status, then retry Launch. If this continues, restart the Launcher.',
-          recovery: 'packs',
-        };
-      }
-      if (
-        result.code === 'PROFILE_RERESOLUTION_REQUIRED'
-        && result.action === 'reactivate_or_reresolve_profile'
-      ) {
-        return {
-          message: 'The active Profile no longer authorizes its selected Shell. Review and reactivate this Profile before launching again.',
-          recovery: 'profile',
-        };
-      }
-    }
-  } catch {
-    // The Launcher deliberately redacts other launch failures.
-  }
-  return {
-    message: 'The selected Shell could not be launched. Retry from this Profile card; if it fails again, review the Profile and Pack status.',
-    recovery: null,
-  };
 }
 
 function isHomeReadTimeout(error: unknown): boolean {
@@ -443,9 +396,7 @@ export function Dashboard() {
     if (!registry || !isActiveExecutionProfile(registry, entry)) return;
     const profileView = buildNamedProfileView(entry, {activeSnapshotReady: activeProfileReady});
     if (
-      !activeProfileReady
-      || !launchReady
-      || packVmBlockedReason !== null
+      profileLaunchBlockedReason(useAppStore.getState()) !== null
       || !desktopShellAvailable
       || profileView.status !== 'ready'
     ) return;

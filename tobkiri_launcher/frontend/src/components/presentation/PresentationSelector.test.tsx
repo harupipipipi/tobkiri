@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {readFileSync} from 'node:fs';
+import {MemoryRouter} from 'react-router';
+import {Setup} from '@/src/pages/Setup';
+import {useAppStore} from '@/src/store';
+import {clearApiPrefetchCache, setRuntimeDispatchStatus} from '@/src/lib/api';
 import {act} from 'react';
 import {createRoot, type Root} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
@@ -200,8 +205,111 @@ test('PresentationSelector exposes exact selection and blocks unverified launch'
     assert.equal(verifiedLaunchButton.disabled, false);
     await act(async () => verifiedLaunchButton.click());
     assert.equal(launches, 1);
+    for (const reason of ['The active Profile is not ready to launch.', null]) {
+      await act(async () => root.render(
+        <PresentationSelector
+          state={verifiedState}
+          selection={verifiedState.selection}
+          runtimeBlockedReason={reason}
+          onSelectionChange={() => undefined}
+          onSave={() => undefined}
+          onLaunch={() => { launches += 1; }}
+        />,
+      ));
+      const button = container.querySelector<HTMLButtonElement>('[data-testid="launch-presentation"]');
+      const save = container.querySelector<HTMLButtonElement>('[data-testid="save-presentation"]');
+      assert.ok(button);
+      assert.ok(save);
+      assert.equal(button.disabled, reason !== null);
+      assert.equal(save.disabled, false, 'saving a verified selection must remain available');
+      if (reason) assert.match(container.textContent ?? '', /Profile is not ready/);
+      await act(async () => button.click());
+      assert.equal(launches, reason ? 1 : 2);
+    }
   } finally {
     await act(async () => root.unmount());
+    dom.window.close();
+  }
+});
+
+test('Setup checks live readiness, prevents duplicate launch and reopens successor review', async () => {
+  const dom = new JSDOM('<div id="root"></div>', {url: 'http://localhost/panel/setup'});
+  const descriptors = Object.getOwnPropertyDescriptors(globalThis);
+  const previousState = useAppStore.getState();
+  Object.defineProperties(globalThis, {
+    window: {value: dom.window, configurable: true},
+    document: {value: dom.window.document, configurable: true},
+    navigator: {value: dom.window.navigator, configurable: true},
+    localStorage: {value: dom.window.localStorage, configurable: true},
+    IS_REACT_ACT_ENVIRONMENT: {value: true, configurable: true},
+  });
+  const setupFixture = JSON.parse(readFileSync(new URL(
+    '../../../../../tobkiri_runtime/tobkiri_protocol/fixtures/defaults_setup_v4.canonical.json',
+    import.meta.url,
+  ), 'utf8'));
+  setupFixture.state = 'active';
+  let launches = 0;
+  let rejectLaunch: ((error: unknown) => void) | undefined;
+  Object.defineProperty(dom.window, '__TAURI__', {value: {core: {
+    invoke: async (command: string) => {
+      if (command === 'get_presentation_catalog') return verifiedState;
+      assert.equal(command, 'launch_selected_presentation');
+      launches += 1;
+      return new Promise((_, reject) => { rejectLaunch = reject; });
+    },
+  }}});
+  Object.defineProperty(globalThis, 'fetch', {configurable: true, value: async (url: string, init?: RequestInit) => {
+    assert.match(String(url), /api\/setup\/packs/);
+    assert.equal(init?.method ?? 'GET', 'GET', 'readiness recovery must not replay activation');
+    return new Response(JSON.stringify({success: true, data: setupFixture}), {
+      headers: {'Content-Type': 'application/json'},
+    });
+  }});
+  clearApiPrefetchCache();
+  setRuntimeDispatchStatus('runtime_ready');
+  useAppStore.setState({runtimeStatus: 'runtime_ready', activeProfileReady: false, launchReady: false, packVmDoctor: null});
+  const container = dom.window.document.getElementById('root')!;
+  const root = createRoot(container);
+  const launchButton = () => container.querySelector<HTMLButtonElement>('[data-testid="launch-presentation"]');
+  try {
+    await act(async () => { root.render(<MemoryRouter><Setup /></MemoryRouter>); });
+    assert.ok(launchButton());
+    assert.equal(launchButton()!.disabled, true);
+    assert.ok(container.querySelector('[data-testid="review-launch-readiness"]'));
+    await act(async () => { useAppStore.setState({activeProfileReady: true, launchReady: true}); });
+    assert.equal(launchButton()!.disabled, false, 'unknown doctor permits native preparation');
+    await act(async () => { launchButton()!.click(); launchButton()!.click(); });
+    assert.equal(launches, 1);
+    await act(async () => { rejectLaunch!(JSON.stringify({code: 'RUNTIME_BACKEND_UNAVAILABLE', action: 'open_packs_to_prepare_packvm', detail: 'private-diagnostic'})); });
+    assert.match(container.textContent ?? '', /Open Packs/);
+    assert.doesNotMatch(container.textContent ?? '', /private-diagnostic|RUNTIME_BACKEND_UNAVAILABLE/);
+    const retry = [...container.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === 'Retry');
+    assert.ok(retry);
+    await act(async () => { retry.click(); });
+    assert.ok(launchButton());
+    await act(async () => {
+      useAppStore.setState({launchReady: false});
+      launchButton()!.click(); // The DOM has not rerendered; the handler must read current state.
+    });
+    assert.equal(launches, 1);
+    setupFixture.state = 'review_required';
+    const review = container.querySelector<HTMLButtonElement>('[data-testid="review-launch-readiness"]');
+    assert.ok(review);
+    await act(async () => { review.click(); });
+    const activate = [...container.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.includes('Activate Defaults Profile'));
+    assert.ok(activate, 'a new Host successor must reach its review ceremony');
+    assert.equal(activate.disabled, true, 'fresh explicit consent is required');
+    assert.equal(launches, 1);
+  } finally {
+    await act(async () => root.unmount());
+    useAppStore.setState(previousState, true);
+    clearApiPrefetchCache();
+    for (const key of ['window', 'document', 'navigator', 'localStorage', 'fetch', 'IS_REACT_ACT_ENVIRONMENT']) {
+      if (descriptors[key]) Object.defineProperty(globalThis, key, descriptors[key]);
+      else Reflect.deleteProperty(globalThis, key);
+    }
     dom.window.close();
   }
 });

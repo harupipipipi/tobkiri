@@ -273,18 +273,35 @@ pub fn stage(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    fn fixture_directory(timestamp: u128) -> std::path::PathBuf {
+        static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
+        // Wall-clock precision is not a uniqueness guarantee on every host.
+        // Reserve a new directory atomically; never adopt an existing fixture.
+        for _ in 0..64 {
+            let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
+            let root = std::env::temp_dir().join(format!(
+                "tobkiri-packvm-inventory-{}-{timestamp}-{sequence}",
+                std::process::id(),
+            ));
+            match fs::create_dir(&root) {
+                Ok(()) => return root,
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+                Err(error) => panic!("failed to reserve PackVM fixture: {error}"),
+            }
+        }
+        panic!("could not reserve a unique PackVM fixture directory");
+    }
+
     fn fixture() -> (std::path::PathBuf, String) {
-        let root = std::env::temp_dir().join(format!(
-            "tobkiri-packvm-inventory-{}-{}",
-            std::process::id(),
+        let root = fixture_directory(
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
-        ));
-        fs::create_dir(&root).unwrap();
+                .as_nanos(),
+        );
         let mut files = serde_json::Map::new();
         for slot in [
             "agent",
@@ -313,6 +330,26 @@ mod tests {
         let digest = format!("{:x}", Sha256::digest(&bytes));
         fs::write(root.join(MANIFEST), bytes).unwrap();
         (root.canonicalize().unwrap(), digest)
+    }
+
+    #[test]
+    fn parallel_fixtures_do_not_depend_on_clock_resolution() {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let workers: Vec<_> = (0..32)
+            .map(|_| std::thread::spawn(move || fixture_directory(timestamp)))
+            .collect();
+        let roots: Vec<_> = workers
+            .into_iter()
+            .map(|worker| worker.join().unwrap())
+            .collect();
+        let unique: BTreeSet<_> = roots.iter().collect();
+        assert_eq!(unique.len(), roots.len());
+        for root in roots {
+            fs::remove_dir(root).unwrap();
+        }
     }
 
     #[test]
