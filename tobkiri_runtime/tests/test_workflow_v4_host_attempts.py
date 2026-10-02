@@ -128,6 +128,14 @@ class _Fixture:
             lease_ttl_seconds=10,
         )
         self.authority = _adapter(self.harness)
+        if mode == "interactive_only":
+            # The ordinary harness starts with a Profile Grant. This route
+            # deliberately requires a fresh one-shot interactive Grant instead.
+            self.authority.revoke(
+                target_kind="grant",
+                target_id=self.harness.grant.grant_id,
+                reason="interactive-only fixture has no standing caller Grant",
+            )
         self.broker = _broker(self.harness, self.authority, ProviderOutcome({"review": "reached"}))
         self.target = _binding(self.harness)
         self.retired_contexts: list[Any] = []
