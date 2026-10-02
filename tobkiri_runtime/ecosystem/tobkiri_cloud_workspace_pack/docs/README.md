@@ -49,18 +49,26 @@ obtain fresh local approval before starting work.
 
 `container/Dockerfile` is an actual nonroot container recipe. It validates and
 restores the capsule into an empty writable mount, starts a fixed Python service,
-and offers `/health` and finite `/workspace` metadata. It runs no user command and
-has no write API, login, cloud client or secret mount. The approved Host must
-resolve a digest-pinned base image, supply resource limits, drop privileges,
+and offers `/health` and finite `/workspace` metadata. This is a capsule container
+with a metadata service. It does not include a Tobkiri task executor or claim that
+a user workload ran. It runs no user command and
+has no write API, login, cloud client or secret mount. The Dockerfile fixes the official Python 3.13 slim OCI index digest in its FROM
+line; the recipe digest includes those bytes and the base reference. The approved
+Host must supply resource limits, drop privileges,
 isolate networking, bind the input read-only and own the writable workspace.
 The current Pack has no bound provisioning port, so it always reports container
 start as unavailable. Developer Docker smoke evidence is separate from production
 Host support and does not substitute for the Tobkiri PackVM backend.
-`docs/container-smoke.v1.json` records an actual local Docker build and healthy
+`docs/container-smoke.v1.json` records a historical local Docker build and healthy
 nonroot run using a digest-pinned cached worker base with Python 3.10.12. No image
 was pulled. Exact capsule restoration, UID 65532, health and workspace endpoints
 passed with networking disabled and resource limits; the test container was
-removed. This does not activate production Host provisioning or cloud deployment.
+removed. That source used the cached worker base. Subsequent import hardening and
+the fixed official Python base produce a different recipe digest. The current
+recipe has not been rebuilt or run in Docker: retries stopped at host disk
+exhaustion and Docker EOF. Focused tests verify current restore code and runtime
+recipe checks. No current-image health or workload execution is claimed. Neither
+result activates Host provisioning or cloud deployment.
 
 Regenerate only this Pack's records from `tobkiri_runtime/`:
 

@@ -7,6 +7,7 @@ import io
 import json
 import re
 import stat
+import unicodedata
 import zipfile
 from pathlib import PurePosixPath
 from typing import Any, Mapping
@@ -21,6 +22,7 @@ MAX_MANIFEST_BYTES = 128 * 1024
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _PROTECTED = {
+    "capsule-manifest.json",
     ".git",
     ".ssh",
     ".aws",
@@ -107,6 +109,10 @@ def safe_path(value: Any) -> str:
     ):
         raise ValueError("capsule path is invalid")
     parts = value.split("/")
+    if value != unicodedata.normalize("NFC", value) or any(
+        len(part.encode("utf-8")) > 255 for part in parts
+    ):
+        raise ValueError("capsule path component is not portable UTF-8")
     if any(p in {"", ".", ".."} or p.endswith((" ", ".")) for p in parts):
         raise ValueError("capsule path is not canonical")
     path = PurePosixPath(value)
