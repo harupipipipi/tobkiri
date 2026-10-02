@@ -47,11 +47,7 @@ def message_task_state(message: Mapping[str, Any]) -> str:
         return "waiting_user"
     if states & {"error", "failed", "failure"}:
         return "failed"
-    if (
-        states & _RUNNING
-        or metadata.get("draft") is True
-        or metadata.get("streaming") is True
-    ):
+    if states & _RUNNING or metadata.get("draft") is True or metadata.get("streaming") is True:
         return "running"
     finish = str(message.get("finish_reason") or "").lower()
     if finish in _SUCCESS and message.get("status") in {
@@ -66,6 +62,32 @@ def message_task_state(message: Mapping[str, Any]) -> str:
     if finish or states & {"error", "failed", "failure"}:
         return "failed"
     return "unknown"
+
+
+def saved_terminal_finish_reason(result: Mapping[str, Any]) -> str | None:
+    """Project explicit execution state without upgrading idle or missing signals."""
+    if result.get("status") != "ok" or result.get("tool_intents"):
+        return None
+    metadata = result.get("metadata")
+    metadata = dict(metadata) if isinstance(metadata, Mapping) else {}
+    if "task_state" in result:
+        metadata["task_state"] = result["task_state"]
+    state = message_task_state(
+        {
+            "role": "assistant",
+            "status": "complete",
+            "finish_reason": result.get("finish_reason"),
+            "metadata": metadata,
+        }
+    )
+    return {
+        "completed": "stop",
+        "waiting_user": "waiting_user",
+        "waiting_approval": "waiting_approval",
+        "cancelled": "cancelled",
+        "failed": "error",
+        "running": "running",
+    }.get(state)
 
 
 def completion_source(conversation: Mapping[str, Any]) -> dict[str, Any]:
@@ -143,6 +165,40 @@ def task_gap_prompt(context: Mapping[str, Any]) -> str:
         f"current_user_message_at: {context['current_user_message_at']}\n"
         f"elapsed_seconds: {context['elapsed_seconds']}"
     )
+
+
+def active_task_gap_context(conversation: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Read owner-bound receipt timing after the active user append transaction."""
+    source = conversation.get("lifecycle")
+    if not isinstance(source, Mapping) or source.get("version") != LIFECYCLE_VERSION:
+        return None
+    completed = source.get("resumed_completed_at_ms")
+    received = source.get("active_user_received_at_ms")
+    identity = source.get("active_user_message_id")
+    if (
+        source.get("state") != "running"
+        or type(completed) is not int
+        or type(received) is not int
+        or completed < 0
+        or received - completed < COMPLETION_DELAY_MS
+        or not isinstance(identity, str)
+    ):
+        return None
+    messages = conversation.get("messages")
+    if not isinstance(messages, list) or not any(
+        isinstance(message, Mapping)
+        and message.get("id") == identity
+        and message.get("role") == "user"
+        for message in messages
+    ):
+        return None
+    return {
+        "version": LIFECYCLE_VERSION,
+        "completion_message_id": source.get("completion_message_id"),
+        "previous_task_completed_at": _iso(completed),
+        "current_user_message_at": _iso(received),
+        "elapsed_seconds": (received - completed) // 1000,
+    }
 
 
 def _iso(milliseconds: int) -> str:

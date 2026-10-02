@@ -287,7 +287,7 @@ class ConversationStore:
             normalized["sequence"] = len(messages)
             # Completion time comes from this transaction, never caller timestamps.
             now = _now_ms()
-            _record_lifecycle(current, normalized, messages, now)
+            terminal_verified = False
             if saved_input is not None:
                 receipts = dict(state.get("saved_receipts", {}))
                 turn_id = saved_input.get("request", {}).get("turn_id")
@@ -299,6 +299,11 @@ class ConversationStore:
                 )
                 receipts[receipt["turn_id"]] = receipt
                 state["saved_receipts"] = receipts
+                terminal_verified = "result_reference" in receipt
+            _record_lifecycle(
+                current, normalized, messages, now,
+                terminal_verified=terminal_verified,
+            )
             messages.append(normalized)
             current["messages"] = messages
             current["current_node_id"] = normalized["id"]
@@ -788,6 +793,8 @@ def _empty_lifecycle() -> dict[str, Any]:
         "completed_at_ms": None,
         "completion_message_id": None,
         "active_user_message_id": None,
+        "active_user_received_at_ms": None,
+        "resumed_completed_at_ms": None,
     }
 
 
@@ -796,6 +803,8 @@ def _record_lifecycle(
     message: Mapping[str, Any],
     messages: list[dict[str, Any]],
     now_ms: int,
+    *,
+    terminal_verified: bool = False,
 ) -> None:
     """Record owner-confirmed completion in the same CAS message transaction."""
     source = dict(conversation.get("lifecycle") or _empty_lifecycle())
@@ -803,8 +812,13 @@ def _record_lifecycle(
         source = _empty_lifecycle()
     role = message.get("role")
     if role == "user":
+        source["resumed_completed_at_ms"] = (
+            source.get("completed_at_ms") if source.get("state") == "completed"
+            else None
+        )
         source["state"] = "running"
         source["active_user_message_id"] = message["id"]
+        source["active_user_received_at_ms"] = now_ms
     elif role == "assistant":
         by_id = {item["id"]: item for item in messages}
         ancestor = message
@@ -824,6 +838,14 @@ def _record_lifecycle(
             # A delayed final response for an older user turn cannot end a new one.
             return
         state = message_task_state(message)
+        if state == "completed" and not terminal_verified:
+            # Public transcript writes are not evidence of a completed task.
+            # Edits may preserve an existing receipt but cannot establish one.
+            state = (
+                "completed" if source.get("state") == "completed"
+                and source.get("completion_message_id") == message["id"]
+                else "unknown"
+            )
         if state == "completed" and (
             source.get("completion_message_id") != message["id"]
             or source.get("state") != "completed"

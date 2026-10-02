@@ -22,6 +22,7 @@ from tobkiri_protocol.saved_conversation import (
     validate_saved_conversation_input,
 )
 from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_HOPS
+from tobkiri_protocol.conversation_lifecycle import saved_terminal_finish_reason
 
 
 class SavedHostExchange:
@@ -45,6 +46,7 @@ class SavedHostExchange:
         self._user_revision: int | None = None
         self._user_current_node_id: str | None = None
         self._ai_output_digest: str | None = None
+        self._ai_finish_reason: str | None = None
         self._completion_digest: str | None = None
         self._tool_plan: SavedTurnPlan | None = None
         self._max_frame_bytes = 64 * 1024
@@ -111,6 +113,7 @@ class SavedHostExchange:
                 or payload["expected_conversation_revision"] != self._user_revision
                 or not isinstance(message, dict)
                 or canonical_digest(message.get("content")) != self._ai_output_digest
+                or message.get("finish_reason") != self._ai_finish_reason
             ):
                 raise ValueError("saved Host assistant differs from acknowledged execution")
         if self._permit is None:
@@ -140,12 +143,14 @@ class SavedHostExchange:
         stage = self._tool_plan.stage if self._tool_plan else ("read", "user", "ai", "assistant")[self._hop]
         if stage == "ai":
             self._ai_output_digest = None
+            self._ai_finish_reason = None
             output = owned.get("output")
             if (
                 owned.get("status") == "ok" and not owned.get("tool_intents")
                 and is_saved_text_content(output)
             ):
                 self._ai_output_digest = canonical_digest(output)
+                self._ai_finish_reason = saved_terminal_finish_reason(owned)
         elif stage in ("user", "assistant"):
             payload = strict_loads(frame.payload)
             message = owned.get("message")
