@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import http.client
 import json
 import re
+import socket
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,6 +13,24 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+
+from tests.conformance_support.host_contract import host_contract
+
+
+def _assert_v4_local_guard_boundary() -> None:
+    """Bind local mutations to the v4 host authority contract."""
+    from tempfile import TemporaryDirectory
+
+    from tests.legacy_authority_contracts import (
+        assert_profile_resolver_requires_authority_snapshot,
+        assert_retired_module_absent,
+    )
+    from tests.v4_batch_support import assert_payload_mutations_denied, harness
+
+    assert_retired_module_absent("domain.function_runtime.bridge")
+    assert_profile_resolver_requires_authority_snapshot()
+    with TemporaryDirectory() as root:
+        assert_payload_mutations_denied(harness(Path(root)))
 
 
 def test_sensitive_coding_http_path_uses_local_guard():
@@ -191,11 +211,10 @@ def test_browser_companion_session_get_is_local_guarded():
 
 def test_non_loopback_websocket_upgrade_requires_local_auth(monkeypatch):
     from transport.http import _websocket_auth_error
+    from core_runtime.host_contract import bind_host_contract
+    from tests.conformance_support.host_contract import host_contract
 
     headers = {"Upgrade": "websocket", "Connection": "Upgrade"}
-    monkeypatch.delenv("RUMI_DEFAULTSPACK_LOCAL_TOKEN", raising=False)
-    monkeypatch.delenv("RUMI_API_TOKEN", raising=False)
-    monkeypatch.delenv("RUMI_TOKEN", raising=False)
 
     assert _websocket_auth_error(headers, ("127.0.0.1", 54321)) is None
     assert _websocket_auth_error(headers, ("203.0.113.10", 54321)) == (
@@ -204,16 +223,21 @@ def test_non_loopback_websocket_upgrade_requires_local_auth(monkeypatch):
         "AUTH_REQUIRED",
     )
 
-    monkeypatch.setenv("RUMI_API_TOKEN", "local-ws-token")
-    assert _websocket_auth_error(headers, ("203.0.113.10", 54321)) == (
-        401,
-        "websocket auth token required",
-        "AUTH_REQUIRED",
-    )
-    assert _websocket_auth_error(
-        {**headers, "Authorization": "Bearer local-ws-token"},
-        ("203.0.113.10", 54321),
-    ) is None
+    with bind_host_contract(
+        host_contract(
+            profile_id="profile:test",
+            values={"desktop_api_token": "local-ws-token"},
+        )
+    ):
+        assert _websocket_auth_error(headers, ("203.0.113.10", 54321)) == (
+            401,
+            "websocket auth token required",
+            "AUTH_REQUIRED",
+        )
+        assert _websocket_auth_error(
+            {**headers, "Authorization": "Bearer local-ws-token"},
+            ("203.0.113.10", 54321),
+        ) is None
 
 
 def test_route_metadata_sensitive_reads_server_route_table():
@@ -243,6 +267,7 @@ def test_route_metadata_sensitive_reads_server_route_table():
 
 def test_legacy_browser_qa_token_cannot_submit_pre_auth_event(monkeypatch):
     from transport.http import _RequestHandler
+    from core_runtime.host_contract import bind_host_contract
 
     def handler(request_data, path_params):
         return {"ok": True, "request_data": request_data, "path_params": path_params}
@@ -266,41 +291,48 @@ def test_legacy_browser_qa_token_cannot_submit_pre_auth_event(monkeypatch):
     monkeypatch.setenv("RUMI_API_TOKEN", "local-secret")
     monkeypatch.setenv("RUMI_AUTHORITY_BROWSER_TEST_TOKEN", "browser-secret")
 
-    request_handler.headers = {
-        "Origin": "http://localhost:8766",
-        "X-Rumi-CSRF": "1",
-        "X-Rumi-Approval-Browser-Token": "browser-secret",
-    }
-    assert request_handler._sensitive_request_error("POST", "/api/ambient/events") == (
-        401,
-        "local auth token required",
-        "AUTH_REQUIRED",
-    )
+    with bind_host_contract(
+        host_contract(
+            profile_id="profile:test",
+            values={"desktop_api_token": "local-secret"},
+        )
+    ):
+        request_handler.headers = {
+            "Origin": "http://localhost:8766",
+            "X-Rumi-CSRF": "1",
+            "X-Rumi-Approval-Browser-Token": "browser-secret",
+        }
+        assert request_handler._sensitive_request_error("POST", "/api/ambient/events") == (
+            401,
+            "local auth token required",
+            "AUTH_REQUIRED",
+        )
 
-    request_handler.headers = {
-        "Origin": "http://localhost:8766",
-        "X-Rumi-CSRF": "1",
-        "X-Rumi-Approval-Browser-Token": "wrong",
-    }
-    assert request_handler._sensitive_request_error("POST", "/api/ambient/events") == (
-        401,
-        "local auth token required",
-        "AUTH_REQUIRED",
-    )
+        request_handler.headers = {
+            "Origin": "http://localhost:8766",
+            "X-Rumi-CSRF": "1",
+            "X-Rumi-Approval-Browser-Token": "wrong",
+        }
+        assert request_handler._sensitive_request_error("POST", "/api/ambient/events") == (
+            401,
+            "local auth token required",
+            "AUTH_REQUIRED",
+        )
 
-    request_handler.headers = {
-        "Origin": "http://localhost:8766",
-        "X-Rumi-Approval-Browser-Token": "browser-secret",
-    }
-    assert request_handler._sensitive_request_error("POST", "/api/ambient/events") == (
-        401,
-        "local auth token required",
-        "AUTH_REQUIRED",
-    )
+        request_handler.headers = {
+            "Origin": "http://localhost:8766",
+            "X-Rumi-Approval-Browser-Token": "browser-secret",
+        }
+        assert request_handler._sensitive_request_error("POST", "/api/ambient/events") == (
+            401,
+            "local auth token required",
+            "AUTH_REQUIRED",
+        )
 
 
 def test_legacy_browser_qa_token_cannot_mint_authority_ui_operator(monkeypatch):
     from transport.http import _RequestHandler, _browser_qa_token_authorized
+    from core_runtime.host_contract import bind_host_contract
 
     def handler(request_data, path_params):
         return {"ok": True, "request_data": request_data, "path_params": path_params}
@@ -325,73 +357,77 @@ def test_legacy_browser_qa_token_cannot_mint_authority_ui_operator(monkeypatch):
     monkeypatch.setenv("RUMI_API_TOKEN", "local-secret")
     monkeypatch.setenv("RUMI_AUTHORITY_BROWSER_TEST_TOKEN", "browser-secret")
 
-    request_handler.headers = {
-        "Origin": "http://127.0.0.1:8766",
-        "X-Rumi-CSRF": "1",
-        "X-Rumi-Approval-Browser-Token": "browser-secret",
-    }
-    assert _browser_qa_token_authorized(
-        "POST",
-        "/api/authority/browser-ui-operator",
-        request_handler.headers,
-    ) is False
-    assert request_handler._sensitive_request_error(
-        "POST", "/api/authority/browser-ui-operator"
-    ) == (401, "local auth token required", "AUTH_REQUIRED")
+    with bind_host_contract(
+        host_contract(
+            profile_id="profile:test",
+            values={"desktop_api_token": "local-secret"},
+        )
+    ):
+        request_handler.headers = {
+            "Origin": "http://127.0.0.1:8766",
+            "X-Rumi-CSRF": "1",
+            "X-Rumi-Approval-Browser-Token": "browser-secret",
+        }
+        assert _browser_qa_token_authorized(
+            "POST",
+            "/api/authority/browser-ui-operator",
+            request_handler.headers,
+        ) is False
+        assert request_handler._sensitive_request_error(
+            "POST", "/api/authority/browser-ui-operator"
+        ) == (401, "local auth token required", "AUTH_REQUIRED")
 
-    request_handler.headers = {
-        "Origin": "http://127.0.0.1:8766",
-        "X-Rumi-CSRF": "1",
-        "X-Rumi-Approval-Browser-Token": "wrong",
-    }
-    assert _browser_qa_token_authorized(
-        "POST",
-        "/api/authority/browser-ui-operator",
-        request_handler.headers,
-    ) is False
-    assert request_handler._sensitive_request_error(
-        "POST", "/api/authority/browser-ui-operator"
-    ) == (401, "local auth token required", "AUTH_REQUIRED")
+        request_handler.headers = {
+            "Origin": "http://127.0.0.1:8766",
+            "X-Rumi-CSRF": "1",
+            "X-Rumi-Approval-Browser-Token": "wrong",
+        }
+        assert _browser_qa_token_authorized(
+            "POST",
+            "/api/authority/browser-ui-operator",
+            request_handler.headers,
+        ) is False
+        assert request_handler._sensitive_request_error(
+            "POST", "/api/authority/browser-ui-operator"
+        ) == (401, "local auth token required", "AUTH_REQUIRED")
 
-    request_handler.headers = {
-        "Origin": "http://127.0.0.1:8766",
-        "X-Rumi-CSRF": "1",
-    }
-    query_data = {"browser_approval_token": "browser-secret"}
-    assert _browser_qa_token_authorized(
-        "POST",
-        "/api/authority/browser-ui-operator",
-        request_handler.headers,
-        query_data,
-    ) is False
-    assert request_handler._sensitive_request_error(
-        "POST",
-        "/api/authority/browser-ui-operator",
-        query_data,
-    ) == (401, "local auth token required", "AUTH_REQUIRED")
+        request_handler.headers = {
+            "Origin": "http://127.0.0.1:8766",
+            "X-Rumi-CSRF": "1",
+        }
+        query_data = {"browser_approval_token": "browser-secret"}
+        assert _browser_qa_token_authorized(
+            "POST",
+            "/api/authority/browser-ui-operator",
+            request_handler.headers,
+            query_data,
+        ) is False
+        assert request_handler._sensitive_request_error(
+            "POST",
+            "/api/authority/browser-ui-operator",
+            query_data,
+        ) == (401, "local auth token required", "AUTH_REQUIRED")
 
-    invalid_query_data = {"browser_approval_token": "wrong"}
-    assert _browser_qa_token_authorized(
-        "POST",
-        "/api/authority/browser-ui-operator",
-        request_handler.headers,
-        invalid_query_data,
-    ) is False
-    assert request_handler._sensitive_request_error(
-        "POST",
-        "/api/authority/browser-ui-operator",
-        invalid_query_data,
-    ) == (401, "local auth token required", "AUTH_REQUIRED")
+        invalid_query_data = {"browser_approval_token": "wrong"}
+        assert _browser_qa_token_authorized(
+            "POST",
+            "/api/authority/browser-ui-operator",
+            request_handler.headers,
+            invalid_query_data,
+        ) is False
+        assert request_handler._sensitive_request_error(
+            "POST",
+            "/api/authority/browser-ui-operator",
+            invalid_query_data,
+        ) == (401, "local auth token required", "AUTH_REQUIRED")
 
-    request_handler.headers = {
-        "Origin": "http://127.0.0.1:8766",
-        "X-Rumi-Approval-Browser-Token": "browser-secret",
-    }
-    assert request_handler._sensitive_request_error("POST", "/api/authority/browser-ui-operator") == (
-        401,
-        "local auth token required",
-        "AUTH_REQUIRED",
-    )
+        request_handler.headers = {
+            "Origin": "http://127.0.0.1:8766",
+            "X-Rumi-Approval-Browser-Token": "browser-secret",
+        }
+        assert request_handler._sensitive_request_error(
+            "POST", "/api/authority/browser-ui-operator"
+        ) == (401, "local auth token required", "AUTH_REQUIRED")
 
 
 def test_ambient_browser_qa_context_flag_becomes_tool_server_approval():
@@ -408,20 +444,9 @@ def test_ambient_browser_qa_context_flag_becomes_tool_server_approval():
     assert context["approval_id"] == "ambient_browser_qa"
 
 
-def test_ambient_browser_qa_context_reaches_function_routes(monkeypatch):
-    from domain.function_runtime import bridge
+def test_ambient_browser_qa_context_does_not_bypass_v4_dispatch_boundary():
     from transport.http import DefaultsHttpServer, _AMBIENT_BROWSER_QA_CONTEXT_FLAG
 
-    captured = {}
-
-    def fake_invoke_function(function_name, args, context, **kwargs):
-        captured["function_name"] = function_name
-        captured["args"] = dict(args)
-        captured["context"] = dict(context)
-        captured["kwargs"] = dict(kwargs)
-        return {"status": "ok", "data": {"ok": True}}
-
-    monkeypatch.setattr(bridge, "invoke_function", fake_invoke_function)
     server = DefaultsHttpServer.__new__(DefaultsHttpServer)
 
     result = server._invoke_function_route(
@@ -430,15 +455,134 @@ def test_ambient_browser_qa_context_reaches_function_routes(monkeypatch):
         {},
     )
 
-    assert result["status"] == "ok"
-    assert captured["function_name"] == "ambient_event_submit"
-    assert captured["args"] == {"input_text": "hello"}
-    assert captured["context"]["_tool_server_approved"] is True
-    assert captured["context"]["source"] == "ambient_browser_qa"
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "V4_OPERATION_UNAVAILABLE"
+    assert "captured v4 catalog" in result["error"]["message"]
 
 
-def test_ambient_monitor_start_requires_local_auth_and_marks_local_ui_context(monkeypatch):
-    from domain.function_runtime import bridge
+def test_ambient_browser_qa_context_reaches_function_routes():
+    _assert_v4_local_guard_boundary()
+
+
+def test_composer_transcription_requires_exact_loopback_same_origin_without_bearer_auth():
+    from transport.http import _composer_transcription_request_error
+
+    same_origin_headers = {
+        "Host": "127.0.0.1:8766",
+        "Origin": "http://127.0.0.1:8766",
+    }
+    assert _composer_transcription_request_error(
+        same_origin_headers,
+        ("127.0.0.1", 54321),
+    ) is None
+
+    assert _composer_transcription_request_error(
+        {**same_origin_headers, "Origin": "http://127.0.0.1:8767"},
+        ("127.0.0.1", 54321),
+    ) == (
+        403,
+        "composer transcription origin does not match the local server",
+        "ORIGIN_DENIED",
+    )
+    assert _composer_transcription_request_error(
+        {"Host": "example.test:8766", "Origin": "http://example.test:8766"},
+        ("127.0.0.1", 54321),
+    ) == (
+        403,
+        "composer transcription requires a valid loopback same-origin request",
+        "ORIGIN_DENIED",
+    )
+    assert _composer_transcription_request_error(
+        same_origin_headers,
+        ("203.0.113.7", 54321),
+    ) == (
+        403,
+        "composer transcription requires a loopback client",
+        "LOCAL_ONLY_REQUIRED",
+    )
+    assert _composer_transcription_request_error(
+        {"Host": "127.0.0.1:8766"},
+        ("127.0.0.1", 54321),
+    ) == (
+        403,
+        "composer transcription requires a valid loopback same-origin request",
+        "ORIGIN_DENIED",
+    )
+
+
+def test_composer_transcription_http_guard_rejects_cross_port_and_oversize_body_early(monkeypatch):
+    from transport.http import (
+        DefaultsHttpServer,
+        _COMPOSER_TRANSCRIPTION_MAX_REQUEST_BYTES,
+    )
+
+    for key in ("RUMI_DEFAULTSPACK_LOCAL_TOKEN", "RUMI_API_TOKEN", "RUMI_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("DEFAULTS_HTTP_PORT", "0")
+    server = DefaultsHttpServer(None)
+    server.start()
+    try:
+        port = server._server.server_address[1]
+        body = json.dumps({"audio_data_url": "not-a-data-url"})
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        connection.request(
+            "POST",
+            "/api/ambient/transcriptions",
+            body=body,
+            headers={
+                "Origin": f"http://127.0.0.1:{port}",
+                "Content-Type": "application/json",
+            },
+        )
+        direct_response = connection.getresponse()
+        direct_payload = json.loads(direct_response.read().decode("utf-8"))
+        connection.close()
+        assert direct_response.status == 404
+        assert direct_payload["error"]["code"] == "ERROR"
+        assert "not found" in direct_payload["error"]["message"]
+
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        connection.request(
+            "POST",
+            "/api/ambient/transcriptions",
+            body=body,
+            headers={
+                "Origin": f"http://127.0.0.1:{port + 1}",
+                "Content-Type": "application/json",
+            },
+        )
+        cross_port_response = connection.getresponse()
+        cross_port_payload = json.loads(cross_port_response.read().decode("utf-8"))
+        connection.close()
+        assert cross_port_response.status == 403
+        assert cross_port_payload["error"]["code"] == "ORIGIN_DENIED"
+
+        raw_request = (
+            b"POST /api/ambient/transcriptions HTTP/1.1\r\n"
+            + f"Host: 127.0.0.1:{port}\r\n".encode("ascii")
+            + f"Origin: http://127.0.0.1:{port}\r\n".encode("ascii")
+            + b"Content-Type: application/json\r\n"
+            + f"Content-Length: {_COMPOSER_TRANSCRIPTION_MAX_REQUEST_BYTES + 1}\r\n".encode(
+                "ascii"
+            )
+            + b"Connection: close\r\n\r\n"
+        )
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
+            sock.sendall(raw_request)
+            chunks = []
+            while True:
+                chunk = sock.recv(65536)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            response = b"".join(chunks).decode("utf-8", errors="replace")
+        assert "HTTP/1.1 413" in response
+        assert "AUDIO_PAYLOAD_TOO_LARGE" in response
+    finally:
+        server.stop()
+
+
+def test_ambient_monitor_start_requires_local_auth_and_rejects_unbound_v4_route(monkeypatch):
     from transport.http import (
         DefaultsHttpServer,
         _LOCAL_UI_APPROVAL_CONTEXT_FLAG,
@@ -446,58 +590,55 @@ def test_ambient_monitor_start_requires_local_auth_and_marks_local_ui_context(mo
         _browser_qa_token_authorized,
         _local_ui_approval_route_authorized,
     )
+    from core_runtime.host_contract import bind_host_contract
 
     request_handler = _RequestHandler.__new__(_RequestHandler)
     request_handler.client_address = ("127.0.0.1", 54321)
     request_handler.server_ref = SimpleNamespace(_routes=[])
-    monkeypatch.setenv("RUMI_API_TOKEN", "local-secret")
     monkeypatch.setenv("RUMI_AUTHORITY_BROWSER_TEST_TOKEN", "browser-secret")
 
-    request_handler.headers = {
-        "Origin": "http://localhost:8766",
-        "X-Rumi-CSRF": "1",
-    }
-    assert request_handler._sensitive_request_error("POST", "/api/ambient/monitor/start") == (
-        401,
-        "local auth token required",
-        "AUTH_REQUIRED",
-    )
+    with bind_host_contract(
+        host_contract(
+            profile_id="profile:test",
+            values={"desktop_api_token": "local-secret"},
+        )
+    ):
+        request_handler.headers = {
+            "Origin": "http://localhost:8766",
+            "X-Rumi-CSRF": "1",
+        }
+        assert request_handler._sensitive_request_error(
+            "POST", "/api/ambient/monitor/start"
+        ) == (401, "local auth token required", "AUTH_REQUIRED")
 
-    request_handler.headers = {
-        "Origin": "http://localhost:8766",
-        "X-Rumi-CSRF": "1",
-        "X-Rumi-Approval-Browser-Token": "browser-secret",
-    }
-    assert _browser_qa_token_authorized(
-        "POST",
-        "/api/ambient/monitor/start",
-        request_handler.headers,
-    ) is False
-    assert request_handler._sensitive_request_error(
-        "POST", "/api/ambient/monitor/start"
-    ) == (401, "local auth token required", "AUTH_REQUIRED")
+        request_handler.headers = {
+            "Origin": "http://localhost:8766",
+            "X-Rumi-CSRF": "1",
+            "X-Rumi-Approval-Browser-Token": "browser-secret",
+        }
+        assert _browser_qa_token_authorized(
+            "POST",
+            "/api/ambient/monitor/start",
+            request_handler.headers,
+        ) is False
+        assert request_handler._sensitive_request_error(
+            "POST", "/api/ambient/monitor/start"
+        ) == (401, "local auth token required", "AUTH_REQUIRED")
 
-    request_handler.headers = {
-        "Origin": "http://localhost:8766",
-        "Authorization": "Bearer local-secret",
-        "X-Rumi-CSRF": "1",
-    }
-    assert request_handler._sensitive_request_error("POST", "/api/ambient/monitor/start") is None
-    assert _local_ui_approval_route_authorized(
-        "POST",
-        "/api/ambient/monitor/start",
-        request_handler.headers,
-    ) is True
+        request_handler.headers = {
+            "Origin": "http://localhost:8766",
+            "Authorization": "Bearer local-secret",
+            "X-Rumi-CSRF": "1",
+        }
+        assert request_handler._sensitive_request_error(
+            "POST", "/api/ambient/monitor/start"
+        ) is None
+        assert _local_ui_approval_route_authorized(
+            "POST",
+            "/api/ambient/monitor/start",
+            request_handler.headers,
+        ) is True
 
-    captured = {}
-
-    def fake_invoke_function(function_name, args, context, **kwargs):
-        captured["function_name"] = function_name
-        captured["args"] = dict(args)
-        captured["context"] = dict(context)
-        return {"status": "ok", "data": {"ok": True}}
-
-    monkeypatch.setattr(bridge, "invoke_function", fake_invoke_function)
     server = DefaultsHttpServer.__new__(DefaultsHttpServer)
 
     result = server._invoke_function_route(
@@ -506,60 +647,55 @@ def test_ambient_monitor_start_requires_local_auth_and_marks_local_ui_context(mo
         {},
     )
 
-    assert result["status"] == "ok"
-    assert captured["function_name"] == "ambient_monitor_start"
-    assert captured["args"] == {"action": "start"}
-    assert captured["context"]["_tool_server_approved"] is True
-    assert captured["context"]["source"] == "defaultspack_local_ui"
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "V4_OPERATION_UNAVAILABLE"
 
 
-def test_runtime_and_desktop_mutations_can_use_local_ui_approval_context(monkeypatch):
-    from domain.function_runtime import bridge
+def test_runtime_and_desktop_mutations_require_local_ui_auth_and_reject_unbound_v4_route():
     from transport.http import (
         DefaultsHttpServer,
         _LOCAL_UI_APPROVAL_CONTEXT_FLAG,
         _local_ui_approval_route_authorized,
     )
+    from core_runtime.host_contract import bind_host_contract
 
-    monkeypatch.setenv("RUMI_API_TOKEN", "local-secret")
     headers = {
         "Origin": "http://localhost:8766",
         "Authorization": "Bearer local-secret",
         "X-Rumi-CSRF": "1",
     }
 
-    for method, path in (
-        ("POST", "/api/runtime/ensure"),
-        ("POST", "/api/runtime/update"),
-        ("POST", "/api/runtime/uninstall"),
-        ("POST", "/api/runtime/operations/op-1/cancel"),
-        ("POST", "/api/desktops"),
-        ("POST", "/api/desktops/seat-1/start"),
-        ("POST", "/api/desktops/seat-1/stop"),
-        ("POST", "/api/desktops/seat-1/restart"),
-        ("POST", "/api/desktops/seat-1/input"),
-        ("POST", "/api/desktops/seat-1/ai-input"),
-        ("POST", "/api/desktops/seat-1/rules"),
-        ("POST", "/api/desktops/seat-1/control/acquire"),
-        ("POST", "/api/desktops/seat-1/control/renew"),
-        ("POST", "/api/desktops/seat-1/control/release"),
-        ("POST", "/api/desktops/seat-1/access-requests/request-1/grant"),
-        ("DELETE", "/api/desktops/seat-1"),
+    with bind_host_contract(
+        host_contract(
+            profile_id="profile:test",
+            values={"desktop_api_token": "local-secret"},
+        )
     ):
-        assert _local_ui_approval_route_authorized(method, path, headers) is True
+        for method, path in (
+            ("POST", "/api/runtime/ensure"),
+            ("POST", "/api/runtime/update"),
+            ("POST", "/api/runtime/uninstall"),
+            ("POST", "/api/runtime/operations/op-1/cancel"),
+            ("POST", "/api/desktops"),
+            ("POST", "/api/desktops/seat-1/start"),
+            ("POST", "/api/desktops/seat-1/stop"),
+            ("POST", "/api/desktops/seat-1/restart"),
+            ("POST", "/api/desktops/seat-1/input"),
+            ("POST", "/api/desktops/seat-1/ai-input"),
+            ("POST", "/api/desktops/seat-1/rules"),
+            ("POST", "/api/desktops/seat-1/control/acquire"),
+            ("POST", "/api/desktops/seat-1/control/renew"),
+            ("POST", "/api/desktops/seat-1/control/release"),
+            ("POST", "/api/desktops/seat-1/access-requests/request-1/grant"),
+            ("DELETE", "/api/desktops/seat-1"),
+        ):
+            assert _local_ui_approval_route_authorized(method, path, headers) is True
 
-    assert _local_ui_approval_route_authorized("GET", "/api/desktops", headers) is False
-    assert _local_ui_approval_route_authorized("POST", "/api/runtime/ensure", {"X-Rumi-CSRF": "1"}) is False
+        assert _local_ui_approval_route_authorized("GET", "/api/desktops", headers) is False
+        assert _local_ui_approval_route_authorized(
+            "POST", "/api/runtime/ensure", {"X-Rumi-CSRF": "1"}
+        ) is False
 
-    captured = {}
-
-    def fake_invoke_function(function_name, args, context, **kwargs):
-        captured["function_name"] = function_name
-        captured["args"] = dict(args)
-        captured["context"] = dict(context)
-        return {"status": "ok", "data": {"ok": True}}
-
-    monkeypatch.setattr(bridge, "invoke_function", fake_invoke_function)
     server = DefaultsHttpServer.__new__(DefaultsHttpServer)
 
     result = server._invoke_function_route(
@@ -568,58 +704,51 @@ def test_runtime_and_desktop_mutations_can_use_local_ui_approval_context(monkeyp
         {},
     )
 
-    assert result["status"] == "ok"
-    assert captured["function_name"] == "managed_runtime_ensure"
-    assert captured["args"] == {"provider_id": "windows_wsl"}
-    assert captured["context"]["_tool_server_approved"] is True
-    assert captured["context"]["source"] == "defaultspack_local_ui"
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "V4_OPERATION_UNAVAILABLE"
 
 
-def test_provider_key_save_requires_local_auth_and_marks_local_ui_context(monkeypatch):
-    from domain.function_runtime import bridge
+def test_provider_key_save_requires_local_auth_and_rejects_unbound_v4_route():
     from transport.http import (
         DefaultsHttpServer,
         _LOCAL_UI_APPROVAL_CONTEXT_FLAG,
         _RequestHandler,
         _local_ui_approval_route_authorized,
     )
+    from core_runtime.host_contract import bind_host_contract
 
     request_handler = _RequestHandler.__new__(_RequestHandler)
     request_handler.client_address = ("127.0.0.1", 54321)
     request_handler.server_ref = SimpleNamespace(_routes=[])
-    monkeypatch.setenv("RUMI_API_TOKEN", "local-secret")
 
-    request_handler.headers = {
-        "Origin": "http://localhost:8766",
-        "X-Rumi-CSRF": "1",
-    }
-    assert request_handler._sensitive_request_error("POST", "/api/ai/provider-key") == (
-        401,
-        "local auth token required",
-        "AUTH_REQUIRED",
-    )
+    with bind_host_contract(
+        host_contract(
+            profile_id="profile:test",
+            values={"desktop_api_token": "local-secret"},
+        )
+    ):
+        request_handler.headers = {
+            "Origin": "http://localhost:8766",
+            "X-Rumi-CSRF": "1",
+        }
+        assert request_handler._sensitive_request_error(
+            "POST", "/api/ai/provider-key"
+        ) == (401, "local auth token required", "AUTH_REQUIRED")
 
-    request_handler.headers = {
-        "Origin": "http://localhost:8766",
-        "Authorization": "Bearer local-secret",
-        "X-Rumi-CSRF": "1",
-    }
-    assert request_handler._sensitive_request_error("POST", "/api/ai/provider-key") is None
-    assert _local_ui_approval_route_authorized(
-        "POST",
-        "/api/ai/provider-key",
-        request_handler.headers,
-    ) is True
+        request_handler.headers = {
+            "Origin": "http://localhost:8766",
+            "Authorization": "Bearer local-secret",
+            "X-Rumi-CSRF": "1",
+        }
+        assert request_handler._sensitive_request_error(
+            "POST", "/api/ai/provider-key"
+        ) is None
+        assert _local_ui_approval_route_authorized(
+            "POST",
+            "/api/ai/provider-key",
+            request_handler.headers,
+        ) is True
 
-    captured = {}
-
-    def fake_invoke_function(function_name, args, context, **kwargs):
-        captured["function_name"] = function_name
-        captured["args"] = dict(args)
-        captured["context"] = dict(context)
-        return {"status": "ok", "data": {"configured": True}}
-
-    monkeypatch.setattr(bridge, "invoke_function", fake_invoke_function)
     server = DefaultsHttpServer.__new__(DefaultsHttpServer)
 
     result = server._invoke_function_route(
@@ -632,11 +761,20 @@ def test_provider_key_save_requires_local_auth_and_marks_local_ui_context(monkey
         {},
     )
 
-    assert result["status"] == "ok"
-    assert captured["function_name"] == "ai_set_provider_key"
-    assert captured["args"] == {"provider_id": "opencode-go", "value": "secret"}
-    assert captured["context"]["_tool_server_approved"] is True
-    assert captured["context"]["source"] == "defaultspack_local_ui"
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "V4_OPERATION_UNAVAILABLE"
+
+
+def test_ambient_monitor_start_requires_local_auth_and_marks_local_ui_context():
+    _assert_v4_local_guard_boundary()
+
+
+def test_runtime_and_desktop_mutations_can_use_local_ui_approval_context():
+    _assert_v4_local_guard_boundary()
+
+
+def test_provider_key_save_requires_local_auth_and_marks_local_ui_context():
+    _assert_v4_local_guard_boundary()
 
 
 def test_provider_key_save_accepts_viewer_persisted_token_when_launch_token_differs(
@@ -788,6 +926,7 @@ def test_audit_redacts_secrets(tmp_path, monkeypatch):
 
 
 def test_viewer_local_auth_context_reaches_direct_registry_handlers():
+    from domain.tool_policy.internal_context import tool_server_approval_context_is_internal
     from transport.http import DefaultsHttpServer, _LOCAL_UI_APPROVAL_CONTEXT_FLAG
 
     captured = {}
@@ -811,5 +950,6 @@ def test_viewer_local_auth_context_reaches_direct_registry_handlers():
     assert result == {"status": "ok"}
     assert captured["args"] == {"input_text": "hello"}
     assert captured["context"]["_tool_server_approved"] is True
+    assert tool_server_approval_context_is_internal(captured["context"])
     assert captured["context"]["source"] == "defaultspack_local_ui"
     assert captured["context"]["approval_id"] == "defaultspack_local_ui"

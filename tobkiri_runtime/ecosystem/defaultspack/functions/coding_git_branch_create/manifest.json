@@ -1,6 +1,6 @@
 {
   "function_id": "coding_git_branch_create",
-  "description": "Create a git branch.",
+  "description": "Unavailable: Git branch create/switch requires a Host workspace mutation lease.",
   "tags": [
     "coding"
   ],
