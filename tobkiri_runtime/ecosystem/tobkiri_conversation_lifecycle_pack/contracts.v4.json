@@ -26,10 +26,10 @@
         "generator": "tobkiri-protocol",
         "generator_version": "1.0.0",
         "normative": false,
-        "repository_commit": "ad667df457e53125b8053d44e3cc94b0eaf4579d",
-        "repository_tree": "2943da046c87d8090d1fe8ea65dc2a48192a4c400848c4e3c3e3790c2f8fcb20",
+        "repository_commit": "58037150a3c01dd45cbd3e6e0de95ff7ff119c92",
+        "repository_tree": "483556709d4cecae9ae777c526ba2436cf55b4216686e7ad86a780c085d6b920",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:91b8a0454586449207c15455f0fb82d39ec9d981a00bd5cbc4cb846e27ebce21",
+        "source_digest": "sha256:1540023c74bea2ba36bbebee67caf6f1237bdae8e8f5be051bd3548ea520a64f",
         "source_kind": "repository",
         "source_path": "ecosystem/tobkiri_conversation_lifecycle_pack/pack-source.v1.json"
       },
@@ -47,7 +47,7 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:f0af6ab60759292b05635a55a38b92b21df1a7d586b7c68a51b695b0477d2266",
+      "revision_digest": "sha256:2153a87b4a8416a9c9464ca4e1dfc0b60ce9eb5ae582944f934abeae777f659b",
       "schema_catalog": {
         "sha256:83445aed0fdb09b3914bb6ef42d9aa15d5f4e107a9ca0e8a03583e72255adb79": {
           "additionalProperties": false,
@@ -106,10 +106,10 @@
         "generator": "tobkiri-protocol",
         "generator_version": "1.0.0",
         "normative": false,
-        "repository_commit": "ad667df457e53125b8053d44e3cc94b0eaf4579d",
-        "repository_tree": "2943da046c87d8090d1fe8ea65dc2a48192a4c400848c4e3c3e3790c2f8fcb20",
+        "repository_commit": "58037150a3c01dd45cbd3e6e0de95ff7ff119c92",
+        "repository_tree": "483556709d4cecae9ae777c526ba2436cf55b4216686e7ad86a780c085d6b920",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:91b8a0454586449207c15455f0fb82d39ec9d981a00bd5cbc4cb846e27ebce21",
+        "source_digest": "sha256:1540023c74bea2ba36bbebee67caf6f1237bdae8e8f5be051bd3548ea520a64f",
         "source_kind": "repository",
         "source_path": "ecosystem/tobkiri_conversation_lifecycle_pack/pack-source.v1.json"
       },
@@ -127,7 +127,7 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:fe67cc708d5c2c9e9fcc1e70e8984b32a406a415dcd037e36572ef78fa784bcb",
+      "revision_digest": "sha256:eb2a7705f3eb379b985c46708345b9d2315c1e1589e1ab3d7d5035a46c17cf11",
       "schema_catalog": {
         "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
           "type": "object"
@@ -181,7 +181,7 @@
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:8585f955bfb1dc2eed49f6337ff666654c6c408ebfd9d3bf2f12d9d5a846e62f",
+          "input_schema_digest": "sha256:d88c0e445cff94ffdfe9bb4e721ff36a0e835265e51e871ded9ec7d94fb3e3c2",
           "operation_id": "tobkiri_conversation_lifecycle_pack.archive-job-adapter",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "scope_semantics": "host_broker"
@@ -193,10 +193,10 @@
         "generator": "tobkiri-protocol",
         "generator_version": "1.0.0",
         "normative": false,
-        "repository_commit": "ad667df457e53125b8053d44e3cc94b0eaf4579d",
-        "repository_tree": "2943da046c87d8090d1fe8ea65dc2a48192a4c400848c4e3c3e3790c2f8fcb20",
+        "repository_commit": "58037150a3c01dd45cbd3e6e0de95ff7ff119c92",
+        "repository_tree": "483556709d4cecae9ae777c526ba2436cf55b4216686e7ad86a780c085d6b920",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:91b8a0454586449207c15455f0fb82d39ec9d981a00bd5cbc4cb846e27ebce21",
+        "source_digest": "sha256:1540023c74bea2ba36bbebee67caf6f1237bdae8e8f5be051bd3548ea520a64f",
         "source_kind": "repository",
         "source_path": "ecosystem/tobkiri_conversation_lifecycle_pack/pack-source.v1.json"
       },
@@ -215,24 +215,28 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:46e6d63bb110665937bf5161be9d5d48d74a115c53e8c560b22b7afd03d5694b",
+      "revision_digest": "sha256:3cd700172901931f15b6a100d809c44d9f545fcde007475215839f3fe20125e6",
       "schema_catalog": {
-        "sha256:8585f955bfb1dc2eed49f6337ff666654c6c408ebfd9d3bf2f12d9d5a846e62f": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:d88c0e445cff94ffdfe9bb4e721ff36a0e835265e51e871ded9ec7d94fb3e3c2": {
           "additionalProperties": false,
           "properties": {
-            "_session_id": {
-              "type": "string"
-            },
             "action_id": {
+              "maxLength": 256,
               "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
               "type": "string"
             },
             "idempotency_key": {
+              "maxLength": 256,
               "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
               "type": "string"
             },
             "lease_id": {
-              "minLength": 1,
+              "maxLength": 256,
               "type": "string"
             },
             "operation": {
@@ -244,25 +248,22 @@
               ]
             },
             "payload": {
-              "maxProperties": 0,
               "type": "object"
             },
             "profile_id": {
+              "maxLength": 256,
               "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
               "type": "string"
             },
             "schedule_id": {
-              "minLength": 1,
+              "maxLength": 256,
               "type": "string"
             }
           },
           "required": [
-            "profile_id",
             "operation"
           ],
-          "type": "object"
-        },
-        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
           "type": "object"
         }
       },
@@ -271,5 +272,5 @@
     }
   ],
   "pack_id": "tobkiri_conversation_lifecycle_pack",
-  "source_identity": "sha256:91b8a0454586449207c15455f0fb82d39ec9d981a00bd5cbc4cb846e27ebce21"
+  "source_identity": "sha256:1540023c74bea2ba36bbebee67caf6f1237bdae8e8f5be051bd3548ea520a64f"
 }

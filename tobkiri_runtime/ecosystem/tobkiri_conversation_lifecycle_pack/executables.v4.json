@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:058b3120fab540ed1a2bc328865f22f822b2b634f29bf4fe416332cd75d2bcdd",
+  "catalog_digest": "sha256:c3530d564b8ca04ac8e9ca2a178c9605ba63485bcbc1a007f634c4c7af89e78b",
   "pack_id": "tobkiri_conversation_lifecycle_pack",
-  "source_identity": "sha256:91b8a0454586449207c15455f0fb82d39ec9d981a00bd5cbc4cb846e27ebce21",
+  "source_identity": "sha256:1540023c74bea2ba36bbebee67caf6f1237bdae8e8f5be051bd3548ea520a64f",
   "variants": [
     {
       "architecture": "any",
@@ -51,7 +51,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:f0af6ab60759292b05635a55a38b92b21df1a7d586b7c68a51b695b0477d2266",
+          "revision_digest": "sha256:2153a87b4a8416a9c9464ca4e1dfc0b60ce9eb5ae582944f934abeae777f659b",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }
@@ -114,7 +114,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:fe67cc708d5c2c9e9fcc1e70e8984b32a406a415dcd037e36572ef78fa784bcb",
+          "revision_digest": "sha256:eb2a7705f3eb379b985c46708345b9d2315c1e1589e1ab3d7d5035a46c17cf11",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }
@@ -144,19 +144,20 @@
           "input_schema": {
             "additionalProperties": false,
             "properties": {
-              "_session_id": {
-                "type": "string"
-              },
               "action_id": {
+                "maxLength": 256,
                 "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
                 "type": "string"
               },
               "idempotency_key": {
+                "maxLength": 256,
                 "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
                 "type": "string"
               },
               "lease_id": {
-                "minLength": 1,
+                "maxLength": 256,
                 "type": "string"
               },
               "operation": {
@@ -168,20 +169,20 @@
                 ]
               },
               "payload": {
-                "maxProperties": 0,
                 "type": "object"
               },
               "profile_id": {
+                "maxLength": 256,
                 "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
                 "type": "string"
               },
               "schedule_id": {
-                "minLength": 1,
+                "maxLength": 256,
                 "type": "string"
               }
             },
             "required": [
-              "profile_id",
               "operation"
             ],
             "type": "object"
@@ -190,7 +191,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:46e6d63bb110665937bf5161be9d5d48d74a115c53e8c560b22b7afd03d5694b",
+          "revision_digest": "sha256:3cd700172901931f15b6a100d809c44d9f545fcde007475215839f3fe20125e6",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

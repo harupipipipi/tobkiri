@@ -71,5 +71,59 @@
     "enabled": false,
     "real_model": false,
     "computer_use": false
+  },
+  "shared_job_adapter_schemas": {
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "enum": [
+            "describe",
+            "dispatch",
+            "cancel",
+            "status"
+          ]
+        },
+        "profile_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+        },
+        "action_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+        },
+        "payload": {
+          "type": "object"
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+        },
+        "schedule_id": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "lease_id": {
+          "type": "string",
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "operation"
+      ]
+    },
+    "output": {
+      "type": "object"
+    },
+    "error": {
+      "type": "object"
+    }
   }
 }

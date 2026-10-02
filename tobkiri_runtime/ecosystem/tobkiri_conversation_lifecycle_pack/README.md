@@ -6,7 +6,10 @@ This optional Pack archives conversations whose explicitly selected mode is
 `completed_at_ms + 3_600_000` using an exact conversation revision. History is
 retained. Manual conversations keep their existing behavior.
 
-Successful final assistant completion is recorded in the owner transaction.
+Successful final assistant completion is recorded in the owner transaction only
+from an authorized saved-turn receipt. The Host binds its terminal state to the
+authenticated execution result; public transcript writes cannot create a
+completion timestamp. Missing terminal evidence remains unknown.
 Running, streaming, user-answer wait, approval wait, cancellation and failure do
 not create an archive deadline. A new user message cancels the old deadline;
 the next successful completion creates a new one. Completion timestamps survive
@@ -46,6 +49,8 @@ user turn. A gap of at least 3,600 seconds becomes a system-role runtime message
 containing the completion timestamp, message receipt timestamp and UTC elapsed
 seconds. User-authored content stays unchanged. The context grants no approval
 and does not force a web/tool call.
+The canonical saved-turn path uses the owner's atomic user receipt timestamps
+after appending the message, so resetting the active state cannot lose the gap.
 
 PR #1410's internal-context behavior is adopted; its `updated_at` inference,
 streaming-only exclusions, and generated migration evidence are omitted in
