@@ -340,7 +340,7 @@ def test_real_approval_wait_then_new_invocation_resumes_frozen_request(
             context=replace(fresh.envelope.context, caller_session_id="fresh-outer-session"),
         )
         result = fixture.call("run.advance", {"run_id": "run.review"}, fresh)
-        assert result["run"]["state"] == "succeeded"
+        assert result["run"]["state"] == "succeeded", result
         assert result["attempts"][0]["request"] == record["request"]
         assert result["attempts"][0]["outcome"] == {"review": "reached"}
         assert first.envelope.cancellation_requested.is_set() is False
