@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "tobkiri_agent_control_pack",
-  "source_identity": "sha256:58c62901612554c7494020b6b7b6532011d7b8b4cf4ae72cbb9736a32dd3ae1a",
+  "source_identity": "sha256:3ddff5a990944565042007d6597965833d67de92c483e3fa5ba8c1ed502df51b",
   "variants": [
     {
       "variant_id": "tobkiri_agent_control_pack.work-plan.action.python",
       "function_id": "tobkiri_agent_control_pack.work-plan.action",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:22ab3693bcaa8dc0d96e0528f8031ed0a5f5f5b8c1ec941c94c9719ade7e933d",
+      "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -235,7 +235,7 @@
       "variant_id": "tobkiri_agent_control_pack.work-plan.context.python",
       "function_id": "tobkiri_agent_control_pack.work-plan.context",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:22ab3693bcaa8dc0d96e0528f8031ed0a5f5f5b8c1ec941c94c9719ade7e933d",
+      "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -334,7 +334,7 @@
       "variant_id": "tobkiri_agent_control_pack.work-plan.execute.python",
       "function_id": "tobkiri_agent_control_pack.work-plan.execute",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:22ab3693bcaa8dc0d96e0528f8031ed0a5f5f5b8c1ec941c94c9719ade7e933d",
+      "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -411,7 +411,7 @@
       "variant_id": "tobkiri_agent_control_pack.work-plan.inbox.python",
       "function_id": "tobkiri_agent_control_pack.work-plan.inbox",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:22ab3693bcaa8dc0d96e0528f8031ed0a5f5f5b8c1ec941c94c9719ade7e933d",
+      "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -875,7 +875,7 @@
       "variant_id": "tobkiri_agent_control_pack.work-plan.job.python",
       "function_id": "tobkiri_agent_control_pack.work-plan.job",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:22ab3693bcaa8dc0d96e0528f8031ed0a5f5f5b8c1ec941c94c9719ade7e933d",
+      "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -952,7 +952,7 @@
       "variant_id": "tobkiri_agent_control_pack.work-plan.replace.python",
       "function_id": "tobkiri_agent_control_pack.work-plan.replace",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:22ab3693bcaa8dc0d96e0528f8031ed0a5f5f5b8c1ec941c94c9719ade7e933d",
+      "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -1041,7 +1041,7 @@
       "variant_id": "tobkiri_agent_control_pack.work-plan.resource.python",
       "function_id": "tobkiri_agent_control_pack.work-plan.resource",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:22ab3693bcaa8dc0d96e0528f8031ed0a5f5f5b8c1ec941c94c9719ade7e933d",
+      "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -1106,7 +1106,7 @@
       "variant_id": "tobkiri_agent_control_pack.work-plan.review.python",
       "function_id": "tobkiri_agent_control_pack.work-plan.review",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:22ab3693bcaa8dc0d96e0528f8031ed0a5f5f5b8c1ec941c94c9719ade7e933d",
+      "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -1174,7 +1174,7 @@
       "variant_id": "tobkiri_agent_control_pack.work-plan.settings.python",
       "function_id": "tobkiri_agent_control_pack.work-plan.settings",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:22ab3693bcaa8dc0d96e0528f8031ed0a5f5f5b8c1ec941c94c9719ade7e933d",
+      "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -1186,7 +1186,7 @@
         {
           "contract_id": "tobkiri.action.work-plan.settings.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:5742af96aa4600f64969399fbaa7825ae900a35aed1140cda0b7775a5edd8884",
+          "revision_digest": "sha256:ed84b4e88da1cb0f74b13b2b3c30458e8340aaec3783540f2c4be41828420be7",
           "operation_id": "tobkiri_agent_control_pack.work-plan-settings",
           "input_schema": {
             "additionalProperties": false,
@@ -1345,26 +1345,6 @@
                       }
                     ]
                   },
-                  "snapshot_receipt": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "resolved_profile_id": {
-                        "maxLength": 256,
-                        "minLength": 1,
-                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-                        "type": "string"
-                      },
-                      "store_revision": {
-                        "minimum": 0,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "resolved_profile_id",
-                      "store_revision"
-                    ],
-                    "type": "object"
-                  },
                   "thinking_policy": {
                     "additionalProperties": false,
                     "properties": {
@@ -1412,6 +1392,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:3d3e801647437012459757099ee998e6d4209ff4d549e6e7565003679ab0d712",
-  "catalog_digest": "sha256:432335106018f75c661c6cca65efde49966d2e374618294d3a0957cbabd2e64f"
+  "materialization_catalog_digest": "sha256:a2e6f210cf2dcde2be538a82e69a708bb755d75b0b81501b468f5abd94365d8b",
+  "catalog_digest": "sha256:9f715a99034d6f8f8bb82f34ce7df864cd38e1bcdee71cbe763475f742f2fd49"
 }

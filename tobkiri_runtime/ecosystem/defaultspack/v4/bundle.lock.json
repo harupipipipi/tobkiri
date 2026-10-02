@@ -459,12 +459,12 @@
     {
       "path": "packs/rumi_conversation_store_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:fdab7b49ceee615a5f578464cd134e1b49b6f91f62cca0e296cdde11e6ff9c2d"
+      "digest": "sha256:68bd0377696b8e891b339a075c95f8430b84f04bad52f0d33923dcd1480d3c25"
     },
     {
       "path": "packs/rumi_conversation_store_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:d929711fe3eefd2f4daaa413b5ada66b4500b98ffc3da6479ac2ebc5630dfec7"
+      "digest": "sha256:d32153ac985d0eabf8a6a3a534d02bcb583444a4af2974fcdf9e054ad7f37f7a"
     },
     {
       "path": "packs/rumi_credential_broker_pack.executables.v4.json",
@@ -1079,12 +1079,12 @@
     {
       "path": "packs/rumi_scheduler_surface_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:5534c157b2552110ef06847a53402f566d425605498e66e2d1f56bea42979982"
+      "digest": "sha256:30c239f72a370278ed5c91e9cb091e98110b53638a6f3f7ef43e0d7a81d565ce"
     },
     {
       "path": "packs/rumi_scheduler_surface_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:92336846e770c48d4e181393283599443edab0547d6f86b6dfeef5be7bdd1c65"
+      "digest": "sha256:1c9bdfb92567c0d5183e8be3dba1c0ec2d71488e241d148f808885b3885aa353"
     },
     {
       "path": "packs/rumi_scheduler_tool_adapter_pack.executables.v4.json",
@@ -1349,12 +1349,12 @@
     {
       "path": "packs/rumi_turn_runtime_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:de42c4b0f281559d513ab7dd1d1481de3ee7d5b1612e2274eced15500d8a43cc"
+      "digest": "sha256:b523843de154477fd5ef98b7853473cd642b8b0e23ce0eb14f5cb03c0cd895cf"
     },
     {
       "path": "packs/rumi_turn_runtime_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:20a3a3fe09342f4576d8a156507ecc9688732430647d98efffd9857c11ad53e0"
+      "digest": "sha256:fca2bbfbb2efa8d7697a978dbe2a5ab364250d00ec32f88842b83a9433970f27"
     },
     {
       "path": "packs/rumi_voice_mobile_pack.executables.v4.json",
@@ -1424,12 +1424,12 @@
     {
       "path": "packs/tobkiri_agent_control_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:64c6b3dc754763e0293e802ca80c1c2b250ffa4f205f5e6f62a0fe38fad35fa4"
+      "digest": "sha256:94973024a19bc51c86d0b25c7b86b6bbff8c3efc6daf2c5bb5405d113ca267e9"
     },
     {
       "path": "packs/tobkiri_agent_control_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:b925c81cd4e3c96b3a2be7890e9d819e8cac38876deb5d365cd962e85c9e59ce"
+      "digest": "sha256:89a4fdcb602e747d0fec23ff779cd7af6df2c76ecf227b4aa777725edfde8a2d"
     },
     {
       "path": "packs/tobkiri_conversation_lifecycle_pack.executables.v4.json",
@@ -1459,12 +1459,12 @@
     {
       "path": "packs/tobkiri_side_chat_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:a7a563c4debcb932f83bb4196257b066088c98106b78295f70e301b400967d7c"
+      "digest": "sha256:44499b76f4f722236a924de5bc996ea2370e516dfd9c4b20e66ac1a1a0fdf9d9"
     },
     {
       "path": "packs/tobkiri_side_chat_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:ad939e559054d14f062c6764e7afc121b6451ca4f469df21519a840e6477857d"
+      "digest": "sha256:8adb3f4077b3c8844569f17b26895288d7b7447bad66fedc0afe9dd4812b7692"
     },
     {
       "path": "packs/tobkiri_ui_settings_pack.executables.v4.json",

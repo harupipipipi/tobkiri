@@ -16,7 +16,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:9bf08287b74497472e114944eeb41c9bb111112c9ff80c02fbca8611d3c2e701"
+      "implementation_digest": "sha256:9768d890f40c645686c3f050d518b0cd514f733853b23ebc1bc25e82f4c9fb0d"
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
@@ -32,7 +32,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:9bf08287b74497472e114944eeb41c9bb111112c9ff80c02fbca8611d3c2e701"
+      "implementation_digest": "sha256:9768d890f40c645686c3f050d518b0cd514f733853b23ebc1bc25e82f4c9fb0d"
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
@@ -48,7 +48,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:9bf08287b74497472e114944eeb41c9bb111112c9ff80c02fbca8611d3c2e701"
+      "implementation_digest": "sha256:9768d890f40c645686c3f050d518b0cd514f733853b23ebc1bc25e82f4c9fb0d"
     },
     {
       "function_id": "rumi_conversation_store_pack.conversation-store.message-manage",
@@ -58,7 +58,7 @@
         "contract_id": "tobkiri.action.message.manage.v1",
         "contract_version": "1.0.0",
         "implementation_path": "runtime/store.py",
-        "implementation_digest": "sha256:bc797ffde5a044538c21332ee7dddee0cb3b94cf49529c5362d18334750fecd6",
+        "implementation_digest": "sha256:53c56b649b1d09537d84a2a85cbc565a4cd0edaa1b3684a071bc0ba8af522312",
         "operation_ids": [
           "rumi_conversation_store_pack.message-manage"
         ]
@@ -74,7 +74,7 @@
         "contract_id": "tobkiri.action.conversation.manage.v1",
         "contract_version": "1.0.0",
         "implementation_path": "runtime/store.py",
-        "implementation_digest": "sha256:bc797ffde5a044538c21332ee7dddee0cb3b94cf49529c5362d18334750fecd6",
+        "implementation_digest": "sha256:53c56b649b1d09537d84a2a85cbc565a4cd0edaa1b3684a071bc0ba8af522312",
         "operation_ids": [
           "rumi_conversation_store_pack.conversation-manage"
         ]
@@ -90,7 +90,7 @@
         "contract_id": "tobkiri.resource.conversation.v1",
         "contract_version": "1.0.0",
         "implementation_path": "runtime/store.py",
-        "implementation_digest": "sha256:bc797ffde5a044538c21332ee7dddee0cb3b94cf49529c5362d18334750fecd6",
+        "implementation_digest": "sha256:53c56b649b1d09537d84a2a85cbc565a4cd0edaa1b3684a071bc0ba8af522312",
         "operation_ids": [
           "rumi_conversation_store_pack.conversation-resource"
         ]
@@ -4901,26 +4901,6 @@
                         }
                       ]
                     },
-                    "snapshot_receipt": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "resolved_profile_id": {
-                          "maxLength": 256,
-                          "minLength": 1,
-                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-                          "type": "string"
-                        },
-                        "store_revision": {
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "resolved_profile_id",
-                        "store_revision"
-                      ],
-                      "type": "object"
-                    },
                     "thinking_policy": {
                       "additionalProperties": false,
                       "properties": {
@@ -6053,6 +6033,82 @@
             },
             "output": {
               "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "rumi_conversation_store_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_conversation_store_pack.conversation-store.completion",
+          "operation_ids": [
+            "rumi_conversation_store_pack.conversation-completion"
+          ],
+          "contract_id": "tobkiri.action.conversation.completion.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/completion_host.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "profile_id",
+                "operation",
+                "turn_id"
+              ],
+              "properties": {
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                },
+                "operation": {
+                  "const": "confirm"
+                },
+                "turn_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                },
+                "_session_id": {
+                  "type": "string"
+                }
+              }
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "confirmed",
+                "conversation_id",
+                "conversation_revision",
+                "store_revision"
+              ],
+              "properties": {
+                "confirmed": {
+                  "type": "boolean"
+                },
+                "conversation_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+                },
+                "conversation_revision": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "store_revision": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
             },
             "error": {
               "type": "object"

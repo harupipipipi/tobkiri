@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_scheduler_surface_pack",
-  "source_identity": "sha256:c8fb039583ed310c0724a782073837cd85b358ea365c98ab271e21faa45f9c18",
+  "source_identity": "sha256:8c40b381c528c61144c5d4d81aa2d97105ad0333a535b8d9ccf397a4c12ebe4a",
   "variants": [],
-  "materialization_catalog_digest": "sha256:23b210999386b90c3c9b43243d5e6033baaa62ea1a166617ca40f71518e0b27f",
-  "catalog_digest": "sha256:94e0f519624a2779922c69443e828e45af91d1a7a27a0244d7eeb28211e773d5"
+  "materialization_catalog_digest": "sha256:2cc98e7536d2a82bfb0a45ed8fbf2db4a7c6aa6f296336c7fd801a866b8900db",
+  "catalog_digest": "sha256:4984a8011b588e3a37c61b9a8cde6a8866775c74e8f58c969bfba9e02b7b9651"
 }

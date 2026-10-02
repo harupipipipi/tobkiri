@@ -8,7 +8,7 @@
     {
       "path": "runtime/input_context.py",
       "role": "runtime",
-      "sha256": "0919fa3694065d4c01782b0e07750aae137c8c656d7eefbe6cecff0355a8fd1b"
+      "sha256": "766e7c9d7fcc428785616608e8fa5eb624cc7da0c7435e811a0b8ea896fa8f72"
     }
   ],
   "schema_version": "rumi.artifact-manifest.v1"

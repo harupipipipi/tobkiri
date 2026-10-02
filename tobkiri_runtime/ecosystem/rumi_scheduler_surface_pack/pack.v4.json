@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:cbe8ed78eff73cc4d9991ddffb7be4fe4577eb8b7078bab5ccfb1e3b6ae0f38e",
+      "digest": "sha256:7652405d12c66d5da216a68a62549a36ecea8c51a0436f39c39dd8c0ba4d0f9b",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:5358ac8f5df69481a33dd81a3b739d8cb17c68b15987ca00d4796a5d3bdb929b",
+      "digest": "sha256:7ce817541c5130121ac2994ff7da685e8e13dd446656184833f5a31ea3956777",
       "kind": "sidecar",
       "path": "frontend/contributions/scheduler.json"
     },
@@ -29,9 +29,9 @@
   "contracts": [],
   "functions": [],
   "integrity": {
-    "artifact_set_digest": "sha256:9c75a2db9e50f2a361b5d31309282818f2851ca62eec0d2b0f01f89833b6ebb1",
-    "contract_catalog_digest": "sha256:7b4f374bd165f746f46dd800aef5d3ad9f951d8c0c53b29e9edd31b950091d67",
-    "source_identity": "sha256:f28bcebf1d726b270f44763bd19e0410a30d49b01f91fcdee505d7a2bad9e05a"
+    "artifact_set_digest": "sha256:5d19ae1e7e31946068a13407e39f2713811537810e5c466df84a4d1e5244796a",
+    "contract_catalog_digest": "sha256:b5f0e75fe56f2031eef012eace98c63a94e3ce56e511b94900de223cba34107e",
+    "source_identity": "sha256:f4db3185e4975de88fed6fe42199e4549265343c720c8613568739fee9e2b5c2"
   },
   "migration": {
     "compatibility": "read_only",
@@ -44,7 +44,7 @@
   },
   "operation_catalog": [],
   "pack": {
-    "artifact_digest": "sha256:9c75a2db9e50f2a361b5d31309282818f2851ca62eec0d2b0f01f89833b6ebb1",
+    "artifact_digest": "sha256:5d19ae1e7e31946068a13407e39f2713811537810e5c466df84a4d1e5244796a",
     "display_name": "Rumi Scheduler Surface",
     "id": "rumi_scheduler_surface_pack",
     "kind": "application",
@@ -54,7 +54,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:f28bcebf1d726b270f44763bd19e0410a30d49b01f91fcdee505d7a2bad9e05a",
+        "digest": "sha256:f4db3185e4975de88fed6fe42199e4549265343c720c8613568739fee9e2b5c2",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -65,7 +65,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:f28bcebf1d726b270f44763bd19e0410a30d49b01f91fcdee505d7a2bad9e05a",
+    "source_digest": "sha256:f4db3185e4975de88fed6fe42199e4549265343c720c8613568739fee9e2b5c2",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_scheduler_surface_pack"
   },
