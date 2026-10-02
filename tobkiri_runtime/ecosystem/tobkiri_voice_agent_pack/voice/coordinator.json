@@ -3,6 +3,9 @@
   "model_source": "active_conversation",
   "decision_model_source": "optional_independent_setting",
   "prompt": "prompts/voice_coordinator.system.md",
+  "session_controller": "voice/session.py",
+  "session_port_declaration": "voice/session.ports.v1.json",
+  "session_status": "source_tested_adapter_unavailable",
   "tools": [
     {
       "id": "subagent",
