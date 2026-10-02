@@ -229,12 +229,12 @@
     {
       "path": "packs/rumi_browser_host_service_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:042b33c5fda5a02ac5061af25eac330dcd3ad42d88523ba55590dbf7dc1ddea7"
+      "digest": "sha256:8b427f6b053a415005a4bb571a213dc375c3cc84a978aba118279017f953f35d"
     },
     {
       "path": "packs/rumi_browser_host_service_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:7d740ffbd5764dca3fb7ff156da298c87dab922272d8c74dc45361605c09c50a"
+      "digest": "sha256:9c0b91278269ed68dc8fd706c1b31e0f95854ae9d3d2dcf0871d22a28fd25776"
     },
     {
       "path": "packs/rumi_browser_session_replay_pack.executables.v4.json",
@@ -519,12 +519,12 @@
     {
       "path": "packs/rumi_default_tools_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:63787f16e9329f1a7cf81b4d2f016e4bbfdc646f808594e57a38e605eca39387"
+      "digest": "sha256:0041b1559885a8b5f433a2488a3c7ee409066a3e86e537e00b382f67b0315851"
     },
     {
       "path": "packs/rumi_default_tools_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:8f9807905f3d435861f5af21fd49318d8dc7c71c5dda0c1100d9a673440ce251"
+      "digest": "sha256:adbbb0c3b3030eda8d1c7b074118e67a7f7eaebd34fd837b64607735a1797f09"
     },
     {
       "path": "packs/rumi_desktop_host_service_pack.executables.v4.json",
@@ -1394,7 +1394,7 @@
     {
       "path": "packs/runtime.tauri.application.default.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:2fb19a925afc3cfe2ba6a47f0d409d28a4b2986dec53f40b000cb0323c01ef89"
+      "digest": "sha256:0ae7f73a6df0f153b3391cb6695e295e52aea69937ff929cea7e00b3389b5164"
     },
     {
       "path": "packs/search_home_pack.executables.v4.json",
@@ -1474,7 +1474,7 @@
     {
       "path": "defaults.profile.v5.json",
       "kind": "profile",
-      "digest": "sha256:37471b76a6be37ef9ddfddab3b3ea917daa9c7f141c17bd51e7265a8422803e3"
+      "digest": "sha256:dfb248d7e638085f8f171e88daca9a63a8156bcaccb71227ce51f0dd1fb2123a"
     }
   ]
 }

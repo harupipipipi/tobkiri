@@ -7,7 +7,6 @@ import os
 import re
 import shutil
 import stat
-import tempfile
 import time
 import urllib.parse
 import uuid
@@ -15,21 +14,55 @@ import webbrowser
 from pathlib import Path
 from typing import Any, Final, Mapping
 
+from .cookies import normalize_cookie, parse_import
+from .managed import ManagedBrowser
+from .storage import read_json, write_json
+
 
 _PROFILE_ID: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _MAX_COOKIES: Final[int] = 5_000
 _MAX_TABS: Final[int] = 256
+_FORBIDDEN_BROWSER_ARGUMENTS: Final[frozenset[str]] = frozenset(
+    {
+        "approved",
+        "approval_token",
+        "authority_token",
+        "viewer_host_approved",
+        "yolo_mode",
+        "endpoint",
+        "cdp_endpoint",
+        "websocket_url",
+        "executable",
+        "executable_path",
+        "user_data_dir",
+        "profile_dir",
+        "debugging_port",
+    }
+)
+_MANAGED_ACTIONS: Final[frozenset[str]] = frozenset(
+    {
+        "browser.runtime.status",
+        "browser.runtime.start",
+        "browser.runtime.stop",
+        "browser.extensions.list",
+        "browser.extensions.install",
+        "browser.extensions.remove",
+        "browser.devtools.inspect",
+        "browser.devtools.evaluate",
+        "browser.network.capture",
+        "browser.capture.page",
+    }
+)
 
 
 class BrowserHostRunner:
     """Own browser session/profile/cookie metadata and approved navigation."""
 
     def __init__(self, user_data_root: Path | None = None) -> None:
-        base = user_data_root or Path(
-            os.environ.get("RUMI_USER_DATA") or Path.home() / ".rumi"
-        )
+        base = user_data_root or Path(os.environ.get("RUMI_USER_DATA") or Path.home() / ".rumi")
         self.root = Path(base) / "browser_host"
         self.state_path = self.root / "state.json"
+        self.managed = ManagedBrowser(self.root)
 
     def run(
         self,
@@ -45,8 +78,22 @@ class BrowserHostRunner:
             raise PermissionError("Viewer approval is required")
         normalized = str(action or "").strip()
         args = dict(payload or {})
+        if _FORBIDDEN_BROWSER_ARGUMENTS.intersection(args):
+            raise PermissionError("Client authority or browser launch overrides are forbidden")
         contract_operation = str(args.pop("_rumi_contract_operation", "")).strip()
         state = self._read_state()
+        if normalized in _MANAGED_ACTIONS:
+            return self._managed_action(normalized, state, args)
+        if contract_operation and normalized in {
+            "browser.open_url",
+            "browser.tabs",
+            "browser.select_tab",
+        }:
+            # The captured Host provider rejects client operation markers and
+            # injects its own. Canonical browsing stays in the private runtime
+            # before start/after stop. Only direct legacy calls without this
+            # trusted marker may retain OS browser navigation.
+            return self._managed_action(normalized, state, args)
         if normalized == "browser.session":
             if contract_operation == "browser.session.create":
                 state["session_id"] = "session_" + uuid.uuid4().hex
@@ -54,6 +101,8 @@ class BrowserHostRunner:
                 state["active_tab_id"] = None
                 self._write_state(state)
             elif contract_operation == "browser.session.close":
+                if self.managed.has_record():
+                    self.managed.stop()
                 closed_session_id = state["session_id"]
                 state["session_id"] = "session_" + uuid.uuid4().hex
                 state["tabs"] = []
@@ -86,8 +135,12 @@ class BrowserHostRunner:
         if normalized == "browser.open_url":
             return self._open_url(state, args)
         if normalized == "browser.tabs":
+            if self.managed.has_record():
+                return {"action": normalized, **self.managed.tabs(args)}
             return self._tabs(state)
         if normalized == "browser.select_tab":
+            if self.managed.has_record():
+                return {"action": normalized, **self.managed.select_tab(args)}
             return self._select_tab(state, args)
         if normalized == "browser.downloads.list":
             return self._downloads(state)
@@ -97,6 +150,90 @@ class BrowserHostRunner:
             "action": normalized,
             "is_error": True,
             "error_type": "browser_runner_unavailable",
+        }
+
+    def _managed_action(
+        self, action: str, state: dict[str, Any], payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Dispatch finite managed operations behind the existing host boundary."""
+
+        try:
+            if action == "browser.runtime.status":
+                result = self.managed.status()
+                requested = payload.get("profile_id")
+                if requested is not None:
+                    requested = self._profile(state, payload)["profile_id"]
+                    result["requested_profile_id"] = requested
+                    if result.get("running"):
+                        result["running_profile_id"] = result["profile_id"]
+                        if result["profile_id"] != requested:
+                            result["running"] = False
+                            result["message"] = (
+                                "Another profile is running. Stop it before changing profiles."
+                            )
+            elif action == "browser.runtime.start":
+                profile = self._profile(state, payload)
+                profile_id = profile["profile_id"]
+                result = self.managed.start(
+                    profile_id,
+                    state["cookies"].get(profile_id, []),
+                    headless=payload.get("headless", False),
+                    replace_cookies=state["cookie_import_replace"].get(profile_id, False),
+                )
+                # Imported cookies are a one-shot queue. Chromium owns every
+                # later rotation/logout; startup must never replay old values.
+                state["cookies"][profile_id] = []
+                state["cookie_import_replace"][profile_id] = False
+                state["active_profile_id"] = profile_id
+                self._write_state(state)
+            elif action == "browser.runtime.stop":
+                current = self.managed.status()
+                if current.get("running"):
+                    self.managed._require_profile(payload, current)
+                result = self.managed.stop()
+            elif action == "browser.tabs":
+                profile = self._profile(state, payload)
+                current = self.managed.status()
+                if current.get("running") and current.get("profile_id") == profile["profile_id"]:
+                    result = self.managed.tabs(payload)
+                else:
+                    result = {
+                        "managed": True,
+                        "running": False,
+                        "profile_id": profile["profile_id"],
+                        "active_tab_id": None,
+                        "tabs": [],
+                    }
+            else:
+                methods = {
+                    "browser.open_url": self.managed.navigate,
+                    "browser.select_tab": self.managed.select_tab,
+                    "browser.extensions.install": self.managed.extension_install,
+                    "browser.extensions.remove": self.managed.extension_remove,
+                    "browser.devtools.inspect": self.managed.inspect,
+                    "browser.devtools.evaluate": self.managed.evaluate,
+                    "browser.network.capture": self.managed.network,
+                    "browser.capture.page": self.managed.screenshot,
+                }
+                if action == "browser.extensions.list":
+                    profile = self._profile(state, payload)
+                    result = self.managed.extensions_list({"profile_id": profile["profile_id"]})
+                else:
+                    result = methods[action](payload)
+            return {"action": action, **result}
+        except FileNotFoundError:
+            message = "Start the managed browser before using this action."
+        except KeyError:
+            message = "The requested managed browser profile, tab or extension is unavailable."
+        except (ValueError, RuntimeError, TimeoutError) as exc:
+            message = str(exc)
+        except (OSError, PermissionError):
+            message = "The managed browser or its private storage is unavailable."
+        return {
+            "action": action,
+            "is_error": True,
+            "error_type": "managed_browser_unavailable",
+            "message": message,
         }
 
     def _session(self, state: dict[str, Any]) -> dict[str, Any]:
@@ -116,9 +253,7 @@ class BrowserHostRunner:
             "profiles": list(state["profiles"].values()),
         }
 
-    def _create_profile(
-        self, state: dict[str, Any], payload: Mapping[str, Any]
-    ) -> dict[str, Any]:
+    def _create_profile(self, state: dict[str, Any], payload: Mapping[str, Any]) -> dict[str, Any]:
         profile_id = _profile_id(
             payload.get("profile_id") or payload.get("name") or f"profile-{int(time.time())}"
         )
@@ -132,6 +267,7 @@ class BrowserHostRunner:
         }
         state["profiles"][profile_id] = profile
         state["cookies"][profile_id] = []
+        state["cookie_import_replace"][profile_id] = False
         if payload.get("set_active", True) is not False:
             state["active_profile_id"] = profile_id
         self._write_state(state)
@@ -147,56 +283,58 @@ class BrowserHostRunner:
         self._write_state(state)
         return {"action": "browser.profile.set_active", "active_profile_id": profile_id}
 
-    def _delete_profile(
-        self, state: dict[str, Any], payload: Mapping[str, Any]
-    ) -> dict[str, Any]:
+    def _delete_profile(self, state: dict[str, Any], payload: Mapping[str, Any]) -> dict[str, Any]:
         profile_id = _profile_id(payload.get("profile_id"))
         if profile_id == "default":
             raise ValueError("the default browser profile cannot be deleted")
+        current = self.managed.status()
+        if current.get("running") and current.get("profile_id") == profile_id:
+            self.managed.stop()
+        self.managed.delete_profile(profile_id)
         existed = state["profiles"].pop(profile_id, None) is not None
         state["cookies"].pop(profile_id, None)
-        state["tabs"] = [
-            tab for tab in state["tabs"] if tab.get("profile_id") != profile_id
-        ]
+        state["cookie_import_replace"].pop(profile_id, None)
+        state["tabs"] = [tab for tab in state["tabs"] if tab.get("profile_id") != profile_id]
         if state["active_profile_id"] == profile_id:
             state["active_profile_id"] = "default"
         self._write_state(state)
         return {"action": "browser.profile.delete", "profile_id": profile_id, "deleted": existed}
 
-    def _clear_cache(
-        self, state: dict[str, Any], payload: Mapping[str, Any]
-    ) -> dict[str, Any]:
+    def _clear_cache(self, state: dict[str, Any], payload: Mapping[str, Any]) -> dict[str, Any]:
         profile = self._profile(state, payload)
+        applied = self.managed.clear_cache(profile["profile_id"])
         profile["cache_revision"] = int(profile.get("cache_revision") or 0) + 1
         self._write_state(state)
         return {
             "action": "browser.profile.clear_cache",
             "profile_id": profile["profile_id"],
             "cache_revision": profile["cache_revision"],
+            "applied_to_browser": applied,
         }
 
-    def _clear_cookies(
-        self, state: dict[str, Any], payload: Mapping[str, Any]
-    ) -> dict[str, Any]:
+    def _clear_cookies(self, state: dict[str, Any], payload: Mapping[str, Any]) -> dict[str, Any]:
         profile = self._profile(state, payload)
         profile_id = profile["profile_id"]
-        removed = len(state["cookies"].get(profile_id, []))
+        live = self.managed.get_cookies(profile_id)
+        removed = len(live if live is not None else state["cookies"].get(profile_id, []))
+        applied = self.managed.set_cookies(profile_id, [], replace=True)
         state["cookies"][profile_id] = []
+        state["cookie_import_replace"][profile_id] = False
         self._write_state(state)
         return {
             "action": "browser.profile.clear_cookies",
             "profile_id": profile_id,
             "removed": removed,
+            "applied_to_browser": applied,
         }
 
-    def _list_cookies(
-        self, state: dict[str, Any], payload: Mapping[str, Any]
-    ) -> dict[str, Any]:
+    def _list_cookies(self, state: dict[str, Any], payload: Mapping[str, Any]) -> dict[str, Any]:
         profile = self._profile(state, payload)
         profile_id = profile["profile_id"]
         include_values = payload.get("include_values") is True
         cookies = []
-        for item in state["cookies"].get(profile_id, []):
+        live = self.managed.get_cookies(profile_id)
+        for item in live if live is not None else state["cookies"].get(profile_id, []):
             projected = dict(item)
             if not include_values:
                 projected.pop("value", None)
@@ -206,48 +344,57 @@ class BrowserHostRunner:
             "profile_id": profile_id,
             "cookies": cookies,
             "count": len(cookies),
+            "source": "managed_browser" if live is not None else "staged_import",
         }
 
-    def _import_cookies(
-        self, state: dict[str, Any], payload: Mapping[str, Any]
-    ) -> dict[str, Any]:
+    def _import_cookies(self, state: dict[str, Any], payload: Mapping[str, Any]) -> dict[str, Any]:
         profile = self._profile(state, payload)
-        raw = payload.get("cookies")
-        if not isinstance(raw, list) or len(raw) > _MAX_COOKIES:
-            raise ValueError("cookies must be a bounded list")
-        normalized = [_cookie(item) for item in raw if isinstance(item, Mapping)]
+        normalized = parse_import(payload)
         profile_id = profile["profile_id"]
-        current = [] if payload.get("replace") is True else state["cookies"].get(profile_id, [])
+        replace = payload.get("replace") is True
+        live = self.managed.get_cookies(profile_id)
+        current = (
+            [] if replace else live if live is not None else state["cookies"].get(profile_id, [])
+        )
         merged = {_cookie_key(item): item for item in current}
         merged.update({_cookie_key(item): item for item in normalized})
-        state["cookies"][profile_id] = list(merged.values())[:_MAX_COOKIES]
+        if len(merged) > _MAX_COOKIES:
+            raise ValueError("Merged cookie collection exceeds the limit")
+        applied = self.managed.set_cookies(profile_id, normalized, replace=replace)
+        state["cookies"][profile_id] = [] if applied else list(merged.values())
+        state["cookie_import_replace"][profile_id] = (
+            False if applied else replace or state["cookie_import_replace"].get(profile_id, False)
+        )
         self._write_state(state)
         return {
             "action": "browser.cookies.import",
             "profile_id": profile_id,
             "imported": len(normalized),
-            "count": len(state["cookies"][profile_id]),
+            "count": len(merged),
+            "applied_to_browser": applied,
+            "source": str(payload.get("format") or "cookies"),
         }
 
-    def _delete_cookies(
-        self, state: dict[str, Any], payload: Mapping[str, Any]
-    ) -> dict[str, Any]:
+    def _delete_cookies(self, state: dict[str, Any], payload: Mapping[str, Any]) -> dict[str, Any]:
         profile = self._profile(state, payload)
         profile_id = profile["profile_id"]
-        before = state["cookies"].get(profile_id, [])
+        live = self.managed.get_cookies(profile_id)
+        before = live if live is not None else state["cookies"].get(profile_id, [])
         remaining = [item for item in before if not _cookie_matches(item, payload)]
-        state["cookies"][profile_id] = remaining
+        applied = self.managed.delete_cookies(profile_id, payload)
+        state["cookies"][profile_id] = [] if applied else remaining
         self._write_state(state)
         return {
             "action": "browser.cookies.delete",
             "profile_id": profile_id,
             "deleted": len(before) - len(remaining),
             "count": len(remaining),
+            "applied_to_browser": applied,
         }
 
-    def _open_url(
-        self, state: dict[str, Any], payload: Mapping[str, Any]
-    ) -> dict[str, Any]:
+    def _open_url(self, state: dict[str, Any], payload: Mapping[str, Any]) -> dict[str, Any]:
+        if self.managed.has_record():
+            return {"action": "browser.open_url", **self.managed.navigate(payload)}
         raw_url = str(payload.get("url") or "").strip()
         parsed = urllib.parse.urlsplit(raw_url)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
@@ -274,9 +421,7 @@ class BrowserHostRunner:
             "tabs": list(state["tabs"]),
         }
 
-    def _select_tab(
-        self, state: dict[str, Any], payload: Mapping[str, Any]
-    ) -> dict[str, Any]:
+    def _select_tab(self, state: dict[str, Any], payload: Mapping[str, Any]) -> dict[str, Any]:
         tab_id = str(payload.get("tab_id") or "").strip()
         if not any(item.get("tab_id") == tab_id for item in state["tabs"]):
             raise KeyError("browser tab is unavailable")
@@ -350,9 +495,7 @@ class BrowserHostRunner:
             "size": destination.stat().st_size,
         }
 
-    def _profile(
-        self, state: dict[str, Any], payload: Mapping[str, Any]
-    ) -> dict[str, Any]:
+    def _profile(self, state: dict[str, Any], payload: Mapping[str, Any]) -> dict[str, Any]:
         profile_id = _profile_id(payload.get("profile_id") or state["active_profile_id"])
         profile = state["profiles"].get(profile_id)
         if not isinstance(profile, dict):
@@ -361,9 +504,7 @@ class BrowserHostRunner:
 
     def _read_state(self) -> dict[str, Any]:
         try:
-            raw = json.loads(self.state_path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            raw = {}
+            raw = read_json(self.root, self.state_path)
         except (OSError, json.JSONDecodeError) as exc:
             raise RuntimeError("browser state is unavailable") from exc
         state = raw if isinstance(raw, dict) else {}
@@ -373,10 +514,14 @@ class BrowserHostRunner:
             "created_at": 0,
             "cache_revision": 0,
         }
-        profiles = state.get("profiles") if isinstance(state.get("profiles"), dict) else {}
+        raw_profiles = state.get("profiles")
+        profiles = raw_profiles if isinstance(raw_profiles, dict) else {}
         profiles.setdefault("default", default)
-        cookies = state.get("cookies") if isinstance(state.get("cookies"), dict) else {}
+        raw_cookies = state.get("cookies")
+        cookies = raw_cookies if isinstance(raw_cookies, dict) else {}
         cookies.setdefault("default", [])
+        raw_replace = state.get("cookie_import_replace")
+        cookie_import_replace = raw_replace if isinstance(raw_replace, dict) else {}
         return {
             "version": 1,
             "session_id": str(state.get("session_id") or "session_" + uuid.uuid4().hex),
@@ -384,26 +529,13 @@ class BrowserHostRunner:
             "active_tab_id": state.get("active_tab_id"),
             "profiles": profiles,
             "cookies": cookies,
+            "cookie_import_replace": cookie_import_replace,
             "tabs": list(state.get("tabs") or [])[-_MAX_TABS:],
             "downloads": list(state.get("downloads") or []),
         }
 
     def _write_state(self, state: Mapping[str, Any]) -> None:
-        self.root.mkdir(parents=True, exist_ok=True)
-        body = json.dumps(state, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
-        fd, temporary = tempfile.mkstemp(prefix=".state.", dir=str(self.root))
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                handle.write(body)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, self.state_path)
-        except Exception:
-            try:
-                os.unlink(temporary)
-            except OSError:
-                pass
-            raise
+        write_json(self.root, self.state_path, state)
 
 
 def run_browser_host_action(
@@ -431,20 +563,7 @@ def _profile_id(value: Any) -> str:
 
 
 def _cookie(value: Mapping[str, Any]) -> dict[str, Any]:
-    name = str(value.get("name") or "").strip()
-    domain = str(value.get("domain") or "").strip().lower()
-    if not name or not domain or len(name) > 256 or len(domain) > 253:
-        raise ValueError("cookie name and domain are required")
-    return {
-        "name": name,
-        "value": str(value.get("value") or "")[:16_384],
-        "domain": domain,
-        "path": str(value.get("path") or "/")[:1024],
-        "secure": bool(value.get("secure", True)),
-        "http_only": bool(value.get("http_only", True)),
-        "same_site": str(value.get("same_site") or "Lax")[:16],
-        "expires_at": value.get("expires_at"),
-    }
+    return normalize_cookie(value)
 
 
 def _cookie_key(value: Mapping[str, Any]) -> tuple[str, str, str]:
@@ -465,4 +584,3 @@ def _cookie_matches(cookie: Mapping[str, Any], query: Mapping[str, Any]) -> bool
 
 def _now() -> int:
     return int(time.time())
-

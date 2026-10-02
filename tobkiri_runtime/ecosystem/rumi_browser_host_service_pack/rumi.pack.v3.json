@@ -63,7 +63,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:93c188c2347bcee2337f83d6145fe696faaaee7318f2a2b6333b97228f6791ef",
+      "artifact_hash": "sha256:2c1d488de63073a3d96824936278bb0ccf1042f5f8b106e0634de55779029233",
       "contract_id": "rumi.resource.browser.host.v1",
       "id": "browser-host-observe",
       "loader": "python",
@@ -71,7 +71,7 @@
       "symbol": "create_browser_observer"
     },
     {
-      "artifact_hash": "sha256:93c188c2347bcee2337f83d6145fe696faaaee7318f2a2b6333b97228f6791ef",
+      "artifact_hash": "sha256:2c1d488de63073a3d96824936278bb0ccf1042f5f8b106e0634de55779029233",
       "contract_id": "rumi.action.browser.host.v1",
       "id": "browser-host-control",
       "loader": "python",
@@ -116,9 +116,9 @@
           ],
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:50ee7dbc13da91c9ed3e867204f5e0a06bed040e7e878931cd7e5701df1f423e",
+            "artifact_digest": "sha256:47e994663ae49aca3dba411f0a5f3c14c7a8baa2c4d1b10257a937a8901a032e",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:9c519c46f89dce140e93ba4b98682bc46fc159cde68d8577c72781167a4409e1"
+            "source_identity": "sha256:78263b0cfe2393362c133389a1cc00d32e9a2458ffbc1f36e8b730990c94d097"
           },
           "executor_owner": "rumi_viewer_host_broker",
           "operation_descriptor_owner": true,
@@ -130,7 +130,7 @@
         "pack_identity": "rumi:ecosystem/rumi_browser_host_service_pack",
         "provenance": {
           "build_identity": "rumi_browser_host_service_pack:1.0.0",
-          "content_hash": "sha256:93c188c2347bcee2337f83d6145fe696faaaee7318f2a2b6333b97228f6791ef",
+          "content_hash": "sha256:2c1d488de63073a3d96824936278bb0ccf1042f5f8b106e0634de55779029233",
           "signature": null,
           "trust_class": "local"
         },
@@ -161,7 +161,7 @@
       "owner": "rumi_browser_host_service_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:9c519c46f89dce140e93ba4b98682bc46fc159cde68d8577c72781167a4409e1"
+      "source_identity": "sha256:78263b0cfe2393362c133389a1cc00d32e9a2458ffbc1f36e8b730990c94d097"
     }
   },
   "migration": {
@@ -202,7 +202,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_browser_host_service_pack:1.0.0",
-    "content_hash": "sha256:93c188c2347bcee2337f83d6145fe696faaaee7318f2a2b6333b97228f6791ef",
+    "content_hash": "sha256:2c1d488de63073a3d96824936278bb0ccf1042f5f8b106e0634de55779029233",
     "signature": null,
     "trust_class": "local"
   },

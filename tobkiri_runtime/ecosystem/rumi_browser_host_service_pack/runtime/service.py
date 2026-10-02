@@ -15,6 +15,9 @@ OBSERVE_OPERATIONS: Final[frozenset[str]] = frozenset(
         "browser.cookies.list",
         "browser.capture.page",
         "browser.downloads.list",
+        "browser.runtime.status",
+        "browser.extensions.list",
+        "browser.devtools.inspect",
     }
 )
 CONTROL_OPERATIONS: Final[frozenset[str]] = frozenset(
@@ -31,6 +34,12 @@ CONTROL_OPERATIONS: Final[frozenset[str]] = frozenset(
         "browser.cookies.import",
         "browser.cookies.delete",
         "browser.download.collect",
+        "browser.runtime.start",
+        "browser.runtime.stop",
+        "browser.extensions.install",
+        "browser.extensions.remove",
+        "browser.devtools.evaluate",
+        "browser.network.capture",
     }
 )
 _FORBIDDEN_ARGUMENTS: Final[frozenset[str]] = frozenset(
@@ -42,7 +51,7 @@ _HOST_FUNCTIONS: Final[dict[str, str]] = {
     "browser.profiles.list": "browser.profiles.list",
     "browser.tabs.list": "browser.tabs",
     "browser.cookies.list": "browser.cookies.list",
-    "browser.capture.page": "computer.screenshot",
+    "browser.capture.page": "browser.capture.page",
     "browser.downloads.list": "browser.downloads.list",
     "browser.session.create": "browser.session",
     "browser.session.close": "browser.session",
@@ -56,6 +65,15 @@ _HOST_FUNCTIONS: Final[dict[str, str]] = {
     "browser.cookies.import": "browser.cookies.import",
     "browser.cookies.delete": "browser.cookies.delete",
     "browser.download.collect": "browser.download.collect",
+    "browser.runtime.status": "browser.runtime.status",
+    "browser.runtime.start": "browser.runtime.start",
+    "browser.runtime.stop": "browser.runtime.stop",
+    "browser.extensions.list": "browser.extensions.list",
+    "browser.extensions.install": "browser.extensions.install",
+    "browser.extensions.remove": "browser.extensions.remove",
+    "browser.devtools.inspect": "browser.devtools.inspect",
+    "browser.devtools.evaluate": "browser.devtools.evaluate",
+    "browser.network.capture": "browser.network.capture",
 }
 
 
@@ -119,9 +137,7 @@ class BrowserHostService:
                 "pack_id": "",
                 "function_id": "",
             },
-            "conversation_id": str(
-                caller_context.get("conversation_id") or ""
-            ).strip(),
+            "conversation_id": str(caller_context.get("conversation_id") or "").strip(),
             "host_function_id": host_function_id,
         }
 
@@ -137,3 +153,12 @@ def create_browser_control(_context: dict[str, Any] | None = None) -> BrowserHos
 
     return BrowserHostService(access="control", operations=CONTROL_OPERATIONS)
 
+
+# This capability is captured by the v4 Host only after digest verification.
+# The legacy service API above remains a HostIntent builder; the captured
+# provider executes the allowlisted runner after exact Broker authorization.
+from ecosystem.rumi_browser_host_service_pack.runtime.host_provider import (  # noqa: E402
+    BROWSER_HOST_PROVIDER_FACTORIES,
+)
+
+HOST_PROVIDER_FACTORY = BROWSER_HOST_PROVIDER_FACTORIES

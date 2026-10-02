@@ -3842,13 +3842,14 @@
       "capabilities": [
         "browser.host.control",
         "browser.host.observe",
-        "host.authority.consume"
+        "host.authority.consume",
+        "tool.local.operation"
       ],
       "dependencies": {
         "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
       },
-      "description": "Typed browser observe/control requests mediated by core Authority and the Viewer host broker.",
-      "display_name": "Rumi Browser Host Service",
+      "description": "Managed model browser with isolated profiles, extensions, cookie import, DevTools and bounded network capture under Host authority.",
+      "display_name": "Tobkiri Browser Host Service",
       "execution_boundary": "host_brokered",
       "kind": "host_extension",
       "legacy_ids": [
@@ -3882,7 +3883,7 @@
             {
               "entrypoint_id": "browser-host-control",
               "id": "rumi_browser_host_service_pack.browser-host-control",
-              "implementation_digest": "sha256:93c188c2347bcee2337f83d6145fe696faaaee7318f2a2b6333b97228f6791ef"
+              "implementation_digest": "sha256:2c1d488de63073a3d96824936278bb0ccf1042f5f8b106e0634de55779029233"
             }
           ],
           "owner": "rumi_browser_host_service_pack",
@@ -3915,7 +3916,7 @@
             {
               "entrypoint_id": "browser-host-observe",
               "id": "rumi_browser_host_service_pack.browser-host-observe",
-              "implementation_digest": "sha256:93c188c2347bcee2337f83d6145fe696faaaee7318f2a2b6333b97228f6791ef"
+              "implementation_digest": "sha256:2c1d488de63073a3d96824936278bb0ccf1042f5f8b106e0634de55779029233"
             }
           ],
           "owner": "rumi_browser_host_service_pack",
@@ -3933,6 +3934,42 @@
           },
           "security": "sensitive",
           "version": "1.0.0"
+        },
+        {
+          "cardinality": "many",
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_browser_host_service_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "browser-tool-execute",
+              "id": "rumi_browser_host_service_pack.browser-tool-execute",
+              "implementation_digest": "sha256:335d8b4f5dca4b2b88fd19e5b0a66762e8b7d1d97b517007361d5b66a624774e"
+            }
+          ],
+          "owner": "rumi_browser_host_service_pack",
+          "provider_id": "rumi_browser_host_service_pack.browser-host.tool",
+          "required_capabilities": [
+            "tool.local.operation"
+          ],
+          "routing_keys": [
+            "browser_managed"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
         }
       ],
       "required_contracts": [
@@ -3941,18 +3978,75 @@
           "contract_id": "tobkiri.service.host.authorize.v1",
           "optional": false,
           "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.browser.host.v1",
+          "optional": false,
+          "version_range": "^1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.browser.host.v1",
+          "optional": false,
+          "version_range": "^1.0.0"
         }
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:950483f806040683967e92baff8e9b0dbff1feb8c4d8ca60c7d8bd860561c84f",
+          "digest": "sha256:a7e4b0736cda2605bae4fe486f19dc4ae0bd3eff263389a25b5436777a63bd60",
           "kind": "executable",
           "path": "runtime/runner.py"
         },
         {
-          "digest": "sha256:93c188c2347bcee2337f83d6145fe696faaaee7318f2a2b6333b97228f6791ef",
+          "digest": "sha256:2c1d488de63073a3d96824936278bb0ccf1042f5f8b106e0634de55779029233",
           "kind": "executable",
           "path": "runtime/service.py"
+        },
+        {
+          "digest": "sha256:cb38e87a86132573694c6ad9402b7fa7dab98c82330d7d42f0084652382f5dc4",
+          "kind": "executable",
+          "path": "runtime/__init__.py"
+        },
+        {
+          "digest": "sha256:335d8b4f5dca4b2b88fd19e5b0a66762e8b7d1d97b517007361d5b66a624774e",
+          "kind": "executable",
+          "path": "runtime/browser_tool.py"
+        },
+        {
+          "digest": "sha256:8a8409008846976230757b5cf8bed2af02cfcdb7c3ac911480e192fad84ed906",
+          "kind": "executable",
+          "path": "runtime/cdp.py"
+        },
+        {
+          "digest": "sha256:24062c88104c192777c68bcd82f722f0d542ea91b1166ff7fb50e7536c1bdbef",
+          "kind": "executable",
+          "path": "runtime/cookies.py"
+        },
+        {
+          "digest": "sha256:2bbb47f631cbc7b7b0e1cd0b4d5a641cf545262244652de167a372a6b8ecabaa",
+          "kind": "executable",
+          "path": "runtime/devtools.py"
+        },
+        {
+          "digest": "sha256:a9140b2b2ee1d6f2fb3b28d847ce11faa9fdd6f79d600b8f7ce4a2f769fd61f2",
+          "kind": "executable",
+          "path": "runtime/extensions.py"
+        },
+        {
+          "digest": "sha256:67c27de33e485dcdc0f0fedf6175134cd651adac82d466b5d277b4608cdaab62",
+          "kind": "executable",
+          "path": "runtime/host_provider.py"
+        },
+        {
+          "digest": "sha256:eb1cc6c57c8dd40472d47cb046b907f737e2e3c6c6a650aeebd77d444bc0a2e2",
+          "kind": "executable",
+          "path": "runtime/storage.py"
+        },
+        {
+          "digest": "sha256:8f33af9424c3b71571ad15b699285e635fdf1f3cd01dd37a87e7b80d3f0ea2de",
+          "kind": "executable",
+          "path": "runtime/managed.py"
         }
       ],
       "secrets": [],
@@ -8164,6 +8258,11 @@
           "digest": "sha256:b6f18ad76b5b661d9f4e30f5d53e1d68bd044068a56b55839e8422687a4e63f2",
           "kind": "executable",
           "path": "domain/tool/calculator.py"
+        },
+        {
+          "digest": "sha256:8564ebfc5d962dc9db5f94468baec59452f67edd29289de326986ba9b3c5c9cf",
+          "kind": "sidecar",
+          "path": "tools/browser_managed/manifest.json"
         }
       ],
       "secrets": [],

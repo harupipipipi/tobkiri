@@ -28,3 +28,5 @@ typing-extensions==4.16.0 \
     --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8
 wasmtime==48.0.0 \
     --hash=sha256:ea69889a3c51702e9da5f5f441027ca934f7758f8926a4ed167b0d6877f092e8
+websocket-client==1.9.0 \
+    --hash=sha256:af248a825037ef591efbf6ed20cc5faa03d3b47b9e5a2230a529eeee1c1fc3ef

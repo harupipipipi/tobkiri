@@ -3235,6 +3235,42 @@ export function defaultspackContractRoute(apiPath: string): DefaultspackContract
   return { kind: "defaultspack-contract-route", apiPath: normalized };
 }
 
+const MANAGED_BROWSER_OBSERVATIONS = new Set([
+  "browser.session.get", "browser.profiles.list", "browser.tabs.list",
+  "browser.cookies.list", "browser.runtime.status", "browser.extensions.list",
+  "browser.devtools.inspect",
+]);
+const MANAGED_BROWSER_CONTROLS = new Set([
+  "browser.runtime.start", "browser.runtime.stop", "browser.profile.create",
+  "browser.profile.set_active", "browser.profile.delete", "browser.profile.clear_cache",
+  "browser.profile.clear_cookies", "browser.navigate", "browser.tab.select",
+  "browser.cookies.import", "browser.cookies.delete", "browser.extensions.install",
+  "browser.extensions.remove", "browser.devtools.evaluate", "browser.network.capture",
+]);
+const MANAGED_BROWSER_ALIASES: Record<string, string> = {
+  "browser.session": "browser.session.get",
+  "browser.tabs": "browser.tabs.list",
+  "browser.open_url": "browser.navigate",
+  "browser.select_tab": "browser.tab.select",
+};
+
+/** Select the verified browser contract without promoting reads into control. */
+export function managedBrowserRequest(action: string, payload: Record<string, unknown> = {}) {
+  const operation = MANAGED_BROWSER_ALIASES[action] ?? action;
+  const observe = MANAGED_BROWSER_OBSERVATIONS.has(operation);
+  if (!observe && !MANAGED_BROWSER_CONTROLS.has(operation)) {
+    throw new Error("Unsupported managed browser operation.");
+  }
+  if (["approved", "approval_token", "authority_token", "viewer_host_approved", "yolo_mode"]
+    .some((key) => Object.prototype.hasOwnProperty.call(payload, key))) {
+    throw new Error("Managed browser authority is supplied by the Host.");
+  }
+  return {
+    route: defaultspackContractRoute(`api/browser/${observe ? "observe" : "control"}`),
+    body: { operation, arguments: payload },
+  };
+}
+
 /** Return a route key for configuration values that are not HTTP calls. */
 export function defaultspackCanonicalRouteKey(apiPath: string): string {
   return defaultspackContractRoute(apiPath).apiPath;
@@ -5283,6 +5319,14 @@ export const api = {
     return request<Record<string, unknown>>(defaultspackContractRoute("api/tools/browser-computer"), {
       method: "POST",
       body: JSON.stringify({ action, payload: payload ?? {} }),
+    });
+  },
+
+  managedBrowser(action: string, payload: Record<string, unknown> = {}) {
+    const { route, body } = managedBrowserRequest(action, payload);
+    return request<Record<string, unknown>>(route, {
+      method: "POST",
+      body: JSON.stringify(body),
     });
   },
 

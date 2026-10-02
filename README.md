@@ -241,6 +241,7 @@ The legacy `python -m rumi_ai migrate-hmac` subcommand was retired with the Pack
 - `tobkiri_launcher`: viewer-side application shell and canonical panel frontend source
 - `tobkiri_mobile`: mobile remote client for the bearer-auth Kernel Pack API
 - `tobkiri_runtime/ecosystem/defaultspack/browser_extensions/rumi_browser_companion`: unpacked Chromium extension for the defaultspack `browser_companion` tool
+- Defaults **Browser** workspace: a separate model browser with profiles, unpacked extensions, JSON/Netscape cookie import, DOM/JavaScript inspection and bounded AI network capture. See the [Browser setup and tool guide](./tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/README.md).
 
 ## Troubleshooting
 

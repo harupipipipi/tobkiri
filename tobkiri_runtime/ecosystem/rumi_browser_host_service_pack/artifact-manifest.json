@@ -3,12 +3,12 @@
     {
       "path": "runtime/service.py",
       "role": "runtime",
-      "sha256": "93c188c2347bcee2337f83d6145fe696faaaee7318f2a2b6333b97228f6791ef"
+      "sha256": "2c1d488de63073a3d96824936278bb0ccf1042f5f8b106e0634de55779029233"
     },
     {
       "path": "runtime/runner.py",
       "role": "runtime",
-      "sha256": "950483f806040683967e92baff8e9b0dbff1feb8c4d8ca60c7d8bd860561c84f"
+      "sha256": "a7e4b0736cda2605bae4fe486f19dc4ae0bd3eff263389a25b5436777a63bd60"
     }
   ],
   "schema_version": "rumi.artifact-manifest.v1"

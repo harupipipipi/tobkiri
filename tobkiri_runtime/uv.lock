@@ -1055,6 +1055,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "typing-extensions" },
     { name = "wasmtime" },
+    { name = "websocket-client" },
 ]
 
 [package.optional-dependencies]
@@ -1088,6 +1089,7 @@ requires-dist = [
     { name = "typing-extensions", specifier = ">=4.4" },
     { name = "uv", marker = "extra == 'dev'", specifier = "==0.11.14" },
     { name = "wasmtime", specifier = "==48.0.0" },
+    { name = "websocket-client", specifier = ">=1.8.0" },
     { name = "websocket-client", marker = "extra == 'browser-cdp'", specifier = ">=1.8.0" },
 ]
 provides-extras = ["dev", "computer-windows", "browser-cdp"]

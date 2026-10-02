@@ -3941,6 +3941,29 @@
           }
         }
       ]
+    },
+    "rumi_browser_host_service_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_browser_host_service_pack.browser-host.tool",
+          "owner": "rumi_browser_host_service_pack",
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/browser_tool.py",
+          "implementation_digest": "sha256:335d8b4f5dca4b2b88fd19e5b0a66762e8b7d1d97b517007361d5b66a624774e",
+          "operation_ids": [
+            "rumi_browser_host_service_pack.browser-tool-execute"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          }
+        }
+      ]
     }
   }
 }

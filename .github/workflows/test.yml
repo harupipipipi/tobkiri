@@ -292,6 +292,9 @@ jobs:
             tests/test_tool_local_executor_host.py \
             tests/test_tool_catalog_presentation.py \
             tests/test_tool_catalog_http.py \
+            tests/test_browser_managed_runtime.py \
+            tests/test_browser_host_provider.py \
+            tests/test_browser_host_http.py \
             tests/test_secure_persistence.py \
             tests/test_artifact_materialization.py \
             tests/test_declared_pack_data.py \

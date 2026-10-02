@@ -102,10 +102,8 @@ export const WORKSPACE_TAB_CREATE_OPTIONS: WorkspaceTabCreateOption[] = [
   {
     kind: "browser",
     label: "Browser",
-    description: "Coming soon",
+    description: "Profiles, extensions and developer tools",
     icon: Globe,
-    disabled: true,
-    badge: "soon",
   },
 ];
 

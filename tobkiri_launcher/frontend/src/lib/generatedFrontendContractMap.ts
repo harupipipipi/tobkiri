@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:6d0667f33f55b57b698b9b1d6655884a4b7c69598e61887cebdfa67020123cbb
+// Raw source digest: sha256:362f6d971e656e41835b66208dd5cb9ab962f0436868488d9e0978f710bd1a0e
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,13 +28,13 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:6d0667f33f55b57b698b9b1d6655884a4b7c69598e61887cebdfa67020123cbb" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:362f6d971e656e41835b66208dd5cb9ab962f0436868488d9e0978f710bd1a0e" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:6d0667f33f55b57b698b9b1d6655884a4b7c69598e61887cebdfa67020123cbb",
+  "artifact_digest": "sha256:362f6d971e656e41835b66208dd5cb9ab962f0436868488d9e0978f710bd1a0e",
   "routes": [
     {
       "method": "GET",
@@ -1247,6 +1247,42 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
           "allowed_payload_keys": []
         }
       ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/observe",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.browser.observe",
+          "contract_id": "tobkiri.resource.browser.host.v1",
+          "operation_id": "rumi_browser_host_service_pack.browser-host-observe",
+          "provider_id": "rumi_browser_host_service_pack.browser-host.observe",
+          "function_id": "rumi_browser_host_service_pack.browser-host.observe",
+          "allowed_payload_keys": [
+            "operation",
+            "arguments"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/browser/control",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.browser.control",
+          "contract_id": "tobkiri.action.browser.host.v1",
+          "operation_id": "rumi_browser_host_service_pack.browser-host-control",
+          "provider_id": "rumi_browser_host_service_pack.browser-host.control",
+          "function_id": "rumi_browser_host_service_pack.browser-host.control",
+          "allowed_payload_keys": [
+            "operation",
+            "arguments"
+          ]
+        }
+      ]
     }
   ]
 };
@@ -2335,6 +2371,38 @@ const EXPECTED_ROUTES = {
         "provider_id": "rumi_provider_registry_pack.provider-registry.resource",
         "function_id": "rumi_provider_registry_pack.provider-registry.resource",
         "allowed_payload_keys": []
+      }
+    ]
+  },
+  "POST /api/browser/observe": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.browser.observe",
+        "contract_id": "tobkiri.resource.browser.host.v1",
+        "operation_id": "rumi_browser_host_service_pack.browser-host-observe",
+        "provider_id": "rumi_browser_host_service_pack.browser-host.observe",
+        "function_id": "rumi_browser_host_service_pack.browser-host.observe",
+        "allowed_payload_keys": [
+          "operation",
+          "arguments"
+        ]
+      }
+    ]
+  },
+  "POST /api/browser/control": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.browser.control",
+        "contract_id": "tobkiri.action.browser.host.v1",
+        "operation_id": "rumi_browser_host_service_pack.browser-host-control",
+        "provider_id": "rumi_browser_host_service_pack.browser-host.control",
+        "function_id": "rumi_browser_host_service_pack.browser-host.control",
+        "allowed_payload_keys": [
+          "operation",
+          "arguments"
+        ]
       }
     ]
   }

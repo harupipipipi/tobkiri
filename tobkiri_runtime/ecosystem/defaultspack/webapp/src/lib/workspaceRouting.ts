@@ -23,6 +23,7 @@ export function workspaceKindForPathname(pathname: string): WorkspaceTabKind | n
   if (normalized === "/subagents") return "subagents";
   if (normalized === "/canvas") return "canvas";
   if (normalized === "/tools") return "tools";
+  if (normalized === "/browser") return "browser";
   return null;
 }
 
@@ -34,6 +35,7 @@ function workspaceRoutePath(kind: WorkspaceTabKind): string {
   if (kind === "subagents") return "/subagents";
   if (kind === "canvas") return "/canvas";
   if (kind === "tools") return "/tools";
+  if (kind === "browser") return "/browser";
   return "/chat";
 }
 

@@ -11,8 +11,16 @@ import {
 
 test("the checked-in generated map is deterministic and current", async () => {
   const result = await checkGeneratedFrontendContractMap();
-  assert.equal(result.rawDigest, "sha256:6d0667f33f55b57b698b9b1d6655884a4b7c69598e61887cebdfa67020123cbb");
-  assert.equal(result.runtimeMap.routes.length, 63);
+  assert.equal(result.rawDigest, "sha256:362f6d971e656e41835b66208dd5cb9ab962f0436868488d9e0978f710bd1a0e");
+  assert.equal(result.runtimeMap.routes.length, 65);
+  for (const access of ["observe", "control"]) {
+    const browser = result.runtimeMap.routes.find(
+      (route) => route.method === "POST" && route.path === `/api/browser/${access}`,
+    );
+    assert.equal(browser?.targets[0]?.operation_id, `rumi_browser_host_service_pack.browser-host-${access}`);
+    assert.deepEqual(browser?.targets[0]?.allowed_payload_keys, ["operation", "arguments"]);
+    assert.ok(!browser?.targets[0]?.allowed_payload_keys.includes("approved"));
+  }
   const strategies = result.runtimeMap.routes.find(
     (route) => route.method === "GET" && route.path === "/api/ai/strategies",
   );

@@ -16,6 +16,7 @@ import { AuthorityApprovalWindow } from "./components/AuthorityApprovalWindow";
 import { ApprovalDecisionSurface } from "./components/ApprovalDecisionSurface";
 import { ErrorNotice } from "./components/ErrorNotice";
 import { CodingCockpit } from "./components/coding/CodingCockpit";
+import { BrowserWorkspace } from "./components/browser/BrowserWorkspace";
 import { HostPermissionsPage } from "./hostPermissions/HostPermissionsPage";
 import { ConversationSpotlight } from "./components/ConversationSpotlight";
 import { DesktopMonitorWorkspace } from "./components/desktops/DesktopMonitorWorkspace";
@@ -2795,6 +2796,7 @@ export function ChatApp() {
   const isSubagentWorkspace = activeWorkspaceKind === "subagents";
   const isCanvasWorkspace = activeWorkspaceKind === "canvas";
   const isDesktopsWorkspace = activeWorkspaceKind === "desktops";
+  const isBrowserWorkspace = activeWorkspaceKind === "browser";
   const isToolsWorkspace = activeWorkspaceKind === "tools";
   const isNewConversation = activeConversation === null || activeConversation.messages.length === 0;
   useEffect(() => {
@@ -7234,7 +7236,9 @@ export function ChatApp() {
               <ImportedConversationNotice importMode={activeConversation.metadata?.shared_import_mode} onDismiss={() => setProvenanceDismissedFor(activeConversation.id)} />
             )}
 
-            {isDesktopsWorkspace ? (
+            {isBrowserWorkspace ? (
+              <BrowserWorkspace />
+            ) : isDesktopsWorkspace ? (
               <DesktopMonitorWorkspace />
             ) : isKanbanMode ? (
               <KanbanWorkspacePanel

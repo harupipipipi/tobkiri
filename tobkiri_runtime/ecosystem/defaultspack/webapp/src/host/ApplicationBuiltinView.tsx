@@ -6,9 +6,12 @@ import type { VerifiedFrontendContribution } from "./frontendContracts";
 
 const Chat = lazy(() => import("../App").then(({ ChatApp }) => ({ default: ChatApp })));
 const Application = lazy(() => import("../App"));
+const Browser = lazy(() => import("../components/browser/BrowserWorkspace")
+  .then(({ BrowserWorkspace }) => ({ default: BrowserWorkspace })));
 const implementations = {
   "defaultspack.chat": Chat,
   "defaultspack.application": Application,
+  "defaultspack.browser": Browser,
 } as const;
 const digestPattern = /^sha256:[0-9a-f]{64}$/;
 
@@ -31,7 +34,8 @@ export function ApplicationBuiltinView({ item }: { item: VerifiedFrontendContrib
     copyText="The selected Application view is unavailable."
     errorIcon="application-unavailable" message="The selected Application view is unavailable." />;
   return (
-    <div data-application-implementation={item.implementation}>
+    <div data-application-implementation={item.implementation}
+      className={item.implementation === "defaultspack.browser" ? "flex h-screen min-h-0 flex-col" : undefined}>
       <Suspense fallback={<TobkiriLoadingScreen />}><View /></Suspense>
     </div>
   );

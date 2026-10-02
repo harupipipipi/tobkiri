@@ -164,6 +164,11 @@
       "artifact_digest": null,
       "pack_id": "rumi_ai_strategy_runtime_pack",
       "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_browser_host_service_pack",
+      "role": "provider"
     }
   ],
   "intent_api_version": "io.tobkiri.profile-intent.v1",
@@ -3350,6 +3355,106 @@
         "opaque": false
       },
       "target_provider_id": "rumi_ai_strategy_runtime_pack.ai-strategy.catalog"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.resource.browser.host.v1",
+      "operation_id": "rumi_browser_host_service_pack.browser-host-observe",
+      "target_provider_id": "rumi_browser_host_service_pack.browser-host.observe",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.browser.host.v1"
+          ],
+          "operation": [
+            "rumi_browser_host_service_pack.browser-host-observe"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_browser_host_service_pack.browser-host.tool",
+      "contract_id": "tobkiri.resource.browser.host.v1",
+      "operation_id": "rumi_browser_host_service_pack.browser-host-observe",
+      "target_provider_id": "rumi_browser_host_service_pack.browser-host.observe",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.browser.host.v1"
+          ],
+          "operation": [
+            "rumi_browser_host_service_pack.browser-host-observe"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.action.browser.host.v1",
+      "operation_id": "rumi_browser_host_service_pack.browser-host-control",
+      "target_provider_id": "rumi_browser_host_service_pack.browser-host.control",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.browser.host.v1"
+          ],
+          "operation": [
+            "rumi_browser_host_service_pack.browser-host-control"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_browser_host_service_pack.browser-host.tool",
+      "contract_id": "tobkiri.action.browser.host.v1",
+      "operation_id": "rumi_browser_host_service_pack.browser-host-control",
+      "target_provider_id": "rumi_browser_host_service_pack.browser-host.control",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.browser.host.v1"
+          ],
+          "operation": [
+            "rumi_browser_host_service_pack.browser-host-control"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_tool_local_executor_pack.tool-executor.local",
+      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "operation_id": "rumi_browser_host_service_pack.browser-tool-execute",
+      "target_provider_id": "rumi_browser_host_service_pack.browser-host.tool",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.tool.local.operation.v1"
+          ],
+          "operation": [
+            "rumi_browser_host_service_pack.browser-tool-execute"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
     }
   ],
   "shell": {

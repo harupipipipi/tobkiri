@@ -20,7 +20,8 @@ test("workspace tab options keep the extensible launch catalog", () => {
     WORKSPACE_TAB_CREATE_OPTIONS.map((option) => option.kind),
     ["chat", "coding", "calendar", "kanban", "desktops", "subagents", "canvas", "tools", "browser"],
   );
-  assert.equal(workspaceTabOption("browser").disabled, true);
+  assert.equal(workspaceTabOption("browser").disabled, undefined);
+  assert.equal(workspaceTabOption("browser").badge, undefined);
   assert.equal(workspaceTabOption("subagents").label, "Subagents / Teams");
   assert.equal(workspaceTabOption("kanban").label, "Kanban");
   assert.equal(workspaceTabOption("desktops").label, "Desktops");
@@ -44,7 +45,7 @@ test("workspaceTabDisplayTitle falls back to the kind label", () => {
 
 
 test("workspace routing preserves every enabled workspace kind", () => {
-  for (const kind of ["calendar", "kanban", "desktops", "subagents", "canvas", "tools"] as const) {
+  for (const kind of ["calendar", "kanban", "desktops", "subagents", "canvas", "tools", "browser"] as const) {
     assert.equal(workspaceKindForPathname(`/${kind}`), kind);
     assert.equal(
       workspaceUrlForKind(kind, "https://example.test/p/profile-a/chat?chat=old#anchor"),

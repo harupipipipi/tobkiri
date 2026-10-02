@@ -24,7 +24,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:9c519c46f89dce140e93ba4b98682bc46fc159cde68d8577c72781167a4409e1",
+            "digest": "sha256:78263b0cfe2393362c133389a1cc00d32e9a2458ffbc1f36e8b730990c94d097",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -35,7 +35,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:9c519c46f89dce140e93ba4b98682bc46fc159cde68d8577c72781167a4409e1",
+        "source_digest": "sha256:78263b0cfe2393362c133389a1cc00d32e9a2458ffbc1f36e8b730990c94d097",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_browser_host_service_pack"
       },
@@ -86,7 +86,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:9c519c46f89dce140e93ba4b98682bc46fc159cde68d8577c72781167a4409e1",
+            "digest": "sha256:78263b0cfe2393362c133389a1cc00d32e9a2458ffbc1f36e8b730990c94d097",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -97,7 +97,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:9c519c46f89dce140e93ba4b98682bc46fc159cde68d8577c72781167a4409e1",
+        "source_digest": "sha256:78263b0cfe2393362c133389a1cc00d32e9a2458ffbc1f36e8b730990c94d097",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_browser_host_service_pack"
       },
@@ -124,8 +124,73 @@
       },
       "status": "accepted",
       "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:tool.local.operation",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_browser_host_service_pack.browser-tool-execute",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_browser_host_service_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:78263b0cfe2393362c133389a1cc00d32e9a2458ffbc1f36e8b730990c94d097",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:78263b0cfe2393362c133389a1cc00d32e9a2458ffbc1f36e8b730990c94d097",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_browser_host_service_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "many",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_browser_host_service_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_browser_host_service_pack.browser-host.tool",
+        "required_capabilities": [
+          "tool.local.operation"
+        ],
+        "routing_keys": [
+          "browser_managed"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:adbc6a37477bad718477a9b1ba8b3a8d48b582459080feb8ea5a726ed31994f5",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
     }
   ],
   "pack_id": "rumi_browser_host_service_pack",
-  "source_identity": "sha256:9c519c46f89dce140e93ba4b98682bc46fc159cde68d8577c72781167a4409e1"
+  "source_identity": "sha256:78263b0cfe2393362c133389a1cc00d32e9a2458ffbc1f36e8b730990c94d097"
 }

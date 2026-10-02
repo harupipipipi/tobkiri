@@ -1,8 +1,8 @@
 {
-  "artifact_set_digest": "sha256:afaf7fda61ba33d093772d5741d39ff5f0d49527adb0085018ebfa964062f5aa",
+  "artifact_set_digest": "sha256:7fe75b6558e7eae2d3823a80f92925002e8ba11b96e645fd444e0b4a75101bec",
   "artifacts": [
     {
-      "digest": "sha256:55f1f92a0c1966b4b58eb411de5781952dfd9105210ac29b4e21c88c3f8c55c6",
+      "digest": "sha256:8d4d11a0194060a7360a130e0463476fcb6c732850ab33921cb28e4bff6ec0cd",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
@@ -12,7 +12,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:d85c04d931c987e1f26af24af6b0b0d0247ba12a873ec5d9ae96ec5c87240fcc",
+      "digest": "sha256:fa7621fae6585e5074342fdeaf70ded0b25a6c093a39731260a74ef5df8253de",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -22,7 +22,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:d83015374b5f8ae53a3dfd012f42edaccc8f30d4ea6c4c971f79fb7b1da50124",
+      "digest": "sha256:5e5a43731cc47bd19d9144a29d62798e8f88b99ad5a1a126024c37a901783b41",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -39,6 +39,11 @@
     {
       "digest": "sha256:4d8964f1b89e3de6ceb2cb4386259347ccaab142de8aa4671e54e9f87a9b6868",
       "path": "tools/browser_computer/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:8564ebfc5d962dc9db5f94468baec59452f67edd29289de326986ba9b3c5c9cf",
+      "path": "tools/browser_managed/manifest.json",
       "role": "runtime"
     },
     {
@@ -185,8 +190,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:b1092c8e32f19b58ae42d04da1d47e36736a8ad307e9ac693654acc8aad7805b"
+    "signed_digest": "sha256:a09d61702b4cc54f48eb4d7e0443b4eb5f91146c2ae6be78e08e93c8eb0d2104"
   },
   "pack_id": "rumi_default_tools_pack",
-  "source_identity": "sha256:df3e346dc453500699a22170bc2281987e24ae5379ba3ced248d31587f021751"
+  "source_identity": "sha256:0a3a5eb39479ffb72d5214305acb13d52e9a9f63c56c4414daa77e126c9f205b"
 }

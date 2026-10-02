@@ -801,3 +801,7 @@ wasmtime==48.0.0 \
     --hash=sha256:dba27d59209fac703e7d5753af78c2af2c1cd1ed735f520ec76dc31c60a05815 \
     --hash=sha256:ea69889a3c51702e9da5f5f441027ca934f7758f8926a4ed167b0d6877f092e8
     # via tobkiri-runtime
+websocket-client==1.9.0 \
+    --hash=sha256:9e813624b6eb619999a97dc7958469217c3176312b3a16a4bd1bc7e08a46ec98 \
+    --hash=sha256:af248a825037ef591efbf6ed20cc5faa03d3b47b9e5a2230a529eeee1c1fc3ef
+    # via tobkiri-runtime

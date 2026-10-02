@@ -244,7 +244,7 @@ def test_defaults_own_descriptors_join_the_selected_catalog(
     invoke, _client = registry_host
     data = (*captured_data, *defaults_data)
     result = invoke("definition", {"operation": "list"}, pack_data=data)
-    assert len(result["definitions"]) == 149
+    assert len(result["definitions"]) == 150
     definition = invoke(
         "definition", {"operation": "resolve", "tool_id": "artifact_file_read"},
         pack_data=data,

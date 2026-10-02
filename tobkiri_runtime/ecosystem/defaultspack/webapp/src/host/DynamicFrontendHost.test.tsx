@@ -109,6 +109,31 @@ test("the selected full Chat implementation is independent of Profile name", () 
   }
 });
 
+test("the Browser implementation requires the current captured Defaultspack route", () => {
+  resetFrontendHostQuarantineForTests();
+  const item = contribution({
+    contribution_id: "defaultspack.frontend.browser",
+    mode: "application_builtin",
+    implementation: "defaultspack.browser",
+    owner_pack_id: "defaultspack",
+    route: "/browser",
+  });
+  const render = (selected: VerifiedFrontendContribution) => renderToStaticMarkup(
+    <DynamicFrontendHost catalog={catalog([selected])} route="/browser" activePlanHash="plan-1" capabilities={capabilities} />,
+  );
+  assert.match(render(item), /data-application-implementation="defaultspack.browser"/);
+  assert.doesNotMatch(render(item), /data-application-implementation="defaultspack.chat"/);
+  for (const overrides of [
+    { owner_pack_id: "untrusted-extension" },
+    { descriptor_hash: "invalid" },
+    { resolved_activation_id: "activation:stale" },
+    { resolved_profile_id: "another-profile" },
+    { implementation: "extension.browser" },
+  ]) {
+    assert.doesNotMatch(render({ ...item, ...overrides }), /data-application-implementation/);
+  }
+});
+
 test("ambiguous routes fail closed and subpath entries require a path boundary", () => {
   const share = contribution({ route: "/share", route_match: "subpath" });
   assert.equal(contributionsForRoute(catalog([share]), "/share/record-1", "plan-1").length, 1);

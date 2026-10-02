@@ -27,7 +27,7 @@ def test_defaults_tools_catalog_is_authenticated_read_only_and_not_an_execution_
     status, body, _ = _request(server, "GET", route, headers=headers)
     assert status == 200, body
     catalog = body["data"]
-    assert catalog["count"] == len(catalog["tools"]) == 149
+    assert catalog["count"] == len(catalog["tools"]) == 150
     assert catalog["registry_revision"] == 0
     by_id = {item["tool_id"]: item for item in catalog["tools"]}
     assert by_id["calculator"]["summary"] == "Basic arithmetic helper."
@@ -40,16 +40,19 @@ def test_defaults_tools_catalog_is_authenticated_read_only_and_not_an_execution_
     assert by_id["settings_update"]["minimum_permission"] == "confirm"
     assert by_id["memo_note_upsert"]["tool_id"] == "memo_note_upsert"
     assert by_id["calculator"]["connection_status"] == "connected"
+    assert by_id["browser_managed"]["connection_status"] == "connected"
     assert all(
         item["connection_status"] == "unavailable"
-        for item in catalog["tools"] if item["tool_id"] != "calculator"
+        for item in catalog["tools"]
+        if item["tool_id"] not in {"calculator", "browser_managed"}
     )
-    assert sum(item["tool_count"] for item in catalog["services"]) == 149
+    assert sum(item["tool_count"] for item in catalog["services"]) == 150
     local = "tobkiri.service.tool.local.operation.v1"
     metadata = session.provider_metadata(local)
-    assert [(item["function_id"], item["operation_id"]) for item in metadata] == [
+    assert {(item["function_id"], item["operation_id"]) for item in metadata} == {
         ("rumi_default_tools_pack.calculator", "rumi_default_tools_pack.calculator-evaluate"),
-    ]
+        ("rumi_browser_host_service_pack.browser-host.tool", "rumi_browser_host_service_pack.browser-tool-execute"),
+    }
     with pytest.raises(AuthorityDenied):
         session.invoke(local, "rumi_default_tools_pack.calculator-evaluate", {
             "tool_id": "calculator", "tool_call_id": "direct-call",
