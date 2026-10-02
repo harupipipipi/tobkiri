@@ -21,6 +21,7 @@ EXECUTE = SANDBOX_PACK + ".task-execute"
 RESOURCE = SANDBOX_PACK + ".task-resource"
 MAX_TIMEOUT = 120
 REQUEST_FIELDS = {
+    "task_request_id",
     "profile_id",
     "workspace_id",
     "expected_revision",
@@ -65,7 +66,7 @@ def validate_task_request(value: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(value, Mapping) or set(value) != REQUEST_FIELDS:
         raise ValueError("workspace task request fields are invalid")
     request = dict(value)
-    for key in ("profile_id", "workspace_id"):
+    for key in ("task_request_id", "profile_id", "workspace_id"):
         identifier(request[key])
     integer(request["expected_revision"], 1)
     integer(request["expected_writer_epoch"], 1)
@@ -73,6 +74,15 @@ def validate_task_request(value: Mapping[str, Any]) -> dict[str, Any]:
     if integer(request["timeout_seconds"], 1) > MAX_TIMEOUT:
         raise ValueError("workspace task timeout is invalid")
     return request
+
+
+def task_identity(request: Mapping[str, Any], private_owner: str) -> str:
+    """Derive an opaque shared task reference without disclosing owner context."""
+    request = validate_task_request(request)
+    return (
+        "task-"
+        + digest(canonical([request["task_request_id"], private_owner, request]))[7:39]
+    )
 
 
 def validate_task_plan(value: Mapping[str, Any]) -> dict[str, Any]:
