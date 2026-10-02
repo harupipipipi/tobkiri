@@ -95,7 +95,7 @@
       {
         "path": "ecosystem/tobkiri_conversation_lifecycle_pack/pack-source.v1.json",
         "rule_id": "reviewed-conversation-lifecycle-source",
-        "digest": "sha256:795c9a2657cb1397e16eb44852b4382000ed8b2fcb3bad431b5b59d729b83a9d"
+        "digest": "sha256:375a93379507251a5583405ec74231288e293f559bb8e8a8ba5a2a7f33d25606"
       }
     ],
     "source_provenance": {
