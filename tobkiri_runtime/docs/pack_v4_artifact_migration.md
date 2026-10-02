@@ -64,3 +64,38 @@ legacy component/connectivity name is retained only as migration evidence; it
 does not become a v4 Operation. Packs that only ship declarative content have
 empty Function/Provider/Contract/Operation catalogs; the generator does not
 invent executable Operations to fill those catalogs.
+
+## Runtime receipt execution evidence
+
+Compiling or counting an operation does not demonstrate that it ran. The v1
+runtime ledger remains readable for historical inspection, but a nonempty
+Pack is release-eligible only when its isolated-conformance receipt contains
+`operation_executions`: exactly one successful measured Host invocation for
+each reviewed `(function_id, v4_contract_id, v4_operation_id)` identity. Counts
+alone, duplicate/reused invocations, missing operations, substituted identities,
+and failed outcomes fail release validation. New invocation observations must
+be timezone-aware timestamps within the install-to-conformance observation
+window; empty reviews cannot carry phantom execution records.
+
+Each execution record uses `method: host-operation-invocation.v1`, identifies
+its Pack, target artifact digest and isolated Host instance, and carries its
+`function_id`, `contract_id`, `operation_id`, distinct `invocation_id`,
+`observed_at`, `outcome`, and measured `input_digest`/`output_digest`. The
+surrounding conformance and release receipt digests bind these records. For a
+review that references generated semantics by digest, the operation identities
+must come from that exact digest-bound semantic comparison. Hashes establish
+integrity of recorded measurements; they do not replace invocation or review.
+
+The current `tests/conformance_support/collect_pack_runtime_receipts.py`
+collector validates catalog, compilation, admission, install and approval. It
+has no supported actual per-operation execution probe. It therefore fails
+closed for every nonempty executable Pack instead of treating inventory counts
+as successful executions. Empty inventories retain the existing independently
+reviewed zero-operation and admission-only paths.
+
+The checked-in 143 historical runtime receipts are unchanged: the 95 nonempty
+inventory-only records cannot establish release eligibility. The 39
+admission-only and 9 independently reviewed zero-operation records retain their
+existing eligibility under this check. The aggregate migration release gate
+must remain red until genuine exact-artifact execution evidence exists; do not
+rehash historical attestations or relax gate expectations to restore green.

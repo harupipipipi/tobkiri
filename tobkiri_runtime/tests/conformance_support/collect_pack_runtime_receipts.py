@@ -17,7 +17,10 @@ own scratch state:
 * ``isolated-conformance`` — a separate interpreter process that re-bootstraps
   a fresh Host instance, re-runs catalog/boundary/schema/artifact compilation,
   performs its own admission and install, and reports Host-minted digests the
-  parent cross-checks against its own measurements.
+  parent cross-checks against its own measurements. This is inventory and
+  lifecycle validation only. No executable Pack is release-verified until a
+  supported probe actually invokes every reviewed operation; this collector
+  currently has no such probe and fails closed for nonempty inventories.
 
 Nothing in this file invents Host state: if any step cannot be established by
 real execution the collector fails closed for that Pack and reports why.
@@ -562,6 +565,16 @@ def run_conformance_probe(
     return dict(result), _sha256_bytes(raw)
 
 
+def _require_supported_execution_probe(pack_id: str, operation_count: int) -> None:
+    """Fail closed until actual per-operation Host execution is supported."""
+
+    if operation_count:
+        raise CollectorError(
+            f"no supported actual operation execution probe for {pack_id}: "
+            f"{operation_count} inventoried operations are not execution evidence"
+        )
+
+
 def collect_conformance_step(
     *,
     probe_result: Mapping[str, Any],
@@ -578,6 +591,12 @@ def collect_conformance_step(
     checks = probe_result.get("checks")
     if not isinstance(checks, list):
         raise CollectorError(f"probe result for {pack_id} lacks checks")
+    if (
+        any(not isinstance(item, Mapping) for item in checks)
+        or sorted(str(item.get("check")) for item in checks)
+        != sorted(CONFORMANCE_CHECKS)
+    ):
+        raise CollectorError(f"probe result for {pack_id} has incomplete checks")
     failed = [item for item in checks if item.get("status") != "verified"]
     if failed:
         names = ", ".join(str(item.get("check")) for item in failed)
@@ -595,10 +614,13 @@ def collect_conformance_step(
         "target_digest"
     ) != target_digest:
         raise CollectorError(f"probe result identity mismatched: {pack_id}")
-    operation_count = int(
-        probe_result.get("operation_inventory", {}).get("count", -1)
-    )
-    if operation_count < 0:
+    inventory = probe_result.get("operation_inventory")
+    operation_count = inventory.get("count") if isinstance(inventory, Mapping) else None
+    if (
+        not isinstance(operation_count, int)
+        or isinstance(operation_count, bool)
+        or operation_count < 0
+    ):
         raise CollectorError(f"probe result lacks operation inventory: {pack_id}")
     if expected_operation_count is not None and (
         operation_count != expected_operation_count
@@ -608,6 +630,12 @@ def collect_conformance_step(
             f"the reviewed semantic record declares "
             f"{expected_operation_count}"
         )
+
+    _require_supported_execution_probe(pack_id, operation_count)
+    if inventory.get("operations") != []:
+        raise CollectorError(f"probe result has nonempty operation inventory: {pack_id}")
+    if probe_result.get("operation_executions") not in (None, []):
+        raise CollectorError(f"probe result invents operation executions: {pack_id}")
 
     step: dict[str, Any] = {
         "kind": "isolated-conformance",
@@ -806,6 +834,7 @@ def run_conformance_probe_in_process(
         for function in compiled.artifact.functions
         for operation in function.operations
     ]
+    _require_supported_execution_probe(pack_id, len(operations))
     details["compiled_artifact_digest"] = compiled.artifact.digest
     details["operation_inventory"] = {
         "count": len(operations),
@@ -915,7 +944,7 @@ def run_conformance_probe_in_process(
     check["status"] = "verified"
 
     check = _probe_check(checks, "operation-inventory")
-    details["operation_inventory"]["verified_count"] = len(operations)
+    # This verifies the compiled inventory, not execution of its operations.
     check["status"] = "verified"
 
     return {

@@ -3416,8 +3416,8 @@
     {
       "path": "scripts/quality/evidence/complete_v4_migration_red_64b2240e.json",
       "type": "regular-file",
-      "size": 85151,
-      "sha256": "412bfa8b6cc396d10ead82e0cf718e771e2f9dacf05054c6ce55da63e723c8ed",
+      "size": 155804,
+      "sha256": "4063a6aa08d9c6bc67d3f541b5410866939830234d9a854c99ebbc242f181e08",
       "executable": false
     },
     {
@@ -3465,8 +3465,15 @@
     {
       "path": "scripts/quality/migration_release_evidence.py",
       "type": "regular-file",
-      "size": 15803,
-      "sha256": "6ceb36800480792f70651c3a62305944aa5130454c1176cec090792e48082505",
+      "size": 16652,
+      "sha256": "be2247f8fad69cf44fee90dcf1e2221fe4fab59aba6e3a2b73dcdf8ea92314dc",
+      "executable": false
+    },
+    {
+      "path": "scripts/quality/operation_execution_evidence.py",
+      "type": "regular-file",
+      "size": 5274,
+      "sha256": "3af6f8da409b9a74f8e1faffb116add4c00a0ef0d3e73f3e316039bebbdd2fca",
       "executable": false
     },
     {
