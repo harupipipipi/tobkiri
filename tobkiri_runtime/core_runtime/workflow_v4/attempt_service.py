@@ -13,7 +13,11 @@ from core_runtime.workflow_v4.attempt_port import (
     WorkflowAttemptDeclarationV4,
     WorkflowAttemptServiceConfigV4,
 )
-from core_runtime.workflow_v4.attempt_store import WorkflowAttemptStoreV4, attempt_identity
+from core_runtime.workflow_v4.attempt_store import (
+    WorkflowAttemptStoreV4,
+    WorkflowCallerPendingPersistenceV4,
+    attempt_identity,
+)
 from core_runtime.workflow_v4.models import (
     ApprovalState,
     AuthorityReservation,
@@ -24,7 +28,7 @@ from core_runtime.workflow_v4.models import (
 )
 from tobkiri_host.broker import PreparedInvocationSnapshot
 from tobkiri_host.interactive_effects import PendingEffectController, PendingEffectState
-from tobkiri_host.models import InvocationFrame, RequestContext
+from tobkiri_host.models import InvocationFrame, OpaqueAuthorityRef, RequestContext
 from tobkiri_host.operation_cancellation import nested_cancellation_proof_for
 from tobkiri_host.ports import StaticAuthorityQuery
 
@@ -49,20 +53,43 @@ class HostWorkflowAttemptServiceV4:
 
     def __init__(self, config: WorkflowAttemptServiceConfigV4) -> None:
         self._config = config
-        self._routes = {route.key: route for route in config.routes}
+        self._coordinators = {
+            (
+                binding.operation.contract_id,
+                binding.operation.operation_id,
+                binding.principal_ref.value,
+            ): binding
+            for binding in config.coordinator_bindings
+        }
+        caller_ids = {binding.principal_ref.value for binding in config.coordinator_bindings}
+        declaration = WorkflowAttemptDeclarationV4()
+        if not caller_ids or any(
+            binding.function.function_id != declaration.function_id
+            or binding.operation.contract_id != declaration.contract_id
+            or binding.operation.operation_id not in declaration.operation_ids
+            or binding.artifact.publisher_lineage != config.coordinator_publisher_lineage
+            for binding in config.coordinator_bindings
+        ):
+            raise WorkflowDenied("Workflow coordinator capture is invalid")
+        self._routes = {
+            (route.caller_principal.value, *route.key): route for route in config.routes
+        }
         if len(self._routes) != len(config.routes) or any(
-            route.caller_principal != config.coordinator_principal for route in config.routes
+            route.caller_principal.value not in caller_ids for route in config.routes
         ):
             raise WorkflowDenied("Workflow attempt routes are invalid")
         self._store = WorkflowAttemptStoreV4(config.state_path)
-        self._controller = PendingEffectController(
-            persistence=self._store,
-            approvals=config.approvals,
-            coordinator_principal=config.coordinator_principal,
-            coordinator_publisher_lineage=config.coordinator_publisher_lineage,
-            presentation_owner_scope=config.presentation_owner_scope,
-            clock=config.clock,
-        )
+        self._controllers = {
+            caller_id: PendingEffectController(
+                persistence=WorkflowCallerPendingPersistenceV4(self._store, caller_id),
+                approvals=config.approvals,
+                coordinator_principal=OpaqueAuthorityRef(caller_id),
+                coordinator_publisher_lineage=config.coordinator_publisher_lineage,
+                presentation_owner_scope=config.presentation_owner_scope,
+                clock=config.clock,
+            )
+            for caller_id in caller_ids
+        }
         self._tokens: dict[str, tuple[str, object]] = {}
         self._active: dict[str, threading.Event] = {}
         self._lock = threading.RLock()
@@ -71,15 +98,24 @@ class HostWorkflowAttemptServiceV4:
             if record["state"] in {"preparing", "claimed", "dispatched"}:
                 record["state"] = "stale" if record["state"] == "preparing" else "ambiguous"
                 self._store.cas(record["reservation_id"], revision, record)
-        self._controller.recover()
+        for controller in self._controllers.values():
+            controller.recover()
 
     def _guard(self, invocation: HostProviderInvocationContextV4) -> None:
         self._config.assert_current_capture()
         invocation.assert_current()
         envelope = invocation.envelope
         context = envelope.context
+        coordinator = self._coordinators.get(
+            (
+                envelope.contract_id,
+                envelope.operation_id,
+                envelope.target_principal.value,
+            )
+        )
         if (
-            envelope.target_principal != self._config.coordinator_principal
+            coordinator is None
+            or envelope.contract_version != coordinator.operation.contract_version
             or envelope.contract_id != WorkflowAttemptDeclarationV4().contract_id
             or envelope.operation_id not in WorkflowAttemptDeclarationV4().operation_ids
             or context.profile_id != self._config.profile_id
@@ -103,28 +139,38 @@ class HostWorkflowAttemptServiceV4:
             "security_epoch": self._config.security_epoch,
             "principal_id": invocation.presentation_owner_principal_id,
             "session_id": invocation.presentation_owner_session_id,
-            "caller_session_id": invocation.envelope.context.caller_session_id,
         }
 
     def _owned(
-        self, invocation: HostProviderInvocationContextV4, reservation_id: str
+        self,
+        invocation: HostProviderInvocationContextV4,
+        reservation_id: str,
+        *,
+        control: bool = False,
     ) -> tuple[int, dict[str, Any]]:
         self._guard(invocation)
         revision, record = self._store.get(reservation_id)
         if record["owner"] != self._owner(invocation):
             raise WorkflowDenied("Workflow attempt reservation is unavailable")
-        self._route(record["request"])
+        if record["dispatch_caller"] != invocation.envelope.target_principal.value and not (
+            control and invocation.envelope.operation_id == "run.cancel"
+        ):
+            raise WorkflowDenied("Workflow attempt caller operation changed")
+        self._route(record["request"], record["dispatch_caller"])
         return revision, record
 
-    def _route(self, request: Mapping[str, Any]) -> CapturedWorkflowAttemptRouteV4:
-        key = tuple(
-            request.get(field)
-            for field in (
-                "contract_id",
-                "contract_revision_digest",
-                "operation_id",
-                "function_principal_id",
-            )
+    def _route(self, request: Mapping[str, Any], caller_id: str) -> CapturedWorkflowAttemptRouteV4:
+        key = (
+            caller_id,
+            *tuple(
+                request.get(field)
+                for field in (
+                    "contract_id",
+                    "contract_revision_digest",
+                    "operation_id",
+                    "function_principal_id",
+                )
+            ),
         )
         route = self._routes.get(key)  # type: ignore[arg-type]
         if route is None:
@@ -144,9 +190,9 @@ class HostWorkflowAttemptServiceV4:
         route: CapturedWorkflowAttemptRouteV4,
         request_id: str,
     ) -> RequestContext:
-        context = self._config.context_for_attempt(route, invocation)
+        context = self._config.context_for_attempt(route, invocation, request_id)
         if (
-            context.caller_principal != self._config.coordinator_principal
+            context.caller_principal != route.caller_principal
             or context.profile_id != self._config.profile_id
             or context.activation_id != self._config.activation_id
             or context.activation_digest != self._config.activation_digest
@@ -210,7 +256,7 @@ class HostWorkflowAttemptServiceV4:
             or run["security_epoch"] != self._config.security_epoch
         ):
             raise WorkflowDenied("Workflow attempt request or activation changed")
-        route = self._route(request)
+        route = self._route(request, invocation.envelope.target_principal.value)
         reservation_id = attempt_identity(self._config.profile_id, request["request_id"])
         context = self._context(invocation, route, reservation_id)
         prepared = self._config.broker.prepare(
@@ -249,6 +295,7 @@ class HostWorkflowAttemptServiceV4:
             )
         record = {
             "reservation_id": reservation_id,
+            "dispatch_caller": invocation.envelope.target_principal.value,
             "owner": self._owner(invocation),
             "request": dict(request),
             "request_digest": attempt["request_digest"],
@@ -282,7 +329,7 @@ class HostWorkflowAttemptServiceV4:
             return self.inspect(invocation, reservation_id)
         self._guard(invocation)
         if route.authority_mode == "interactive_only":
-            status = self._controller.prepare(
+            status = self._controllers[record["dispatch_caller"]].prepare(
                 prepared=prepared,
                 context=context,
                 effect_scope=scope.to_dict(),
@@ -313,7 +360,9 @@ class HostWorkflowAttemptServiceV4:
         if record["state"] in {"pending", "reserved"}:
             if record["authority_mode"] == "profile_grant":
                 return self._reservation(record, ApprovalState.RESERVED)
-            observed = self._controller.observe_approval(record["effect_id"])
+            observed = self._controllers[record["dispatch_caller"]].observe_approval(
+                record["effect_id"]
+            )
             state = {
                 PendingEffectState.APPROVAL_PENDING: ApprovalState.WAITING_APPROVAL,
                 PendingEffectState.APPROVED: ApprovalState.APPROVED,
@@ -340,7 +389,7 @@ class HostWorkflowAttemptServiceV4:
         ):
             raise WorkflowDenied("Workflow attempt is not authorized")
         if record["authority_mode"] == "interactive_only":
-            self._controller.claim(record["effect_id"])
+            self._controllers[record["dispatch_caller"]].claim(record["effect_id"])
         record["state"] = "claimed"
         self._store.cas(reservation_id, revision, record)
         token = secrets.token_hex(32)
@@ -367,7 +416,7 @@ class HostWorkflowAttemptServiceV4:
             or authority.security_epoch != self._config.security_epoch
         ):
             raise WorkflowDenied("Workflow attempt dispatch claim is unavailable")
-        route = self._route(request)
+        route = self._route(request, record["dispatch_caller"])
         context = self._context(invocation, route, authority.reservation_id)
         if _context_document(context) != record["context"]:
             raise WorkflowDenied("Workflow child context changed")
@@ -392,7 +441,7 @@ class HostWorkflowAttemptServiceV4:
             if current["state"] != "claimed":
                 raise WorkflowDenied("Workflow attempt was already dispatched")
             if current["effect_id"] is not None:
-                self._controller.mark_dispatched(current["effect_id"])
+                self._controllers[current["dispatch_caller"]].mark_dispatched(current["effect_id"])
             current["state"] = "dispatched"
             self._store.cas(authority.reservation_id, revision, current)
 
@@ -451,18 +500,18 @@ class HostWorkflowAttemptServiceV4:
         if state == "ambiguous_effect":
             final = "ambiguous"
             if record["effect_id"] is not None:
-                self._controller.cancel(record["effect_id"])
+                self._controllers[record["dispatch_caller"]].cancel(record["effect_id"])
         else:
             final = "succeeded" if state == "succeeded" else "failed"
             if record["effect_id"] is not None:
                 if record["state"] == "dispatched":
-                    self._controller.finish(
+                    self._controllers[record["dispatch_caller"]].finish(
                         record["effect_id"],
                         succeeded=final == "succeeded",
                         outcome_digest=outcome_digest,
                     )
                 else:
-                    self._controller.cancel(record["effect_id"])
+                    self._controllers[record["dispatch_caller"]].cancel(record["effect_id"])
         record.update(state=final, outcome_digest=outcome_digest)
         self._store.cas(reservation_id, revision, record)
 
@@ -471,14 +520,14 @@ class HostWorkflowAttemptServiceV4:
     ) -> None:
         """Revoke only this exact presentation owner's unused reservation."""
         del reason
-        revision, record = self._owned(invocation, reservation_id)
+        revision, record = self._owned(invocation, reservation_id, control=True)
         if record["state"] in {"succeeded", "failed", "ambiguous", "cancelled", "stale"}:
             return
         record["state"] = (
             "ambiguous" if record["state"] in {"claimed", "dispatched"} else "cancelled"
         )
         if record["effect_id"] is not None:
-            self._controller.cancel(record["effect_id"])
+            self._controllers[record["dispatch_caller"]].cancel(record["effect_id"])
         self._store.cas(reservation_id, revision, record)
         with self._lock:
             active = self._active.get(reservation_id)

@@ -189,3 +189,47 @@ def attempt_identity(profile_id: str, request_id: str) -> str:
             "request_id": request_id,
         }
     ).removeprefix("sha256:")
+
+
+class WorkflowCallerPendingPersistenceV4:
+    """Filter recovery to one exact captured caller, sharing no foreign store."""
+
+    def __init__(self, store: WorkflowAttemptStoreV4, caller_principal_id: str) -> None:
+        self._store = store
+        self._caller = caller_principal_id
+
+    def _check(self, payload: Mapping[str, Any]) -> None:
+        if payload.get("context", {}).get("caller_principal") != self._caller:
+            raise WorkflowDenied("Workflow pending caller is unavailable")
+
+    def create_host_pending_effect(self, effect_id: str, payload: Mapping[str, Any]) -> int:
+        """Persist only this exact controller's standard encrypted record."""
+        self._check(payload)
+        return self._store.create_host_pending_effect(effect_id, payload)
+
+    def get_host_pending_effect(self, effect_id: str) -> tuple[int, Mapping[str, Any]] | None:
+        """Read only a record belonging to this exact captured caller."""
+        result = self._store.get_host_pending_effect(effect_id)
+        if result is not None:
+            self._check(result[1])
+        return result
+
+    def compare_and_swap_host_pending_effect(
+        self, effect_id: str, *, expected_revision: int, payload: Mapping[str, Any]
+    ) -> int:
+        """Keep caller identity constant while the existing controller CASes."""
+        self._check(payload)
+        self.get_host_pending_effect(effect_id)
+        return self._store.compare_and_swap_host_pending_effect(
+            effect_id,
+            expected_revision=expected_revision,
+            payload=payload,
+        )
+
+    def list_host_pending_effects(self) -> list[tuple[int, Mapping[str, Any]]]:
+        """Recover only this coordinator principal's pending effects."""
+        return [
+            (revision, payload)
+            for revision, payload in self._store.list_host_pending_effects()
+            if payload.get("context", {}).get("caller_principal") == self._caller
+        ]

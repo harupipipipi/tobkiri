@@ -245,7 +245,7 @@ class WorkflowAttemptServiceConfigV4:
     approvals: InteractiveApprovalPort
     routes: tuple[CapturedWorkflowAttemptRouteV4, ...]
     context_for_attempt: Callable[
-        [CapturedWorkflowAttemptRouteV4, HostProviderInvocationContextV4],
+        [CapturedWorkflowAttemptRouteV4, HostProviderInvocationContextV4, str],
         RequestContext,
     ]
     execution_scope: Callable[
@@ -254,7 +254,7 @@ class WorkflowAttemptServiceConfigV4:
     presentation_owner_scope: Callable[[RequestContext, str, str], ContextManager[None]]
     assert_current_capture: Callable[[], None]
     state_path: Path
-    coordinator_principal: OpaqueAuthorityRef
+    coordinator_bindings: tuple[ResolvedOperationBinding, ...]
     coordinator_publisher_lineage: str
     profile_id: str
     activation_id: str
