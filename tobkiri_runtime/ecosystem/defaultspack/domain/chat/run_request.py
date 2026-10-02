@@ -17,6 +17,7 @@ from typing import Any
 
 from blocks._common import gen_id
 from core_runtime.authority.principal import build_principal_id
+from core_runtime.di_container import get_container
 from domain.ai_client.capabilities.registry import get_model_provider_capabilities
 from blocks.chat._context_helpers import enrich_messages, extract_user_text
 from domain.capabilities.runtime_snapshot import build_runtime_capability_snapshot
@@ -38,6 +39,9 @@ from domain.chat.modality_detector import detect_modalities
 from domain.chat.progress_tool import assistant_progress_system_instruction, with_assistant_progress_tool
 from domain.chat.public_metadata import compact_tool_filter_entries
 from domain.chat.store import ChatStore
+from domain.chat.instruction_context import (
+    append_instruction_context, prepare_instruction_context,
+)
 from domain.chat.tool_selection_schema import (
     TOOL_SELECTION_MODES,
     TOOL_SELECTION_SCOPES,
@@ -613,6 +617,14 @@ def prepare_chat_run(
         temporal_context=temporal_context,
     )
     _append_system_context_message(standard_messages, chat_reference_prompt)
+
+    context_session = get_container().get_or_none("v4_dispatch_session")
+    if context_session is not None:
+        projection = prepare_instruction_context(
+            context_session, conversation_id, request_id,
+        )
+        append_instruction_context(standard_messages, projection)
+        request_context["instruction_context"] = projection
 
     _apply_authority_context(
         request_context,

@@ -1,0 +1,264 @@
+{
+  "version": "rumi.ui.contribution.v1",
+  "id": "tobkiri.work-plan.sidebar",
+  "kind": "view",
+  "mode": "declarative",
+  "label": "Work plan",
+  "priority": 100,
+  "accessibility": {
+    "name": "Work plan",
+    "keyboard": true,
+    "live": "polite"
+  },
+  "view": {
+    "version": "tobkiri.ui.view.v1",
+    "slot": "sidebar",
+    "renderer": "panel",
+    "title": "Work plan",
+    "body": "Goal, dependent Todo and independent review share one plan. Additional instructions preserve the goal. Whole goal changes require preview and confirmation. Natural-language completion conditions remain unverified until evidence is provided.",
+    "data_source": {
+      "contribution_id": "pack.tobkiri_agent_control_pack.tobkiri_agent_control_pack.work-plan-resource",
+      "contract_id": "tobkiri.resource.work-plan.v1",
+      "operation_id": "tobkiri_agent_control_pack.work-plan-resource",
+      "input": {
+        "operation": "get_for_conversation"
+      },
+      "context_bindings": {
+        "conversation_id": "conversation_id"
+      }
+    },
+    "controls": [
+      {
+        "id": "goal-set",
+        "label": "Initial goal",
+        "kind": "text",
+        "operation": {
+          "contribution_id": "pack.tobkiri_agent_control_pack.tobkiri_agent_control_pack.work-plan-action",
+          "contract_id": "tobkiri.action.work-plan.v1",
+          "operation_id": "tobkiri_agent_control_pack.work-plan-action"
+        },
+        "input": {
+          "operation": "goal.set"
+        },
+        "input_bindings": {
+          "plan_id": "plan.id",
+          "expected_revision": "plan.revision"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        },
+        "value_key": "body",
+        "value_path": "plan.goal.body"
+      },
+      {
+        "id": "instruction",
+        "label": "Additional instruction",
+        "kind": "text",
+        "operation": {
+          "contribution_id": "pack.tobkiri_agent_control_pack.tobkiri_agent_control_pack.work-plan-action",
+          "contract_id": "tobkiri.action.work-plan.v1",
+          "operation_id": "tobkiri_agent_control_pack.work-plan-action"
+        },
+        "input": {
+          "operation": "remind.deliver"
+        },
+        "input_bindings": {
+          "plan_id": "plan.id",
+          "expected_revision": "plan.revision",
+          "agent_binding": "plan.settings.executor"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        },
+        "value_key": "body"
+      },
+      {
+        "id": "goal-preview",
+        "label": "Preview whole goal change",
+        "kind": "text",
+        "operation": {
+          "contribution_id": "pack.tobkiri_agent_control_pack.tobkiri_agent_control_pack.work-plan-action",
+          "contract_id": "tobkiri.action.work-plan.v1",
+          "operation_id": "tobkiri_agent_control_pack.work-plan-action"
+        },
+        "input": {
+          "operation": "goal.prepare_replace"
+        },
+        "input_bindings": {
+          "plan_id": "plan.id",
+          "expected_revision": "plan.revision"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        },
+        "value_key": "body"
+      },
+      {
+        "id": "goal-commit",
+        "label": "Confirm whole goal change",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.tobkiri_agent_control_pack.tobkiri_agent_control_pack.context-replace",
+          "contract_id": "tobkiri.action.context.replace.v1",
+          "operation_id": "tobkiri_agent_control_pack.context-replace"
+        },
+        "input": {
+          "operation": "goal.commit_replace"
+        },
+        "input_bindings": {
+          "plan_id": "plan.id",
+          "expected_revision": "plan.revision",
+          "preview_id": "plan.replacement_preview.id",
+          "preview_digest": "plan.replacement_preview.digest"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        }
+      },
+      {
+        "id": "goal-cancel",
+        "label": "Cancel goal change",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.tobkiri_agent_control_pack.tobkiri_agent_control_pack.work-plan-action",
+          "contract_id": "tobkiri.action.work-plan.v1",
+          "operation_id": "tobkiri_agent_control_pack.work-plan-action"
+        },
+        "input": {
+          "operation": "goal.cancel_replace"
+        },
+        "input_bindings": {
+          "plan_id": "plan.id",
+          "expected_revision": "plan.revision",
+          "preview_id": "plan.replacement_preview.id"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        }
+      },
+      {
+        "id": "todo-add",
+        "label": "Add Todo",
+        "kind": "text",
+        "operation": {
+          "contribution_id": "pack.tobkiri_agent_control_pack.tobkiri_agent_control_pack.work-plan-action",
+          "contract_id": "tobkiri.action.work-plan.v1",
+          "operation_id": "tobkiri_agent_control_pack.work-plan-action"
+        },
+        "input": {
+          "operation": "todo.add"
+        },
+        "input_bindings": {
+          "plan_id": "plan.id",
+          "expected_revision": "plan.revision"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        },
+        "value_key": "body"
+      },
+      {
+        "id": "todo-run",
+        "label": "Run next ready Todo",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.tobkiri_agent_control_pack.tobkiri_agent_control_pack.work-plan-execute",
+          "contract_id": "tobkiri.action.work-plan.execute.v1",
+          "operation_id": "tobkiri_agent_control_pack.work-plan-execute"
+        },
+        "input": {
+          "operation": "run_next"
+        },
+        "input_bindings": {
+          "plan_id": "plan.id",
+          "expected_revision": "plan.revision"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        }
+      },
+      {
+        "id": "plan-pause",
+        "label": "Pause work plan",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.tobkiri_agent_control_pack.tobkiri_agent_control_pack.work-plan-settings",
+          "contract_id": "tobkiri.action.work-plan.settings.v1",
+          "operation_id": "tobkiri_agent_control_pack.work-plan-settings"
+        },
+        "input": {
+          "operation": "plan.pause"
+        },
+        "input_bindings": {
+          "plan_id": "plan.id",
+          "expected_revision": "plan.revision"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        }
+      },
+      {
+        "id": "plan-resume",
+        "label": "Resume work plan",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.tobkiri_agent_control_pack.tobkiri_agent_control_pack.work-plan-settings",
+          "contract_id": "tobkiri.action.work-plan.settings.v1",
+          "operation_id": "tobkiri_agent_control_pack.work-plan-settings"
+        },
+        "input": {
+          "operation": "plan.resume"
+        },
+        "input_bindings": {
+          "plan_id": "plan.id",
+          "expected_revision": "plan.revision"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        }
+      }
+    ],
+    "fields": [
+      {
+        "label": "Goal",
+        "path": "plan.goal.body",
+        "kind": "text"
+      },
+      {
+        "label": "Work",
+        "path": "plan.todo_summary",
+        "kind": "text"
+      },
+      {
+        "label": "State",
+        "path": "plan.status",
+        "kind": "status"
+      },
+      {
+        "label": "Schedule",
+        "path": "plan.schedule.status",
+        "kind": "status"
+      },
+      {
+        "label": "Next check (UTC milliseconds)",
+        "path": "plan.schedule.next_run_at_ms",
+        "kind": "text"
+      },
+      {
+        "label": "Independent review",
+        "path": "plan.review_status",
+        "kind": "status"
+      },
+      {
+        "label": "Goal change warning",
+        "path": "plan.replacement_preview.warning",
+        "kind": "text"
+      },
+      {
+        "label": "Proposed goal",
+        "path": "plan.replacement_preview.body",
+        "kind": "text"
+      }
+    ]
+  }
+}
