@@ -83,6 +83,10 @@ from tobkiri_host.workspace_mutation import (
 from tobkiri_protocol.canonical import canonical_digest, canonical_json
 from tobkiri_protocol.errors import ProtocolError
 from tobkiri_protocol.platform_artifact import verify_platform_artifact
+from tobkiri_protocol.profile_edges import (
+    captured_edge_identity,
+    require_profile_edge_bindings,
+)
 from tobkiri_protocol.saved_conversation import (
     SAVED_CONVERSATION_CONTRACT,
     SAVED_CONVERSATION_OPERATION,
@@ -164,6 +168,10 @@ from ..panel_auth import (
     PanelAuthBinding,
     PanelAuthManager,
     get_panel_auth_manager,
+)
+from ..profile_caller_edges_v4 import (
+    SelectedCallerOperationV4,
+    resolve_selected_caller,
 )
 
 
@@ -267,7 +275,7 @@ class _CapturedPlanEdge:
     """One Profile edge joined to its signed plan and verified target."""
 
     key: tuple[str, str, str, str, str, str]
-    binding_key: tuple[str, str, str]
+    binding_key: tuple[str, ...]
     edge: Mapping[str, Any]
     binding: Mapping[str, Any]
     resolved_binding: ResolvedOperationBinding
@@ -1589,15 +1597,18 @@ def capture_production_dispatch(
     profile = active.resolved.profile
     lock = active.resolved.lock
     plan = active.resolved.plan
+    try:
+        require_profile_edge_bindings(profile["requested_edges"], plan["bindings"])
+    except ProtocolError as exc:
+        raise AuthorityDenied(str(exc)) from exc
     shell_id = str(profile["shell"]["pack_id"])
     shell = _shell_artifact(
         catalog,
         shell_id,
         profile["shell"],
     )
-    principals_by_function: dict[str, tuple[FunctionPrincipal, ...]] = {}
+    selected_callers: list[SelectedCallerOperationV4] = []
     for function in shell.functions:
-        function_principals: list[FunctionPrincipal] = []
         for operation in function.operations:
             principal = FunctionPrincipal(
                 shell.digest,
@@ -1606,30 +1617,24 @@ def capture_production_dispatch(
                 operation.revision_digest,
                 operation.operation_id,
             )
-            function_principals.append(principal)
-        principals_by_function[function.function_id] = tuple(function_principals)
+            selected_callers.append(
+                SelectedCallerOperationV4(operation.contract_id, principal)
+            )
     shell_principal_ids = frozenset(
-        principal.principal_id
-        for principals in principals_by_function.values()
-        for principal in principals
+        candidate.principal.principal_id for candidate in selected_callers
     )
     for binding in plan["bindings"]:
         principal = FunctionPrincipal.from_dict(binding["function_principal"])
-        existing = list(principals_by_function.get(principal.function_id, ()))
-        if principal not in existing:
-            existing.append(principal)
-        principals_by_function[principal.function_id] = tuple(existing)
+        selected_callers.append(
+            SelectedCallerOperationV4(str(binding["contract_id"]), principal)
+        )
 
     # Dispatch must follow the persisted immutable Profile, including exact
     # operation edges contributed by an enabled/approved optional Pack.
     edges = profile["requested_edges"]
-    binding_by_edge: dict[tuple[str, str, str], Mapping[str, Any]] = {}
+    binding_by_edge: dict[tuple[str, ...], Mapping[str, Any]] = {}
     for item in plan["bindings"]:
-        binding_key = (
-            str(item["caller_function_id"]),
-            str(item["contract_id"]),
-            str(item["operation_id"]),
-        )
+        binding_key = captured_edge_identity(item)
         if binding_key in binding_by_edge:
             raise AuthorityDenied("ResolvedPlan contains a duplicate operation edge")
         binding_by_edge[binding_key] = item
@@ -1648,21 +1653,14 @@ def capture_production_dispatch(
             str,
         ]
     ] = []
-    seen_binding_edges: set[tuple[str, str, str]] = set()
+    seen_binding_edges: set[tuple[str, ...]] = set()
     for edge in edges:
-        binding_key = (
-            str(edge["caller_function_id"]),
-            str(edge["contract_id"]),
-            str(edge["operation_id"]),
-        )
+        binding_key = captured_edge_identity(edge)
         binding = binding_by_edge.get(binding_key)
         if binding is None:
             raise AuthorityDenied("Profile edge is absent from the signed ResolvedPlan")
         seen_binding_edges.add(binding_key)
-        callers = principals_by_function.get(binding_key[0], ())
-        if len(callers) != 1:
-            raise AuthorityDenied("Profile edge caller does not identify one principal")
-        caller = callers[0]
+        caller = resolve_selected_caller(edge, selected_callers)
         target = FunctionPrincipal.from_dict(binding["function_principal"])
         if str(edge["target_provider_id"]) != target.function_id:
             raise AuthorityDenied("Profile edge target differs from its ResolvedPlan binding")
@@ -1679,7 +1677,7 @@ def capture_production_dispatch(
             str(edge["contract_id"]),
             str(edge["operation_id"]),
         )
-        if authority_key in ceilings and ceilings[authority_key] != axis_ceilings:
+        if authority_key in ceilings:
             raise AuthorityDenied("Profile edge authority is duplicated")
         ceilings[authority_key] = axis_ceilings
         edge_specs.append(
@@ -1731,13 +1729,9 @@ def capture_production_dispatch(
         verified_effective_artifacts=effective,
         authority_ceilings=ceilings,
     )
-    resolved_binding_by_edge: dict[tuple[str, str, str], ResolvedOperationBinding] = {}
+    resolved_binding_by_edge: dict[tuple[str, ...], ResolvedOperationBinding] = {}
     for binding in plan["bindings"]:
-        binding_key = (
-            str(binding["caller_function_id"]),
-            str(binding["contract_id"]),
-            str(binding["operation_id"]),
-        )
+        binding_key = captured_edge_identity(binding)
         resolved_binding = runtime.composition.catalog.resolve_pinned(
             str(binding["contract_id"]),
             str(binding["operation_id"]),
@@ -1749,20 +1743,10 @@ def capture_production_dispatch(
     captured_edges = tuple(
         _CapturedPlanEdge(
             key=authority_key,
-            binding_key=(
-                str(binding["caller_function_id"]),
-                str(binding["contract_id"]),
-                str(binding["operation_id"]),
-            ),
+            binding_key=captured_edge_identity(binding),
             edge=edge,
             binding=binding,
-            resolved_binding=resolved_binding_by_edge[
-                (
-                    str(binding["caller_function_id"]),
-                    str(binding["contract_id"]),
-                    str(binding["operation_id"]),
-                )
-            ],
+            resolved_binding=resolved_binding_by_edge[captured_edge_identity(binding)],
             caller=caller,
             target=target,
             ceilings=axis_ceilings,
@@ -1977,7 +1961,7 @@ def capture_production_dispatch(
             **{target[0]: backend_digest for target in control_targets.values()},
         }
     captured_dynamic_approvals: dict[str, str] = {}
-    approved_host_binding_keys: set[tuple[str, str, str]] = set()
+    approved_host_binding_keys: set[tuple[str, ...]] = set()
     dynamic_domain_ids: dict[tuple[str, str, str], str] = {}
     static_profile_pack_ids = _static_profile_pack_ids(catalog, profile_id)
     optional_pack_ids = {
@@ -3068,11 +3052,7 @@ def capture_production_dispatch(
         )
     backend_registry = BackendRegistry(registered_backends)
     for binding in plan["bindings"]:
-        binding_key = (
-            str(binding["caller_function_id"]),
-            str(binding["contract_id"]),
-            str(binding["operation_id"]),
-        )
+        binding_key = captured_edge_identity(binding)
         target = FunctionPrincipal.from_dict(binding["function_principal"])
         resolved_binding = resolved_binding_by_edge[binding_key]
         try:
@@ -3311,11 +3291,7 @@ def capture_production_dispatch(
     providers: dict[str, tuple[Mapping[str, Any], ...]] = {}
     provider_keys: set[tuple[str, str, str]] = set()
     for binding in plan["bindings"]:
-        binding_key = (
-            str(binding["caller_function_id"]),
-            str(binding["contract_id"]),
-            str(binding["operation_id"]),
-        )
+        binding_key = captured_edge_identity(binding)
         resolved_binding = resolved_binding_by_edge[binding_key]
         provider_key = (
             resolved_binding.operation.contract_id,
