@@ -57,6 +57,9 @@ class WorkPlanService:
         expected = integer(values["expected_revision"])
         replayed = self.store.replay(plan_id, operation_id, values, actor.principal_id)
         if replayed is not None:
+            current = self.store.get(plan_id)
+            if current and (current["status"] != "active" or not current["settings"]["enabled"]):
+                self._cancel_reviews(plan_id)
             return {**replayed, "plan": self.store.get(plan_id), "deduplicated": True}
         old = self.store.get(plan_id)
         conversation_id = values.get("conversation_id") if old is None else old["conversation_id"]
@@ -198,6 +201,9 @@ class WorkPlanService:
                 if candidate["executor"] and candidate["executor"] == candidate["reviewer"]:
                     raise ValueError("review must use an independent role")
                 plan["settings"] = candidate
+                if not candidate["enabled"]:
+                    for binding in plan.get("review_runs", {}).values():
+                        binding["cancel_requested"] = True
                 return {"status": "committed", "effective_at_ms": now}
             if action in {"plan.pause", "plan.cancel", "plan.resume"}:
                 actor.require("plan.configure")
@@ -207,6 +213,9 @@ class WorkPlanService:
                     "plan.resume": "active",
                 }[action]
                 plan["generation"] += 1
+                if action != "plan.resume":
+                    for binding in plan.get("review_runs", {}).values():
+                        binding["cancel_requested"] = True
                 return {"status": plan["status"]}
             if action == "remind.deliver":
                 return inbox.deliver(plan, arguments, actor.principal_id, now)
@@ -231,11 +240,73 @@ class WorkPlanService:
         # Persisted plan changes are real even when schedule binding fails. The
         # projection reports that failure separately instead of saying monitored.
         self.reconcile_schedule(plan_id)
+        if action in {"plan.pause", "plan.cancel"} or (
+            action == "settings.configure" and not result["plan"]["settings"]["enabled"]
+        ):
+            result["review_cancellation"] = self._cancel_reviews(plan_id)
         result["plan"] = self.store.get(plan_id)
         if action in {"remind.create", "remind.cancel"}:
             self._schedule_reminder(plan_id, arguments["reminder_id"])
             result["plan"] = self.store.get(plan_id)
         return result
+
+    def _cancel_reviews(self, plan_id: str) -> dict[str, Any]:
+        """Cancel only retained owner Runs; preserve unknown outcomes for recovery."""
+        plan = self.store.get(plan_id)
+        if plan is None:
+            return {"status": "unavailable", "reason": "plan_unavailable"}
+        runs = []
+        terminal = {"completed", "failed", "cancelled"}
+        for occurrence, binding in plan.get("review_runs", {}).items():
+            if binding.get("status") in terminal:
+                continue
+            if binding.get("plan_id") != plan_id or binding.get(
+                "workflow_run_id"
+            ) != ReviewWorkflow.run_id(occurrence):
+                raise PermissionError("retained review Run identity changed")
+            try:
+                result = ReviewWorkflow(self.ports.client, guard=self.guard).status(
+                    occurrence, cancel=True
+                )
+            except Exception:
+                result = {
+                    "status": "cancellation_pending",
+                    "reason": "review_cancellation_unconfirmed",
+                }
+            latest = self.store.get(plan_id)
+            if latest is not None:
+                try:
+                    self._internal(
+                        latest,
+                        "review-cancel",
+                        {"occurrence": occurrence, "result": result},
+                        lambda p, key=occurrence, value=result: (
+                            p["review_runs"][key].update(
+                                status=value["status"],
+                                cancel_requested=True,
+                            )
+                            or {}
+                        ),
+                    )
+                except Conflict:
+                    result = {
+                        "status": "cancellation_pending",
+                        "reason": "review_cancellation_publish_conflict",
+                    }
+            runs.append({"occurrence_id": occurrence, **result})
+        historical = any(
+            effect.get("status") == "reviewing" and occurrence not in plan.get("review_runs", {})
+            for occurrence, effect in plan["effects"].items()
+        )
+        return {
+            "status": "reconciliation_required"
+            if historical
+            else "cancellation_pending"
+            if any(run["status"] not in terminal for run in runs)
+            else "completed",
+            "runs": runs,
+            **({"reason": "review_run_binding_missing"} if historical else {}),
+        }
 
     def reconcile_schedule(self, plan_id: str) -> None:
         """Retry an actual owner binding without altering the first due time."""
@@ -545,8 +616,47 @@ class WorkPlanService:
             raise ValueError("job action is unknown")
         if payload["generation"] != plan["generation"] or not plan["settings"]["enabled"]:
             return {"status": "cancelled"}
+        run_id = ReviewWorkflow.run_id(occurrence)
+
+        def bind_run(current: dict[str, Any]) -> Mapping[str, Any]:
+            if current["generation"] != payload["generation"] or current["status"] != "active":
+                raise Conflict("review generation changed before binding")
+            value = {
+                "plan_id": plan["id"],
+                "generation": payload["generation"],
+                "workflow_run_id": run_id,
+                "status": "creating",
+                "cancel_requested": False,
+            }
+            previous = current.setdefault("review_runs", {}).get(occurrence)
+            if previous is not None:
+                if any(
+                    previous.get(key) != value[key]
+                    for key in ("plan_id", "generation", "workflow_run_id")
+                ):
+                    raise PermissionError("review occurrence was rebound")
+            else:
+                current["review_runs"][occurrence] = value
+            return {}
+
+        plan = self._internal(
+            plan, "review-run-bind", {"occurrence": occurrence, "run_id": run_id}, bind_run
+        )["plan"]
+
+        def current_review() -> None:
+            self.guard()
+            current = self.store.get(plan["id"])
+            if (
+                current is None
+                or current["generation"] != payload["generation"]
+                or current["status"] != "active"
+                or not current["settings"]["enabled"]
+                or current["review_runs"][occurrence].get("cancel_requested")
+            ):
+                raise Conflict("review was paused or cancelled")
+
         try:
-            result = ReviewWorkflow(self.ports.client).run(values)
+            result = ReviewWorkflow(self.ports.client, guard=current_review).run(values)
             if result["status"] == "completed":
                 current = self.store.get(plan["id"])
                 finding = (current or {}).get("review_occurrences", {}).get(occurrence)
@@ -555,9 +665,20 @@ class WorkPlanService:
                 result["review_status"] = finding["verdict"]
                 if finding["verdict"] == "review_failed":
                     result["status"] = "failed"
+            latest = self.store.get(plan["id"])
+            if latest is not None:
+                current_review()
+                self._internal(
+                    latest,
+                    "review-run-state",
+                    {"occurrence": occurrence, "result": result},
+                    lambda p: p["review_runs"][occurrence].update(status=result["status"]) or {},
+                )
             return result
+        except Conflict:
+            return {"status": "cancelled", "review_cancellation": self._cancel_reviews(plan["id"])}
         except Exception:
-            return {"status": "failed", "reason": "review_workflow_unavailable"}
+            return {"status": "reconciliation_required", "reason": "review_workflow_unavailable"}
 
     def review(self, values: Mapping[str, Any], actor: Actor) -> dict[str, Any]:
         """Inspect inside one editable captured Workflow StepAttempt."""

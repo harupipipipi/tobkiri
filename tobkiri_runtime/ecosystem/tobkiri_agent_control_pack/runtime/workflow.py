@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from .store import digest
 
@@ -15,12 +15,21 @@ DEFINITION = "agent-control-review-v1"
 class ReviewWorkflow:
     """Bind the initial small Flow to current catalog targets; retain user edits."""
 
-    def __init__(self, client: Any) -> None:
+    def __init__(self, client: Any, *, guard: Callable[[], None] = lambda: None) -> None:
         self.client = client
+        self.guard = guard
 
     def invoke(self, operation: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Call an exact public operation without another Pack's private state."""
-        return dict(self.client.invoke(WORKFLOW, operation, payload))
+        self.guard()
+        result = dict(self.client.invoke(WORKFLOW, operation, payload))
+        self.guard()
+        return result
+
+    @staticmethod
+    def run_id(occurrence_id: str) -> str:
+        """Return the exact durable owner Run identity, never a new retry identity."""
+        return "review-flow-" + digest(occurrence_id)[:24]
 
     def ensure(self) -> dict[str, Any]:
         """Create and publish the first Flow, never overwrite an existing definition."""
@@ -85,7 +94,7 @@ class ReviewWorkflow:
     def run(self, values: Mapping[str, Any]) -> dict[str, Any]:
         """Run one scheduler occurrence with durable Workflow deduplication."""
         self.ensure()
-        run_id = "review-flow-" + digest(values["occurrence_id"])[:24]
+        run_id = self.run_id(values["occurrence_id"])
         inputs = {**dict(values["payload"]), "occurrence_id": values["occurrence_id"]}
         try:
             self.invoke(
@@ -126,10 +135,34 @@ class ReviewWorkflow:
 
     def status(self, occurrence_id: str, *, cancel: bool = False) -> dict[str, Any]:
         """Read or cancel the canonical Workflow owner state."""
-        run_id = "review-flow-" + digest(occurrence_id)[:24]
-        if cancel:
-            self.invoke("run.cancel", {"run_id": run_id})
-        current = self.invoke("run.get", {"run_id": run_id})
+        run_id = self.run_id(occurrence_id)
+        try:
+            current = self.invoke("run.get", {"run_id": run_id})
+        except Exception:
+            return {
+                "status": "reconciliation_required",
+                "workflow_run_id": run_id,
+                "reason": "workflow_owner_run_unavailable",
+            }
+        run = current["run"]
+        if run.get("definition_id") != DEFINITION or run.get("occurrence_id") != occurrence_id:
+            raise PermissionError("retained Workflow Run binding changed")
+        if cancel and run["state"] not in {
+            "succeeded",
+            "failed",
+            "cancelled",
+            "timed_out",
+            "needs_reconciliation",
+        }:
+            try:
+                self.invoke("run.cancel", {"run_id": run_id})
+                current = self.invoke("run.get", {"run_id": run_id})
+            except Exception:
+                return {
+                    "status": "cancellation_pending",
+                    "workflow_run_id": run_id,
+                    "reason": "workflow_cancellation_unconfirmed",
+                }
         state = current["run"]["state"]
         return {
             "status": {
@@ -138,7 +171,11 @@ class ReviewWorkflow:
                 "cancelled": "cancelled",
                 "waiting_approval": "waiting_approval",
                 "paused": "waiting",
-            }.get(state, "running"),
+                "queued": "accepted",
+                "running": "running",
+                "timed_out": "failed",
+                "needs_reconciliation": "reconciliation_required",
+            }.get(state, "reconciliation_required"),
             "workflow_run_id": run_id,
             "workflow_state": state,
         }

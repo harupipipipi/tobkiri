@@ -81,22 +81,43 @@ class SchedulerRuntime:
         with self.lock:
             self.stopping = True
             active = dict(self.active)
+        revision = None
+        if self.canonical:
+            # Process-local active handles disappear after an accepted dispatch.
+            # The public schedule owner retains the exact outstanding lease.
+            state = self._invoke(SCHEDULE_RESOURCE, "list", {"profile_id": self.profile_id})
+            revision = state["revision"]
+            active.update(
+                {
+                    item["id"]: item["lease_id"]
+                    for item in state["schedules"]
+                    if item["status"] == "running" and item.get("lease_id")
+                }
+            )
         cancellations = []
         for schedule_id, lease_id in active.items():
             try:
-                cancellations.append(
-                    self._invoke(
-                        JOB_ACTION,
+                result = self._invoke(
+                    JOB_ACTION,
+                    "cancel",
+                    {
+                        "action_id": "scheduler.dispatch",
+                        "idempotency_key": f"{schedule_id}:{lease_id}",
+                        "schedule_id": schedule_id,
+                        "lease_id": lease_id,
+                        "profile_id": self.profile_id,
+                    },
+                )
+                if self.canonical and result.get("status") == "cancelled":
+                    changed = self._store_action(
                         "cancel",
                         {
-                            "action_id": "scheduler.dispatch",
-                            "idempotency_key": f"{schedule_id}:{lease_id}",
                             "schedule_id": schedule_id,
-                            "lease_id": lease_id,
-                            "profile_id": self.profile_id,
+                            "expected_revision": revision,
                         },
                     )
-                )
+                    revision = changed["revision"]
+                cancellations.append({"schedule_id": schedule_id, **result})
             except Exception as exc:
                 cancellations.append({"status": "error", "error": str(exc)})
         return {"stopping": True, "cancellations": cancellations}
@@ -123,6 +144,7 @@ class SchedulerRuntime:
         )
         revision = int(due.get("revision") or 0)
         dispatched = []
+        pending = []
         for schedule in due.get("schedules") or []:
             if self.stopping:
                 break
@@ -135,10 +157,15 @@ class SchedulerRuntime:
                         "profile_id": self.profile_id,
                     },
                 )
-                if previous.get("status") in {"running", "accepted"}:
+                if _pending(previous):
+                    pending.append({"schedule_id": schedule["id"], "result": previous})
                     continue
                 finished = self._store_action(
-                    "complete" if _succeeded(previous) else "fail",
+                    "complete"
+                    if _succeeded(previous)
+                    else "cancel"
+                    if previous.get("status") == "cancelled"
+                    else "fail",
                     {
                         "schedule_id": schedule["id"],
                         "expected_revision": revision,
@@ -182,7 +209,7 @@ class SchedulerRuntime:
                         "profile_id": self.profile_id,
                     },
                 )
-                if result.get("status") in {"running", "accepted"}:
+                if _pending(result):
                     dispatched.append(
                         {
                             "schedule_id": schedule_id,
@@ -200,7 +227,11 @@ class SchedulerRuntime:
                     "error": "" if succeeded else _safe_error(result),
                 }
                 finish = self._store_action(
-                    "complete" if succeeded else "fail",
+                    "complete"
+                    if succeeded
+                    else "cancel"
+                    if result.get("status") == "cancelled"
+                    else "fail",
                     finish_args,
                 )
                 revision = int(finish.get("revision") or revision)
@@ -214,6 +245,14 @@ class SchedulerRuntime:
                 )
             except Exception as exc:
                 safe_error = f"Job execution failed: {type(exc).__name__}"
+                if self.canonical:
+                    pending.append(
+                        {
+                            "schedule_id": schedule_id,
+                            "result": {"status": "reconciliation_required", "reason": safe_error},
+                        }
+                    )
+                    continue
                 failure = self._store_action(
                     "fail",
                     {
@@ -237,7 +276,12 @@ class SchedulerRuntime:
             finally:
                 with self.lock:
                     self.active.pop(schedule_id, None)
-        return {"status": "ok", "dispatched": dispatched, "count": len(dispatched)}
+        return {
+            "status": "ok",
+            "dispatched": dispatched,
+            "pending": pending,
+            "count": len(dispatched),
+        }
 
     def _trigger(self, schedule_id: str) -> dict[str, Any]:
         current = self._invoke(
@@ -385,6 +429,16 @@ def _succeeded(result: Any) -> bool:
     if not isinstance(result, Mapping):
         return False
     return result.get("status") in {"ok", "completed"}
+
+
+def _pending(result: Any) -> bool:
+    """Only confirmed terminal owner outcomes may finish or retry a lease."""
+    return not isinstance(result, Mapping) or result.get("status") not in {
+        "ok",
+        "completed",
+        "failed",
+        "cancelled",
+    }
 
 
 def _safe_error(result: Any) -> str:
