@@ -34,6 +34,7 @@ from tobkiri_protocol.saved_context import (
 from tobkiri_protocol.conversation_lifecycle import (
     active_task_gap_context, saved_terminal_finish_reason, task_gap_prompt,
 )
+from tobkiri_protocol.saved_task_context import saved_task_context_messages
 
 from ..authority.v4 import AuthorityDenied
 
@@ -515,6 +516,7 @@ class SavedBridgeCallbacks:
             "messages": [
                 *_messages(conversation, flatten_text_blocks=True, system_prompt=prompt),
                 {"role": "user", "content": saved_user_text(request["content"])},
+                *saved_task_context_messages(request),
             ],
             **({"requirements": requirements} if requirements else {}),
         }
@@ -676,6 +678,7 @@ class SavedBridgeCallbacks:
             }
             arguments["messages"] = [
                 *_messages(conversation, system_prompt=prompt),
+                *saved_task_context_messages(request),
                 *trace,
             ]
             requirements = dict(provider_payload["requirements"])

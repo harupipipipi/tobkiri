@@ -10,6 +10,7 @@ from typing import Any
 from .canonical import canonical_json, strict_loads
 from .saved_tools import validate_tool_selection
 from .saved_context import saved_prompt_reference
+from .saved_task_context import validate_saved_task_context
 
 SAVED_CONVERSATION_CONTRACT = "conversation.saved-turn.v1"
 SAVED_CONVERSATION_OPERATION = "saved_complete"
@@ -215,6 +216,7 @@ def validate_saved_conversation_input(payload: Mapping[str, Any]) -> dict[str, A
         "strategy_reference",
         "strategy_maximum_cost_microusd",
         "thinking_level",
+        "task_context",
     } != {
         "turn_id",
         "conversation_id",
@@ -224,6 +226,12 @@ def validate_saved_conversation_input(payload: Mapping[str, Any]) -> dict[str, A
         raise ValueError("saved turn request fields are invalid")
     if "tool_selection" in request:
         validate_tool_selection(request["tool_selection"])
+    if "task_context" in request:
+        validate_saved_task_context(
+            request["task_context"],
+            conversation_id=request["conversation_id"],
+            turn_id=request["turn_id"],
+        )
     strategy_reference = request.get("strategy_reference")
     if strategy_reference is not None and (
         not isinstance(strategy_reference, str)

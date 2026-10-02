@@ -10,6 +10,7 @@ from . import goal, inbox, review, todo
 from .ports import Ports
 from .schedules import Schedules
 from .store import Conflict, PlanStore, digest, identifier, integer
+from .workflow import ReviewWorkflow
 
 
 @dataclass(frozen=True)
@@ -58,9 +59,7 @@ class WorkPlanService:
         if replayed is not None:
             return {**replayed, "plan": self.store.get(plan_id), "deduplicated": True}
         old = self.store.get(plan_id)
-        conversation_id = (
-            values.get("conversation_id") if old is None else old["conversation_id"]
-        )
+        conversation_id = values.get("conversation_id") if old is None else old["conversation_id"]
         conversation = self.ports.conversation(identifier(conversation_id))
         if (
             values.get("conversation_id") is not None
@@ -172,10 +171,7 @@ class WorkPlanService:
                 for role in ("executor", "reviewer"):
                     if candidate[role] is not None:
                         identifier(candidate[role])
-                if (
-                    candidate["executor"]
-                    and candidate["executor"] == candidate["reviewer"]
-                ):
+                if candidate["executor"] and candidate["executor"] == candidate["reviewer"]:
                     raise ValueError("review must use an independent role")
                 plan["settings"] = candidate
                 return {"status": "committed", "effective_at_ms": now}
@@ -263,7 +259,11 @@ class WorkPlanService:
             "reminder-schedule",
             {"id": reminder_id, "status": state},
             lambda current: (
-                current["reminders"][reminder_id].update(status=state) or {}
+                current["reminders"][reminder_id].update(
+                    schedule_status=state,
+                    status="cancelled" if reminder["status"] == "cancelled" else state,
+                )
+                or {}
             ),
         )
 
@@ -275,23 +275,36 @@ class WorkPlanService:
             raise PermissionError("inbox conversation scope does not match")
         if actor.principal_id not in {plan["owner_actor"], values["agent_binding"]}:
             raise PermissionError("inbox recipient does not match authenticated caller")
-        identity = {
-            key: value for key, value in values.items() if key != "expected_revision"
-        }
-        replay = self.store.replay(
-            plan["id"], values["operation_id"], identity, actor.principal_id
-        )
+        identity = {key: value for key, value in values.items() if key != "expected_revision"}
+        replay = self.store.replay(plan["id"], values["operation_id"], identity, actor.principal_id)
         if replay is not None:
             if replay["plan"]["generation"] != plan["generation"]:
                 raise Conflict("received input belongs to an obsolete plan generation")
-            return replay
+            return {**replay, "plan": plan}
+
+        def prepare(current: dict[str, Any]) -> Mapping[str, Any]:
+            projection = inbox.prepare_input(current, values, self.clock())
+            if projection["status"] != "received":
+                return {**projection, "task_context": None}
+            context = self.ports.task_context(
+                {**current, "revision": current["revision"] + 1},
+                projection,
+                values["input_id"],
+                next(
+                    (item for item in current["todos"] if item.get("run_id") == values["input_id"]),
+                    None,
+                ),
+            )
+            current.setdefault("input_contexts", {})[values["input_id"]] = context
+            return {**projection, "task_context": context}
+
         return self.store.mutate(
             plan["id"],
             values["expected_revision"],
             values["operation_id"],
             identity,
             actor.principal_id,
-            lambda current: inbox.prepare_input(current, values, self.clock()),
+            prepare,
             guard=self.guard,
         )
 
@@ -301,6 +314,18 @@ class WorkPlanService:
         plan = self.store.get(identifier(values["plan_id"]))
         if not plan or actor.principal_id != plan["owner_actor"]:
             raise PermissionError("inbox acknowledgement caller does not match")
+        initial = values.get("accepted_input")
+        if not isinstance(initial, Mapping):
+            raise ValueError("canonical accepted input is required")
+        receipt = self.ports.accepted_receipt(initial)
+        request = initial["request"]
+        if (
+            receipt is None
+            or request["turn_id"] != values["input_id"]
+            or request["conversation_id"] != plan["conversation_id"]
+            or request.get("task_context") != plan.get("input_contexts", {}).get(values["input_id"])
+        ):
+            raise Conflict("inbox acceptance is not bound to the prepared context")
         return self.store.mutate(
             plan["id"],
             values["expected_revision"],
@@ -369,17 +394,12 @@ class WorkPlanService:
         try:
             self.guard()
             conversation = self.ports.conversation(current["conversation_id"])
-            outcome = self.ports.execute(
-                current, conversation, item, projection, run_id
-            )
+            outcome = self.ports.execute(current, conversation, item, projection, run_id)
         except Exception:
             outcome = {"status": "reconciliation_required"}
 
         def finish(latest: dict[str, Any]) -> Mapping[str, Any]:
-            if (
-                latest["generation"] != current["generation"]
-                or latest["status"] != "active"
-            ):
+            if latest["generation"] != current["generation"] or latest["status"] != "active":
                 raise Conflict("Todo execution was paused or cancelled")
             latest["effects"][run_id]["status"] = outcome.get("status", "failed")
             if outcome.get("input_accepted") is True:
@@ -388,8 +408,15 @@ class WorkPlanService:
             return todo.record_result(latest, item["id"], run_id, outcome)
 
         try:
+            latest = self.store.get(current["id"])
+            if latest is None:
+                raise Conflict("Todo plan disappeared during execution")
+            actual = next(x for x in latest["todos"] if x["id"] == item["id"])
+            expected_item = next(x for x in current["todos"] if x["id"] == item["id"])
+            if latest["goal"] != current["goal"] or actual != expected_item:
+                raise Conflict("Todo changed during execution")
             finished = self._internal(
-                current,
+                latest,
                 "dispatch-result",
                 {"run_id": run_id, "outcome": outcome},
                 finish,
@@ -414,7 +441,7 @@ class WorkPlanService:
                 or reminder["generation"] != payload["generation"]
             ):
                 return {"status": "cancelled"}
-            return self.store.mutate(
+            delivered = self.store.mutate(
                 plan["id"],
                 plan["revision"],
                 occurrence,
@@ -433,12 +460,34 @@ class WorkPlanService:
                 ),
                 guard=self.guard,
             )
+            return {**delivered, "status": "completed", "delivery_status": "pending"}
         if values["action_id"] != "agent-control.review":
             raise ValueError("job action is unknown")
-        if (
-            payload["generation"] != plan["generation"]
-            or not plan["settings"]["enabled"]
-        ):
+        if payload["generation"] != plan["generation"] or not plan["settings"]["enabled"]:
+            return {"status": "cancelled"}
+        try:
+            result = ReviewWorkflow(self.ports.client).run(values)
+            if result["status"] == "completed":
+                current = self.store.get(plan["id"])
+                finding = (current or {}).get("review_occurrences", {}).get(occurrence)
+                if finding is None:
+                    return {**result, "status": "waiting", "reason": "review_not_observed"}
+                result["review_status"] = finding["verdict"]
+                if finding["verdict"] == "review_failed":
+                    result["status"] = "failed"
+            return result
+        except Exception:
+            return {"status": "failed", "reason": "review_workflow_unavailable"}
+
+    def review(self, values: Mapping[str, Any], actor: Actor) -> dict[str, Any]:
+        """Inspect inside one editable captured Workflow StepAttempt."""
+        actor.require("plan.review")
+        plan = self.store.get(identifier(values["plan_id"]))
+        occurrence = identifier(values["occurrence_id"])
+        payload = values
+        if not plan or plan["status"] != "active":
+            return {"status": "cancelled"}
+        if payload["generation"] != plan["generation"] or not plan["settings"]["enabled"]:
             return {"status": "cancelled"}
         if occurrence in plan["review_occurrences"]:
             return {
@@ -446,22 +495,41 @@ class WorkPlanService:
                 "finding": plan["review_occurrences"][occurrence],
                 "deduplicated": True,
             }
-        if any(x["status"] == "reviewing" for x in plan["effects"].values()):
+        pending = [x for x in plan["effects"].values() if x["status"] == "reviewing"]
+        if pending and any(self.clock() < x.get("expires_at_ms", 0) for x in pending):
             return {"status": "waiting", "reason": "review_already_running"}
+        if pending:
+            def expire_reviews(current: dict[str, Any]) -> Mapping[str, Any]:
+                for effect in current["effects"].values():
+                    if effect["status"] == "reviewing":
+                        effect.update(status="review_failed", reason="lost_outcome")
+                return {"status": "review_failed"}
+
+            plan = self._internal(
+                plan, "review-expired", {"at_ms": self.clock()}, expire_reviews,
+            )["plan"]
         # The durable claim is written before the external generation. Lost
         # results remain review_failed/reconciliation, never optimistic on_track.
         plan = self._internal(
             plan,
             "review-claim",
             {"occurrence": occurrence},
-            lambda p: p["effects"].update({occurrence: {"status": "reviewing"}}) or {},
+            lambda p: (
+                p["effects"].update(
+                    {
+                        occurrence: {
+                            "status": "reviewing",
+                            "expires_at_ms": self.clock() + 300000,
+                        }
+                    }
+                )
+                or {}
+            ),
         )["plan"]
         try:
             self.guard()
             conversation = self.ports.conversation(plan["conversation_id"])
-            snapshot = review.review_snapshot(
-                plan, self.ports.evidence(conversation), occurrence
-            )
+            snapshot = review.review_snapshot(plan, self.ports.evidence(conversation), occurrence)
             result = self.ports.generate(
                 plan,
                 conversation,

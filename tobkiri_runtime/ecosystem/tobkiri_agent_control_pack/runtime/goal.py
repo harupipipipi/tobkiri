@@ -134,8 +134,7 @@ def commit_replace(
         raise Conflict("replacement preview is stale")
     expected_constraints = plan["goal"]["constraints"]
     if (
-        prepared_context.get("conversation_revision")
-        != preview["conversation_revision"]
+        prepared_context.get("conversation_revision") != preview["conversation_revision"]
         or prepared_context.get("goal_body") != preview["body"]
         or prepared_context.get("preserved_constraints") != expected_constraints
         or not prepared_context.get("transcript_refs")

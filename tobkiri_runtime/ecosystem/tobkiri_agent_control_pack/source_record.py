@@ -29,6 +29,30 @@ def obj(properties: dict[str, Any], required: list[str]) -> dict[str, Any]:
     }
 
 
+def _saved_input_schema() -> dict[str, Any]:
+    """Inline the neutral saved input schema inside the finite ack schema."""
+    source = json.loads(
+        (
+            ROOT.parents[1] / "tobkiri_protocol/schemas/saved_conversation_input_v1.schema.json"
+        ).read_text()
+    )
+
+    def inline(value: Any) -> Any:
+        if isinstance(value, list):
+            return [inline(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        if "$ref" in value:
+            return inline(source["$defs"][value["$ref"].split("/")[-1]])
+        return {
+            key: inline(item)
+            for key, item in value.items()
+            if key not in {"$defs", "$id", "$schema"}
+        }
+
+    return inline(source)
+
+
 def schemas() -> dict[str, dict[str, Any]]:
     """Return strict public request schemas, including nested settings."""
     common = {
@@ -167,24 +191,39 @@ def schemas() -> dict[str, dict[str, Any]]:
             "operation": {"const": "ack"},
             "input_id": ID,
             "event_ids": {"type": "array", "items": ID, "maxItems": 10000},
+            "accepted_input": _saved_input_schema(),
         },
-        ["operation", "plan_id", "expected_revision", "input_id", "event_ids"],
+        ["operation", "plan_id", "expected_revision", "input_id", "event_ids", "accepted_input"],
     )
-    job = obj(
-        {
-            "profile_id": ID,
+    job = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
             "operation": {"enum": ["describe", "dispatch", "cancel", "status"]},
-            "action_id": {"enum": ["agent-control.review", "agent-control.remind"]},
-            "payload": obj(
-                {"plan_id": ID, "generation": INTEGER, "reminder_id": ID},
-                ["plan_id", "generation"],
-            ),
-            "idempotency_key": ID,
-            "schedule_id": ID,
-            "lease_id": ID,
+            "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+            },
+            "action_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+            },
+            "payload": {"type": "object"},
+            "idempotency_key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+            },
+            "schedule_id": {"type": "string", "maxLength": 256},
+            "lease_id": {"type": "string", "maxLength": 256},
         },
-        ["operation"],
-    )
+        "required": ["operation"],
+    }
     return {
         "resource": obj(
             {
@@ -201,6 +240,16 @@ def schemas() -> dict[str, dict[str, Any]]:
         "context": context,
         "inbox": ack,
         "job": job,
+        "review": obj(
+            {
+                "operation": {"const": "inspect"},
+                "profile_id": ID,
+                "plan_id": ID,
+                "generation": INTEGER,
+                "occurrence_id": ID,
+            },
+            ["operation", "plan_id", "generation", "occurrence_id"],
+        ),
         "execute": obj(
             {**common, "operation": {"const": "run_next"}},
             ["operation", "plan_id", "expected_revision"],
@@ -231,9 +280,7 @@ def build() -> dict[str, Any]:
             or p.parent.name == "flows"
         )
     ]
-    implementation = (
-        "sha256:" + hashlib.sha256((ROOT / "runtime/host.py").read_bytes()).hexdigest()
-    )
+    implementation = "sha256:" + hashlib.sha256((ROOT / "runtime/host.py").read_bytes()).hexdigest()
     provided = []
     for kind, (contract, suffix) in CONTRACTS.items():
         operation = f"{PACK}.{suffix}"

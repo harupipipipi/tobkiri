@@ -22,9 +22,7 @@ def review_snapshot(
         "goal": deepcopy(plan["goal"]),
         "todos": deepcopy(plan["todos"]),
         "instructions": [
-            deepcopy(x)
-            for x in plan["inbox"]
-            if x["status"] not in {"cancelled", "expired"}
+            deepcopy(x) for x in plan["inbox"] if x["status"] not in {"cancelled", "expired"}
         ],
         "evidence": deepcopy(dict(evidence)),
         "occurrence_id": occurrence_id,

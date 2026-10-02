@@ -15,6 +15,8 @@ from ecosystem.rumi_turn_runtime_pack.runtime.saved import (
     RECEIPT_CONTRACT, SAVED_CONTRACTS, execute_saved_turn, reconcile_saved_turn,
 )
 
+from .input_context import execute_with_input_context
+
 _PACK = "rumi_turn_runtime_pack"
 _CONTRACTS = {
     "lifecycle": ("tobkiri.action.turn.lifecycle.v1", "turn-lifecycle"),
@@ -146,12 +148,14 @@ class TurnHostFactoryV4:
                     consumer_pack_id=_PACK,
                     include_credentials=False,
                 )
-                return execute_saved_turn(
-                    store,
+                return execute_with_input_context(
                     {key: value for key, value in payload.items() if key != "_session_id"},
-                    client=client,
-                    guard=invocation.assert_current,
-                    track_execution=invocation.cancellation.track,
+                    client=client, guard=invocation.assert_current,
+                    execute=lambda initial: execute_saved_turn(
+                        store, initial, client=client,
+                        guard=invocation.assert_current,
+                        track_execution=invocation.cancellation.track,
+                    ),
                 )
             if operation_id != self.operation_id or payload.get("profile_id") != store.profile_id:
                 raise PermissionError("turn request does not match capture")

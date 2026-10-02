@@ -28,6 +28,8 @@ from tobkiri_protocol.saved_context import (
     saved_prompt_reference,
 )
 
+from tobkiri_protocol.agent_inbox_v1 import CONTEXT_CONTRACT, INBOX_CONTRACT
+
 RECEIPT_CONTRACT = "tobkiri.resource.conversation.v1"
 RECEIPT_OPERATION = "rumi_conversation_store_pack.conversation-resource"
 LIFECYCLE_CONTRACT = "tobkiri.action.turn.lifecycle.v1"
@@ -38,6 +40,8 @@ SAVED_CONTRACTS = frozenset(
         RECEIPT_CONTRACT,
         PROMPT_TARGET[0],
         LIFECYCLE_CONTRACT,
+        CONTEXT_CONTRACT,
+        INBOX_CONTRACT,
     }
 )
 

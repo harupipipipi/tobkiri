@@ -88,9 +88,7 @@ class PlanStore:
         if not self.path.exists() or self.path.stat().st_size == 0:
             return None
         with self._connection() as connection:
-            row = connection.execute(
-                "SELECT value FROM plans WHERE id=?", (plan_id,)
-            ).fetchone()
+            row = connection.execute("SELECT value FROM plans WHERE id=?", (plan_id,)).fetchone()
         return json.loads(row[0]) if row else None
 
     def list(self) -> list[dict[str, Any]]:
