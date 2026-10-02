@@ -499,7 +499,9 @@ def test_host_capture_rejects_rehashed_plan_selector_replacement(
     replacement: str | None,
 ) -> None:
     """Recomputing plan/lock/activation digests cannot replace signed Profile bytes."""
-    candidate = deepcopy(selected_capture_inputs)
+    candidate = dict(selected_capture_inputs)
+    for key in ("profile", "plan", "lock", "activation"):
+        candidate[key] = deepcopy(candidate[key])
     binding = next(
         row
         for row in candidate["plan"]["bindings"]
