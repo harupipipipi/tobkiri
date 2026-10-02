@@ -113,20 +113,28 @@ def _captured_input_schema(value: object) -> bytes:
             return b""
         Draft202012Validator.check_schema(value)
         return encoded
-    except (SchemaError, TypeError, ValueError):
+    except (SchemaError, TypeError, ValueError, RecursionError):
         return b""
 
 
 def _has_external_reference(value: object) -> bool:
-    if isinstance(value, Mapping):
-        for key in ("$ref", "$dynamicRef", "$recursiveRef"):
-            if key in value and (
-                not isinstance(value[key], str) or not value[key].startswith("#/")
-            ):
-                return True
-        return any(_has_external_reference(item) for item in value.values())
-    if isinstance(value, list):
-        return any(_has_external_reference(item) for item in value)
+    pending = [(value, 0)]
+    nodes = 0
+    while pending:
+        current, depth = pending.pop()
+        nodes += 1
+        if nodes > 4096 or depth > 64:
+            return True
+        if isinstance(current, Mapping):
+            for key in ("$ref", "$dynamicRef", "$recursiveRef"):
+                if key in current and (
+                    not isinstance(current[key], str)
+                    or not current[key].startswith("#/")
+                ):
+                    return True
+            pending.extend((item, depth + 1) for item in current.values())
+        elif isinstance(current, list):
+            pending.extend((item, depth + 1) for item in current)
     return False
 
 

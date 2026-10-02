@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { FrontendCapabilityInvoker, FrontendCatalog } from "./frontendContracts";
 import { viewOperationOutcome } from "./viewControlState";
 import {
@@ -39,6 +39,7 @@ export function RecordEditorView({
   const stateRef = useRef({ draft, pending });
   stateRef.current = { draft, pending };
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const dialogTitleId = useId();
   const rows = useMemo(() => descriptor ? recordEditorRecords(snapshot, descriptor) : null,
     [snapshot, descriptor]);
   const filtered = useMemo(() => descriptor && rows ? filterEditorRecords(rows, descriptor, query) : [],
@@ -61,13 +62,13 @@ export function RecordEditorView({
     return () => onDirtyChange?.(ownerId, null);
   }, [ownerId, onDirtyChange, canLeave]);
   useEffect(() => {
-    if (!dirty && !pending) return undefined;
     const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (!pendingRef.current && !recordDraftDirty(stateRef.current.draft)) return;
       event.preventDefault(); event.returnValue = "";
     };
     window.addEventListener("beforeunload", beforeUnload);
     return () => window.removeEventListener("beforeunload", beforeUnload);
-  }, [dirty, pending]);
+  }, []);
   useEffect(() => {
     if (draft && dialogRef.current && !dialogRef.current.open) dialogRef.current.showModal();
   }, [draft]);
@@ -168,10 +169,10 @@ export function RecordEditorView({
       </table>
       {filtered.length === 0 && <p role="status">No matching records.</p>}
     </div>
-    {draft && <dialog ref={dialogRef} aria-labelledby="record-editor-title"
+    {draft && <dialog ref={dialogRef} aria-labelledby={dialogTitleId}
       onCancel={(event) => { event.preventDefault(); close(); }}
       className="max-h-[90vh] w-[min(42rem,95vw)] overflow-auto rounded-lg border border-zinc-700 bg-zinc-950 p-4 text-zinc-100">
-      <h3 id="record-editor-title">Edit {editorDisplayValue(readViewPath(draft.record, descriptor.title_path))}</h3>
+      <h3 id={dialogTitleId}>Edit {editorDisplayValue(readViewPath(draft.record, descriptor.title_path))}</h3>
       <form onSubmit={(event) => { event.preventDefault(); save(); }} className="mt-3 flex flex-col gap-3">
         {descriptor.fields.map((field) => <label key={field.id} className="text-sm">{field.label}
           {field.kind === "multiline" || field.kind === "json" ? <textarea className={inputClass} rows={5}

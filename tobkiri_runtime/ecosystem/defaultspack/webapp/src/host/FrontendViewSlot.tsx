@@ -160,6 +160,14 @@ function CatalogControl({
   currentDraft.current = textDraft;
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (!pending.current && (control.kind !== "text" || !textDraftDirty(currentDraft.current))) return;
+      event.preventDefault(); event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, [control.kind]);
+  useEffect(() => {
     setTextDraft((current) => refreshTextDraft(current, authoritative));
   }, [authoritative, textDraft.awaiting]);
   const ownerId = JSON.stringify([registered.reference, control.id, viewContextKey(registered, context)]);

@@ -182,31 +182,39 @@ def validate_schema_declared_profile_targets(value: Any, schema: Mapping[str, An
     This check does not replace complete JSON-schema validation.
     """
 
-    def variants(current: Mapping[str, Any], depth: int = 0) -> list[Mapping[str, Any]]:
-        if depth > 16:
-            return []
-        found = [current]
-        reference = current.get("$ref")
-        if isinstance(reference, str) and reference.startswith("#/"):
-            referred: Any = schema
-            for token in reference[2:].split("/"):
-                token = token.replace("~1", "/").replace("~0", "~")
-                if not isinstance(referred, Mapping) or token not in referred:
-                    referred = None
-                    break
-                referred = referred[token]
-            if isinstance(referred, Mapping):
-                found.extend(variants(referred, depth + 1))
-        for keyword in ("allOf", "anyOf", "oneOf"):
-            for branch in current.get(keyword, []):
-                if isinstance(branch, Mapping):
-                    found.extend(variants(branch, depth + 1))
+    def variants(candidates: list[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
+        """Visit each local schema node once, including cyclic local references."""
+        pending = list(candidates)
+        seen: set[int] = set()
+        found: list[Mapping[str, Any]] = []
+        while pending:
+            current = pending.pop()
+            if id(current) in seen:
+                continue
+            seen.add(id(current))
+            if len(seen) > 4096:
+                raise ValueError("domain Profile schema exceeds its bound")
+            found.append(current)
+            reference = current.get("$ref")
+            if isinstance(reference, str) and reference.startswith("#/"):
+                referred: Any = schema
+                for token in reference[2:].split("/"):
+                    token = token.replace("~1", "/").replace("~0", "~")
+                    if not isinstance(referred, Mapping) or token not in referred:
+                        referred = None
+                        break
+                    referred = referred[token]
+                if isinstance(referred, Mapping):
+                    pending.append(referred)
+            for keyword in ("allOf", "anyOf", "oneOf"):
+                pending.extend(branch for branch in current.get(keyword, [])
+                               if isinstance(branch, Mapping))
         return found
 
     def visit(item: Any, candidates: list[Mapping[str, Any]], depth: int = 0) -> None:
         if depth > 16:
             raise ValueError("domain Profile path exceeds its bound")
-        expanded = [branch for candidate in candidates for branch in variants(candidate)]
+        expanded = variants(candidates)
         if isinstance(item, Mapping):
             for key, child in item.items():
                 child_schemas = [
