@@ -31,7 +31,7 @@ CONTRACTS = {
     "context": (CONTEXT_CONTRACT, "context-project"),
     "inbox": (INBOX_CONTRACT, "inbox-action"),
     "execute": ("tobkiri.action.work-plan.execute.v1", "work-plan-execute"),
-    "job": ("tobkiri.action.job.adapter.v1", "work-plan-job"),
+    "job": ("tobkiri.action.job.adapter.v2", "work-plan-job"),
     "review": (REVIEW, "work-plan-review"),
 }
 DEPENDENCIES = frozenset(
@@ -60,6 +60,7 @@ class WorkPlanHostFactory:
         self.contract_id, suffix = CONTRACTS[kind]
         self.operation_id = f"{PACK_ID}.{suffix}"
         self.function_id = f"{PACK_ID}.work-plan.{kind}"
+        self.contract_version = "2.0.0" if kind == "job" else "1.0.0"
 
     def capture(self, context: HostProviderCaptureContextV4) -> CapturedHostProviderV4:
         """Reject foreign functions, contracts, domain and missing Profile roots."""
@@ -75,7 +76,7 @@ class WorkPlanHostFactory:
             binding.function.function_id != self.function_id
             or operation.contract_id != self.contract_id
             or operation.operation_id != self.operation_id
-            or operation.contract_version != "1.0.0"
+            or operation.contract_version != self.contract_version
         ):
             raise PermissionError("work-plan capture identity is invalid")
         domain = context.domain_ids.get(
@@ -246,7 +247,7 @@ class WorkPlanHostFactory:
             (
                 HostProviderContributionV4(
                     contract_id=self.contract_id,
-                    contract_version="1.0.0",
+                    contract_version=self.contract_version,
                     operation_id=self.operation_id,
                     principal_id=binding.principal_ref.value,
                     artifact_digest=binding.artifact.digest,

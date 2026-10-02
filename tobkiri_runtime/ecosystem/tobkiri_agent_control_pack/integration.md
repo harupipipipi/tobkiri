@@ -15,7 +15,7 @@ All keys are `tobkiri_agent_control_pack.work-plan.<kind>`.
 | inbox | tobkiri.action.agent.inbox.v1 | tobkiri_agent_control_pack.inbox-action | write (ack) |
 | execute | tobkiri.action.work-plan.execute.v1 | tobkiri_agent_control_pack.work-plan-execute | write/approval aware |
 | review | tobkiri.action.work-plan.review.v1 | tobkiri_agent_control_pack.work-plan-review | write/approval aware |
-| job | tobkiri.action.job.adapter.v1 | tobkiri_agent_control_pack.work-plan-job | write/approval aware |
+| job | tobkiri.action.job.adapter.v2 | tobkiri_agent_control_pack.work-plan-job | write/approval aware |
 
 The job adapter supports `describe` and advertises `agent-control.review` and
 `agent-control.remind`. Dispatch deduplicates the exact occurrence derived from
@@ -39,3 +39,6 @@ protocol source closure. Ordinary user content is never rewritten.
 UI: two frontend/contributions descriptors bind generic sidebar and settings slots.
 Each action derives missing per-request IDs from authenticated Host request identity.
 Resource get_for_conversation returns a nonpersistent draft at revision zero.
+
+The modern job adapter is version **2.0.0**; all other Agent Control
+contracts remain **1.0.0**. It coexists with legacy mode-based adapter v1.
