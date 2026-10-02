@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import type { CatalogViewReference } from "../host/catalogViewRegistry";
 import type { KanbanBoardScope, SidebarItem } from "../lib/api";
 import { cn } from "../lib/cn";
 import type { ConversationPresentation } from "../features/conversations/conversationPresentation";
@@ -30,7 +31,8 @@ export type WorkspaceTabKind =
   | "subagents"
   | "canvas"
   | "tools"
-  | "browser";
+  | "browser"
+  | "extension";
 
 export type WorkspaceTab = {
   id: string;
@@ -40,6 +42,7 @@ export type WorkspaceTab = {
   kanbanScope?: KanbanBoardScope | null;
   kanbanScopeLabel?: string | null;
   createdAt: number;
+  viewReference?: CatalogViewReference;
 };
 
 export type ClosedWorkspaceTab = {
@@ -66,6 +69,7 @@ export type WorkspaceTabCreateOption = {
   icon: LucideIcon;
   disabled?: boolean;
   badge?: string;
+  viewReference?: CatalogViewReference;
 };
 
 export const DEFAULT_WORKSPACE_TAB_ID = "workspace-tab-chat-home";
@@ -132,6 +136,7 @@ export const WORKSPACE_TAB_CREATE_OPTIONS: WorkspaceTabCreateOption[] = [
 let workspaceTabCounter = 0;
 
 export function workspaceTabOption(kind: WorkspaceTabKind): WorkspaceTabCreateOption {
+  if (kind === "extension") return { kind, label: "Pack view", description: "Installed Pack view", icon: AppWindow };
   return WORKSPACE_TAB_CREATE_OPTIONS.find((option) => option.kind === kind) ?? WORKSPACE_TAB_CREATE_OPTIONS[0];
 }
 
@@ -149,6 +154,7 @@ export function createWorkspaceTab(
     conversationId: overrides.conversationId ?? null,
     createdAt: overrides.createdAt ?? now,
   };
+  if (overrides.viewReference) tab.viewReference = { ...overrides.viewReference };
   if ("kanbanScope" in overrides) tab.kanbanScope = overrides.kanbanScope ?? null;
   if ("kanbanScopeLabel" in overrides) tab.kanbanScopeLabel = overrides.kanbanScopeLabel ?? null;
   return tab;
@@ -250,7 +256,7 @@ function NewTabMenu({
   onCreate,
 }: {
   options: WorkspaceTabCreateOption[];
-  onCreate: (kind: WorkspaceTabKind) => void;
+  onCreate: (kind: WorkspaceTabKind, reference?: CatalogViewReference) => void;
 }) {
   return (
     <div
@@ -264,11 +270,11 @@ function NewTabMenu({
           const Icon = option.icon;
           return (
             <button
-              key={option.kind}
+              key={option.viewReference?.contributionId ?? option.kind}
               type="button"
               role="menuitem"
               disabled={option.disabled}
-              onClick={() => !option.disabled && onCreate(option.kind)}
+              onClick={() => !option.disabled && onCreate(option.kind, option.viewReference)}
               className={cn(
                 "flex min-h-16 min-w-0 items-start gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors",
                 option.disabled
@@ -309,7 +315,7 @@ export function WorkspaceTabBar({
   createOptions?: WorkspaceTabCreateOption[];
   onSelect: (tabId: string) => void;
   onClose: (tabId: string) => void;
-  onCreate: (kind: WorkspaceTabKind) => void;
+  onCreate: (kind: WorkspaceTabKind, reference?: CatalogViewReference) => void;
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -332,8 +338,8 @@ export function WorkspaceTabBar({
     };
   }, [isMenuOpen]);
 
-  const handleCreate = (kind: WorkspaceTabKind) => {
-    onCreate(kind);
+  const handleCreate = (kind: WorkspaceTabKind, reference?: CatalogViewReference) => {
+    onCreate(kind, reference);
     setIsMenuOpen(false);
   };
 
@@ -440,7 +446,7 @@ export function WorkspaceTabRailPanel({
   createOptions?: WorkspaceTabCreateOption[];
   onSelect: (tabId: string) => void;
   onClose: (tabId: string) => void;
-  onCreate: (kind: WorkspaceTabKind) => void;
+  onCreate: (kind: WorkspaceTabKind, reference?: CatalogViewReference) => void;
 }) {
   return (
     <section className="space-y-3">
@@ -504,11 +510,11 @@ export function WorkspaceTabRailPanel({
           const Icon = option.icon;
           return (
             <button
-              key={option.kind}
+              key={option.viewReference?.contributionId ?? option.kind}
               type="button"
               role="menuitem"
               disabled={option.disabled}
-              onClick={() => !option.disabled && onCreate(option.kind)}
+              onClick={() => !option.disabled && onCreate(option.kind, option.viewReference)}
               className={cn(
                 "flex min-w-0 items-center gap-1.5 rounded-md border px-2 py-1.5 text-left text-[11px] transition-colors",
                 option.disabled
@@ -541,7 +547,7 @@ export function WorkspaceLaunchpad({
 }: {
   createOptions?: WorkspaceTabCreateOption[];
   sidebarItems: SidebarItem[];
-  onCreate: (kind: WorkspaceTabKind) => void;
+  onCreate: (kind: WorkspaceTabKind, reference?: CatalogViewReference) => void;
   onOpenSidebarItem: (itemId: string) => void;
   footer?: ReactNode;
 }) {
@@ -555,10 +561,10 @@ export function WorkspaceLaunchpad({
             const Icon = option.icon;
             return (
               <button
-                key={option.kind}
+                key={option.viewReference?.contributionId ?? option.kind}
                 type="button"
                 disabled={option.disabled}
-                onClick={() => !option.disabled && onCreate(option.kind)}
+                onClick={() => !option.disabled && onCreate(option.kind, option.viewReference)}
                 className={cn(
                   "flex min-h-20 min-w-0 items-start gap-3 rounded-lg border px-3 py-3 text-left transition-colors",
                   option.disabled

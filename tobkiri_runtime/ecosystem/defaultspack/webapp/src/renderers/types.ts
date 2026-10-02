@@ -1,3 +1,4 @@
+import type { CatalogViewReference } from "../host/catalogViewRegistry";
 import type { FormEvent, MutableRefObject, ReactNode } from "react";
 
 import type { ChatActivityEvent, ChatContentBlock, CodingContextEntry, CodingGitStatus, CodingWorkspaceRecord, ComposerWidgetAction, ConversationSteerItem, ModelCommandCandidate, ModelProfile, PromptUsageSummary, SettingsSection, SidebarAction, SidebarItem, TemplateComposerInput, ToolLogEntry, ToolTarget, UICatalog } from "../lib/api";
@@ -190,7 +191,6 @@ export type ChatMessagesRendererProps = {
 };
 
 export type ComposerRendererProps = {
-  voiceScopeKey?: string;
   widgetContext?: WidgetConversationContext;
   input: string;
   placeholder: string;
@@ -323,7 +323,7 @@ export type RightSidebarRendererProps = {
   onToggleYolo?: () => void;
   onWorkspaceTabSelect?: (tabId: string) => void;
   onWorkspaceTabClose?: (tabId: string) => void;
-  onWorkspaceTabCreate?: (kind: WorkspaceTabKind) => void;
+  onWorkspaceTabCreate?: (kind: WorkspaceTabKind, reference?: CatalogViewReference) => void;
   onLoadPromptActive?: (params: { profile_id?: string; conversation_id?: string; include_text?: boolean }) => Promise<PromptUsageSummary>;
   onTogglePromptEdge?: (payload: { profile_id?: string; conversation_id?: string; edge_id: string; enabled: boolean }) => Promise<PromptUsageSummary>;
   onToggleChatPromptUsage?: (visible: boolean) => void;
@@ -333,6 +333,7 @@ export type RightSidebarRendererProps = {
 };
 
 export type SettingsModalRendererProps = {
+  extensionSettings?: ReactNode;
   isOpen: boolean;
   activeSectionId?: string | null;
   catalog: UICatalog | null;

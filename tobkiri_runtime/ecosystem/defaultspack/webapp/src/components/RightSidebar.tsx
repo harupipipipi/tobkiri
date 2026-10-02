@@ -1,3 +1,4 @@
+import type { CatalogViewReference } from "../host/catalogViewRegistry";
 import { cloneElement, memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactElement, type ReactNode } from "react";
 import {
   Blocks,
@@ -1032,7 +1033,7 @@ export function RightSidebar({
   onToggleYolo?: () => void;
   onWorkspaceTabSelect?: (tabId: string) => void;
   onWorkspaceTabClose?: (tabId: string) => void;
-  onWorkspaceTabCreate?: (kind: WorkspaceTabKind) => void;
+  onWorkspaceTabCreate?: (kind: WorkspaceTabKind, reference?: CatalogViewReference) => void;
   onLoadPromptActive?: (params: { profile_id?: string; conversation_id?: string; include_text?: boolean; model_profile_id?: string; model?: string }) => Promise<PromptUsageSummary>;
   onTogglePromptEdge?: (payload: { profile_id?: string; conversation_id?: string; edge_id: string; enabled: boolean; model_profile_id?: string; model?: string }) => Promise<PromptUsageSummary>;
   onToggleChatPromptUsage?: (visible: boolean) => void;
@@ -1956,7 +1957,7 @@ export function RightSidebar({
                 conversationPresentations={conversationPresentations}
                 onSelect={(tabId) => onWorkspaceTabSelect?.(tabId)}
                 onClose={(tabId) => onWorkspaceTabClose?.(tabId)}
-                onCreate={(kind) => onWorkspaceTabCreate?.(kind)}
+                onCreate={(kind, reference) => onWorkspaceTabCreate?.(kind, reference)}
               />
             ) : isPlacementPanelActive && activePlacementManifest ? (
               renderPlacementPanel(activePlacementManifest.id)

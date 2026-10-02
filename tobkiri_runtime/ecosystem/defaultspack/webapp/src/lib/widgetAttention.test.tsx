@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   iconAttentionAnimationEnabled,
   normalizeIconAttention,
+  iconAttentionForConversation,
   WidgetAttentionIcon,
 } from "./widgetAttention";
 
@@ -91,4 +92,15 @@ test("unknown attention renders the existing icon unchanged", () => {
   ));
   assert.match(html, /data-testid="normal-icon"/);
   assert.doesNotMatch(html, /data-widget-icon-attention/);
+});
+
+
+test("conversation-scoped icon attention never follows a widget into another chat", () => {
+  const attention = { active: true, tone: "warning", effect: "pulse", conversation_id: "chat-a" };
+  assert.equal(iconAttentionForConversation(attention, "chat-a"), attention);
+  assert.equal(iconAttentionForConversation(attention, "chat-b"), undefined);
+  assert.equal(iconAttentionForConversation(attention, null), undefined);
+  assert.equal(iconAttentionForConversation({ ...attention, conversation_id: 5 }, "chat-a"), undefined);
+  const globalAttention = { active: true, tone: "info", effect: "none" };
+  assert.equal(iconAttentionForConversation(globalAttention, "chat-b"), globalAttention);
 });

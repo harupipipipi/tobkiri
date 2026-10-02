@@ -3,6 +3,7 @@
 @import "./ui/motion/luxeMotion.css";
 @import "./styles/rumi-liquid-mobile.css";
 @import "./styles/defaults-theme.css";
+@import "./components/TaskPet.css";
 
 @theme {
   --color-zinc-50: #fafafa;
