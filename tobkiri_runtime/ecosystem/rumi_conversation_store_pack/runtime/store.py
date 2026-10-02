@@ -138,6 +138,7 @@ class ConversationStore:
                 raise KeyError("conversation is unknown")
             current = dict(current)
             _assert_conversation_revision(current, expected_conversation_revision)
+            prior_node_id = current.get("current_node_id")
             prior_parent_id = current.get("parent_conversation_id")
             requested_parent_id = (
                 patch.get("parent_conversation_id")
@@ -174,6 +175,8 @@ class ConversationStore:
                         else _safe(patch[key])
                     )
             now = _now_ms()
+            if current.get("current_node_id") != prior_node_id:
+                _retain_lifecycle(current, list(current.get("messages") or []), reset=True)
             if requested_parent_id != prior_parent_id:
                 _relink_conversation_parent(
                     state["conversations"],
