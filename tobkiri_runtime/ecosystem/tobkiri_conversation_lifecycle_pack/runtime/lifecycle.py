@@ -17,6 +17,11 @@ CONVERSATION_OPERATION = "rumi_conversation_store_pack.conversation-resource"
 CONVERSATION_ACTION = "tobkiri.action.conversation.manage.v1"
 CONVERSATION_ACTION_OPERATION = "rumi_conversation_store_pack.conversation-manage"
 ARCHIVE_ACTION_ID = "conversation-lifecycle.archive-due"
+SCHEDULE = "tobkiri.resource.schedule.v1"
+SCHEDULE_OPERATION = "rumi_schedule_store_pack.schedule-resource"
+SCHEDULE_ACTION = "tobkiri.action.schedule.v1"
+SCHEDULE_ACTION_OPERATION = "rumi_schedule_store_pack.schedule-action"
+SCHEDULE_ID = "conversation-lifecycle.archive"
 
 
 class ContractClient(Protocol):
@@ -67,11 +72,79 @@ class ConversationLifecycle:
             raise PermissionError("conversation lifecycle Pack is disabled")
         if mode not in {"manual", ARCHIVE_MODE}:
             raise ValueError("unknown conversation lifecycle mode")
+        if mode == ARCHIVE_MODE:
+            self.ensure_schedule()
         conversation = self._get(conversation_id)
         metadata = dict(conversation.get("metadata") or {})
         metadata["conversation_lifecycle"] = {"version": 1, "mode": mode}
         result = self._update(conversation, {"metadata": metadata})
         return {"status": "configured", "mode": mode, "result": result}
+
+    def ensure_schedule(self) -> Mapping[str, Any]:
+        """Persist the periodic wakeup through scheduler contracts before enabling."""
+        snapshot = self.client.invoke(
+            SCHEDULE,
+            SCHEDULE_OPERATION,
+            {
+                "operation": "list",
+                "profile_id": self.profile_id,
+            },
+        )
+        if not isinstance(snapshot, Mapping) or not isinstance(
+            snapshot.get("schedules"), list
+        ):
+            raise LookupError("scheduler source is unavailable")
+        existing = next(
+            (
+                item
+                for item in snapshot["schedules"]
+                if isinstance(item, Mapping) and item.get("id") == SCHEDULE_ID
+            ),
+            None,
+        )
+        if existing is not None:
+            if (
+                existing.get("action_id") != ARCHIVE_ACTION_ID
+                or existing.get("payload") != {}
+            ):
+                raise ValueError("lifecycle schedule identity collides")
+            if existing.get("interval_ms") != 60_000:
+                raise ValueError("lifecycle schedule interval collides")
+            if existing.get("status") in {"scheduled", "running", "active"}:
+                return existing
+            operation = "resume"
+            fields: dict[str, Any] = {}
+        else:
+            operation = "create"
+            fields = {
+                "name": "Archive completed conversations",
+                "action_id": ARCHIVE_ACTION_ID,
+                "payload": {},
+                "next_run_at_ms": self.clock_ms(),
+                "interval_ms": 60_000,
+                "max_attempts": 3,
+            }
+        result = self.client.invoke(
+            SCHEDULE_ACTION,
+            SCHEDULE_ACTION_OPERATION,
+            {
+                "operation": operation,
+                "profile_id": self.profile_id,
+                "schedule_id": SCHEDULE_ID,
+                "expected_revision": snapshot["revision"],
+                **fields,
+            },
+        )
+        saved = result.get("schedule") if isinstance(result, Mapping) else None
+        if (
+            not isinstance(saved, Mapping)
+            or saved.get("id") != SCHEDULE_ID
+            or saved.get("action_id") != ARCHIVE_ACTION_ID
+            or saved.get("interval_ms") != 60_000
+            or saved.get("status") not in {"scheduled", "running", "active"}
+        ):
+            raise LookupError("lifecycle scheduler write is unconfirmed")
+        return saved
 
     def tick(self) -> dict[str, Any]:
         """Archive due completed conversations after a fresh owner read and CAS."""

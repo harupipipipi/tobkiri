@@ -1,0 +1,275 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.resource.conversation.lifecycle.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:conversation.lifecycle.read",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:83445aed0fdb09b3914bb6ef42d9aa15d5f4e107a9ca0e8a03583e72255adb79",
+          "operation_id": "tobkiri_conversation_lifecycle_pack.lifecycle-status",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "tobkiri_conversation_lifecycle_pack",
+      "provenance": {
+        "evidence": [],
+        "generator": "tobkiri-protocol",
+        "generator_version": "1.0.0",
+        "normative": false,
+        "repository_commit": "ad667df457e53125b8053d44e3cc94b0eaf4579d",
+        "repository_tree": "2943da046c87d8090d1fe8ea65dc2a48192a4c400848c4e3c3e3790c2f8fcb20",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:91b8a0454586449207c15455f0fb82d39ec9d981a00bd5cbc4cb846e27ebce21",
+        "source_kind": "repository",
+        "source_path": "ecosystem/tobkiri_conversation_lifecycle_pack/pack-source.v1.json"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "tobkiri_conversation_lifecycle_pack",
+          "introduced": "1.0.0"
+        },
+        "provider_id": "tobkiri_conversation_lifecycle_pack.status",
+        "required_capabilities": [
+          "conversation.lifecycle.read"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:f0af6ab60759292b05635a55a38b92b21df1a7d586b7c68a51b695b0477d2266",
+      "schema_catalog": {
+        "sha256:83445aed0fdb09b3914bb6ef42d9aa15d5f4e107a9ca0e8a03583e72255adb79": {
+          "additionalProperties": false,
+          "properties": {
+            "_session_id": {
+              "type": "string"
+            },
+            "conversation_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "operation": {
+              "const": "get"
+            },
+            "profile_id": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "profile_id",
+            "operation",
+            "conversation_id"
+          ],
+          "type": "object"
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.conversation.lifecycle.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:conversation.lifecycle.manage",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a3228d3d58829f53ed54f752a8d82dbcbe783a390fc7d42f41166300a11e29de",
+          "operation_id": "tobkiri_conversation_lifecycle_pack.lifecycle-manage",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "tobkiri_conversation_lifecycle_pack",
+      "provenance": {
+        "evidence": [],
+        "generator": "tobkiri-protocol",
+        "generator_version": "1.0.0",
+        "normative": false,
+        "repository_commit": "ad667df457e53125b8053d44e3cc94b0eaf4579d",
+        "repository_tree": "2943da046c87d8090d1fe8ea65dc2a48192a4c400848c4e3c3e3790c2f8fcb20",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:91b8a0454586449207c15455f0fb82d39ec9d981a00bd5cbc4cb846e27ebce21",
+        "source_kind": "repository",
+        "source_path": "ecosystem/tobkiri_conversation_lifecycle_pack/pack-source.v1.json"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "tobkiri_conversation_lifecycle_pack",
+          "introduced": "1.0.0"
+        },
+        "provider_id": "tobkiri_conversation_lifecycle_pack.manage",
+        "required_capabilities": [
+          "conversation.lifecycle.manage"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:fe67cc708d5c2c9e9fcc1e70e8984b32a406a415dcd037e36572ef78fa784bcb",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:a3228d3d58829f53ed54f752a8d82dbcbe783a390fc7d42f41166300a11e29de": {
+          "additionalProperties": false,
+          "properties": {
+            "_session_id": {
+              "type": "string"
+            },
+            "conversation_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "mode": {
+              "enum": [
+                "manual",
+                "archive_after_completion"
+              ]
+            },
+            "operation": {
+              "const": "configure"
+            },
+            "profile_id": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "profile_id",
+            "operation",
+            "conversation_id",
+            "mode"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.job.adapter.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:conversation.lifecycle.archive",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:8585f955bfb1dc2eed49f6337ff666654c6c408ebfd9d3bf2f12d9d5a846e62f",
+          "operation_id": "tobkiri_conversation_lifecycle_pack.archive-job-adapter",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "tobkiri_conversation_lifecycle_pack",
+      "provenance": {
+        "evidence": [],
+        "generator": "tobkiri-protocol",
+        "generator_version": "1.0.0",
+        "normative": false,
+        "repository_commit": "ad667df457e53125b8053d44e3cc94b0eaf4579d",
+        "repository_tree": "2943da046c87d8090d1fe8ea65dc2a48192a4c400848c4e3c3e3790c2f8fcb20",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:91b8a0454586449207c15455f0fb82d39ec9d981a00bd5cbc4cb846e27ebce21",
+        "source_kind": "repository",
+        "source_path": "ecosystem/tobkiri_conversation_lifecycle_pack/pack-source.v1.json"
+      },
+      "provider_semantics": {
+        "cardinality": "many",
+        "failure": "fail_closed",
+        "instance_key": "conversation-lifecycle.archive-due",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "tobkiri_conversation_lifecycle_pack",
+          "introduced": "1.0.0"
+        },
+        "provider_id": "tobkiri_conversation_lifecycle_pack.archive-job",
+        "required_capabilities": [
+          "conversation.lifecycle.archive"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:46e6d63bb110665937bf5161be9d5d48d74a115c53e8c560b22b7afd03d5694b",
+      "schema_catalog": {
+        "sha256:8585f955bfb1dc2eed49f6337ff666654c6c408ebfd9d3bf2f12d9d5a846e62f": {
+          "additionalProperties": false,
+          "properties": {
+            "_session_id": {
+              "type": "string"
+            },
+            "action_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "idempotency_key": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "lease_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "operation": {
+              "enum": [
+                "describe",
+                "dispatch",
+                "cancel",
+                "status"
+              ]
+            },
+            "payload": {
+              "maxProperties": 0,
+              "type": "object"
+            },
+            "profile_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "schedule_id": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "profile_id",
+            "operation"
+          ],
+          "type": "object"
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    }
+  ],
+  "pack_id": "tobkiri_conversation_lifecycle_pack",
+  "source_identity": "sha256:91b8a0454586449207c15455f0fb82d39ec9d981a00bd5cbc4cb846e27ebce21"
+}

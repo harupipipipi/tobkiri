@@ -1,0 +1,203 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:058b3120fab540ed1a2bc328865f22f822b2b634f29bf4fe416332cd75d2bcdd",
+  "pack_id": "tobkiri_conversation_lifecycle_pack",
+  "source_identity": "sha256:91b8a0454586449207c15455f0fb82d39ec9d981a00bd5cbc4cb846e27ebce21",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "tobkiri_conversation_lifecycle_pack.status",
+      "implementation_digest": "sha256:ef4bd6ba24c4b0a7c8edffd38e1acf962aae92c0d309e0e1f1ecb6a77b07495a",
+      "implementation_path": "runtime/host.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.conversation.lifecycle.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "_session_id": {
+                "type": "string"
+              },
+              "conversation_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "operation": {
+                "const": "get"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "operation",
+              "conversation_id"
+            ],
+            "type": "object"
+          },
+          "operation_id": "tobkiri_conversation_lifecycle_pack.lifecycle-status",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:f0af6ab60759292b05635a55a38b92b21df1a7d586b7c68a51b695b0477d2266",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "tobkiri_conversation_lifecycle_pack.status.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "tobkiri_conversation_lifecycle_pack.manage",
+      "implementation_digest": "sha256:ef4bd6ba24c4b0a7c8edffd38e1acf962aae92c0d309e0e1f1ecb6a77b07495a",
+      "implementation_path": "runtime/host.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.conversation.lifecycle.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "write",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "_session_id": {
+                "type": "string"
+              },
+              "conversation_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "manual",
+                  "archive_after_completion"
+                ]
+              },
+              "operation": {
+                "const": "configure"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "operation",
+              "conversation_id",
+              "mode"
+            ],
+            "type": "object"
+          },
+          "operation_id": "tobkiri_conversation_lifecycle_pack.lifecycle-manage",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:fe67cc708d5c2c9e9fcc1e70e8984b32a406a415dcd037e36572ef78fa784bcb",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "tobkiri_conversation_lifecycle_pack.manage.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "tobkiri_conversation_lifecycle_pack.archive-job",
+      "implementation_digest": "sha256:ef4bd6ba24c4b0a7c8edffd38e1acf962aae92c0d309e0e1f1ecb6a77b07495a",
+      "implementation_path": "runtime/host.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.job.adapter.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "write",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "_session_id": {
+                "type": "string"
+              },
+              "action_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "idempotency_key": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "lease_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "operation": {
+                "enum": [
+                  "describe",
+                  "dispatch",
+                  "cancel",
+                  "status"
+                ]
+              },
+              "payload": {
+                "maxProperties": 0,
+                "type": "object"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "schedule_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "operation"
+            ],
+            "type": "object"
+          },
+          "operation_id": "tobkiri_conversation_lifecycle_pack.archive-job-adapter",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:46e6d63bb110665937bf5161be9d5d48d74a115c53e8c560b22b7afd03d5694b",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "tobkiri_conversation_lifecycle_pack.archive-job.python"
+    }
+  ]
+}
