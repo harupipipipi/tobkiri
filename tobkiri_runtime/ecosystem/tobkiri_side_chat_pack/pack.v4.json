@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:66b3c5bd7347d31d9bb69565241ff46c79499165c8403a8d68b5f3f6d2428383",
+      "digest": "sha256:74ce5846ac704d590cd1142e5109b0d86430ba79e8cb19dc27ad6d28fbad96aa",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -16,7 +16,7 @@
       "path": "pack-source.v1.json"
     },
     {
-      "digest": "sha256:e2e75aa927eeb1badc4adf6e9a63f87e5b7fc27a0121e142ed83da0d21cfcfad",
+      "digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
       "kind": "executable",
       "path": "runtime/host.py"
     },
@@ -53,7 +53,7 @@
     {
       "contract_revision_digest": "sha256:8a534e42a7d6fcaf71ced22dbf6c989c7872fbd90569be3050574cedff6caab3",
       "id": "tobkiri_side_chat_pack.manage",
-      "implementation_digest": "sha256:e2e75aa927eeb1badc4adf6e9a63f87e5b7fc27a0121e142ed83da0d21cfcfad",
+      "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
       "isolation": "dedicated_process",
       "operations": [
         "tobkiri_side_chat_pack.side-chat-manage"
@@ -63,7 +63,7 @@
     {
       "contract_revision_digest": "sha256:4edbf3e05d509a93e8663162637349f32c124cecb9ac3a0a67a38090b7c1267c",
       "id": "tobkiri_side_chat_pack.resource",
-      "implementation_digest": "sha256:e2e75aa927eeb1badc4adf6e9a63f87e5b7fc27a0121e142ed83da0d21cfcfad",
+      "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
       "isolation": "dedicated_process",
       "operations": [
         "tobkiri_side_chat_pack.side-chat-resource"
@@ -73,7 +73,7 @@
     {
       "contract_revision_digest": "sha256:1b82e55995eb061819839ac0f42a89f1ebcc2c4ca9c8bc3206253767b9d9e452",
       "id": "tobkiri_side_chat_pack.turn",
-      "implementation_digest": "sha256:e2e75aa927eeb1badc4adf6e9a63f87e5b7fc27a0121e142ed83da0d21cfcfad",
+      "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
       "isolation": "dedicated_process",
       "operations": [
         "tobkiri_side_chat_pack.side-chat-turn"
@@ -82,9 +82,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:e8e5581f8bed4cbb4e9e25a439c2b6fae8148c54cdb4e90cadf46a3326597cde",
-    "contract_catalog_digest": "sha256:59cc9d4fd1b69fc230b44904b3260283805cebf80575d9c8d90a8c2dbf0a8745",
-    "source_identity": "sha256:f259e2e8d76d94d36f5b75b09111d401301d0792251bf9d30f13856931db96b4"
+    "artifact_set_digest": "sha256:d51be5b47021bc5dd94a9069edff67db85d0a3748e4495acf1e69e9daf9bda6a",
+    "contract_catalog_digest": "sha256:24c83a5b92089d3acc952cd0ccfa94777bf7f5ac8630e59971af56030e3bc5bc",
+    "source_identity": "sha256:f761edd952ee32814ea052dec719703dbcc8b8c3b319460cb14685ee13960d68"
   },
   "migration": {
     "compatibility": "read_only",
@@ -128,7 +128,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:e8e5581f8bed4cbb4e9e25a439c2b6fae8148c54cdb4e90cadf46a3326597cde",
+    "artifact_digest": "sha256:d51be5b47021bc5dd94a9069edff67db85d0a3748e4495acf1e69e9daf9bda6a",
     "display_name": "Tobkiri Side Chat",
     "id": "tobkiri_side_chat_pack",
     "kind": "host_extension",
@@ -138,7 +138,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:f259e2e8d76d94d36f5b75b09111d401301d0792251bf9d30f13856931db96b4",
+        "digest": "sha256:f761edd952ee32814ea052dec719703dbcc8b8c3b319460cb14685ee13960d68",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -149,7 +149,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:f259e2e8d76d94d36f5b75b09111d401301d0792251bf9d30f13856931db96b4",
+    "source_digest": "sha256:f761edd952ee32814ea052dec719703dbcc8b8c3b319460cb14685ee13960d68",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_side_chat_pack"
   },

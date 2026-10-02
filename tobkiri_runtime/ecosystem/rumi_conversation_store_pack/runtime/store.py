@@ -20,6 +20,7 @@ from tobkiri_protocol.conversation_context import context_link
 from core_runtime.profile_workspace import validate_profile_id
 from core_runtime.runtime_locks import NamedLock
 from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.conversation_context import resolve_request_context
 from ecosystem.rumi_conversation_store_pack.runtime.saved_receipt import append_receipt
 
 STORE_VERSION = "rumi.conversation-store.v1"
@@ -382,6 +383,14 @@ class ConversationStore:
             current = dict(current)
             _assert_conversation_revision(current, expected_conversation_revision)
             messages = list(current.get("messages") or [])
+            if saved_input is not None:
+                # Parent lineage is checked in the same owner lock as the
+                # append, so a parent edit after bridge reads cannot commit a
+                # user or assistant against the old saved context binding.
+                resolve_request_context(
+                    current, saved_input["request"], self.profile_id,
+                    lambda parent_id: state["conversations"].get(parent_id),
+                )
             if any(item.get("id") == normalized["id"] for item in messages):
                 raise ConversationConflict("message already exists")
             normalized["children_ids"] = []

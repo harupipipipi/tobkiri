@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:cd77ad838aa6709b901d873a41707c324f0a70e3ee3b16723880e2fc0da8f78b",
+  "catalog_digest": "sha256:534adbdd059d8a9cdcbd3419b56831db06714759159927e757fb3c7a36485bf4",
   "pack_id": "tobkiri_side_chat_pack",
-  "source_identity": "sha256:f259e2e8d76d94d36f5b75b09111d401301d0792251bf9d30f13856931db96b4",
+  "source_identity": "sha256:f761edd952ee32814ea052dec719703dbcc8b8c3b319460cb14685ee13960d68",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri_side_chat_pack.manage",
-      "implementation_digest": "sha256:e2e75aa927eeb1badc4adf6e9a63f87e5b7fc27a0121e142ed83da0d21cfcfad",
+      "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -87,7 +87,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri_side_chat_pack.resource",
-      "implementation_digest": "sha256:e2e75aa927eeb1badc4adf6e9a63f87e5b7fc27a0121e142ed83da0d21cfcfad",
+      "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -181,7 +181,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri_side_chat_pack.turn",
-      "implementation_digest": "sha256:e2e75aa927eeb1badc4adf6e9a63f87e5b7fc27a0121e142ed83da0d21cfcfad",
+      "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [

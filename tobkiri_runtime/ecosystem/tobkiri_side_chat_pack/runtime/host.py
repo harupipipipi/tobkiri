@@ -11,7 +11,7 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
 )
-from .side_chat import (
+from ecosystem.tobkiri_side_chat_pack.runtime.side_chat import (
     CONVERSATION,
     MANAGE,
     TURN,

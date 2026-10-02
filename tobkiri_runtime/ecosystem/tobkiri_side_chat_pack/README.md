@@ -41,6 +41,12 @@ rejected. Resource capture receives only read/event contracts. Management and
 turn operations use credential-free clients with the exact declared public
 edges. The Pack imports no other Pack implementation.
 
+An explicit reasoning level in a linked saved request must equal the parent's
+setting. If omitted, the Host derives it from the fresh bound parent context
+without rewriting the saved input. The bridge rechecks parent context after
+prompt/tool reads immediately before effect admission; saved appends also check
+the parent binding in the conversation owner's atomic write transaction.
+
 Sending delegates `tobkiri.action.turn.saved.v1` to preserve durable execution,
 reconciliation and cancellation receipts. Cancellation and event reads first
 prove that the turn belongs to the selected child, preventing a main turn or

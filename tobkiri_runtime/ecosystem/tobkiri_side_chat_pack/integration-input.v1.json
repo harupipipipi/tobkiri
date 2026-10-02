@@ -184,7 +184,7 @@
           {
             "id": "tobkiri_side_chat_pack.side-chat-resource",
             "entrypoint_id": "side-chat-resource",
-            "implementation_digest": "sha256:e2e75aa927eeb1badc4adf6e9a63f87e5b7fc27a0121e142ed83da0d21cfcfad"
+            "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c"
           }
         ]
       },
@@ -262,7 +262,7 @@
           {
             "id": "tobkiri_side_chat_pack.side-chat-manage",
             "entrypoint_id": "side-chat-manage",
-            "implementation_digest": "sha256:e2e75aa927eeb1badc4adf6e9a63f87e5b7fc27a0121e142ed83da0d21cfcfad"
+            "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c"
           }
         ]
       },
@@ -393,7 +393,7 @@
           {
             "id": "tobkiri_side_chat_pack.side-chat-turn",
             "entrypoint_id": "side-chat-turn",
-            "implementation_digest": "sha256:e2e75aa927eeb1badc4adf6e9a63f87e5b7fc27a0121e142ed83da0d21cfcfad"
+            "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c"
           }
         ]
       }
@@ -401,7 +401,7 @@
     "runtime_artifacts": [
       {
         "path": "runtime/host.py",
-        "digest": "sha256:e2e75aa927eeb1badc4adf6e9a63f87e5b7fc27a0121e142ed83da0d21cfcfad",
+        "digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
         "kind": "executable"
       },
       {
