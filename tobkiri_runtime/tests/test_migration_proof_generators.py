@@ -283,6 +283,101 @@ def test_source_registry_rejects_cross_pack_function_id_override(
         build_registry(ECOSYSTEM, fixture_path=fixture_path)
 
 
+def _write_schema_override_fixture(tmp_path: Path) -> tuple[Path, Path]:
+    """Pin a reviewed schema to one exact independently read legacy owner."""
+    ecosystem = tmp_path / "ecosystem"
+    content = b"def execute(payload):\n    return payload\n"
+    pack_root = _write_v3_pack(
+        ecosystem, module_path="runtime.py", implementation_bytes=content
+    )
+    (pack_root / "runtime.py").write_bytes(content)
+    fixture_path = _write_empty_source_fixture(tmp_path / "sources.json")
+    registry = build_registry(ecosystem, fixture_path=fixture_path)
+    record = next(iter(registry["packs"].values()))
+    fixture = json.loads(fixture_path.read_text())
+    fixture["schema_overrides"] = [{
+        "pack_id": record["pack_id"],
+        "contract_id": record["contract_id"],
+        "contract_version": record["contract_version"],
+        "legacy_functions": [{
+            "function_id": record["function_id"],
+            "implementation_path": record["implementation_path"],
+            "implementation_digest": record["implementation_digest"],
+            "operation_ids": [record["operations"][0]["operation_id"]],
+        }],
+        "schemas": {
+            "input": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {"operation": {"const": "read"}},
+                "required": ["operation"],
+            },
+            "output": {"type": "object"},
+            "error": {"type": "object"},
+        },
+    }]
+    fixture_path.write_text(json.dumps(fixture))
+    return ecosystem, fixture_path
+
+
+def test_reviewed_schema_override_preserves_owner_and_executable_identity(
+    tmp_path: Path,
+) -> None:
+    """A current schema reaches the Function and Operation without new authority."""
+    ecosystem, fixture_path = _write_schema_override_fixture(tmp_path)
+    registry = build_registry(ecosystem, fixture_path=fixture_path)
+    record = next(iter(registry["packs"].values()))
+    assert record["pack_id"] == record["owner"] == "sample_pack"
+    assert record["input_schema"]["properties"]["operation"] == {"const": "read"}
+    assert record["operations"][0]["input_schema"] == record["input_schema"]
+    assert len(record["operations"]) == 1
+    assert any(source["kind"] == "explicit-schema-override"
+               for source in record["source"])
+    assert any(source["kind"] == "legacy-explicit-fixture"
+               for source in registry["source"]["inputs"])
+
+
+@pytest.mark.parametrize("field", [
+    "pack_id", "contract_id", "contract_version", "function_id",
+    "implementation_path", "implementation_digest", "operation_ids",
+])
+def test_reviewed_schema_override_rejects_changed_owner_inventory(
+    tmp_path: Path, field: str,
+) -> None:
+    """A changed identity or missing Operation cannot inherit schema provenance."""
+    ecosystem, fixture_path = _write_schema_override_fixture(tmp_path)
+    fixture = json.loads(fixture_path.read_text())
+    override = fixture["schema_overrides"][0]
+    if field in {"pack_id", "contract_id", "contract_version"}:
+        override[field] = "another.v1"
+    elif field == "operation_ids":
+        override["legacy_functions"][0][field] = []
+    else:
+        override["legacy_functions"][0][field] = "another.identity"
+    fixture_path.write_text(json.dumps(fixture))
+    with pytest.raises(ExecutableSourceRegistryError, match="identity mismatch"):
+        build_registry(ecosystem, fixture_path=fixture_path)
+
+
+@pytest.mark.parametrize("scenario", ["duplicate", "schema", "authority"])
+def test_reviewed_schema_override_rejects_ambiguous_or_invalid_inputs(
+    tmp_path: Path, scenario: str,
+) -> None:
+    """The wire-only override cannot carry effects or competing schemas."""
+    ecosystem, fixture_path = _write_schema_override_fixture(tmp_path)
+    fixture = json.loads(fixture_path.read_text())
+    override = fixture["schema_overrides"][0]
+    if scenario == "duplicate":
+        fixture["schema_overrides"].append(override)
+    elif scenario == "schema":
+        override["schemas"]["input"]["type"] = "invalid-type"
+    else:
+        override["effect_ceiling"] = ["host:brokered-execution"]
+    fixture_path.write_text(json.dumps(fixture))
+    with pytest.raises(ExecutableSourceRegistryError):
+        build_registry(ecosystem, fixture_path=fixture_path)
+
+
 def test_source_registry_accepts_regular_v3_module_file(tmp_path: Path) -> None:
     """A regular Python module inside its Pack remains a valid v3 source."""
 
