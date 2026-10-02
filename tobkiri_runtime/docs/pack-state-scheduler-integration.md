@@ -87,6 +87,15 @@ collapses missed periods and fences disabled/stale/expired callbacks. The wake
 kernel gate is consumed by the Host driver and is never a Broker execution lease;
 actual execution must use a fresh canonical audited Broker request.
 
+An in-flight durable claim at restart retains its finite registration intent but
+reports `reconciliation_required: true` and `armed: false`. The current Broker
+has no durable clock receipt lookup, so claim expiry cannot authorize replay of
+a possibly dispatched wake. A new approved arm or explicit disarm resolves this
+state. Unclaimed registrations still catch up normally. A closed old capture
+cannot disable the new capture's persisted intent. Shutdown fences every driver
+and attempts every adapter and Broker cleanup even if another source fails;
+failed cleanup remains retryable with the dispatch session permanently fenced.
+
 The explicit adapter scope is `host_process_only`: it runs while the Host process
 lives and does not wake a sleeping Mac. Missing adapters, bindings, grants or
 production hookup report unarmed/unavailable. The source driver and injected

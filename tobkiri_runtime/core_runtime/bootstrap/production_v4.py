@@ -103,6 +103,7 @@ from core_runtime.local_model_authority import (
 from core_runtime.dispatch_diagnostics import log_nested_dispatch_failure
 from core_runtime.captured_wake_v4 import (
     CapturedWakeDeclarationV4, CapturedWakeDriverV4, LateBoundWakePortV4,
+    close_captured_wake_drivers_v4,
 )
 from core_runtime.production_wake_binding_v4 import bind_production_wake_v4
 
@@ -3451,8 +3452,7 @@ def capture_production_dispatch(
 
     def close_wake_drivers() -> None:
         """Fence Host sources before any Broker shutdown or read restart."""
-        for driver in wake_drivers:
-            driver.close()
+        close_captured_wake_drivers_v4(wake_drivers)
 
     dispatch = runtime.dispatch_session(
         broker=broker,

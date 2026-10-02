@@ -7,7 +7,11 @@ from typing import Any
 
 import pytest
 
-from core_runtime.captured_wake_v4 import CapturedWakeDeclarationV4, LateBoundWakePortV4
+from core_runtime.captured_wake_v4 import (
+    CapturedWakeDeclarationV4,
+    LateBoundWakePortV4,
+    close_captured_wake_drivers_v4,
+)
 from core_runtime.authority.v4 import GrantLifetime
 from core_runtime.production_wake_binding_v4 import bind_production_wake_v4
 from tests.test_authority_v4_lifecycle import _Harness
@@ -200,3 +204,63 @@ def test_insufficient_recurring_grant_cannot_promote_one_shot_authority(
     finally:
         driver.close()
         broker.close()
+
+
+def test_failed_source_close_attempts_later_fences_broker_and_other_cleanup(
+    tmp_path: Path,
+) -> None:
+    from tests.test_captured_wake_v4 import _driver
+
+    events = []
+    first = _driver(tmp_path / "first", [100.0, 5.0], [])
+    second = _driver(tmp_path / "second", [100.0, 5.0], [])
+    first.arm(5000)
+    second.arm(5000)
+
+    def fail_source_close() -> None:
+        events.append("first-source")
+        raise RuntimeError("adapter close failed")
+
+    first._adapter.close = fail_source_close
+    second._adapter.close = lambda: events.append("second-source")
+
+    class Broker:
+        def close(self) -> None:
+            events.append("broker")
+
+    class Authority:
+        def close(self) -> None:
+            events.append("authority")
+
+    session = V4DispatchSession(
+        broker=Broker(),
+        context_for=lambda: None,
+        effect_scope_for=lambda: None,
+        providers={},
+        profile_id="fixture",
+        plan_digest="plan",
+        profile_revision="revision",
+        activation_id="activation",
+        current_capture_check=lambda: events.append("current-check"),
+        owned_authority_store=Authority(),
+        before_close_callbacks=(
+            lambda: close_captured_wake_drivers_v4((first, second)),
+            lambda: events.append("later-fence"),
+        ),
+        close_callbacks=(lambda: events.append("other-cleanup"),),
+    )
+    with pytest.raises(RuntimeError, match="cleanup is incomplete"):
+        session.close()
+    assert events == ["first-source", "second-source", "later-fence", "broker", "other-cleanup"]
+    assert first._delivery_cancellation.is_set()
+    assert second._delivery_cancellation.is_set()
+    assert first.status()["armed"] is second.status()["armed"] is False
+    with pytest.raises(RuntimeError, match="closing"):
+        session.assert_current()
+    with pytest.raises(RuntimeError, match="closing"):
+        session.invoke("example.action.v1", "example.tick", {})
+    # Failed source cleanup can be retried while all completed owners stay shut.
+    first._adapter.close = lambda: events.append("first-source-retry")
+    session.close()
+    assert events[-4:] == ["first-source-retry", "second-source", "broker", "authority"]
+    assert events.count("other-cleanup") == events.count("later-fence") == 1

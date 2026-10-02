@@ -267,3 +267,78 @@ def test_rearm_cancels_old_delivery_without_disabling_new_generation(
         release.set()
         worker.join(5.0)
         driver.close()
+
+
+def test_closed_delivery_keeps_cold_recapture_intent_for_reconciliation(
+    tmp_path: Path,
+) -> None:
+    clock, calls = [100.0, 5.0], []
+    first = _driver(tmp_path, clock, calls)
+    entered, release = threading.Event(), threading.Event()
+
+    def invoke(occurrence: str, fence: Any, cancellation: threading.Event) -> dict[str, Any]:
+        entered.set()
+        assert release.wait(5.0)
+        fence()
+        return {"status": "ok"}
+
+    first._invoke = invoke
+    first.arm(10000)
+    clock[:] = [101.0, 6.0]
+    worker = threading.Thread(target=first.deliver_due)
+    worker.start()
+    second = None
+    try:
+        assert entered.wait(5.0)
+        first.close()
+        with pytest.raises(PermissionError, match="closed"):
+            first.arm(5000)
+        with pytest.raises(PermissionError, match="closed"):
+            first.disarm()
+        second = _driver(tmp_path, clock, calls)
+        assert second.status()["registration_enabled"] is True
+        assert second.status()["reconciliation_required"] is True
+        assert second.status()["armed"] is False
+        release.set()
+        worker.join(5.0)
+        assert not worker.is_alive()
+        assert second.status()["registration_enabled"] is True
+        assert second.status()["reason"] == "wake_reconciliation_required"
+    finally:
+        release.set()
+        worker.join(5.0)
+        first.close()
+        if second is not None:
+            second.close()
+
+
+def test_claimed_restart_does_not_replay_after_claim_ttl_without_reconciliation(
+    tmp_path: Path,
+) -> None:
+    clock, calls = [100.0, 5.0], []
+    first = _driver(tmp_path, clock, calls)
+    first.arm(120000)
+    # Crash boundary after durable claim but before an authoritative receipt.
+    with first._database:
+        first._database.execute("UPDATE wake_state SET claim_until=131 WHERE id=1")
+    first.close()
+    clock[:] = [105.0, 0.0]
+    second = _driver(tmp_path, clock, calls)
+    try:
+        assert second.status()["claim_until_ms"] == 131000
+        assert second.status()["registration_enabled"] is True
+        assert second.status()["reconciliation_required"] is True
+        clock[:] = [132.0, 27.0]
+        second.deliver_due()
+        assert calls == []
+        assert second.status()["registration_enabled"] is True
+        assert second.status()["armed"] is False
+        assert second.status()["reconciliation_required"] is True
+        # A newly approved explicit arm creates new intent, rather than replay.
+        second.arm(5000)
+        assert second.status()["reconciliation_required"] is False
+        clock[:] = [133.0, 28.0]
+        second.deliver_due()
+        assert calls == ["2:133000"]
+    finally:
+        second.close()
