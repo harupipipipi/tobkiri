@@ -120,7 +120,7 @@ export function ModelRouteSetup() {
   const field = "rounded border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm text-zinc-100";
   return <fieldset disabled={busy} className="mt-3 grid gap-2 rounded-lg border border-zinc-700 p-3">
     <legend className="text-sm text-zinc-200">モデルルート作成（キー保存とは別操作）</legend>
-    <label className="grid gap-1 text-xs">モデル設定ID<input className={field} value={id} onChange={(event) => setId(event.target.value)} placeholder="daily" /></label>
+    <label className="grid gap-1 text-xs">モデル設定ID<input autoCorrect="off" autoCapitalize="none" spellCheck={false} className={field} value={id} onChange={(event) => setId(event.target.value)} placeholder="daily" /></label>
     <label className="grid gap-1 text-xs">Provider接続ID（登録済みのみ）
       <select aria-label="Provider connection ID" className={field} value={provider} onChange={(event) => setProvider(event.target.value)} disabled={!connections.length}>
         <option value="">{connections.length ? "接続を選択" : "登録済みの接続がありません"}</option>
@@ -135,7 +135,7 @@ export function ModelRouteSetup() {
       connectionsError={connectionsError}
       saveError={saveError}
     />
-    <label className="grid gap-1 text-xs">モデルID<input className={field} value={model} onChange={(event) => setModel(event.target.value)} placeholder="ProviderのモデルID" /></label>
+    <label className="grid gap-1 text-xs">モデルID<input autoCorrect="off" autoCapitalize="none" spellCheck={false} className={field} value={model} onChange={(event) => setModel(event.target.value)} placeholder="ProviderのモデルID" /></label>
     <button type="button" disabled={busy || !id.trim() || !model.trim() || !selectedConnection || providerRegistryRevision === null} onClick={() => void save()} className="rounded border border-zinc-600 px-3 py-2 text-sm disabled:opacity-50">{busy ? "保存結果を確認中" : "モデルルートを保存"}</button>
     {message && <p role="status" className="text-xs text-zinc-300">{message}</p>}
   </fieldset>;

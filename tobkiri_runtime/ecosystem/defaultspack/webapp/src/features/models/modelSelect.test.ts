@@ -52,6 +52,17 @@ test("model route setup never offers a free-form provider connection ID", () => 
   assert.doesNotMatch(html, /provider\.deepseek\.main/);
 });
 
+test("opaque route and model IDs disable linguistic input rewriting", () => {
+  const html = renderToStaticMarkup(createElement(ModelRouteSetup));
+  const inputs = html.match(/<input\b[^>]*>/g) ?? [];
+  assert.equal(inputs.length, 2);
+  for (const input of inputs) {
+    assert.match(input, /autoCorrect="off"/);
+    assert.match(input, /autoCapitalize="none"/);
+    assert.match(input, /spellCheck="false"/);
+  }
+});
+
 test("model route setup errors keep severity icons separate from stable copy actions", () => {
   const html = renderToStaticMarkup(createElement(ModelRouteErrorNotices, {
     connectionsError: "接続一覧を取得できませんでした。",

@@ -168,10 +168,12 @@
     "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_v4_runtime_and_protocol_composition_apis_are_live",
     "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_executable_source_registry_covers_every_executable_operation",
     "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_migration_status_promotes_only_pack_specific_semantic_proof",
-    "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_current_sha_evidence_is_green_when_pack_semantics_are_proved",
+    "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_synthetic_evidence_is_green_when_pack_semantics_are_proved",
+    "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_current_sha_evidence_reports_actual_production_proof_state",
     "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_independent_migration_proof_rejects_tampered_signature",
     "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_curated_overlay_preserves_original_generated_receipt_validation",
-    "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_curated_overlay_does_not_hide_a_tampered_generated_receipt"
+    "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_curated_overlay_does_not_hide_a_tampered_generated_receipt",
+    "tobkiri_runtime/tests/test_complete_v4_migration_gate.py::test_stale_curated_review_preserves_generated_semantics_and_red_gate"
   ],
   "pack_inventory": {
     "canonical_source_ids": [
@@ -2209,8 +2211,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "2f8a9124c75e329b8ce92cc15ffdbfbbbbd8ff8e",
-    "semantic_digest": "sha256:abd7882ce5d2e255f2a7e5c952ed77052cd74d52504af9fbab88355c1a213fb0",
+    "observed_head_sha": "df301c5a02fb90cd9f95eaedf583b006b8f734cf",
+    "semantic_digest": "sha256:8c2f7814ecd89a2fd7563f59b4549eb3589d091e5d201b41404235e557dd94e9",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }

@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "c51cf21ce2c9fdd65c201e0478997a84da258b0c4c3e80c4d244068fdde783c2",
+    "digest": "f669bc9ba32d381710cd8ebdb70ad17d43e82c54f3bc9b172cbc8be299b716ba",
     "entries": [
       {
         "path": "index.html",
@@ -880,8 +880,8 @@
       },
       {
         "path": "src/features/models/ModelRouteSetup.tsx",
-        "size": 6492,
-        "sha256": "4221f73f2657cb54bc3e05bb200f8ef919400716febebf8e0a252b614988aa65"
+        "size": 6610,
+        "sha256": "2b7a61ab4ec0aaaa284870f49870544ec7ef7069cb4bffe6de60d52f967e907b"
       },
       {
         "path": "src/features/models/ModelSearchPicker.tsx",
@@ -895,8 +895,8 @@
       },
       {
         "path": "src/features/models/modelSelect.test.ts",
-        "size": 12462,
-        "sha256": "1d3da53c3818e5c9eb8012c079c18fa1ed52140c4d6693b2625e3a22744731d6"
+        "size": 12881,
+        "sha256": "dde507fcb2feda5eddc579a4c33ebbc2837a716b089c69e8bbfb61a376376f6a"
       },
       {
         "path": "src/features/models/modelSelect.ts",
@@ -2021,7 +2021,7 @@
     ]
   },
   "bundle": {
-    "digest": "b0cbf5b9488c534b937ba9400b0e500845fdff658cdb040111dd0cae55f26c96",
+    "digest": "9dc2cebb03bf6c56ab0dc767fd2b046b979a95e2906023444b25ea5eaed58e14",
     "entries": [
       {
         "path": "shell-app.css",
@@ -2035,8 +2035,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2259234,
-        "sha256": "153bc8e3b29f613b4471f4a42e63a8139e419c3f9a3491f7cf41107fc12f7c76"
+        "size": 2259342,
+        "sha256": "10ae21b740eee91d5b85cec059d9cceb4e8ade2a9cc4169fa8dfeb7940ad405b"
       },
       {
         "path": "shell-rolldown-runtime.js",
