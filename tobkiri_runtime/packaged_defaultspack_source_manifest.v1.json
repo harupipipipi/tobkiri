@@ -3395,8 +3395,8 @@
     {
       "path": "scripts/quality/evidence/complete_v4_migration_red_64b2240e.json",
       "type": "regular-file",
-      "size": 88788,
-      "sha256": "3cf838d0a47bcfdb746a81e082675659f7b026e1a7d35a6e1137f595b3572421",
+      "size": 82693,
+      "sha256": "c2ed018b7134f5692bb8a7058c7fc1a49b5dc0195884a90b989de45d7105a194",
       "executable": false
     },
     {
@@ -3416,8 +3416,8 @@
     {
       "path": "scripts/quality/evidence/pack_migration_runtime_receipts.v1.json",
       "type": "regular-file",
-      "size": 507953,
-      "sha256": "c317b8a549df11941a9d3d043c1daea74a4bf4f319fea13a78b0e95bad7accbd",
+      "size": 507992,
+      "sha256": "14f4584c8f1ad66451cd84888ce1e7fe58605afe9b9ea60ffa5a1641f634ef21",
       "executable": false
     },
     {
