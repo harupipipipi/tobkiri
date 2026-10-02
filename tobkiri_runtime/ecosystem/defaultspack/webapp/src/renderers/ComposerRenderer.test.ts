@@ -2237,3 +2237,20 @@ test("the shared composer menu adds attachment locally and respects template cap
   ]);
   assert.deepEqual(composerMenuCommands([command], false, false), []);
 });
+
+
+test("captured thread composer keeps text/send while hiding model, grant, tool and attachment overrides", () => {
+  const html = renderToolModeComposer({ surfaceMode: "thread", voiceInputEnabled: false });
+  assert.match(html, /data-composer-widget="send"/);
+  for (const control of ["model-picker", "action-approval-control", "tool-selection-control", "file-attach", "project-picker", "runtime-option-states"]) {
+    assert.doesNotMatch(html, new RegExp('data-composer-widget="' + control + '"'));
+  }
+  assert.match(html, /Tool mode draft/);
+  assert.doesNotMatch(html, /aria-label="メッセージを送信" disabled=""/);
+  const pending = renderToolModeComposer({ surfaceMode: "thread", isGenerating: true, input: "retained draft", voiceInputEnabled: false });
+  assert.match(pending, /readonly=""/i);
+  assert.match(pending, /aria-label="生成を停止"/);
+  assert.doesNotMatch(pending, /aria-label="追加指示を送る"/);
+  const disabled = renderToolModeComposer({ surfaceMode: "thread", submissionDisabled: true, voiceInputEnabled: false });
+  assert.match(disabled, /aria-label="メッセージを送信" disabled=""/);
+});

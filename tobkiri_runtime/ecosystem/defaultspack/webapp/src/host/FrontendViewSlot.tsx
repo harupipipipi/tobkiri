@@ -3,6 +3,7 @@ import {
   type ReactNode,
 } from "react";
 import type { FrontendCapabilityInvoker, FrontendCatalog } from "./frontendContracts";
+import { ConversationThreadView } from "./ConversationThreadView";
 import { RecordEditorView } from "./RecordEditorView";
 import { freshTextDraft, refreshTextDraft, textDraftDirty, viewOperationOutcome } from "./viewControlState";
 import {
@@ -127,7 +128,10 @@ function CatalogViewHost({
         registered={registered} catalog={catalog} capabilities={capabilities} snapshot={snapshot}
         onRefresh={refresh} context={context} sourceReady={sourceReady}
         onDirtyChange={onNavigationGuardChange} />}
-      {registered.view.renderer === "conversation_thread" && <UnavailableView />}
+      {registered.view.renderer === "conversation_thread" && <ConversationThreadView
+        registered={registered} catalog={catalog} capabilities={capabilities}
+        snapshot={snapshot} sourceReady={sourceAvailable && !loading && !sourceError && snapshot !== null}
+        context={context} onRefresh={refresh} onDirtyChange={onNavigationGuardChange} />}
       {(registered.view.controls ?? []).map((control) => <CatalogControl
         key={control.id} control={control} snapshot={snapshot}
         registered={registered} catalog={catalog} capabilities={capabilities}
