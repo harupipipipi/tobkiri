@@ -1,6 +1,6 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:64148038cb1487eb400fb05297cba8d53018820e450a2b3ef6dd150340e4daa9",
+  "catalog_digest": "sha256:141509acac42bd1020d5e4c6fd25e7009e99b4ac5f345511dccf1830827b64c6",
   "pack_id": "rumi_coding_sandbox_service_pack",
   "source_identity": "sha256:5bfc7e9db7dd99bab47379d5d62ff9991065db7abaf2fc07cb91eedbb516a5e8",
   "variants": [
@@ -271,7 +271,7 @@
             ],
             "type": "object"
           },
-          "revision_digest": "sha256:9aebf34de9cf78423f6f083ed27c45a5e32603e4c3e011a90d4872871999167a",
+          "revision_digest": "sha256:f011e33f73cce2e7447e9ca9846e847e5f29edc0a10cdc49b9683dab2e1515b7",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 180000
         }
@@ -421,7 +421,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:9aebf34de9cf78423f6f083ed27c45a5e32603e4c3e011a90d4872871999167a",
+          "revision_digest": "sha256:f011e33f73cce2e7447e9ca9846e847e5f29edc0a10cdc49b9683dab2e1515b7",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 180000
         }
@@ -508,7 +508,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:935184425d523caf9391f31ffe9d283925e3bfc7f425e288f0c4b5d5cc59230a",
+          "revision_digest": "sha256:8c2b52590f7d1b3eddc891fc0883982f1741503f5e0a05c9db3fbeafc01327b5",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 180000
         }
