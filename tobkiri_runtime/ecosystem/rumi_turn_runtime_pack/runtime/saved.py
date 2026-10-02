@@ -27,6 +27,7 @@ from tobkiri_protocol.saved_context import (
     resolved_saved_prompt,
     saved_prompt_reference,
 )
+from tobkiri_protocol.conversation_context import resolve_request_context
 
 from tobkiri_protocol.agent_inbox_v1 import CONTEXT_CONTRACT, INBOX_CONTRACT
 
@@ -118,6 +119,18 @@ def execute_saved_turn(
             or conversation.get("id") != initial["request"]["conversation_id"]
         ):
             raise ValueError("saved conversation owner response is invalid")
+        def read_parent(parent_id: str) -> Mapping[str, Any] | None:
+            response = client.invoke(
+                RECEIPT_CONTRACT, RECEIPT_OPERATION,
+                {"profile_id": store.profile_id, "operation": "get",
+                 "conversation_id": parent_id},
+            )
+            guard()
+            return response.get("conversation")
+
+        conversation = resolve_request_context(
+            conversation, initial["request"], store.profile_id, read_parent,
+        )
         validate_saved_conversation_context(conversation)
         prompt_id = saved_prompt_reference(conversation)
         if prompt_id is not None:

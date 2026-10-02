@@ -35,6 +35,7 @@ from tobkiri_protocol.conversation_lifecycle import (
     active_task_gap_context, saved_terminal_finish_reason, task_gap_prompt,
 )
 from tobkiri_protocol.saved_task_context import saved_task_context_messages
+from tobkiri_protocol.conversation_context import resolve_request_context
 
 from ..authority.v4 import AuthorityDenied
 
@@ -373,12 +374,22 @@ class SavedBridgeCallbacks:
         self._require_targets = require_targets
 
     def _conversation(self, outer: object, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        conversation = self._read_conversation(outer, request["conversation_id"])
+        try:
+            return resolve_request_context(
+                conversation, request, outer.context.profile_id,
+                lambda parent_id: self._read_conversation(outer, parent_id),
+            )
+        except ValueError as error:
+            raise AuthorityDenied(str(error)) from error
+
+    def _read_conversation(self, outer: object, conversation_id: str) -> Mapping[str, Any]:
         outcome = self._dispatch(
             outer,
             TARGETS[0],
             {
                 "operation": "get",
-                "conversation_id": request["conversation_id"],
+                "conversation_id": conversation_id,
             },
         )
         value = outcome.get("value")
@@ -386,7 +397,7 @@ class SavedBridgeCallbacks:
         if (
             outcome.get("status") != "ok"
             or not isinstance(conversation, Mapping)
-            or conversation.get("id") != request["conversation_id"]
+            or conversation.get("id") != conversation_id
         ):
             raise AuthorityDenied("saved bridge conversation is unavailable")
         return conversation
@@ -634,6 +645,11 @@ class SavedBridgeCallbacks:
                 payload = {
                     key: value for key, value in payload.items() if key != "system_prompt_digest"
                 }
+            else:
+                conversation = self._conversation(outer, request)
+                self._require_acknowledged_branch(
+                    conversation, owner_revision, owner_current_node_id,
+                )
         elif stage == "ai":
             conversation = self._conversation(outer, request)
             self._require_acknowledged_branch(

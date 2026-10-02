@@ -106,6 +106,7 @@ def test_preflight_is_read_only_and_four_stages_use_real_owner(tmp_path: Path) -
         saved.TARGETS[1],
         saved.TARGETS[0],
         saved.TARGETS[2],
+        saved.TARGETS[0],
         saved.TARGETS[3],
     ]
 

@@ -16,6 +16,7 @@ from core_runtime.paths import USER_DATA_DIR
 from tobkiri_protocol.conversation_lifecycle import (
     LIFECYCLE_VERSION, message_task_state,
 )
+from tobkiri_protocol.conversation_context import context_link
 from core_runtime.profile_workspace import validate_profile_id
 from core_runtime.runtime_locks import NamedLock
 from ecosystem.rumi_conversation_store_pack.runtime.saved_receipt import append_receipt
@@ -96,6 +97,20 @@ class ConversationStore:
                 if not isinstance(parent, Mapping):
                     raise KeyError("parent conversation is unknown")
                 parent = dict(parent)
+                link = context_link(normalized)
+                if link is not None:
+                    _assert_conversation_revision(
+                        parent, link["created_from_parent_revision"]
+                    )
+                    if context_link(parent) is not None:
+                        raise ValueError("nested context links are unavailable")
+                    for sibling in state["conversations"].values():
+                        other = context_link(sibling)
+                        if other is not None and (
+                            other["parent_conversation_id"] == parent_id
+                            and other["slot"] == link["slot"]
+                        ):
+                            raise ConversationConflict("parent context slot exists")
                 child_ids = list(parent.get("child_conversation_ids") or [])
                 if conversation_id not in child_ids:
                     child_ids.append(conversation_id)
@@ -139,6 +154,13 @@ class ConversationStore:
             current = dict(current)
             _assert_conversation_revision(current, expected_conversation_revision)
             prior_parent_id = current.get("parent_conversation_id")
+            link = context_link(current)
+            if "context_link" in patch and patch["context_link"] != current.get("context_link"):
+                raise ValueError("conversation context link is immutable")
+            if link is not None and "parent_conversation_id" in patch and (
+                patch["parent_conversation_id"] != prior_parent_id
+            ):
+                raise ValueError("conversation context parent is immutable")
             requested_parent_id = (
                 patch.get("parent_conversation_id")
                 if "parent_conversation_id" in patch
@@ -227,6 +249,9 @@ class ConversationStore:
                 if child_value.get("parent_conversation_id") != conversation_id:
                     continue
                 child = dict(child_value)
+                if context_link(child) is not None:
+                    # Preserve lineage/history; a deleted parent stays unavailable.
+                    continue
                 child["parent_conversation_id"] = None
                 _touch_conversation(child, now)
                 state["conversations"][child_id] = child
@@ -755,6 +780,7 @@ def _conversation(value: Mapping[str, Any], *, allow_messages: bool) -> dict[str
         "child_conversation_ids": _safe(value.get("child_conversation_ids") or []),
         "conversation_kind": str(value.get("conversation_kind") or "chat"),
         "group_id": value.get("group_id"),
+        "context_link": context_link(value),
         "metadata": _conversation_metadata(value.get("metadata") or {}),
         "lifecycle": _empty_lifecycle(),
         "messages": normalized_messages,

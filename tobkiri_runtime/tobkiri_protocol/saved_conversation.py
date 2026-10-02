@@ -11,6 +11,7 @@ from .canonical import canonical_json, strict_loads
 from .saved_tools import validate_tool_selection
 from .saved_context import saved_prompt_reference
 from .saved_task_context import validate_saved_task_context
+from .conversation_context import validate_context_binding
 
 SAVED_CONVERSATION_CONTRACT = "conversation.saved-turn.v1"
 SAVED_CONVERSATION_OPERATION = "saved_complete"
@@ -217,6 +218,7 @@ def validate_saved_conversation_input(payload: Mapping[str, Any]) -> dict[str, A
         "strategy_maximum_cost_microusd",
         "thinking_level",
         "task_context",
+        "context_binding",
     } != {
         "turn_id",
         "conversation_id",
@@ -232,6 +234,8 @@ def validate_saved_conversation_input(payload: Mapping[str, Any]) -> dict[str, A
             conversation_id=request["conversation_id"],
             turn_id=request["turn_id"],
         )
+    if "context_binding" in request:
+        validate_context_binding(request["context_binding"])
     strategy_reference = request.get("strategy_reference")
     if strategy_reference is not None and (
         not isinstance(strategy_reference, str)

@@ -1,35 +1,70 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
-  "title": "Saved conversation initial input",
-  "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
-  "type": "object",
-  "additionalProperties": false,
-  "required": [
-    "request"
-  ],
-  "properties": {
-    "request": {
+  "$defs": {
+    "text_block": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "turn_id",
-        "conversation_id",
-        "conversation_revision",
-        "content"
+        "type",
+        "text"
       ],
       "properties": {
-        "turn_id": {
-          "$ref": "#/$defs/identifier"
+        "type": {
+          "const": "text"
         },
-        "conversation_id": {
-          "$ref": "#/$defs/identifier"
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 61440,
+          "pattern": "\\S"
+        }
+      }
+    },
+    "image_block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "image_url"
+      ],
+      "properties": {
+        "type": {
+          "const": "image_url"
         },
-        "conversation_revision": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 9007199254740991
-        },
+        "image_url": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "url"
+          ],
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1398127,
+              "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$"
+            }
+          }
+        }
+      }
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9]",
+      "not": {
+        "pattern": "[^A-Za-z0-9._:-]"
+      }
+    }
+  },
+  "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
+  "properties": {
+    "request": {
+      "additionalProperties": false,
+      "properties": {
         "content": {
           "oneOf": [
             {
@@ -53,15 +88,127 @@
             }
           ]
         },
-        "strategy_reference": {
-          "$ref": "#/$defs/identifier",
-          "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
+        "context_binding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "version",
+            "profile_id",
+            "parent_conversation_id",
+            "parent_revision",
+            "context_digest"
+          ],
+          "properties": {
+            "version": {
+              "const": "tobkiri.conversation-context-binding.v1"
+            },
+            "profile_id": {
+              "$ref": "#/$defs/identifier"
+            },
+            "parent_conversation_id": {
+              "$ref": "#/$defs/identifier"
+            },
+            "parent_revision": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "context_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            }
+          }
+        },
+        "conversation_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "conversation_revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
         },
         "strategy_maximum_cost_microusd": {
           "type": "integer",
           "minimum": 1,
           "maximum": 1000000,
           "description": "Optional lower per-turn strategy limit in integer micro-USD. The Host always enforces its own one-dollar ceiling."
+        },
+        "strategy_reference": {
+          "$ref": "#/$defs/identifier",
+          "description": "Exact provider instance of an admitted AI strategy Pack. Missing or disabled selected providers fail closed."
+        },
+        "task_context": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "version",
+            "source_id",
+            "conversation_id",
+            "recipient_id",
+            "input_id",
+            "source_revision",
+            "generation",
+            "items"
+          ],
+          "properties": {
+            "version": {
+              "const": "tobkiri.saved-task-context.v1"
+            },
+            "source_id": {
+              "$ref": "#/$defs/identifier"
+            },
+            "conversation_id": {
+              "$ref": "#/$defs/identifier"
+            },
+            "recipient_id": {
+              "$ref": "#/$defs/identifier"
+            },
+            "input_id": {
+              "$ref": "#/$defs/identifier"
+            },
+            "source_revision": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "generation": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "items": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 100,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "kind",
+                  "body"
+                ],
+                "properties": {
+                  "id": {
+                    "$ref": "#/$defs/identifier"
+                  },
+                  "kind": {
+                    "enum": [
+                      "goal",
+                      "todo",
+                      "instruction"
+                    ]
+                  },
+                  "body": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32000,
+                    "pattern": "\\S"
+                  }
+                }
+              }
+            }
+          }
         },
         "thinking_level": {
           "enum": [
@@ -203,138 +350,22 @@
             }
           ]
         },
-        "task_context": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "version",
-            "source_id",
-            "conversation_id",
-            "recipient_id",
-            "input_id",
-            "source_revision",
-            "generation",
-            "items"
-          ],
-          "properties": {
-            "version": {
-              "const": "tobkiri.saved-task-context.v1"
-            },
-            "source_id": {
-              "$ref": "#/$defs/identifier"
-            },
-            "conversation_id": {
-              "$ref": "#/$defs/identifier"
-            },
-            "recipient_id": {
-              "$ref": "#/$defs/identifier"
-            },
-            "input_id": {
-              "$ref": "#/$defs/identifier"
-            },
-            "source_revision": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "generation": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 9007199254740991
-            },
-            "items": {
-              "type": "array",
-              "minItems": 1,
-              "maxItems": 100,
-              "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "id",
-                  "kind",
-                  "body"
-                ],
-                "properties": {
-                  "id": {
-                    "$ref": "#/$defs/identifier"
-                  },
-                  "kind": {
-                    "enum": [
-                      "goal",
-                      "todo",
-                      "instruction"
-                    ]
-                  },
-                  "body": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 32000,
-                    "pattern": "\\S"
-                  }
-                }
-              }
-            }
-          }
+        "turn_id": {
+          "$ref": "#/$defs/identifier"
         }
-      }
+      },
+      "required": [
+        "turn_id",
+        "conversation_id",
+        "conversation_revision",
+        "content"
+      ],
+      "type": "object"
     }
   },
-  "$defs": {
-    "text_block": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "type",
-        "text"
-      ],
-      "properties": {
-        "type": {
-          "const": "text"
-        },
-        "text": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 61440,
-          "pattern": "\\S"
-        }
-      }
-    },
-    "image_block": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "type",
-        "image_url"
-      ],
-      "properties": {
-        "type": {
-          "const": "image_url"
-        },
-        "image_url": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "url"
-          ],
-          "properties": {
-            "url": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 1398127,
-              "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$"
-            }
-          }
-        }
-      }
-    },
-    "identifier": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 256,
-      "pattern": "^[A-Za-z0-9]",
-      "not": {
-        "pattern": "[^A-Za-z0-9._:-]"
-      }
-    }
-  }
+  "required": [
+    "request"
+  ],
+  "title": "Saved conversation initial input",
+  "type": "object"
 }
