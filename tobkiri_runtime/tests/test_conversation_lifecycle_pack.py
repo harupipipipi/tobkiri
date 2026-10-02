@@ -8,6 +8,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
+from ecosystem.defaultspack.runtime import saved_conversation as saved
 
 from ecosystem.rumi_conversation_store_pack.runtime.store import (
     ConversationConflict,
@@ -39,7 +40,10 @@ def owner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConversationStore:
         lambda: BASE_MS,
     )
     store = ConversationStore("fixture", user_data_root=tmp_path)
-    store.create({"id": "conversation"}, expected_revision=0)
+    store.create(
+        {"id": "conversation", "model_reference": "model-profile"},
+        expected_revision=0,
+    )
     return store
 
 
@@ -52,21 +56,49 @@ def _append(owner: ConversationStore, message: dict[str, Any]) -> Any:
     )
 
 
-def _complete(owner: ConversationStore) -> None:
-    _append(owner, {"id": "user", "role": "user", "content": "どう？"})
-    _append(
-        owner,
+def _saved_user(owner: ConversationStore, turn: str = "turn-1") -> Any:
+    request = {
+        "turn_id": turn,
+        "conversation_id": "conversation",
+        "conversation_revision": owner.get("conversation")["conversation_revision"],
+        "content": "どう？",
+    }
+    initial = {"request": request}
+    intent = saved.start(request)
+    intent = saved.resume(
+        intent["state"],
         {
-            "id": "assistant",
-            "parent_id": "user",
-            "role": "assistant",
-            "finish_reason": "stop",
-            "content": "done",
-            "created_at": 1,
-            "updated_at": 99,
-            "completed_at_ms": 0,
+            "status": "ok",
+            "value": {"conversation": owner.get("conversation")},
         },
     )
+    value = owner.append_message(
+        "conversation",
+        intent["payload"]["message"],
+        expected_conversation_revision=request["conversation_revision"],
+        saved_input=initial,
+    )
+    return saved.resume(intent["state"], {"status": "ok", "value": value}), initial
+
+
+def _saved_finish(owner: ConversationStore, intent: Any, initial: Any) -> None:
+    intent = saved.resume(
+        intent["state"],
+        {
+            "status": "ok",
+            "value": {"status": "ok", "output": "done", "finish_reason": "stop"},
+        },
+    )
+    owner.append_message(
+        "conversation",
+        intent["payload"]["message"],
+        expected_conversation_revision=owner.get("conversation")["conversation_revision"],
+        saved_input=initial,
+    )
+
+
+def _complete(owner: ConversationStore) -> None:
+    _saved_finish(owner, *_saved_user(owner))
 
 
 class PublicClient:
@@ -152,6 +184,8 @@ def test_non_success_does_not_create_completion(
         ({"waiting_for_user": True}, "waiting_user"),
         ({"approval_required": True}, "waiting_approval"),
         ({"thinking": {"state": "cancelled"}}, "cancelled"),
+        ({"task_state": "failed"}, "failed"),
+        ({"thinking": {"state": "failed"}}, "failed"),
     ],
 )
 def test_wait_flags_override_stop(metadata: Any, expected: str) -> None:
@@ -180,7 +214,7 @@ def test_owner_records_completion_and_unrelated_edits_preserve_instant(
     )
     owner.mutate_message(
         "conversation",
-        "assistant",
+        before["current_node_id"],
         patch={"content": "edited"},
         expected_conversation_revision=before["conversation_revision"],
     )
@@ -209,9 +243,7 @@ def test_gap_and_archive_share_exact_boundary(
         assert gap["elapsed_seconds"] == 3600
         assert gap["previous_task_completed_at"].endswith("+00:00")
     client = PublicClient(owner)
-    runtime = ConversationLifecycle(
-        client, "fixture", clock_ms=lambda: BASE_MS + elapsed
-    )
+    runtime = ConversationLifecycle(client, "fixture", clock_ms=lambda: BASE_MS + elapsed)
     runtime.configure("conversation", ARCHIVE_MODE)
     result = runtime.tick()
     assert result["count"] == int(has_gap)
@@ -228,22 +260,14 @@ def test_resume_cancels_due_and_next_completion_resets_deadline(
         PublicClient(owner), "fixture", clock_ms=lambda: BASE_MS + 4_000_000
     )
     runtime.configure("conversation", ARCHIVE_MODE)
-    _append(owner, {"id": "user2", "role": "user", "content": "continue"})
+    intent, initial = _saved_user(owner, "turn-2")
     assert runtime.tick()["count"] == 0
     assert completion_source(owner.get("conversation"))["archive_due_at_ms"] is None
     monkeypatch.setattr(
         "ecosystem.rumi_conversation_store_pack.runtime.store._now_ms",
         lambda: BASE_MS + 4_000_000,
     )
-    _append(
-        owner,
-        {
-            "id": "assistant2",
-            "role": "assistant",
-            "parent_id": "user2",
-            "finish_reason": "stop",
-        },
-    )
+    _saved_finish(owner, intent, initial)
     source = completion_source(owner.get("conversation"))
     assert source["archive_due_at_ms"] == BASE_MS + 7_600_000
     assert runtime.tick()["count"] == 0
@@ -278,9 +302,7 @@ def test_old_stream_finish_cannot_complete_new_turn(owner: ConversationStore) ->
 def test_archive_resume_race_rejected_by_owner_cas(owner: ConversationStore) -> None:
     _complete(owner)
     client = PublicClient(owner)
-    runtime = ConversationLifecycle(
-        client, "fixture", clock_ms=lambda: BASE_MS + 3_600_000
-    )
+    runtime = ConversationLifecycle(client, "fixture", clock_ms=lambda: BASE_MS + 3_600_000)
     runtime.configure("conversation", ARCHIVE_MODE)
     client.before_update = lambda: _append(owner, {"id": "resume", "role": "user"})
     result = runtime.tick()
@@ -308,9 +330,7 @@ def test_restart_recovers_due_without_transient_schedule_state(
 def test_manual_and_disabled_modes_do_not_archive(owner: ConversationStore) -> None:
     _complete(owner)
     client = PublicClient(owner)
-    runtime = ConversationLifecycle(
-        client, "fixture", clock_ms=lambda: BASE_MS + 8_000_000
-    )
+    runtime = ConversationLifecycle(client, "fixture", clock_ms=lambda: BASE_MS + 8_000_000)
     assert runtime.tick()["count"] == 0
     runtime.configure("conversation", ARCHIVE_MODE)
     runtime.enabled = False
@@ -333,9 +353,7 @@ def test_reset_does_not_manufacture_completion(owner: ConversationStore) -> None
 
 
 def test_timezone_and_dst_are_utc_durations() -> None:
-    completed = datetime(
-        2026, 11, 1, 1, 30, tzinfo=ZoneInfo("America/New_York"), fold=0
-    )
+    completed = datetime(2026, 11, 1, 1, 30, tzinfo=ZoneInfo("America/New_York"), fold=0)
     received = datetime(2026, 11, 1, 1, 30, tzinfo=ZoneInfo("America/New_York"), fold=1)
     conversation = {
         "lifecycle": {
@@ -351,9 +369,7 @@ def test_timezone_and_dst_are_utc_durations() -> None:
 
 def test_legacy_history_timestamps_are_not_completion_claims() -> None:
     conversation = {
-        "messages": [
-            {"role": "assistant", "finish_reason": "stop", "updated_at": BASE_MS}
-        ]
+        "messages": [{"role": "assistant", "finish_reason": "stop", "updated_at": BASE_MS}]
     }
     assert task_gap_context(conversation, BASE_MS + 86_400_000) is None
 
@@ -437,14 +453,12 @@ def test_captured_adapter_describes_exact_action_and_rejects_claims(
     checks: list[str] = []
     invocation = SimpleNamespace(assert_current=lambda: checks.append("current"))
     invoke = HOST_PROVIDER_FACTORY[function_id].capture(context).contributions[0].invoke
-    assert invoke(
-        operation_id, {"profile_id": "fixture", "operation": "describe"}, invocation
-    ) == {"action_ids": [ARCHIVE_ACTION_ID]}
+    assert invoke(operation_id, {"profile_id": "fixture", "operation": "describe"}, invocation) == {
+        "action_ids": [ARCHIVE_ACTION_ID]
+    }
     assert checks == ["current"]
     with pytest.raises(PermissionError):
-        invoke(
-            operation_id, {"profile_id": "other", "operation": "describe"}, invocation
-        )
+        invoke(operation_id, {"profile_id": "other", "operation": "describe"}, invocation)
     with pytest.raises(ValueError):
         invoke(
             operation_id,
@@ -521,9 +535,7 @@ def test_internal_gap_insertion_never_rewrites_user_text(
 ) -> None:
     import sys
 
-    sys.path.insert(
-        0, str(Path(__file__).resolve().parents[1] / "ecosystem/defaultspack")
-    )
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ecosystem/defaultspack"))
     from domain.temporal_context import add_task_gap_context_message
 
     _complete(owner)

@@ -31,6 +31,9 @@ from tobkiri_protocol.saved_context import (
     saved_prompt_digest,
     saved_prompt_reference,
 )
+from tobkiri_protocol.conversation_lifecycle import (
+    active_task_gap_context, saved_terminal_finish_reason, task_gap_prompt,
+)
 
 from ..authority.v4 import AuthorityDenied
 
@@ -43,6 +46,7 @@ def project_saved_ai_result(value: Mapping[str, Any]) -> dict[str, Any]:
         "status": value.get("status"),
         "output": value.get("output"),
         "tool_intents": value.get("tool_intents", []),
+        "finish_reason": saved_terminal_finish_reason(value),
     }
 
 
@@ -186,6 +190,9 @@ def _messages(
         if system_prompt is not None and system_prompt["body"]
         else []
     )
+    task_gap = active_task_gap_context(conversation)
+    if task_gap is not None:
+        prefix.append({"role": "system", "content": task_gap_prompt(task_gap)})
     messages = conversation.get("messages")
     if not isinstance(messages, list) or len(messages) > 200:
         raise AuthorityDenied("saved bridge owner history is invalid")
@@ -796,6 +803,8 @@ class SavedBridgeCallbacks:
         trace = trace or []
         metadata = {"turn_id": request["turn_id"]}
         fields = {"id", "role", "content", "parent_id", "metadata", "status"}
+        if role == "assistant":
+            fields.add("finish_reason")
         append_fields = {
             "operation",
             "conversation_id",
@@ -831,6 +840,10 @@ class SavedBridgeCallbacks:
             or canonical_json(message.get("tool_logs", []))
             != canonical_json(saved_tool_logs(trace))
             or message["status"] != "complete"
+            or (role == "assistant" and message.get("finish_reason") not in {
+                None, "stop", "waiting_user", "waiting_approval", "cancelled",
+                "error", "running",
+            })
             or (hop == 1 and message["content"] != request["content"])
             or (hop == 3 and message["parent_id"] != message_id("user"))
         ):

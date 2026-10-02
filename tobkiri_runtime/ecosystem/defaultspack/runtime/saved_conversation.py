@@ -48,6 +48,7 @@ _STATE_FIELDS = {
     "revision",
     "parent_id",
     "assistant",
+    "assistant_finish_reason",
     "stage",
     "pending_tools",
     "tool_messages",
@@ -273,6 +274,8 @@ def _message(
         "metadata": {"turn_id": request["turn_id"]},
         "status": "complete",
     }
+    if role == "assistant":
+        message["finish_reason"] = state["assistant_finish_reason"]
     if role == "assistant" and state["tool_messages"]:
         message["metadata"]["saved_tool_messages"] = state["tool_messages"]
         message["tool_logs"] = _tool_logs(state["tool_messages"])
@@ -417,6 +420,7 @@ def start(payload: dict[str, Any]) -> dict[str, Any]:
             "revision": request["conversation_revision"],
             "parent_id": None,
             "assistant": None,
+            "assistant_finish_reason": None,
             "stage": "read",
             "pending_tools": [],
             "tool_messages": [],
@@ -622,6 +626,13 @@ def resume(state: dict[str, Any], outcome: dict[str, Any]) -> dict[str, Any]:
                 if not isinstance(output, (str, list)) or not output:
                     raise ValueError("AI output is invalid")
                 state["assistant"] = output
+                finish = value.get("finish_reason")
+                if finish not in {
+                    None, "stop", "waiting_user", "waiting_approval",
+                    "cancelled", "error", "running",
+                }:
+                    raise ValueError("AI terminal state is invalid")
+                state["assistant_finish_reason"] = finish
                 state["stage"] = "assistant"
         return _intent({**state, "hop": hop + 1})
     except (KeyError, TypeError, ValueError, UnicodeError):
