@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.dev/effective-subagent/v1.json",
+  "title": "Tobkiri Effective Subagent Plan v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "subagent",
+    "placement",
+    "agent_kind",
+    "runtime_kind",
+    "model",
+    "tool_bindings",
+    "skill_bindings",
+    "memory_bindings",
+    "workspace_binding",
+    "bindings",
+    "capability_plan_ref",
+    "effective_authority",
+    "authority_envelope",
+    "budgets",
+    "approval",
+    "behavior",
+    "enforcement",
+    "revisions",
+    "plan_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "tobkiri.effective-subagent/v1"},
+    "subagent": {"type": "object"},
+    "placement": {"type": "object"},
+    "agent_kind": {"enum": ["main", "subagent"]},
+    "runtime_kind": {
+      "enum": [
+        "agent_run",
+        "utility_model_call",
+        "human_task",
+        "remote_agent",
+        "composite_team"
+      ]
+    },
+    "model": {"type": "object"},
+    "tool_bindings": {"type": "object"},
+    "skill_bindings": {"type": "object"},
+    "memory_bindings": {"type": "array"},
+    "workspace_binding": {"type": "object"},
+    "bindings": {"type": "array"},
+    "protocol_bindings": {"type": "array"},
+    "capability_plan_ref": {"type": "string", "minLength": 1},
+    "effective_authority": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string"}
+    },
+    "authority_envelope": {"type": "object"},
+    "budgets": {"type": "object"},
+    "approval": {"type": "object"},
+    "behavior": {"type": "object"},
+    "enforcement": {"type": "object"},
+    "revisions": {"type": "object"},
+    "plan_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    }
+  }
+}

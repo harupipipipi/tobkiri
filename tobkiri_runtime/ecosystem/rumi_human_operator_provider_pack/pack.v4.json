@@ -1,0 +1,156 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:d205153e20ecfbc43a131a2ed0bd0c6f12bfaa13422323f337d0c208c511f80d",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:3d5ca8fc3ff8340313594db6c30ef9c5c46f320cf4358492a12177df7cba56bd",
+      "kind": "executable",
+      "path": "runtime/__init__.py"
+    },
+    {
+      "digest": "sha256:161437966487d63826e87d37c9ee54c35282e2cc16aa5af9844cd9157f4e18fd",
+      "kind": "executable",
+      "path": "runtime/provider.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.ai.provider.generate.v1",
+      "operations": [
+        "rumi_human_operator_provider_pack.human-generate"
+      ],
+      "revision_digest": "sha256:2752e838befb3d8468a520a0a58cbebbe222790e57c27a2a0004c9bbdc316d26"
+    },
+    {
+      "contract_id": "tobkiri.service.ai.provider.stream.v1",
+      "operations": [
+        "rumi_human_operator_provider_pack.human-stream"
+      ],
+      "revision_digest": "sha256:c10fe2d694c5e1d04d5cd2e83ae543e21aa059cf5d16fe20d23076a921292e51"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:2752e838befb3d8468a520a0a58cbebbe222790e57c27a2a0004c9bbdc316d26",
+      "id": "rumi_human_operator_provider_pack.provider.human-operator.generate",
+      "implementation_digest": "sha256:161437966487d63826e87d37c9ee54c35282e2cc16aa5af9844cd9157f4e18fd",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_human_operator_provider_pack.human-generate"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:c10fe2d694c5e1d04d5cd2e83ae543e21aa059cf5d16fe20d23076a921292e51",
+      "id": "rumi_human_operator_provider_pack.provider.human-operator.stream",
+      "implementation_digest": "sha256:161437966487d63826e87d37c9ee54c35282e2cc16aa5af9844cd9157f4e18fd",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_human_operator_provider_pack.human-stream"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:19592680cd61d225b3d6164edefb4e9f4014df25d898da806ceebc0b34da3cbb",
+    "contract_catalog_digest": "sha256:64f8fed5edc56adfa81cad6842fb9cea77a5f5ed64b2f1bb89bdc1dc73601020",
+    "source_identity": "sha256:0d080dd535065c6d93348b908776538534781ed96ef27aa81511fa4af36ce584"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.ai.provider.generate.v1",
+      "rumi.service.ai.provider.stream.v1",
+      "rumi:ecosystem/rumi_human_operator_provider_pack",
+      "rumi_human_operator_provider_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.service.ai.provider.generate.v1",
+      "effect_ceiling": [
+        "capability:ai.provider.human_handoff",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_human_operator_provider_pack.human-generate",
+      "owner": "rumi_human_operator_provider_pack",
+      "provider_id": "rumi_human_operator_provider_pack.provider.human-operator.generate",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.service.ai.provider.stream.v1",
+      "effect_ceiling": [
+        "capability:ai.provider.human_handoff",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_human_operator_provider_pack.human-stream",
+      "owner": "rumi_human_operator_provider_pack",
+      "provider_id": "rumi_human_operator_provider_pack.provider.human-operator.stream",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:19592680cd61d225b3d6164edefb4e9f4014df25d898da806ceebc0b34da3cbb",
+    "display_name": "Rumi Human Operator Provider",
+    "id": "rumi_human_operator_provider_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:0d080dd535065c6d93348b908776538534781ed96ef27aa81511fa4af36ce584",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:0d080dd535065c6d93348b908776538534781ed96ef27aa81511fa4af36ce584",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_human_operator_provider_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.service.ai.provider.generate.v1",
+      "operations": [
+        "rumi_human_operator_provider_pack.human-generate"
+      ],
+      "owner": "rumi_human_operator_provider_pack",
+      "provider_id": "rumi_human_operator_provider_pack.provider.human-operator.generate"
+    },
+    {
+      "contract_reference": "tobkiri.service.ai.provider.stream.v1",
+      "operations": [
+        "rumi_human_operator_provider_pack.human-stream"
+      ],
+      "owner": "rumi_human_operator_provider_pack",
+      "provider_id": "rumi_human_operator_provider_pack.provider.human-operator.stream"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "ai.provider.human_handoff"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

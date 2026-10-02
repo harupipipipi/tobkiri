@@ -1,0 +1,199 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.knowledge.manage.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:knowledge.manage",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_knowledge_store_pack.knowledge-manage",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_knowledge_store_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:e6336b9d1c81b4be1e4cd4673d61c0a5c2936ad22fb1b1d226f8c551c72ab342",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:e6336b9d1c81b4be1e4cd4673d61c0a5c2936ad22fb1b1d226f8c551c72ab342",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_knowledge_store_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_knowledge_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "knowledge-v1",
+          "rollback_id": "knowledge-v1"
+        },
+        "provider_id": "rumi_knowledge_store_pack.knowledge-store.manage",
+        "required_capabilities": [
+          "knowledge.manage"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:6b2e3a2286cedcc8605a26d46ddec501e173bc3395935b01a7cc87b1afcbc41a",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.knowledge.migrate.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:knowledge.migrate",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_knowledge_store_pack.knowledge-migrate",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_knowledge_store_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:e6336b9d1c81b4be1e4cd4673d61c0a5c2936ad22fb1b1d226f8c551c72ab342",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:e6336b9d1c81b4be1e4cd4673d61c0a5c2936ad22fb1b1d226f8c551c72ab342",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_knowledge_store_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_knowledge_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "knowledge-v1",
+          "rollback_id": "knowledge-v1"
+        },
+        "provider_id": "rumi_knowledge_store_pack.knowledge-store.migrate",
+        "required_capabilities": [
+          "knowledge.migrate"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:a04930705b519cb41bf9eb6d40c5e89b5286ac962a9f9cc513dae61b9dc85655",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.resource.knowledge.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:knowledge.read",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_knowledge_store_pack.knowledge-resource",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_knowledge_store_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:e6336b9d1c81b4be1e4cd4673d61c0a5c2936ad22fb1b1d226f8c551c72ab342",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:e6336b9d1c81b4be1e4cd4673d61c0a5c2936ad22fb1b1d226f8c551c72ab342",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_knowledge_store_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_knowledge_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "knowledge-v1",
+          "rollback_id": "knowledge-v1"
+        },
+        "provider_id": "rumi_knowledge_store_pack.knowledge-store.resource",
+        "required_capabilities": [
+          "knowledge.read"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:f95330eb0cea0caedb83d16fb138ecbfb1dd13144a4c65bc9c94188aacba373e",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    }
+  ],
+  "pack_id": "rumi_knowledge_store_pack",
+  "source_identity": "sha256:e6336b9d1c81b4be1e4cd4673d61c0a5c2936ad22fb1b1d226f8c551c72ab342"
+}

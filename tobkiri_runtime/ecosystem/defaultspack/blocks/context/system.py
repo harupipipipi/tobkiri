@@ -7,10 +7,7 @@
     {"status": "ok", "data": { ... システムコンテキスト情報 ... }}
 """
 
-import sys
-import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from blocks._common import ok
 
 from domain.context.analyzer import analyze_system

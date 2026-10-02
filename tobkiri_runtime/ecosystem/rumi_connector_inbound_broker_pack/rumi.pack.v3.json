@@ -1,0 +1,201 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.transport.connector.inbound.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_connector_inbound_broker_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "connector-inbound.receive",
+        "required_capabilities": [
+          "connector.inbound.receive"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.connector.registry.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "many",
+        "id": "rumi.service.connector.adapter.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "many",
+        "id": "rumi.action.connector.route.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:9d31421989dd635b488c4353bf7f50e24c878ded45daa8368c80af9e1361dd4f",
+      "contract_id": "rumi.transport.connector.inbound.v1",
+      "id": "connector-inbound",
+      "loader": "python",
+      "module": "ecosystem.rumi_connector_inbound_broker_pack.runtime.broker",
+      "symbol": "create_inbound_transport"
+    }
+  ],
+  "extensions": {
+    "rumi.connector_inbound.boundary": {
+      "chat_imports": false,
+      "company_imports": false,
+      "dedupe": true,
+      "raw_body_persisted": false,
+      "replay_payload_mismatch": "deny",
+      "secret_fields_persisted": false,
+      "signature_verification": "vendor_adapter",
+      "vendor_selection": "exact_instance_key"
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_connector_registry_service_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.transport.connector.inbound.v1"
+          ],
+          "requires": [
+            "rumi.action.connector.route.v1",
+            "rumi.resource.connector.registry.v1",
+            "rumi.service.connector.adapter.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_connector_registry_service_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Verified vendor normalization, dedupe, replay protection, and route fan-out.",
+        "display_name": "Rumi Connector Inbound Broker",
+        "host_execution": false,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:634c46d225f0c7239abc8de40a1211650e735e0d3eda9c5d0a260a2e68984d92",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:8576606a39b3e9c691c4f0d5da80bbbfb59085f6fa1bcfd165c2f31af7dca04f"
+          },
+          "owner_surfaces": [
+            "connector_inbound_replay_ledger"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_connector_inbound_broker_pack",
+        "pack_identity": "rumi:ecosystem/rumi_connector_inbound_broker_pack",
+        "provenance": {
+          "build_identity": "rumi_connector_inbound_broker_pack:1.0.0",
+          "content_hash": "sha256:9d31421989dd635b488c4353bf7f50e24c878ded45daa8368c80af9e1361dd4f",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "connector.adapter.verify",
+          "connector.inbound.receive",
+          "connector.registry.read",
+          "connector.route"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_connector_inbound_broker_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_connector_inbound_broker_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:8576606a39b3e9c691c4f0d5da80bbbfb59085f6fa1bcfd165c2f31af7dca04f"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.external.gateway",
+      "defaultspack.domain.external.adapters"
+    ],
+    "removal_wave": 10,
+    "rollback": "Disable ingress, snapshot the replay ledger, then select one prior broker.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Verified vendor normalization, dedupe, replay protection, and route fan-out.",
+    "display_name": "Rumi Connector Inbound Broker",
+    "id": "rumi.connector_inbound_broker",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "write",
+      "approval_required": false,
+      "capability": "connector.inbound.receive"
+    },
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "connector.registry.read"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "connector.adapter.verify"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "connector.route"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_connector_inbound_broker_pack:1.0.0",
+    "content_hash": "sha256:9d31421989dd635b488c4353bf7f50e24c878ded45daa8368c80af9e1361dd4f",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": [
+    {
+      "authoritative": true,
+      "export_import": false,
+      "namespace": "rumi.connector.inbound_ledger",
+      "retention": "bounded 10000 event metadata records",
+      "schema_version": "1.0.0"
+    }
+  ]
+}

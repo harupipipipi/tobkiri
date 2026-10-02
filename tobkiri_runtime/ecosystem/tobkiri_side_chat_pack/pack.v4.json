@@ -1,0 +1,269 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:74ce5846ac704d590cd1142e5109b0d86430ba79e8cb19dc27ad6d28fbad96aa",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:aac053b2d2e7a3751142ffb6defb9d9593bb324ea77cb25a023508cd96195c04",
+      "kind": "sidecar",
+      "path": "frontend/contributions/side-chat.json"
+    },
+    {
+      "digest": "sha256:848b0f48b4c0e46766121cb48a1564edbbd7bb6ee75824388013d4b6a86f43ad",
+      "kind": "sidecar",
+      "path": "pack-source.v1.json"
+    },
+    {
+      "digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
+      "kind": "executable",
+      "path": "runtime/host.py"
+    },
+    {
+      "digest": "sha256:cd2e2b0d7da5097556df9604447004691249a47ac3525bc601c6f3bf37c9b255",
+      "kind": "sidecar",
+      "path": "runtime/side_chat.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.resource.side-chat.v1",
+      "operations": [
+        "tobkiri_side_chat_pack.side-chat-resource"
+      ],
+      "revision_digest": "sha256:4edbf3e05d509a93e8663162637349f32c124cecb9ac3a0a67a38090b7c1267c"
+    },
+    {
+      "contract_id": "tobkiri.action.side-chat.v1",
+      "operations": [
+        "tobkiri_side_chat_pack.side-chat-manage"
+      ],
+      "revision_digest": "sha256:8a534e42a7d6fcaf71ced22dbf6c989c7872fbd90569be3050574cedff6caab3"
+    },
+    {
+      "contract_id": "tobkiri.service.side-chat.turn.v1",
+      "operations": [
+        "tobkiri_side_chat_pack.side-chat-turn"
+      ],
+      "revision_digest": "sha256:1b82e55995eb061819839ac0f42a89f1ebcc2c4ca9c8bc3206253767b9d9e452"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:8a534e42a7d6fcaf71ced22dbf6c989c7872fbd90569be3050574cedff6caab3",
+      "id": "tobkiri_side_chat_pack.manage",
+      "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
+      "isolation": "dedicated_process",
+      "operations": [
+        "tobkiri_side_chat_pack.side-chat-manage"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:4edbf3e05d509a93e8663162637349f32c124cecb9ac3a0a67a38090b7c1267c",
+      "id": "tobkiri_side_chat_pack.resource",
+      "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
+      "isolation": "dedicated_process",
+      "operations": [
+        "tobkiri_side_chat_pack.side-chat-resource"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:1b82e55995eb061819839ac0f42a89f1ebcc2c4ca9c8bc3206253767b9d9e452",
+      "id": "tobkiri_side_chat_pack.turn",
+      "implementation_digest": "sha256:f389e920e81ae4ef765c63bdf76f612fad7d13f459e1f35b20ca445f022bc34c",
+      "isolation": "dedicated_process",
+      "operations": [
+        "tobkiri_side_chat_pack.side-chat-turn"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:d51be5b47021bc5dd94a9069edff67db85d0a3748e4495acf1e69e9daf9bda6a",
+    "contract_catalog_digest": "sha256:24c83a5b92089d3acc952cd0ccfa94777bf7f5ac8630e59971af56030e3bc5bc",
+    "source_identity": "sha256:f761edd952ee32814ea052dec719703dbcc8b8c3b319460cb14685ee13960d68"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [],
+    "removal_wave": 0,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.action.side-chat.v1",
+      "effect_ceiling": [
+        "capability:conversation.side.manage",
+        "host:brokered-execution"
+      ],
+      "operation_id": "tobkiri_side_chat_pack.side-chat-manage",
+      "owner": "tobkiri_side_chat_pack",
+      "provider_id": "tobkiri_side_chat_pack.manage",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.side-chat.v1",
+      "effect_ceiling": [
+        "capability:conversation.side.read",
+        "host:brokered-execution"
+      ],
+      "operation_id": "tobkiri_side_chat_pack.side-chat-resource",
+      "owner": "tobkiri_side_chat_pack",
+      "provider_id": "tobkiri_side_chat_pack.resource",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.service.side-chat.turn.v1",
+      "effect_ceiling": [
+        "capability:conversation.side.turn",
+        "host:brokered-execution"
+      ],
+      "operation_id": "tobkiri_side_chat_pack.side-chat-turn",
+      "owner": "tobkiri_side_chat_pack",
+      "provider_id": "tobkiri_side_chat_pack.turn",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:d51be5b47021bc5dd94a9069edff67db85d0a3748e4495acf1e69e9daf9bda6a",
+    "display_name": "Tobkiri Side Chat",
+    "id": "tobkiri_side_chat_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:f761edd952ee32814ea052dec719703dbcc8b8c3b319460cb14685ee13960d68",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:f761edd952ee32814ea052dec719703dbcc8b8c3b319460cb14685ee13960d68",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_side_chat_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.action.side-chat.v1",
+      "operations": [
+        "tobkiri_side_chat_pack.side-chat-manage"
+      ],
+      "owner": "tobkiri_side_chat_pack",
+      "provider_id": "tobkiri_side_chat_pack.manage"
+    },
+    {
+      "contract_reference": "tobkiri.resource.side-chat.v1",
+      "operations": [
+        "tobkiri_side_chat_pack.side-chat-resource"
+      ],
+      "owner": "tobkiri_side_chat_pack",
+      "provider_id": "tobkiri_side_chat_pack.resource"
+    },
+    {
+      "contract_reference": "tobkiri.service.side-chat.turn.v1",
+      "operations": [
+        "tobkiri_side_chat_pack.side-chat-turn"
+      ],
+      "owner": "tobkiri_side_chat_pack",
+      "provider_id": "tobkiri_side_chat_pack.turn"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "conversation.read",
+      "conversation.manage",
+      "turn.read",
+      "turn.execute",
+      "turn.stop",
+      "turn.reconcile",
+      "conversation.side.read",
+      "conversation.side.manage",
+      "conversation.side.turn"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.conversation.v1",
+        "operations": [
+          "rumi_conversation_store_pack.conversation-resource"
+        ],
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.conversation.manage.v1",
+        "operations": [
+          "rumi_conversation_store_pack.conversation-manage"
+        ],
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.turn.v1",
+        "operations": [
+          "rumi_turn_runtime_pack.turn-resource"
+        ],
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.event.turn.v1",
+        "operations": [
+          "rumi_turn_runtime_pack.turn-events"
+        ],
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.turn.saved.v1",
+        "operations": [
+          "rumi_turn_runtime_pack.turn-saved"
+        ],
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.turn.stop.v1",
+        "operations": [
+          "rumi_turn_runtime_pack.turn-stop"
+        ],
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.turn.reconcile.v1",
+        "operations": [
+          "rumi_turn_runtime_pack.turn-reconcile"
+        ],
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

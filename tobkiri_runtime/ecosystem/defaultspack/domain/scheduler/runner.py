@@ -4,10 +4,14 @@ import subprocess
 from typing import Any
 
 from core_runtime.runtime_events import utc_now
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 from .security import SchedulerPolicyError, validate_no_agent_argv
 
 
 class SchedulerRunner:
+    def __init__(self, *, settings_owner: SettingsOwnerPort | None = None) -> None:
+        self._settings_owner = settings_owner
+
     def run(self, job: dict[str, Any]) -> dict[str, Any]:
         if job.get("no_agent"):
             return self._run_script(job)
@@ -53,7 +57,12 @@ class SchedulerRunner:
             "session_key": f"cron:{job.get('job_id')}",
             "scheduler_job_id": job.get("job_id"),
         }
-        result = AgentEngine().execute(
+        engine = (
+            AgentEngine(settings_owner=self._settings_owner)
+            if self._settings_owner is not None
+            else AgentEngine()
+        )
+        result = engine.execute(
             job.get("prompt", ""),
             [],
             job.get("model", "default"),
@@ -84,8 +93,7 @@ class SchedulerRunner:
         prompt = str(job.get("prompt") or "").strip()
         if not prompt:
             return {"status": "error", "error": "prompt is required", "conversation_id": target, "created_at": utc_now()}
-        result = send_chat(
-            {
+        payload = {
                 "conversation_id": target,
                 "message": {
                     "role": "user",
@@ -96,8 +104,12 @@ class SchedulerRunner:
                     },
                 },
                 "params": dict(job.get("params") if isinstance(job.get("params"), dict) else {}),
-            },
-            {"run_source": "scheduler", "scheduler_job_id": job.get("job_id")},
+            }
+        context = {"run_source": "scheduler", "scheduler_job_id": job.get("job_id")}
+        result = (
+            send_chat(payload, context, settings_owner=self._settings_owner)
+            if self._settings_owner is not None
+            else send_chat(payload, context)
         )
         return {
             "status": "completed" if isinstance(result, dict) and result.get("status") == "ok" else "failed",

@@ -64,6 +64,7 @@
       "component": "SettingsFieldRendererHost",
       "part_id": "settings",
       "label": "API Keys / Tokens",
+      "provider_scope": "non_llm",
       "default": [],
       "data_source": "provider_key_status",
       "write_route": "/api/ui/settings",

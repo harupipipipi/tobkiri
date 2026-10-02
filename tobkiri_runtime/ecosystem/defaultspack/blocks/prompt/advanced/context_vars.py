@@ -17,9 +17,6 @@
     }
 """
 
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from blocks._common import ok
 from domain.prompt.template import CONTEXT_VARIABLE_KEYS

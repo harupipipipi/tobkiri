@@ -1,7 +1,7 @@
 """Viewer ハンドラ Mixin — Phase V-2
 
 /api/viewer/ 配下の API を提供する。
-ControlPanelHandlersMixin と同じパターンに準拠。
+有限Viewer API boundaryとして独立して提供する。
 
 API 一覧:
   POST /api/viewer/token — Viewer 用 Pack トークン発行
@@ -9,7 +9,7 @@ API 一覧:
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
 
 from ._helpers import _log_internal_error, _SAFE_ERROR_MSG
 
@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 class ViewerHandlersMixin:
     """Viewer API のハンドラ"""
+
+    if TYPE_CHECKING:
+        def _validate_pack_id(self, pack_id: str) -> bool: ...
 
     def _viewer_issue_token(self, body: Dict[str, Any]) -> Dict[str, Any]:
         """POST /api/viewer/token — Viewer 用 Pack トークンを発行する。

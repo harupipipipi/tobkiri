@@ -333,26 +333,9 @@ class OAuthHandlersMixin:
         except Exception as e:
             _log_internal_error("oauth_callback.save_tokens", e)
 
-        # --- profile.json 保存 ---
-        if profile_data and isinstance(profile_data, dict):
-            try:
-                from ..core_pack.core_setup.save_profile import save_profile
-                base_dir = Path(__file__).resolve().parent.parent.parent
-                profile_to_save = {
-                    "username": profile_data.get("username") or profile_data.get("name", ""),
-                    "language": profile_data.get("language", "ja"),
-                    "icon": profile_data.get("icon"),
-                    "occupation": profile_data.get("occupation"),
-                }
-                save_result = save_profile(profile_to_save, base_dir=base_dir)
-                if save_result.get("success"):
-                    logger.info("Profile saved via OAuth callback")
-                else:
-                    logger.warning("Profile save failed: %s", save_result.get("errors"))
-            except ImportError:
-                logger.warning("save_profile module not available")
-            except Exception as e:
-                _log_internal_error("oauth_callback.save_profile", e)
+        # OAuth identity is connection metadata, not Profile authority.  The
+        # retired callback must never create or mutate settings/profile.json;
+        # Profile selection is committed only by the v4 activation ceremony.
 
         # --- セットアップ完了イベント発行 ---
         try:
