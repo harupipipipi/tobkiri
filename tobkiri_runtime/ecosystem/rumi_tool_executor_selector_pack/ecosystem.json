@@ -1,0 +1,65 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.tool.executor.select.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Manifest-driven executor selection by declared execution kind.",
+  "display_name": "Rumi Tool Executor Selector",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:0968234abb6307c0afa1d5820ab484f55f4c676ab44363f67f5dc57a4e52186b",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:b793d25967b539c2e2bc43eb8aa1f4d74751c25a0ef8790a0f6c25b03c6a3f69"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:b793d25967b539c2e2bc43eb8aa1f4d74751c25a0ef8790a0f6c25b03c6a3f69"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "tool_executor_selection"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "execution": false,
+      "tool_id_branches": false
+    }
+  },
+  "pack_id": "rumi_tool_executor_selector_pack",
+  "pack_identity": "rumi:ecosystem/rumi_tool_executor_selector_pack",
+  "provenance": {
+    "build_identity": "rumi_tool_executor_selector_pack:1.0.0",
+    "content_hash": "sha256:81d5a8ebe91866a77ccf349606020d88987efc29849a6c4a125ecb5a956908bd",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "tool.executor.select"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

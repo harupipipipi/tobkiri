@@ -4,14 +4,14 @@ from domain.subagent_team.service import SubagentTeamService
 from ._helpers import company_id_from, denied, direct_lifecycle_denied, invalid, is_denied, lifecycle_actor, missing_team, normalize_action, require_dict
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner=None):
     if require_dict(input_data) is None:
         return invalid("input_data must be a dict")
     company_id = company_id_from(input_data)
     if not company_id:
         return invalid("company_id is required")
     action = normalize_action(input_data.get("action"), "list")
-    service = SubagentTeamService()
+    service = SubagentTeamService(settings_owner=settings_owner)
     try:
         if action == "list":
             dms = service.list_dms(company_id)

@@ -1,10 +1,17 @@
 """defaults.coding.git_commit — Gitコミットブロック"""
 
 from blocks._common import ok, error
-from blocks.coding._approval import approval_invalid_response, approval_required, is_server_approved
-from blocks.coding._workspace import resolve_workspace, with_workspace, workspace_error_response
-from domain.coding.git_ops import GitOps
-from domain.coding.workspace_jail import WorkspacePathViolation, WorkspaceRestrictedPath
+from blocks.coding._approval import approval_required
+from blocks.coding._workspace import canonical_mutation_guard
+from domain.coding.contract_adapter import (
+    GIT_WRITE,
+    authorize_legacy_coding_operation,
+    git_snapshot,
+    invoke_coding_contract,
+    preflight_legacy_coding_operation,
+    service_payload,
+    workspace_id,
+)
 from domain.safety.audit import record_attempt, record_execution, record_failure
 
 
@@ -36,40 +43,89 @@ def run(input_data, context=None):
     operation = "git.commit"
     record_attempt(operation, "high", {"message": message, "paths": paths, "all_tracked": all_tracked})
     try:
-        workspace = resolve_workspace(input_data, context, mutation=True, operation=operation)
-    except Exception as e:
-        workspace_error = workspace_error_response(e, error)
-        if workspace_error:
-            return workspace_error
-        return error(str(e), code="WORKSPACE_ERROR")
-    if not is_server_approved(context, operation, input_data):
-        invalid = approval_invalid_response(operation, input_data, error)
-        if invalid:
-            return invalid
-        return ok(approval_required(operation, "high", args=input_data, message=message))
-
-    try:
-        git = GitOps(workspace.root_path)
-        result = git.commit(
-            message,
-            all_tracked=all_tracked,
-            paths=paths,
-            actor_id=input_data.get("actor_id") or input_data.get("agent_id"),
-            agent_role=input_data.get("agent_role"),
-            session_id=input_data.get("session_id"),
-            metadata=input_data.get("metadata") if isinstance(input_data.get("metadata"), dict) else None,
+        selected_workspace_id = workspace_id(input_data)
+        base_arguments = {
+            "message": str(message),
+            "paths": [str(item) for item in (paths or [])],
+            "all_tracked": all_tracked,
+        }
+        preflight = preflight_legacy_coding_operation(
+            legacy_operation=operation,
+            input_data=input_data,
+            context=context,
+            selected_workspace_id=selected_workspace_id,
+            mutation_guard=canonical_mutation_guard,
+        )
+        if not preflight.get("authorized"):
+            if preflight.get("reason") == "approval_required":
+                return ok(approval_required(operation, "high", args=input_data, message=message))
+            denied = error(
+                str(preflight.get("message") or preflight.get("reason")),
+                code=str(preflight.get("code") or "APPROVAL_INVALID"),
+                details=preflight.get("details"),
+            )
+            denied["_http_status"] = 409 if preflight.get("code") == "ADAPTIVE_LEASE_HELD" else 403
+            return denied
+        arguments = {
+            **base_arguments,
+            **git_snapshot(
+                selected_workspace_id,
+                paths=base_arguments["paths"] if paths is not None else None,
+                capture_commit=True,
+                all_tracked=all_tracked,
+            ),
+        }
+        for key in (
+            "expected_head",
+            "expected_tree",
+            "expected_status_hash",
+            "expected_mount_revision",
+        ):
+            if key in input_data:
+                arguments[key] = input_data[key]
+        missing_snapshot = [
+            key
+            for key in (
+                "expected_head",
+                "expected_tree",
+                "expected_status_hash",
+                "expected_mount_revision",
+            )
+            if str(arguments.get(key) or "").strip() == ""
+        ]
+        if missing_snapshot:
+            return error(
+                "Git commit requires an explicit repository snapshot: "
+                + ", ".join(missing_snapshot),
+                code="INVALID_INPUT",
+            )
+        authorization = authorize_legacy_coding_operation(
+            legacy_operation=operation,
+            service_pack_id="rumi_git_write_pack",
+            service_operation="git.commit",
+            authority="git.write",
+            arguments=arguments,
+            input_data=input_data,
+            context=context,
+            selected_workspace_id=selected_workspace_id,
+            mutation_guard=canonical_mutation_guard,
+        )
+        if not authorization.get("authorized"):
+            if authorization.get("reason") == "approval_required":
+                return ok(approval_required(operation, "high", args=input_data, message=message))
+            return error(
+                str(authorization.get("message") or authorization.get("reason")),
+                code=str(authorization.get("code") or "APPROVAL_INVALID"),
+            )
+        result = invoke_coding_contract(
+            GIT_WRITE,
+            "commit",
+            service_payload(authorization, arguments),
         )
         record_execution(operation, "high", {"message": message, "paths": paths}, commit_hash=result.get("commit_hash"))
-        return ok(with_workspace(result, workspace))
-    except WorkspacePathViolation as e:
-        return error(str(e), code="INVALID_INPUT")
-    except WorkspaceRestrictedPath as e:
-        return error(str(e), code="WORKSPACE_PATH_RESTRICTED")
+        return ok(result)
     except ValueError as e:
         return error(str(e), code="INVALID_INPUT")
     except Exception as e:
-        workspace_error = workspace_error_response(e, error)
-        if workspace_error:
-            return workspace_error
         record_failure(operation, "high", str(e), {"message": message, "paths": paths})
         return error(str(e), code="GIT_ERROR")

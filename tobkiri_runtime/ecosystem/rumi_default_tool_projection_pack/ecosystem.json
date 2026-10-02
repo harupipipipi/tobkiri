@@ -1,0 +1,74 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.resource.tool.migration.source.v1",
+      "rumi.service.tool.local.operation.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Finite legacy definition migration source and local execution compatibility projection.",
+  "display_name": "Rumi Default Tool Projection",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:b701de6eec2dbd32ff556b40f69e82323a4d0b3d0a4a38c9660f7a4e67f026f7",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:92be7910582fff8ffbb82c6f55c5d0be4c8bae8e5adb46d226595e51006f351e"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:92be7910582fff8ffbb82c6f55c5d0be4c8bae8e5adb46d226595e51006f351e"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "legacy_tool_projection"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "approval_bypass": false,
+      "consumer_bound": true
+    }
+  },
+  "pack_id": "rumi_default_tool_projection_pack",
+  "pack_identity": "rumi:ecosystem/rumi_default_tool_projection_pack",
+  "provenance": {
+    "build_identity": "rumi_default_tool_projection_pack:1.0.0",
+    "content_hash": "sha256:0098b2095b9913e21fa912cc5dc658e4781fc98f1f9952020fd24dc0de138f4a",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "service.invoke",
+    "service.mutate",
+    "tool.local.operation",
+    "tool.migration.source.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

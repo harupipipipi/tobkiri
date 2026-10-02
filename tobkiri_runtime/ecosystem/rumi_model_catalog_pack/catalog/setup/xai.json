@@ -1,0 +1,533 @@
+{
+ "provider_id": "xai",
+ "models": [
+  {
+   "model_id": "grok-4.20-0309-non-reasoning",
+   "display_name": "Grok 4.20 (Non-Reasoning)",
+   "type": "chat",
+   "context_window": 1000000,
+   "max_output_tokens": 30000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1.25,
+    "output": 2.5,
+    "cache_read": 0.2,
+    "tiers": [
+     {
+      "input": 2.5,
+      "output": 5,
+      "cache_read": 0.4,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 2.5,
+     "output": 5,
+     "cache_read": 0.4
+    }
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "grok-4.20-0309-reasoning",
+   "display_name": "Grok 4.20 (Reasoning)",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 30000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1.25,
+    "output": 2.5,
+    "cache_read": 0.2,
+    "tiers": [
+     {
+      "input": 2.5,
+      "output": 5,
+      "cache_read": 0.4,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 2.5,
+     "output": 5,
+     "cache_read": 0.4
+    }
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "grok-4.20-multi-agent-0309",
+   "display_name": "Grok 4.20 Multi-Agent",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 30000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": false,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1.25,
+    "output": 2.5,
+    "cache_read": 0.2,
+    "tiers": [
+     {
+      "input": 2.5,
+      "output": 5,
+      "cache_read": 0.4,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 2.5,
+     "output": 5,
+     "cache_read": 0.4
+    }
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "grok-4.3",
+   "display_name": "Grok 4.3",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 30000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1.25,
+    "output": 2.5,
+    "cache_read": 0.2,
+    "tiers": [
+     {
+      "input": 2.5,
+      "output": 5,
+      "cache_read": 0.4,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 2.5,
+     "output": 5,
+     "cache_read": 0.4
+    }
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "grok-4.5",
+   "display_name": "Grok 4.5",
+   "type": "reasoning",
+   "context_window": 500000,
+   "max_output_tokens": 500000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.3,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 12,
+      "cache_read": 0.6,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 12,
+     "cache_read": 0.6
+    }
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "grok-4.6",
+   "display_name": "Grok 4.6",
+   "type": "reasoning",
+   "context_window": 500000,
+   "max_output_tokens": 500000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.5,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 12,
+      "cache_read": 1,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 12,
+     "cache_read": 1
+    }
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "grok-4.7",
+   "display_name": "Grok 4.7",
+   "type": "reasoning",
+   "context_window": 500000,
+   "max_output_tokens": 500000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 2,
+    "output": 6,
+    "cache_read": 0.5,
+    "tiers": [
+     {
+      "input": 4,
+      "output": 12,
+      "cache_read": 1,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 4,
+     "output": 12,
+     "cache_read": 1
+    }
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "grok-build-0.1",
+   "display_name": "Grok Build 0.1",
+   "type": "reasoning",
+   "context_window": 256000,
+   "max_output_tokens": 256000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1,
+    "output": 2,
+    "cache_read": 0.2,
+    "tiers": [
+     {
+      "input": 2,
+      "output": 4,
+      "cache_read": 0.4,
+      "tier": {
+       "type": "context",
+       "size": 200000
+      }
+     }
+    ],
+    "context_over_200k": {
+     "input": 2,
+     "output": 4,
+     "cache_read": 0.4
+    }
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "grok-imagine-image",
+   "display_name": "Grok Imagine Image",
+   "type": "image",
+   "context_window": 16000,
+   "max_output_tokens": 0,
+   "capabilities": {
+    "text_input": true,
+    "text_output": false,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "image",
+     "pdf"
+    ]
+   },
+   "pricing": {},
+   "source": "models.dev"
+  },
+  {
+   "model_id": "grok-imagine-image-quality",
+   "display_name": "Grok Imagine Image Quality",
+   "type": "image",
+   "context_window": 16000,
+   "max_output_tokens": 0,
+   "capabilities": {
+    "text_input": true,
+    "text_output": false,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "image",
+     "pdf"
+    ]
+   },
+   "pricing": {},
+   "source": "models.dev"
+  },
+  {
+   "model_id": "grok-imagine-video",
+   "display_name": "Grok Imagine Video",
+   "type": "video",
+   "context_window": 1024,
+   "max_output_tokens": 0,
+   "capabilities": {
+    "text_input": true,
+    "text_output": false,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "video",
+     "pdf"
+    ],
+    "output": [
+     "video"
+    ]
+   },
+   "pricing": {},
+   "source": "models.dev"
+  },
+  {
+   "model_id": "grok-imagine-video-1.5",
+   "display_name": "Grok Imagine Video 1.5",
+   "type": "video",
+   "context_window": 1024,
+   "max_output_tokens": 0,
+   "capabilities": {
+    "text_input": true,
+    "text_output": false,
+    "image_input": true,
+    "audio_input": true,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "audio",
+     "pdf"
+    ],
+    "output": [
+     "video"
+    ]
+   },
+   "pricing": {},
+   "source": "models.dev"
+  },
+  {
+   "model_id": "grok-imagine-video-1.5-lite",
+   "display_name": "Grok Imagine Video 1.5 Lite",
+   "type": "video",
+   "context_window": 1024,
+   "max_output_tokens": 0,
+   "capabilities": {
+    "text_input": true,
+    "text_output": false,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": false,
+    "tool_calling": false,
+    "structured_output": false
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "video"
+    ]
+   },
+   "pricing": {},
+   "source": "models.dev"
+  }
+ ]
+}

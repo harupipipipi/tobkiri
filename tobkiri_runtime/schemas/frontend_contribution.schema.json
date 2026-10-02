@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.rumi.local/rumi.ui.contribution.v1.json",
+  "title": "Rumi frontend contribution",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "id",
+    "kind",
+    "mode",
+    "label",
+    "priority",
+    "accessibility"
+  ],
+  "properties": {
+    "version": {"const": "rumi.ui.contribution.v1"},
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$"},
+    "kind": {
+      "enum": [
+        "route",
+        "renderer",
+        "shell_region",
+        "action",
+        "data_source",
+        "settings",
+        "command"
+      ]
+    },
+    "mode": {"enum": ["declarative", "isolated", "same_origin_builtin"]},
+    "label": {"type": "string", "minLength": 1},
+    "description": {"type": "string"},
+    "priority": {"type": "integer"},
+    "route": {"type": "string", "pattern": "^/[a-zA-Z0-9/_-]*$"},
+    "region": {"type": "string"},
+    "renderer": {"type": "string"},
+    "schema": {"type": "object"},
+    "view": {"type": "object"},
+    "action_contract": {
+      "type": "string",
+      "pattern": "^rumi\\.action\\.[a-z0-9]+(?:[._-][a-z0-9]+)*\\.v[1-9][0-9]*$"
+    },
+    "data_source_contract": {
+      "type": "string",
+      "pattern": "^rumi\\.resource\\.[a-z0-9]+(?:[._-][a-z0-9]+)*\\.v[1-9][0-9]*$"
+    },
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "export", "content_hash"],
+      "properties": {
+        "path": {"type": "string", "pattern": "^/static/packs/[a-zA-Z0-9._/-]+\\.js$"},
+        "export": {"type": "string", "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$"},
+        "content_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+      }
+    },
+    "isolated": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "rpc_contracts"],
+      "properties": {
+        "path": {"type": "string", "pattern": "^/isolated/packs/[a-zA-Z0-9._/-]+$"},
+        "rpc_contracts": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^rumi\\.(action|resource)\\."},
+          "uniqueItems": true
+        }
+      }
+    },
+    "localization": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    },
+    "accessibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "keyboard"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "keyboard": {"type": "boolean"},
+        "live": {"enum": ["off", "polite", "assertive"]}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"mode": {"const": "declarative"}}},
+      "then": {"required": ["view"]}
+    },
+    {
+      "if": {"properties": {"mode": {"const": "isolated"}}},
+      "then": {"required": ["isolated"]}
+    },
+    {
+      "if": {"properties": {"mode": {"const": "same_origin_builtin"}}},
+      "then": {"required": ["module"]}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "route"}}},
+      "then": {"required": ["route"]}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "renderer"}}},
+      "then": {"required": ["renderer"]}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "shell_region"}}},
+      "then": {"required": ["region"]}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "action"}}},
+      "then": {"required": ["action_contract"]}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "data_source"}}},
+      "then": {"required": ["data_source_contract"]}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "settings"}}},
+      "then": {"required": ["schema"]}
+    }
+  ]
+}
+

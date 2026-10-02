@@ -1,0 +1,69 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.ai.tokenize.v1",
+      "rumi.service.ai.usage.cost.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Replaceable token estimation and usage-cost normalization.",
+  "display_name": "Rumi AI Usage",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:ed8f91da4b22cae647640fae3952bcf9816006506bdb694774f2c30cef986981",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:e9d186ec3c1c0e99fa368d248a8160bb2f76f618c03e0a2069459c8e8aaad3c5"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:e9d186ec3c1c0e99fa368d248a8160bb2f76f618c03e0a2069459c8e8aaad3c5"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "token_estimates",
+      "normalized_usage_cost"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "network": false,
+      "provider_branches": false,
+      "unknown_cost_preserved": true
+    }
+  },
+  "pack_id": "rumi_ai_usage_pack",
+  "pack_identity": "rumi:ecosystem/rumi_ai_usage_pack",
+  "provenance": {
+    "build_identity": "rumi_ai_usage_pack:1.0.0",
+    "content_hash": "sha256:9e2236e965019d67898af10baa0dfba08486a7353b13252fd98e8d994c3230fd",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "ai.tokenize",
+    "ai.usage.cost"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

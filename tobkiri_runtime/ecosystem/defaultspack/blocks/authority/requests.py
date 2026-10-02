@@ -4,9 +4,9 @@ from blocks._common import error, ok
 
 
 def _authority_service():
-    from core_runtime.authority import get_authority_service
+    from core_runtime.legacy_runtime_removed import removed_authority_service
 
-    return get_authority_service()
+    return removed_authority_service()
 
 
 def _failed(result, default_code="AUTHORITY_REQUEST_FAILED"):

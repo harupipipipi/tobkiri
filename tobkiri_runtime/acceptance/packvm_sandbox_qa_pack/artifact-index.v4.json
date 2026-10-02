@@ -1,0 +1,32 @@
+{
+  "artifact_set_digest": "sha256:8922ca4dc5da42666ec9952b41f8043439c42d37c6f3719b95a9d8f844a08536",
+  "artifacts": [
+    {
+      "digest": "sha256:b561385e983680bed28473da03aae7aafd258a0add784cbfeedb9820f6ed1fd8",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:47a5524b1da0bebd48a6ad7296a8b840bd1241b2d64f20b8d7176987ed5fc0e9",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:d4f49a426377377cece112a77bd70e6b607d6c654ba3d009d54da2e46bfaeb03",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:5b9c1a4a8697d123e81bd0b91cb8976b850cb323ec69b43096f149463302bee3",
+      "path": "runtime/probe.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:2435accf8b09bdc310e5e1e0ce16f720c8e74f4b9dd4a702fcbbaa706fbb984a"
+  },
+  "pack_id": "tobkiri_packvm_sandbox_qa_pack",
+  "source_identity": "sha256:12cd5c925a813a11f8d49cb072c611e0d6e3dd039c63c5e67516716ff77f9df0"
+}

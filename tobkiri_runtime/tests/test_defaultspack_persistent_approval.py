@@ -29,6 +29,62 @@ def _fresh_approval_module(monkeypatch, db_path: Path):
     return approval
 
 
+def test_default_approval_paths_use_launcher_user_data(tmp_path, monkeypatch):
+    user_data = tmp_path / "launcher-user-data"
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_APPROVAL_DB_PATH", raising=False)
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_APPROVAL_SECRET_PATH", raising=False)
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", raising=False)
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
+
+    import domain.safety.approval_state_json as state_json
+    import domain.safety.approval_store as approval_store
+
+    assert approval_store.default_approval_db_path() == (
+        user_data / "defaultspack" / "shared" / "safety" / "approval.sqlite3"
+    )
+    assert approval_store.default_approval_secret_path() == (
+        user_data / "defaultspack" / "shared" / "safety" / "approval_runtime_secret"
+    )
+    assert state_json.default_chat_dir() == (
+        user_data / "defaultspack" / "shared" / "chat"
+    )
+
+
+def test_explicit_approval_paths_override_launcher_user_data(tmp_path, monkeypatch):
+    db_path = tmp_path / "explicit" / "approval.sqlite3"
+    secret_path = tmp_path / "explicit" / "runtime-secret"
+    chat_store = tmp_path / "explicit-chat" / "conversations.json"
+    monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path / "launcher-user-data"))
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_APPROVAL_DB_PATH", str(db_path))
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_APPROVAL_SECRET_PATH", str(secret_path))
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(chat_store))
+
+    import domain.safety.approval_state_json as state_json
+    import domain.safety.approval_store as approval_store
+
+    assert approval_store.default_approval_db_path() == db_path
+    assert approval_store.default_approval_secret_path() == secret_path
+    assert state_json.default_chat_dir() == chat_store.parent
+
+
+def test_importing_approval_does_not_write_runtime_state(tmp_path, monkeypatch):
+    user_data = tmp_path / "launcher-user-data"
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_APPROVAL_DB_PATH", raising=False)
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_APPROVAL_SECRET_PATH", raising=False)
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", raising=False)
+    for name in (
+        "domain.safety.approval",
+        "domain.safety.approval_state_json",
+        "domain.safety.approval_store",
+    ):
+        sys.modules.pop(name, None)
+
+    import domain.safety.approval  # noqa: F401
+
+    assert not user_data.exists()
+
+
 def test_approval_requests_survive_process_restart(tmp_path, monkeypatch):
     approval = _fresh_approval_module(monkeypatch, tmp_path / "approval.sqlite3")
     approval.reset_approval_state_for_tests()

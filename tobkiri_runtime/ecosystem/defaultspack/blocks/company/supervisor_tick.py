@@ -1,10 +1,12 @@
 from blocks._common import ok, error
 from domain.company.supervisor import CompanySupervisor
+from domain.subagent_team.availability import settings_owner_from_context
 
 from ._helpers import company_id_from, invalid, require_dict
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner=None):
+    settings_owner = settings_owner_from_context(settings_owner, context)
     if require_dict(input_data) is None:
         return invalid("input_data must be a dict")
     company_id = company_id_from(input_data)
@@ -18,7 +20,7 @@ def run(input_data, context):
     auto_mark_stale = bool(input_data.get("auto_mark_stale", False))
     try:
         return ok(
-            CompanySupervisor().tick(
+            CompanySupervisor(settings_owner=settings_owner).tick(
                 company_id,
                 stale_after_seconds=stale_after_seconds,
                 auto_dispatch=auto_dispatch,

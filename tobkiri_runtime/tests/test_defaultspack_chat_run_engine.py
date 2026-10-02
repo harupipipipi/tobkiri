@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import pytest
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,6 +12,79 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+
+pytestmark = pytest.mark.usefixtures("defaultspack_conversation_owner")
+
+
+def _settings_owner(tmp_path: Path):
+    """Return one explicit settings owner isolated to this test directory."""
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    return FrontendSettingsStore(tmp_path / "settings" / "frontend_settings.json")
+
+
+def _write_v2_skill(skill_dir, *, skill_id, display_name, trigger, instruction):
+    """Write the smallest valid v2 skill fixture with a trusted SKILL.md."""
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "$schema": "https://schemas.tobkiri.dev/skill/v2.json",
+                "schema_version": "tobkiri.skill/v2",
+                "kind": "skill",
+                "category": "skill",
+                "id": skill_id,
+                "version": "2.0.0",
+                "enabled": True,
+                "display_name": display_name,
+                "description": display_name,
+                "instructions": {
+                    "path": "SKILL.md",
+                    "format": "agent-skills",
+                    "max_tokens": 800,
+                },
+                "activation": {
+                    "mode": "auto_or_explicit",
+                    "aliases": [skill_id.rsplit("/", 1)[-1]],
+                    "positive_examples": [trigger],
+                    "negative_examples": [],
+                },
+                "scope": {"activity_ids": [], "tool_ids": []},
+                "composition": {
+                    "class": "optional",
+                    "priority": 100,
+                    "requires": [],
+                    "conflicts_with": [],
+                },
+                "tool_policy": {
+                    "allowed_tool_ids": [],
+                    "denied_tool_ids": [],
+                },
+                "security": {
+                    "minimum_trust": "verified",
+                    "may_grant_permissions": False,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (skill_dir / "SKILL.md").write_text(instruction, encoding="utf-8")
+
+
+def _inject_test_extension_roots(monkeypatch, *extra_roots: Path) -> None:
+    """Inject temporary roots through the explicit test-only builder seam."""
+    from domain.extensions import runtime as extension_runtime
+
+    roots = tuple(extra_roots)
+    monkeypatch.setattr(
+        extension_runtime,
+        "get_extensions_roots",
+        lambda: extension_runtime.build_extensions_roots(
+            DEFAULTSPACK_ROOT,
+            extra_roots=roots,
+        ),
+    )
+    extension_runtime.get_extension_registry(force_reload=True)
 
 
 def test_computer_use_action_suffix_tool_name_is_normalized():
@@ -90,7 +164,7 @@ def test_chat_run_engine_has_no_default_four_tool_call_limit(tmp_path, monkeypat
     monkeypatch.setattr(ChatRunEngine, "_model_turn", fake_model_turn)
     monkeypatch.setattr(ChatRunEngine, "_execute_tool", fake_execute_tool)
 
-    engine = ChatRunEngine()
+    engine = ChatRunEngine(settings_owner=_settings_owner(tmp_path))
     events = list(
         engine.stream(
             {
@@ -181,6 +255,9 @@ def test_send_wrapper_returns_cancelled_final_when_nonstream_run_is_cancelled(tm
     conversation = store.create_conversation(model="stub/default")
 
     class RuntimeSettingsStub:
+        def __init__(self, *, settings_owner=None):
+            assert settings_owner is not None
+
         def get_settings(self):
             return {"deepthink_enabled": False}
 
@@ -221,6 +298,7 @@ def test_send_wrapper_returns_cancelled_final_when_nonstream_run_is_cancelled(tm
             "tools": [],
         },
         {},
+        settings_owner=_settings_owner(tmp_path),
     )
 
     assert result["status"] == "ok"
@@ -273,6 +351,7 @@ def test_chat_send_and_stream_wrappers_write_inspector_logs(tmp_path, monkeypatc
             "tools": [],
         },
         {},
+        settings_owner=_settings_owner(tmp_path),
     )
     assert send_result["status"] == "ok"
     send_log = Inspector().get_latest()
@@ -289,6 +368,7 @@ def test_chat_send_and_stream_wrappers_write_inspector_logs(tmp_path, monkeypatc
             "tools": [],
         },
         {},
+        settings_owner=_settings_owner(tmp_path),
     )
     events = list(stream_result["events"])
     assert events[-1]["type"] == "done"
@@ -327,6 +407,7 @@ def test_prepare_chat_run_current_turn_history_mode_excludes_old_tool_logs(tmp_p
             "tools": [],
         },
         {"external_chat_history_mode": "current_turn"},
+        settings_owner=_settings_owner(tmp_path),
     )
     combined = "\n".join(str(message.get("content") or "") for message in prepared.standard_messages)
 
@@ -355,6 +436,7 @@ def test_prepare_chat_run_allows_explicit_model_override(tmp_path, monkeypatch):
             "tools": [],
         },
         {"run_source": "scheduler"},
+        settings_owner=_settings_owner(tmp_path),
     )
 
     assert prepared.model == "google/gemini-2.5-flash"
@@ -391,6 +473,7 @@ def test_prepare_chat_run_forwards_approval_followup_token_to_tool_context(tmp_p
             "tools": [],
         },
         {},
+        settings_owner=_settings_owner(tmp_path),
     )
 
     expected = {
@@ -436,10 +519,11 @@ def test_prepare_chat_run_promotes_profile_and_agent_ids_into_tool_context(tmp_p
             "tools": ["todo"],
         },
         {"run_source": "scheduler"},
+        settings_owner=_settings_owner(tmp_path),
     )
 
-    assert prepared.request_context["profile_id"] == "defaultspack.mimo_coding_company"
-    assert prepared.tool_context["profile_id"] == "defaultspack.mimo_coding_company"
+    assert prepared.request_context["profile_id"] == "defaults"
+    assert prepared.tool_context["profile_id"] == "defaults"
     assert prepared.request_context["agent_id"] == "project_manager"
     assert prepared.tool_context["agent_id"] == "project_manager"
     ChatStore._instance = None
@@ -474,6 +558,7 @@ def test_prepare_chat_run_maps_computer_approval_followup_aliases(tmp_path, monk
             "tools": [],
         },
         {},
+        settings_owner=_settings_owner(tmp_path),
     )
 
     expected = {
@@ -514,7 +599,7 @@ def test_approval_followup_executes_exact_payload_before_model_turn(tmp_path, mo
     monkeypatch.setattr(ChatRunEngine, "_execute_tool", fake_execute_tool)
     monkeypatch.setattr(ChatRunEngine, "_model_turn", fake_model_turn)
 
-    engine = ChatRunEngine()
+    engine = ChatRunEngine(settings_owner=_settings_owner(tmp_path))
     events = list(engine.stream(
         {
             "conversation_id": conversation["id"],
@@ -576,48 +661,29 @@ def test_approval_request_payload_preserves_original_tool_arguments():
     assert request["payload"] == {"action": "click", "x": 10, "y": 10}
     assert request["operation"] == "computer.click"
 def test_prepare_chat_run_injects_matched_skill_and_chat_references(tmp_path, monkeypatch):
-    import json
-
     from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
 
     storage_path = tmp_path / "user_data" / "shared" / "chat" / "conversations.json"
     extensions_root = tmp_path / "extensions"
     skill_dir = extensions_root / "skills" / "line-mention"
-    skill_dir.mkdir(parents=True)
-    (skill_dir / "manifest.json").write_text(
-        json.dumps(
-            {
-                "id": "feedback/line-mention",
-                "category": "skill",
-                "version": "1",
-                "enabled": True,
-                "display_name": "LINE mention skill",
-                "description": "Only respond to LINE groups when mentioned.",
-                "triggers": ["LINE", "mention"],
-                "instructions": "For LINE group chats, respond only when Rumi is mentioned.",
-            }
-        ),
-        encoding="utf-8",
+    _write_v2_skill(
+        skill_dir,
+        skill_id="feedback/line-mention",
+        display_name="LINE mention skill",
+        trigger="LINE",
+        instruction="For LINE group chats, respond only when Rumi is mentioned.",
     )
     unrelated_skill_dir = extensions_root / "skills" / "finance-only"
-    unrelated_skill_dir.mkdir(parents=True)
-    (unrelated_skill_dir / "manifest.json").write_text(
-        json.dumps(
-            {
-                "id": "feedback/finance-only",
-                "category": "skill",
-                "version": "1",
-                "enabled": True,
-                "display_name": "Finance only",
-                "triggers": ["portfolio-rebalance"],
-                "instructions": "This must not appear in unrelated LINE prompts.",
-            }
-        ),
-        encoding="utf-8",
+    _write_v2_skill(
+        unrelated_skill_dir,
+        skill_id="feedback/finance-only",
+        display_name="Finance only",
+        trigger="portfolio-rebalance",
+        instruction="This must not appear in unrelated LINE prompts.",
     )
     monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(storage_path))
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_EXTENSION_ROOTS", str(extensions_root))
+    _inject_test_extension_roots(monkeypatch, extensions_root)
     ChatStore._instance = None
 
     store = ChatStore()
@@ -650,6 +716,7 @@ def test_prepare_chat_run_injects_matched_skill_and_chat_references(tmp_path, mo
             "tools": [],
         },
         {},
+        settings_owner=_settings_owner(tmp_path),
     )
     combined = "\n".join(str(message.get("content") or "") for message in prepared.standard_messages)
 
@@ -673,32 +740,21 @@ def test_prepare_chat_run_injects_matched_skill_and_chat_references(tmp_path, mo
 
 
 def test_prepare_chat_run_leaves_unmatched_skills_out_of_system_context(tmp_path, monkeypatch):
-    import json
-
     from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
 
     storage_path = tmp_path / "user_data" / "shared" / "chat" / "conversations.json"
     extensions_root = tmp_path / "extensions"
     skill_dir = extensions_root / "skills" / "line-mention"
-    skill_dir.mkdir(parents=True)
-    (skill_dir / "manifest.json").write_text(
-        json.dumps(
-            {
-                "id": "feedback/line-mention",
-                "category": "skill",
-                "version": "1",
-                "enabled": True,
-                "display_name": "LINE mention skill",
-                "description": "Only respond to LINE groups when mentioned.",
-                "triggers": ["LINE", "mention"],
-                "instructions": "For LINE group chats, respond only when Rumi is mentioned.",
-            }
-        ),
-        encoding="utf-8",
+    _write_v2_skill(
+        skill_dir,
+        skill_id="feedback/line-mention",
+        display_name="LINE mention skill",
+        trigger="LINE",
+        instruction="For LINE group chats, respond only when Rumi is mentioned.",
     )
     monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(storage_path))
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_EXTENSION_ROOTS", str(extensions_root))
+    _inject_test_extension_roots(monkeypatch, extensions_root)
     ChatStore._instance = None
 
     store = ChatStore()
@@ -710,6 +766,7 @@ def test_prepare_chat_run_leaves_unmatched_skills_out_of_system_context(tmp_path
             "tools": [],
         },
         {},
+        settings_owner=_settings_owner(tmp_path),
     )
     combined = "\n".join(str(message.get("content") or "") for message in prepared.standard_messages)
 
@@ -1031,7 +1088,7 @@ def test_chat_run_engine_observes_external_cancel_checker():
     assert engine._is_cancelled() is True
 
 
-def test_complete_with_tools_rejects_unattached_model_tool_call():
+def test_complete_with_tools_rejects_unattached_model_tool_call(tmp_path):
     from blocks.chat import send
 
     ai_calls = 0
@@ -1067,6 +1124,7 @@ def test_complete_with_tools_rejects_unattached_model_tool_call():
         {},
         call_handler,
         {"max_tool_calls": 3},
+        settings_owner=_settings_owner(tmp_path),
     )
 
     assert ai_calls == 1
@@ -1079,7 +1137,7 @@ def test_complete_with_tools_rejects_unattached_model_tool_call():
     assert any(event.get("phase") == "tool_call_rejected" for event in response["events"])
 
 
-def test_legacy_complete_with_tools_retries_transient_ai_error_after_tool_use():
+def test_legacy_complete_with_tools_retries_transient_ai_error_after_tool_use(tmp_path):
     from blocks.chat import send
 
     ai_calls = 0
@@ -1131,6 +1189,7 @@ def test_legacy_complete_with_tools_retries_transient_ai_error_after_tool_use():
         {"profile_policy": {"max_tool_calls": 3}},
         call_handler,
         {"retry": {"max_attempts": 2, "delays": [0]}},
+        settings_owner=_settings_owner(tmp_path),
     )
 
     assert ai_calls == 3
@@ -1179,7 +1238,11 @@ def _run_ir_tool_loop(tmp_path, monkeypatch):
     conversation = store.create_conversation(model="openai/gpt-5.5")
     monkeypatch.setattr(ToolExecutor, "execute", lambda self, name, arguments, context: {"result": "tool ok", "is_error": False})
     gateway = _IRFakeGateway()
-    engine = ChatRunEngine(store=store, gateway=gateway)
+    engine = ChatRunEngine(
+        store=store,
+        gateway=gateway,
+        settings_owner=_settings_owner(tmp_path),
+    )
     events = list(
         engine.stream(
             {
@@ -1284,6 +1347,7 @@ def _run_text_tool_call_response(
     }
     if metadata:
         user_message["metadata"] = metadata
+    store.add_message(conversation["id"], user_message)
     provider_tools = [
         {
             "type": "function",
@@ -1318,7 +1382,7 @@ def _run_text_tool_call_response(
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
     engine = ChatRunEngine(store=store, gateway=gateway)
     events = list(engine.stream({}, {}, stream_mode=False))
     stored = store.get_conversation(conversation["id"])["messages"][-1]
@@ -1573,8 +1637,9 @@ def test_stream_engine_treats_consumed_approval_followup_as_idempotent_duplicate
     )
 
     assert calls == []
-    assert len(gateway.complete_requests) == 1
-    assert stored["raw_text"] == raw_text
+    assert len(gateway.complete_requests) == 0
+    assert stored["raw_text"] != raw_text
+    assert "承認済みの操作はすでに処理済みです" in stored["raw_text"]
     assert not any(event.get("type") == "tool_call_started" for event in events)
     replay = approval.verify_execution_token(
         token,
@@ -1650,7 +1715,7 @@ def test_nonstream_scheduled_mimo_initial_run_syncs_draft_before_model_turn(tmp_
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
 
     observed: dict[str, object] = {}
 
@@ -1735,7 +1800,7 @@ def test_nonstream_scheduled_mimo_finalizes_when_draft_update_is_stale(tmp_path,
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
 
     original_update_message = store.update_message
 
@@ -1866,7 +1931,7 @@ def test_nonstream_scheduled_mimo_followup_syncs_replay_to_draft_before_summary(
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
 
     calls: list[tuple[str, dict]] = []
 
@@ -1998,7 +2063,7 @@ def test_stream_engine_scheduled_desktop_frame_approval_replay_consumes_approval
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
 
     calls: list[tuple[str, dict]] = []
 
@@ -2144,7 +2209,7 @@ def test_stream_engine_scheduled_desktop_frame_replay_canonicalizes_display_tool
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
 
     calls: list[tuple[str, dict]] = []
 
@@ -2175,7 +2240,13 @@ def test_stream_engine_scheduled_desktop_frame_replay_canonicalizes_display_tool
             return Provider(), model
 
     monkeypatch.setattr(ToolExecutor, "execute", fake_execute)
-    events = list(ChatRunEngine(store=store, gateway=Gateway()).stream({}, {}, stream_mode=False))
+    events = list(
+        ChatRunEngine(
+            store=store,
+            gateway=Gateway(),
+            settings_owner=_settings_owner(tmp_path),
+        ).stream({}, {}, stream_mode=False)
+    )
     stored = store.get_conversation(conversation_id)["messages"][-1]
     ChatStore._instance = None
 
@@ -2277,7 +2348,7 @@ def test_stream_engine_scheduled_desktop_frame_approval_replay_suppresses_duplic
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
 
     calls: list[tuple[str, dict]] = []
 
@@ -2390,7 +2461,11 @@ def test_stream_engine_scheduled_replay_duplicate_ignores_echoed_approval_token(
     assert _text_tool_call_blocks_for_prepared(duplicate_text_response, prepared) == []
 
 
-def test_stream_engine_scheduled_desktop_frame_replay_uses_defaultspack_local_owner(tmp_path, monkeypatch):
+def test_stream_engine_scheduled_desktop_frame_replay_uses_defaultspack_local_owner(
+    tmp_path,
+    monkeypatch,
+    defaultspack_capability_plan_context,
+):
     from domain.chat.store import ChatStore
     from domain.chat.run_request import PreparedChatRun
     from domain.chat.stream_engine import ChatRunEngine
@@ -2451,6 +2526,7 @@ def test_stream_engine_scheduled_desktop_frame_replay_uses_defaultspack_local_ow
             },
         }
     ]
+    plan_context = defaultspack_capability_plan_context("desktop_frame")
     prepared = PreparedChatRun(
         conversation_id=conversation_id,
         conversation={"id": conversation_id, "messages": [user_message]},
@@ -2467,6 +2543,7 @@ def test_stream_engine_scheduled_desktop_frame_replay_uses_defaultspack_local_ow
         },
         tool_context=seal_tool_context(
             {
+                **plan_context,
                 "tool_approval_tokens": {"desktop_frame": token},
                 "owner_pack": "defaultspack",
                 "source": "scheduler_approval_followup",
@@ -2488,7 +2565,7 @@ def test_stream_engine_scheduled_desktop_frame_replay_uses_defaultspack_local_ow
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
 
     class FakeSandboxApi:
         def __init__(self):
@@ -2528,7 +2605,13 @@ def test_stream_engine_scheduled_desktop_frame_replay_uses_defaultspack_local_ow
     fake_api = FakeSandboxApi()
     monkeypatch.setattr(desktop_tools, "_sandbox_api", lambda: fake_api)
 
-    events = list(ChatRunEngine(store=store, gateway=Gateway()).stream({}, {}, stream_mode=False))
+    events = list(
+        ChatRunEngine(
+            store=store,
+            gateway=Gateway(),
+            settings_owner=_settings_owner(tmp_path),
+        ).stream({}, {}, stream_mode=False)
+    )
     stored = store.get_conversation(conversation_id)["messages"][-1]
     ChatStore._instance = None
 
@@ -2636,7 +2719,7 @@ def test_stream_engine_scheduled_desktop_frame_replay_consumes_legacy_inline_arg
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
 
     calls: list[tuple[str, dict]] = []
 
@@ -2828,7 +2911,7 @@ def test_stream_engine_scheduled_mimo_approval_replay_keeps_tools_for_distinct_f
         call_handler=None,
         model_routing={},
     )
-    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context: prepared)
+    monkeypatch.setattr(engine_module, "prepare_chat_run", lambda input_data, context, *, settings_owner=None: prepared)
 
     gateway = Gateway()
     engine = ChatRunEngine(store=store, gateway=gateway)

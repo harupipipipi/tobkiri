@@ -6,11 +6,14 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use log::info;
-use rand::{distributions::Alphanumeric, Rng};
-use serde::Deserialize;
+use rand::{distributions::Alphanumeric, Rng, RngCore};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
+
+use crate::host_contract::ExecutionProfileIdentity;
 
 /// Reusable blocking HTTP client for health checks.
 static HEALTH_CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
@@ -24,7 +27,12 @@ struct ApiEnvelope<T> {
 #[derive(Debug, Deserialize)]
 struct HealthPayload {
     panel_ready: Option<bool>,
+    runtime_ready: Option<bool>,
     desktop_challenge_response: Option<String>,
+    profile_id: Option<String>,
+    profile_revision: Option<String>,
+    activation_id: Option<String>,
+    plan_digest: Option<String>,
 }
 
 const DESKTOP_HEALTH_CHALLENGE_HEADER: &str = "X-Rumi-Desktop-Health-Challenge";
@@ -75,17 +83,19 @@ fn hmac_sha256_hex(secret: &str, message: &str) -> String {
 fn health_client() -> &'static reqwest::blocking::Client {
     HEALTH_CLIENT.get_or_init(|| {
         reqwest::blocking::Client::builder()
-            .timeout(Duration::from_millis(800))
+            .connect_timeout(Duration::from_millis(800))
+            // Health verifies the durable Profile, which can exceed 800 ms on
+            // a cold start. Abandoning it leaves that work running while polling
+            // starts more captures against the same activation lock.
+            .timeout(Duration::from_secs(30))
             .build()
             .expect("failed to build health-check HTTP client")
     })
 }
 
-/// Send a health-check request that proves the listener knows the desktop
-/// bootstrap secret without disclosing that secret to an untrusted local port.
-pub fn check_authenticated_health(port: u16, bootstrap_secret: &str) -> Result<bool> {
+fn fetch_authenticated_health(port: u16, bootstrap_secret: &str) -> Result<Option<HealthPayload>> {
     if bootstrap_secret.is_empty() {
-        return Ok(false);
+        return Ok(None);
     }
 
     let challenge = generate_health_challenge();
@@ -96,33 +106,322 @@ pub fn check_authenticated_health(port: u16, bootstrap_secret: &str) -> Result<b
         .send()
     {
         Ok(resp) => resp,
-        Err(_) => return Ok(false),
+        Err(_) => return Ok(None),
     };
 
     if !resp.status().is_success() {
-        return Ok(false);
+        return Ok(None);
     }
 
     let envelope: ApiEnvelope<HealthPayload> = match resp.json() {
         Ok(payload) => payload,
-        Err(_) => return Ok(false),
+        Err(_) => return Ok(None),
     };
     if !envelope.success {
-        return Ok(false);
+        return Ok(None);
     }
 
     let Some(payload) = envelope.data else {
-        return Ok(false);
+        return Ok(None);
     };
     if payload.panel_ready == Some(false) {
-        return Ok(false);
+        return Ok(None);
     }
 
     let expected = hmac_sha256_hex(bootstrap_secret, &challenge);
-    Ok(payload
+    if !payload
         .desktop_challenge_response
         .as_deref()
-        .is_some_and(|actual| actual.eq_ignore_ascii_case(&expected)))
+        .is_some_and(|actual| actual.eq_ignore_ascii_case(&expected))
+    {
+        return Ok(None);
+    }
+    Ok(Some(payload))
+}
+
+/// Capture the exact active execution identity from an authenticated runtime.
+///
+/// Newer runtimes may project the tuple directly on authenticated `/health`.
+/// The compatibility fallback uses the signed Application contract namespace,
+/// so the Launcher never supplies a product-specific contract constant.
+pub(crate) fn authenticated_runtime_identity(
+    port: u16,
+    bootstrap_secret: &str,
+    contract_namespace: &str,
+) -> Result<ExecutionProfileIdentity> {
+    let health = fetch_authenticated_health(port, bootstrap_secret)?
+        .context("authenticated runtime health is unavailable")?;
+    if let Some(identity) = identity_from_health(&health)? {
+        return Ok(identity);
+    }
+    validate_contract_namespace(contract_namespace)?;
+
+    let origin = format!("http://127.0.0.1:{port}");
+    let cookie = exchange_panel_session(port, bootstrap_secret)?;
+    let profile = health_client()
+        .get(format!(
+            "{origin}/api/contracts/{contract_namespace}/GET%20%2Fapi%2Fruntime-surface%2Fprofile"
+        ))
+        .header(
+            reqwest::header::COOKIE,
+            format!("rumi_panel_session={cookie}"),
+        )
+        .header("X-Tobkiri-Request-ID", random_uuid_v4())
+        .send()
+        .context("canonical runtime profile read failed")?;
+    if !profile.status().is_success() {
+        bail!(
+            "canonical runtime profile read returned {}",
+            profile.status()
+        );
+    }
+    let envelope: ApiEnvelope<Value> = profile
+        .json()
+        .context("canonical runtime profile response is malformed")?;
+    if !envelope.success {
+        bail!("canonical runtime profile read was rejected");
+    }
+    identity_from_runtime_surface(
+        &envelope
+            .data
+            .context("canonical runtime profile response has no data")?,
+    )
+}
+
+#[derive(Debug, Serialize)]
+struct PanelExchangeRequest {
+    code: String,
+}
+
+fn exchange_panel_session(port: u16, bootstrap_secret: &str) -> Result<String> {
+    let code = crate::request_panel_bootstrap_code_with_retry(port, bootstrap_secret)
+        .context("failed to issue a profile identity bootstrap code")?;
+    let origin = format!("http://127.0.0.1:{port}");
+    let exchange = health_client()
+        .post(format!("{origin}/api/panel/auth/exchange"))
+        .header("Origin", &origin)
+        .json(&PanelExchangeRequest { code })
+        .send()
+        .context("profile identity panel exchange failed")?;
+    if !exchange.status().is_success() {
+        bail!(
+            "profile identity panel exchange returned {}",
+            exchange.status()
+        );
+    }
+    exchange
+        .headers()
+        .get_all(reqwest::header::SET_COOKIE)
+        .iter()
+        .find_map(|value| {
+            let value = value.to_str().ok()?;
+            let (name, rest) = value.split_once('=')?;
+            (name.trim() == "rumi_panel_session")
+                .then(|| rest.split(';').next().unwrap_or_default().trim().to_owned())
+        })
+        .filter(|value| !value.is_empty())
+        .context("profile identity panel exchange did not return a session cookie")
+}
+
+fn validate_contract_namespace(value: &str) -> Result<()> {
+    let mut parts = value.split(['.', '_', '-']);
+    let first = parts.next().unwrap_or_default();
+    if value.len() > 128
+        || first.is_empty()
+        || !first.as_bytes()[0].is_ascii_lowercase()
+        || !first
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        || parts.any(|part| {
+            part.is_empty()
+                || !part
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        })
+    {
+        bail!("signed Application contract namespace is invalid");
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_application_route(route: &str) -> Result<()> {
+    profile_id_from_screen_route(route).map(|_| ())
+}
+
+pub(crate) fn profile_id_from_screen_route(route: &str) -> Result<Option<String>> {
+    if let Some(qualified) = route.strip_prefix("/p/") {
+        let (encoded_profile, application_route) = qualified
+            .split_once('/')
+            .context("Profile screen route is missing its Application route")?;
+        let profile_id = decode_profile_path_segment(encoded_profile)?;
+        crate::host_contract::validate_profile_id(&profile_id)?;
+        if encode_profile_path_segment(&profile_id)? != encoded_profile {
+            bail!("Profile screen route identity is not canonically encoded");
+        }
+        validate_unqualified_application_route(&format!("/{application_route}"))?;
+        return Ok(Some(profile_id));
+    }
+    validate_unqualified_application_route(route)?;
+    Ok(None)
+}
+
+pub(crate) fn encode_profile_path_segment(profile_id: &str) -> Result<String> {
+    crate::host_contract::validate_profile_id(profile_id)?;
+    let mut encoded = String::with_capacity(profile_id.len());
+    for byte in profile_id.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char)
+            }
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    Ok(encoded)
+}
+
+fn validate_unqualified_application_route(route: &str) -> Result<()> {
+    if route.is_empty()
+        || route.len() > 2048
+        || !route.starts_with('/')
+        || route.starts_with("//")
+        || route.contains(|character| matches!(character, '\\' | '?' | '#' | '%'))
+        || route.bytes().any(|byte| byte.is_ascii_control())
+        || route
+            .split('/')
+            .any(|segment| matches!(segment, "." | ".."))
+    {
+        bail!("active Application launch route is not a safe same-origin path");
+    }
+    Ok(())
+}
+
+fn decode_profile_path_segment(value: &str) -> Result<String> {
+    if value.is_empty() || value.len() > 512 {
+        bail!("Profile screen route identity is invalid");
+    }
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            if index + 2 >= bytes.len() {
+                bail!("Profile screen route identity is invalid");
+            }
+            let high =
+                hex_value(bytes[index + 1]).context("Profile screen route identity is invalid")?;
+            let low =
+                hex_value(bytes[index + 2]).context("Profile screen route identity is invalid")?;
+            decoded.push((high << 4) | low);
+            index += 3;
+        } else {
+            if !bytes[index].is_ascii_alphanumeric()
+                && !matches!(bytes[index], b'-' | b'_' | b'.' | b'~')
+            {
+                bail!("Profile screen route identity is invalid");
+            }
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(decoded).context("Profile screen route identity is not UTF-8")
+}
+
+fn hex_value(value: u8) -> Option<u8> {
+    match value {
+        b'0'..=b'9' => Some(value - b'0'),
+        b'A'..=b'F' => Some(value - b'A' + 10),
+        b'a'..=b'f' => Some(value - b'a' + 10),
+        _ => None,
+    }
+}
+
+fn identity_from_health(payload: &HealthPayload) -> Result<Option<ExecutionProfileIdentity>> {
+    let values = (
+        payload.profile_id.as_deref(),
+        payload.profile_revision.as_deref(),
+        payload.activation_id.as_deref(),
+        payload.plan_digest.as_deref(),
+    );
+    if values.0.is_none() && values.1.is_none() && values.2.is_none() && values.3.is_none() {
+        return Ok(None);
+    }
+    let identity = ExecutionProfileIdentity::new(
+        values.0.context("health profile_id is incomplete")?,
+        values.1.context("health profile_revision is incomplete")?,
+        values.2.context("health activation_id is incomplete")?,
+        values.3.context("health plan_digest is incomplete")?,
+    )?;
+    Ok(Some(identity))
+}
+
+fn identity_from_runtime_surface(data: &Value) -> Result<ExecutionProfileIdentity> {
+    let profile_id = data
+        .get("profile_id")
+        .and_then(Value::as_str)
+        .context("runtime profile response is missing profile_id")?;
+    let profile_revision = data
+        .get("profile_revision")
+        .and_then(Value::as_str)
+        .context("runtime profile response is missing profile_revision")?;
+    let plan_digest = data
+        .get("plan_digest")
+        .and_then(Value::as_str)
+        .context("runtime profile response is missing plan_digest")?;
+    let activation_id = data
+        .get("activation_id")
+        .and_then(Value::as_str)
+        .or_else(|| {
+            data.get("activation_record")
+                .and_then(|value| value.get("activation_id"))
+                .and_then(Value::as_str)
+        })
+        .or_else(|| {
+            data.get("data")
+                .and_then(|value| value.get("activation_record"))
+                .and_then(|value| value.get("activation_id"))
+                .and_then(Value::as_str)
+        })
+        .context("runtime profile response is missing activation_id")?;
+    ExecutionProfileIdentity::new(profile_id, profile_revision, activation_id, plan_digest)
+}
+
+fn random_uuid_v4() -> String {
+    let mut bytes = [0_u8; 16];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    format!(
+        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        bytes[0],
+        bytes[1],
+        bytes[2],
+        bytes[3],
+        bytes[4],
+        bytes[5],
+        bytes[6],
+        bytes[7],
+        bytes[8],
+        bytes[9],
+        bytes[10],
+        bytes[11],
+        bytes[12],
+        bytes[13],
+        bytes[14],
+        bytes[15]
+    )
+}
+
+/// Send a health-check request that proves the listener knows the desktop
+/// bootstrap secret without disclosing that secret to an untrusted local port.
+pub fn check_authenticated_health(port: u16, bootstrap_secret: &str) -> Result<bool> {
+    Ok(fetch_authenticated_health(port, bootstrap_secret)?.is_some())
+}
+
+/// Return whether an authenticated Kernel has completed runtime activation.
+pub fn check_authenticated_runtime_ready(port: u16, bootstrap_secret: &str) -> Result<bool> {
+    Ok(fetch_authenticated_health(port, bootstrap_secret)?
+        .and_then(|payload| payload.runtime_ready)
+        .unwrap_or(false))
 }
 
 /// Send a single health-check request.
@@ -130,9 +429,13 @@ pub fn check_authenticated_health(port: u16, bootstrap_secret: &str) -> Result<b
 /// Returns `Ok(true)` if the Kernel responded with HTTP 200,
 /// `Ok(false)` for any other status or a connection error.
 pub fn check_health(port: u16) -> Result<bool> {
+    check_health_with_timeout(port, Duration::from_secs(5))
+}
+
+fn check_health_with_timeout(port: u16, timeout: Duration) -> Result<bool> {
     let url = format!("http://127.0.0.1:{port}/health");
 
-    match health_client().get(&url).send() {
+    match health_client().get(&url).timeout(timeout).send() {
         Ok(resp) => {
             if !resp.status().is_success() {
                 return Ok(false);
@@ -167,11 +470,15 @@ pub fn wait_for_healthy(port: u16, timeout_secs: u64) -> Result<()> {
     let interval = Duration::from_millis(200);
 
     while start.elapsed() < timeout {
-        if check_health(port)? {
+        let remaining = timeout.saturating_sub(start.elapsed());
+        if remaining.is_zero() {
+            break;
+        }
+        if check_health_with_timeout(port, remaining.min(Duration::from_secs(5)))? {
             info!("Kernel healthy after ~{:?}", start.elapsed());
             return Ok(());
         }
-        std::thread::sleep(interval);
+        std::thread::sleep(interval.min(timeout.saturating_sub(start.elapsed())));
     }
 
     bail!("Kernel did not become healthy within {timeout_secs}s on port {port}")
@@ -180,6 +487,46 @@ pub fn wait_for_healthy(port: u16, timeout_secs: u64) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn health_waits_for_inflight_profile_verification() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        for bounded_wait in [false, true] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut request = Vec::new();
+                let mut byte = [0];
+                while !request.ends_with(b"\r\n\r\n") {
+                    stream.read_exact(&mut byte).unwrap();
+                    request.push(byte[0]);
+                }
+                std::thread::sleep(Duration::from_millis(1100));
+                let body = r#"{"success":true,"data":{"panel_ready":true}}"#;
+                let response = write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                if !bounded_wait {
+                    response.unwrap();
+                }
+            });
+            if bounded_wait {
+                assert!(wait_for_healthy(port, 1).is_err());
+            } else {
+                assert!(check_health(port).unwrap());
+            }
+            server.join().unwrap();
+        }
+    }
 
     #[test]
     fn check_health_unreachable_port() {
@@ -194,5 +541,92 @@ mod tests {
             hmac_sha256_hex("key", "The quick brown fox jumps over the lazy dog"),
             "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8"
         );
+    }
+
+    #[test]
+    fn profile_screen_routes_validate_identity_and_inner_application_route() {
+        for route in [
+            "/p/profile-a/chat",
+            "/p/%E5%88%A9%E7%94%A8%E8%80%85/coding",
+            "/p/profile%21%27%28%29%2A/chat",
+            "/chat",
+        ] {
+            validate_application_route(route).unwrap();
+        }
+        for route in [
+            "/p/profile-a",
+            "/p//chat",
+            "/p/profile%2Fa/chat",
+            "/p/profile%2Da/chat",
+            "/p/profile%2da/chat",
+            "/p/profile!'()*/chat",
+            "/p/profile-a/../chat",
+            "/p/profile-a/chat?code=x",
+        ] {
+            assert!(validate_application_route(route).is_err(), "{route}");
+        }
+    }
+
+    #[test]
+    fn authenticated_health_identity_requires_all_four_bindings() {
+        let payload = HealthPayload {
+            panel_ready: Some(true),
+            runtime_ready: Some(true),
+            desktop_challenge_response: None,
+            profile_id: Some("profile-a".into()),
+            profile_revision: Some(format!("sha256:{}", "a".repeat(64))),
+            activation_id: Some("activation:profile-a-2026".into()),
+            plan_digest: Some(format!("sha256:{}", "b".repeat(64))),
+        };
+        let identity = identity_from_health(&payload).unwrap().unwrap();
+        assert_eq!(identity.profile_id, "profile-a");
+        assert_eq!(identity.activation_id, "activation:profile-a-2026");
+    }
+
+    #[test]
+    fn authenticated_health_identity_rejects_missing_activation_binding() {
+        let payload = HealthPayload {
+            panel_ready: Some(true),
+            runtime_ready: Some(true),
+            desktop_challenge_response: None,
+            profile_id: Some("profile-a".into()),
+            profile_revision: Some(format!("sha256:{}", "a".repeat(64))),
+            activation_id: None,
+            plan_digest: Some(format!("sha256:{}", "b".repeat(64))),
+        };
+        assert!(identity_from_health(&payload).is_err());
+    }
+
+    #[test]
+    fn runtime_surface_identity_requires_all_four_bindings() {
+        let data = serde_json::json!({
+            "profile_id": "profile-a",
+            "profile_revision": format!("sha256:{}", "a".repeat(64)),
+            "plan_digest": format!("sha256:{}", "b".repeat(64)),
+            "data": {
+                "activation_record": {"activation_id": "activation:profile-a-2026"}
+            }
+        });
+        let identity = identity_from_runtime_surface(&data).unwrap();
+        assert_eq!(identity.profile_id, "profile-a");
+        assert_eq!(identity.activation_id, "activation:profile-a-2026");
+    }
+
+    #[test]
+    fn runtime_surface_identity_rejects_missing_activation_binding() {
+        let data = serde_json::json!({
+            "profile_id": "profile-a",
+            "profile_revision": format!("sha256:{}", "a".repeat(64)),
+            "plan_digest": format!("sha256:{}", "b".repeat(64))
+        });
+        assert!(identity_from_runtime_surface(&data).is_err());
+    }
+
+    #[test]
+    fn signed_contract_namespace_rejects_path_injection() {
+        assert!(validate_contract_namespace("fixture.application-2").is_ok());
+        assert!(validate_contract_namespace("../escape").is_err());
+        assert!(validate_contract_namespace("fixture/application").is_err());
+        assert!(validate_contract_namespace("Fixture.application").is_err());
     }
 }

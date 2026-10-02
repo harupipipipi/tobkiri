@@ -109,6 +109,19 @@
     "execution": { "type": "frontend", "action": "clear_composer_state" }
   },
   {
+    "id": "home_title",
+    "name": "title",
+    "aliases": ["name"],
+    "label": "Home Title",
+    "description": "Show or change the Tobkiri home title. Use reset to restore the default.",
+    "category": "settings",
+    "visibility": "default",
+    "risk": "low",
+    "modes": ["chat", "coding", "agent"],
+    "args": [{ "name": "value", "type": "string", "required": false, "greedy": true, "placeholder": "表示したい文字を入力" }],
+    "execution": { "type": "frontend", "action": "set_home_title" }
+  },
+  {
     "id": "coding",
     "name": "coding",
     "label": "Coding Mode",
@@ -157,23 +170,23 @@
   {
     "id": "yolo",
     "name": "yolo",
-    "label": "Yolo Approvals",
-    "description": "Toggle automatic execution for tools that do not require approval.",
+    "label": "Full Access (YOLO)",
+    "description": "Toggle Full Access. /yolo and the Full Access approval option are the same setting.",
     "category": "mode",
     "visibility": "default",
     "risk": "medium",
     "modes": ["chat", "coding", "agent"],
     "args": [{ "name": "enabled", "type": "boolean", "required": false }],
-    "execution": { "type": "frontend", "action": "toggle_yolo" }
+    "execution": { "type": "frontend", "action": "toggle_ultra_yolo" }
   },
   {
     "id": "ultra_yolo",
     "name": "ultra",
     "aliases": ["ultra yolo", "ultrayolo", "ultra_yolo"],
-    "label": "Ultra Yolo",
-    "description": "Toggle automatic approval for tools that normally require permission. /ultra yolo, /ultrayolo, and /ultra_yolo all work.",
+    "label": "Full Access (legacy alias)",
+    "description": "Legacy aliases for Full Access. This is the same setting as /yolo.",
     "category": "mode",
-    "visibility": "default",
+    "visibility": "advanced",
     "risk": "medium",
     "modes": ["chat", "coding", "agent"],
     "args": [{ "name": "enabled", "type": "boolean", "required": false }],
@@ -292,7 +305,7 @@
     "visibility": "hidden",
     "risk": "high",
     "modes": ["coding"],
-    "args": [{ "name": "message", "type": "string", "required": false }],
+    "args": [{ "name": "message", "type": "string", "required": true, "greedy": true }],
     "execution": { "type": "frontend", "action": "request_commit_approval" }
   },
   {
@@ -304,6 +317,10 @@
     "visibility": "hidden",
     "risk": "high",
     "modes": ["coding"],
+    "args": [
+      { "name": "remote", "type": "string", "required": false },
+      { "name": "branch", "type": "string", "required": false }
+    ],
     "execution": { "type": "frontend", "action": "request_push_approval" }
   },
   {
@@ -315,7 +332,7 @@
     "visibility": "hidden",
     "risk": "high",
     "modes": ["coding"],
-    "args": [{ "name": "cmd", "type": "string", "required": false }],
+    "args": [{ "name": "cmd", "type": "string", "required": true, "greedy": true }],
     "execution": { "type": "frontend", "action": "request_terminal_approval" }
   },
   {
@@ -327,6 +344,7 @@
     "visibility": "hidden",
     "risk": "high",
     "modes": ["coding"],
+    "args": [{ "name": "patch", "type": "string", "required": true, "greedy": true }],
     "execution": { "type": "frontend", "action": "request_patch_approval" }
   },
   {
@@ -338,6 +356,7 @@
     "visibility": "hidden",
     "risk": "high",
     "modes": ["coding"],
+    "args": [{ "name": "paths", "type": "string", "required": true, "greedy": true }],
     "execution": { "type": "frontend", "action": "request_restore_approval" }
   },
   {

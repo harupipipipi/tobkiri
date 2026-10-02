@@ -1,0 +1,71 @@
+{
+  "id": "settings_update",
+  "category": "tool",
+  "description": "Apply explicitly confirmed safe Tobkiri setting changes.",
+  "skills": [
+    "settings_assistant"
+  ],
+  "config": {
+    "tool_id": "settings_update",
+    "name": "Settings Update",
+    "summary": "Validate and apply confirmed non-secret setting changes.",
+    "tool_category": "settings",
+    "action_type": "write",
+    "write_action": true,
+    "requires_approval": true,
+    "risk": "medium",
+    "tags": [
+      "settings",
+      "configuration",
+      "write"
+    ],
+    "ui": {
+      "group_id": "settings",
+      "group_label": "Settings",
+      "group_icon": "settings",
+      "item_icon": "settings",
+      "widget_kind": "tool_toggle",
+      "composer_label": "Settings Update",
+      "composer_description": "Apply confirmed safe Tobkiri settings after approval.",
+      "composer_icon": "settings"
+    },
+    "schema": {
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "changes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 50,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "section_id": {
+                  "type": "string"
+                },
+                "field_id": {
+                  "type": "string"
+                },
+                "value": {}
+              },
+              "required": [
+                "section_id",
+                "field_id",
+                "value"
+              ]
+            }
+          }
+        },
+        "required": [
+          "changes"
+        ]
+      }
+    },
+    "execution": {
+      "type": "local",
+      "handler": "domain.tool.settings_tools:settings_update"
+    }
+  }
+}

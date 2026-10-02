@@ -1,7 +1,9 @@
 import path from "node:path";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, normalizePath, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+
+const compatibilitySurfacePath = normalizePath(path.resolve(__dirname, "src/App.tsx"));
 
 function staticShellChunkUrls(): Plugin {
   return {
@@ -43,6 +45,9 @@ export default defineConfig({
         entryFileNames: "shell-app.js",
         chunkFileNames: "shell-[name].js",
         manualChunks(id) {
+          if (normalizePath(id.split("?")[0]) === compatibilitySurfacePath) {
+            return "defaultspack-app";
+          }
           if (!id.includes("node_modules")) return undefined;
           if (id.includes("react-markdown") || id.includes("micromark") || id.includes("remark") || id.includes("mdast") || id.includes("hast")) {
             return "markdown";

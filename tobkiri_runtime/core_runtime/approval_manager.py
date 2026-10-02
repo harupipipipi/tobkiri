@@ -23,6 +23,7 @@ Wave 17-B 変更:
 from __future__ import annotations
 
 import hashlib
+import hmac
 import logging
 import json
 import os
@@ -33,7 +34,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Set, Tuple
 
 
 from .paths import (
@@ -47,18 +48,31 @@ from .paths import (
     check_pack_id_mismatch,
     PackLocation,
 )
-
-logger = logging.getLogger(__name__)
-
-
-TRUSTED_BUILTIN_PACK_IDS = {"defaultspack", "rumi_default_tools_pack", "rumi_host_capabilities_pack"}
-
-
 from .hmac_key_manager import (
     generate_or_load_signing_key,
     compute_data_hmac,
     verify_data_hmac,
 )
+from .host_contract import host_contract_value
+
+logger = logging.getLogger(__name__)
+
+
+SYSTEM_PACK_DESCRIPTOR_SCHEMA = "io.tobkiri.system-pack-trust.v1"
+
+
+def _signed_system_pack_descriptors() -> list[Mapping[str, Any]]:
+    """Read host-verified system-Pack descriptors without ambient fallback."""
+    raw = host_contract_value("system_pack_descriptors")
+    if not raw:
+        return []
+    try:
+        decoded = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(decoded, list):
+        return []
+    return [item for item in decoded if isinstance(item, Mapping)]
 
 
 class PackStatus(Enum):
@@ -119,7 +133,8 @@ class ApprovalManager:
         self,
         packs_dir: str = ECOSYSTEM_DIR,
         grants_dir: str = GRANTS_DIR,
-        secret_key: Optional[str] = None
+        secret_key: Optional[str] = None,
+        system_pack_descriptors: Iterable[Mapping[str, Any]] | None = None,
     ):
         self.packs_dir = Path(packs_dir)
         self.grants_dir = Path(grants_dir)
@@ -138,6 +153,14 @@ class ApprovalManager:
         self._hash_cache: Dict[str, Tuple[Dict[str, str], float]] = {}
         self._hash_cache_ttl: float = float(
             os.environ.get("RUMI_HASH_CACHE_TTL_SEC", "30")
+        )
+        descriptors = (
+            list(system_pack_descriptors)
+            if system_pack_descriptors is not None
+            else _signed_system_pack_descriptors()
+        )
+        self._system_pack_descriptors = tuple(
+            dict(item) for item in descriptors if isinstance(item, Mapping)
         )
     
     def _now_ts(self) -> str:
@@ -180,48 +203,69 @@ class ApprovalManager:
             return None
         return candidate
 
-    def _is_trusted_builtin_pack(self, pack_id: str) -> bool:
-        """Bundled runtime packs are trusted only at their canonical shipped location."""
+    def _is_system_pack(self, pack_id: str) -> bool:
+        """Return true only for a host-verified system-Pack descriptor."""
         normalized_pack_id = str(pack_id or "").strip()
-        if normalized_pack_id not in TRUSTED_BUILTIN_PACK_IDS:
+        if not normalized_pack_id:
             return False
-
+        # A partially initialized manager has no trusted descriptor root.  It
+        # must never promote a Pack to system trust merely because a caller
+        # supplied a core-looking ID or location.
+        if not isinstance(getattr(self, "packs_dir", None), Path):
+            return False
+        if not isinstance(getattr(self, "_system_pack_descriptors", None), tuple):
+            return False
         pack_dir = self._resolve_pack_dir(normalized_pack_id)
         if pack_dir is None or not pack_dir.exists():
             return False
 
-        return self._is_bundled_builtin_pack_dir(pack_dir, normalized_pack_id)
+        return self._system_pack_descriptor(
+            normalized_pack_id,
+            pack_dir,
+        ) is not None
 
-    @staticmethod
-    def _is_bundled_builtin_pack_dir(pack_dir: Path, pack_id: str | None = None) -> bool:
+    def _is_trusted_builtin_pack(self, pack_id: str) -> bool:
+        """Compatibility name for generic, descriptor-backed system trust."""
+        return self._is_system_pack(pack_id)
+
+    def _system_pack_descriptor(
+        self,
+        pack_id: str,
+        pack_dir: Path,
+    ) -> Mapping[str, Any] | None:
         try:
-            resolved = pack_dir.resolve()
-        except OSError:
-            resolved = pack_dir
-        ecosystem_root = None
-        if ECOSYSTEM_DIR:
+            resolved_pack_dir = pack_dir.resolve()
+            resolved_packs_root = self.packs_dir.resolve()
+            resolved_pack_dir.relative_to(resolved_packs_root)
+        except (OSError, ValueError):
+            return None
+        for descriptor in self._system_pack_descriptors:
+            if descriptor.get("schema") != SYSTEM_PACK_DESCRIPTOR_SCHEMA:
+                continue
+            if descriptor.get("trust_class") != "system":
+                continue
+            if str(descriptor.get("pack_id") or "").strip() != pack_id:
+                continue
+            root = descriptor.get("root")
+            if not isinstance(root, str) or not root:
+                continue
             try:
-                ecosystem_root = Path(ECOSYSTEM_DIR).resolve()
+                if Path(root).expanduser().resolve() != resolved_pack_dir:
+                    continue
             except OSError:
-                ecosystem_root = Path(ECOSYSTEM_DIR)
-        if ecosystem_root is not None:
-            try:
-                relative = resolved.relative_to(ecosystem_root)
-            except ValueError:
-                relative = None
-            if relative is not None:
-                if not relative.parts:
-                    return False
-                if pack_id and relative.parts[0] != pack_id:
-                    return False
-                return True
-        if pack_id and resolved.name != pack_id:
-            return False
-        if resolved.parent.name != "ecosystem":
-            return False
-        runtime_root = resolved.parent.parent
-        return runtime_root.name == "app"
-    
+                continue
+            return descriptor
+        return None
+
+    def is_pack_in_process_allowed(
+        self,
+        pack_id: str,
+        pack_root: Path,
+    ) -> bool:
+        """Check the explicit system-Pack permission for in-process execution."""
+        descriptor = self._system_pack_descriptor(str(pack_id or "").strip(), pack_root)
+        return bool(descriptor and descriptor.get("allow_in_process") is True)
+
     def _invalidate_hash_cache(self, pack_id: str) -> None:
         """指定 pack のハッシュキャッシュを無効化する"""
         if pack_id == LOCAL_PACK_ID:
@@ -232,6 +276,14 @@ class ApprovalManager:
             pack_dir = self._resolve_pack_dir(pack_id)
             if pack_dir:
                 self._hash_cache.pop(str(pack_dir.resolve()), None)
+        try:
+            from .resolved_profile_scope import (
+                invalidate_persisted_resolved_profile,
+            )
+
+            invalidate_persisted_resolved_profile()
+        except ImportError:
+            pass
     
     def initialize(self) -> None:
         """初期化: grants.jsonを読み込み"""
@@ -358,7 +410,7 @@ class ApprovalManager:
         
         対象: ecosystem/flows/**/*.flow.yaml, ecosystem/flows/**/*.modifier.yaml
         """
-        hashes = {}
+        hashes: Dict[str, str] = {}
         local_dir = self._get_local_pack_dir()
         
         if not local_dir.exists():
@@ -502,7 +554,7 @@ class ApprovalManager:
     def get_status(self, pack_id: str) -> Optional[PackStatus]:
         """Pack状態を取得"""
         # W22-A: core_pack は常時 APPROVED
-        if self._is_core_pack(pack_id) or self._is_trusted_builtin_pack(pack_id):
+        if self._is_core_pack(pack_id) or self._is_system_pack(pack_id):
             return PackStatus.APPROVED
 
         with self._lock:
@@ -531,10 +583,9 @@ class ApprovalManager:
             - is_valid: True = 承認済み+ハッシュ一致
             - reason: 不合格の場合の理由
         """
-        # W22-A: core_pack は常時承認済み
-        # defaultspack / rumi_default_tools_pack only bypass grants.json when the
-        # resolved pack path is the bundled runtime copy shipped with the host.
-        if self._is_core_pack(pack_id) or self._is_trusted_builtin_pack(pack_id):
+        # Core Packs and signed system-Pack descriptors bypass grants only after
+        # their canonical roots have been verified.
+        if self._is_core_pack(pack_id) or self._is_system_pack(pack_id):
             return True, None
 
         with self._lock:
@@ -557,87 +608,33 @@ class ApprovalManager:
             return False, "hash_mismatch"
         
         return True, None
-    
-    # ------------------------------------------------------------------ #
-    # Wave 1-2: 開発モード自動承認
-    # ------------------------------------------------------------------ #
 
-    def auto_approve_if_dev(self, pack_id: str) -> bool:
-        """開発環境で未承認Packを自動承認する。
+    def get_verified_pack_trust(
+        self, pack_ids: Iterable[str]
+    ) -> Dict[str, str]:
+        """Return host-verified trust classes for authorized pack IDs.
 
-        発動条件:
-          - RUMI_ENVIRONMENT が 'development' または 'dev'
-          - RUMI_AUTO_APPROVE_LOCAL が 'true'
-
-        BLOCKED 状態のPackは自動承認しない。
-        既に APPROVED なら True を返す。
-
-        Returns:
-            True: 自動承認成功（または既に APPROVED）
-            False: 自動承認しなかった
+        Only canonical shipped core and host-verified system Pack descriptors receive
+        ``system`` trust. Other approved packs receive ``verified`` after the
+        normal approval and hash-verification path succeeds.
         """
-        # 環境変数の2重ガード
-        rumi_env = os.environ.get("RUMI_ENVIRONMENT", "").lower()
-        if rumi_env not in ("development", "dev"):
-            return False
-
-        auto_approve = os.environ.get("RUMI_AUTO_APPROVE_LOCAL", "").lower()
-        if auto_approve != "true":
-            return False
-
-        # 現在の状態を確認
-        with self._lock:
-            approval = self._approvals.get(pack_id)
-            if not approval:
-                return False
-            current_status = approval.status
-
-        # 既に APPROVED なら True
-        if current_status == PackStatus.APPROVED:
-            return True
-
-        # BLOCKED は自動承認しない
-        if current_status == PackStatus.BLOCKED:
-            return False
-
-        # approve() を呼び出す
-        result = self.approve(pack_id)
-
-        if result.success:
-            logger.info(
-                "DEV_AUTO_APPROVE: Pack '%s' auto-approved in development mode.",
-                pack_id,
-            )
-            # 監査ログに記録
-            try:
-                from .audit_logger import get_audit_logger
-                get_audit_logger().log_security_event(
-                    event_type="dev_auto_approve",
-                    severity="warning",
-                    description=f"Pack '{pack_id}' auto-approved in development mode",
-                    pack_id=pack_id,
-                    details={
-                        "rumi_environment": rumi_env,
-                        "auto_approve_local": auto_approve,
-                    },
-                )
-            except Exception:
-                pass
-            return True
-
-        logger.warning(
-            "DEV_AUTO_APPROVE: Failed to auto-approve pack '%s': %s",
-            pack_id, result.error,
-        )
-        return False
-
+        verified: Dict[str, str] = {}
+        for raw_pack_id in pack_ids:
+            pack_id = str(raw_pack_id or "").strip()
+            if not pack_id or pack_id in verified:
+                continue
+            if self._is_core_pack(pack_id) or self._is_system_pack(pack_id):
+                verified[pack_id] = "system"
+                continue
+            if self.is_pack_approved_and_verified(pack_id)[0]:
+                verified[pack_id] = "verified"
+        return verified
+    
     def approve(self, pack_id: str) -> ApprovalResult:
         """Packを承認"""
         with self._lock:
             if pack_id not in self._approvals:
                 return ApprovalResult(success=False, pack_id=pack_id, error="Pack not found")
-            
-            approval = self._approvals[pack_id]
             
             # local_pack特殊処理
             if pack_id == LOCAL_PACK_ID:
@@ -649,54 +646,150 @@ class ApprovalManager:
                 
                 file_hashes = self._compute_pack_hashes(pack_dir)
             
-            previous_hashes = dict(approval.file_hashes)
+            return self._persist_approved_snapshot(pack_id, file_hashes)
 
-            approval.status = PackStatus.APPROVED
-            approval.approved_at = self._now_ts()
-            approval.file_hashes = file_hashes
-            approval.rejection_reason = None
-            if approval.rule_approved and previous_hashes != file_hashes:
-                self._clear_rule_approval(approval)
+    def _persist_approved_snapshot(
+        self, pack_id: str, file_hashes: Mapping[str, str]
+    ) -> ApprovalResult:
+        """Persist exactly the hashes already inspected by the caller.
 
-            # G-3: バージョン履歴を記録
-            approval.version_history.append({
-                "version": len(approval.version_history) + 1,
-                "timestamp": approval.approved_at,
-                "action": "approve",
-                "file_hashes": dict(file_hashes),
-            })
-            
-            self._save_grant(approval)
-
-            # #62: 宣言的Store作成
-            self._create_declared_stores(pack_id)
-
-            # W18-B: host_execution 警告ログ (W26-HOTFIX: try/except保護)
-            try:
-                eco_data = self._read_ecosystem_data(pack_id)
-                if eco_data.get("host_execution", False) is True:
-                    logger.warning(
-                        "SECURITY: Pack '%s' declares host_execution=true. "
-                        "This pack will run directly on the host without Docker isolation.",
-                        pack_id,
+        This method intentionally never scans the Pack.  In particular,
+        delegated approval must not compare snapshot A and then accidentally
+        approve a second scan B.
+        """
+        approval = self._approvals[pack_id]
+        exact_hashes = {
+            str(path): str(digest) for path, digest in sorted(file_hashes.items())
+        }
+        previous_hashes = dict(approval.file_hashes)
+        approval.status = PackStatus.APPROVED
+        approval.approved_at = self._now_ts()
+        approval.file_hashes = exact_hashes
+        approval.rejection_reason = None
+        if approval.rule_approved and previous_hashes != exact_hashes:
+            self._clear_rule_approval(approval)
+        approval.version_history.append({
+            "version": len(approval.version_history) + 1,
+            "timestamp": approval.approved_at,
+            "action": "approve",
+            "file_hashes": dict(exact_hashes),
+        })
+        self._save_grant(approval)
+        self._create_declared_stores(pack_id)
+        try:
+            eco_data = self._read_ecosystem_data(pack_id)
+            if eco_data.get("host_execution", False) is True:
+                logger.warning(
+                    "SECURITY: Pack '%s' declares host_execution=true. "
+                    "This pack will run directly on the host without Docker isolation.",
+                    pack_id,
+                )
+                try:
+                    from .audit_logger import get_audit_logger
+                    get_audit_logger().log_security_event(
+                        event_type="approve_host_execution_warning",
+                        severity="warning",
+                        description=f"Pack '{pack_id}' runs on host without Docker isolation",
+                        pack_id=pack_id,
                     )
-                    try:
-                        from .audit_logger import get_audit_logger
-                        get_audit_logger().log_security_event(
-                            event_type="approve_host_execution_warning",
-                            severity="warning",
-                            description=f"Pack '{pack_id}' runs on host without Docker isolation",
-                            pack_id=pack_id,
-                        )
-                    except Exception:
-                        pass
-            except Exception:
-                pass  # host_execution check failure must not block approval
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        self._invalidate_hash_cache(pack_id)
+        return ApprovalResult(
+            success=True, pack_id=pack_id, status=PackStatus.APPROVED
+        )
 
-            # キャッシュ無効化
+    @staticmethod
+    def _pack_snapshot_digest(pack_id: str, file_hashes: Mapping[str, str]) -> str:
+        """Return a path-free digest for one exact Pack content snapshot."""
+        payload = {
+            "pack_id": str(pack_id),
+            "file_hashes": {
+                str(path): str(digest)
+                for path, digest in sorted(file_hashes.items())
+            },
+        }
+        canonical = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    def get_pack_approval_snapshot(self, pack_id: str) -> dict[str, Any]:
+        """Describe the exact Pack content a delegated approval would authorize."""
+        with self._lock:
+            file_hashes, error = self._exact_pack_hashes(pack_id)
+            if error:
+                return {"success": False, "error": error}
+            status = self.get_status(pack_id)
+            return {
+                "success": True,
+                "pack_id": pack_id,
+                "status": status.value if status else "unknown",
+                "snapshot_digest": self._pack_snapshot_digest(pack_id, file_hashes),
+                "file_count": len(file_hashes),
+            }
+
+    def _exact_pack_hashes(
+        self, pack_id: str
+    ) -> tuple[Dict[str, str], Optional[str]]:
+        if pack_id not in self._approvals:
+            return {}, "Pack not found"
+        if pack_id == LOCAL_PACK_ID:
+            return self._compute_local_pack_hashes(), None
+        pack_dir = self._resolve_pack_dir(pack_id)
+        if pack_dir is None or not pack_dir.exists():
+            return {}, "Pack directory not found"
+        return self._compute_pack_hashes_nocache(pack_dir), None
+
+    def approve_if_snapshot(self, pack_id: str, expected_digest: str) -> ApprovalResult:
+        """Approve only if Pack contents still match the reviewed snapshot."""
+        with self._lock:
+            file_hashes, error = self._exact_pack_hashes(pack_id)
+            if error:
+                return ApprovalResult(
+                    success=False,
+                    pack_id=pack_id,
+                    error=error,
+                )
+            snapshot_digest = self._pack_snapshot_digest(pack_id, file_hashes)
+            if not hmac.compare_digest(
+                snapshot_digest,
+                str(expected_digest or ""),
+            ):
+                return ApprovalResult(
+                    success=False,
+                    pack_id=pack_id,
+                    error="Pack contents changed after approval was requested",
+                )
             self._invalidate_hash_cache(pack_id)
-            
-            return ApprovalResult(success=True, pack_id=pack_id, status=PackStatus.APPROVED)
+            result = self._persist_approved_snapshot(pack_id, file_hashes)
+            if not result.success:
+                return result
+
+            # Detect a concurrent external writer in the compare→persist
+            # interval.  The grant contains only the inspected hashes above;
+            # it never adopts this verification scan.
+            current_hashes, verify_error = self._exact_pack_hashes(pack_id)
+            if verify_error or current_hashes != file_hashes:
+                approval = self._approvals[pack_id]
+                approval.status = PackStatus.MODIFIED
+                approval.rejection_reason = (
+                    "Pack contents changed while approval was being persisted"
+                )
+                self._save_grant(approval)
+                self._invalidate_hash_cache(pack_id)
+                return ApprovalResult(
+                    success=False,
+                    pack_id=pack_id,
+                    error=approval.rejection_reason,
+                    status=PackStatus.MODIFIED,
+                )
+            return result
     
     def approve_rule(self, pack_id: str) -> ApprovalResult:
         """rule Pack に対するルール拡張承認を実行する。
@@ -868,7 +961,7 @@ class ApprovalManager:
             }
         """
         # core_pack はハッシュ検証不要
-        if self._is_core_pack(pack_id) or self._is_trusted_builtin_pack(pack_id):
+        if self._is_core_pack(pack_id) or self._is_system_pack(pack_id):
             return {
                 "valid": True,
                 "critical_changed": False,
@@ -973,7 +1066,7 @@ class ApprovalManager:
     def verify_hash(self, pack_id: str, use_cache: bool = True) -> bool:
         """Packのファイルハッシュを検証"""
         # W22-A: core_pack はハッシュ検証不要
-        if self._is_core_pack(pack_id) or self._is_trusted_builtin_pack(pack_id):
+        if self._is_core_pack(pack_id) or self._is_system_pack(pack_id):
             return True
 
         # ロック内でapprovalを取得
@@ -1100,9 +1193,9 @@ class ApprovalManager:
                 if approval.status == PackStatus.APPROVED:
                     approved_packs.add(pack_id)
             approved_packs.update(
-                pack_id
-                for pack_id in TRUSTED_BUILTIN_PACK_IDS
-                if self._is_trusted_builtin_pack(pack_id)
+                str(descriptor.get("pack_id") or "").strip()
+                for descriptor in self._system_pack_descriptors
+                if self._is_system_pack(str(descriptor.get("pack_id") or ""))
             )
         
         # ハッシュ検証（ロック外）

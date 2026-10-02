@@ -1,0 +1,65 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.tool.arguments.validate.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Deterministic non-coercing tool argument validation.",
+  "display_name": "Rumi Tool Validation",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:1412c9f3e7012bcdda7b9530030da4087829f84bbafa86faeabe57779c300533",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:cd95ebaed6a032c68d2e789742501b1df561abdb6438e7b46aa9856842a0105b"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:cd95ebaed6a032c68d2e789742501b1df561abdb6438e7b46aa9856842a0105b"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "tool_argument_validation"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "coercion": false,
+      "execution": false
+    }
+  },
+  "pack_id": "rumi_tool_validation_pack",
+  "pack_identity": "rumi:ecosystem/rumi_tool_validation_pack",
+  "provenance": {
+    "build_identity": "rumi_tool_validation_pack:1.0.0",
+    "content_hash": "sha256:7552c60c94227335e8760d0f0de29e223e91f4a7d8ef22d6d25d9330649ee965",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "tool.arguments.validate"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "schema": "io.tobkiri.quality.pack-migration-runtime-receipts.v1",
+  "authority": "host-runtime-receipts",
+  "generator_id": null,
+  "receipts": {}
+}

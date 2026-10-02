@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-import json
-import os
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 import re
 from pathlib import Path
 from typing import Any
 
+from domain.frontend_settings import (
+    frontend_settings_path,
+    read_optional_frontend_settings,
+)
 from domain.webhook.endpoint import WebhookEndpoint
 
 
@@ -18,6 +22,7 @@ def decide_line_addressing(
     *,
     endpoint: WebhookEndpoint,
     mentioned: bool,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> dict[str, Any]:
     scope_type = getattr(getattr(external_event, "scope", None), "type", "")
     if scope_type == "user":
@@ -43,7 +48,7 @@ def decide_line_addressing(
         }
 
     text = _line_message_text(event)
-    trigger = _line_trigger_match(text, _line_addressing_trigger_words(endpoint))
+    trigger = _line_trigger_match(text, _line_addressing_trigger_words(endpoint, settings_owner=settings_owner))
     if trigger:
         return {
             "addressed": True,
@@ -68,7 +73,7 @@ def _line_message_text(event: dict[str, Any]) -> str:
     return str(message.get("text") or "").strip()
 
 
-def _line_addressing_trigger_words(endpoint: WebhookEndpoint) -> list[str]:
+def _line_addressing_trigger_words(endpoint: WebhookEndpoint, *, settings_owner: SettingsOwnerPort | None = None) -> list[str]:
     values: list[str] = []
     response = endpoint.response if isinstance(endpoint.response, dict) else {}
     conversation = endpoint.conversation if isinstance(endpoint.conversation, dict) else {}
@@ -82,10 +87,7 @@ def _line_addressing_trigger_words(endpoint: WebhookEndpoint) -> list[str]:
         ):
             values.extend(_listish(container.get(key)))
     if not values:
-        try:
-            data = json.loads(_frontend_settings_path().read_text(encoding="utf-8"))
-        except Exception:
-            data = {}
+        data = read_optional_frontend_settings(settings_owner=settings_owner)
         line_settings = data.get("line") if isinstance(data, dict) and isinstance(data.get("line"), dict) else {}
         for key in ("line_trigger_words", "group_room_trigger_words", "addressing_trigger_words", "trigger_words"):
             values.extend(_listish(line_settings.get(key)))
@@ -139,5 +141,4 @@ def _ascii_word(text: str) -> bool:
 
 
 def _frontend_settings_path() -> Path:
-    override = os.environ.get("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", "").strip()
-    return Path(override) if override else Path(__file__).resolve().parents[3] / "user_data" / "shared" / "frontend_settings.json"
+    return frontend_settings_path()

@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
+import json
 import os
 import platform
 import shutil
@@ -15,9 +17,17 @@ from pathlib import Path
 from types import ModuleType
 from typing import Mapping, Sequence
 
+sys.dont_write_bytecode = True
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TAURI_TARGET_ENV = "TAURI_ENV_TARGET_TRIPLE"
 UV_PATH_ENV = "RUMI_UV_PATH"
+SOURCE_PROVENANCE_FILENAME = "packaging-source-provenance.v1.json"
+ISOLATED_MODULE_CODE = (
+    "import runpy,sys;root=sys.argv[1];name=sys.argv[2];"
+    "sys.path.insert(0,root);sys.argv=[name,*sys.argv[3:]];"
+    "runpy.run_module(name,run_name='__main__',alter_sys=True)"
+)
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -114,11 +124,15 @@ def run_command(
     *,
     cwd: Path | None = None,
     capture_output: bool = False,
+    env: Mapping[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    environment = dict(os.environ if env is None else env)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
     return subprocess.run(
         [os.fspath(part) for part in command],
         cwd=cwd,
         check=True,
+        env=environment,
         text=True,
         stdout=subprocess.PIPE if capture_output else None,
         stderr=subprocess.PIPE if capture_output else None,
@@ -155,6 +169,7 @@ def copy_dev_uv(source: Path, destination: Path) -> None:
         if os.name != "nt":
             temporary.chmod(
                 temporary.stat().st_mode
+                | stat.S_IWUSR
                 | stat.S_IXUSR
                 | stat.S_IXGRP
                 | stat.S_IXOTH
@@ -191,6 +206,225 @@ def prepare_dev(repo_root: Path, target: str) -> Path:
         )
     print(f"Prepared development uv at {destination} from {source} ({staged_version})")
     return destination
+
+
+def _target_shell_spec(repo_root: Path, target: str) -> dict[str, str | Path]:
+    target_root = repo_root / "tobkiri_launcher" / "src-tauri" / "target" / target / "debug"
+    if target == "aarch64-apple-darwin":
+        platform_name, architecture = "macos", "arm64"
+    elif target == "x86_64-apple-darwin":
+        platform_name, architecture = "macos", "x86_64"
+    elif target == "x86_64-unknown-linux-gnu":
+        platform_name, architecture = "linux", "x86_64"
+    elif target == "x86_64-pc-windows-msvc":
+        platform_name, architecture = "windows", "x86_64"
+    else:
+        raise RuntimeError(f"Unsupported development Shell target: {target}")
+
+    if platform_name == "macos":
+        artifact = target_root / "bundle" / "macos" / "Tobkiri.app"
+        return {
+            "platform": platform_name,
+            "architecture": architecture,
+            "bundle": "app",
+            "artifact": artifact,
+            "relative_path": "Tobkiri.app",
+            "entrypoint": "Tobkiri.app/Contents/MacOS/tobkiri-shell",
+        }
+    if platform_name == "linux":
+        artifact_dir = target_root / "bundle" / "appimage"
+        candidates = sorted(artifact_dir.glob("*.AppImage"))
+        artifact = candidates[0] if len(candidates) == 1 else artifact_dir / "Tobkiri.AppImage"
+        return {
+            "platform": platform_name,
+            "architecture": architecture,
+            "bundle": "appimage",
+            "artifact": artifact,
+            "relative_path": "Tobkiri.AppImage",
+            "entrypoint": "Tobkiri.AppImage",
+        }
+    artifact = target_root / "tobkiri-shell.exe"
+    return {
+        "platform": platform_name,
+        "architecture": architecture,
+        "bundle": "nsis",
+        "artifact": artifact,
+        "relative_path": "tobkiri-shell.exe",
+        "entrypoint": "tobkiri-shell.exe",
+    }
+
+
+def sign_development_macos_app(application: Path) -> None:
+    """Give the checkout Shell a complete, launchable ad-hoc bundle signature."""
+    if sys.platform != "darwin":
+        return
+    run_command(
+        [
+            "/usr/bin/codesign",
+            "--force",
+            "--sign",
+            "-",
+            "--timestamp=none",
+            application,
+        ]
+    )
+    run_command(
+        [
+            "/usr/bin/codesign",
+            "--verify",
+            "--strict",
+            "--all-architectures",
+            application,
+        ]
+    )
+
+
+def prepare_dev_pack_shell(repo_root: Path, target: str) -> Path:
+    """Build and stage the verified checkout Pack Shell."""
+    manifest = repo_root / "pack-shell" / "Cargo.toml"
+    run_command(
+        ["cargo", "build", "--target", target, "--manifest-path", manifest],
+        cwd=repo_root,
+    )
+    binary_name = "pack-shell.exe" if is_windows_target(target) else "pack-shell"
+    binary = repo_root / "pack-shell" / "target" / target / "debug" / binary_name
+    if not binary.is_file():
+        raise RuntimeError(f"Development pack-shell was not produced: {binary}")
+    digest_path = binary.with_name(f"{binary.name}.sha256")
+    digest_path.write_text(hashlib.sha256(binary.read_bytes()).hexdigest() + "\n", encoding="ascii")
+    bundled_root = repo_root / "tobkiri_runtime" / "bundled"
+    bundled_root.mkdir(parents=True, exist_ok=True)
+    copy_dev_uv(binary, bundled_root / binary_name)
+    presentation_catalog = (
+        repo_root
+        / "tobkiri_launcher"
+        / "src-tauri"
+        / "bundled"
+        / "presentation_catalog.json"
+    )
+    if not presentation_catalog.is_file():
+        raise RuntimeError(f"Launcher presentation catalog is missing: {presentation_catalog}")
+    shutil.copy2(presentation_catalog, bundled_root / "presentation_catalog.json")
+    return binary
+
+
+def _git_identity(repo_root: Path, revision: str) -> str:
+    result = run_command(
+        ["git", "rev-parse", "--verify", revision],
+        cwd=repo_root,
+        capture_output=True,
+    )
+    identity = result.stdout.strip()
+    if len(identity) != 40 or any(character not in "0123456789abcdef" for character in identity):
+        raise RuntimeError(f"Git returned an invalid identity for {revision}")
+    return identity
+
+
+def prepare_dev_defaults(repo_root: Path, target: str) -> Path:
+    """Build a development Defaults bundle from verified clean source."""
+    launcher_root = repo_root / "tobkiri_launcher"
+    runtime_root = repo_root / "tobkiri_runtime"
+    spec = _target_shell_spec(repo_root, target)
+    run_command(
+        [
+            "cargo", "tauri", "build", "--debug", "--target", target,
+            "--config", "src-tauri/tauri.shell.conf.json",
+            "--bundles", str(spec["bundle"]), "--ci",
+        ],
+        cwd=launcher_root,
+    )
+    artifact = Path(spec["artifact"])
+    if not artifact.exists():
+        raise RuntimeError(f"Development Tauri Shell was not produced: {artifact}")
+    if spec["platform"] == "macos":
+        # Cargo's linker signature covers only the Mach-O. LaunchServices
+        # requires a complete application-bundle signature, even for local
+        # unsigned development. Ad-hoc-sign the exact bytes used by both the
+        # Launcher and Defaults metadata so developers need no certificate.
+        sign_development_macos_app(artifact)
+
+    # The Launcher resolves presentation artifacts beneath its application
+    # root.  Keep the unsigned checkout Shell in an ignored development-only
+    # location there so a debug Launcher can verify the exact bytes it will
+    # launch without weakening packaged release bindings.
+    dev_shell_root = runtime_root / "bundled" / "dev-shell"
+    if dev_shell_root.exists():
+        if dev_shell_root.is_symlink() or not dev_shell_root.is_dir():
+            raise RuntimeError(f"Unsafe development Shell output: {dev_shell_root}")
+        shutil.rmtree(dev_shell_root)
+    dev_shell_root.mkdir(parents=True)
+    staged_shell = dev_shell_root / str(spec["relative_path"])
+    if artifact.is_dir():
+        shutil.copytree(artifact, staged_shell)
+    else:
+        shutil.copy2(artifact, staged_shell)
+
+    output_root = launcher_root / "src-tauri" / "target" / "dev-defaults"
+    if output_root.exists():
+        if output_root.is_symlink() or not output_root.is_dir():
+            raise RuntimeError(f"Unsafe development Defaults output: {output_root}")
+        shutil.rmtree(output_root)
+    bundle_root = output_root / "v4"
+    artifact_root = output_root / "platform-artifacts"
+    shutil.copytree(runtime_root / "ecosystem" / "defaultspack" / "v4", bundle_root)
+    artifact_root.mkdir(parents=True)
+
+    manifest = runtime_root / "packaged_defaultspack_source_manifest.v1.json"
+    provenance = runtime_root / SOURCE_PROVENANCE_FILENAME
+    if provenance.exists() or provenance.is_symlink():
+        raise RuntimeError(f"Refusing to replace existing source provenance: {provenance}")
+    source_status = run_command(
+        ["git", "status", "--porcelain", "--untracked-files=normal"],
+        cwd=repo_root,
+        capture_output=True,
+    )
+    if source_status.stdout.strip():
+        raise RuntimeError(
+            "Development Defaults packaging requires committed source changes; "
+            "refusing to attest a modified checkout as clean."
+        )
+    payload = {
+        "schema": "io.tobkiri.packaging-source-provenance.v1",
+        "source_commit": _git_identity(repo_root, "HEAD"),
+        "source_tree": _git_identity(repo_root, "HEAD^{tree}"),
+        "source_clean": True,
+        "source_manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+    }
+    try:
+        provenance.write_text(json.dumps(payload, separators=(",", ":")) + "\n", encoding="utf-8")
+        provenance.chmod(0o444)
+        python = repo_root / ".venv" / ("Scripts/python.exe" if is_windows_target(target) else "bin/python3")
+        if not python.is_file():
+            raise RuntimeError(f"Development Python environment is missing: {python}")
+        run_command(
+            [
+                python, "-I", "-B", "-c", ISOLATED_MODULE_CODE,
+                runtime_root, "scripts.generate_packaged_defaultspack_v4_bundle",
+                "--source-artifact", artifact,
+                "--bundle-root", bundle_root,
+                "--artifact-root", artifact_root,
+                "--relative-path", str(spec["relative_path"]),
+                "--entrypoint", str(spec["entrypoint"]),
+                "--platform", str(spec["platform"]),
+                "--architecture", str(spec["architecture"]),
+                "--bundle-identity", "io.tobkiri.shell.tauri",
+                "--source-provenance-file", SOURCE_PROVENANCE_FILENAME,
+            ],
+            cwd=runtime_root,
+        )
+    finally:
+        if provenance.exists():
+            provenance.chmod(0o600)
+            provenance.unlink()
+    print(f"Prepared unsigned development Defaults Profile at {bundle_root}")
+    return bundle_root
+
+
+def prepare_dev_environment(repo_root: Path, target: str) -> None:
+    """Prepare development tools and the matching Defaults application."""
+    prepare_dev(repo_root, target)
+    prepare_dev_pack_shell(repo_root, target)
+    prepare_dev_defaults(repo_root, target)
 
 
 def load_resource_preparer(repo_root: Path) -> ModuleType:
@@ -241,11 +475,14 @@ def prepare_release(repo_root: Path, target: str) -> None:
         cwd=repo_root,
     )
 
+    preparer.seal_pack_shell_binary(repo_root, target)
     remove_existing_staged_uv(repo_root, target)
 
     run_command(
         [
             sys.executable,
+            "-I",
+            "-B",
             repo_root / ".github" / "scripts" / "prepare_tauri_resources.py",
             "--repo-root",
             repo_root,
@@ -255,7 +492,8 @@ def prepare_release(repo_root: Path, target: str) -> None:
             preparer.UV_PINNED_VERSION,
             "--require-runtime-tools",
         ],
-        cwd=repo_root,
+        # The sealed interpreter resolves its relocatable home from this root.
+        cwd=Path(os.environ.get("TOBKIRI_PACKAGING_PYTHON_SNAPSHOT", repo_root)),
     )
 
 
@@ -266,7 +504,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         if args.mode == "dev":
-            prepare_dev(repo_root, target)
+            prepare_dev_environment(repo_root, target)
         else:
             prepare_release(repo_root, target)
     except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:

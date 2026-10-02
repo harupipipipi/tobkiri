@@ -1,0 +1,57 @@
+{
+  "artifact_set_digest": "sha256:5ecbd66b3e2691b3ab9f55e65db79981547a9c267756df56aaf7647c9a1eb72c",
+  "artifacts": [
+    {
+      "digest": "sha256:536d4ed314475b1f62ef3dcf707d0ad659a63138e756b2b8849c3387c9589e36",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:f19a676e707a60e37ba22692113b91615d90e5c4363875a7f8157570dee3c4ba",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:c87e30e243f53b193c3a77c7a5b6e772893b7a518368204d11748bab25e55643",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:ff8ff76a53f685a2febdcc5555e8e619f82d774591ad2d7e546a3571d2120935",
+      "path": "runtime/catalog.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:77b83ccd9223b51aa89c8e0203693cc6d76eb7dd6d0189ca6d570d585c1129c7",
+      "path": "runtime/datasource.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:b168952a90bd931d9562239ed57644d9bb355bb377ff31ec8cccbe4c55c30813",
+      "path": "runtime/high_risk_adapter.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:2344b4bfa7b1e0211fb4067875e873c93c71a1351ee5d92300074eceaa011761",
+      "path": "runtime/invoke.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:9171d03ffe8847830e788dc7edfd99c508ead810f71019bd680fd2d5ddd7c5f4",
+      "path": "runtime/state.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:745eb8d6b16e46284feafa8a76fd26f1f74d25a1eca6cfc3f303908dee9ebe7a",
+      "path": "schemas/command-protocol-v1.schema.json",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:bd399fa330ff627475d220605559163a7cf1f8b1637e66bda17f01c81b9d8631"
+  },
+  "pack_id": "rumi_command_protocol_pack",
+  "source_identity": "sha256:a53c0b45c77e2f8950d5b7962423f36e890bc4194dbe3ef259bfb5a9a4da0a65"
+}

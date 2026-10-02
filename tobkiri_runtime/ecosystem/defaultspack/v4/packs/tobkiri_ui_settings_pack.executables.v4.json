@@ -1,0 +1,784 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "tobkiri_ui_settings_pack",
+  "source_identity": "sha256:7f8d9f25ba5e80e8ff5bd45cfeca0c99b3adb581200315c522f62dc3409f356e",
+  "variants": [
+    {
+      "variant_id": "tobkiri.project.state.read.python",
+      "function_id": "tobkiri.project.state.read",
+      "implementation_path": "runtime/projects.py",
+      "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.project.state.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:4e89da11c1bf29bb2c6baa9b27e1cc3a7b399ea20d8e2d7178f5bdeda435870d",
+          "operation_id": "tobkiri_ui_settings_pack.projects-read",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "tobkiri.project.state.replace.python",
+      "function_id": "tobkiri.project.state.replace",
+      "implementation_path": "runtime/projects.py",
+      "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.project.state.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:20841ef7bc7bcfe05bbe9720c154a34af3e68ba611e9aec178bff7a2a94c413e",
+          "operation_id": "tobkiri_ui_settings_pack.projects-replace",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "expected_revision": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "migration_digest": {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "mutation_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "projects": {
+                "items": {
+                  "type": "object"
+                },
+                "maxItems": 256,
+                "type": "array"
+              }
+            },
+            "required": [
+              "profile_id",
+              "projects",
+              "expected_revision",
+              "mutation_id"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "tobkiri.ui.catalog.read.python",
+      "function_id": "tobkiri.ui.catalog.read",
+      "implementation_path": "runtime/settings.py",
+      "implementation_digest": "sha256:692cb5e900b0cbf3229f551dc23b875ee0851a5b8c4bfcd15726bb9338a971b3",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.ui.settings.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c",
+          "operation_id": "tobkiri_ui_settings_pack.catalog-read",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "tobkiri.ui.model-search.read.python",
+      "function_id": "tobkiri.ui.model-search.read",
+      "implementation_path": "runtime/model_search.py",
+      "implementation_digest": "sha256:4f3bd4ae8b82c5e6190a243610bfb897eab50d6d730d4d1f5c9e246c487e93aa",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.ui.model-search.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:1cca717fba9514c2b7c4947f4aefa92cf4a2e9cdbdd9a89441caff2ce2736f63",
+          "operation_id": "tobkiri_ui_settings_pack.model-search",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "configured_only": {
+                "type": "boolean"
+              },
+              "local_only": {
+                "type": "boolean"
+              },
+              "max_results": {
+                "maximum": 1000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "min_knowledge_level": {
+                "maximum": 1000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "model_type": {
+                "maxLength": 64,
+                "type": "string"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "provider": {
+                "maxLength": 256,
+                "type": "string"
+              },
+              "provider_id": {
+                "maxLength": 256,
+                "type": "string"
+              },
+              "query": {
+                "maxLength": 512,
+                "type": "string"
+              },
+              "requires": {
+                "additionalProperties": {
+                  "type": "boolean"
+                },
+                "maxProperties": 64,
+                "type": "object"
+              },
+              "speed_tier": {
+                "anyOf": [
+                  {
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "maxLength": 64,
+                      "type": "string"
+                    },
+                    "maxItems": 16,
+                    "type": "array"
+                  }
+                ]
+              },
+              "type": {
+                "anyOf": [
+                  {
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "maxLength": 64,
+                      "type": "string"
+                    },
+                    "maxItems": 16,
+                    "type": "array"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "profile_id"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "tobkiri.ui.model-state.read.python",
+      "function_id": "tobkiri.ui.model-state.read",
+      "implementation_path": "runtime/state_changes.py",
+      "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.ui.model-state.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:d24028c9659f3d43753ff03cd5706fcda20cdab5149ca947c87dcfc66e1a6618",
+          "operation_id": "tobkiri_ui_settings_pack.model-state-read",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "tobkiri.ui.model-state.write.python",
+      "function_id": "tobkiri.ui.model-state.write",
+      "implementation_path": "runtime/state_changes.py",
+      "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.ui.model-state.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:52597556ddb2d74c77f9a7244acdbed20935612cd28b3ee2aaed5e2251da19d2",
+          "operation_id": "tobkiri_ui_settings_pack.model-state-write",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "expected_revision": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "preferred_model",
+                  "thinking_level",
+                  "deepthink_enabled"
+                ],
+                "type": "string"
+              },
+              "mutation_id": {
+                "maxLength": 256,
+                "minLength": 8,
+                "type": "string"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "value": {}
+            },
+            "required": [
+              "profile_id",
+              "kind",
+              "value",
+              "expected_revision",
+              "mutation_id"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "tobkiri.ui.preferences.write.python",
+      "function_id": "tobkiri.ui.preferences.write",
+      "implementation_path": "runtime/settings.py",
+      "implementation_digest": "sha256:692cb5e900b0cbf3229f551dc23b875ee0851a5b8c4bfcd15726bb9338a971b3",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.ui.preferences.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:b6b206893f8c5572441a519b534b4366e6be1f041d181f00f3f7ae74edd145ee",
+          "operation_id": "tobkiri_ui_settings_pack.preferences-write",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "changes": {
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "chat_rendering": {
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "show_widgets": {
+                        "type": "boolean"
+                      },
+                      "unknown_block_strategy": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "general": {
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "composer_placeholder": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      "keyboard_button_navigation": {
+                        "type": "boolean"
+                      },
+                      "language": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      "show_activity_in_messages": {
+                        "type": "boolean"
+                      },
+                      "spotlight_shortcut": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      "spotlight_shortcut_enabled": {
+                        "type": "boolean"
+                      },
+                      "spotlight_shortcut_text_input": {
+                        "type": "boolean"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              },
+              "expected_revision": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "changes",
+              "expected_revision"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "document_revision": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "values": {
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "chat_rendering": {
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "show_widgets": {
+                        "type": "boolean"
+                      },
+                      "unknown_block_strategy": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "general": {
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "composer_placeholder": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      "keyboard_button_navigation": {
+                        "type": "boolean"
+                      },
+                      "language": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      "show_activity_in_messages": {
+                        "type": "boolean"
+                      },
+                      "spotlight_shortcut": {
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      "spotlight_shortcut_enabled": {
+                        "type": "boolean"
+                      },
+                      "spotlight_shortcut_text_input": {
+                        "type": "boolean"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "values",
+              "document_revision"
+            ],
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "tobkiri.ui.recovery-diagnostic.read.python",
+      "function_id": "tobkiri.ui.recovery-diagnostic.read",
+      "implementation_path": "runtime/state_changes.py",
+      "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.ui.recovery-diagnostic.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:45320eb949a53cfac1206f4dca8e2b01583b81f09ed1b4c5da8b9365cda2c9a0",
+          "operation_id": "tobkiri_ui_settings_pack.recovery-diagnostic-read",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "tobkiri.ui.recovery-diagnostic.write.python",
+      "function_id": "tobkiri.ui.recovery-diagnostic.write",
+      "implementation_path": "runtime/state_changes.py",
+      "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.ui.recovery-diagnostic.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:647f16b2650f887dac5349746617b4081c68c31118ee3486aba4c8b5ac4421ea",
+          "operation_id": "tobkiri_ui_settings_pack.recovery-diagnostic-write",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "diagnostic": {
+                "additionalProperties": false,
+                "maxProperties": 12,
+                "properties": {
+                  "category": {
+                    "maxLength": 80,
+                    "type": "string"
+                  },
+                  "context_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "detail": {
+                    "additionalProperties": false,
+                    "maxProperties": 10,
+                    "properties": {
+                      "column": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "component_stack": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "error_code": {
+                        "maxLength": 240,
+                        "type": "string"
+                      },
+                      "error_name": {
+                        "maxLength": 240,
+                        "type": "string"
+                      },
+                      "frame_count": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "http_status": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "line": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "reason_type": {
+                        "maxLength": 240,
+                        "type": "string"
+                      },
+                      "route": {
+                        "maxLength": 1024,
+                        "type": "string"
+                      },
+                      "stack": {
+                        "maxLength": 8192,
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "fingerprint": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "level": {
+                    "maxLength": 24,
+                    "type": "string"
+                  },
+                  "message": {
+                    "maxLength": 2048,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "privacy_mode": {
+                    "const": "standard",
+                    "type": "string"
+                  },
+                  "schema_version": {
+                    "const": "rumi.client_diagnostic.v2",
+                    "type": "string"
+                  },
+                  "session_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "source": {
+                    "maxLength": 80,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "schema_version",
+                  "event_id",
+                  "session_id",
+                  "fingerprint",
+                  "privacy_mode",
+                  "message"
+                ],
+                "type": "object"
+              },
+              "expected_revision": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "mutation_id": {
+                "maxLength": 256,
+                "minLength": 8,
+                "type": "string"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "diagnostic",
+              "expected_revision",
+              "mutation_id"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "tobkiri.ui.settings.read.python",
+      "function_id": "tobkiri.ui.settings.read",
+      "implementation_path": "runtime/settings.py",
+      "implementation_digest": "sha256:692cb5e900b0cbf3229f551dc23b875ee0851a5b8c4bfcd15726bb9338a971b3",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.ui.settings.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c",
+          "operation_id": "tobkiri_ui_settings_pack.settings-read",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    }
+  ],
+  "materialization_catalog_digest": "sha256:4fd31316415d46eccf56458384338f4c92c71e16b02addc96b134c957d1cc74c",
+  "catalog_digest": "sha256:288e66bdd573620b2cd5f499d58ec1f3beebbe2e4c3c32eb5ff5d01a69c1c77c"
+}

@@ -1,0 +1,67 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.media.inspect.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:media.inspect"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_media_inspect_service_pack.media-inspect",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "declarative"
+        }
+      ],
+      "owner": "rumi_media_inspect_service_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:d62965b30ed62a68329fb611d1a2889700f81dd36852d31b7342dd64833e8d91",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:d62965b30ed62a68329fb611d1a2889700f81dd36852d31b7342dd64833e8d91",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_media_inspect_service_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_media_inspect_service_pack.media-inspect.service",
+        "required_capabilities": [
+          "media.inspect"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:126f3e57d7495583979089d400899841257afaff7ab899253d80bba60c6517a3",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    }
+  ],
+  "pack_id": "rumi_media_inspect_service_pack",
+  "source_identity": "sha256:d62965b30ed62a68329fb611d1a2889700f81dd36852d31b7342dd64833e8d91"
+}

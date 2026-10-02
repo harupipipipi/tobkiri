@@ -1,0 +1,752 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.turn.lifecycle.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:turn.manage",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_turn_runtime_pack.turn-lifecycle",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_turn_runtime_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:32e4f5a7d6cc1505822325dd38142e85168371ea5a8ebc890cd78131d87890e0",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:32e4f5a7d6cc1505822325dd38142e85168371ea5a8ebc890cd78131d87890e0",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_turn_runtime_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
+        "required_capabilities": [
+          "turn.manage"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:a7cf23d352ca9838379fd3acc501c52fb5cb7e4b0b708d4d0c5c637a3bb680f5",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.event.turn.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:turn.read",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_turn_runtime_pack.turn-events",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_turn_runtime_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:32e4f5a7d6cc1505822325dd38142e85168371ea5a8ebc890cd78131d87890e0",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:32e4f5a7d6cc1505822325dd38142e85168371ea5a8ebc890cd78131d87890e0",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_turn_runtime_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.events",
+        "required_capabilities": [
+          "turn.read"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:c65360507f2da991fbea5d83a09e510e9d148287f975b8c8d765c2f1dc1485e6",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.resource.turn.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:turn.read",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_turn_runtime_pack.turn-resource",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_turn_runtime_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:32e4f5a7d6cc1505822325dd38142e85168371ea5a8ebc890cd78131d87890e0",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:32e4f5a7d6cc1505822325dd38142e85168371ea5a8ebc890cd78131d87890e0",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_turn_runtime_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+        "required_capabilities": [
+          "turn.read"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:31cacd04091ad82c6e46a1ae66aab82f132202b75c805c5130e38a64ba0c7dd7",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.turn.stop.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:turn.stop",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:c05db4a198208ec7dced9d8647ab885f2fd5bab45486a5cae9ff69099d7d30b9",
+          "operation_id": "rumi_turn_runtime_pack.turn-stop",
+          "output_schema_digest": "sha256:e9f1ea9ca439e506a8a29d0adad78270a12332fe94db2339bffe516ce79f7bca",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_turn_runtime_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:32e4f5a7d6cc1505822325dd38142e85168371ea5a8ebc890cd78131d87890e0",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:32e4f5a7d6cc1505822325dd38142e85168371ea5a8ebc890cd78131d87890e0",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_turn_runtime_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+        "required_capabilities": [
+          "turn.stop"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:3f5ff1b9da2dad13182a97d48ff8e5a270fb8fa3c42d254a943957713087790f",
+      "schema_catalog": {
+        "sha256:c05db4a198208ec7dced9d8647ab885f2fd5bab45486a5cae9ff69099d7d30b9": {
+          "additionalProperties": false,
+          "properties": {
+            "turn_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "not": {
+                "pattern": "[^A-Za-z0-9._:-]"
+              },
+              "pattern": "^[A-Za-z0-9]",
+              "type": "string"
+            }
+          },
+          "required": [
+            "turn_id"
+          ],
+          "type": "object"
+        },
+        "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "sha256:e9f1ea9ca439e506a8a29d0adad78270a12332fe94db2339bffe516ce79f7bca": {
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "properties": {
+                "status": {
+                  "const": "cancellation_requested"
+                },
+                "stopped": {
+                  "const": false
+                }
+              }
+            },
+            {
+              "properties": {
+                "status": {
+                  "const": "stopped_confirmed"
+                },
+                "stopped": {
+                  "const": true
+                }
+              }
+            }
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "cancellation_requested",
+                "stopped_confirmed"
+              ]
+            },
+            "stopped": {
+              "type": "boolean"
+            },
+            "turn_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "turn_id",
+            "stopped"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.turn.reconcile.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:turn.reconcile",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:c05db4a198208ec7dced9d8647ab885f2fd5bab45486a5cae9ff69099d7d30b9",
+          "operation_id": "rumi_turn_runtime_pack.turn-reconcile",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_turn_runtime_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:32e4f5a7d6cc1505822325dd38142e85168371ea5a8ebc890cd78131d87890e0",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:32e4f5a7d6cc1505822325dd38142e85168371ea5a8ebc890cd78131d87890e0",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_turn_runtime_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+        "required_capabilities": [
+          "turn.reconcile"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:4206c74719c2a3e9a033544695736ef6273747c2c9a186ec7330a57fca283070",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:c05db4a198208ec7dced9d8647ab885f2fd5bab45486a5cae9ff69099d7d30b9": {
+          "additionalProperties": false,
+          "properties": {
+            "turn_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "not": {
+                "pattern": "[^A-Za-z0-9._:-]"
+              },
+              "pattern": "^[A-Za-z0-9]",
+              "type": "string"
+            }
+          },
+          "required": [
+            "turn_id"
+          ],
+          "type": "object"
+        },
+        "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.turn.saved.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:turn.execute",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:841c5d764b7f3f13a596fbf90c2526f44a5019527c55b655a3bd9d887a12741e",
+          "operation_id": "rumi_turn_runtime_pack.turn-saved",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_turn_runtime_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:32e4f5a7d6cc1505822325dd38142e85168371ea5a8ebc890cd78131d87890e0",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:32e4f5a7d6cc1505822325dd38142e85168371ea5a8ebc890cd78131d87890e0",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_turn_runtime_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_turn_runtime_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.saved",
+        "required_capabilities": [
+          "turn.execute"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:e0618b2c5c914086f7ba931d46b20d1cb4d5a48a86742275271a0a0b5ab4e81f",
+      "schema_catalog": {
+        "sha256:841c5d764b7f3f13a596fbf90c2526f44a5019527c55b655a3bd9d887a12741e": {
+          "$defs": {
+            "identifier": {
+              "maxLength": 256,
+              "minLength": 1,
+              "not": {
+                "pattern": "[^A-Za-z0-9._:-]"
+              },
+              "pattern": "^[A-Za-z0-9]",
+              "type": "string"
+            },
+            "image_block": {
+              "additionalProperties": false,
+              "properties": {
+                "image_url": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "url": {
+                      "maxLength": 1398127,
+                      "minLength": 1,
+                      "pattern": "^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "url"
+                  ],
+                  "type": "object"
+                },
+                "type": {
+                  "const": "image_url"
+                }
+              },
+              "required": [
+                "type",
+                "image_url"
+              ],
+              "type": "object"
+            },
+            "text_block": {
+              "additionalProperties": false,
+              "properties": {
+                "text": {
+                  "maxLength": 61440,
+                  "minLength": 1,
+                  "pattern": "\\S",
+                  "type": "string"
+                },
+                "type": {
+                  "const": "text"
+                }
+              },
+              "required": [
+                "type",
+                "text"
+              ],
+              "type": "object"
+            }
+          },
+          "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "additionalProperties": false,
+          "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. Text is limited to 60 KiB; up to two PNG, JPEG, WebP, or GIF data URLs are accepted within a 3 MiB encoded input budget enforced separately.",
+          "properties": {
+            "request": {
+              "additionalProperties": false,
+              "properties": {
+                "content": {
+                  "oneOf": [
+                    {
+                      "maxLength": 61440,
+                      "minLength": 1,
+                      "pattern": "\\S",
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "$ref": "#/$defs/image_block"
+                      },
+                      "maxItems": 3,
+                      "minItems": 1,
+                      "prefixItems": [
+                        {
+                          "$ref": "#/$defs/text_block"
+                        }
+                      ],
+                      "type": "array"
+                    }
+                  ]
+                },
+                "conversation_id": {
+                  "$ref": "#/$defs/identifier"
+                },
+                "conversation_revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "tool_selection": {
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "mode": {
+                            "const": "none"
+                          }
+                        }
+                      },
+                      "then": {
+                        "properties": {
+                          "include": {
+                            "maxItems": 0
+                          },
+                          "must_use": {
+                            "const": false
+                          }
+                        }
+                      }
+                    }
+                  ],
+                  "properties": {
+                    "exclude": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "not": {
+                              "pattern": "[^A-Za-z0-9._:/-]"
+                            },
+                            "pattern": "^[A-Za-z0-9]",
+                            "type": "string"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "id": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "not": {
+                                  "pattern": "[^A-Za-z0-9._:/-]"
+                                },
+                                "pattern": "^[A-Za-z0-9]",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": [
+                                  "tool",
+                                  "service"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "id"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 256,
+                      "type": "array"
+                    },
+                    "include": {
+                      "items": {
+                        "oneOf": [
+                          {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "not": {
+                              "pattern": "[^A-Za-z0-9._:/-]"
+                            },
+                            "pattern": "^[A-Za-z0-9]",
+                            "type": "string"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "id": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "not": {
+                                  "pattern": "[^A-Za-z0-9._:/-]"
+                                },
+                                "pattern": "^[A-Za-z0-9]",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": [
+                                  "tool",
+                                  "service"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "id"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "maxItems": 256,
+                      "type": "array"
+                    },
+                    "mode": {
+                      "enum": [
+                        "auto",
+                        "manual",
+                        "none"
+                      ]
+                    },
+                    "must_use": {
+                      "type": "boolean"
+                    },
+                    "scope": {
+                      "enum": [
+                        "turn",
+                        "conversation"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "mode"
+                  ],
+                  "type": "object"
+                },
+                "turn_id": {
+                  "$ref": "#/$defs/identifier"
+                }
+              },
+              "required": [
+                "turn_id",
+                "conversation_id",
+                "conversation_revision",
+                "content"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "request"
+          ],
+          "title": "Saved conversation initial input",
+          "type": "object"
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    }
+  ],
+  "pack_id": "rumi_turn_runtime_pack",
+  "source_identity": "sha256:32e4f5a7d6cc1505822325dd38142e85168371ea5a8ebc890cd78131d87890e0"
+}

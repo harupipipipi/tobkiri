@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from domain.input.envelope import RumiInputEnvelope
+from domain.subagent_team.availability import (
+    SUBAGENTS_DISABLED_CODE,
+    SUBAGENTS_DISABLED_MESSAGE,
+    settings_owner_from_context,
+    subagent_delegation_enabled,
+)
 
 
 _FAILED_DELEGATE_STATUSES = {"error", "failed", "failure", "timeout", "cancelled", "canceled"}
@@ -21,13 +29,35 @@ _DELEGATE_RUNTIME_CONTEXT_KEYS = (
     "company_id",
     "timezone",
 )
+_TRUSTED_PLACEMENT_CONTEXT_KEYS = (
+    "agent_kind",
+    "runtime_kind",
+    "subagent_role",
+    "placement_id",
+    "placement_revision",
+    "placement_map_id",
+    "protocol_membership",
+    "effective_subagent_plan",
+    "effective_plan_hash",
+    "root_scope_id",
+    "parent_run_id",
+    "root_run_id",
+)
 
 
-def handle(envelope: RumiInputEnvelope, context: dict[str, Any] | None = None) -> dict[str, Any]:
+def handle(envelope: RumiInputEnvelope, context: dict[str, Any] | None = None, *, settings_owner: SettingsOwnerPort | None = None) -> dict[str, Any]:
+    settings_owner = settings_owner_from_context(settings_owner, context)
     payload = _delegate_payload(envelope)
     task = str(payload.get("task") or payload.get("prompt") or envelope.input or "").strip()
     if not task:
         return {"status": "error", "code": "MISSING_INPUT", "error": "task is required", "assistant_text": ""}
+    if not subagent_delegation_enabled(settings_owner=settings_owner):
+        return {
+            "status": "error",
+            "code": SUBAGENTS_DISABLED_CODE,
+            "error": SUBAGENTS_DISABLED_MESSAGE,
+            "assistant_text": SUBAGENTS_DISABLED_MESSAGE,
+        }
     from blocks.agent.execute import run as execute_agent
 
     result = execute_agent(
@@ -46,6 +76,7 @@ def handle(envelope: RumiInputEnvelope, context: dict[str, Any] | None = None) -
             "timeout_seconds": payload.get("timeout_seconds"),
         },
         _delegate_context(envelope, context or {}),
+        **({"settings_owner": settings_owner} if settings_owner is not None else {}),
     )
     if isinstance(result, dict) and result.get("status") == "ok":
         data = result.get("data") if isinstance(result.get("data"), dict) else {}
@@ -125,6 +156,32 @@ def _delegate_context(envelope: RumiInputEnvelope, context: dict[str, Any]) -> d
             updated.setdefault("principal_id", principal_id)
         if profile_id and not principal_id:
             updated["principal_id"] = "profile:" + profile_id
+        # Placement identity is accepted only from the trusted dispatcher
+        # context. Client payloads cannot select or forge an Effective Plan.
+        for key in _TRUSTED_PLACEMENT_CONTEXT_KEYS:
+            value = context.get(key)
+            if value not in ("", None, [], {}):
+                updated[key] = value
+        parent_run_id = str(
+            context.get("agent_run_id")
+            or context.get("run_id")
+            or context.get("parent_run_id")
+            or ""
+        ).strip()
+        if parent_run_id:
+            updated.setdefault("parent_run_id", parent_run_id)
+            updated.setdefault(
+                "root_run_id",
+                str(context.get("root_run_id") or parent_run_id),
+            )
+            updated.setdefault(
+                "root_scope_id",
+                str(
+                    context.get("root_scope_id")
+                    or context.get("root_run_id")
+                    or parent_run_id
+                ),
+            )
     if metadata:
         updated.setdefault("delegate_metadata", dict(metadata))
     if target:

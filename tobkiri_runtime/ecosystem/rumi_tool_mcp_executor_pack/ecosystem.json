@@ -1,0 +1,67 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.tool.execute.v1"
+    ],
+    "requires": [
+      "rumi.service.mcp.tool.call.v1"
+    ]
+  },
+  "dependencies": {},
+  "description": "Namespace-bound selected MCP gateway executor.",
+  "display_name": "Rumi Tool MCP Executor",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:bdc3681bfce5331693cb5f1bd6ee64c49ab02b68144df8cf66f846f2d662c450",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:1bcde662dc952c403ca3a757f5537aa4a35c9527d9add09dbe68745f96b275a7"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:1bcde662dc952c403ca3a757f5537aa4a35c9527d9add09dbe68745f96b275a7"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "mcp_tool_execution"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "exact_gateway": true,
+      "namespace_required": true
+    }
+  },
+  "pack_id": "rumi_tool_mcp_executor_pack",
+  "pack_identity": "rumi:ecosystem/rumi_tool_mcp_executor_pack",
+  "provenance": {
+    "build_identity": "rumi_tool_mcp_executor_pack:1.0.0",
+    "content_hash": "sha256:e3e049fc846f0780ff364d2bf6d1cd15fe2d0c4db805ce807a71473dd6594ddc",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "tool.execute"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

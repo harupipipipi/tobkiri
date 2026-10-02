@@ -1,0 +1,358 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:d60c70e3d21656edb5609d1bd0cb48d255dfe34903829fd68e9b44519e147bde",
+  "pack_id": "rumi_command_protocol_pack",
+  "source_identity": "sha256:a53c0b45c77e2f8950d5b7962423f36e890bc4194dbe3ef259bfb5a9a4da0a65",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_command_protocol_pack.catalog.read",
+      "implementation_digest": "sha256:ff8ff76a53f685a2febdcc5555e8e619f82d774591ad2d7e546a3571d2120935",
+      "implementation_path": "runtime/catalog.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.command.catalog.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "command.catalog.read",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:5c4331eb18c513f72b57ae7310400710fed18cecf2d99f9b068bb04ba6f5c391",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_command_protocol_pack.catalog.read.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_command_protocol_pack.command.datasource",
+      "implementation_digest": "sha256:77b83ccd9223b51aa89c8e0203693cc6d76eb7dd6d0189ca6d570d585c1129c7",
+      "implementation_path": "runtime/datasource.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.command.datasource.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "cursor": {
+                "maxLength": 8,
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              "datasource_ref": {
+                "enum": [
+                  "tobkiri:model_catalog",
+                  "tobkiri:provider_catalog"
+                ]
+              },
+              "limit": {
+                "maximum": 100,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "profile_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              "query": {
+                "maxLength": 200,
+                "type": "string"
+              },
+              "request_id": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "selected_values": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              }
+            },
+            "required": [
+              "profile_id",
+              "datasource_ref"
+            ],
+            "type": "object"
+          },
+          "operation_id": "command.datasource.query",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:0e660d5b3ebc6ebcdff186a95ab831dd056a354ce6278a5661d771701a0a4647",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_command_protocol_pack.command.datasource.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_command_protocol_pack.command.invoke",
+      "implementation_digest": "sha256:2344b4bfa7b1e0211fb4067875e873c93c71a1351ee5d92300074eceaa011761",
+      "implementation_path": "runtime/invoke.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.command.invoke.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "args": {
+                "additionalProperties": false,
+                "maxProperties": 1,
+                "properties": {
+                  "query": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "section": {
+                    "maxLength": 200,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "catalog_revision": {
+                "maxLength": 160,
+                "type": "string"
+              },
+              "client_sequence": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "command_ref": {
+                "enum": [
+                  "defaultspack:help",
+                  "defaultspack:new",
+                  "defaultspack:clear",
+                  "defaultspack:tools",
+                  "defaultspack:status",
+                  "defaultspack:settings",
+                  "defaultspack:history",
+                  "defaultspack:context",
+                  "defaultspack:permissions",
+                  "defaultspack:approvals",
+                  "defaultspack:usage",
+                  "defaultspack:theme",
+                  "defaultspack:keymap",
+                  "defaultspack:plugins",
+                  "defaultspack:mcp",
+                  "defaultspack:skills",
+                  "defaultspack:hooks",
+                  "defaultspack:diff",
+                  "defaultspack:files"
+                ]
+              },
+              "conversation_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "idempotency_key": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "invocation_id": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "chat",
+                  "coding",
+                  "agent"
+                ]
+              },
+              "profile_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "command_ref",
+              "args",
+              "invocation_id",
+              "mode"
+            ],
+            "type": "object"
+          },
+          "operation_id": "command.invoke",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:801ad3b21f4782d3d03c237d5c0dfd907cf5a437bc24910954f32f4addbfa2db",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_command_protocol_pack.command.invoke.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_command_protocol_pack.command.state",
+      "implementation_digest": "sha256:9171d03ffe8847830e788dc7edfd99c508ead810f71019bd680fd2d5ddd7c5f4",
+      "implementation_path": "runtime/state.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.command.state.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              "state_refs": {
+                "items": {
+                  "const": "defaultspack:models.deepthink_enabled"
+                },
+                "maxItems": 16,
+                "type": "array",
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "profile_id",
+              "state_refs"
+            ],
+            "type": "object"
+          },
+          "operation_id": "command.state.query",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:5561eccef0ab7444420f23455aeb029b4a7b2400b96ba3df92aafa0c465aa815",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_command_protocol_pack.command.state.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_command_protocol_pack.high-risk-command.service",
+      "implementation_digest": "sha256:b168952a90bd931d9562239ed57644d9bb355bb377ff31ec8cccbe4c55c30813",
+      "implementation_path": "runtime/high_risk_adapter.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.command.high-risk.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "type": "object"
+              },
+              "command_ref": {
+                "enum": [
+                  "terminal",
+                  "commit",
+                  "push",
+                  "patch",
+                  "restore"
+                ]
+              },
+              "invocation_id": {
+                "maxLength": 160,
+                "type": "string"
+              },
+              "phase": {
+                "enum": [
+                  "prepare",
+                  "resume",
+                  "status",
+                  "cancel",
+                  "list_pending"
+                ]
+              },
+              "presentation": {
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "operation_id": "high_risk_command.manage",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:036e4b61a2be06a5cfe321d9d15c2511bd0f2b7feb55ebdccca764b4685b732f",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_command_protocol_pack.high-risk-command.service.python"
+    }
+  ]
+}

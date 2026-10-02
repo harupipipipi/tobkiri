@@ -60,6 +60,14 @@
         "enabled": true,
         "placeholder": "メッセージを入力...",
         "help": "Enterで送信。必要に応じて / でコマンド、@ で候補を開けます。",
+        "layout": {
+          "home": {
+            "position": "center"
+          },
+          "conversation": {
+            "position": "bottom"
+          }
+        },
         "accepted_modalities": [
           "text",
           "files",
@@ -228,6 +236,20 @@
         "widget_kind": "tool_toggle",
         "enabled": true
       }
+    },
+    {
+      "id": "manual_runtime_mode_selection",
+      "kind": "settings_field",
+      "slot": "general",
+      "order": 56.5,
+      "section_id": "general",
+      "field_id": "manual_runtime_mode_selection",
+      "type": "toggle",
+      "label": "Manual Runtime Mode Selection",
+      "default": false,
+      "help": "Advanced: show the composer runtime-mode control. When disabled, chats use the autonomous agent mode.",
+      "advanced": true,
+      "control_center_section": "advanced"
     },
     {
       "id": "tools_settings_section",

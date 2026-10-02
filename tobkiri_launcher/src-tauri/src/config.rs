@@ -3,14 +3,11 @@
 //! All paths are derived from Tauri's `resource_dir` and `app_data_dir`
 //! so that the application works correctly when bundled.
 
-use crate::process_utils;
-
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 
-const PACK_SHELL_PATH_ENV: &str = "RUMI_PACK_SHELL_PATH";
 const UV_PATH_ENV: &str = "RUMI_UV_PATH";
+const LOCAL_DEV_WORKSPACE_BUILD: Option<&str> = option_env!("TOBKIRI_LOCAL_DEV_WORKSPACE");
 
 /// Central configuration resolved from Tauri path APIs.
 #[derive(Debug, Clone)]
@@ -58,18 +55,37 @@ impl AppConfig {
     pub fn detect_for_tauri(resource_dir: PathBuf, app_data_dir: PathBuf) -> Result<Self> {
         let staged_app_dir = resource_dir.join("app");
         let detected_workspace_root = find_dev_workspace_root(&resource_dir);
-        let prefer_dev_runtime =
-            cfg!(debug_assertions) && is_cargo_debug_resource_dir(&resource_dir);
-        let dev_workspace_root = if prefer_dev_runtime {
-            detected_workspace_root
+        // A direct Cargo executable uses the checkout runtime. A debug `.app`
+        // uses its staged Resources/app tree so Python children do not need
+        // protected Desktop-folder access to import the checkout.
+        let is_debug_artifact = cfg!(debug_assertions)
+            && detected_workspace_root.is_some()
+            && (is_cargo_debug_resource_dir(&resource_dir)
+                || resource_dir.ancestors().any(|ancestor| {
+                    ancestor.file_name().and_then(|name| name.to_str()) == Some("target")
+                }));
+        let is_app_bundle = resource_dir
+            .ancestors()
+            .any(|ancestor| ancestor.extension().and_then(|value| value.to_str()) == Some("app"));
+        // The explicit marker covers a debug configuration whose resource
+        // map intentionally omits `gen/app`; the target-path check covers
+        // Cargo's direct and app-bundle resource layouts in tests and local
+        // builds. A staged app remains the runtime boundary for an app bundle.
+        let prefer_dev_runtime = (is_debug_artifact && !is_app_bundle)
+            || (is_explicit_local_development_workspace_build() && !staged_app_dir.exists());
+        let dev_workspace_root = if is_debug_artifact {
+            detected_workspace_root.clone()
         } else if staged_app_dir.exists() {
             None
         } else {
-            detected_workspace_root
+            detected_workspace_root.clone()
         };
 
         let mut app_dir = staged_app_dir;
-        if let Some(workspace_root) = &dev_workspace_root {
+        if prefer_dev_runtime {
+            let workspace_root = dev_workspace_root
+                .as_ref()
+                .context("debug runtime has no workspace root")?;
             let candidate = workspace_root.join("tobkiri_runtime");
             if candidate.join("app.py").exists() {
                 app_dir = candidate;
@@ -77,15 +93,45 @@ impl AppConfig {
         }
         let rumi_home = app_dir.clone();
 
-        let python_dir = app_data_dir.join("python");
-        let uv_path = if cfg!(target_os = "windows") {
-            app_data_dir.join("uv.exe")
+        // An unsigned checkout must never consume or mutate the installed
+        // application's persisted activation. macOS also binds writable files
+        // to the creating code identity; that identity changes on every local
+        // rebuild. Keep each debug run below its own ignored state root so a
+        // new build never blocks while opening MACL-bound state from an older
+        // build.
+        let writable_root = if dev_workspace_root.is_some() && is_app_bundle {
+            std::env::temp_dir()
+                .join("tobkiri-launcher-dev")
+                .join("runs")
+                .join(std::process::id().to_string())
+                .join("state")
         } else {
-            app_data_dir.join("uv")
+            dev_workspace_root
+                .as_ref()
+                .map(|workspace_root| {
+                    workspace_root
+                        .join("tobkiri_launcher")
+                        .join("src-tauri")
+                        .join("target")
+                        .join("dev-state")
+                        .join("runs")
+                        .join(std::process::id().to_string())
+                })
+                .unwrap_or(app_data_dir)
         };
-        let venv_dir = app_data_dir.join("venv");
-        let user_data_dir = app_data_dir.join("user_data");
-        let log_dir = app_data_dir.join("logs");
+
+        let python_dir = writable_root.join("python");
+        let uv_path = if cfg!(target_os = "windows") {
+            writable_root.join("uv.exe")
+        } else {
+            writable_root.join("uv")
+        };
+        let venv_dir = dev_workspace_root
+            .as_ref()
+            .map(|workspace_root| development_venv_dir(&app_dir, workspace_root, is_app_bundle))
+            .unwrap_or_else(|| writable_root.join("venv"));
+        let user_data_dir = writable_root.join("user_data");
+        let log_dir = writable_root.join("logs");
 
         Ok(Self {
             app_dir,
@@ -98,6 +144,24 @@ impl AppConfig {
             kernel_port: 8765,
             dev_workspace_root,
         })
+    }
+
+    /// Rebase every writable Viewer runtime path into an owned state root.
+    ///
+    /// Debug parallel instances use this after validating their supervisor
+    /// root. Packaged runtimes keep their managed Python environment together
+    /// with logs, secrets, and user data. A development workspace instead
+    /// reads its already-validated repository venv: creating or provisioning
+    /// an isolated replacement would both duplicate dependencies and violate
+    /// the development Python policy.
+    pub fn isolate_writable_state(&mut self, state_root: &Path, user_data_dir: PathBuf) {
+        self.python_dir = state_root.join("python");
+        self.uv_path = state_root.join(uv_binary_name());
+        if !self.is_dev_workspace() {
+            self.venv_dir = state_root.join("venv");
+        }
+        self.user_data_dir = user_data_dir;
+        self.log_dir = state_root.join("logs");
     }
 
     /// Return the path to the Python binary inside the PBS directory.
@@ -125,11 +189,26 @@ impl AppConfig {
 
     /// Return the persisted panel bootstrap secret path inside app data.
     pub fn panel_bootstrap_secret_path(&self) -> PathBuf {
-        self.user_data_dir
+        let state_root = self
+            .user_data_dir
             .parent()
             .map(Path::to_path_buf)
-            .unwrap_or_else(|| self.user_data_dir.clone())
-            .join(".rumi_panel_bootstrap_secret")
+            .unwrap_or_else(|| self.user_data_dir.clone());
+
+        // macOS attaches a MACL to files created by an app process. That ACL
+        // is bound to the current code identity, so a newly rebuilt unsigned
+        // development app can block while opening the previous build's
+        // secret. A debug secret only coordinates children of this launcher.
+        #[cfg(debug_assertions)]
+        {
+            return state_root.join(format!(
+                ".rumi_panel_bootstrap_secret.{}",
+                std::process::id()
+            ));
+        }
+
+        #[cfg(not(debug_assertions))]
+        state_root.join(".rumi_panel_bootstrap_secret")
     }
 
     /// Return the directory where Viewer host broker files are stored.
@@ -139,6 +218,11 @@ impl AppConfig {
 
     /// Return the path to the Viewer host broker connection file.
     pub fn host_broker_connection_path(&self) -> PathBuf {
+        if let Some(path) = std::env::var_os("RUMI_VIEWER_HOST_BROKER_CONNECTION") {
+            if !path.is_empty() {
+                return PathBuf::from(path);
+            }
+        }
         self.host_broker_dir().join("connection.json")
     }
 
@@ -192,95 +276,20 @@ impl AppConfig {
         which::which(uv_binary_name()).ok()
     }
 
-    /// Resolve the best available `uv` binary path for diagnostics.
-    pub fn resolved_uv_path(&self) -> PathBuf {
-        self.trusted_uv_path()
-            .unwrap_or_else(|| self.uv_path.clone())
-    }
-
     pub fn is_dev_workspace(&self) -> bool {
         self.dev_workspace_root.is_some()
     }
 
-    /// Resolve the best available `pack-shell` binary path.
-    ///
-    /// Checks `RUMI_PACK_SHELL_PATH` first, then the bundled copy at
-    /// `{app_dir}/bundled/pack-shell`, then the dev workspace build, then
-    /// `PATH`.
+    /// Resolve `pack-shell` only from the packaged application root.
     pub fn pack_shell_path(&self) -> Option<PathBuf> {
-        if let Some(configured) = configured_pack_shell_path() {
-            if configured.is_file() {
-                return Some(configured);
-            }
-        }
-
-        if let Some(bundled) = self.bundled_pack_shell_path() {
-            return Some(bundled);
-        }
-
-        if let Some(ref root) = self.dev_workspace_root {
-            if let Some(dev_pack_shell) = dev_pack_shell_path(root) {
-                return Some(dev_pack_shell);
-            }
-        }
-
-        which::which(pack_shell_binary_name()).ok()
+        self.ensure_pack_shell_path().ok()
     }
 
-    /// Resolve `pack-shell`, building the dev checkout copy on first use.
+    /// Require packaged `pack-shell`; no environment, PATH, or build fallback exists.
     pub fn ensure_pack_shell_path(&self) -> Result<PathBuf> {
-        self.ensure_pack_shell_path_with(build_dev_pack_shell)
-    }
-
-    fn ensure_pack_shell_path_with<F>(&self, mut build_pack_shell: F) -> Result<PathBuf>
-    where
-        F: FnMut(&Path) -> Result<()>,
-    {
-        if let Some(configured) = configured_pack_shell_path() {
-            if configured.is_file() {
-                return Ok(configured);
-            }
-            bail!(
-                "{PACK_SHELL_PATH_ENV} points to a missing pack-shell binary: {}",
-                configured.display()
-            );
-        }
-
-        if let Some(ref root) = self.dev_workspace_root {
-            if let Some(dev_pack_shell) = dev_pack_shell_path(root) {
-                return Ok(dev_pack_shell);
-            }
-
-            let manifest = root.join("pack-shell").join("Cargo.toml");
-            if manifest.is_file() {
-                log::info!(
-                    "pack-shell binary not found; building dev pack-shell from {}",
-                    manifest.display()
-                );
-                build_pack_shell(&manifest).with_context(|| {
-                    format!("failed to build pack-shell from {}", manifest.display())
-                })?;
-
-                return dev_pack_shell_path(root).with_context(|| {
-                    format!(
-                        "pack-shell build completed but {} was not created",
-                        dev_pack_shell_binary_path(root, "debug").display()
-                    )
-                });
-            }
-        }
-
-        if let Some(bundled) = self.bundled_pack_shell_path() {
-            return Ok(bundled);
-        }
-
-        if let Ok(found) = which::which(pack_shell_binary_name()) {
-            return Ok(found);
-        }
-
-        bail!(
-            "pack-shell binary not found. Set {PACK_SHELL_PATH_ENV}, add pack-shell to PATH, or build it with `cargo build --manifest-path pack-shell/Cargo.toml`."
-        );
+        self.bundled_pack_shell_path().context(
+            "verified packaged pack-shell is missing; environment, PATH, and source-build fallbacks are disabled",
+        )
     }
 
     fn bundled_pack_shell_path(&self) -> Option<PathBuf> {
@@ -301,31 +310,6 @@ impl AppConfig {
             .map(Path::to_path_buf)
             .unwrap_or_else(|| self.user_data_dir.clone())
             .join(".desktop_api_token")
-    }
-
-    /// Return the canonical bundled defaultspack ecosystem.json.
-    ///
-    /// The viewer launches defaultspack with the local Pack API token, so the
-    /// host-side launch path must not be redirected by user-writable managed
-    /// pack pointers. Built-in defaultspack is trusted only from the shipped
-    /// application bundle (or the repo copy while running a dev workspace).
-    pub fn defaultspack_ecosystem_json(&self) -> PathBuf {
-        let bundled = self.bundled_defaultspack_ecosystem_json();
-        if self.is_dev_workspace() && bundled.exists() {
-            log::info!(
-                "Using repo defaultspack ecosystem during viewer dev startup from {}",
-                bundled.display()
-            );
-        }
-
-        bundled
-    }
-
-    fn bundled_defaultspack_ecosystem_json(&self) -> PathBuf {
-        self.app_dir
-            .join("ecosystem")
-            .join("defaultspack")
-            .join("ecosystem.json")
     }
 }
 
@@ -354,60 +338,30 @@ fn is_cargo_debug_resource_dir(resource_dir: &Path) -> bool {
     )
 }
 
+fn is_explicit_local_development_workspace_build() -> bool {
+    LOCAL_DEV_WORKSPACE_BUILD == Some("1")
+}
+
+/// Select the venv that belongs to the runtime boundary selected for a
+/// development launch.
+///
+/// An unbundled debug `.app` deliberately runs the checkout runtime and must
+/// therefore use the checkout's `.venv`. A debug `.app` that contains a
+/// staged runtime instead uses the staged development venv copied beside that
+/// runtime. Production launches never call this helper.
+fn development_venv_dir(app_dir: &Path, workspace_root: &Path, is_app_bundle: bool) -> PathBuf {
+    let workspace_runtime = workspace_root.join("tobkiri_runtime");
+    if !is_app_bundle || app_dir == workspace_runtime {
+        workspace_root.join(".venv")
+    } else {
+        app_dir.join("dev-venv")
+    }
+}
+
 fn configured_uv_path() -> Option<PathBuf> {
     std::env::var_os(UV_PATH_ENV)
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
-}
-
-fn configured_pack_shell_path() -> Option<PathBuf> {
-    std::env::var_os(PACK_SHELL_PATH_ENV)
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-}
-
-fn dev_pack_shell_binary_path(root: &Path, profile: &str) -> PathBuf {
-    root.join("pack-shell")
-        .join("target")
-        .join(profile)
-        .join(pack_shell_binary_name())
-}
-
-fn dev_pack_shell_path(root: &Path) -> Option<PathBuf> {
-    for profile in ["release", "debug"] {
-        let candidate = dev_pack_shell_binary_path(root, profile);
-        if candidate.is_file() {
-            return Some(candidate);
-        }
-    }
-    None
-}
-
-fn build_dev_pack_shell(manifest: &Path) -> Result<()> {
-    let output = process_utils::command("cargo")
-        .arg("build")
-        .arg("--manifest-path")
-        .arg(manifest)
-        .stdin(Stdio::null())
-        .output()
-        .context("failed to run cargo build for pack-shell")?;
-
-    if output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !stderr.trim().is_empty() {
-            log::info!("pack-shell cargo build output: {}", stderr.trim());
-        }
-        return Ok(());
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    bail!(
-        "cargo build for pack-shell failed with status {}\nstdout:\n{}\nstderr:\n{}",
-        output.status,
-        stdout.trim(),
-        stderr.trim()
-    );
 }
 
 /// Return the platform-appropriate file name for the `uv` binary.
@@ -428,63 +382,10 @@ fn pack_shell_binary_name() -> &'static str {
     }
 }
 
-/// Return the platform triple string used by python-build-standalone
-/// and the `uv` release filenames.
-pub fn platform_triple() -> &'static str {
-    #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
-    {
-        "x86_64-unknown-linux-gnu"
-    }
-
-    #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
-    {
-        "aarch64-unknown-linux-gnu"
-    }
-
-    #[cfg(all(target_arch = "x86_64", target_os = "macos"))]
-    {
-        "x86_64-apple-darwin"
-    }
-
-    #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
-    {
-        "aarch64-apple-darwin"
-    }
-
-    #[cfg(all(target_arch = "x86_64", target_os = "windows"))]
-    {
-        "x86_64-pc-windows-msvc"
-    }
-
-    #[cfg(all(target_arch = "aarch64", target_os = "windows"))]
-    {
-        "aarch64-pc-windows-msvc"
-    }
-
-    #[cfg(not(any(
-        all(target_arch = "x86_64", target_os = "linux"),
-        all(target_arch = "aarch64", target_os = "linux"),
-        all(target_arch = "x86_64", target_os = "macos"),
-        all(target_arch = "aarch64", target_os = "macos"),
-        all(target_arch = "x86_64", target_os = "windows"),
-        all(target_arch = "aarch64", target_os = "windows"),
-    )))]
-    {
-        compile_error!("unsupported target platform")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
-
-    #[test]
-    fn platform_triple_is_not_empty() {
-        let triple = platform_triple();
-        assert!(!triple.is_empty());
-        assert!(triple.contains('-'));
-    }
 
     #[test]
     fn detect_for_tauri_produces_valid_paths() {
@@ -514,6 +415,59 @@ mod tests {
     }
 
     #[test]
+    fn isolated_writable_state_rebases_every_app_data_path() {
+        let mut config = AppConfig::detect_for_tauri(
+            PathBuf::from("/tmp/resources"),
+            PathBuf::from("/tmp/shared-app-data"),
+        )
+        .unwrap();
+        let original_app_dir = config.app_dir.clone();
+        let state_root = PathBuf::from("/tmp/owned-debug-supervisor");
+        let user_data = state_root.join("viewer_user_data");
+
+        config.isolate_writable_state(&state_root, user_data.clone());
+
+        assert_eq!(config.app_dir, original_app_dir);
+        assert_eq!(config.rumi_home, original_app_dir);
+        assert_eq!(config.python_dir, state_root.join("python"));
+        assert_eq!(config.uv_path, state_root.join(uv_binary_name()));
+        assert_eq!(config.venv_dir, state_root.join("venv"));
+        assert_eq!(config.user_data_dir, user_data);
+        assert_eq!(config.log_dir, state_root.join("logs"));
+        assert_eq!(
+            config.panel_bootstrap_secret_path(),
+            state_root.join(format!(
+                ".rumi_panel_bootstrap_secret.{}",
+                std::process::id()
+            ))
+        );
+    }
+
+    #[test]
+    fn isolated_writable_state_keeps_the_development_workspace_venv() {
+        let workspace_root = PathBuf::from("/tmp/tobkiri-workspace");
+        let workspace_venv = workspace_root.join(".venv");
+        let mut config = AppConfig {
+            app_dir: workspace_root.join("tobkiri_runtime"),
+            rumi_home: workspace_root.join("tobkiri_runtime"),
+            python_dir: PathBuf::from("/tmp/shared-app-data/python"),
+            uv_path: PathBuf::from("/tmp/shared-app-data/uv"),
+            venv_dir: workspace_venv.clone(),
+            user_data_dir: PathBuf::from("/tmp/shared-app-data/user_data"),
+            log_dir: PathBuf::from("/tmp/shared-app-data/logs"),
+            kernel_port: 8765,
+            dev_workspace_root: Some(workspace_root),
+        };
+        let state_root = PathBuf::from("/tmp/owned-debug-supervisor");
+
+        config.isolate_writable_state(&state_root, state_root.join("viewer_user_data"));
+
+        assert_eq!(config.venv_dir, workspace_venv);
+        assert_eq!(config.python_dir, state_root.join("python"));
+        assert_eq!(config.uv_path, state_root.join(uv_binary_name()));
+    }
+
+    #[test]
     fn venv_python_path_is_reasonable() {
         let resource = PathBuf::from("/tmp/res");
         let appdata = PathBuf::from("/tmp/data");
@@ -529,7 +483,10 @@ mod tests {
         let config = AppConfig::detect_for_tauri(resource, appdata).unwrap();
         assert_eq!(
             config.panel_bootstrap_secret_path(),
-            PathBuf::from("/tmp/data/.rumi_panel_bootstrap_secret")
+            PathBuf::from("/tmp/data").join(format!(
+                ".rumi_panel_bootstrap_secret.{}",
+                std::process::id()
+            ))
         );
     }
 
@@ -557,6 +514,13 @@ mod tests {
 
         let config = AppConfig::detect_for_tauri(resource, appdata).unwrap();
         assert_eq!(config.app_dir, root.join("tobkiri_runtime"));
+        assert_eq!(config.venv_dir, root.join(".venv"));
+        assert_eq!(
+            config.user_data_dir,
+            root.join("tobkiri_launcher/src-tauri/target/dev-state/runs")
+                .join(std::process::id().to_string())
+                .join("user_data")
+        );
         assert!(config.is_dev_workspace());
 
         fs::remove_dir_all(&root).ok();
@@ -618,9 +582,91 @@ mod tests {
 
         assert_eq!(config.app_dir, root.join("tobkiri_runtime"));
         assert_eq!(config.dev_workspace_root, Some(root.clone()));
+        assert_eq!(config.venv_dir, root.join(".venv"));
         assert!(config.is_dev_workspace());
 
         fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn detect_for_tauri_recognizes_target_triple_debug_directory() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("tobkiri_launcher_config_target_{unique}"));
+        let resource = root.join("tobkiri_launcher/src-tauri/target/aarch64-apple-darwin/debug");
+        let staged_app_py = resource.join("app/app.py");
+        let repo_app_py = root.join("tobkiri_runtime/app.py");
+        fs::create_dir_all(staged_app_py.parent().unwrap()).unwrap();
+        fs::create_dir_all(repo_app_py.parent().unwrap()).unwrap();
+        fs::write(&staged_app_py, "print('staged')\n").unwrap();
+        fs::write(&repo_app_py, "print('repo')\n").unwrap();
+
+        let config = AppConfig::detect_for_tauri(resource.clone(), root.join("appdata")).unwrap();
+
+        assert_eq!(config.app_dir, root.join("tobkiri_runtime"));
+        assert_eq!(config.venv_dir, root.join(".venv"));
+        assert!(config.is_dev_workspace());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn detect_for_tauri_recognizes_debug_app_bundle_resources() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("tobkiri_launcher_config_app_{unique}"));
+        let resource = root.join(
+            "tobkiri_launcher/src-tauri/target/debug/bundle/macos/Tobkiri Launcher.app/Contents/Resources",
+        );
+        let staged_app_py = resource.join("app/app.py");
+        let repo_app_py = root.join("tobkiri_runtime/app.py");
+        fs::create_dir_all(staged_app_py.parent().unwrap()).unwrap();
+        fs::create_dir_all(repo_app_py.parent().unwrap()).unwrap();
+        fs::write(&staged_app_py, "print('staged')\n").unwrap();
+        fs::write(&repo_app_py, "print('repo')\n").unwrap();
+
+        let config = AppConfig::detect_for_tauri(resource.clone(), root.join("appdata")).unwrap();
+
+        assert_eq!(config.app_dir, resource.join("app"));
+        assert_eq!(config.dev_workspace_root, Some(root.clone()));
+        assert_eq!(config.venv_dir, resource.join("app/dev-venv"));
+        assert_eq!(
+            config.user_data_dir,
+            std::env::temp_dir()
+                .join("tobkiri-launcher-dev")
+                .join("runs")
+                .join(std::process::id().to_string())
+                .join("state/user_data")
+        );
+        assert!(config.is_dev_workspace());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn development_app_bundle_venv_follows_the_selected_runtime_boundary() {
+        let workspace_root = PathBuf::from("/tmp/tobkiri-workspace");
+        let workspace_runtime = workspace_root.join("tobkiri_runtime");
+        let staged_runtime = PathBuf::from("/tmp/Launcher.app/Contents/Resources/app");
+
+        assert_eq!(
+            development_venv_dir(&workspace_runtime, &workspace_root, true),
+            workspace_root.join(".venv"),
+            "an unbundled debug app uses the checkout runtime and venv"
+        );
+        assert_eq!(
+            development_venv_dir(&staged_runtime, &workspace_root, true),
+            staged_runtime.join("dev-venv"),
+            "a staged debug app uses the venv staged with that runtime"
+        );
     }
 
     #[test]
@@ -717,7 +763,6 @@ mod tests {
         let config = AppConfig::detect_for_tauri(resource, appdata.clone()).unwrap();
 
         assert_eq!(config.trusted_uv_path(), None);
-        assert_eq!(config.resolved_uv_path(), config.uv_path);
         assert_eq!(config.uv_path, appdata.join(uv_binary_name()));
 
         if let Some(path) = old_path {
@@ -731,80 +776,6 @@ mod tests {
             std::env::remove_var(UV_PATH_ENV);
         }
         fs::remove_dir_all(root).ok();
-    }
-
-    #[test]
-    fn pack_shell_path_prefers_dev_build_when_present() {
-        use std::fs;
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("tobkiri_launcher_pack_shell_{unique}"));
-        let resource = root
-            .join("tobkiri_launcher")
-            .join("src-tauri")
-            .join("target")
-            .join("debug");
-        let appdata = root.join("appdata");
-        let app_py = root.join("tobkiri_runtime").join("app.py");
-        let pack_shell = dev_pack_shell_binary_path(&root, "debug");
-
-        fs::create_dir_all(&resource).unwrap();
-        fs::create_dir_all(app_py.parent().unwrap()).unwrap();
-        fs::create_dir_all(pack_shell.parent().unwrap()).unwrap();
-        fs::write(&app_py, "print('ok')\n").unwrap();
-        fs::write(&pack_shell, b"pack-shell").unwrap();
-
-        let config = AppConfig::detect_for_tauri(resource, appdata).unwrap();
-
-        assert_eq!(config.pack_shell_path(), Some(pack_shell.clone()));
-        assert_eq!(config.ensure_pack_shell_path().unwrap(), pack_shell);
-
-        fs::remove_dir_all(&root).ok();
-    }
-
-    #[test]
-    fn ensure_pack_shell_path_builds_dev_binary_when_missing() {
-        use std::fs;
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("tobkiri_launcher_pack_shell_build_{unique}"));
-        let resource = root
-            .join("tobkiri_launcher")
-            .join("src-tauri")
-            .join("target")
-            .join("debug");
-        let appdata = root.join("appdata");
-        let app_py = root.join("tobkiri_runtime").join("app.py");
-        let manifest = root.join("pack-shell").join("Cargo.toml");
-        let pack_shell = dev_pack_shell_binary_path(&root, "debug");
-
-        fs::create_dir_all(&resource).unwrap();
-        fs::create_dir_all(app_py.parent().unwrap()).unwrap();
-        fs::create_dir_all(manifest.parent().unwrap()).unwrap();
-        fs::write(&app_py, "print('ok')\n").unwrap();
-        fs::write(&manifest, "[package]\nname = \"pack-shell\"\n").unwrap();
-
-        let config = AppConfig::detect_for_tauri(resource, appdata).unwrap();
-        let built = config
-            .ensure_pack_shell_path_with(|manifest_path| {
-                assert_eq!(manifest_path, manifest.as_path());
-                fs::create_dir_all(pack_shell.parent().unwrap()).unwrap();
-                fs::write(&pack_shell, b"pack-shell").unwrap();
-                Ok(())
-            })
-            .unwrap();
-
-        assert_eq!(built, pack_shell);
-
-        fs::remove_dir_all(&root).ok();
     }
 
     #[test]
@@ -836,195 +807,10 @@ mod tests {
         fs::write(&staged_pack_shell, b"staged-pack-shell").unwrap();
 
         let config = AppConfig::detect_for_tauri(resource, appdata).unwrap();
-        let resolved = config
-            .ensure_pack_shell_path_with(|manifest_path| {
-                panic!(
-                    "unexpected build of ancestor manifest {}",
-                    manifest_path.display()
-                );
-            })
-            .unwrap();
+        let resolved = config.ensure_pack_shell_path().unwrap();
 
         assert_eq!(resolved, staged_pack_shell);
 
-        fs::remove_dir_all(&root).ok();
-    }
-
-    #[test]
-    fn defaultspack_ecosystem_ignores_managed_current_pointer() {
-        use std::fs;
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("tobkiri_launcher_defaultspack_{unique}"));
-        let resource = root.join("resources");
-        let appdata = root.join("appdata");
-        let bundled = resource.join("app").join("ecosystem").join("defaultspack");
-        let managed = resource
-            .join("app")
-            .join("user_data")
-            .join("packs")
-            .join("defaultspack")
-            .join("versions")
-            .join("2.5.0");
-        let legacy_managed = appdata
-            .join("user_data")
-            .join("packs")
-            .join("defaultspack")
-            .join("versions")
-            .join("2.4.0");
-        fs::create_dir_all(&bundled).unwrap();
-        fs::create_dir_all(&managed).unwrap();
-        fs::create_dir_all(&legacy_managed).unwrap();
-        fs::write(
-            bundled.join("ecosystem.json"),
-            r#"{"pack_id":"defaultspack"}"#,
-        )
-        .unwrap();
-        fs::write(
-            managed.join("ecosystem.json"),
-            r#"{"pack_id":"defaultspack","desktop_app":{"command":"evil"}}"#,
-        )
-        .unwrap();
-        fs::write(
-            legacy_managed.join("ecosystem.json"),
-            r#"{"pack_id":"defaultspack","desktop_app":{"command":"legacy-evil"}}"#,
-        )
-        .unwrap();
-        fs::write(
-            resource
-                .join("app")
-                .join("user_data")
-                .join("packs")
-                .join("defaultspack")
-                .join("current.json"),
-            r#"{"schema":"rumi.pack_current.v1","pack_id":"defaultspack","version":"2.5.0","path":"versions/2.5.0"}"#,
-        )
-        .unwrap();
-        fs::write(
-            appdata
-                .join("user_data")
-                .join("packs")
-                .join("defaultspack")
-                .join("current.json"),
-            r#"{"schema":"rumi.pack_current.v1","pack_id":"defaultspack","version":"2.4.0","path":"versions/2.4.0"}"#,
-        )
-        .unwrap();
-
-        let config = AppConfig::detect_for_tauri(resource, appdata).unwrap();
-
-        assert_eq!(
-            config.defaultspack_ecosystem_json(),
-            bundled.join("ecosystem.json")
-        );
-        fs::remove_dir_all(&root).ok();
-    }
-
-    #[test]
-    fn defaultspack_ecosystem_ignores_appdata_current_pointer_for_migration() {
-        use std::fs;
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root =
-            std::env::temp_dir().join(format!("tobkiri_launcher_defaultspack_appdata_{unique}"));
-        let resource = root.join("resources");
-        let appdata = root.join("appdata");
-        let bundled = resource.join("app").join("ecosystem").join("defaultspack");
-        let managed = appdata
-            .join("user_data")
-            .join("packs")
-            .join("defaultspack")
-            .join("versions")
-            .join("2.5.0");
-        fs::create_dir_all(&bundled).unwrap();
-        fs::create_dir_all(&managed).unwrap();
-        fs::write(
-            bundled.join("ecosystem.json"),
-            r#"{"pack_id":"defaultspack"}"#,
-        )
-        .unwrap();
-        fs::write(
-            managed.join("ecosystem.json"),
-            r#"{"pack_id":"defaultspack","desktop_app":{"command":"evil"}}"#,
-        )
-        .unwrap();
-        fs::write(
-            appdata
-                .join("user_data")
-                .join("packs")
-                .join("defaultspack")
-                .join("current.json"),
-            r#"{"schema":"rumi.pack_current.v1","pack_id":"defaultspack","version":"2.5.0","path":"versions/2.5.0"}"#,
-        )
-        .unwrap();
-
-        let config = AppConfig::detect_for_tauri(resource, appdata).unwrap();
-
-        assert_eq!(
-            config.defaultspack_ecosystem_json(),
-            bundled.join("ecosystem.json")
-        );
-        fs::remove_dir_all(&root).ok();
-    }
-
-    #[test]
-    fn defaultspack_ecosystem_prefers_repo_pack_in_dev_workspace() {
-        use std::fs;
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("tobkiri_launcher_defaultspack_dev_{unique}"));
-        let resource = root
-            .join("tobkiri_launcher")
-            .join("src-tauri")
-            .join("resources");
-        let appdata = root.join("appdata");
-        let repo_defaultspack = root
-            .join("tobkiri_runtime")
-            .join("ecosystem")
-            .join("defaultspack");
-        let managed = appdata
-            .join("user_data")
-            .join("packs")
-            .join("defaultspack")
-            .join("versions")
-            .join("2.5.0");
-
-        fs::create_dir_all(&repo_defaultspack).unwrap();
-        fs::create_dir_all(&managed).unwrap();
-        fs::write(root.join("tobkiri_runtime").join("app.py"), "print('ok')\n").unwrap();
-        fs::write(
-            repo_defaultspack.join("ecosystem.json"),
-            "{\"source\":\"repo\"}",
-        )
-        .unwrap();
-        fs::write(managed.join("ecosystem.json"), "{\"source\":\"managed\"}").unwrap();
-        fs::write(
-            appdata
-                .join("user_data")
-                .join("packs")
-                .join("defaultspack")
-                .join("current.json"),
-            r#"{"schema":"rumi.pack_current.v1","pack_id":"defaultspack","version":"2.5.0","path":"versions/2.5.0"}"#,
-        )
-        .unwrap();
-
-        let config = AppConfig::detect_for_tauri(resource, appdata).unwrap();
-
-        assert_eq!(
-            config.defaultspack_ecosystem_json(),
-            repo_defaultspack.join("ecosystem.json")
-        );
         fs::remove_dir_all(&root).ok();
     }
 }

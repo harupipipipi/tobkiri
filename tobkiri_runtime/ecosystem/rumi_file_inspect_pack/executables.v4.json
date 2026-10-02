@@ -1,0 +1,203 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:12b2f284afeb1fe7f0d370d89b9f26400f374936dd95fe8f73013444c43f5c04",
+  "pack_id": "rumi_file_inspect_pack",
+  "source_identity": "sha256:b8f75ee1c64e26e7853a7b0babd0654a3d4b7aeb8f8dcd14addda0490f4dec7b",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_file_inspect_pack.file-inspect.service",
+      "implementation_digest": "sha256:9267d5985023bcbdd20c318d07d01dcb8239d7628a2621005a37e89eed7a75bd",
+      "implementation_path": "runtime/inspect.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.file.inspect.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": true,
+            "properties": {
+              "_lifecycle": {
+                "type": "object"
+              },
+              "_workspace_binding": {
+                "type": "object"
+              },
+              "encoding": {
+                "type": "string"
+              },
+              "end_line": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "max_bytes": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "name": {
+                "enum": [
+                  "read",
+                  "stat",
+                  "list",
+                  "search"
+                ]
+              },
+              "path": {
+                "type": "string"
+              },
+              "pattern": {
+                "type": "string"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "query": {
+                "type": "string"
+              },
+              "require_selected": {
+                "type": "boolean"
+              },
+              "start_line": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "workspace_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "profile_id",
+              "workspace_id",
+              "_workspace_binding"
+            ],
+            "type": "object"
+          },
+          "operation_id": "rumi_file_inspect_pack.file-inspect",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:120000de7f447efd8b7973c23cf293a22ec144fe49d8a1eb08c9aea73d30345b",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        },
+        {
+          "contract_id": "tobkiri.service.file.inspect.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": true,
+            "properties": {
+              "_lifecycle": {
+                "type": "object"
+              },
+              "_workspace_binding": {
+                "type": "object"
+              },
+              "encoding": {
+                "type": "string"
+              },
+              "end_line": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "max_bytes": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "name": {
+                "enum": [
+                  "read",
+                  "stat",
+                  "list",
+                  "search"
+                ]
+              },
+              "path": {
+                "type": "string"
+              },
+              "pattern": {
+                "type": "string"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "query": {
+                "type": "string"
+              },
+              "require_selected": {
+                "type": "boolean"
+              },
+              "start_line": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "workspace_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "profile_id",
+              "workspace_id",
+              "_workspace_binding"
+            ],
+            "type": "object"
+          },
+          "operation_id": "rumi_file_inspect_pack.file-inspect.for-media",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:120000de7f447efd8b7973c23cf293a22ec144fe49d8a1eb08c9aea73d30345b",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_file_inspect_pack.file-inspect.service.python"
+    }
+  ]
+}

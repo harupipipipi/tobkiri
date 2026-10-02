@@ -1,0 +1,208 @@
+{
+  "artifacts": [
+    {
+      "path": "catalog/licenses/models.dev-MIT.txt",
+      "role": "resource",
+      "sha256": "dc2dc41c9fea2fd3c41c21c6f484844cab367800b88ff24781f980ad3a9d160a"
+    },
+    {
+      "path": "catalog/provider-setup.json",
+      "role": "resource",
+      "sha256": "4ec00997a29b6b0ed0d6a66829f2f10fc257970416a394da9ae02d055bf44d28"
+    },
+    {
+      "path": "runtime/__init__.py",
+      "sha256": "bf06a7bdec60f689279ff379d9b0c7f47898d8bb559eca1eb6e205dd35f4f273"
+    },
+    {
+      "path": "runtime/catalog.py",
+      "sha256": "02c6a26f519443f9d7bf9ccbe0eb8366eeecc31497a82d278013b45d7079b715"
+    },
+    {
+      "path": "catalog/setup/ai21.json",
+      "role": "resource",
+      "sha256": "27618eb92d79c2c4021bf6a384f5e79265bd2368092ddacba5942e14bde6c883"
+    },
+    {
+      "path": "catalog/setup/alibaba-dashscope.json",
+      "role": "resource",
+      "sha256": "26d1676f1be75eb7915c76bf3e7b87872d215359a6a27da425b30c8d8b984128"
+    },
+    {
+      "path": "catalog/setup/anthropic.json",
+      "role": "resource",
+      "sha256": "8a37ebff109e356e329452c94c81f15ba5abcad9a3ac17b316578885ecd8b282"
+    },
+    {
+      "path": "catalog/setup/avian.json",
+      "role": "resource",
+      "sha256": "15c35937eb1199ce3dfbd33e3c8b42c7a4197ff20b9356acef225228ce2e00ec"
+    },
+    {
+      "path": "catalog/setup/cerebras.json",
+      "role": "resource",
+      "sha256": "bd66545da11d09d1f8386d843ee3d4b0b43b1513df815e47d6befe86ba3fc84b"
+    },
+    {
+      "path": "catalog/setup/deepinfra.json",
+      "role": "resource",
+      "sha256": "0409de2757ed98c0384d80e9967a51500a3355b36e8b0e86cf86e37438494292"
+    },
+    {
+      "path": "catalog/setup/deepseek.json",
+      "role": "resource",
+      "sha256": "5a5df0ee1866b9824a7ac7de06c5cdb087a2c92206cc1ef949da29b9e0a1159e"
+    },
+    {
+      "path": "catalog/setup/fireworks.json",
+      "role": "resource",
+      "sha256": "bd21f034d16a2d6bdd5fb0454c8470bcc7095e88e7cc8d02141de80142a7d4a4"
+    },
+    {
+      "path": "catalog/setup/friendli.json",
+      "role": "resource",
+      "sha256": "c0362abff662fbb35ba87622f704bc4f591acf51a415c09f70e6b32ab32b2497"
+    },
+    {
+      "path": "catalog/setup/gitlawb-opengateway.json",
+      "role": "resource",
+      "sha256": "4f1a2b4123d2abe3a5d50caa139a2e5ba1825aa8f956832a38982eb8a0a95dae"
+    },
+    {
+      "path": "catalog/setup/glm.json",
+      "role": "resource",
+      "sha256": "e0a43f7370f4288d01cacac5e0529cbeb232ca19398741cd3201fb7f7477735a"
+    },
+    {
+      "path": "catalog/setup/google.json",
+      "role": "resource",
+      "sha256": "c03909e391d7507878ba2f3c87da6e79905849521a48184bdc9bd4689d0fb7d8"
+    },
+    {
+      "path": "catalog/setup/groq.json",
+      "role": "resource",
+      "sha256": "50399d4547c1d189db40b7735f6c8b53d07581c1724c14939848ccb554109816"
+    },
+    {
+      "path": "catalog/setup/huggingface-inference.json",
+      "role": "resource",
+      "sha256": "c14fd5212e9953af0e3eb36356e6079966ce9ddb981dcabfaa2340831bb4ddae"
+    },
+    {
+      "path": "catalog/setup/hyperbolic.json",
+      "role": "resource",
+      "sha256": "14cef275f8d685806fd0a846e8cc116251bda4e6c9fd8b089b0c09e455ee173a"
+    },
+    {
+      "path": "catalog/setup/inference-net.json",
+      "role": "resource",
+      "sha256": "392b4bb3f45a16c5598f5c99e33043ba45d414015bca44229a8ddea433b9b137"
+    },
+    {
+      "path": "catalog/setup/longcat.json",
+      "role": "resource",
+      "sha256": "6a09d17c920eca0f1fcf600aba23b14d4f1f9797d662bdea7056984b1f0b8e24"
+    },
+    {
+      "path": "catalog/setup/mistral.json",
+      "role": "resource",
+      "sha256": "e6db9748c946d7ca238a0ae118f66b35ae472e67fb5a7c1bbb3896b0ab218949"
+    },
+    {
+      "path": "catalog/setup/moonshotai.json",
+      "role": "resource",
+      "sha256": "11b676ddd13fc10132fd64f58b7c0ad901f8fa5774e87ab26151c56922cb286d"
+    },
+    {
+      "path": "catalog/setup/nebius.json",
+      "role": "resource",
+      "sha256": "2d2594f22d7b80f332199ef616fec43d898eb18a3256e85cdd7d74fc1257c3a7"
+    },
+    {
+      "path": "catalog/setup/novita.json",
+      "role": "resource",
+      "sha256": "d378b7aecdbf1acdc43a2329afe1c0b6a66c5f04e1f79fc195116ed7cfe09ef7"
+    },
+    {
+      "path": "catalog/setup/nvidia.json",
+      "role": "resource",
+      "sha256": "b96a8912fc8ba67b5129b0ac1f631b97633d2fd9d52a60c502da8ec7219e4fdf"
+    },
+    {
+      "path": "catalog/setup/openai.json",
+      "role": "resource",
+      "sha256": "207feff6d39255b835bb6c676cb5baf97d536ebf629db6551741bbd2ef3d0550"
+    },
+    {
+      "path": "catalog/setup/opencode-go.json",
+      "role": "resource",
+      "sha256": "71ddaad1b3e6308b4bb0a64d9e707d2e1c6f2b53dd2a68fc3a2428150b56f358"
+    },
+    {
+      "path": "catalog/setup/opencode-zen.json",
+      "role": "resource",
+      "sha256": "ce1705e8852770197c504f7ea25d095771b62f1e47b9b1f68909981041333750"
+    },
+    {
+      "path": "catalog/setup/openrouter.json",
+      "role": "resource",
+      "sha256": "ecb0a93610dc339dcfb955f9903382ec6bcecbebd016860e594e53fe5ed2e93d"
+    },
+    {
+      "path": "catalog/setup/perplexity.json",
+      "role": "resource",
+      "sha256": "9145bbbd5c758b4cea0ce5f0bf4e63fac0d61e639d68b5d4292b13d771eda6cf"
+    },
+    {
+      "path": "catalog/setup/sambanova.json",
+      "role": "resource",
+      "sha256": "030df65458b22ce03d557051b84f9d86ab57c902fbc8a2fcfff38452c07070c2"
+    },
+    {
+      "path": "catalog/setup/siliconflow.json",
+      "role": "resource",
+      "sha256": "4958ef55183b959fe7a25e2e2639ba767b6aa971633f3e383ca26b82f4c86274"
+    },
+    {
+      "path": "catalog/setup/together.json",
+      "role": "resource",
+      "sha256": "ba96cdfcbd1e0487546bd78e2d36270340c70138c4dc00b9bd858fd54962a909"
+    },
+    {
+      "path": "catalog/setup/upstage.json",
+      "role": "resource",
+      "sha256": "593e4041977bd2d05b651fb11b534d8a32c4c1e7cbc682ddf220a7fd0d909598"
+    },
+    {
+      "path": "catalog/setup/vercel-ai-gateway.json",
+      "role": "resource",
+      "sha256": "58e691c3077e6d19a5db1aabccd78b189fc277587b8da9172f1cfe7b511645e0"
+    },
+    {
+      "path": "catalog/setup/xai.json",
+      "role": "resource",
+      "sha256": "ccc894a373ad4d140ad5d20ce500582ba39ba5241f4d5164b32bbdbdecc3f7c3"
+    },
+    {
+      "path": "catalog/setup/xiaomi-mimo-global.json",
+      "role": "resource",
+      "sha256": "7f4c9d4640b713a815ccff873bc0a308c33cba940639c196ce83b5896f8f394e"
+    },
+    {
+      "path": "catalog/setup/xiaomi-token-plan-ams.json",
+      "role": "resource",
+      "sha256": "6b49d988dc77c647fb80bb7ecac7c23552746155bdd9cef4648b161a9c4da048"
+    },
+    {
+      "path": "catalog/setup/xiaomi-token-plan-cn.json",
+      "role": "resource",
+      "sha256": "b0362359e77b4246eb3929a94f11718b19327d56f14e01c6c202ed3ad14d390f"
+    },
+    {
+      "path": "catalog/setup/xiaomi-token-plan-sgp.json",
+      "role": "resource",
+      "sha256": "9bca93ed4c9146d82e244fd9731889586f295953704fe6fafcf15e44fe06b7b6"
+    }
+  ],
+  "version": "rumi.pack-artifacts.v1"
+}

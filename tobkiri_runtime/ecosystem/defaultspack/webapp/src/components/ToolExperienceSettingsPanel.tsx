@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ModelSearchItem, SidebarItem, ToolCatalogResponse, ToolCatalogService, ToolCatalogTool, ToolSelectionMode, ToolSelectionStrategy } from "../lib/api";
 import { toolResources } from "../features/tools/resources/toolResources";
 import { cn } from "../lib/cn";
+import { ErrorNotice } from "./ErrorNotice";
 import { ToolSettingsPanel } from "./ToolSettingsPanel";
 import { ModalFoundation } from "./ModalFoundation";
 
@@ -12,7 +13,7 @@ type ToolSettings = Record<string, unknown>;
 type SettingsValues = Record<string, Record<string, unknown>>;
 
 const MODE_OPTIONS: Array<{ value: ToolSelectionMode; label: string; note: string; badge?: string }> = [
-  { value: "auto", label: "自動で選ぶ", note: "依頼に必要な機能だけをRumiが選びます", badge: "推奨" },
+  { value: "auto", label: "自動で選ぶ", note: "依頼に必要な機能だけをTobkiriが選びます", badge: "推奨" },
   { value: "review", label: "使う前に確認", note: "候補を確認してから回答を開始します" },
   { value: "manual", label: "自分で選ぶ", note: "選んだ機能だけを候補にします" },
   { value: "none", label: "機能を使わない", note: "このメッセージでは外部機能を使いません" },
@@ -325,10 +326,12 @@ export function ToolExperienceSettingsPanel({
   tools,
   settingsValues,
   onSettingChange,
+  displayMode = "standard",
 }: {
   tools: SidebarItem[];
   settingsValues: SettingsValues;
   onSettingChange: (sectionId: string, fieldId: string, value: unknown) => void;
+  displayMode?: "standard" | "advanced";
 }) {
   const [activeTab, setActiveTab] = useState<typeof TABS[number]["id"]>("basic");
   const [catalog, setCatalog] = useState<ToolCatalogResponse | null>(null);
@@ -339,6 +342,7 @@ export function ToolExperienceSettingsPanel({
   const [previewText, setPreviewText] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewResult, setPreviewResult] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [warningStrategy, setWarningStrategy] = useState<ToolSelectionStrategy | null>(null);
 
   const toolSettings = settingsValues.tools ?? {};
@@ -426,6 +430,7 @@ export function ToolExperienceSettingsPanel({
   const runPreview = async () => {
     setPreviewLoading(true);
     setPreviewResult(null);
+    setPreviewError(null);
     try {
       const result = await toolResources.previewToolSelection({
         user_text: previewText || "この依頼に必要な機能を選んで",
@@ -435,7 +440,7 @@ export function ToolExperienceSettingsPanel({
       const recommendations = result.decision.recommendations.slice(0, 5).map((item) => item.reason ? `${item.tool_id}: ${item.reason}` : item.tool_id).join("\n");
       setPreviewResult(`選ばれた機能: ${selected}${recommendations ? `\n\n理由:\n${recommendations}` : ""}`);
     } catch (error) {
-      setPreviewResult(error instanceof Error ? error.message : "選定を試せませんでした");
+      setPreviewError(error instanceof Error ? error.message : "選定を試せませんでした");
     } finally {
       setPreviewLoading(false);
     }
@@ -464,16 +469,16 @@ export function ToolExperienceSettingsPanel({
       </section>
       <section className="grid gap-3 lg:grid-cols-2">
         <ToggleRow
-          checked={boolValue(toolSettings.show_selected_tools_in_answer, true)}
+          checked={boolValue(toolSettings.show_selection_summary ?? toolSettings.show_selected_tools_in_answer, true)}
           title="選んだ機能を回答内に表示"
           note="どの機能を使ったかを、必要な場面で回答に含めます。"
-          onChange={(value) => updateToolSetting("show_selected_tools_in_answer", value)}
+          onChange={(value) => updateToolSetting("show_selection_summary", value)}
         />
         <ToggleRow
-          checked={boolValue(toolSettings.expand_selection_reasoning, false)}
+          checked={boolValue(toolSettings.show_selection_reasons ?? toolSettings.expand_selection_reasoning, false)}
           title="選定理由を最初から展開して表示"
           note="候補選定の理由を折りたたまずに表示します。"
-          onChange={(value) => updateToolSetting("expand_selection_reasoning", value)}
+          onChange={(value) => updateToolSetting("show_selection_reasons", value)}
         />
       </section>
     </div>
@@ -680,7 +685,16 @@ export function ToolExperienceSettingsPanel({
           </button>
           <span className="text-xs text-zinc-500">現在の設定でプレビューします</span>
         </div>
-        {previewResult && <pre className="max-h-60 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs leading-5 text-zinc-300 whitespace-pre-wrap">{previewResult}</pre>}
+        {previewError ? (
+          <ErrorNotice
+            className="text-xs leading-5"
+            copyLabel="ツール選定プレビューエラーをコピー"
+            message={previewError}
+            title="選定を試せませんでした"
+          />
+        ) : previewResult ? (
+          <pre className="max-h-60 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs leading-5 text-zinc-300 whitespace-pre-wrap">{previewResult}</pre>
+        ) : null}
       </section>
       <details className="rounded-lg border border-zinc-800 bg-zinc-950/35">
         <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-zinc-100">個別ツールの管理</summary>
@@ -724,7 +738,7 @@ export function ToolExperienceSettingsPanel({
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap gap-2 border-b border-zinc-800 pb-3">
-        {TABS.map((tab) => (
+        {TABS.filter((tab) => tab.id !== "advanced" || displayMode === "advanced").map((tab) => (
           <button
             key={tab.id}
             type="button"
@@ -738,7 +752,7 @@ export function ToolExperienceSettingsPanel({
       {activeTab === "basic" && renderBasic()}
       {activeTab === "permissions" && renderPermissions()}
       {activeTab === "connections" && renderConnections()}
-      {activeTab === "advanced" && renderAdvanced()}
+      {activeTab === "advanced" && displayMode === "advanced" && renderAdvanced()}
     </div>
   );
 }
