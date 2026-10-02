@@ -226,7 +226,7 @@ export async function requestComposerAudioTranscript(
     throw new Error(String(
       transcription.reason
       || transcription.code
-      || "音声を文字起こしできませんでした。",
+      || "no_speech",
     ));
   } catch (error) {
     throw new Error(readableTranscriptionError(error));
@@ -248,7 +248,13 @@ export async function assertComposerMicrophoneAllowed(
 /** Invalidate asynchronous capture/transcription completions after cancel or navigation. */
 export class ComposerVoiceOperation {
   private generation = 0;
+  private scope: string | null = null;
 
+  bindScope(scope: string): void {
+    if (scope !== this.scope) this.invalidate();
+    this.scope = scope;
+  }
+  token(): number { return this.generation; }
   next(): number { return ++this.generation; }
   invalidate(): void { this.generation += 1; }
   isCurrent(generation: number): boolean { return this.generation === generation; }
@@ -265,4 +271,15 @@ export class ComposerVoiceOperation {
     }
     return result;
   }
+}
+
+/** Restore the retained selection only while the same draft remains visible. */
+export function restoreComposerVoiceSelection(
+  originalDraft: string,
+  currentDraft: string,
+  selection: { start: number; end: number },
+): { start: number; end: number } | null {
+  if (originalDraft !== currentDraft) return null;
+  const start = Math.max(0, Math.min(selection.start, currentDraft.length));
+  return { start, end: Math.max(start, Math.min(selection.end, currentDraft.length)) };
 }
