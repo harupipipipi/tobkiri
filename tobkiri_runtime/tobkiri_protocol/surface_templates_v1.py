@@ -19,6 +19,7 @@ RENDERER_VERSION = "tobkiri.ui.surface-renderer.v1"
 INTENT_VERSION = "tobkiri.ui.surface-intent.v1"
 OUTCOME_VERSION = "tobkiri.ui.surface-outcome.v1"
 RESOURCE_VERSION = "tobkiri.ui.surface-resource.v1"
+RESOURCE_ACTION_CONTRACT = "tobkiri.action.surface.resource.v1"
 PATTERN_EVENTS = {
     "content": frozenset({"activate"}),
     "problem": frozenset({"retry", "dismiss"}),
@@ -57,7 +58,7 @@ _RESERVED = frozenset(
 _SCHEMAS = Path(__file__).with_name("schemas")
 
 
-@lru_cache(maxsize=5)
+@lru_cache(maxsize=6)
 def _validator(name: str) -> Draft202012Validator:
     return Draft202012Validator(json.loads((_SCHEMAS / name).read_text("utf-8")))
 
@@ -199,6 +200,13 @@ def validate_surface_resource(
     ):
         raise ValueError("surface resource ticket is malformed")
     return _copy(value)
+
+
+def validate_surface_resource_request(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate finite acquisition/exchange data, without approving an effect."""
+    normalized = _copy(value)
+    _validator("surface_resource_request_v1.schema.json").validate(normalized)
+    return normalized
 
 
 def normalize_surface_intent(

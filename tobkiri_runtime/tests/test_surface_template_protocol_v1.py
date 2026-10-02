@@ -19,6 +19,7 @@ from tobkiri_protocol.surface_templates_v1 import (
     validate_surface_outcome,
     validate_surface_renderer,
     validate_surface_resource,
+    validate_surface_resource_request,
     validate_surface_template,
 )
 
@@ -230,3 +231,23 @@ def test_received_intent_is_bound_to_exact_version_node_event_and_typed_values()
     ):
         with pytest.raises((ValueError, ValidationError)):
             validate_surface_intent({**intent, **change}, template())
+
+
+def test_resource_action_request_is_finite_and_never_accepts_authority_or_paths() -> (
+    None
+):
+    """The public action schema has no executable/client identity escape hatch."""
+    acquire = {"operation": "acquire", "kind": "file"}
+    exchange = {"operation": "exchange", "kind": "file", "selection_id": "x" * 43}
+    assert validate_surface_resource_request(acquire) == acquire
+    assert validate_surface_resource_request(exchange) == exchange
+    for invalid in (
+        {**acquire, "selection_id": "x" * 43},
+        {"operation": "exchange", "kind": "file"},
+        {**exchange, "selection_id": "handle:forged"},
+        {**acquire, "approved": True},
+        {**acquire, "profile_id": "other"},
+        {**acquire, "file_path": "/private/file"},
+    ):
+        with pytest.raises(ValidationError):
+            validate_surface_resource_request(invalid)

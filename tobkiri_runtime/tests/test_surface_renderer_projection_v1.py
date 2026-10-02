@@ -150,20 +150,26 @@ def test_shipped_surface_template_passes_both_public_schema_layers() -> None:
     ],
 )
 def test_unknown_or_executable_renderer_descriptor_is_never_admitted(
-    change: dict[str, Any],
+    tmp_path: Path, monkeypatch: Any, change: dict[str, Any]
 ) -> None:
-    """Frontend outer and neutral renderer schemas both fail closed."""
-    from jsonschema import Draft202012Validator, ValidationError
-    from tobkiri_protocol.surface_templates_v1 import validate_surface_renderer
-
-    value = {**descriptor(), **change}
-    validator = Draft202012Validator(
-        json.loads((_ROOT / "schemas/frontend_contribution.schema.json").read_text())
+    """Even a selected exact artifact cannot turn inert metadata into code."""
+    root = tmp_path / "renderer"
+    digest = signed_pack(root, {**descriptor(), **change})
+    monkeypatch.setattr(frontend, "resolve_admitted_pack_root", lambda pack_id: root)
+    monkeypatch.setattr(
+        frontend,
+        "load_admitted_pack_catalog",
+        lambda: {
+            _PACK: {"runtime_artifacts": [{"path": _PATH, "kind": "ui.contribution"}]},
+        },
     )
-    if validator.is_valid(value):
-        with pytest.raises((ValueError, ValidationError)):
-            if value.get("renderer") != "tobkiri.ui.surface-renderer.v1":
-                raise ValueError("renderer API is unavailable")
-            validate_surface_renderer(value["view"])
-    else:
-        assert not validator.is_valid(value)
+    items, diagnostics, quarantined = frontend.project_selected_declarative_routes(
+        [{"role": "pack", "identity": _PACK, "artifact_digest": digest}],
+        [],
+        profile_id="profile",
+        profile_revision="revision",
+        activation_id="activation",
+        plan_digest="plan",
+    )
+    assert items == [] and quarantined == [_PACK]
+    assert diagnostics[0]["code"] == "v4_frontend_pack_quarantined"

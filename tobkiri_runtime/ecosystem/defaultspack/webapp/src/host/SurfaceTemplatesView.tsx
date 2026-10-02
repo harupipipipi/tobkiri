@@ -133,39 +133,39 @@ function SurfaceNodeView({
     {node.pattern === "notice" && <p role="status">{node.body ?? "A notice was reported by this Surface."}</p>}
     {node.pattern === "progress" && (progress ? <><progress aria-label={node.label} value={value} max={total} />
       <span>{value} / {total}</span></> : <p role="status">Progress is unavailable.</p>)}
-    {node.pattern === "choice" && <label>{node.label}<select multiple={node.multiple} value={node.multiple ? selected : selected[0] ?? ""}
+    {node.pattern === "choice" && <label>{node.label}<select className="min-h-11 max-w-full" multiple={node.multiple} value={node.multiple ? selected : selected[0] ?? ""}
       disabled={busy || !sourceReady} onChange={(event) => setValues({ selected: Array.from(event.target.selectedOptions).map((option) => option.value) })}>
       {!node.multiple && <option value="" disabled>Choose an item</option>}
       {node.choices?.map((choice) => <option key={choice.id} value={choice.id}>{choice.label}</option>)}
     </select></label>}
     {node.pattern === "form" && <fieldset disabled={busy || !sourceReady}>
       <legend>{node.label}</legend>
-      {node.fields?.map((field) => <label key={field.id} className="block">{field.label}
+      {node.fields?.map((field) => <label key={field.id} className="block min-h-11">{field.label}
         {field.type === "boolean" ? <input type="checkbox" checked={fields[field.id] === true}
           onChange={(event) => setField(field.id, event.target.checked)} />
-          : <input type={field.type === "integer" ? "number" : "text"} required={field.required}
+          : <input className="min-h-11 max-w-full" type={field.type === "integer" ? "number" : "text"} required={field.required}
             min={field.min} max={field.max} step={field.type === "integer" ? 1 : undefined} maxLength={16384}
             value={typeof fields[field.id] === "string" || typeof fields[field.id] === "number" ? String(fields[field.id]) : ""}
             onChange={(event) => setField(field.id, field.type === "integer" ? event.target.value === "" ? null : Number(event.target.value) : event.target.value)} />}
       </label>)}
     </fieldset>}
-    {node.pattern === "collection" && (collection ? <label>{node.label}<select value={String(values.selected_id ?? "")}
+    {node.pattern === "collection" && (collection ? <label>{node.label}<select className="min-h-11 max-w-full" value={String(values.selected_id ?? "")}
       disabled={busy || !sourceReady} onChange={(event) => setValues({ selected_id: event.target.value })}>
       <option value="" disabled>Choose an item</option>
       {collection.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
     </select></label> : <p role="status">Collection is unavailable.</p>)}
     {node.resource && <div>
-      <button type="button" disabled={busy || !sourceReady || !requestFor(node.resource.acquire)} onClick={acquire}>Choose {node.resource.kind}</button>
+      <button className="min-h-11 px-2" type="button" disabled={busy || !sourceReady || !requestFor(node.resource.acquire)} onClick={acquire}>Choose {node.resource.kind}</button>
       {!requestFor(node.resource.acquire) && <p role="status">Resource acquisition provider is unavailable.</p>}
       {resource && <p>{resource.display_name}</p>}
-      <button type="button" disabled={busy || !sourceReady || !resource || !parseSurfaceResource(resource, node.resource.kind, "selected")
+      <button className="min-h-11 px-2" type="button" disabled={busy || !sourceReady || !resource || !parseSurfaceResource(resource, node.resource.kind, "selected")
         || !requestFor(node.resource.exchange, { selection_id: resource.selection_id })} onClick={exchange}>Exchange selected resource</button>
     </div>}
     <div className="flex flex-wrap gap-2">{node.intents?.map((intent) => {
       const data = node.pattern === "resource_input" ? { resource } : values;
       const typed = normalizeSurfaceIntent(template, node.id, intent.id, data);
       const selectable = node.pattern !== "collection" || collection?.some((item) => item.id === values.selected_id);
-      return <button key={intent.id} type="button" disabled={busy || !sourceReady || !typed || !selectable
+      return <button className="min-h-11 px-2" key={intent.id} type="button" disabled={busy || !sourceReady || !typed || !selectable
         || !requestFor(intent.request, { surface_intent: typed })} onClick={() => submit(intent)}>{intent.label}</button>;
     })}</div>
     {busy && <p role="status">Working…</p>}

@@ -16,6 +16,7 @@ for (const renderer of ["semantic_standard", "semantic_compact"] as const) {
     assert.match(html, /data-surface-motion="static"/);
     assert.match(html, /<progress aria-label="Progress" value="2" max="4"/);
     assert.match(html, /<fieldset/); assert.match(html, /<legend>Form/); assert.match(html, /<label[^>]*>Title/);
+    assert.match(html, /<button class="min-h-11 px-2" type="button"/);
     assert.match(html, /Resource acquisition provider is unavailable/);
     assert.doesNotMatch(html, /<script|<svg|<iframe|style=|animation|transition/);
   });
