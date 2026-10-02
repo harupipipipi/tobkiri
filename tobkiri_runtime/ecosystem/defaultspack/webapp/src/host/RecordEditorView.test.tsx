@@ -51,6 +51,14 @@ test("unregistered or stale action targets are disabled", () => {
   assert.match(html, /disabled="" aria-label="Pause Review"/);
 });
 
+test("read failure retains visible records while source readiness disables mutations", () => {
+  const html = renderToStaticMarkup(<RecordEditorView registered={registered} catalog={catalog}
+    capabilities={capabilities} snapshot={{ revision: 3, records: [{ id: "one", name: "Review" }] }}
+    onRefresh={() => {}} sourceReady={false} />);
+  assert.match(html, /1 of 1 records/);
+  assert.match(html, /disabled="" aria-label="Pause Review"/);
+});
+
 test("record labels are escaped text and do not become executable markup", () => {
   const html = render({ revision: 3, records: [{ id: "one", name: "<script>bad()</script>" }] });
   assert.match(html, /&lt;script&gt;/);

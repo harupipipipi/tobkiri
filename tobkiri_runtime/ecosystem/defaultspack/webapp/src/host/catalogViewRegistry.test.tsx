@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   choicePayload, controlPayload, matchesViewReference, parseCatalogView,
   readViewPath, requestContextInput, validPublicViewInput,
-  viewChoices, viewOperationRequest, viewsForSlot, viewContextKey,
+  viewChoices, viewOperationRequest, viewReadRequest, viewsForSlot, viewContextKey,
   type CatalogView, type ViewControl,
 } from "./catalogViewRegistry";
 import { FrontendViewSlot } from "./FrontendViewSlot";
@@ -37,7 +37,7 @@ const catalog = (): FrontendCatalog => ({
     contribution(),
     contribution({ contribution_id: operation.contribution_id, kind: "action",
       owner_pack_id: "logic", action_contract: operation.contract_id,
-      operation_id: operation.operation_id, view: null }),
+      operation_id: operation.operation_id, read_only: true, view: null }),
   ],
 });
 
@@ -112,6 +112,17 @@ test("duplicate/mismatched/unready targets remain unavailable", () => {
   value.contributions.pop();
   value.contributions[1].action_contract = "wrong.v1";
   assert.equal(viewOperationRequest(value, registered, operation, {}), null);
+});
+
+test("automatic sources cannot invoke mutations while explicit controls retain captured invocation", () => {
+  const value = catalog();
+  const registered = viewsForSlot(value, "sidebar", "plan")[0];
+  assert.ok(viewReadRequest(value, registered, operation, {}));
+  value.contributions[1].read_only = false;
+  assert.equal(viewReadRequest(value, registered, operation, {}), null);
+  assert.ok(viewOperationRequest(value, registered, operation, {}));
+  delete value.contributions[1].read_only;
+  assert.equal(viewReadRequest(value, registered, operation, {}), null);
 });
 
 test("nested identity/private/prototype hints and nonfinite values are rejected", () => {

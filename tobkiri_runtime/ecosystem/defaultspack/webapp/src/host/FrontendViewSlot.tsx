@@ -3,9 +3,11 @@ import {
   type ReactNode,
 } from "react";
 import type { FrontendCapabilityInvoker, FrontendCatalog } from "./frontendContracts";
+import { RecordEditorView } from "./RecordEditorView";
+import { freshTextDraft, refreshTextDraft, textDraftDirty, viewOperationOutcome } from "./viewControlState";
 import {
   choicePayload, controlPayload, matchesViewReference, readViewPath,
-  viewChoices, viewOperationRequest, viewsForSlot, requestContextInput, viewContextKey,
+  viewChoices, viewOperationRequest, viewReadRequest, viewsForSlot, requestContextInput, viewContextKey,
   type CatalogViewReference, type RegisteredCatalogView,
   type ViewControl, type ViewSlot, type ViewInputContext, type ViewNavigationGuardChange,
 } from "./catalogViewRegistry";
@@ -72,7 +74,7 @@ function CatalogViewHost({
   const source = registered.view.data_source;
   const sourceInput = source ? requestContextInput(source, context) : null;
   const sourceRequest = source && sourceInput
-    ? viewOperationRequest(catalog, registered, source, sourceInput) : null;
+    ? viewReadRequest(catalog, registered, source, sourceInput) : null;
   const sourceAvailable = !source || sourceRequest !== null;
   useEffect(() => {
     if (!source || !sourceRequest) return undefined;
@@ -91,6 +93,7 @@ function CatalogViewHost({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registered, capabilities, refreshIndex]);
   const refresh = useCallback(() => setRefreshIndex((value) => value + 1), []);
+  const sourceReady = sourceAvailable && !loading && !sourceError && (!source || snapshot !== null);
   return <section aria-label={registered.item.accessibility.name}
     aria-live={registered.item.accessibility.live === "off" ? undefined : registered.item.accessibility.live}
     data-contribution-id={registered.item.contribution_id}
@@ -120,13 +123,16 @@ function CatalogViewHost({
       })}
     </dl>
     <div className="mt-2 flex min-w-0 flex-wrap gap-2">
-      {registered.view.renderer === "record_editor" && <UnavailableView />}
+      {registered.view.renderer === "record_editor" && <RecordEditorView
+        registered={registered} catalog={catalog} capabilities={capabilities} snapshot={snapshot}
+        onRefresh={refresh} context={context} sourceReady={sourceReady}
+        onDirtyChange={onNavigationGuardChange} />}
       {(registered.view.controls ?? []).map((control) => <CatalogControl
         key={control.id} control={control} snapshot={snapshot}
         registered={registered} catalog={catalog} capabilities={capabilities}
         context={context}
         onNavigationGuardChange={onNavigationGuardChange}
-        sourceReady={sourceAvailable && !loading && !sourceError && (!source || snapshot !== null)}
+        sourceReady={sourceReady}
         onRefresh={refresh} />)}
     </div>
   </section>;
@@ -143,24 +149,30 @@ function CatalogControl({
   onNavigationGuardChange?: ViewNavigationGuardChange;
 }) {
   const authoritative = readViewPath(snapshot, control.value_path);
-  const [draft, setDraft] = useState("");
+  const [textDraft, setTextDraft] = useState(() => freshTextDraft(authoritative));
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const pending = useRef(false);
   const active = useRef(true);
+  const currentDraft = useRef(textDraft);
+  currentDraft.current = textDraft;
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
-  useEffect(() => { setDraft(typeof authoritative === "string" ? authoritative : ""); }, [authoritative]);
+  useEffect(() => {
+    setTextDraft((current) => refreshTextDraft(current, authoritative));
+  }, [authoritative, textDraft.awaiting]);
   const ownerId = JSON.stringify([registered.reference, control.id, viewContextKey(registered, context)]);
   useEffect(() => {
-    const dirty = control.kind === "text" && draft !== (typeof authoritative === "string" ? authoritative : "");
-    onNavigationGuardChange?.(ownerId, busy ? () => false : dirty
-      ? () => window.confirm("Discard unsaved changes to " + control.label + "?") : null);
+    onNavigationGuardChange?.(ownerId, () => {
+      if (pending.current) return false;
+      return control.kind !== "text" || !textDraftDirty(currentDraft.current)
+        || window.confirm("Discard unsaved changes to " + control.label + "?");
+    });
     return () => onNavigationGuardChange?.(ownerId, null);
-  }, [ownerId, control.kind, control.label, draft, authoritative, busy, onNavigationGuardChange]);
+  }, [ownerId, control.kind, control.label, onNavigationGuardChange]);
   const base = controlPayload(control, snapshot, control.kind === "toggle"
-    ? authoritative !== true : control.kind === "text" ? draft : null, context);
+    ? authoritative !== true : control.kind === "text" ? textDraft.value : null, context);
   const available = base !== null && viewOperationRequest(catalog, registered, control.operation, base) !== null;
   const disabled = !sourceReady || !available || busy;
   const invoke = async (payload: Record<string, unknown> | null) => {
@@ -174,8 +186,13 @@ function CatalogControl({
     try {
       const result = await capabilities.invokeAction(request);
       if (active.current) {
-        const state = result && typeof result === "object" && "state" in result ? result.state : null;
-        setFeedback(["approval_required", "awaiting_approval", "pending_approval"].includes(String(state))
+        const outcome = viewOperationOutcome(result);
+        if (outcome === "failed") throw new Error("operation_failed");
+        if (control.kind === "text" && outcome === "returned") {
+          const submitted = textDraft.value;
+          setTextDraft((current) => ({ ...current, awaiting: submitted }));
+        }
+        setFeedback(outcome === "approval"
           ? "Waiting for approval in the trusted Tobkiri approval surface."
           : "The operation returned. Refreshing the authoritative state.");
         onRefresh();
@@ -195,8 +212,8 @@ function CatalogControl({
     : typeof authoritative === "string" ? authoritative : "";
   return <div className="flex min-w-0 flex-col gap-1" data-view-control={control.id}>
     {control.kind === "text" && <label className="text-sm">{control.label}
-      <input value={draft} maxLength={16384} disabled={disabled}
-        onChange={(event) => setDraft(event.target.value)}
+      <input value={textDraft.value} maxLength={16384} disabled={busy}
+        onChange={(event) => setTextDraft((current) => ({ ...current, value: event.target.value, awaiting: null }))}
         className="block min-h-11 w-full rounded border border-zinc-700 bg-transparent px-2" /></label>}
     {control.kind === "choice" ? <>
       <label className="text-sm">Search {control.label}
@@ -221,6 +238,9 @@ function CatalogControl({
       onClick={() => void invoke(base)} className="min-h-11 rounded border border-zinc-700 px-3 py-2">
       {busy ? "Working…" : control.kind === "text" ? "Save " + control.label : control.label}
     </button>}
+    {control.kind === "text" && textDraftDirty(textDraft) && <button type="button" disabled={busy}
+      onClick={() => setTextDraft(freshTextDraft(authoritative))}
+      className="min-h-11 rounded border border-zinc-700 px-3 py-2">Reload saved value</button>}
     {!available && <p role="status" className="text-xs">Operation unavailable</p>}
     {failed && <p role="alert" className="text-xs">The operation failed. Previous state is retained; try again.</p>}
     {feedback && <p role="status" className="text-xs">{feedback}</p>}

@@ -38,6 +38,8 @@ export type VerifiedFrontendContribution = {
   action_contract?: string | null;
   data_source_contract?: string | null;
   operation_id?: string;
+  // Host-captured executable effect class; views cannot grant this property.
+  read_only?: boolean;
   schema?: Record<string, unknown> | null;
   view?: Record<string, unknown> | null;
   module?: {

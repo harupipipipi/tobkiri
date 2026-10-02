@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FrontendCapabilityInvoker, FrontendCatalog } from "./frontendContracts";
+import { viewOperationOutcome } from "./viewControlState";
 import {
   readViewPath, viewOperationRequest,
   type RegisteredCatalogView, type ViewInputContext,
@@ -13,17 +14,15 @@ import {
 
 const buttonClass = "min-h-11 rounded border border-zinc-700 px-3 py-2 disabled:opacity-50";
 const inputClass = "block min-h-11 w-full rounded border border-zinc-700 bg-transparent px-2 py-1";
-const approvalPending = (value: unknown) => value !== null && typeof value === "object"
-  && ["approval_required", "awaiting_approval", "pending_approval"].includes(
-    String("state" in value ? value.state : "status" in value ? value.status : ""));
 
 /** Application-owned editor for validated catalog data and exact native actions. */
 export function RecordEditorView({
-  registered, catalog, capabilities, snapshot, onRefresh, onDirtyChange, context = {},
+  registered, catalog, capabilities, snapshot, onRefresh, onDirtyChange, context = {}, sourceReady = true,
 }: {
   registered: RegisteredCatalogView; catalog: FrontendCatalog;
   capabilities: FrontendCapabilityInvoker; snapshot: unknown; onRefresh: () => void;
   onDirtyChange?: RecordEditorGuardRegistration; context?: ViewInputContext;
+  sourceReady?: boolean;
 }) {
   const descriptor = registered.view.record_editor;
   const [query, setQuery] = useState("");
@@ -58,9 +57,9 @@ export function RecordEditorView({
     return () => { activeRef.current = false; };
   }, []);
   useEffect(() => {
-    onDirtyChange?.(ownerId, dirty || pending ? canLeave : null);
+    onDirtyChange?.(ownerId, canLeave);
     return () => onDirtyChange?.(ownerId, null);
-  }, [ownerId, onDirtyChange, canLeave, dirty, pending]);
+  }, [ownerId, onDirtyChange, canLeave]);
   useEffect(() => {
     if (!dirty && !pending) return undefined;
     const beforeUnload = (event: BeforeUnloadEvent) => {
@@ -95,18 +94,18 @@ export function RecordEditorView({
   };
   const invoke = async (action: RecordEditorAction | RecordEditorDescriptor["save"],
                         payload: Record<string, unknown> | null, save: boolean) => {
-    if (pendingRef.current || !payload) return;
+    if (pendingRef.current || !sourceReady || !payload) return;
     const request = viewOperationRequest(catalog, registered, action.operation, payload);
     if (!request) { setError("This operation is unavailable in the current Profile."); return; }
     pendingRef.current = true; setPending(true); setError(""); setFeedback("");
     try {
       const result = await capabilities.invokeAction(request);
       if (!activeRef.current) return;
-      if (approvalPending(result)) {
+      const outcome = viewOperationOutcome(result);
+      if (outcome === "approval") {
         setFeedback("Waiting for approval in the trusted Tobkiri approval surface. The draft is retained.");
       } else {
-        const status = result && typeof result === "object" && "status" in result ? String(result.status) : "";
-        if (["failed", "error", "denied", "unavailable"].includes(status)) throw new Error("operation_failed");
+        if (outcome === "failed") throw new Error("operation_failed");
         setFeedback("The operation returned. Refreshing the authoritative state.");
         if (save && stateRef.current.draft) {
           const current = stateRef.current.draft;
@@ -161,7 +160,7 @@ export function RecordEditorView({
                 const payload = recordOperationPayload(action, snapshot, record, context);
                 const available = payload && viewOperationRequest(catalog, registered, action.operation, payload);
                 return <button type="button" key={action.id} className={buttonClass}
-                  disabled={pending || !available} aria-label={`${action.label} ${title}`}
+                  disabled={pending || !sourceReady || !available} aria-label={`${action.label} ${title}`}
                   onClick={() => rowAction(action, record)}>{action.label}</button>;
               })}</td>
           </tr>;
@@ -190,7 +189,7 @@ export function RecordEditorView({
           {fieldErrors[field.id] && <span role="alert">{fieldErrors[field.id]}</span>}
         </label>)}
         {fieldErrors._form && <p role="alert">{fieldErrors._form}</p>}
-        <div className="flex flex-wrap gap-2"><button type="submit" className={buttonClass} disabled={pending || !dirty}>
+        <div className="flex flex-wrap gap-2"><button type="submit" className={buttonClass} disabled={pending || !sourceReady || !dirty}>
           {pending ? "Working…" : "Save changes"}</button>
           <button type="button" className={buttonClass} disabled={pending} onClick={close}>Close</button>
           <button type="button" className={buttonClass} disabled={pending || !dirty} onClick={() => {
