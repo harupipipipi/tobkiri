@@ -232,10 +232,10 @@ test("voice language validation and silence/permission errors are actionable", (
 
 test("microphone Host permission is read-only and missing permission fails closed", async () => {
   let reads = 0;
-  const client = { async status() { reads += 1; return { permissions: { rumi: {} } } as Awaited<ReturnType<typeof import("../../ambient/ambientTriggerClient").ambientTriggerClient.status>>; } };
+  const client = { async status() { reads += 1; return { permissions: { rumi: {} } }; } };
   await assert.rejects(assertComposerMicrophoneAllowed(client), { name: "ComposerMicrophonePermissionError" });
   assert.equal(reads, 1);
-  await assertComposerMicrophoneAllowed({ async status() { return { permissions: { rumi: { "host.microphone.capture": { granted: true } } } } as Awaited<ReturnType<typeof import("../../ambient/ambientTriggerClient").ambientTriggerClient.status>>; } });
+  await assertComposerMicrophoneAllowed({ async status() { return { permissions: { rumi: { "host.microphone.capture": { granted: true } } } }; } });
 });
 
 test("cancelled or replaced voice attempts dispose late microphone recorders", async () => {

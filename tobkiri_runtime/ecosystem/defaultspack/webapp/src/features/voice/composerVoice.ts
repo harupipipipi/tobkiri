@@ -235,7 +235,7 @@ export async function requestComposerAudioTranscript(
 
 /** Read Host permission before the OS capture prompt; never grant it here. */
 export async function assertComposerMicrophoneAllowed(
-  client: Pick<typeof ambientTriggerClient, "status"> = ambientTriggerClient,
+  client: { status(): Promise<{ permissions?: { rumi?: Record<string, { granted?: boolean }> } }> } = ambientTriggerClient,
 ): Promise<void> {
   const status = await client.status();
   if (status?.permissions?.rumi?.["host.microphone.capture"]?.granted !== true) {
