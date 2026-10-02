@@ -82,7 +82,9 @@ def _image_attachment() -> dict:
     }
 
 
-def test_text_only_model_blocks_image_tools(monkeypatch, tmp_path):
+def test_text_only_model_blocks_image_tools(
+    monkeypatch, tmp_path, defaultspack_conversation_owner
+):
     _configure_paths(monkeypatch, tmp_path)
     conversation = _conversation()
     _patch_routing(monkeypatch, selected_model="demo/text", supports_image_input=False)
@@ -101,7 +103,9 @@ def test_text_only_model_blocks_image_tools(monkeypatch, tmp_path):
     assert entry["reason_code"] == "model_unsupported"
 
 
-def test_vision_model_allows_image_tools(monkeypatch, tmp_path):
+def test_vision_model_allows_image_tools(
+    monkeypatch, tmp_path, defaultspack_conversation_owner
+):
     _configure_paths(monkeypatch, tmp_path)
     conversation = _conversation()
     _patch_routing(monkeypatch, selected_model="demo/vision", supports_image_input=True)
@@ -119,7 +123,9 @@ def test_vision_model_allows_image_tools(monkeypatch, tmp_path):
     assert prepared.metadata["tool_filter_result"][0]["status"] == "allowed"
 
 
-def test_blocked_tool_not_sent_to_provider(monkeypatch, tmp_path):
+def test_blocked_tool_not_sent_to_provider(
+    monkeypatch, tmp_path, defaultspack_conversation_owner
+):
     _configure_paths(monkeypatch, tmp_path)
     conversation = _conversation()
     _patch_routing(monkeypatch, selected_model="demo/text", supports_image_input=False)
@@ -136,7 +142,9 @@ def test_blocked_tool_not_sent_to_provider(monkeypatch, tmp_path):
     assert prepared.provider_tools == []
 
 
-def test_non_tool_calling_model_marks_tools_blocked_or_detached(monkeypatch, tmp_path):
+def test_non_tool_calling_model_marks_tools_blocked_or_detached(
+    monkeypatch, tmp_path, defaultspack_conversation_owner
+):
     _configure_paths(monkeypatch, tmp_path)
     conversation = _conversation()
     _patch_routing(
@@ -187,7 +195,9 @@ def test_ai_calling_filtered_tool_rejected_at_execution():
     assert result["code"] == "MODEL_UNSUPPORTED"
 
 
-def test_capability_tags_saved_in_metadata_not_text(monkeypatch, tmp_path):
+def test_capability_tags_saved_in_metadata_not_text(
+    monkeypatch, tmp_path, defaultspack_conversation_owner
+):
     _configure_paths(monkeypatch, tmp_path)
     conversation = _conversation()
     _patch_routing(monkeypatch, selected_model="demo/text", supports_image_input=False)

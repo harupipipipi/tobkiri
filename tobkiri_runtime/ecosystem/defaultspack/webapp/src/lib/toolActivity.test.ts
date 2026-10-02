@@ -719,7 +719,10 @@ test("attaches tool artifact files to the matching activity item", () => {
   assert.equal(groups[0].items[0].toolCallId, "call_1");
   assert.equal(artifact?.kind, "image");
   assert.equal(artifact?.name, "click-1-model.jpg");
-  assert.match(artifact?.url ?? "", /\/api\/chat\/conversations\/conv_1\/artifact-file/);
+  assert.match(
+    decodeURIComponent(artifact?.url ?? ""),
+    /GET \/api\/chat\/conversations\/conv_1\/artifact-file/,
+  );
 });
 
 test("classifies common tool families", () => {

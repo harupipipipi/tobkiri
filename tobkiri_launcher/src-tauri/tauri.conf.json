@@ -1,11 +1,14 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Tobkiri Launcher",
-  "version": "1.0.0-beta.2",
-  "identifier": "dev.tobkiri.launcher",
+  "version": "1.0.0-beta.3",
+  "identifier": "dev.rumiai.app",
   "build": {
-    "beforeBuildCommand": "cd ../frontend && node scripts/preflight-viewer-build.mjs && npm run build && cd ../.. && python tobkiri_launcher/scripts/prepare_viewer_runtime.py --mode release",
-    "beforeDevCommand": "cd ../frontend && node scripts/preflight-viewer-build.mjs && npm run build && cd ../.. && python tobkiri_launcher/scripts/prepare_viewer_runtime.py --mode dev",
+    "beforeBuildCommand": "cd ../frontend && node scripts/preflight-viewer-build.mjs && npm run build && cd ../.. && node tobkiri_launcher/scripts/run_prepare_viewer_runtime.mjs --mode release",
+    "beforeDevCommand": {
+      "script": "cd ../frontend && node scripts/preflight-viewer-build.mjs && npm run build && cd ../.. && node tobkiri_launcher/scripts/run_prepare_viewer_runtime.mjs --mode dev",
+      "wait": true
+    },
     "frontendDist": "./splash"
   },
   "app": {
@@ -26,7 +29,9 @@
         "minHeight": 600,
         "center": true,
         "visible": true,
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#111113",
+        "hiddenTitle": true,
+        "titleBarStyle": "Transparent"
       }
     ],
     "withGlobalTauri": true

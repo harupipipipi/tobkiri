@@ -1,6 +1,6 @@
 id: git
 name: Git Integration
-description: Local git status, diff, log, add, commit, restore, stash, apply, and optional push.
+description: Local Git status, diff, branch inspection, commit, and optional push. Git branch create/switch and Git restore are unavailable until the Host supplies an exclusive workspace mutation lease.
 local_only: true
 requires_network: false
 risk_level: high
@@ -10,8 +10,12 @@ handlers:
   - blocks.coding.git_diff
   - blocks.coding.git_commit
   - blocks.coding.git_push
-operations: [status, diff, log, branch, add, commit, restore, checkout, stash, apply, push]
+operations: [status, diff, log, branch, commit, push]
 approval:
   commit: true
   push: true
-  restore: true
+  restore: false
+unavailable_operations:
+  branch_create: Host exclusive workspace mutation lease required
+  branch_switch: Host exclusive workspace mutation lease required
+  restore: Host exclusive workspace mutation lease required
