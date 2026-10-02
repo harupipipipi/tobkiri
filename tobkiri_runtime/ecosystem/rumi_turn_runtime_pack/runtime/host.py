@@ -13,7 +13,7 @@ from core_runtime.host_provider_backend_v4 import (
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
 from ecosystem.rumi_turn_runtime_pack.runtime.input_context import execute_with_input_context
 from ecosystem.rumi_turn_runtime_pack.runtime.saved import (
-    RECEIPT_CONTRACT, SAVED_CONTRACTS, execute_saved_turn, reconcile_saved_turn,
+    RECONCILE_CONTRACTS, SAVED_CONTRACTS, execute_saved_turn, reconcile_saved_turn,
 )
 
 _PACK = "rumi_turn_runtime_pack"
@@ -134,7 +134,7 @@ class TurnHostFactoryV4:
                 return reconcile_saved_turn(
                     store, _identifier(values["turn_id"]),
                     client=invocation.contract_client(
-                        allowed_contract_ids=frozenset({RECEIPT_CONTRACT}),
+                        allowed_contract_ids=RECONCILE_CONTRACTS,
                         consumer_pack_id=_PACK, include_credentials=False,
                     ),
                     guard=invocation.assert_current,

@@ -6,10 +6,16 @@ This optional Pack archives conversations whose explicitly selected mode is
 `completed_at_ms + 3_600_000` using an exact conversation revision. History is
 retained. Manual conversations keep their existing behavior.
 
-Successful final assistant completion is recorded in the owner transaction only
-from an authorized saved-turn receipt. The Host binds its terminal state to the
+Successful final assistant output records a pending timestamp in the owner
+transaction from an authorized saved-turn receipt. The Host binds its state to the
 authenticated execution result; public transcript writes cannot create a
-completion timestamp. Missing terminal evidence remains unknown.
+completion timestamp. The captured durable turn owner then requests
+`tobkiri.action.conversation.completion.v1`; its provider reads the public turn
+resource and promotes only a completed immutable terminal with the exact saved
+input and assistant receipt. The append timestamp is preserved. A cancellation
+before that terminal CAS cannot promote the candidate. A crash between append,
+CAS and confirmation recovers through reconciliation without another model call.
+Missing terminal evidence remains unknown; missing confirmation remains running.
 Running, streaming, user-answer wait, approval wait, cancellation and failure do
 not create an archive deadline. A new user message cancels the old deadline;
 the next successful completion creates a new one. Completion timestamps survive
