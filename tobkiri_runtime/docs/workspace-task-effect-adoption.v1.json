@@ -1,0 +1,57 @@
+{
+  "schema": "tobkiri.workspace-task-effect.integration-input.v1",
+  "baseline": "e6e1f8688860f5d0592db94831aaeabd808f8675",
+  "source_only": true,
+  "interactive_effect_spec": {
+    "kind": "workspace_task",
+    "prepare_contract_id": "tobkiri.action.workspace.container.v1",
+    "prepare_operation_id": "rumi_coding_sandbox_service_pack.task-prepare",
+    "execute_contract_id": "tobkiri.action.workspace.container.v1",
+    "execute_operation_id": "rumi_coding_sandbox_service_pack.task-execute"
+  },
+  "canonical_source_updates": [
+    {
+      "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "operation_id": "interactive_effect.manage",
+      "input_schema_effect_kind_enum_additions": ["workspace_task"],
+      "preserve_existing_phases_and_effect_kinds": true,
+      "preserve_exact_payload_keys": true
+    }
+  ],
+  "signed_profile_edges": [
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "contract_id": "tobkiri.action.workspace.container.v1",
+      "operation_id": "rumi_coding_sandbox_service_pack.task-prepare",
+      "authority_mode": "profile_grant"
+    },
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "contract_id": "tobkiri.action.workspace.container.v1",
+      "operation_id": "rumi_coding_sandbox_service_pack.task-execute",
+      "authority_mode": "interactive_only"
+    }
+  ],
+  "execute_factory_requirements": {
+    "interactive_effect_role": "execute",
+    "cancellation_group": "workspace-task"
+  },
+  "capture_bindings": [
+    "profile_id", "plan_digest", "security_epoch", "expires_at_ms",
+    "request_digest", "task_plan_digest"
+  ],
+  "execute_payload_fields": ["task_plan", "task_plan_digest"],
+  "presentation_source": "Broker PreparedInvocation.normalized_payload",
+  "presentation_fields": ["workspace_id", "image_reference", "argv", "timeout_seconds"],
+  "neutral_protocol": "tobkiri_protocol/workspace_task_v1.py",
+  "host_sources": [
+    "core_runtime/interactive_effect_coordinator.py",
+    "core_runtime/workspace_task_effect.py"
+  ],
+  "focused_tests": ["tests/test_workspace_task_effect.py"],
+  "integration_owner_refreshes": [
+    "canonical executable source schemas",
+    "generated v4 catalogs and source digests",
+    "signed Profile edges and bindings"
+  ]
+}
