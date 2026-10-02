@@ -287,6 +287,7 @@ class V4DispatchSession:
         parent_cancellation: threading.Event | None = None,
         parent_cancellation_proof: NestedCancellationProof | None = None,
         before_dispatch: Callable[[], None] | None = None,
+        execution_guard: Callable[[], None] | None = None,
     ) -> Mapping[str, Any]:
         """Dispatch through the captured Broker without identity from payload.
 
@@ -330,6 +331,7 @@ class V4DispatchSession:
             and parent_cancellation is None
             and parent_cancellation_proof is None
             and before_dispatch is None
+            and execution_guard is None
         ):
             return self.broker.invoke(invocation, context, effect_scope=scope)
         return self.broker.invoke(
@@ -340,6 +342,7 @@ class V4DispatchSession:
             parent_cancellation=parent_cancellation,
             parent_cancellation_proof=parent_cancellation_proof,
             before_dispatch=before_dispatch,
+            execution_guard=execution_guard,
         )
 
     def run_packvm_acceptance(
