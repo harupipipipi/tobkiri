@@ -25,3 +25,48 @@ UI contribution は `frontend/contributions/ai-strategy.json` にある宣言型
 - 画像は Host が所有する URL や resource reference をそのまま渡せます。base64 などの inline media は継続状態に入れません。
 
 そのため、新しい strategy Pack も同じ契約、catalog、bridge の仕組みで導入できます。DeepThink のためだけの Host/Gateway 分岐はありません。
+
+## Regression and live acceptance boundary
+
+Tool-bearing draft/revision phases add `requirements.tool_calling: true` to both
+quote and generate requests. A route without provider-native tool calling must
+therefore be unavailable before it sees host tool definitions. Other phases
+retain the caller's requirements. The ordinary provider compiler is unchanged.
+
+Reviewer output must contain exactly a boolean `approved` and string `feedback`.
+Malformed review, empty repair, and a rejected final review fail closed without
+publishing an unverified answer. A cancelled Host bridge returns `CANCELLED`
+and produces no further bridge request.
+
+For a live test, the Host must admit the signed contribution
+`rumi_deepthink_pack.deepthink.execute` in the active Profile. Select that exact
+strategy through the normal saved-turn composer and use the current conversation
+model. Do not send a legacy virtual model or a `deepthink` provider flag.
+
+The strategy's generic execute input is:
+
+```json
+{
+  "request_id": "acceptance-request",
+  "model_reference": {"profile_id": "host-selected-model-profile"},
+  "messages": [{"role": "user", "content": "What is 17 times 19?"}],
+  "tools": [],
+  "requirements": {},
+  "profile_id": "host-selected-runtime-profile",
+  "deadline": 1800000000000,
+  "idempotency_key": "acceptance-request",
+  "maximum_cost_microusd": 50000
+}
+```
+
+Replace the identifiers with admitted selections and set deadline to the current
+Unix millisecond time plus a bounded acceptance window. Keys/credential handles
+are never part of this payload. The Host resolves quote/generate providers,
+seals every continuation, binds each actual generation to its quote, and owns
+cancellation. Require actual phase/cost evidence and an authoritative completed
+turn result; model/provider replies alone are not installed Pack acceptance.
+
+A no-network deterministic fixture can be run from `tobkiri_runtime` with
+`python -B -m pytest --noconftest tests/test_deepthink_strategy_pack.py -q`.
+This isolates the strategy state machine and does not verify installation,
+signed Profile activation, PackVM supervision, live model behavior, or UI.
