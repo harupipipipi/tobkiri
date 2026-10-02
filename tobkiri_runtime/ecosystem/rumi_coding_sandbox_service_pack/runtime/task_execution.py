@@ -234,8 +234,8 @@ class TaskExecution:
                 and not state["StartedAt"].startswith("0001-")
             )
             receipt.update(
-                executed=started,
-                workload_started=started,
+                container_started=started,
+                workload_started=False,
                 execution_boundary="local_container_argv",
             )
             cleanup_ok = self.cleanup(reference)
@@ -303,7 +303,7 @@ class TaskExecution:
             )
         ):
             raise ValueError("guest task receipt is invalid")
-        receipt.update(result)
+        receipt.update(result, executed=True, workload_started=True)
         if result["exit_code"] != 0 or result["timed_out"]:
             receipt["status"] = "failed"
             return None
