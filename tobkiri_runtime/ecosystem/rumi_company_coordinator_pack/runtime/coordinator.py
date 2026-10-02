@@ -160,6 +160,8 @@ class CompanyCoordinator:
             )["task"]
             return {"status": target, "task": finished, "work": result}
         except Exception as exc:
+            if bool(getattr(exc, "retryable", False)):
+                raise
             try:
                 failed = self._state_action(
                     "task.transition",
@@ -244,9 +246,12 @@ class CompanyCoordinator:
     ) -> dict[str, Any]:
         state = self.client.invoke(
             COMPANY_RESOURCE,
-            "list",
-            {"profile_id": self.profile_id},
+            "get",
+            {"profile_id": self.profile_id,
+             "company_id": str(arguments.get("company_id") or "")},
         )
+        if not isinstance(state, Mapping):
+            raise KeyError("Team is unknown")
         exact = {"expected_revision": int(state.get("revision") or 0), **arguments}
         scope = {
             "service_pack_id": STATE_PACK_ID,
@@ -520,4 +525,3 @@ def _public_company(company: Mapping[str, Any]) -> dict[str, Any]:
 
 def _hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
-

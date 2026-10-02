@@ -129,8 +129,9 @@ class CompanyContractFacade:
         )
 
     def _list(self) -> dict[str, Any]:
-        snapshot = self._resource("list", {})
-        if not isinstance(snapshot, Mapping):
+        company_id = str(arguments.get("company_id") or "")
+        current = None if name == "company.create" else self._raw_company(company_id)
+        if name != "company.create" and not isinstance(current, Mapping):
             raise CompanyFacadeError(
                 "COMPANY_OWNER_UNAVAILABLE",
                 "Company owner returned invalid data",
@@ -512,7 +513,7 @@ class CompanyContractFacade:
                 503,
             )
         exact = {
-            "expected_revision": int(snapshot.get("revision") or 0),
+            "expected_revision": int((current or {}).get("revision") or 0),
             **dict(arguments),
         }
         receipt = _receipt(self.input, self.context, self.profile_id, name, exact)
