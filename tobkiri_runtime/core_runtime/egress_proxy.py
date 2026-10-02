@@ -47,15 +47,13 @@ import os
 import socket
 import ssl
 import sys
-import stat
 import threading
 import concurrent.futures
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse, urljoin
 
 
@@ -87,7 +85,6 @@ from .egress_rate_limiter import (  # noqa: F401 — re-export
 )
 from .egress_domain_controller import (  # noqa: F401 — re-export
     DomainController,
-    _ECOSYSTEM_DIR,
 )
 # BUG-5-1: IPC 認証 (Windows TCP フォールバック)
 from .ipc_auth import IpcAuthManager, perform_server_auth  # noqa: F401
@@ -250,8 +247,8 @@ def execute_http_request(
     request: Dict[str, Any],
     network_grant_manager,
     audit_logger,
-    rate_limiter: "PackRateLimiter" = None,
-    domain_controller: "DomainController" = None,
+    rate_limiter: "PackRateLimiter | None" = None,
+    domain_controller: "DomainController | None" = None,
 ) -> Dict[str, Any]:
     """
     HTTPリクエストを実行（リダイレクト、セキュリティチェック込み）
@@ -474,7 +471,7 @@ def execute_http_request(
             # (#13: DNS rebinding対策 — resolved IP に直接接続)
             # (W12-T046: 細粒度タイムアウト適用)
             # ============================================================
-            conn = None
+            conn: http.client.HTTPConnection | None = None
             # resolved_ips は resolve_and_check_ip() で取得済み (TOCTOU回避)
             connect_ip = resolved_ips[0] if resolved_ips else domain
             try:
@@ -626,10 +623,10 @@ def execute_http_request(
 
     _log_network_event(
         audit_logger, pack_id, last_domain, last_port, False,
-        reason=result.get("error"),
+        reason=str(result.get("error") or ""),
         method=method, url=original_url, final_url=final_url,
         latency_ms=result["latency_ms"],
-        error_type=result.get("error_type"),
+        error_type=str(result.get("error_type") or ""),
         redirect_hops=redirect_hops,
         bytes_read=bytes_read,
         check_type="proxy_request"
@@ -781,7 +778,8 @@ class UDSEgressServer:
     """Pack別UDSソケットでリッスンするEgressサーバー"""
 
     def __init__(self, pack_id: str, socket_path: Path, network_grant_manager, audit_logger,
-                 rate_limiter: PackRateLimiter = None, domain_controller: DomainController = None):
+                 rate_limiter: PackRateLimiter | None = None,
+                 domain_controller: DomainController | None = None):
         self.pack_id = pack_id
         self.socket_path = socket_path
         self._network_grant_manager = network_grant_manager
@@ -877,9 +875,14 @@ class UDSEgressServer:
         """リクエストを処理し続ける (#33: ThreadPoolExecutor方式)"""
         while self._running:
             try:
-                client_sock, _ = self._server_socket.accept()
+                server_socket = self._server_socket
+                worker_semaphore = self._worker_semaphore
+                executor = self._executor
+                if server_socket is None or worker_semaphore is None or executor is None:
+                    return
+                client_sock, _ = server_socket.accept()
                 # #33: セマフォで枯渇検知
-                if not self._worker_semaphore.acquire(blocking=False):
+                if not worker_semaphore.acquire(blocking=False):
                     # プール枯渇: 接続を拒否
                     print(
                         f"[UDSEgressServer] Thread pool exhausted for "
@@ -904,10 +907,10 @@ class UDSEgressServer:
 
                 # スレッドプールに投入
                 try:
-                    self._executor.submit(self._handle_client_pooled, client_sock)
+                    executor.submit(self._handle_client_pooled, client_sock)
                 except RuntimeError:
                     # executor が shutdown 済み
-                    self._worker_semaphore.release()
+                    worker_semaphore.release()
                     try:
                         client_sock.close()
                     except Exception:
@@ -1000,7 +1003,9 @@ class UDSEgressServer:
             else:
                 self._handle_client(client_sock)
         finally:
-            self._worker_semaphore.release()
+            worker_semaphore = self._worker_semaphore
+            if worker_semaphore is not None:
+                worker_semaphore.release()
 
     def _handle_client(self, client_sock: socket.socket) -> None:
         """クライアント接続を処理"""
@@ -1077,7 +1082,8 @@ class UDSEgressProxyManager:
         self._audit_logger = audit_logger
         self._lock = threading.Lock()
         self._rate_limiter = PackRateLimiter()
-        self._domain_controller = DomainController()
+        # Deny until the selected Profile supplies an immutable Pack v4 policy.
+        self._domain_controller = DomainController({})
         # BUG-5-1: IPC auth manager
         self._ipc_auth = IpcAuthManager() if _IS_WINDOWS else None
 
@@ -1123,7 +1129,7 @@ class UDSEgressProxyManager:
 
             # ソケットパス確保
             success, error, sock_path = self._socket_manager.ensure_socket(pack_id)
-            if not success:
+            if not success or sock_path is None:
                 return False, error, None
 
             # サーバー起動
@@ -1172,8 +1178,13 @@ class UDSEgressProxyManager:
         if not server.start():
             return False, f"Failed to start TCP server for {pack_id}", None
 
+        tcp_port = server._tcp_port
+        if tcp_port is None:
+            server.stop()
+            return False, f"TCP server did not allocate a port for {pack_id}", None
+
         self._servers[pack_id] = server
-        self._socket_manager.set_port(pack_id, server._tcp_port)
+        self._socket_manager.set_port(pack_id, tcp_port)
         return True, "", None
 
     def get_auth_token(self, pack_id: str) -> Optional[str]:
@@ -1357,15 +1368,24 @@ class EgressProxyHandler(BaseHTTPRequestHandler):
 
     @property
     def network_grant_manager(self):
-        return self.server.network_grant_manager
+        server = self.server
+        if not isinstance(server, EgressHTTPServer):
+            raise RuntimeError("egress handler is attached to an invalid server")
+        return server.network_grant_manager
 
     @property
     def audit_logger(self):
-        return self.server.audit_logger
+        server = self.server
+        if not isinstance(server, EgressHTTPServer):
+            raise RuntimeError("egress handler is attached to an invalid server")
+        return server.audit_logger
 
     @property
     def allowed_internal_ips(self):
-        return self.server.allowed_internal_ips
+        server = self.server
+        if not isinstance(server, EgressHTTPServer):
+            raise RuntimeError("egress handler is attached to an invalid server")
+        return server.allowed_internal_ips
 
     def _send_json_response(self, status_code: int, data: Dict[str, Any]) -> None:
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -1455,7 +1475,8 @@ class EgressProxyHandler(BaseHTTPRequestHandler):
                 # 拒否を監査ログに記録
                 self._log_request(
                     request, domain, port, False, 0,
-                    error=response.error, allowed=False, rejection_reason=check_result.reason
+                    error=response.error or "", allowed=False,
+                    rejection_reason=check_result.reason
                 )
                 return response
 
@@ -1491,6 +1512,7 @@ class EgressProxyHandler(BaseHTTPRequestHandler):
         try:
             parsed = urlparse(request.url)
 
+            conn: http.client.HTTPConnection
             if parsed.scheme == "https":
                 context = ssl.create_default_context()
                 conn = http.client.HTTPSConnection(domain, port, timeout=request.timeout_seconds, context=context)
@@ -1552,9 +1574,9 @@ class EgressProxyHandler(BaseHTTPRequestHandler):
         port: int,
         success: bool,
         status_code: int,
-        error: str = None,
+        error: str | None = None,
         allowed: bool = True,
-        rejection_reason: str = None
+        rejection_reason: str | None = None
     ) -> None:
         """リクエストを監査ログに記録"""
         if self.audit_logger:
@@ -1583,7 +1605,8 @@ class EgressProxyServer:
     DEFAULT_HOST = "127.0.0.1"
     DEFAULT_PORT = 8766
 
-    def __init__(self, host: str = None, port: int = None, network_grant_manager=None, audit_logger=None):
+    def __init__(self, host: str | None = None, port: int | None = None,
+                 network_grant_manager=None, audit_logger=None):
         self.host = host or self.DEFAULT_HOST
         self.port = port or self.DEFAULT_PORT
         self._network_grant_manager = network_grant_manager
@@ -1651,11 +1674,19 @@ class EgressProxyServer:
             self._server.audit_logger = logger
 
 
-def make_proxy_request(proxy_url: str, owner_pack: str, method: str, url: str, headers: Dict[str, str] = None, body: str = None, timeout_seconds: float = 30.0) -> ProxyResponse:
+def make_proxy_request(proxy_url: str, owner_pack: str, method: str, url: str,
+                       headers: Dict[str, str] | None = None,
+                       body: str | None = None,
+                       timeout_seconds: float = 30.0) -> ProxyResponse:
     """プロキシ経由でHTTPリクエストを送信"""
     try:
         parsed = urlparse(proxy_url)
-        conn = http.client.HTTPConnection(parsed.hostname, parsed.port or 80, timeout=timeout_seconds + 5)
+        hostname = parsed.hostname
+        if hostname is None:
+            raise ValueError("proxy URL must include a hostname")
+        conn = http.client.HTTPConnection(
+            hostname, parsed.port or 80, timeout=timeout_seconds + 5
+        )
         try:
             request_body = json.dumps({
                 "owner_pack": owner_pack, "method": method, "url": url,
@@ -1690,7 +1721,9 @@ def get_egress_proxy() -> EgressProxyServer:
     return _global_egress_proxy
 
 
-def initialize_egress_proxy(host: str = None, port: int = None, network_grant_manager=None, audit_logger=None, auto_start: bool = True) -> EgressProxyServer:
+def initialize_egress_proxy(host: str | None = None, port: int | None = None,
+                            network_grant_manager=None, audit_logger=None,
+                            auto_start: bool = True) -> EgressProxyServer:
     global _global_egress_proxy
     with _proxy_lock:
         if _global_egress_proxy and _global_egress_proxy.is_running():

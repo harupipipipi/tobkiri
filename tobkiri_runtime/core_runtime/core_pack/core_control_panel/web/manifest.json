@@ -1,0 +1,232 @@
+{
+  "_Card-BH51aKTb.js": {
+    "dynamicImports": [
+      "node_modules/@tauri-apps/api/core.js"
+    ],
+    "file": "assets/Card-BH51aKTb.js",
+    "name": "Card"
+  },
+  "_Input-C6jFXlRj.js": {
+    "file": "assets/Input-C6jFXlRj.js",
+    "imports": [
+      "_Card-BH51aKTb.js"
+    ],
+    "name": "Input"
+  },
+  "_PackScopeSummary-DT8S47RE.js": {
+    "file": "assets/PackScopeSummary-DT8S47RE.js",
+    "imports": [
+      "_Card-BH51aKTb.js"
+    ],
+    "name": "PackScopeSummary"
+  },
+  "_Switch-Dy_2WI5z.js": {
+    "file": "assets/Switch-Dy_2WI5z.js",
+    "imports": [
+      "_Card-BH51aKTb.js"
+    ],
+    "name": "Switch"
+  },
+  "_check-DKTTlxOD.js": {
+    "file": "assets/check-DKTTlxOD.js",
+    "imports": [
+      "_Card-BH51aKTb.js"
+    ],
+    "name": "check"
+  },
+  "_circle-question-mark-Bzk5gR17.js": {
+    "file": "assets/circle-question-mark-Bzk5gR17.js",
+    "imports": [
+      "_Card-BH51aKTb.js"
+    ],
+    "name": "circle-question-mark"
+  },
+  "_useRuntimeOperationInvocation-hBYOW8Z-.js": {
+    "file": "assets/useRuntimeOperationInvocation-hBYOW8Z-.js",
+    "imports": [
+      "_Card-BH51aKTb.js",
+      "_useRuntimeSurface-CQsVYWrp.js",
+      "_Input-C6jFXlRj.js"
+    ],
+    "name": "useRuntimeOperationInvocation"
+  },
+  "_useRuntimeSurface-CQsVYWrp.js": {
+    "file": "assets/useRuntimeSurface-CQsVYWrp.js",
+    "imports": [
+      "_Card-BH51aKTb.js",
+      "index.html"
+    ],
+    "name": "useRuntimeSurface"
+  },
+  "index.html": {
+    "css": [
+      "assets/index-kIFnfYsi.css"
+    ],
+    "dynamicImports": [
+      "src/pages/Packs.tsx",
+      "src/pages/PackDetail.tsx",
+      "src/pages/Profile.tsx",
+      "src/pages/Settings.tsx",
+      "src/pages/ProfileWiring.tsx",
+      "src/pages/ProfileFiles.tsx",
+      "src/pages/Flow.tsx",
+      "src/pages/Graph.tsx",
+      "src/pages/AiInput.tsx",
+      "src/pages/ApiMap.tsx",
+      "src/pages/NodeManager.tsx"
+    ],
+    "file": "assets/index-Dw62_XrR.js",
+    "imports": [
+      "_Card-BH51aKTb.js"
+    ],
+    "isEntry": true,
+    "name": "index",
+    "src": "index.html"
+  },
+  "node_modules/@tauri-apps/api/core.js": {
+    "file": "assets/core-SwWLTXZB.js",
+    "isDynamicEntry": true,
+    "name": "core",
+    "src": "node_modules/@tauri-apps/api/core.js"
+  },
+  "src/pages/AiInput.tsx": {
+    "file": "assets/AiInput-BT8ZozqU.js",
+    "imports": [
+      "_Card-BH51aKTb.js",
+      "index.html",
+      "_circle-question-mark-Bzk5gR17.js",
+      "_useRuntimeSurface-CQsVYWrp.js",
+      "_useRuntimeOperationInvocation-hBYOW8Z-.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "AiInput",
+    "src": "src/pages/AiInput.tsx"
+  },
+  "src/pages/ApiMap.tsx": {
+    "file": "assets/ApiMap-DIG1o6tg.js",
+    "imports": [
+      "_Card-BH51aKTb.js",
+      "index.html",
+      "_useRuntimeSurface-CQsVYWrp.js",
+      "_Input-C6jFXlRj.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "ApiMap",
+    "src": "src/pages/ApiMap.tsx"
+  },
+  "src/pages/Flow.tsx": {
+    "file": "assets/Flow-Bq-L0iL5.js",
+    "imports": [
+      "_Card-BH51aKTb.js",
+      "index.html",
+      "_useRuntimeSurface-CQsVYWrp.js",
+      "_useRuntimeOperationInvocation-hBYOW8Z-.js",
+      "_Input-C6jFXlRj.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "Flow",
+    "src": "src/pages/Flow.tsx"
+  },
+  "src/pages/Graph.tsx": {
+    "file": "assets/Graph-Cb-8ht6r.js",
+    "imports": [
+      "_Card-BH51aKTb.js",
+      "index.html",
+      "_useRuntimeSurface-CQsVYWrp.js",
+      "_Input-C6jFXlRj.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "Graph",
+    "src": "src/pages/Graph.tsx"
+  },
+  "src/pages/NodeManager.tsx": {
+    "file": "assets/NodeManager-B64zzOeY.js",
+    "imports": [
+      "_Card-BH51aKTb.js",
+      "index.html",
+      "_circle-question-mark-Bzk5gR17.js",
+      "_useRuntimeSurface-CQsVYWrp.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "NodeManager",
+    "src": "src/pages/NodeManager.tsx"
+  },
+  "src/pages/PackDetail.tsx": {
+    "file": "assets/PackDetail-D4zCAqUU.js",
+    "imports": [
+      "_Card-BH51aKTb.js",
+      "index.html",
+      "_circle-question-mark-Bzk5gR17.js",
+      "_PackScopeSummary-DT8S47RE.js",
+      "_Input-C6jFXlRj.js",
+      "_Switch-Dy_2WI5z.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "PackDetail",
+    "src": "src/pages/PackDetail.tsx"
+  },
+  "src/pages/Packs.tsx": {
+    "file": "assets/Packs-CfUAQkwd.js",
+    "imports": [
+      "_Card-BH51aKTb.js",
+      "index.html",
+      "_circle-question-mark-Bzk5gR17.js",
+      "_PackScopeSummary-DT8S47RE.js",
+      "_Input-C6jFXlRj.js",
+      "_Switch-Dy_2WI5z.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "Packs",
+    "src": "src/pages/Packs.tsx"
+  },
+  "src/pages/Profile.tsx": {
+    "file": "assets/Profile-Cvrz9Yns.js",
+    "imports": [
+      "_Card-BH51aKTb.js",
+      "index.html",
+      "_check-DKTTlxOD.js",
+      "_circle-question-mark-Bzk5gR17.js",
+      "_useRuntimeSurface-CQsVYWrp.js",
+      "_Input-C6jFXlRj.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "Profile",
+    "src": "src/pages/Profile.tsx"
+  },
+  "src/pages/ProfileFiles.tsx": {
+    "file": "assets/ProfileFiles-o_h6RjYZ.js",
+    "imports": [
+      "_Card-BH51aKTb.js",
+      "_useRuntimeSurface-CQsVYWrp.js",
+      "_Input-C6jFXlRj.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "ProfileFiles",
+    "src": "src/pages/ProfileFiles.tsx"
+  },
+  "src/pages/ProfileWiring.tsx": {
+    "file": "assets/ProfileWiring-uBiyizXb.js",
+    "imports": [
+      "_Card-BH51aKTb.js",
+      "index.html",
+      "_useRuntimeSurface-CQsVYWrp.js",
+      "_Input-C6jFXlRj.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "ProfileWiring",
+    "src": "src/pages/ProfileWiring.tsx"
+  },
+  "src/pages/Settings.tsx": {
+    "file": "assets/Settings-DIiRaH1M.js",
+    "imports": [
+      "_Card-BH51aKTb.js",
+      "index.html",
+      "_check-DKTTlxOD.js",
+      "_useRuntimeSurface-CQsVYWrp.js",
+      "_Switch-Dy_2WI5z.js"
+    ],
+    "isDynamicEntry": true,
+    "name": "Settings",
+    "src": "src/pages/Settings.tsx"
+  }
+}

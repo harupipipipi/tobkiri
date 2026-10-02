@@ -5,12 +5,9 @@ domain/agent/org_manager.py — 組織管理ロジック
 既存の domain/agent/ ファイルは一切変更しない。
 """
 
-import sys
-import os
 import copy
 import threading
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import gen_id, timestamp
 

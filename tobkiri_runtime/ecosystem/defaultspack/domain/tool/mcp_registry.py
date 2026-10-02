@@ -9,6 +9,8 @@ from urllib.parse import urlsplit, urlunsplit
 from pathlib import Path
 from typing import Any
 
+from .schema_adapter import mapping_or_empty
+
 
 def _pack_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -73,7 +75,7 @@ class McpRegistry:
         server = self._find_server(server_id)
         if server is None:
             return None
-        config = server.get("config") if isinstance(server.get("config"), dict) else {}
+        config = mapping_or_empty(server.get("config"))
         return {
             "server_id": server.get("server_id"),
             "name": server.get("name"),
@@ -119,9 +121,7 @@ class McpRegistry:
             data["servers"] = servers
         current = servers.get(normalized["server_id"])
         if isinstance(current, dict):
-            existing_permissions = (
-                current.get("permissions") if isinstance(current.get("permissions"), dict) else {}
-            )
+            existing_permissions = mapping_or_empty(current.get("permissions"))
             normalized["permissions"] = {
                 **existing_permissions,
                 **normalized.get("permissions", {}),
@@ -162,7 +162,7 @@ class McpRegistry:
         *,
         status: str = "connected",
         tools: list[Any] | None = None,
-        approved: bool | None = True,
+        approved: bool | None = None,
     ) -> dict[str, Any] | None:
         if status not in _MCP_LIFECYCLE_STATES:
             raise ValueError("unsupported MCP lifecycle status: {}".format(status))
@@ -275,9 +275,7 @@ class McpRegistry:
         clean_config["server_id"] = server_id
         clean_config["name"] = name
         clean_config["transport"] = transport
-        permissions = (
-            server.get("permissions") if isinstance(server.get("permissions"), dict) else {}
-        )
+        permissions = mapping_or_empty(server.get("permissions"))
         return {
             "server_id": server_id,
             "name": name,

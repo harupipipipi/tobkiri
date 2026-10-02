@@ -79,7 +79,7 @@ export function normalizeShortcutSpec(value: unknown): ShortcutSpec | null {
     spec.key = normalizeShortcutKey(part);
   }
   if (!spec.key || isModifierKey(spec.key)) return null;
-  if (!spec.ctrl && !spec.alt && !spec.meta && !spec.shift) return null;
+  if (!spec.ctrl && !spec.alt && !spec.meta && !spec.shift && !isFunctionKey(spec.key)) return null;
   return spec;
 }
 
@@ -130,6 +130,10 @@ function displayShortcutKey(value: string): string {
 
 function isModifierKey(value: string): boolean {
   return Boolean(MODIFIER_ALIASES[value.toLowerCase()]);
+}
+
+function isFunctionKey(value: string): boolean {
+  return /^f(?:[1-9]|1[0-2])$/.test(value);
 }
 
 function isTextInputTarget(target: EventTarget | null): boolean {

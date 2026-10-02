@@ -17,6 +17,7 @@ pytestmark = pytest.mark.contract
 ROOT = Path(__file__).resolve().parent.parent
 PACK_ID = 'rumi_telephony_delegate_pack'
 PACK_DIR = ROOT / "ecosystem" / PACK_ID
+V4_AUTHORITY_ARTIFACTS = {"pack.v4.json", "contracts.v4.json", "artifact-index.v4.json"}
 SETUP_PACK_JSON = ROOT / "ecosystem" / "setup_pack" / PACK_ID / "pack.json"
 
 REQUIRED_ASSETS = ['README.md', 'asset_index.yaml', 'catalog/handoff_matrix.yaml', 'catalog/quality_matrix.yaml', 'catalog/taxonomy.yaml', 'catalog/workflows.yaml', 'checklists/review.checklist.yaml', 'docs/README.md', 'docs/architecture.md', 'docs/interfaces.md', 'docs/operations.md', 'examples/appointment_reschedule_script.example.yaml', 'examples/customer_callback_mock.example.yaml', 'examples/never_call_blocked_case.example.yaml', 'examples/transcript_redaction_case.example.yaml', 'fixtures/contract_fixture.yaml', 'fixtures/negative_cases.yaml', 'ledgers/evidence_ledger.schema.yaml', 'policies/handoff.policy.yaml', 'policies/safety.policy.yaml', 'presets/handoff_review.preset.yaml', 'presets/quality_gate.preset.yaml', 'presets/safe_default.preset.yaml', 'profiles/telephony_delegate_reviewer.profile.yaml', 'prompts/call_script_reviewer.system.md', 'schemas/call_session.schema.json', 'schemas/call_task.schema.json', 'schemas/dial_approval.schema.json', 'schemas/escalation_record.schema.json', 'schemas/never_call_entry.schema.json', 'schemas/pre_call_script.schema.json', 'schemas/transcript_redaction.schema.json', 'templates/artifact_card.template.md', 'templates/handoff.template.md', 'templates/review_report.template.md']
@@ -25,7 +26,7 @@ WORKFLOW_IDS = set(['pre_call_script_review', 'never_call_screen', 'mock_dial_ap
 QUALITY_CHECK_IDS = set(['script_present', 'consent_disclosure_present', 'never_call_checked', 'approval_state_approved', 'approved_number_matches', 'disallowed_intent_aborts', 'consent_decline_aborts', 'transcript_pii_redacted', 'takeover_owner_present', 'takeover_abort_required'])
 OWNER_EXPECTED = set(['call_task_contract', 'pre_call_script', 'dial_approval_gate', 'consent_disclosure_script', 'call_session_state', 'takeover_escalation', 'transcript_redaction_contract', 'never_call_list', 'mock_dial_readiness'])
 NON_OWNER_EXPECTED = set(['actual dialing', 'ASR/TTS runtime', 'contact lookup', 'calendar mutation', 'payment or purchase execution', 'external connector writes', 'emergency services'])
-OVERLAP_EXPECTED = {'actual_dialing': 'blocked_handoff_to_defaultspack_tool_runtime', 'asr_tts_runtime': 'handoff_to_defaultspack_tool_runtime', 'media_transcript_runtime': 'handoff_to_defaultspack_tool_runtime', 'contact_or_calendar_lookup': 'handoff_to_defaultspack_tool_runtime', 'meeting_recap': 'handoff_to_rumi_local_agent_pack', 'external_business_action': 'handoff_to_rumi_operations_company_pack', 'real_world_action_risk_review': 'handoff_to_rumi_operations_company_pack', 'telephony_contract': 'owned_by_rumi_telephony_delegate_pack', 'tool_aliases': 'prefer_explicit_pack_namespace'}
+OVERLAP_EXPECTED = {'actual_dialing': 'blocked_handoff_to_defaultspack_tool_runtime', 'asr_tts_runtime': 'handoff_to_defaultspack_tool_runtime', 'media_transcript_runtime': 'handoff_to_defaultspack_tool_runtime', 'contact_or_calendar_lookup': 'handoff_to_defaultspack_tool_runtime', 'meeting_recap': 'handoff_to_rumi_meeting_intelligence_pack', 'external_business_action': 'handoff_to_rumi_operations_company_pack', 'real_world_action_risk_review': 'handoff_to_rumi_operations_company_pack', 'telephony_contract': 'owned_by_rumi_telephony_delegate_pack', 'tool_aliases': 'prefer_explicit_pack_namespace'}
 PROMOTION_BLOCKERS = set(['no_actual_dialing_runtime', 'requires_external_real_world_action_approval_class', 'requires_never_call_policy', 'requires_redactable_transcript_storage', 'must_pass_disallowed_intent_abort_cases'])
 PROMOTION_EVIDENCE = set(['mock_dial_approval_cases', 'never_call_block_cases', 'transcript_redaction_cases', 'takeover_escalation_cases', 'operations_company_takeover_acceptance_cases', 'provider_handoff_acceptance_cases'])
 BLOCKED_BY_DEFAULT = set(['dial without human approval', 'call numbers on the never-call list', 'continue after consent is declined', 'continue after disallowed intent is detected', 'perform payment or purchase execution', 'handle emergency services', 'mask actual dialing as a mock handoff', 'store unredacted transcript PII in a handoff packet', 'use raw phone numbers instead of target aliases'])
@@ -47,7 +48,8 @@ def test_pack_required_assets_and_ecosystem_contract() -> None:
     ecosystem = read_json(PACK_DIR / "ecosystem.json")
     assert validate_ecosystem(ecosystem, raise_on_error=False) == []
     assert ecosystem["pack_identity"] == f"rumi:ecosystem/{PACK_ID}"
-    assert ecosystem["dependencies"] == {"defaultspack": ">=2.0.0"}
+    assert ecosystem["dependencies"] == {}
+    assert all((PACK_DIR / name).is_file() for name in V4_AUTHORITY_ARTIFACTS)
     assert ecosystem["required_secrets"] == []
     assert ecosystem["required_network"] == []
     assert ecosystem["host_execution"] is False
@@ -58,14 +60,20 @@ def test_pack_required_assets_and_ecosystem_contract() -> None:
     assert ecosystem["metadata"]["declarative_only"] is True
     assert ecosystem["metadata"]["consumes_existing_sources_only"] is True
     assert ecosystem["metadata"]["output_effect"] == "draft_and_handoff_only"
-    assert ecosystem["metadata"]["defaultspack_promotion_eligible"] is False
+    assert ecosystem["metadata"]["base_pack_promotion_eligible"] is False
     assert set(ecosystem["metadata"]["owner_surfaces"]) >= OWNER_EXPECTED
     assert set(ecosystem["metadata"]["non_owner_surfaces"]) >= NON_OWNER_EXPECTED
     available = {item.pack_id for item in PackSelector(ROOT / "ecosystem").scan_candidates()}
     assert {item["pack_id"] for item in ecosystem["metadata"]["optional_integrations"]} <= available
 
     metadata_indexed = {item for values in ecosystem["metadata"]["asset_index"].values() for item in values}
-    actual = {str(path.relative_to(PACK_DIR)) for path in PACK_DIR.rglob("*") if path.is_file() and path.name != "ecosystem.json"}
+    actual = {
+        str(path.relative_to(PACK_DIR))
+        for path in PACK_DIR.rglob("*")
+        if path.is_file()
+        and path.name not in {"ecosystem.json", "executables.v4.json"}
+    }
+    actual -= V4_AUTHORITY_ARTIFACTS
     assert metadata_indexed == actual
     assert set(REQUIRED_ASSETS) == actual
 
@@ -78,7 +86,7 @@ def test_pack_required_assets_and_ecosystem_contract() -> None:
         "executable_code": False,
         "supports_all_ok": False,
         "external_actions_are_handoffs": True,
-        "defaultspack_promotion_eligible": False,
+        "base_pack_promotion_eligible": False,
     }
 
 
@@ -115,9 +123,9 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     assert handed
     assert candidate.overlap_policy["tool_aliases"] == "prefer_explicit_pack_namespace"
 
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert set(candidate.defaultspack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
-    assert set(candidate.defaultspack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert set(candidate.base_pack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
+    assert set(candidate.base_pack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
     assert candidate.marketplace["registry"] == "bundled"
     assert candidate.marketplace["publisher"] == "rumi-ai"
     assert candidate.marketplace["status"] == "verified"

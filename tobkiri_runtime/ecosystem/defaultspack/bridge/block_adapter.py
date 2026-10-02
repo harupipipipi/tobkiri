@@ -58,6 +58,10 @@ def _drop_foreign_top_level_package(package_name: str) -> None:
 
 
 def _prepare_pack_imports() -> None:
+    if type(sys.path) is not list:
+        # Sealed packaged runtime: sys.path is the frozen attested object and
+        # already contains the pack root, so it must not be rebound or mutated.
+        return
     pack_root = str(_PACK_ROOT)
     sys.path = [item for item in sys.path if item != pack_root]
     repo_root = str(_REPO_ROOT)

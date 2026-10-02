@@ -84,9 +84,8 @@ def test_user_requested_computer_use_does_not_bypass_local_executor_approval(tmp
     )
 
     assert result["is_error"] is False
-    assert result["widget"]["requires_approval"] is True
-    assert result["widget"]["payload"]["virtual_only"] is True
-    assert result["widget"]["payload"]["resolved_coordinates"] == {"x": 10, "y": 20}
+    assert result["widget"]["error_type"] == "global_host_contract_unavailable"
+    assert result["widget"]["status"] == "unavailable"
 
 
 def test_open_url_approval_payload_includes_target_app(tmp_path):
@@ -101,16 +100,267 @@ def test_open_url_approval_payload_includes_target_app(tmp_path):
     assert result["payload"]["target_app"] == "Microsoft Edge"
 
 
-def test_open_url_function_context_target_app_reaches_approval_payload(tmp_path):
+def test_open_url_function_context_target_app_reaches_approval_payload(tmp_path, monkeypatch):
     from ecosystem.rumi_default_tools_pack.functions.browser_computer import main
 
+    def fake_runner(action, payload, context=None, **kwargs):
+        del context, kwargs
+        return {
+            "action": action,
+            "requires_approval": True,
+            "payload": payload,
+        }
+
+    monkeypatch.setattr(main, "_run_computer_action", lambda: fake_runner)
     result = main.run(
         {"conversation_workspace_dir": str(tmp_path), "computer_use_target_app": "Microsoft Edge"},
         {"action": "browser.open_url", "payload": {"url": "https://example.test", "persistent": False}},
     )
 
     assert result["widget"]["requires_approval"] is True
-    assert result["widget"]["payload"]["target_app"] == "Microsoft Edge"
+    assert result["widget"]["payload"]["app"] == "Microsoft Edge"
+
+
+def test_open_url_target_app_dry_run_reports_targeted_launch_plan(tmp_path, monkeypatch):
+    from ecosystem.rumi_default_tools_pack.domain.tool import browser_computer
+
+    controller = _controller(tmp_path)
+    monkeypatch.setattr(browser_computer.platform, "system", lambda: "Darwin")
+
+    result = controller.run(
+        "browser.open_url",
+        {"url": "https://example.test", "target_app": "atlas", "dry_run": True},
+    )
+
+    assert result["dry_run"] is True
+    assert result["target_app"] == "atlas"
+    assert result["launch"]["mode"] == "target_app"
+    assert result["launch"]["commands"][0] == ["open", "-b", "com.openai.atlas", "https://example.test"]
+
+
+def test_edge_haze_stop_failure_does_not_fail_browser_open_url(tmp_path, monkeypatch):
+    controller = _controller(tmp_path)
+
+    class FailingHaze:
+        _lease_path = tmp_path / "edge_haze.lease.json"
+        _sequence_id = "seq-test"
+
+        @classmethod
+        def from_pack_root(cls, pack_root):
+            return cls()
+
+        def start(self, *, action, payload):
+            return True
+
+        def stop(self):
+            raise OSError("No space left on device")
+
+    monkeypatch.setattr(
+        "ecosystem.rumi_default_tools_pack.domain.computer.mac.edge_haze.ComputerUseEdgeHazeManager",
+        FailingHaze,
+    )
+    monkeypatch.setattr(controller, "_consume_approval", lambda *args, **kwargs: True)
+    monkeypatch.setattr(controller, "_open_url_result", lambda *args, **kwargs: {"opened": True})
+
+    result = controller.run(
+        "browser.open_url",
+        {"url": "https://example.test", "target_app": "atlas"},
+        yolo_mode=True,
+    )
+
+    assert result["opened"] is True
+    assert "No space left on device" in result["edge_haze"]["stop_error"]
+
+
+def test_edge_haze_can_be_disabled_for_debug_smoke(tmp_path, monkeypatch):
+    controller = _controller(tmp_path)
+
+    monkeypatch.setenv("RUMI_EDGE_HAZE_DISABLED", "1")
+    monkeypatch.setattr(controller, "_consume_approval", lambda *args, **kwargs: True)
+    monkeypatch.setattr(controller, "_open_url_result", lambda *args, **kwargs: {"opened": True})
+
+    result = controller.run(
+        "browser.open_url",
+        {"url": "https://example.test", "target_app": "atlas"},
+        yolo_mode=True,
+    )
+
+    assert result["opened"] is True
+    assert result["edge_haze"]["disabled"] is True
+
+
+def test_darwin_targeted_open_url_reports_open_command_failure(tmp_path, monkeypatch):
+    from ecosystem.rumi_default_tools_pack.domain.tool import browser_computer
+
+    controller = _controller(tmp_path)
+    commands = []
+
+    monkeypatch.setattr(browser_computer.platform, "system", lambda: "Darwin")
+
+    def fake_run(command, **kwargs):
+        commands.append((command, kwargs))
+        return subprocess.CompletedProcess(
+            command,
+            1,
+            stdout="",
+            stderr="Unable to find application named ChatGPT Atlas",
+        )
+
+    monkeypatch.setattr(browser_computer.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        controller,
+        "_activate_app_name",
+        lambda app_name: (_ for _ in ()).throw(AssertionError("open failure must not activate")),
+    )
+
+    result = controller.run(
+        "browser.open_url",
+        {"url": "https://example.test", "app": "ChatGPT Atlas", "persistent": False},
+        yolo_mode=True,
+    )
+
+    assert result["opened"] is False
+    assert result["is_error"] is True
+    assert result["target_app"] == "ChatGPT Atlas"
+    assert "Unable to find application named ChatGPT Atlas" in result["reason"]
+    assert commands[0][0] == ["open", "-b", "com.openai.atlas", "https://example.test"]
+    assert commands[1][0] == ["open", "-a", "ChatGPT Atlas", "https://example.test"]
+    assert commands[0][1]["timeout"] == browser_computer._DARWIN_AUTOMATION_TIMEOUT_SECONDS
+
+
+def test_darwin_targeted_open_url_reports_unavailable_after_open_success(tmp_path, monkeypatch):
+    from ecosystem.rumi_default_tools_pack.domain.tool import browser_computer
+
+    controller = _controller(tmp_path)
+    commands = []
+    monotonic_values = iter([0.0, 3.0, 4.0, 7.0])
+
+    monkeypatch.setattr(browser_computer.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(browser_computer.time, "monotonic", lambda: next(monotonic_values, 7.0))
+    monkeypatch.setattr(browser_computer.time, "sleep", lambda seconds: None)
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(browser_computer.subprocess, "run", fake_run)
+    monkeypatch.setattr(controller, "_active_window_for_app", lambda app_name: None)
+    monkeypatch.setattr(controller, "_running_apps", lambda: [])
+    monkeypatch.setattr(controller, "_activate_app_name", lambda app_name: False)
+
+    result = controller.run(
+        "browser.open_url",
+        {"url": "https://example.test", "app": "ChatGPT Atlas", "persistent": False},
+        yolo_mode=True,
+    )
+
+    assert result["opened"] is False
+    assert result["is_error"] is True
+    assert "did not become available" in result["reason"]
+    assert commands[0] == ["open", "-b", "com.openai.atlas", "https://example.test"]
+    assert commands[1] == ["open", "-a", "ChatGPT Atlas", "https://example.test"]
+
+
+def test_darwin_targeted_open_url_debug_foreground_accepts_atlas_command_success(tmp_path, monkeypatch):
+    from ecosystem.rumi_default_tools_pack.domain.tool import browser_computer
+
+    controller = _controller(tmp_path)
+    commands = []
+
+    monkeypatch.setenv("RUMI_COMPUTER_USE_DEBUG_FOREGROUND", "1")
+    monkeypatch.setattr(browser_computer.platform, "system", lambda: "Darwin")
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(browser_computer.subprocess, "run", fake_run)
+    monkeypatch.setattr(controller, "_active_window_for_app", lambda app_name: None)
+    monkeypatch.setattr(controller, "_running_apps", lambda: [])
+    monkeypatch.setattr(
+        controller,
+        "_activate_app_name",
+        lambda app_name: (_ for _ in ()).throw(AssertionError("debug foreground open should not block on activation")),
+    )
+
+    result = controller.run(
+        "browser.open_url",
+        {"url": "https://example.test", "app": "ChatGPT Atlas", "persistent": False},
+        yolo_mode=True,
+    )
+
+    assert result["opened"] is True
+    assert result["target_app"] == "ChatGPT Atlas"
+    assert result["command_accepted"] is True
+    assert result["window_verified"] is False
+    assert result["launch_command"] == ["open", "-b", "com.openai.atlas", "https://example.test"]
+    assert commands == [["open", "-b", "com.openai.atlas", "https://example.test"]]
+
+
+def test_darwin_targeted_open_url_requires_usable_window_not_just_process(tmp_path, monkeypatch):
+    from ecosystem.rumi_default_tools_pack.domain.tool import browser_computer
+
+    controller = _controller(tmp_path)
+    monotonic_values = iter([0.0, 3.0, 4.0, 7.0])
+
+    monkeypatch.setattr(browser_computer.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(browser_computer.time, "monotonic", lambda: next(monotonic_values, 7.0))
+    monkeypatch.setattr(browser_computer.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(
+        browser_computer.subprocess,
+        "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0, stdout="", stderr=""),
+    )
+    monkeypatch.setattr(controller, "_active_window_for_app", lambda app_name: None)
+    monkeypatch.setattr(
+        controller,
+        "_running_apps",
+        lambda: [{"name": "ChatGPT Atlas", "bundle_id": "com.openai.atlas", "path": "/Applications/ChatGPT Atlas.app"}],
+    )
+    monkeypatch.setattr(controller, "_activate_app_name", lambda app_name: False)
+
+    result = controller.run(
+        "browser.open_url",
+        {"url": "https://example.test", "app": "ChatGPT Atlas", "persistent": False},
+        yolo_mode=True,
+    )
+
+    assert result["opened"] is False
+    assert result["is_error"] is True
+    assert "no usable window" in result["reason"]
+    assert result["running_app"]["bundle_id"] == "com.openai.atlas"
+
+
+def test_darwin_targeted_open_url_verifies_app_window_before_success(tmp_path, monkeypatch):
+    from ecosystem.rumi_default_tools_pack.domain.tool import browser_computer
+
+    controller = _controller(tmp_path)
+    active_window = {"app": "ChatGPT Atlas", "title": "Example", "width": 900, "height": 700}
+    seen = {}
+
+    monkeypatch.setattr(browser_computer.platform, "system", lambda: "Darwin")
+
+    def fake_run(command, **kwargs):
+        seen["command"] = command
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(browser_computer.subprocess, "run", fake_run)
+    monkeypatch.setattr(controller, "_active_window_for_app", lambda app_name: active_window)
+    monkeypatch.setattr(
+        controller,
+        "_activate_app_name",
+        lambda app_name: (_ for _ in ()).throw(AssertionError("available app should not require activation")),
+    )
+
+    result = controller.run(
+        "browser.open_url",
+        {"url": "https://example.test", "app": "ChatGPT Atlas", "persistent": False},
+        yolo_mode=True,
+    )
+
+    assert result["opened"] is True
+    assert result["target_app"] == "ChatGPT Atlas"
+    assert seen["command"] == ["open", "-b", "com.openai.atlas", "https://example.test"]
 
 
 def test_open_url_function_rejects_forged_server_approval_context(tmp_path, monkeypatch):
@@ -133,8 +383,8 @@ def test_open_url_function_rejects_forged_server_approval_context(tmp_path, monk
         {"action": "browser.open_url", "payload": {"url": "https://gemini.google.com", "persistent": False}},
     )
 
-    assert result["is_error"] is False
-    assert result["widget"].get("requires_approval") is True
+    assert result["is_error"] is True
+    assert result["widget"]["error_type"] == "global_host_contract_unavailable"
     assert result["widget"]["action"] == "browser.open_url"
     assert opened == {}
 
@@ -215,7 +465,8 @@ def test_local_browser_computer_rejects_forged_server_approval_context(tmp_path,
     )
 
     assert result["is_error"] is False
-    assert result["widget"].get("requires_approval") is True
+    assert result["widget"]["error_type"] == "global_host_contract_unavailable"
+    assert result["widget"]["status"] == "unavailable"
     assert result["widget"]["action"] == "browser.open_url"
     assert opened == {}
 

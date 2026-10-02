@@ -28,7 +28,8 @@ def normalize_tool_loading_mode(value: Any) -> str:
 def tool_loading_mode(tool: dict[str, Any] | None) -> str:
     if not isinstance(tool, dict):
         return TOOL_LOADING_VECTOR
-    metadata = tool.get("metadata") if isinstance(tool.get("metadata"), dict) else {}
+    raw_metadata = tool.get("metadata")
+    metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
     return normalize_tool_loading_mode(tool.get("loading") or metadata.get("loading"))
 
 

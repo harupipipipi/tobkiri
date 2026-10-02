@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.dev/subagent-placement/v1.json",
+  "title": "Tobkiri Subagent Placement v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "subject",
+    "presentation",
+    "role",
+    "bindings",
+    "participation",
+    "governance"
+  ],
+  "properties": {
+    "schema_version": {"const": "tobkiri.subagent-placement/v1"},
+    "id": {"$ref": "#/$defs/id"},
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "exact_ref": {"type": "string", "minLength": 1},
+        "selector": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "accepts": {"$ref": "#/$defs/stringList"},
+            "produces": {"$ref": "#/$defs/stringList"},
+            "supports_protocols": {"$ref": "#/$defs/stringList"},
+            "minimum_trust": {"enum": ["bundled", "verified", "local"]}
+          }
+        }
+      },
+      "oneOf": [
+        {"required": ["exact_ref"]},
+        {"required": ["selector"]}
+      ]
+    },
+    "presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["display_name", "visible"],
+      "properties": {
+        "display_name": {"type": "string", "minLength": 1},
+        "visible": {"type": "boolean"}
+      }
+    },
+    "role": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_ref", "completion_contracts"],
+      "properties": {
+        "contract_ref": {"type": "string", "minLength": 1},
+        "instructions_ref": {"type": "string"},
+        "completion_contracts": {"$ref": "#/$defs/stringList"},
+        "behavior": {"type": "object"}
+      }
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["slot"],
+        "properties": {"slot": {"type": "string", "minLength": 1}},
+        "additionalProperties": true
+      }
+    },
+    "participation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["protocol_ref"],
+        "properties": {
+          "protocol_ref": {"type": "string", "minLength": 1},
+          "participant_role": {"type": "string"},
+          "input_port": {"type": "string"},
+          "output_port": {"type": "string"},
+          "events": {"$ref": "#/$defs/stringList"}
+        }
+      }
+    },
+    "governance": {"type": "object"},
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["feature_id", "version_range", "requirement", "config"],
+        "properties": {
+          "feature_id": {"$ref": "#/$defs/id"},
+          "version_range": {"type": "string", "minLength": 1},
+          "requirement": {"enum": ["required", "advisory"]},
+          "config": {"type": "object"}
+        }
+      }
+    },
+    "enforcement": {"type": "object", "additionalProperties": {"type": "string"}},
+    "required_enforcement": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+    },
+    "stringList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}
