@@ -22,6 +22,7 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderInvocationContextV4,
 )
 from tobkiri_protocol.canonical import CanonicalizationError, canonical_json
+from tobkiri_protocol.conversation_lifecycle import message_task_state
 CATALOG_CONTRACT = "tobkiri.resource.ai.model.catalog.v1"
 CATALOG_GENERATE_OPERATION = (
     "rumi_model_catalog_pack.bundled-model-catalog.generate"
@@ -1369,7 +1370,7 @@ def _normalize_result(
             str(value.get("error_code") or "provider_unavailable"),
             str(value.get("message") or "provider failed"),
         )
-    return {
+    result = {
         "status": "ok",
         "request_id": request_id,
         "model_id": selected.model_id,
@@ -1387,6 +1388,18 @@ def _normalize_result(
             value.get("usage_provenance") or "provider_reported"
         ),
     }
+    metadata = value.get("metadata")
+    if "task_state" in value or isinstance(metadata, Mapping):
+        # Retain finite terminal evidence from the captured provider result.
+        # Arbitrary provider metadata never becomes prompt or authority input.
+        evidence = dict(metadata) if isinstance(metadata, Mapping) else {}
+        if "task_state" in value:
+            evidence["task_state"] = value["task_state"]
+        result["task_state"] = message_task_state({
+            "role": "assistant", "status": "complete",
+            "finish_reason": value.get("finish_reason"), "metadata": evidence,
+        })
+    return result
 
 
 def _attach_stream_usage_cost(

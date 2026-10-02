@@ -49,6 +49,11 @@ def message_task_state(message: Mapping[str, Any]) -> str:
         return "failed"
     if states & _RUNNING or metadata.get("draft") is True or metadata.get("streaming") is True:
         return "running"
+    known = _SUCCESS | _WAIT_USER | _WAIT_APPROVAL | _RUNNING | _CANCELLED
+    for explicit in (metadata.get("task_state"), thinking.get("state")):
+        if explicit not in (None, "") and str(explicit).lower() not in known:
+            # Idle, unknown or invalid task state cannot be upgraded by stop.
+            return "unknown"
     finish = str(message.get("finish_reason") or "").lower()
     if finish in _SUCCESS and message.get("status") in {
         None,

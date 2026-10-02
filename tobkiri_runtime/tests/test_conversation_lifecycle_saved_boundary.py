@@ -50,6 +50,8 @@ def _exchange(tmp_path: Path, ai: dict[str, Any]) -> _Exchange:
         ({"finish_reason": "stop", "task_state": "waiting_user"}, "waiting_user"),
         ({"finish_reason": "stop", "task_state": "waiting_approval"}, "waiting_approval"),
         ({"finish_reason": "stop", "task_state": "failed"}, "failed"),
+        ({"finish_reason": "stop", "task_state": "idle"}, "unknown"),
+        ({"finish_reason": "stop", "task_state": "invalid"}, "unknown"),
         ({"finish_reason": "stop", "metadata": {"thinking": {"state": "failed"}}}, "failed"),
         ({"finish_reason": "cancelled"}, "cancelled"),
         ({"finish_reason": "tool_calls"}, "running"),
@@ -201,3 +203,39 @@ def test_ordinary_append_and_update_cannot_forge_owner_completion(
         expected_conversation_revision=3,
     )
     assert exchange.store.get("conversation-1")["lifecycle"]["completed_at_ms"] is None
+
+
+@pytest.mark.parametrize(
+    "evidence,state",
+    [
+        ({"task_state": "waiting_user"}, "waiting_user"),
+        ({"metadata": {"approval_required": True}}, "waiting_approval"),
+        ({"metadata": {"thinking": {"state": "failed"}}}, "failed"),
+        ({"metadata": {"cancelled": True}}, "cancelled"),
+        ({"task_state": "idle"}, "unknown"),
+    ],
+)
+def test_gateway_retains_explicit_provider_terminal_evidence(
+    evidence: dict[str, Any],
+    state: str,
+) -> None:
+    from types import SimpleNamespace
+    from ecosystem.rumi_ai_gateway_pack.runtime.gateway import _normalize_result
+
+    selected = SimpleNamespace(
+        model_id="model",
+        provider_instance_id="provider",
+        catalog_provider_instance_id="catalog",
+        catalog_revision="revision",
+    )
+    result = _normalize_result(
+        {"status": "ok", "output": "Which option?", "finish_reason": "stop", **evidence},
+        "request",
+        selected,
+    )
+    assert result["task_state"] == state
+    assert "metadata" not in result
+    assert project_saved_ai_result(result)["finish_reason"] == {
+        "failed": "error",
+        "unknown": None,
+    }.get(state, state)
