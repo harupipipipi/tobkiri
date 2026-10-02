@@ -1,0 +1,10 @@
+{
+  "artifacts": [
+    {
+      "path": "frontend/contributions/office-authoring.json",
+      "role": "ui_contribution",
+      "sha256": "sha256:74dc86809cb8f6212614ce270a420865d1eec2d6dd5c82a5b106c5019755c7c1"
+    }
+  ],
+  "schema_version": "rumi.artifact-manifest.v1"
+}

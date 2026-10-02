@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from domain.agent_runtime.run_store import AgentRunStore
 
 from .models import DEFAULT_COMPANY_ID
@@ -20,10 +22,14 @@ class CompanySupervisor:
         run_store: AgentRunStore | None = None,
         run_dispatcher: CompanyRunDispatcher | None = None,
         summary_worker: CompanySummaryWorker | None = None,
+        settings_owner: SettingsOwnerPort | None = None,
     ) -> None:
         self.runtime_store = runtime_store or CompanyRuntimeStore()
         self.run_store = run_store or AgentRunStore()
-        self.run_dispatcher = run_dispatcher or CompanyRunDispatcher(runtime_store=self.runtime_store)
+        self.run_dispatcher = run_dispatcher or CompanyRunDispatcher(
+            runtime_store=self.runtime_store,
+            settings_owner=settings_owner,
+        )
         self.summary_worker = summary_worker or CompanySummaryWorker(runtime_store=self.runtime_store, run_store=self.run_store)
 
     def tick(

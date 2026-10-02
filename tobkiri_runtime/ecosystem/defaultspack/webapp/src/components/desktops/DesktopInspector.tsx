@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Bot, ClipboardCheck, Copy, Cpu, KeyRound, Link2, ListChecks, Monitor, Network, PackageCheck, Shield, UserCheck } from "lucide-react";
+import { Bot, ClipboardCheck, Copy, Cpu, KeyRound, Link2, ListChecks, Monitor, Network, PackageCheck, Shield, UserCheck } from "lucide-react";
 
 import { cn } from "../../lib/cn";
 import { sandboxesApi } from "../../features/sandboxes/api";
 import type { DesktopInstance, RuntimeIsolationFacts } from "../../features/sandboxes/types";
+import { ErrorNotice } from "../ErrorNotice";
 
 type DesktopInspectorProps = {
   desktop: DesktopInstance | null;
@@ -308,18 +309,14 @@ export function DesktopInspector({
       </section>
 
       {(desktop.last_error || leaseError || actionError) && (
-        <section className="rounded-lg border border-red-500/25 bg-red-500/10 p-3 text-red-100">
-          <div className="flex items-center gap-1.5 font-semibold">
-            <AlertTriangle size={13} />
-            <span>Latest issue</span>
-          </div>
-          <p className="mt-1">
-            {actionError
-              || leaseError
-              || (typeof desktop.last_error === "string" ? desktop.last_error : desktop.last_error?.message)
-              || "Unknown desktop error."}
-          </p>
-        </section>
+        <ErrorNotice
+          message={actionError
+            || leaseError
+            || (typeof desktop.last_error === "string" ? desktop.last_error : desktop.last_error?.message)
+            || "Unknown desktop error."}
+          title="Latest issue"
+          copyLabel="デスクトップのエラーをコピー"
+        />
       )}
     </aside>
   );

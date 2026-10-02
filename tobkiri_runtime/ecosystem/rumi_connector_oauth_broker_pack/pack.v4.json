@@ -1,0 +1,226 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:55ef66e08621f0c00e3057dee7664a84c10be566021196651dc01c7f5ce40934",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:60e25867b283ab9f353d9d87db70d9f877fa5549f7cbc3a1d997dc5deb8de15e",
+      "kind": "executable",
+      "path": "runtime/broker.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.connector.oauth.v1",
+      "operations": [
+        "rumi_connector_oauth_broker_pack.connector-oauth-action"
+      ],
+      "revision_digest": "sha256:295bd4d95e33a945a2d54b9924bfdc91a533caf4233d74ca5d607667829a5ad3"
+    },
+    {
+      "contract_id": "tobkiri.resource.connector.oauth.v1",
+      "operations": [
+        "rumi_connector_oauth_broker_pack.connector-oauth-resource"
+      ],
+      "revision_digest": "sha256:354355b822d7ed764828bbf3e73ef06a6955c2214398eaf4932ce5ea985bea83"
+    },
+    {
+      "contract_id": "tobkiri.transport.connector.oauth.callback.v1",
+      "operations": [
+        "rumi_connector_oauth_broker_pack.connector-oauth-callback"
+      ],
+      "revision_digest": "sha256:bfa6d64858a26620c6cbe913a02eb408b6990cb412b2ec17d6a67e52a9e04a72"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:295bd4d95e33a945a2d54b9924bfdc91a533caf4233d74ca5d607667829a5ad3",
+      "id": "rumi_connector_oauth_broker_pack.connector-oauth.action",
+      "implementation_digest": "sha256:60e25867b283ab9f353d9d87db70d9f877fa5549f7cbc3a1d997dc5deb8de15e",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_connector_oauth_broker_pack.connector-oauth-action"
+      ],
+      "role": "brokered"
+    },
+    {
+      "contract_revision_digest": "sha256:bfa6d64858a26620c6cbe913a02eb408b6990cb412b2ec17d6a67e52a9e04a72",
+      "id": "rumi_connector_oauth_broker_pack.connector-oauth.callback",
+      "implementation_digest": "sha256:60e25867b283ab9f353d9d87db70d9f877fa5549f7cbc3a1d997dc5deb8de15e",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_connector_oauth_broker_pack.connector-oauth-callback"
+      ],
+      "role": "brokered"
+    },
+    {
+      "contract_revision_digest": "sha256:354355b822d7ed764828bbf3e73ef06a6955c2214398eaf4932ce5ea985bea83",
+      "id": "rumi_connector_oauth_broker_pack.connector-oauth.resource",
+      "implementation_digest": "sha256:60e25867b283ab9f353d9d87db70d9f877fa5549f7cbc3a1d997dc5deb8de15e",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_connector_oauth_broker_pack.connector-oauth-resource"
+      ],
+      "role": "brokered"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:b5b637c3e820787d55f2eb5d87247bf1158c4eabbabaff6bd9684c8d853ca353",
+    "contract_catalog_digest": "sha256:55fb82b70cb3c33045743e1e5f4752700ad52a2a46900b5596a497f23596f169",
+    "source_identity": "sha256:27512b8664810eb4db7e39616d0e62da64e16359815b176a8130e2b513cdf5ea"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.connector.oauth.v1",
+      "rumi.resource.connector.oauth.v1",
+      "rumi.transport.connector.oauth.callback.v1",
+      "rumi:ecosystem/rumi_connector_oauth_broker_pack",
+      "rumi_connector_oauth_broker_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.action.connector.oauth.v1",
+      "effect_ceiling": [
+        "capability:connector.oauth.manage"
+      ],
+      "operation_id": "rumi_connector_oauth_broker_pack.connector-oauth-action",
+      "owner": "rumi_connector_oauth_broker_pack",
+      "provider_id": "rumi_connector_oauth_broker_pack.connector-oauth.action",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.transport.connector.oauth.callback.v1",
+      "effect_ceiling": [
+        "capability:connector.oauth.callback"
+      ],
+      "operation_id": "rumi_connector_oauth_broker_pack.connector-oauth-callback",
+      "owner": "rumi_connector_oauth_broker_pack",
+      "provider_id": "rumi_connector_oauth_broker_pack.connector-oauth.callback",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.connector.oauth.v1",
+      "effect_ceiling": [
+        "capability:connector.oauth.read"
+      ],
+      "operation_id": "rumi_connector_oauth_broker_pack.connector-oauth-resource",
+      "owner": "rumi_connector_oauth_broker_pack",
+      "provider_id": "rumi_connector_oauth_broker_pack.connector-oauth.resource",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:b5b637c3e820787d55f2eb5d87247bf1158c4eabbabaff6bd9684c8d853ca353",
+    "display_name": "Rumi Connector OAuth Broker",
+    "id": "rumi_connector_oauth_broker_pack",
+    "kind": "normal_sandbox",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:27512b8664810eb4db7e39616d0e62da64e16359815b176a8130e2b513cdf5ea",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:27512b8664810eb4db7e39616d0e62da64e16359815b176a8130e2b513cdf5ea",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_connector_oauth_broker_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.action.connector.oauth.v1",
+      "operations": [
+        "rumi_connector_oauth_broker_pack.connector-oauth-action"
+      ],
+      "owner": "rumi_connector_oauth_broker_pack",
+      "provider_id": "rumi_connector_oauth_broker_pack.connector-oauth.action"
+    },
+    {
+      "contract_reference": "tobkiri.transport.connector.oauth.callback.v1",
+      "operations": [
+        "rumi_connector_oauth_broker_pack.connector-oauth-callback"
+      ],
+      "owner": "rumi_connector_oauth_broker_pack",
+      "provider_id": "rumi_connector_oauth_broker_pack.connector-oauth.callback"
+    },
+    {
+      "contract_reference": "tobkiri.resource.connector.oauth.v1",
+      "operations": [
+        "rumi_connector_oauth_broker_pack.connector-oauth-resource"
+      ],
+      "owner": "rumi_connector_oauth_broker_pack",
+      "provider_id": "rumi_connector_oauth_broker_pack.connector-oauth.resource"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "connector.oauth.callback",
+      "connector.oauth.manage",
+      "connector.oauth.read",
+      "connector.registry.manage",
+      "connector.registry.read",
+      "credential.manage",
+      "host.authority.consume"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.connector.registry.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.credential.manage.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.connector.registry.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.service.connector.oauth.provider.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_connector_registry_service_pack": ">=1.0.0,<2.0.0",
+      "rumi_credential_broker_pack": ">=1.0.0,<2.0.0",
+      "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

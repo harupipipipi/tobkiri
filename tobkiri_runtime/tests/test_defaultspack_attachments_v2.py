@@ -4,12 +4,15 @@ import base64
 import json
 import sys
 from pathlib import Path
+import pytest
 
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+
+pytestmark = pytest.mark.usefixtures("defaultspack_conversation_owner")
 
 
 def test_attachment_record_created_for_text_file_and_legacy_refs(tmp_path, monkeypatch):

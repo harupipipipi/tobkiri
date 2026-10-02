@@ -1,0 +1,145 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "rumi_ai_modality_pack",
+  "source_identity": "sha256:1b0d79c096d6e76d94b563a3084efa0fe9bd08182100d837bcdb60c70828452b",
+  "variants": [
+    {
+      "variant_id": "rumi_ai_modality_pack.ai-modality.embedding.python",
+      "function_id": "rumi_ai_modality_pack.ai-modality.embedding",
+      "implementation_path": "runtime/gateway.py",
+      "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.ai.embedding.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:b166d234070e8597ca0855a841c1b8ab520e279b8bbb940f9708b8628ed35f0b",
+          "operation_id": "rumi_ai_modality_pack.ai-embedding",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_ai_modality_pack.ai-modality.image.python",
+      "function_id": "rumi_ai_modality_pack.ai-modality.image",
+      "implementation_path": "runtime/gateway.py",
+      "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.ai.image.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:bc6ecd852106afe38fe5b5857137651e05ab83c8db7b3bb839ddaa7353db8311",
+          "operation_id": "rumi_ai_modality_pack.ai-image",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_ai_modality_pack.ai-modality.speech.python",
+      "function_id": "rumi_ai_modality_pack.ai-modality.speech",
+      "implementation_path": "runtime/gateway.py",
+      "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.ai.audio.speech.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:ee2fe18ae7876df3b2dd53ef2ff0f6e5ceb3348cacf1d70394db8682487490c7",
+          "operation_id": "rumi_ai_modality_pack.ai-speech",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_ai_modality_pack.ai-modality.transcribe.python",
+      "function_id": "rumi_ai_modality_pack.ai-modality.transcribe",
+      "implementation_path": "runtime/gateway.py",
+      "implementation_digest": "sha256:1d6aa91e0a925827e59207c9d68fcfa12a7fd913f8264a15b757f018b265a327",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.ai.audio.transcribe.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:9af22695e671d346b5be8177457a1c99d6e8d21ea49cd87595fe24bc41b772d4",
+          "operation_id": "rumi_ai_modality_pack.ai-transcribe",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    }
+  ],
+  "materialization_catalog_digest": "sha256:e635e5f50fdbec073c24c5bd2be0f3b14a2e2120c65d2631000985c77fe5bb4a",
+  "catalog_digest": "sha256:db84247ed1e21b65e2e7f8e7c5be42e5bd82d189d73b7e1cfcfba1fe5e5898e9"
+}

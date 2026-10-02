@@ -1,8 +1,5 @@
-import os
 import re
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import error, ok
 from blocks.agent._state import set_multi_session
@@ -11,7 +8,7 @@ from domain.company.models import DEFAULT_COMPANY_ID, DEFAULT_COMPANY_NAME, norm
 from domain.company.store import CompanyStore
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner=None):
     """Compatibility wrapper for the legacy multi-agent execute endpoint."""
     if not isinstance(input_data, dict):
         return error("input_data must be a dict")
@@ -36,7 +33,10 @@ def run(input_data, context):
             store.upsert_agent(company_id, agent)
 
     target_agent_ids = [agent["agent_id"] for agent in agents] if agents else ["operations_manager"]
-    result = CompanySlackRuntime(company_store=store).post_message(
+    result = CompanySlackRuntime(
+        company_store=store,
+        settings_owner=settings_owner,
+    ).post_message(
         company_id,
         content=task,
         sender_id=str(input_data.get("sender_id") or "legacy_multi"),
