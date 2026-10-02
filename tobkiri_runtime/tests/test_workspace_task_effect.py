@@ -475,7 +475,7 @@ def test_workspace_task_approval_resumes_the_exact_snapshot_once(
     execution_states = [
         event["event_state"]
         for event in fixture.harness.store.audit_events()[prior_events:]
-        if event["event_state"] in {"reserved", "dispatched", "committed"}
+        if event["event_type"] == "host_effect"
     ]
     assert execution_states == [
         "reserved",
