@@ -2021,3 +2021,17 @@ test("English Settings empty section keeps registry contribution guidance", () =
   assert.match(html, /Pack or provider contributions for this section will appear here after registry validation\./);
   assert.doesNotMatch(html, /パックや外部サービスから追加される設定/);
 });
+
+
+test("Settings modal renders installed Pack settings inside its dialog content", () => {
+  const html = renderToStaticMarkup(createElement(SettingsModalRenderer, {
+    isOpen: true, catalog: null, health: null, previewsCount: 0,
+    settingsSections: [], settingsValues: {}, onClose: () => undefined,
+    onSettingChange: () => undefined,
+    extensionSettings: createElement("div", { "data-test-pack-settings": true }, "Captured scheduler controls"),
+  }));
+  const contentIndex = html.indexOf('id="settings-content"');
+  assert.ok(contentIndex >= 0);
+  assert.ok(html.indexOf('aria-label="Pack settings"', contentIndex) > contentIndex);
+  assert.match(html, /Captured scheduler controls/);
+});
