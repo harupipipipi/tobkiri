@@ -1712,6 +1712,18 @@ export function HistoryBoard({
     }
   };
 
+  const handleDragCancel = () => {
+    const snapshot = activeDragGroupsSnapshotRef.current;
+    if (snapshot) replaceGroups(snapshot);
+    activeDragGroupsSnapshotRef.current = null;
+    activeDragStartPointRef.current = null;
+    setActiveColumnDrag(null);
+    setActiveChat(null);
+    setOverColumnId(null);
+    setActiveType(null);
+    setHistoryAnnouncement("History move cancelled.");
+  };
+
   // --- Drag Over ---
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
@@ -1897,7 +1909,9 @@ export function HistoryBoard({
       setCustomGroups(saved);
       setGroups(prev => mapGroups(prev, g => g.id === id ? { ...g, title: newTitle } : g));
     } catch (error) {
-      setNewGroupError(error instanceof Error ? error.message : "Failed to rename project.");
+      const message = error instanceof Error ? error.message : "Failed to rename project.";
+      setSaveState({ kind: "unsaved", message });
+      setHistoryAnnouncement(`Project rename was not saved. ${message}`);
     }
   };
 
@@ -2353,6 +2367,7 @@ export function HistoryBoard({
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
       <div
         data-history-pane-content="true"

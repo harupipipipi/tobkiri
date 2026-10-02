@@ -42,6 +42,15 @@ function normalizedAccessibleLabel(value: unknown): string {
   return label ? label.slice(0, 160) : DEFAULT_ACCESSIBLE_LABEL;
 }
 
+/** A scoped notification can only decorate its exact active conversation. */
+export function iconAttentionForConversation(value: unknown, conversationId: string | null): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  if (!Object.prototype.hasOwnProperty.call(record, "conversation_id")) return value;
+  return typeof record.conversation_id === "string" && record.conversation_id === conversationId
+    ? value : undefined;
+}
+
 export function normalizeIconAttention(value: unknown): IconAttentionState | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;

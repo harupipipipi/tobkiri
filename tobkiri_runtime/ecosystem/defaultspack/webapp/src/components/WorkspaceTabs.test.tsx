@@ -294,3 +294,22 @@ test("conversation icon dictionaries reject inherited keys without rendering arb
     assert.match(html, /lucide-message-square/);
   }
 });
+
+
+test("extension tab close and restore preserve captured catalog identity without rebinding", () => {
+  const reference = {
+    contributionId: "schedule.view", ownerPackId: "schedule", descriptorHash: "descriptor",
+    profileId: "one", profileRevision: "revision", activationId: "activation",
+    planHash: "plan", catalogHash: "catalog",
+  };
+  const home = createWorkspaceTab("chat", { id: "home" });
+  const extension = createWorkspaceTab("extension", { id: "extension", title: "Schedules", viewReference: reference });
+  reference.profileId = "mutated";
+  assert.equal(extension.viewReference?.profileId, "one");
+  const closed = closeWorkspaceTab([home, extension], extension.id, extension.id);
+  const restored = restoreLastClosedWorkspaceTab(closed.tabs, [closed.closedTab!]);
+  assert.deepEqual(restored.restoredTab?.viewReference, extension.viewReference);
+  assert.equal(restored.restoredTab?.title, "Schedules");
+  assert.equal(workspaceTabOption("extension").label, "Pack view");
+  assert.equal(WORKSPACE_TAB_CREATE_OPTIONS.some((option) => option.kind === "extension"), false);
+});
