@@ -48,6 +48,30 @@ top-level directory must also be inside the workspace root. Status and diff are
 read operations; commit and push remain sensitive and require the local approval
 path when policy demands it.
 
+## Execution checkout modes
+
+Coding execution uses the following canonical modes. The mode is part of the
+durable execution-attempt contract; a Member or agent name is not an ownership
+substitute.
+
+- `metadata_only` records repository metadata and creates no writable checkout.
+- `isolated_copy` creates a bounded snapshot of tracked files (or an explicit
+  allowlist). Git metadata, credentials, `.env*`, caches, user data, devices,
+  sockets, links, and unrelated untracked files are excluded by default. Size
+  and file-count admission happens before any destination is published.
+- `git_worktree` runs `git worktree add --detach` against an exact full commit
+  object. The Git worktree registry path, head, physical path, Execution
+  Attempt, lease, and fencing token are recorded together. A request using the
+  old `worktree` spelling maps to this mode and fails if a real Git worktree
+  cannot be created; it never falls back to a copy.
+
+`copy` and `isolated` remain compatibility aliases for `isolated_copy`. A
+reviewer receives an independently pinned checkout and read-only access where
+the host platform supports it. Cleanup is fenced and evidence-preserving:
+dirty, active, conflicted, protected, donor, and evidence-retaining checkouts
+are not removed. Startup reconciliation quarantines mismatches between the
+durable registry, filesystem, and Git worktree registry for explicit review.
+
 ## Capability Graph
 
 `defaultspack.coding_workspace` is the minimal graph shape that binds start,

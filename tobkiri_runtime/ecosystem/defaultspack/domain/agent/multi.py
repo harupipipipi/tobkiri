@@ -1,20 +1,31 @@
+import hashlib
+import os
+import re
+import sys
+import threading
+from pathlib import Path
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+
 LEGACY_ONLY = True
 LEGACY_NOTICE = (
     "domain.agent.multi is legacy-only. Primary company coordination is handled "
     "by domain.company.message_router.CompanySlackRuntime."
 )
 
-import hashlib
-import re
-import shutil
-import threading
-from pathlib import Path
-
-from blocks._common import gen_id, timestamp
-from domain.agent.agent_def import AgentDefinition
-from domain.ai_client.client import AIClient
-from domain.coding.workspace_policy import require_registered_trusted_workspace
-from domain.coding.workspace_resolver import WorkspaceResolver
+from blocks._common import gen_id, timestamp  # noqa: E402
+from domain.agent.agent_def import AgentDefinition  # noqa: E402
+from domain.ai_client.client import AIClient  # noqa: E402
+from domain.coding.checkout_isolation import (  # noqa: E402
+    CheckoutProvisioner,
+    CheckoutRequest,
+    CheckoutSecurityError,
+    canonical_mode,
+)
+from domain.coding.workspace_policy import (  # noqa: E402
+    require_registered_trusted_workspace,
+)
+from domain.coding.workspace_resolver import WorkspaceResolver  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +111,9 @@ class MultiAgentSession:
         workspace_root=None,
         worktree_mode=None,
         workspace_resolution=None,
+        execution_attempt_id=None,
+        base_commit=None,
+        base_ref=None,
     ):
         self.session_id = session_id
         self.task = task
@@ -109,7 +123,7 @@ class MultiAgentSession:
         self.status = "created"
         self.current_turn = 0
         self.message_bus = MessageBus()
-        resolved_worktree_mode = str(worktree_mode or ("copy" if workspace_root else "metadata_only"))
+        resolved_worktree_mode = canonical_mode(worktree_mode, default="metadata_only")
         self.agent_contexts = {}
         self.shared_context = {
             "workspace": {
@@ -121,6 +135,9 @@ class MultiAgentSession:
                 "workspace_id": workspace_resolution.workspace_id if workspace_resolution else None,
                 "trusted": bool(workspace_resolution.trusted) if workspace_resolution else False,
                 "worktree_mode": resolved_worktree_mode,
+                "execution_attempt_id": execution_attempt_id,
+                "base_commit": base_commit,
+                "base_ref": base_ref,
                 "merge_strategy": "manual_conflict_report",
             }
         }
@@ -136,6 +153,13 @@ class MultiAgentSession:
                 agent,
                 workspace_root=workspace_root,
                 worktree_mode=resolved_worktree_mode,
+                attempt_id=(
+                    f"{execution_attempt_id}:{agent.agent_id or agent.name}"
+                    if execution_attempt_id
+                    else None
+                ),
+                base_commit=base_commit,
+                base_ref=base_ref,
             )
             agent.workspace = workspace
             self.agent_contexts[agent.name] = {
@@ -225,63 +249,91 @@ def _workspace_manifest(root):
     return manifest
 
 
-def _copy_workspace(base, destination):
-    base = Path(base)
-    destination = Path(destination)
-    for path in sorted(base.rglob("*")):
-        rel = path.relative_to(base)
-        if _workspace_ignore(rel):
-            continue
-        if path.is_symlink():
-            continue
-        target = destination / rel
-        if path.is_dir():
-            target.mkdir(parents=True, exist_ok=True)
-        elif path.is_file():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(path, target)
-
-
-def _agent_workspace_contract(session_id, agent_def, workspace_root=None, worktree_mode=None):
-    resolved_mode = str(worktree_mode or ("copy" if workspace_root else "metadata_only"))
+def _agent_workspace_contract(
+    session_id,
+    agent_def,
+    workspace_root=None,
+    worktree_mode=None,
+    *,
+    attempt_id=None,
+    base_commit=None,
+    base_ref=None,
+):
+    resolved_mode = canonical_mode(worktree_mode, default="metadata_only")
     contract = {
         "contract_version": "rumi.agent_workspace.v1",
-        "mode": "metadata_only",
+        "mode": resolved_mode,
         "session_id": session_id,
         "agent_id": agent_def.agent_id,
         "agent_name": agent_def.name,
-        "write_scope": "agent_workspace_root",
+        "write_scope": "none" if resolved_mode == "metadata_only" else "agent_checkout_root",
         "workspace_root": None,
         "shared_workspace_root": None,
         "base_workspace_root": None,
         "worktree": {
             "mode": resolved_mode,
             "path": None,
+            "checkout_id": None,
+            "attempt_id": None,
+            "lease": None,
+            "access_mode": "read_only" if resolved_mode == "metadata_only" else "write",
+            "provenance": None,
         },
         "base_manifest": {},
     }
     if not workspace_root:
+        if resolved_mode != "metadata_only":
+            raise CheckoutSecurityError(
+                f"{resolved_mode} requires a trusted repository workspace"
+            )
         return contract
 
     base = Path(str(workspace_root)).expanduser().resolve()
-    session_dir = base / ".rumi" / "multi_agent" / _safe_workspace_segment(session_id)
-    shared_dir = session_dir / "shared"
-    agent_dir = session_dir / "agents" / _safe_workspace_segment(agent_def.agent_id or agent_def.name)
+    if not base.is_dir() or base.is_symlink():
+        raise CheckoutSecurityError("workspace root must be a real directory")
+    contract["base_workspace_root"] = str(base)
+    if resolved_mode == "metadata_only":
+        # Metadata mode is descriptive only.  In particular it must not hand
+        # an agent a writable directory that callers could mistake for an
+        # isolated checkout.
+        return contract
+
+    allocation_root = base.parent / ".tobkiri-workspaces" / _safe_workspace_segment(session_id)
+    allocation_root.mkdir(parents=True, exist_ok=True)
+    shared_dir = allocation_root / "shared"
     shared_dir.mkdir(parents=True, exist_ok=True)
-    agent_dir.mkdir(parents=True, exist_ok=True)
-    if resolved_mode in {"copy", "isolated", "worktree"}:
-        _copy_workspace(base, agent_dir)
+    agent_dir = allocation_root / "agents" / _safe_workspace_segment(
+        agent_def.agent_id or agent_def.name
+    )
+    attempt = str(attempt_id or f"{session_id}:{agent_def.agent_id or agent_def.name}")
+    reviewer = "review" in str(agent_def.name).casefold() or "review" in str(agent_def.role).casefold()
+    request = CheckoutRequest.from_values(
+        repository=base,
+        allocation_root=allocation_root,
+        destination=agent_dir,
+        mode=resolved_mode,
+        attempt_id=attempt,
+        trusted=True,
+        base_commit=base_commit,
+        base_ref=base_ref,
+        read_only=reviewer,
+    )
+    registry_path = allocation_root / "checkout_registry.v1.json"
+    record, lease, _lease_token = CheckoutProvisioner(registry_path=registry_path).provision(request)
     contract.update(
         {
-            "mode": "isolated_workspace",
-            "workspace_root": str(agent_dir),
+            "workspace_root": record.path,
             "shared_workspace_root": str(shared_dir),
-            "base_workspace_root": str(base),
             "worktree": {
-                "mode": resolved_mode,
-                "path": str(agent_dir),
+                "mode": record.mode,
+                "path": record.path,
+                "checkout_id": record.checkout_id,
+                "attempt_id": record.attempt_id,
+                "lease": lease.public_dict() if lease else None,
+                "access_mode": record.access_mode,
+                "provenance": record.to_dict(),
             },
-            "base_manifest": _workspace_manifest(agent_dir),
+            "base_manifest": _workspace_manifest(record.path) if record.path else {},
         }
     )
     return contract
@@ -623,6 +675,9 @@ class MultiAgentOrchestrator:
         workspace_id=None,
         worktree_mode=None,
         context=None,
+        execution_attempt_id=None,
+        base_commit=None,
+        base_ref=None,
     ):
         """マルチエージェントタスクを開始し、完了まで実行する。
 
@@ -671,16 +726,26 @@ class MultiAgentOrchestrator:
                 "error": "at least one agent is required",
             }
 
-        session = MultiAgentSession(
-            session_id=session_id,
-            task=task,
-            agents=agents,
-            orchestration=orchestration,
-            max_turns=max_turns,
-            workspace_root=workspace_root,
-            worktree_mode=worktree_mode,
-            workspace_resolution=workspace_resolution,
-        )
+        try:
+            session = MultiAgentSession(
+                session_id=session_id,
+                task=task,
+                agents=agents,
+                orchestration=orchestration,
+                max_turns=max_turns,
+                workspace_root=workspace_root,
+                worktree_mode=worktree_mode,
+                workspace_resolution=workspace_resolution,
+                execution_attempt_id=execution_attempt_id or session_id,
+                base_commit=base_commit,
+                base_ref=base_ref,
+            )
+        except Exception as exc:
+            return {
+                "session_id": session_id,
+                "status": "error",
+                "error": str(exc),
+            }
         session.status = "running"
 
         turn_results = []
@@ -747,6 +812,9 @@ class MultiAgentOrchestrator:
         workspace_id=None,
         worktree_mode=None,
         context=None,
+        execution_attempt_id=None,
+        base_commit=None,
+        base_ref=None,
     ):
         """Create a visible multi-agent workspace session without running turns."""
         session_id = "multi_" + gen_id()
@@ -770,16 +838,26 @@ class MultiAgentOrchestrator:
         if not agents:
             return {"session_id": session_id, "status": "error", "error": "at least one agent is required"}
 
-        session = MultiAgentSession(
-            session_id=session_id,
-            task=task,
-            agents=agents,
-            orchestration=orchestration,
-            max_turns=max_turns,
-            workspace_root=workspace_root,
-            worktree_mode=worktree_mode,
-            workspace_resolution=workspace_resolution,
-        )
+        try:
+            session = MultiAgentSession(
+                session_id=session_id,
+                task=task,
+                agents=agents,
+                orchestration=orchestration,
+                max_turns=max_turns,
+                workspace_root=workspace_root,
+                worktree_mode=worktree_mode,
+                workspace_resolution=workspace_resolution,
+                execution_attempt_id=execution_attempt_id or session_id,
+                base_commit=base_commit,
+                base_ref=base_ref,
+            )
+        except Exception as exc:
+            return {
+                "session_id": session_id,
+                "status": "error",
+                "error": str(exc),
+            }
         session.status = "created"
         session.shared_context["workspace"]["merge_report"] = _workspace_merge_report(session)
         session.updated_at = timestamp()
