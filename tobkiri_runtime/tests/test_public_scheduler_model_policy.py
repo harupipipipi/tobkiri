@@ -167,7 +167,9 @@ class _WireClient:
             self.dispatch_count += 1
             if self.fail_once:
                 self.fail_once = False
-                raise RuntimeError("private secret that must not reach schedule state")
+                # A confirmed owner failure may retry. An exception with an
+                # unknown effect outcome must retain its original lease.
+                return {"status": "failed"}
         return {"status": self.result_status}
 
 
