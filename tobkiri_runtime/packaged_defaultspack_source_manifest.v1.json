@@ -4161,6 +4161,20 @@
       "size": 480,
       "sha256": "162c93d7fd6d6c19b21944994896ded13eaddc999bd3edc21d31b999d726c4c8",
       "executable": false
+    },
+    {
+      "path": "tobkiri_protocol/workspace_capsule_v1.py",
+      "type": "regular-file",
+      "size": 12287,
+      "sha256": "1e0103b8c3c4d6fe3f6f8ea72d5df36e6ab27ce2d7e8a69c415e8a34497c90a8",
+      "executable": false
+    },
+    {
+      "path": "tobkiri_protocol/workspace_task_v1.py",
+      "type": "regular-file",
+      "size": 4865,
+      "sha256": "74eb3deee2aaaf644f5fb58623644ddbc3da7f9da5b8e0b30e25587314707a3e",
+      "executable": false
     }
   ]
 }
