@@ -61,6 +61,14 @@ response.
 integration owner supplies that renderer. Missing Pack, provider, parent,
 context or renderer stays unavailable.
 
+The explicit `最新の実行を復旧` control reconciles the latest turn shown by the
+owner. After a send reply is lost, `この送信結果を復旧` uses the retained send
+ticket's original child and turn ID, even if a newer turn is now shown. Recovery
+keeps the draft and ticket until a durable saved receipt agrees with the child
+history. Missing operations disable recovery; failures and approval waits retain
+the draft. `実行記録を再読み込み` and background polling only read events. They do
+not resend or reconcile a turn.
+
 Root integration inputs are in `integration-input.v1.json`. Promotion must add
 the new Pack to the source catalog and semantic executable source registry,
 register the exact Host factory, and admit the public dependency edges. The

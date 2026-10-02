@@ -416,7 +416,7 @@
       },
       {
         "path": "frontend/contributions/side-chat.json",
-        "digest": "sha256:aac053b2d2e7a3751142ffb6defb9d9593bb324ea77cb25a023508cd96195c04",
+        "digest": "sha256:958d74bad1056445bbe7c93a054659113c9b3820ce9fe0aab5c4079dd65203a6",
         "kind": "sidecar"
       }
     ],

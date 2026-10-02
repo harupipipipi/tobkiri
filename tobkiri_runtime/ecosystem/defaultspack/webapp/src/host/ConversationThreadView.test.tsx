@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ConversationThreadView } from "./ConversationThreadView";
-import { viewReference, type CatalogView, type RegisteredCatalogView } from "./catalogViewRegistry";
+import { controlPayload, parseCatalogView, viewOperationRequest, viewReference, type CatalogView, type RegisteredCatalogView } from "./catalogViewRegistry";
 import type { FrontendCatalog, VerifiedFrontendContribution } from "./frontendContracts";
 
 const item: VerifiedFrontendContribution = {
@@ -65,4 +66,38 @@ test("invalid projection is unavailable and removed operation cannot expose an a
   assert.match(render(null), /まだ利用できません/);
   assert.match(render(snapshot("running"), true, { ...catalog, activation_id: "changed" }), /aria-label="生成を停止" disabled=""/);
   assert.match(render(snapshot(), false), /aria-label="メッセージを送信" disabled=""/);
+});
+
+test("shipped side-chat recovery binds only the authoritative child and pending turn", () => {
+  const descriptor = JSON.parse(readFileSync(new URL(
+    "../../../../tobkiri_side_chat_pack/frontend/contributions/side-chat.json", import.meta.url), "utf8")) as { view: unknown };
+  const declared = parseCatalogView(descriptor.view)!;
+  assert.ok(declared);
+  const recovery = declared.controls!.find((control) => control.id === "reconcile")!;
+  assert.deepEqual(recovery.input, { operation: "reconcile" });
+  assert.deepEqual(recovery.input_bindings, { conversation_id: "conversation_id", turn_id: "thread.pending_turn.id" });
+  const source = snapshot("running");
+  const before = JSON.stringify(source);
+  assert.deepEqual(controlPayload(recovery, source), {
+    operation: "reconcile", conversation_id: "child", turn_id: "turn-1",
+  });
+  assert.equal(controlPayload(recovery, snapshot()), null);
+  assert.equal(controlPayload(recovery, { ...source, conversation_id: undefined }), null);
+  assert.equal(JSON.stringify(source), before);
+  const target = recovery.operation;
+  assert.deepEqual(target, {
+    contribution_id: "pack.tobkiri_side_chat_pack.tobkiri_side_chat_pack.side-chat-turn",
+    contract_id: "tobkiri.service.side-chat.turn.v1", operation_id: "tobkiri_side_chat_pack.side-chat-turn",
+  });
+  const current = { ...catalog, contributions: [item, { ...item, kind: "action" as const,
+    contribution_id: target.contribution_id, owner_pack_id: "tobkiri_side_chat_pack",
+    action_contract: target.contract_id, operation_id: target.operation_id }] };
+  const recoveryView = { item, view: declared, reference: viewReference(current, item) };
+  assert.equal(viewOperationRequest(current, recoveryView, target, controlPayload(recovery, source)!)?.ownerPackId,
+    "tobkiri_side_chat_pack");
+  assert.equal(viewOperationRequest({ ...current, contributions: [item] }, recoveryView, target, {}), null);
+  assert.deepEqual(declared.conversation_thread!.reconcile, {
+    operation: target, input: { operation: "reconcile" },
+    source_bindings: { conversation_id: "conversation_id" }, turn_id_key: "turn_id",
+  });
 });
