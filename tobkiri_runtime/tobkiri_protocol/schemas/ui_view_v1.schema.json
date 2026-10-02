@@ -586,6 +586,9 @@
         },
         "reconcile": {
           "$ref": "#/$defs/thread_request"
+        },
+        "progress": {
+          "$ref": "#/$defs/thread_progress_request"
         }
       }
     },
@@ -993,6 +996,35 @@
         "renderer_api_version",
         "nodes"
       ]
+    },
+    "thread_progress_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation",
+        "turn_id_key",
+        "cursor_key"
+      ],
+      "properties": {
+        "operation": {
+          "$ref": "#/$defs/operation"
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        },
+        "context_bindings": {
+          "$ref": "#/$defs/context_bindings"
+        },
+        "source_bindings": {
+          "$ref": "#/$defs/bindings"
+        },
+        "turn_id_key": {
+          "const": "turn_id"
+        },
+        "cursor_key": {
+          "const": "cursor"
+        }
+      }
     }
   },
   "allOf": [

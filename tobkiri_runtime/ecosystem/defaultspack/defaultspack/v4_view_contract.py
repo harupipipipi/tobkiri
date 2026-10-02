@@ -186,7 +186,7 @@ def validate_catalog_view(view: Mapping[str, Any]) -> None:
             "conversation_path", "messages_path", "pending_turn_path", "model_reference_path"
         ):
             _validate_path(thread.get(key))
-        for key in ("send", "stop", "events", "reconcile"):
+        for key in ("send", "stop", "events", "reconcile", "progress"):
             request = thread.get(key)
             if not isinstance(request, Mapping):
                 continue
@@ -205,6 +205,14 @@ def validate_catalog_view(view: Mapping[str, Any]) -> None:
                         _validate_path(path)
             if "turn_id" in claimed or "content" in claimed:
                 raise ValueError("thread fixed input binding conflicts")
+            if key == "progress" and (
+                claimed != {"conversation_id"}
+                or request["operation"]["contract_id"]
+                != "tobkiri.resource.turn.progress.v1"
+                or request["operation"]["operation_id"]
+                != "rumi_turn_runtime_pack.turn-progress-resource"
+            ):
+                raise ValueError("thread progress does not use the finite public read")
 
 
 def _validate_thread_input(value: Any) -> None:

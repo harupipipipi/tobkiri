@@ -15,6 +15,7 @@ import {
   type ThreadSnapshot, type ThreadTicket,
 } from "./conversationThreadState";
 import { viewOperationOutcome } from "./viewControlState";
+import { mergeThreadProgress, narrowThreadProgressDeadline, threadProgressPayload, threadProgressReadCapture, threadProgressWitness, type ThreadProgressState } from "./threadProgressState";
 
 /** A text thread with server-owned context and exact captured public operations. */
 export function ConversationThreadView({
@@ -32,6 +33,8 @@ export function ConversationThreadView({
   const thread = parsed ?? lastConfirmed.current;
   const [draft, setDraft] = useState("");
   const [ticket, setTicket] = useState<ThreadTicket | null>(null);
+  const [progress, setProgress] = useState<ThreadProgressState | null>(null);
+  const [progressStatus, setProgressStatus] = useState<"waiting" | "unavailable" | "rejected">("waiting");
   const [busy, setBusy] = useState(false);
   const [recovering, setRecovering] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +42,9 @@ export function ConversationThreadView({
   const active = useRef(true);
   const pending = useRef(false);
   const reading = useRef(false);
+  const readingProgress = useRef(false);
+  const progressRef = useRef(progress);
+  const progressCaptureDeadline = useRef<number | null | undefined>(undefined);
   const stopping = useRef(false);
   const reconciling = useRef(false);
   const state = useRef({ draft, ticket, activeTurnId: thread?.turn?.id });
@@ -46,6 +52,8 @@ export function ConversationThreadView({
   const endRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const ownerId = JSON.stringify([registered.reference, "conversation_thread", viewContextKey(registered, context)]);
+  const live = useRef({ parsed, sourceReady, ownerId, catalog, registered });
+  live.current = { parsed, sourceReady, ownerId, catalog, registered };
   const canLeave = useCallback(() => {
     const current = state.current;
     if (pending.current || reconciling.current || current.ticket) return false;
@@ -86,6 +94,62 @@ export function ConversationThreadView({
     setTicket(null); setFeedback(null); setError(null);
   }, [ticket, thread]);
 
+  const readProgress = useCallback(async () => {
+    const current = state.current.ticket;
+    const fresh = live.current;
+    if (!current || !descriptor?.progress || readingProgress.current) return;
+    const witness = fresh.sourceReady && fresh.parsed ? threadProgressWitness(current, fresh.parsed) : null;
+    if (!witness) { setProgress(null); setProgressStatus("waiting"); return; }
+    const before = progressRef.current;
+    if (before && before.expiresAtMs <= Date.now()) { setProgress(null); setProgressStatus("unavailable"); return; }
+    const payload = threadProgressPayload(descriptor.progress, current, context, before?.cursor ?? 0);
+    const captured = payload ? threadProgressReadCapture(catalog, registered, payload) : null;
+    if (!captured) { setProgress(null); setProgressStatus("unavailable"); return; }
+    progressCaptureDeadline.current = narrowThreadProgressDeadline(progressCaptureDeadline.current, captured.expiresAtMs);
+    if (progressCaptureDeadline.current !== null && progressCaptureDeadline.current <= Date.now()) {
+      setProgress(null); setProgressStatus("unavailable"); return;
+    }
+    const capture = fresh.ownerId;
+    readingProgress.current = true;
+    try {
+      const page = await capabilities.readDataSource(captured.request);
+      const latest = live.current;
+      const retained = state.current.ticket;
+      const latestWitness = retained && latest.sourceReady && latest.parsed
+        ? threadProgressWitness(retained, latest.parsed) : null;
+      if (!active.current || latest.ownerId !== capture || retained?.turnId !== current.turnId) return;
+      const latestCapture = threadProgressReadCapture(latest.catalog, latest.registered, payload!);
+      const deadline = latestCapture ? narrowThreadProgressDeadline(progressCaptureDeadline.current, latestCapture.expiresAtMs) : null;
+      if (!latestWitness || !latestCapture || deadline !== null && deadline <= Date.now()) {
+        setProgress(null); setProgressStatus("unavailable"); return;
+      }
+      progressCaptureDeadline.current = deadline;
+      const merged = mergeThreadProgress(before, page, latestWitness);
+      if (!merged) { setProgress(null); setProgressStatus("rejected"); return; }
+      progressRef.current = merged;
+      setProgress(merged); setProgressStatus("waiting");
+    } catch {
+      if (active.current && state.current.ticket?.turnId === current.turnId && live.current.ownerId === capture) {
+        setProgress(null); setProgressStatus("unavailable");
+      }
+    } finally { readingProgress.current = false; }
+  }, [descriptor, catalog, registered, capabilities, context]);
+
+  const readProgressRef = useRef(readProgress);
+  readProgressRef.current = readProgress;
+  useEffect(() => {
+    if (!ticket) { setProgress(null); progressRef.current = null; progressCaptureDeadline.current = undefined; setProgressStatus("waiting"); return; }
+    void readProgressRef.current();
+  }, [ticket?.turnId, parsed, sourceReady]);
+  useEffect(() => {
+    if (!progress) return;
+    const remaining = Math.min(progress.expiresAtMs, progressCaptureDeadline.current ?? progress.expiresAtMs) - Date.now();
+    const expire = () => { setProgress(null); setProgressStatus("unavailable"); };
+    if (remaining <= 0) { expire(); return; }
+    const timer = window.setTimeout(expire, remaining + 1);
+    return () => window.clearTimeout(timer);
+  }, [progress]);
+
   const readEvents = useCallback(async () => {
     const current = state.current.ticket;
     if (!current || !descriptor?.events || reading.current) { onRefresh(); return; }
@@ -113,6 +177,7 @@ export function ConversationThreadView({
     const poll = () => {
       if (document.visibilityState === "hidden") return;
       if (state.current.ticket) void readEventsRef.current(); else onRefresh();
+      if (state.current.ticket) void readProgressRef.current();
     };
     const timer = window.setInterval(poll, 2000);
     document.addEventListener("visibilitychange", poll);
@@ -131,6 +196,7 @@ export function ConversationThreadView({
     if (!request) { setError("この送信操作は現在の Profile で利用できません。"); return; }
     const captured: ThreadTicket = { turnId, conversationId: parsed.conversation.id, draft, source: JSON.parse(JSON.stringify(snapshot)) as unknown, turn: null };
     state.current.ticket = captured;
+    progressRef.current = null; progressCaptureDeadline.current = undefined; setProgress(null); setProgressStatus("waiting");
     pending.current = true; setTicket(captured); setBusy(true); setError(null); setFeedback(null);
     try {
       const result = await capabilities.invokeAction(request);
@@ -204,6 +270,12 @@ export function ConversationThreadView({
   if (!descriptor || !thread) return <p role="status">この会話はまだ利用できません。利用可能な操作で会話を作成するか、再読み込みしてください。</p>;
   const messages = orderConversationMessages(thread.messages).map((message) => chatMessageToUiMessage(message));
   const start = thread.turn?.started_at_ms;
+  const currentWitness = ticket && sourceReady && parsed ? threadProgressWitness(ticket, parsed) : null;
+  const visibleProgress = progress && currentWitness && progress.expiresAtMs > Date.now()
+    && (progressCaptureDeadline.current == null || progressCaptureDeadline.current > Date.now())
+    && progress.binding.turn_id === currentWitness.turnId && progress.binding.conversation_id === currentWitness.conversationId
+    && progress.binding.parent_id === currentWitness.parentId && progress.binding.conversation_revision === currentWitness.conversationRevision
+    && progress.binding.input_digest === currentWitness.inputDigest ? progress : null;
   return <div data-tobkiri-conversation-thread className="flex min-h-0 min-w-0 w-full flex-col gap-2">
     {thread.modelLabel && <p className="break-words text-xs text-zinc-400">モデル: {thread.modelLabel}</p>}
     {!parsed && <p role="alert">最新の会話を照合できません。前回確認した内容を表示しています。</p>}
@@ -218,6 +290,16 @@ export function ConversationThreadView({
         unknownBlockStrategy="placeholder" showActivityInMessages showWidgets={false}
         onSuggestionClick={(value) => { if (!running) setDraft(value); }} />
     </div>
+    {ticket && descriptor.progress && <section aria-label="未保存の応答" data-thread-progress
+      className="min-w-0 rounded border border-zinc-700 p-3">
+      <p role="status" className="text-xs text-zinc-400">{visibleProgress?.finishSeen
+        ? "プロバイダーの応答を受信しました。保存結果の照合を待っています。"
+        : progressStatus === "rejected" ? "応答の識別情報や順序を照合できません。入力内容と送信IDを保持しています。"
+          : progressStatus === "unavailable" ? "ライブ応答は現在利用できません。保存された実行記録の照合を続けます。"
+            : "未保存の応答を照合しています。確定した履歴は上に表示します。"}</p>
+      {visibleProgress?.text && <pre aria-label="受信した未保存テキスト" data-thread-progress-text
+        className="whitespace-pre-wrap break-words text-sm">{visibleProgress.text}</pre>}
+    </section>}
     {ticket && <button type="button" onClick={() => { void readEvents(); }} className="min-h-11 rounded border border-zinc-700 px-3 text-sm">実行記録を再読み込み</button>}
     {ticket && descriptor.reconcile && <button type="button"
       disabled={!recoveryRequest || busy || recovering} onClick={() => { void reconcile(); }}

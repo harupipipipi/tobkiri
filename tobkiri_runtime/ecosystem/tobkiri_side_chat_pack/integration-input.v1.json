@@ -416,7 +416,7 @@
       },
       {
         "path": "frontend/contributions/side-chat.json",
-        "digest": "sha256:958d74bad1056445bbe7c93a054659113c9b3820ce9fe0aab5c4079dd65203a6",
+        "digest": "sha256:f2e6d3d95acbb226a2896d2514e6bdd7687385671d794acb174eef5981da224d",
         "kind": "sidecar"
       }
     ],
@@ -979,5 +979,16 @@
     "frontend/contributions/side-chat.json"
   ],
   "guest_source_addition": "tobkiri_protocol/conversation_context.py",
-  "requested_default_selection": "optional; no installed or release evidence"
+  "requested_default_selection": "optional; no installed or release evidence",
+  "ui_progress_dependency": {
+    "contract_id": "tobkiri.resource.turn.progress.v1",
+    "contract_version": "1.0.0",
+    "operation_id": "rumi_turn_runtime_pack.turn-progress-resource",
+    "optional": true,
+    "owner": "Application frontend resource capture; exact signed edge and readiness remain integration-owned",
+    "required_host_effects": [
+      "pure",
+      "read"
+    ]
+  }
 }

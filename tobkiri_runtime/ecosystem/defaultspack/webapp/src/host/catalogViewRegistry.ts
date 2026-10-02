@@ -45,12 +45,14 @@ export type ConversationThreadRequest = {
   context_bindings?: ContextBindings; source_bindings?: Record<string, string>;
   turn_id_key: "turn_id"; content_key?: "content";
 };
+export type ConversationThreadProgressRequest = Omit<ConversationThreadRequest, "content_key"> & { cursor_key: "cursor" };
 export type ConversationThreadDefinition = {
   conversation_path: string; messages_path: string; pending_turn_path: string;
   model_reference_path?: string;
   send: ConversationThreadRequest & { content_key: "content" };
   stop?: ConversationThreadRequest; events?: ConversationThreadRequest;
   reconcile?: ConversationThreadRequest;
+  progress?: ConversationThreadProgressRequest;
 };
 export type ViewField = {
   label: string; path: string; kind: "text" | "status" | "progress";
@@ -230,10 +232,11 @@ export function parseRecordEditor(value: unknown): RecordEditorDefinition | null
   return value as unknown as RecordEditorDefinition;
 }
 
-function validThreadRequest(value: unknown, send: boolean): boolean {
+function validThreadRequest(value: unknown, send: boolean, progress = false): boolean {
   if (!record(value) || !keys(value, [
     "operation", "input", "source_bindings", "context_bindings", "turn_id_key",
     ...(send ? ["content_key"] : []),
+    ...(progress ? ["cursor_key"] : []),
   ]) || !operationValid(value.operation) || value.turn_id_key !== "turn_id"
     || (send && value.content_key !== "content")
     || (own(value, "input") && (!record(value.input) || !validConversationThreadInput(value.input)))) return false;
@@ -248,17 +251,21 @@ function validThreadRequest(value: unknown, send: boolean): boolean {
       claimed.add(inputKey);
     }
   }
-  return !claimed.has("turn_id") && !claimed.has("content");
+  if (progress && (value.cursor_key !== "cursor" || claimed.size !== 1 || !claimed.has("conversation_id")
+    || !record(value.operation) || value.operation.contract_id !== "tobkiri.resource.turn.progress.v1"
+    || value.operation.operation_id !== "rumi_turn_runtime_pack.turn-progress-resource")) return false;
+  return !claimed.has("turn_id") && !claimed.has("content") && (!progress || !claimed.has("cursor"));
 }
 
 /** A thread uses canonical data and fixed text/turn keys, never model authority. */
 export function parseConversationThread(value: unknown): ConversationThreadDefinition | null {
   if (!record(value) || !keys(value, [
-    "conversation_path", "messages_path", "pending_turn_path", "model_reference_path", "send", "stop", "events", "reconcile",
+    "conversation_path", "messages_path", "pending_turn_path", "model_reference_path", "send", "stop", "events", "reconcile", "progress",
   ]) || !["conversation_path", "messages_path", "pending_turn_path"].every((key) => validViewPath(value[key]))
     || (own(value, "model_reference_path") && !validViewPath(value.model_reference_path))
     || !validThreadRequest(value.send, true)
-    || ["stop", "events", "reconcile"].some((key) => own(value, key) && !validThreadRequest(value[key], false))) return null;
+    || ["stop", "events", "reconcile"].some((key) => own(value, key) && !validThreadRequest(value[key], false))
+    || (own(value, "progress") && !validThreadRequest(value.progress, false, true))) return null;
   return value as unknown as ConversationThreadDefinition;
 }
 
@@ -399,6 +406,7 @@ export function viewOperationRequest(
     registered.view.conversation_thread?.stop?.operation,
     registered.view.conversation_thread?.events?.operation,
     registered.view.conversation_thread?.reconcile?.operation,
+    registered.view.conversation_thread?.progress?.operation,
     ...(registered.view.surface_template ? surfaceOperations(registered.view.surface_template) : []),
   ];
   if (!declared.some((item) => item
@@ -500,6 +508,7 @@ export function viewContextKey(
     registered.view.conversation_thread?.stop,
     registered.view.conversation_thread?.events,
     registered.view.conversation_thread?.reconcile,
+    registered.view.conversation_thread?.progress,
     ...(registered.view.surface_template?.nodes.flatMap((node) => [
       ...(node.intents ?? []).map((intent) => intent.request),
       ...(node.resource ? [node.resource.acquire, node.resource.exchange] : []),

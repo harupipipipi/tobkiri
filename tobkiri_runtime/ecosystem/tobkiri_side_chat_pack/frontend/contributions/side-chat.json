@@ -87,6 +87,18 @@
           "conversation_id": "conversation_id"
         },
         "turn_id_key": "turn_id"
+      },
+      "progress": {
+        "operation": {
+          "contribution_id": "pack.rumi_turn_runtime_pack.rumi_turn_runtime_pack.turn-progress-resource",
+          "contract_id": "tobkiri.resource.turn.progress.v1",
+          "operation_id": "rumi_turn_runtime_pack.turn-progress-resource"
+        },
+        "source_bindings": {
+          "conversation_id": "conversation_id"
+        },
+        "turn_id_key": "turn_id",
+        "cursor_key": "cursor"
       }
     },
     "controls": [
