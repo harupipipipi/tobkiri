@@ -138,6 +138,9 @@ from ..host_provider_backend_v4 import (
     HostProviderInvocationContextV4,
 )
 from ..host_provider_data_v4 import HostProviderDataCaptureV4
+from ..invocation_scope_v4 import (
+    CapturedInvocationScopeV4, assert_dispatched_invocation,
+)
 from ..host_provider_hooks_v4 import load_host_provider_factory
 from ..interactive_effect_coordinator import (
     INTERACTIVE_EFFECT_COORDINATOR_CONTRACT_ID,
@@ -2272,6 +2275,7 @@ def capture_production_dispatch(
             bridge_session_id,
             outer_edge.target.principal_id,
             presentation_owner_for(outer_request),
+            parent_invocation=capture_invocation_scope(outer_request),
         )
         try:
             provider_result = dispatch.invoke(
@@ -2568,6 +2572,7 @@ def capture_production_dispatch(
     presentation_owner_bindings: dict[str, tuple[str, str]] = {}
     presentation_owner_refcounts: dict[str, int] = {}
     nested_session_refcounts: dict[str, int] = {}
+    parent_invocation_scopes: dict[str, CapturedInvocationScopeV4] = {}
     caller_session_bindings_lock = threading.RLock()
 
     def authority_session_id(session_id: str, caller_principal_id: str) -> str:
@@ -2616,10 +2621,25 @@ def capture_production_dispatch(
         finally:
             release_presentation_owner(context.caller_session_id)
 
+    def capture_invocation_scope(envelope: Any) -> CapturedInvocationScopeV4:
+        with caller_session_bindings_lock:
+            parent = parent_invocation_scopes.get(envelope.context.caller_session_id)
+
+        def guard() -> None:
+            assert_dispatched_invocation(envelope, authority_store)
+            if parent is not None:
+                parent.assert_current()
+            if not dispatch_holder:
+                raise AuthorityDenied("captured dispatch is unavailable")
+            dispatch_holder[0].assert_current()
+
+        return CapturedInvocationScopeV4(envelope, guard, parent)
+
     def bind_nested_session(
         session_id: str,
         caller_principal_id: str,
         presentation_owner: tuple[str, str],
+        parent_invocation: CapturedInvocationScopeV4 | None = None,
     ) -> str:
         """Atomically bind one stable nested session and retain concurrent users."""
 
@@ -2628,6 +2648,11 @@ def capture_production_dispatch(
             existing_caller = caller_session_bindings.get(session_id)
             if existing_caller not in {None, caller_principal_id}:
                 raise AuthorityDenied("nested Host Provider caller binding changed")
+            if parent_invocation is not None:
+                prior = parent_invocation_scopes.get(resolved_session_id)
+                if prior is not None and prior.envelope is not parent_invocation.envelope:
+                    raise AuthorityDenied("nested captured parent changed")
+                parent_invocation_scopes[resolved_session_id] = parent_invocation
             retain_presentation_owner(resolved_session_id, presentation_owner)
             caller_session_bindings[session_id] = caller_principal_id
             nested_session_refcounts[session_id] = (
@@ -2646,6 +2671,7 @@ def capture_production_dispatch(
                 return
             nested_session_refcounts.pop(session_id, None)
             caller_session_bindings.pop(session_id, None)
+            parent_invocation_scopes.pop(resolved_session_id, None)
 
     class _InvocationSession:
         """Bind nested dispatch to the authenticated provider invocation."""
@@ -2683,6 +2709,7 @@ def capture_production_dispatch(
                 nested_session_id,
                 self._envelope.target_principal.value,
                 self._presentation_owner,
+                parent_invocation=capture_invocation_scope(self._envelope),
             )
             try:
                 return dispatch_holder[0].invoke(
@@ -2713,6 +2740,7 @@ def capture_production_dispatch(
                 self._presentation_owner_principal_id,
                 self._presentation_owner_session_id,
             ) = presentation_owner_for(envelope)
+            self._scope = capture_invocation_scope(envelope)
             self._client: GlobalContractClient | None = None
             self._client_binding: tuple[frozenset[str], str, bool] | None = None
 
@@ -2727,6 +2755,10 @@ def capture_production_dispatch(
         @property
         def presentation_owner_session_id(self) -> str:
             return self._presentation_owner_session_id
+
+        @property
+        def parent_invocation(self) -> CapturedInvocationScopeV4 | None:
+            return self._scope.parent
 
         @property
         def cancellation(self) -> OwnedCancellationBinding:
@@ -2807,7 +2839,8 @@ def capture_production_dispatch(
             return self._client
 
         def assert_current(self) -> None:
-            """Fence durable coordination with the original Host invocation."""
+            """Fence durable coordination with actual lease and preserved ancestry."""
+            self._scope.assert_current()
             if (
                 self._envelope.cancellation_requested.is_set()
                 or self._envelope.deadline_monotonic <= time.monotonic()
