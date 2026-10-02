@@ -28,6 +28,7 @@ from tobkiri_host.ports import (
 from tobkiri_host.operation_cancellation import OwnedCancellationBinding
 from tobkiri_protocol.canonical import canonical_digest
 from core_runtime.captured_wake_v4 import CapturedWakePortV4
+from core_runtime.invocation_scope_v4 import CapturedInvocationScopeV4
 
 
 class HostProviderInvocationContextV4(Protocol):
@@ -44,6 +45,10 @@ class HostProviderInvocationContextV4(Protocol):
     @property
     def presentation_owner_session_id(self) -> str:
         """Return the Host-preserved session which originated this call chain."""
+
+    @property
+    def parent_invocation(self) -> CapturedInvocationScopeV4 | None:
+        """Return Host-private authenticated ancestry, never client payload claims."""
 
     @property
     def cancellation(self) -> OwnedCancellationBinding:
