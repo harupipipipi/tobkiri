@@ -1514,7 +1514,7 @@
     {
       "path": "defaults.profile.v5.json",
       "kind": "profile",
-      "digest": "sha256:d84ecdb80e90244f548af62ce9202e30528477ed7e75f6f75bd11748b39830fe"
+      "digest": "sha256:eec4a89412d769147103241f481c289c894d3478f52145a07b571ca4fd2798eb"
     }
   ]
 }

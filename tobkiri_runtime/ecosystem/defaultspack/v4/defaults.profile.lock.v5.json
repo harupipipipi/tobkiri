@@ -4,10 +4,10 @@
   "resolution_scope": "source_release",
   "activation_authority": "unbound",
   "profile_id": "defaults",
-  "profile_revision": "sha256:b3a5b390c746c45dc50b0112abb2de339bef226bc10dabbc15480d68f4e917a7",
-  "profile_definition_digest": "sha256:d9e41854cc4f35a5cb22ee5e49741ba80c5f89dbe827bbdf6a72b83f3c7e4be3",
+  "profile_revision": "sha256:05b79b5698c828052fb60c74019380a0085b712e06e7333762f5a4e50d0d894e",
+  "profile_definition_digest": "sha256:7a3014aa3153f06cd667a9f07d15e8686130bcc4bea74b363b24043817c0c2fa",
   "catalog_revision": "sha256:6063518c6aa64be7f6da60c1677a46613badf2328f9393c83c0911229d872382",
-  "bundle_digest": "sha256:6e94207cb9e44d09f3f5d475beee83106b0ce85a4afa069024e419311f5e30dc",
+  "bundle_digest": "sha256:507de0b121b8cc432b461655452b8668782c20affeff66a3ecc7fcff42dda99a",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
@@ -450,6 +450,18 @@
       "artifact_digest": "sha256:0bd4040a0f097520388ea31700e1ddf3c78c022242216b6799d9b2840ab704f9",
       "executable_catalog_digest": "sha256:cdada9a25bdd21293a51c9347a91c4d8d82213af9739289c41f9aaa1f40d805e",
       "variant_id": "rumi_command_protocol_pack.high-risk-command.service.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_conversation_store_pack",
+      "artifact_digest": "sha256:47dc428cd2ef5e9d7f50eecaec2c6f646564ef32ec4f26f7ed887fc4e5889cd0",
+      "executable_catalog_digest": "sha256:eafa89264d1fa064fd3d66c01abd7eff41eaf82271292b544224a11234b42211",
+      "variant_id": "rumi_conversation_store_pack.conversation-store.completion.python",
       "platform": "any",
       "architecture": "any",
       "runtime_abi": "python3.13",
@@ -1118,9 +1130,9 @@
       "domain_kind": "dedicated_process"
     }
   ],
-  "requested_edges_digest": "sha256:70ce5e113607063be925be08c061d51b1b4151cb644973fbb65b5da4b635f1e2",
+  "requested_edges_digest": "sha256:fcf65276e99bd1cee72f65a03e03b5a41151bd33a530a53582ad365044decd20",
   "constraints_digest": "sha256:91c4afbdf55bef1c3f42bfceff01e61377e712de735cb0adafcdf293a009bc80",
   "closure_digest": "sha256:207632405d1bec5e5683b8916e244d4dddfc990373e6c13b3547731ba463837e",
-  "provenance_digest": "sha256:121d5ff4fe5afa7d8eee19823a88a879b14b895f8c21aaf4647eae423bab5048",
-  "lock_digest": "sha256:71d87f1de2f1d476ff97701fd9c1ab1e807429a6d209d27c4bcb929934983406"
+  "provenance_digest": "sha256:7991d1718c8832169d4ce9433251c5523a66b68e5408a4d351a9cc883e4ff554",
+  "lock_digest": "sha256:b8a881ec949606ae31831ebcb8a892486250924558cd41373051fe7d3933c193"
 }
