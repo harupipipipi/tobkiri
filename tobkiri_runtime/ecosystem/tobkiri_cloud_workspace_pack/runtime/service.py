@@ -161,6 +161,7 @@ class CloudWorkspace:
             return self.store.restore_local(checkpoint, guard=self.guard)
         if action == "prepare_handoff":
             manifest, _ = self.store.read_capsule(checkpoint)
+            offer = handoff_offer(manifest, values.get("expected_receiver_head", ""))
             self.store.release_writer(
                 workspace_id,
                 expected_revision=expected,
@@ -168,7 +169,7 @@ class CloudWorkspace:
                 actor=self.actor,
                 guard=self.guard,
             )
-            return handoff_offer(manifest, values.get("expected_receiver_head", ""))
+            return offer
         raise ValueError("cloud workspace action is unsupported")
 
     def export(self, workspace_id: str, expected_revision: int) -> dict[str, Any]:

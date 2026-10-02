@@ -108,7 +108,7 @@ def build_source() -> dict[str, Any]:
     (PACK / "container/recipe.v1.json").write_text(json.dumps(recipe, indent=2) + "\n")
     (PACK / "runtime/recipe.py").write_text(
         '"""Digest of the reviewed container recipe; no provision capability."""\n\n'
-        f'RECIPE_DIGEST = "{recipe_digest}"\n'
+        f'RECIPE_DIGEST = (\n    "{recipe_digest}"\n)\n'
     )
     providers = []
     for kind, contract, operation, effect in [

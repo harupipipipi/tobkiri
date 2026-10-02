@@ -326,12 +326,12 @@
       },
       {
         "path": "runtime/service.py",
-        "digest": "sha256:a9bc279b25c91106b7ed697d0e487be2c69ba8cdc1359681c9dda7ffbb6ff7dc",
+        "digest": "sha256:3d69b5941fa17a1261d2829973a9d22920439641dcf00673b07bd1eaa931d271",
         "kind": "executable"
       },
       {
         "path": "runtime/recipe.py",
-        "digest": "sha256:0d1b2d37289359c3dcc8b20bb362984afc0e946a02595712cdb5239908d5f55a",
+        "digest": "sha256:8cabdec140fb00d30654b4eae46ae1ee28df9ea0de1f1d02da17e4c6c6334f5b",
         "kind": "executable"
       },
       {
