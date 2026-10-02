@@ -91,7 +91,7 @@ application. No signing certificate or cloud API key is required.
 
 Allow at least 12 GiB of free space for the first build and PackVM setup. The
 build and provisioning flows check available space before proceeding. PackVM
-setup downloads a pinned 3 GiB Ubuntu image after you approve the displayed
+setup downloads a pinned 3 GiB Debian image after you approve the displayed
 plan in the Launcher. The VM and its per-operation sandbox enforce the normal
 isolation and network policy.
 
@@ -168,7 +168,7 @@ native PackVM helper. Reuse this command for later starts. Keep the terminal
 open while using the app. The raw `npm run tauri -- dev` command is for Launcher
 UI development; it does not bundle the PackVM helper needed to run Defaults.
 
-When the Launcher window opens, complete setup if prompted. On Apple Silicon macOS, provision PackVM in **Packs**, then use **Home** → **Launch Defaults Profile** to open Defaultspack. The current Windows build can activate the Profile but cannot launch Defaultspack Chat or Pack functions because its PackVM backend is unfinished; see the [Launcher start guide](./tobkiri_runtime/docs/tobkiri_launcher_start.md) and [Windows support issue #1494](https://github.com/harupipipipi/tobkiri/issues/1494). `python -m app` is useful for starting or checking the kernel, but it does not replace Launcher and PackVM setup.
+When the Launcher window opens, complete setup if prompted. On Apple Silicon macOS, open **Packs** → **Tobkiri Host Pack Control** → **PackVM lifecycle**, prepare and approve the plan, and provision PackVM. Once it reports **Healthy and attested**, use **Home** → **Launch Tobkiri Defaults** to open Defaultspack. The current Windows build can activate the Profile but cannot launch Defaultspack Chat or Pack functions because its PackVM backend is unfinished; see the [Launcher start guide](./tobkiri_runtime/docs/tobkiri_launcher_start.md) and [Windows support issue #1494](https://github.com/harupipipipi/tobkiri/issues/1494). `python -m app` is useful for starting or checking the kernel, but it does not replace Launcher and PackVM setup.
 
 `--health` は起動中の Host の `/health` endpoint を probe します。Host が未起動の場合は `status: "down"` と非ゼロの exit code を返すので、先に `python -m app` または Launcher で kernel を起動してください。
 

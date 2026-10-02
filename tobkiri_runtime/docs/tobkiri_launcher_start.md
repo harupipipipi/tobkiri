@@ -41,9 +41,9 @@ Use a completed macOS DMG installer. The ordinary release DMG contains
 **Tobkiri Launcher.app**. A DMG downloaded from the **Desktop Installers**
 workflow contains **Tobkiri Launcher CI E2E.app** and is marked
 non-publishable; use it only to test that workflow's build. These packaged apps
-include the signed PackVM helper and its provisioning manifests. A locally
-built **Tobkiri Launcher Developer.app** does not gain those files merely by
-opening it in Finder.
+include the signed PackVM helper and its provisioning manifests. For a local
+**Tobkiri Launcher Developer.app**, use the complete source build command below
+to include and verify those files.
 
 1. In Finder, double-click the DMG, then drag the app onto its **Applications**
    shortcut. Open **Applications** in Finder and double-click the copied app.
@@ -54,7 +54,8 @@ opening it in Finder.
 2. In the Launcher, choose **Open Setup**. Review the Defaults Profile, select
    its confirmation checkbox, and choose **Activate Defaults Profile**. If
    prompted, choose **Verify activation**.
-3. Open **Packs** and find **PackVM lifecycle**. On Apple Silicon, choose
+3. Open **Packs** → **Tobkiri Host Pack Control** and find **PackVM lifecycle**.
+   On Apple Silicon, choose
    **Prepare plan** if the doctor says **Not ready**. Review the displayed image
    source, size, digests, and required free space. The guest image is not in
    the DMG; first-time provisioning may download the pinned 3 GiB image.
@@ -63,7 +64,7 @@ opening it in Finder.
    Wait for provisioning to finish and for the doctor to show
    **Healthy and attested**. If it remains **Not ready**, read the displayed
    reason before trying again.
-5. Return to **Home** and choose **Launch Defaults Profile** to open the
+5. Return to **Home** and choose **Launch Tobkiri Defaults** to open the
    Defaultspack interface.
 
 The installer workflow checks the packaged helper and Launcher startup, but a
@@ -90,9 +91,10 @@ Defaults bundle can be bound to the exact source commit. Use the same command
 again after changing source. `npm run desktop -- --build-only` prepares the app
 without opening it.
 
-Complete **Open Setup**, then **Packs → PackVM lifecycle → Prepare plan**,
-review and approve the plan, and provision PackVM. After it reports
-**Healthy and attested**, use **Home → Launch Defaults Profile**. A visible
+Complete **Open Setup**, then open **Packs → Tobkiri Host Pack Control →
+PackVM lifecycle → Prepare plan**, review and approve the plan, and provision
+PackVM. After it reports **Healthy and attested**, use
+**Home → Launch Tobkiri Defaults**. A visible
 Launcher window alone does not mean the Defaults runtime is ready.
 
 The raw `npm run tauri -- dev` command remains available for Launcher UI
