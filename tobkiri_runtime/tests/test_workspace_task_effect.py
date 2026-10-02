@@ -444,7 +444,7 @@ def test_workspace_task_approval_resumes_the_exact_snapshot_once(
 ) -> None:
     fixture = host_workspace_task
     pending = _prepare(fixture)
-    assert pending.expires_at == fixture.harness.clock() + 60
+    assert pending.expires_at == (int(fixture.harness.clock() * 1000) + 60_000) / 1000
     assert fixture.backend.invocations == 0
     stored = fixture.harness.store.get_host_pending_effect(pending.effect_id)
     assert stored is not None
@@ -607,6 +607,11 @@ def test_adoption_schema_preserves_each_finite_kind_and_management_phase() -> No
     )
     schema = adoption["canonical_source_updates"][0]["input_schema"]
     Draft202012Validator.check_schema(schema)
+    from ecosystem.defaultspack.defaultspack.http_dynamic_targets import (
+        _captured_input_schema,
+    )
+
+    assert _captured_input_schema(schema)
     validator = Draft202012Validator(schema)
     correlation_id = "a7188ed0-45d5-4b1b-9abc-6de80c41d5a1"
     for kind in INTERACTIVE_EFFECT_SPECS:

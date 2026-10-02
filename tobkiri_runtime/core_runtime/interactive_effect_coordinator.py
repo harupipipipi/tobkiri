@@ -649,7 +649,7 @@ def _presentation_metadata(
     )
     if spec.kind == "workspace_task":
         try:
-            plan = workspace_task_snapshot(payload)
+            task_plan = workspace_task_snapshot(payload)
         except (TypeError, ValueError, KeyError) as exc:
             raise InteractiveEffectUnavailable(
                 "interactive effect is unavailable"
@@ -658,10 +658,10 @@ def _presentation_metadata(
             action="Run workspace container task",
             summary="Run the prepared container task in its captured workspace.",
             detail=(
-                f"Workspace: {_display_text(plan['workspace_id'])}\n"
-                f"Image: {_display_text(plan['image_reference'])}\n"
-                f"argv: {_display_argv(plan['argv'])}\n"
-                f"Timeout: {plan['timeout_seconds']} seconds"
+                f"Workspace: {_display_text(task_plan['workspace_id'])}\n"
+                f"Image: {_display_text(task_plan['image_reference'])}\n"
+                f"argv: {_display_argv(task_plan['argv'])}\n"
+                f"Timeout: {task_plan['timeout_seconds']} seconds"
             ),
         )
     if spec.kind == "mcp_connect":
