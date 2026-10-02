@@ -1019,6 +1019,14 @@ class RequestBroker:
                         )
                     if execution_guard is not None:
                         execution_guard()
+                    if envelope.cancellation_requested.is_set():
+                        raise RequestCancellationRequestedError(
+                            "request cancellation was requested"
+                        )
+                    if monotonic_clock() >= deadline:
+                        raise TimeoutError(
+                            "request deadline expired before provider entry"
+                        )
                     return provider_call(*provider_arguments)
 
                 future = self._executor.submit(

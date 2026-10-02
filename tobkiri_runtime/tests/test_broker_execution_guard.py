@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import Future
-from threading import Event
+from threading import Event, get_ident
 import time
 from typing import Any, Callable
 
@@ -15,7 +15,9 @@ from tobkiri_host.errors import (
     AuthorizationError,
     ProviderExecutionError,
     RequestCancellationRequestedError,
+    RequestTimedOutError,
 )
+from tobkiri_host.models import EffectClass
 
 
 @pytest.mark.parametrize("prepared", [False, True])
@@ -176,5 +178,50 @@ def test_cancelled_prepared_parent_has_no_admission_or_provider_effects() -> Non
             )
         assert fixture.events == []
         assert fixture.backend.invocations == 0
+    finally:
+        fixture.broker.close()
+
+
+@pytest.mark.parametrize("termination", ["cancel", "deadline"])
+def test_slow_final_ancestry_guard_cannot_enter_backend(termination: str) -> None:
+    """Permission checks cannot consume the remaining budget and dispatch late."""
+
+    fixture = make_broker(effect=EffectClass.READ, timeout_ms=1000)
+    snapshot = fixture.broker.prepare(frame(), context()).to_snapshot()
+    owner_thread = get_ident()
+    cancellation = Event()
+    monotonic = [10.0]
+    worker_checks = [0]
+
+    def guard() -> None:
+        if get_ident() == owner_thread:
+            return
+        worker_checks[0] += 1
+        if worker_checks[0] == 2:
+            if termination == "cancel":
+                cancellation.set()
+            else:
+                monotonic[0] = 20.0
+
+    expected = (
+        RequestCancellationRequestedError
+        if termination == "cancel"
+        else RequestTimedOutError
+    )
+    try:
+        with pytest.raises(expected):
+            fixture.broker.invoke_prepared(
+                snapshot,
+                context(),
+                {},
+                execute_not_after_wall=100.0,
+                wall_clock=lambda: 1.0,
+                monotonic_clock=lambda: monotonic[0],
+                cancellation_requested=cancellation,
+                execution_guard=guard,
+            )
+        assert worker_checks == [2]
+        assert fixture.backend.invocations == 0
+        assert fixture.admission.released
     finally:
         fixture.broker.close()
