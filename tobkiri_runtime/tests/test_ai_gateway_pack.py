@@ -41,6 +41,7 @@ class FakeContractClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, str | None, dict[str, Any]]] = []
         self.fail_first = False
+        self.catalog_models = _models()
 
     def providers(self, contract_id: str):
         values = {
@@ -72,7 +73,7 @@ class FakeContractClient:
             (contract_id, operation, provider_instance_id, dict(payload))
         )
         if contract_id == CATALOG_CONTRACT:
-            return {"models": _models()}
+            return {"models": self.catalog_models}
         if contract_id == HEALTH_CONTRACT:
             return {
                 "providers": [
@@ -205,6 +206,78 @@ def test_gateway_forwards_startup_profile_to_provider_adapter() -> None:
         item for item in client.calls if item[0] == GENERATE_PROVIDER_CONTRACT
     )
     assert provider_call[3]["profile_id"] == "defaults-profile"
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("scenario", ["missing", "unavailable", "modality_mismatch"])
+def test_exact_model_never_substitutes_before_the_first_provider_attempt(
+    streaming: bool, scenario: str,
+) -> None:
+    client = FakeContractClient()
+    model = "model-missing"
+    requirements = {"modalities": ["text"]}
+    if scenario == "unavailable":
+        model = "model-a"
+        client.catalog_models[0]["available"] = False
+    elif scenario == "modality_mismatch":
+        model = "model-b"
+        requirements = {"modalities": ["text", "image"]}
+    factory = create_stream_operation if streaming else create_generate_operation
+
+    with pytest.raises(GlobalContractInvocationError) as captured:
+        factory(client)(
+            "stream" if streaming else "generate",
+            {
+                "model_reference": model,
+                "messages": [{"role": "user", "content": "hello"}],
+                "requirements": requirements,
+                "allow_failover": False,
+            },
+        )
+
+    assert captured.value.code == "unresolved_profile"
+    assert not any(
+        contract_id in {GENERATE_PROVIDER_CONTRACT, STREAM_PROVIDER_CONTRACT}
+        for contract_id, _, _, _ in client.calls
+    )
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_exact_catalog_model_without_provider_instance_is_selected(
+    streaming: bool,
+) -> None:
+    client = FakeContractClient()
+    factory = create_stream_operation if streaming else create_generate_operation
+    result = factory(client)(
+        "stream" if streaming else "generate",
+        {
+            "model_reference": "model-b",
+            "messages": [{"role": "user", "content": "hello"}],
+            "requirements": {"modalities": ["text"]},
+            "allow_failover": False,
+        },
+    )
+    assert result["model_id"] == "model-b"
+    provider_calls = [
+        payload for contract_id, _, _, payload in client.calls
+        if contract_id in {GENERATE_PROVIDER_CONTRACT, STREAM_PROVIDER_CONTRACT}
+    ]
+    assert len(provider_calls) == 1
+    assert provider_calls[0]["model_id"] == "model-b"
+
+
+def test_explicit_failover_can_select_an_available_catalog_alternative() -> None:
+    client = FakeContractClient()
+    result = create_generate_operation(client)(
+        "generate",
+        {
+            "model_reference": "model-missing",
+            "messages": [{"role": "user", "content": "hello"}],
+            "requirements": {"modalities": ["text"]},
+            "allow_failover": True,
+        },
+    )
+    assert result["model_id"] == "model-b"
 
 
 def test_gateway_resolves_immutable_model_provider_pricing_binding() -> None:

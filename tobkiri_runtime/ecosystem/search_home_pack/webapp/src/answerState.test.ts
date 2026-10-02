@@ -8,7 +8,7 @@ test("normalizes successful answer and privacy-safe conversation link", () => {
   assert.equal(result.kind, "success");
   assert.equal(result.answer, "Safe answer");
   assert.equal(result.usedToolsCount, 1);
-  assert.equal(conversationHref(result.conversationId), "/panel?chat=chat%201");
+  assert.equal(conversationHref(result.conversationId), "/chat?chat=chat%201");
 });
 
 test("distinguishes structured error, empty, malformed and partial payloads", () => {
@@ -23,4 +23,11 @@ test("surfaces degraded tool capability without exposing tool ids as primary cop
   assert.equal(result.usedToolsCount, 1);
   assert.equal(result.degradedReason, "model does not support tools");
   assert.equal(result.answer.includes("internal.secret.tool"), false);
+});
+
+test("malformed service errors cannot become an unrenderable result heading", () => {
+  const result = normalizeAnswerResponse({ status: "error", error: { message: { internal: "payload" } } });
+  assert.equal(result.kind, "structured-error");
+  assert.equal(typeof result.message, "string");
+  assert.equal(result.message, "回答のリクエストに失敗しました。");
 });

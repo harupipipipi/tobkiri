@@ -386,7 +386,6 @@ def _invoke(
     )
     exact_binding = bool(
         requirement.preferred_model_id
-        and requirement.preferred_provider_instance_id
         and not request.get("allow_failover")
     )
     if exact_binding and requirement.preferred_model_id:

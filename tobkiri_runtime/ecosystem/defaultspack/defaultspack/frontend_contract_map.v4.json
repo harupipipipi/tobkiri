@@ -136,6 +136,21 @@
   },
   "routes": [
     {
+      "method": "POST",
+      "path": "/api/search/answer",
+      "presentation": "search_answer",
+      "targets": [
+        {
+          "contribution_id": "defaults.search.answer",
+          "contract_id": "tobkiri.service.ai.generate.v1",
+          "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+          "provider_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+          "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+          "allowed_payload_keys": ["input", "model"]
+        }
+      ]
+    },
+    {
       "method": "GET",
       "path": "/api/coding/workspaces",
       "presentation": "workspace_list",

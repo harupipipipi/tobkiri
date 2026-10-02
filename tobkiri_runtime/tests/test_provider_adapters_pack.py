@@ -137,3 +137,29 @@ def test_adapter_accepts_credentialed_https_record() -> None:
     assert result["output"] == "ok"
     assert captured["endpoint"] == "https://provider.example/v1/chat/completions"
     assert captured["credential_handle"] == "credential:opaque-review-a"
+
+
+@pytest.mark.parametrize("endpoint", [
+    "http://provider.example/v1", "https://provider.example/v1",
+    "http://localhost:18080/v1", "http://192.168.1.1:18080/v1",
+])
+def test_remote_or_hostname_connection_still_requires_credential(endpoint: str) -> None:
+    """Credential-free support cannot expand into arbitrary network access."""
+    class FakeHostClient:
+        def invoke(self, *_args, **_kwargs):
+            return {"providers": [{
+                "provider_instance_id": "provider.local-test",
+                "adapter_id": "openai-compatible", "endpoint": endpoint, "enabled": True,
+            }]}
+
+        def post_json_local(self, **_kwargs):
+            raise AssertionError("non-loopback local transport must not be called")
+
+        def post_json_with_credential(self, **_kwargs):
+            raise AssertionError("missing credential transport must not be called")
+
+    with pytest.raises(GlobalContractInvocationError) as denied:
+        create_generate_operation(FakeHostClient())("generate", {
+            "provider_id": "local-test", "model_id": "fixture-1b", "messages": [],
+        })
+    assert denied.value.code == "not_configured"

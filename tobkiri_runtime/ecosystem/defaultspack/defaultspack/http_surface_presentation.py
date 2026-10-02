@@ -62,6 +62,11 @@ from .chat_continuation_presentation import (
     present_chat_continuation,
 )
 from .ai_strategy_presentation import present_ai_strategy_catalog
+from .search_presentation import (
+    SEARCH_ANSWER_TARGET,
+    normalize_search_answer,
+    present_search_answer,
+)
 
 _PROJECT_READ_TARGET = (
     "defaults.projects.read", "tobkiri.resource.project.state.v1",
@@ -235,6 +240,11 @@ class DefaultspackHTTPPresentation:
             target.contribution_id, target.contract_id, target.operation_id,
             target.provider_id, target.function_id,
         )
+        if identity == SEARCH_ANSWER_TARGET:
+            session.assert_current()
+            return normalize_search_answer(
+                payload, profile_id=str(getattr(session, "profile_id", "")),
+            )
         if identity in {_PROJECT_READ_TARGET, _PROJECT_WRITE_TARGET}:
             session.assert_current()
             profile_id = str(getattr(session, "profile_id", ""))
@@ -575,6 +585,8 @@ class DefaultspackHTTPPresentation:
 
         if binding.presentation == "model_profile_list":
             return present_model_profiles(result)
+        if binding.presentation == "search_answer":
+            return present_search_answer(result)
         if binding.presentation == "model_profile_saved":
             return present_model_profile_saved(result)
         if binding.presentation == "conversation_list":

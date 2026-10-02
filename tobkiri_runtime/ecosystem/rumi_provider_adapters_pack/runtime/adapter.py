@@ -16,6 +16,7 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
 )
+from core_runtime.local_provider_transport import local_provider_base
 
 REGISTRY_CONTRACT = "tobkiri.resource.ai.provider.registry.v1"
 REGISTRY_GENERATE_OPERATION = (
@@ -157,7 +158,7 @@ def _credential_handle(
     connection: Mapping[str, Any],
     *,
     scope: str,
-) -> str:
+) -> str | None:
     del scope
     supplied_handle = request.get("credential_handle")
     handle = connection.get("credential_handle")
@@ -166,6 +167,11 @@ def _credential_handle(
             "denied", "credential handle is bound by the Host provider registry"
         )
     if handle is None:
+        if (
+            local_provider_base(connection.get("endpoint"))
+            and connection.get("adapter_id") in {"openai-compatible", "openai"}
+        ):
+            return None
         raise GlobalContractInvocationError(
             "not_configured", "provider credential is not configured"
         )
@@ -211,7 +217,7 @@ def _openai_compatible(
     client: GlobalContractClient,
     request: Mapping[str, Any],
     connection: Mapping[str, Any],
-    credential_handle: str,
+    credential_handle: str | None,
     credential_scope: str,
     streaming: bool,
 ) -> dict[str, Any]:
@@ -256,7 +262,7 @@ def _anthropic(
     client: GlobalContractClient,
     request: Mapping[str, Any],
     connection: Mapping[str, Any],
-    credential_handle: str,
+    credential_handle: str | None,
     credential_scope: str,
     streaming: bool,
 ) -> dict[str, Any]:
@@ -303,7 +309,7 @@ def _openai_embedding(
     client: GlobalContractClient,
     request: Mapping[str, Any],
     connection: Mapping[str, Any],
-    credential_handle: str,
+    credential_handle: str | None,
     credential_scope: str,
 ) -> dict[str, Any]:
     value = _post(
@@ -327,7 +333,7 @@ def _openai_image(
     client: GlobalContractClient,
     request: Mapping[str, Any],
     connection: Mapping[str, Any],
-    credential_handle: str,
+    credential_handle: str | None,
     credential_scope: str,
 ) -> dict[str, Any]:
     body = {
@@ -411,22 +417,35 @@ def _post(
     request: Mapping[str, Any],
     *,
     connection: Mapping[str, Any],
-    credential_handle: str,
+    credential_handle: str | None,
     credential_scope: str,
     credential_scheme: str,
 ) -> dict[str, Any]:
     deadline = float(request.get("deadline") or 0)
     try:
-        value = client.post_json_with_credential(
-            endpoint=endpoint,
-            headers=headers,
-            body=body,
-            credential_handle=credential_handle,
-            provider_instance_id=str(connection["provider_instance_id"]),
-            credential_scope=credential_scope,
-            credential_scheme=credential_scheme,
-            deadline=deadline,
-        )
+        if credential_handle is None:
+            value = client.post_json_local(
+                endpoint=endpoint, headers=headers, body=body,
+                provider_instance_id=str(connection["provider_instance_id"]),
+                provider_scope=credential_scope,
+                registry_contract_id=REGISTRY_CONTRACT,
+                registry_operation_id=(
+                    REGISTRY_STREAM_OPERATION if credential_scope == "ai.stream"
+                    else REGISTRY_GENERATE_OPERATION
+                ),
+                deadline=deadline,
+            )
+        else:
+            value = client.post_json_with_credential(
+                endpoint=endpoint,
+                headers=headers,
+                body=body,
+                credential_handle=credential_handle,
+                provider_instance_id=str(connection["provider_instance_id"]),
+                credential_scope=credential_scope,
+                credential_scheme=credential_scheme,
+                deadline=deadline,
+            )
     except (OSError, PermissionError, RuntimeError, ValueError) as exc:
         raise GlobalContractInvocationError("provider_unavailable", type(exc).__name__) from None
     if not isinstance(value, dict):

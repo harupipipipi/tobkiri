@@ -129,6 +129,7 @@ from ..credential_transport import (
 from ..global_contract_dispatch import (
     GlobalContractClient,
 )
+from ..local_provider_transport import AuthorizedEnvelopeLocalProviderTransport
 from ..host_provider_backend_v4 import (
     CapturedHostPackDataV4,
     ExactHostProviderBackendV4,
@@ -2698,17 +2699,42 @@ def capture_production_dispatch(
                 if include_credentials and credential_store_binding is not None
                 else None
             )
-            self._client = GlobalContractClient(
-                session=_InvocationSession(
-                    self._envelope,
-                    presentation_owner=(
-                        self._presentation_owner_principal_id,
-                        self._presentation_owner_session_id,
-                    ),
+            dispatch_session = _InvocationSession(
+                self._envelope,
+                presentation_owner=(
+                    self._presentation_owner_principal_id,
+                    self._presentation_owner_session_id,
                 ),
+            )
+
+            def read_local_registry(
+                contract_id: str, operation_id: str, payload: Mapping[str, Any],
+            ) -> Mapping[str, Any]:
+                if contract_id not in allowed_contract_ids:
+                    raise AuthorityDenied("Host Provider registry requirement is undeclared")
+                return dispatch_session.invoke(contract_id, operation_id, payload)
+
+            local_transport = AuthorizedEnvelopeLocalProviderTransport(
+                envelope=self._envelope,
+                provider_principal=provider_principal,
+                authority_store=authority_store,
+                allowed_contract_ids=allowed_contract_ids,
+                registry_reader=read_local_registry,
+                consumer_pack_id=consumer_pack_id,
+                audit_sink=lambda event: authority_store.record_provider_transport(
+                    self._envelope.lease.token.decode("ascii"),
+                    event_state=str(event["status"]),
+                    provider_instance_id=str(event["provider_instance_id"]),
+                    provider_scope=str(event["provider_scope"]),
+                    endpoint_origin=str(event["endpoint_origin"]),
+                ),
+            )
+            self._client = GlobalContractClient(
+                session=dispatch_session,
                 allowed_contract_ids=allowed_contract_ids,
                 consumer_pack_id=consumer_pack_id,
                 host_credential_transport=transport,
+                host_local_provider_transport=local_transport,
             )
             self._client_binding = binding
             return self._client

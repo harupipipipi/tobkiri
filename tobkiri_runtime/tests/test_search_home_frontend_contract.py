@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from urllib.parse import quote
 
 import pytest
@@ -12,6 +14,90 @@ from core_runtime.global_contracts.http_contract_dispatch import (
 )
 
 pytestmark = pytest.mark.contract
+
+
+RUNTIME_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_search_surface_uses_the_shared_defaults_contract_map() -> None:
+    """Search selects the same model owners and native Gateway as Defaults."""
+    document = json.loads(
+        (
+            RUNTIME_ROOT / "ecosystem" / "defaultspack" / "defaultspack"
+            / "frontend_contract_map.v4.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert document["pack_id"] == "defaultspack"
+    routes = {(route["method"], route["path"]): route for route in document["routes"]}
+    expected = {
+        ("POST", "/api/search/answer"): (
+            "defaults.search.answer",
+            "tobkiri.service.ai.generate.v1",
+            "rumi_ai_gateway_pack.ai-gateway.generate",
+            "rumi_ai_gateway_pack.ai-gateway.generate",
+            "rumi_ai_gateway_pack.ai-gateway.generate",
+        ),
+        ("POST", "/api/ai/models/search"): (
+            "defaults.ui.model-search.read",
+            "tobkiri.resource.ui.model-search.v1",
+            "tobkiri_ui_settings_pack.model-search",
+            "tobkiri.ui.model-search.read",
+            "tobkiri.ui.model-search.read",
+        ),
+        ("GET", "/api/ui/model-state"): (
+            "defaults.ui.model-state.read",
+            "tobkiri.resource.ui.model-state.v1",
+            "tobkiri_ui_settings_pack.model-state-read",
+            "tobkiri.ui.model-state.read",
+            "tobkiri.ui.model-state.read",
+        ),
+        ("PUT", "/api/ui/model-state"): (
+            "defaults.ui.model-state.write",
+            "tobkiri.action.ui.model-state.v1",
+            "tobkiri_ui_settings_pack.model-state-write",
+            "tobkiri.ui.model-state.write",
+            "tobkiri.ui.model-state.write",
+        ),
+    }
+    for operation, identity in expected.items():
+        targets = routes[operation]["targets"]
+        assert len(targets) == 1
+        assert tuple(
+            targets[0][key]
+            for key in (
+                "contribution_id", "contract_id", "operation_id",
+                "provider_id", "function_id",
+            )
+        ) == identity
+    answer_route = routes[("POST", "/api/search/answer")]
+    assert answer_route["presentation"] == "search_answer"
+    assert set(answer_route["targets"][0]["allowed_payload_keys"]) == {"input", "model"}
+    assert ("POST", "/api/answer") not in routes
+    assert ("POST", "/api/route") not in routes
+
+
+def test_search_gateway_target_is_a_declared_native_host_operation() -> None:
+    """Search must not depend on the legacy bridge or a conversation PackVM."""
+    document = json.loads(
+        (
+            RUNTIME_ROOT / "ecosystem" / "rumi_ai_gateway_pack"
+            / "executables.v4.json"
+        ).read_text(encoding="utf-8")
+    )
+    variants = [
+        variant for variant in document["variants"]
+        if variant["function_id"] == "rumi_ai_gateway_pack.ai-gateway.generate"
+    ]
+    assert len(variants) == 1
+    assert variants[0]["execution_kind"] == "host_extension"
+    assert variants[0]["backend"] == "tobkiri.python-host-v4"
+    assert (
+        variants[0]["operations"][0]["contract_id"],
+        variants[0]["operations"][0]["operation_id"],
+    ) == (
+        "tobkiri.service.ai.generate.v1",
+        "rumi_ai_gateway_pack.ai-gateway.generate",
+    )
 
 
 SEARCH_HOME_ROUTES = {

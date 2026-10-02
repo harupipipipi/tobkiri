@@ -27,6 +27,15 @@ class HostCredentialTransportError(RuntimeError):
         super().__init__(self.code)
 
 
+class HostLocalProviderTransportError(RuntimeError):
+    """Fixed failure from the separate credential-free local inference port."""
+
+    code = "host_local_provider_transport_failed"
+
+    def __init__(self) -> None:
+        super().__init__(self.code)
+
+
 class V4ContractDispatch(Protocol):
     """Explicit Host adapter; implementations own an immutable activation."""
 
@@ -90,6 +99,24 @@ class HostCredentialTransport(Protocol):
         selection_receipt: str,
     ) -> str:
         """Perform the sole Host-bound HTTPS Git push primitive."""
+
+
+class HostLocalProviderTransport(Protocol):
+    """One active-envelope local request using a Host-read registry record."""
+
+    def post_json(
+        self,
+        *,
+        endpoint: str,
+        headers: Mapping[str, str],
+        body: Mapping[str, Any],
+        provider_instance_id: str,
+        provider_scope: str,
+        registry_contract_id: str,
+        registry_operation_id: str,
+        deadline: float,
+    ) -> Mapping[str, Any]:
+        """Post to the exact registered literal loopback origin and AI route."""
 
 
 def _require_v4_session(value: object) -> V4ContractDispatch:
@@ -163,6 +190,7 @@ class GlobalContractClient:
     allowed_contract_ids: frozenset[str]
     consumer_pack_id: str
     host_credential_transport: HostCredentialTransport | None = None
+    host_local_provider_transport: HostLocalProviderTransport | None = None
 
     def providers(self, contract_id: str) -> tuple[dict[str, Any], ...]:
         """List selected metadata only for a manifest-declared requirement."""
@@ -221,6 +249,37 @@ class GlobalContractClient:
         except Exception:
             pass
         raise HostCredentialTransportError
+
+    def post_json_local(
+        self,
+        *,
+        endpoint: str,
+        headers: Mapping[str, str],
+        body: Mapping[str, Any],
+        provider_instance_id: str,
+        provider_scope: str,
+        registry_contract_id: str,
+        registry_operation_id: str,
+        deadline: float,
+    ) -> dict[str, Any]:
+        """Use the explicit local port without exposing credential transport."""
+        self._require_declared(registry_contract_id)
+        if self.host_local_provider_transport is None:
+            raise PermissionError("Host local provider transport is unavailable")
+        try:
+            value = self.host_local_provider_transport.post_json(
+                endpoint=endpoint, headers=headers, body=body,
+                provider_instance_id=provider_instance_id,
+                provider_scope=provider_scope,
+                registry_contract_id=registry_contract_id,
+                registry_operation_id=registry_operation_id,
+                deadline=deadline,
+            )
+            if isinstance(value, Mapping):
+                return dict(value)
+        except Exception:
+            pass
+        raise HostLocalProviderTransportError
 
     def select_git_https_credential(
         self,
@@ -302,6 +361,7 @@ __all__ = [
     "GlobalContractInvocationError",
     "GlobalContractUnavailable",
     "HostCredentialTransportError",
+    "HostLocalProviderTransportError",
     "V4ContractDispatch",
     "captured_profile_id",
     "invoke_global_contract",

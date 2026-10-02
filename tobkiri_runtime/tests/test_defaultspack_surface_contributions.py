@@ -52,6 +52,7 @@ def test_defaultspack_web_mounts_keep_the_pack_owned_legacy_alias(tmp_path):
     mounts = defaultspack_web_mounts(tmp_path / "defaultspack")
 
     assert {mount["path_prefix"] for mount in mounts} == {
+        "/search",
         "/p",
         "/chat",
         "/static",
@@ -72,6 +73,11 @@ def test_defaultspack_web_mounts_keep_the_pack_owned_legacy_alias(tmp_path):
     assert approval["auth_bootstrap"] is True
     static = next(mount for mount in mounts if mount["path_prefix"] == "/static")
     assert static["auth_bootstrap"] is False
+    search = next(mount for mount in mounts if mount["path_prefix"] == "/search")
+    assert search["web_root"] == (tmp_path / "defaultspack" / "ui" / "search").resolve()
+    assert search["auth_required"] is True
+    assert search["auth_bootstrap"] is True
+    assert search["index_file"] == "index.html"
 
 
 def test_defaultspack_computer_destination_is_an_explicit_pack_contribution(

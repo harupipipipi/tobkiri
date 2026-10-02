@@ -23,7 +23,11 @@ def _implementation_files() -> list[Path]:
     files.extend(sorted((PACK_ROOT / "domain").rglob("*.py")))
     files.extend(sorted((PACK_ROOT / "webapp" / "src").rglob("*.ts")))
     files.extend(sorted((PACK_ROOT / "webapp" / "src").rglob("*.tsx")))
-    return [path for path in files if path.is_file()]
+    return [
+        path
+        for path in files
+        if path.is_file() and not path.name.endswith((".test.ts", ".test.tsx"))
+    ]
 
 
 def test_search_home_pack_does_not_copy_defaultspack_model_runtime_logic():

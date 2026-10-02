@@ -1,34 +1,10 @@
-import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import type { SearchHomeModel } from "./api";
-
-export type SearchAction = "smart" | "answer" | "google" | "open";
-
-const ACTIONS: Array<{ id: SearchAction; title: string; subtitle: (query: string) => string }> = [
-  {
-    id: "smart",
-    title: "Smart Resolve",
-    subtitle: (query) => `質問ならAI回答、サイトなら候補を確認: "${query}"`,
-  },
-  {
-    id: "answer",
-    title: "AI Answer",
-    subtitle: (query) => `defaultspack nodeで調べて答える: "${query}"`,
-  },
-  {
-    id: "google",
-    title: "Google Search",
-    subtitle: (query) => `Google検索の移動先を確認: "${query}"`,
-  },
-  {
-    id: "open",
-    title: "Open Best URL",
-    subtitle: (query) => `候補を解決して移動先を確認: "${query}"`,
-  },
-];
+import { SEARCH_ACTIONS, searchActionIndexForKey, type SearchAction } from "./searchRequest";
 
 function modelLabel(model: SearchHomeModel): string {
-  return model.label || model.display_name || model.profile_id || model.qualified_model_id || "Model";
+  return model.label || model.display_name || model.profile_id || model.qualified_model_id || "モデル";
 }
 
 function modelId(model: SearchHomeModel): string {
@@ -36,35 +12,25 @@ function modelId(model: SearchHomeModel): string {
 }
 
 function modelProviderLabel(model: SearchHomeModel): string {
-  return model.provider_display_name || model.provider_id || "model";
-}
-
-function hasModelMetadataFlag(model: SearchHomeModel, key: string): boolean {
-  return Boolean(model.metadata && model.metadata[key]);
+  return model.provider_display_name || model.provider_id || "モデル";
 }
 
 function modelStatusLabel(model: SearchHomeModel): string {
   const availability = model.availability ?? {};
-  const status = typeof availability.status === "string" ? availability.status : "";
-  if (model.configured || availability.configured || availability.active || availability.available) return "Ready";
-  if (hasModelMetadataFlag(model, "settings_only")) return "Settings";
-  if (model.requires_api_key) return "Needs key";
-  return status ? status.replace(/_/g, " ") : "Catalog";
+  if (model.configured || availability.configured || availability.active || availability.available) return "利用可能";
+  if (model.metadata?.settings_only) return "設定済み・状態未確認";
+  if (model.requires_api_key) return "APIキーが必要";
+  if (availability.status === "download_required") return "ダウンロードが必要";
+  return "未設定";
 }
 
 function modelBadges(model: SearchHomeModel): string[] {
   const badges: string[] = [];
-  if (model.configured || model.availability?.configured || model.availability?.active || model.availability?.available) {
-    badges.push("ready");
-  } else if (hasModelMetadataFlag(model, "settings_only")) {
-    badges.push("settings");
-  }
-  if (model.supports_image_input || model.supports_vision) badges.push("vision");
-  if (model.supports_tool_calling) badges.push("tools");
-  if (model.supports_thinking) badges.push("thinking");
-  if (model.local) badges.push("local");
-  if (model.requires_api_key && !model.configured) badges.push("key");
-  return badges.slice(0, 4);
+  if (model.local) badges.push("ローカル");
+  if (model.supports_image_input || model.supports_vision) badges.push("画像");
+  if (model.supports_tool_calling) badges.push("ツール");
+  if (model.supports_thinking) badges.push("推論");
+  return badges;
 }
 
 export function SearchHomeControls({
@@ -77,6 +43,8 @@ export function SearchHomeControls({
   onSelectedActionIndexChange,
   loading,
   answerLoading,
+  modelsLoading = false,
+  modelSaving = false,
   onExecute,
 }: {
   input: string;
@@ -88,46 +56,28 @@ export function SearchHomeControls({
   onSelectedActionIndexChange: (index: number) => void;
   loading: boolean;
   answerLoading: boolean;
+  modelsLoading?: boolean;
+  modelSaving?: boolean;
   onExecute: (action: SearchAction) => void;
 }) {
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [modelFilter, setModelFilter] = useState("");
   const [isFocused, setIsFocused] = useState(false);
-  const [attachedFile, setAttachedFile] = useState<File | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const modelPickerRef = useRef<HTMLDivElement | null>(null);
+  const modelTriggerRef = useRef<HTMLButtonElement | null>(null);
   const modelFilterRef = useRef<HTMLInputElement | null>(null);
+  const modelListRef = useRef<HTMLDivElement | null>(null);
 
-  const selectedModelItem = useMemo(
-    () => models.find((model) => modelId(model) === selectedModel) ?? null,
-    [models, selectedModel],
-  );
+  const selectedModelItem = models.find((model) => modelId(model) === selectedModel);
   const selectedModelLabel = selectedModel
-    ? selectedModelItem
-      ? modelLabel(selectedModelItem)
-      : selectedModel
-    : "Default model";
-  const selectedModelStatus = selectedModelItem ? modelStatusLabel(selectedModelItem) : "default routing";
+    ? selectedModelItem ? modelLabel(selectedModelItem) : selectedModel
+    : "Defaultsの既定モデル";
+  const selectedModelStatus = selectedModelItem ? modelStatusLabel(selectedModelItem) : "Tobkiri Defaultsと共有";
   const filteredModels = useMemo(() => {
     const needle = modelFilter.trim().toLowerCase();
-    return models.filter((model) => {
-      const id = modelId(model);
-      if (!id) return false;
-      if (!needle) return true;
-      return [
-        id,
-        modelLabel(model),
-        modelProviderLabel(model),
-        model.provider_id,
-        model.provider_display_name,
-        model.model_id,
-        modelStatusLabel(model),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(needle);
-    });
+    return models.filter((model) => modelId(model) && (!needle || [
+      modelId(model), modelLabel(model), modelProviderLabel(model), model.model_id, modelStatusLabel(model),
+    ].filter(Boolean).join(" ").toLowerCase().includes(needle)));
   }, [modelFilter, models]);
 
   useEffect(() => {
@@ -136,13 +86,15 @@ export function SearchHomeControls({
       if (modelPickerRef.current && !modelPickerRef.current.contains(event.target as Node)) setModelPickerOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setModelPickerOpen(false);
+      if (event.key === "Escape") {
+        setModelPickerOpen(false);
+        modelTriggerRef.current?.focus();
+      }
     };
     document.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("keydown", onKeyDown);
-    const focusTimer = window.setTimeout(() => modelFilterRef.current?.focus(), 0);
+    modelFilterRef.current?.focus();
     return () => {
-      window.clearTimeout(focusTimer);
       document.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
     };
@@ -152,14 +104,10 @@ export function SearchHomeControls({
     onSelectModel(value);
     setModelPickerOpen(false);
     setModelFilter("");
+    modelTriggerRef.current?.focus();
   };
-
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setAttachedFile(event.target.files?.[0] ?? null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
-  const activeAction = ACTIONS[selectedActionIndex]?.id ?? "smart";
+  const activeAction = SEARCH_ACTIONS[selectedActionIndex]?.id ?? "google";
+  const busy = loading || answerLoading;
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     onExecute(activeAction);
@@ -169,39 +117,70 @@ export function SearchHomeControls({
     <>
       <div className="hero-header">
         <div>
-          <span className="product-mark">Rumi Search Home</span>
+          <span className="product-mark">Tobkiri Search</span>
           <h1>何を探しましょう？</h1>
+          <p className="hero-description">キーワード、質問、URLをひとつの検索窓に。</p>
+          <p className="hero-caption">AIモデルはTobkiri Defaultsと共有。Web検索はGoogleで。</p>
         </div>
         <div className="model-control" ref={modelPickerRef}>
           <button
             aria-expanded={modelPickerOpen}
             aria-haspopup="listbox"
+            aria-controls={modelPickerOpen ? "search-model-list" : undefined}
+            aria-label={`モデルを選択: ${selectedModelLabel}`}
             className="model-trigger"
+            disabled={modelSaving}
+            ref={modelTriggerRef}
             type="button"
             onClick={() => setModelPickerOpen((open) => !open)}
           >
             <span className="model-trigger-copy">
               <span>{selectedModelLabel}</span>
-              <small>{selectedModelStatus}</small>
+              <small>{modelSaving ? "共有設定に保存中…" : modelsLoading ? "モデルを確認中…" : selectedModelStatus}</small>
             </span>
             <span className="model-trigger-caret" aria-hidden="true">˅</span>
           </button>
           {modelPickerOpen ? (
             <div className="model-popover">
               <div className="model-popover-head">
-                <strong>Model</strong>
-                <span>{models.length} available</span>
+                <strong>モデル</strong>
+                <span>{models.length} 件のカタログ</span>
               </div>
+              <p className="model-provenance">プロバイダーとモデル設定はTobkiri Defaultsと共有しています。</p>
               <input
-                aria-label="Filter models"
+                aria-label="モデルを絞り込む"
                 autoComplete="off"
                 className="model-filter"
                 onChange={(event) => setModelFilter(event.target.value)}
-                placeholder="Filter models..."
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowDown" && !event.nativeEvent.isComposing) {
+                    event.preventDefault();
+                    modelListRef.current?.querySelector<HTMLButtonElement>("[role=option]")?.focus();
+                  }
+                }}
+                placeholder="モデル名・プロバイダーで絞り込み"
                 ref={modelFilterRef}
                 value={modelFilter}
               />
-              <div aria-label="Models" className="model-list" role="listbox">
+              <div
+                aria-label="モデル"
+                className="model-list"
+                id="search-model-list"
+                ref={modelListRef}
+                role="listbox"
+                onKeyDown={(event) => {
+                  const options = Array.from(modelListRef.current?.querySelectorAll<HTMLButtonElement>("[role=option]") ?? []);
+                  const index = options.indexOf(event.target as HTMLButtonElement);
+                  if (index < 0 || event.nativeEvent.isComposing) return;
+                  const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1
+                    : event.key === "ArrowDown" ? (index + 1) % options.length
+                    : event.key === "ArrowUp" ? (index - 1 + options.length) % options.length : -1;
+                  if (nextIndex >= 0) {
+                    event.preventDefault();
+                    options[nextIndex]?.focus();
+                  }
+                }}
+              >
                 <button
                   aria-selected={!selectedModel}
                   className={`model-option${!selectedModel ? " model-option-active" : ""}`}
@@ -209,109 +188,78 @@ export function SearchHomeControls({
                   role="option"
                   type="button"
                 >
-                  <span className="model-option-main">
-                    <strong>Default model</strong>
-                    <small>Use defaultspack preferred routing</small>
-                  </span>
-                  <span className="model-option-side">
-                    <span>default</span>
-                    <span className="model-badges"><span className="model-badge">auto</span></span>
-                  </span>
+                  <span className="model-option-main"><strong>Defaultsの既定モデル</strong><small>共有設定のモデル選択に従います</small></span>
+                  <span className="model-option-side"><span>自動</span></span>
                 </button>
                 {filteredModels.map((model) => {
                   const value = modelId(model);
-                  if (!value) return null;
-                  const active = value === selectedModel;
-                  const badges = modelBadges(model);
-                  if (badges.length === 0) badges.push(modelStatusLabel(model));
                   return (
                     <button
-                      aria-selected={active}
-                      className={`model-option${active ? " model-option-active" : ""}`}
+                      aria-selected={value === selectedModel}
+                      className={`model-option${value === selectedModel ? " model-option-active" : ""}`}
                       key={value}
                       onClick={() => selectModel(value)}
                       role="option"
                       type="button"
                     >
-                      <span className="model-option-main">
-                        <strong>{modelLabel(model)}</strong>
-                        <small>{value}</small>
-                      </span>
+                      <span className="model-option-main"><strong>{modelLabel(model)}</strong><small>{value}</small></span>
                       <span className="model-option-side">
-                        <span>{modelProviderLabel(model)}</span>
-                        <span className="model-badges">
-                          {badges.map((badge) => <span className="model-badge" key={badge}>{badge}</span>)}
-                        </span>
+                        <span>{modelProviderLabel(model)} · {modelStatusLabel(model)}</span>
+                        <span className="model-badges">{modelBadges(model).map((badge) => <span className="model-badge" key={badge}>{badge}</span>)}</span>
                       </span>
                     </button>
                   );
                 })}
-                {filteredModels.length === 0 ? <div className="model-empty">No matching models</div> : null}
+                {filteredModels.length === 0 ? <div className="model-empty">該当するモデルはありません</div> : null}
               </div>
             </div>
           ) : null}
         </div>
       </div>
 
-      <form className="hero-form" onSubmit={handleSubmit}>
+      <form className="hero-form" onSubmit={handleSubmit} aria-busy={busy}>
         <div className={`search-box${isFocused ? " search-box-focused" : ""}`}>
           <div className="search-row">
-            <input ref={fileInputRef} className="file-input" type="file" onChange={handleFileChange} />
-            <button
-              aria-label="Attach file"
-              className="icon-button"
-              title="ファイルを添付"
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-            >+</button>
+            <span className="search-glyph" aria-hidden="true">⌕</span>
             <input
-              aria-label="Search or enter URL"
+              aria-label="検索キーワード、質問、URL"
+              aria-describedby="search-keyboard-hint"
+              aria-expanded={Boolean(input.trim())}
+              aria-controls={input.trim() ? "search-action-list" : undefined}
+              aria-activedescendant={input.trim() ? `search-action-${activeAction}` : undefined}
+              aria-autocomplete="list"
               className="search-input"
               value={input}
               onBlur={() => setIsFocused(false)}
               onChange={(event) => onInputChange(event.target.value)}
               onFocus={() => setIsFocused(true)}
               onKeyDown={(event) => {
+                if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault();
                 if (!input.trim()) return;
-                if (event.key === "ArrowDown") {
+                const nextIndex = searchActionIndexForKey(event.key, selectedActionIndex, event.nativeEvent.isComposing);
+                if (nextIndex !== null) {
                   event.preventDefault();
-                  onSelectedActionIndexChange((selectedActionIndex + 1) % ACTIONS.length);
-                }
-                if (event.key === "ArrowUp") {
-                  event.preventDefault();
-                  onSelectedActionIndexChange((selectedActionIndex - 1 + ACTIONS.length) % ACTIONS.length);
+                  onSelectedActionIndexChange(nextIndex);
                 }
               }}
-              placeholder="検索ワードを入力..."
+              placeholder="検索する、AIに質問する、URLを開く…"
+              role="combobox"
               autoComplete="off"
               spellCheck={false}
               autoFocus
             />
-            <button className="submit-button" type="submit" disabled={!input.trim() || loading || answerLoading}>
-              <span>{loading || answerLoading ? "Working" : "検索"}</span>
-              <span aria-hidden="true">→</span>
+            <button aria-label={busy ? "検索中" : "検索"} className="submit-button" type="submit" disabled={!input.trim() || busy}>
+              <span>{busy ? "検索中…" : "検索"}</span><span aria-hidden="true">→</span>
             </button>
           </div>
-
-          {attachedFile ? (
-            <div className="attachment-strip">
-              <div className="attachment-chip">
-                <span className="file-glyph" aria-hidden="true">□</span>
-                <span className="file-meta">
-                  <strong>{attachedFile.name}</strong>
-                  <span>{(attachedFile.size / 1024 / 1024).toFixed(2)} MB</span>
-                </span>
-                <button aria-label="Remove file" className="remove-file" type="button" onClick={() => setAttachedFile(null)}>×</button>
-              </div>
-            </div>
-          ) : null}
-
           {input.trim() ? (
-            <div className="action-list" role="listbox" aria-label="Search actions">
-              {ACTIONS.map((action, index) => (
+            <div className="action-list" id="search-action-list" role="listbox" aria-label="検索方法">
+              {SEARCH_ACTIONS.map((action, index) => (
                 <button
                   aria-selected={selectedActionIndex === index}
                   className={`action-row${selectedActionIndex === index ? " action-row-active" : ""}`}
+                  disabled={busy}
+                  id={`search-action-${action.id}`}
                   key={action.id}
                   role="option"
                   type="button"
@@ -319,17 +267,21 @@ export function SearchHomeControls({
                     onSelectedActionIndexChange(index);
                     onExecute(action.id);
                   }}
+                  onKeyDown={(event) => {
+                    const nextIndex = searchActionIndexForKey(event.key, index, event.nativeEvent.isComposing);
+                    if (nextIndex !== null) {
+                      event.preventDefault();
+                      onSelectedActionIndexChange(nextIndex);
+                      document.getElementById(`search-action-${SEARCH_ACTIONS[nextIndex].id}`)?.focus();
+                    }
+                  }}
                   onMouseEnter={() => onSelectedActionIndexChange(index)}
-                >
-                  <span>
-                    <strong>{action.title}</strong>
-                    <small>{action.subtitle(input.trim())}</small>
-                  </span>
-                </button>
+                ><span><strong>{action.title}</strong><small>{action.subtitle}</small></span></button>
               ))}
             </div>
           ) : null}
         </div>
+        <p className="search-hint" id="search-keyboard-hint">Enterで検索 · ↑↓で検索方法を選択</p>
       </form>
     </>
   );

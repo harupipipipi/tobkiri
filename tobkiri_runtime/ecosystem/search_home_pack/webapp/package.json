@@ -4,8 +4,11 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 38777",
-    "build": "vite build"
+    "dev": "vite --host 127.0.0.1 --port 38777",
+    "test": "tsx --test src/*.test.ts src/*.test.tsx",
+    "lint": "tsc --noEmit",
+    "build": "vite build && node scripts/sync-search-ui.mjs && npm run check:ui",
+    "check:ui": "node scripts/sync-search-ui.mjs --check"
   },
   "dependencies": {
     "react": "^19.0.0",

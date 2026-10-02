@@ -3021,6 +3021,54 @@ class AuthorityStore:
             ) from exc
         return self._encode_lease_token(lease)
 
+    @_process_owned
+    def record_provider_transport(
+        self,
+        lease_token: str,
+        *,
+        event_state: str,
+        provider_instance_id: str,
+        provider_scope: str,
+        endpoint_origin: str,
+    ) -> None:
+        """Append finite local transport evidence to an existing invocation audit.
+
+        This records no prompt, response, endpoint path or credential material.
+        A failed append raises before callers may send or return an effect.
+        """
+        if event_state not in {"started", "completed", "denied", "failed"}:
+            raise AuditUnavailable("provider transport audit state is invalid")
+        lease_id, expected_digest = self._decode_lease_token(lease_token)
+        try:
+            with self._lock, self._connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                lease = self._inspect_transport_lease(
+                    connection, lease_id, expected_digest,
+                    require_active=event_state in {"started", "completed"},
+                )
+                self._append_audit(
+                    connection,
+                    event_id="provider-transport:" + secrets.token_hex(16),
+                    event_type="local_provider_transport",
+                    event_state=event_state,
+                    payload={
+                        "lease_id": lease.lease_id,
+                        "request_id": lease.request_id,
+                        "request_digest": lease.request_digest,
+                        "profile_id": lease.profile_id,
+                        "activation_id": lease.activation_id,
+                        "security_epoch": lease.security_epoch,
+                        "caller_principal_id": lease.caller.principal_id,
+                        "provider_principal_id": lease.target.principal_id,
+                        "provider_instance_id": provider_instance_id,
+                        "provider_scope": provider_scope,
+                        "endpoint_origin": endpoint_origin,
+                    },
+                )
+                connection.commit()
+        except (AuthorityDenied, sqlite3.Error) as error:
+            raise AuditUnavailable("provider transport audit append failed") from error
+
     def _append_audit(
         self,
         connection: _IdentityBoundConnection,
@@ -3114,6 +3162,76 @@ class AuthorityStore:
         if not hmac.compare_digest(lease.digest, expected_digest):
             raise AuthorityDenied("InvocationLease digest does not match")
         return lease, state
+
+    @_process_owned
+    def inspect_active_lease_token(self, token: str) -> InvocationLease:
+        """Authenticate current dispatched transport authority in one snapshot.
+
+        This Host-only read includes SecurityEpoch and every revocation identity
+        checked at dispatch. A consumed lease keeps its original Broker request
+        deadline; its pre-dispatch expiry cannot shorten ongoing execution.
+        """
+        lease_id, expected_digest = self._decode_lease_token(token)
+        try:
+            with self._lock, self._connection() as connection:
+                connection.execute("BEGIN")
+                return self._inspect_transport_lease(
+                    connection, lease_id, expected_digest, require_active=True,
+                )
+        except sqlite3.Error as error:
+            raise AuthorityStoreError("active InvocationLease read failed") from error
+
+    def _inspect_transport_lease(
+        self, connection: _IdentityBoundConnection, lease_id: str,
+        expected_digest: str, *, require_active: bool,
+    ) -> InvocationLease:
+        row = connection.execute(
+            "SELECT encrypted_payload, lease_digest, state,"
+            " (SELECT value FROM authority_meta WHERE key='security_epoch') AS current_epoch"
+            " FROM invocation_leases WHERE lease_id=?", (lease_id,),
+        ).fetchone()
+        if row is None:
+            raise AuthorityDenied("InvocationLease is unknown")
+        lease = InvocationLease.from_dict(self._decrypt(row["encrypted_payload"]))
+        if (
+            not hmac.compare_digest(lease.digest, expected_digest)
+            or not hmac.compare_digest(lease.digest, str(row["lease_digest"]))
+        ):
+            raise AuthorityDenied("InvocationLease digest does not match")
+        if not require_active:
+            return lease
+        if (
+            row["state"] != LeaseState.DISPATCHED.value
+            or row["current_epoch"] is None
+            or int(row["current_epoch"]) != lease.security_epoch
+        ):
+            raise AuthorityDenied("InvocationLease is inactive")
+        identities = (
+            ("function_principal", lease.caller.principal_id),
+            ("function_principal", lease.target.principal_id),
+            ("execution_domain", lease.caller_domain_id),
+            ("execution_domain", lease.target_domain_id),
+            ("profile", lease.profile_id),
+            ("activation", lease.activation_id),
+            ("grant", lease.grant_id),
+            ("provider_authority", lease.provider_authority_id),
+            ("pack_artifact", lease.caller.parent_artifact_digest),
+            ("pack_artifact", lease.target.parent_artifact_digest),
+            ("publisher", lease.caller_publisher_lineage),
+            ("publisher", lease.target_publisher_lineage),
+            ("host_extension", lease.host_extension_id),
+        )
+        # Every SQL operation revalidates live storage identities. One exact
+        # query preserves all dispatch fences without a watchdog taking thirteen
+        # filesystem validation passes while holding the authority lock.
+        clauses = " OR ".join("(target_kind=? AND target_id=?)" for _ in identities)
+        revoked = connection.execute(
+            "SELECT 1 FROM revocations WHERE target_kind='global' OR " + clauses + " LIMIT 1",
+            tuple(value for identity in identities for value in identity),
+        ).fetchone()
+        if revoked is not None:
+            raise AuthorityDenied("InvocationLease context was revoked")
+        return lease
 
     @_process_owned
     def fence_request(self, request_id: str) -> list[str]:

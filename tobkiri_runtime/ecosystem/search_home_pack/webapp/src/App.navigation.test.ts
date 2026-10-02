@@ -9,7 +9,7 @@ test("Search Home never schedules automatic destination navigation", () => {
   assert.doesNotMatch(appSource, /AUTO_NAV_DELAY_MS/);
   assert.doesNotMatch(appSource, /scheduleNavigation/);
   assert.match(appSource, /<NavigationReview/);
-  assert.match(reviewSource, /Search Homeは自動では移動しません/);
+  assert.match(reviewSource, /Tobkiri Searchは自動では移動しません/);
 });
 
 test("Search Home validates every destination immediately before navigation", () => {
@@ -52,16 +52,25 @@ test("390px layout wraps the heading, input actions, and action descriptions", (
 
 test("blocked destinations retain a safe copy-details action", () => {
   assert.match(reviewSource, /ブロック詳細をコピー/);
-  assert.match(appSource, /Search Home blocked destination:/);
+  assert.match(appSource, /Tobkiri Search blocked destination:/);
   assert.doesNotMatch(appSource, /blocked destination:.*destination\.input/);
 });
 
 test("AI answers are committed to explicit accessible memory-only result states", () => {
   assert.match(appSource, /normalizeAnswerResponse\(payload\)/);
   assert.match(appSource, /aria-labelledby="search-answer-title"/);
-  assert.match(appSource, /Answer text is kept in memory only/);
-  assert.match(appSource, /Open conversation \/ Continue in Rumi/);
-  assert.match(appSource, /Retry intentionally/);
+  assert.match(appSource, /この画面の回答は保存されません/);
+  assert.doesNotMatch(appSource, /conversationHref/);
+  assert.match(appSource, /同じ入力・モデルで再試行/);
   assert.doesNotMatch(appSource, /localStorage.*answer|sessionStorage.*answer/i);
   assert.equal(appSource.includes("dangerouslySet" + "InnerHTML"), false);
+});
+
+test("failed route and answer retries retain their submitted input and model", () => {
+  assert.match(appSource, /captureSearchRequest\(input, selectedModel, action\)/);
+  assert.match(appSource, /answerInput\(request\.input, request\.model\)/);
+  assert.match(appSource, /executeSearch\(requestFailure\.request\.action, requestFailure\.request\)/);
+  assert.match(appSource, /modelLoadError/);
+  assert.match(appSource, /saveModel\(modelSaveError\.model\)/);
+  assert.doesNotMatch(appSource, /catch\(\(\) => undefined\)/);
 });

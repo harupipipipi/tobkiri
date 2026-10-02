@@ -91,6 +91,14 @@ def defaultspack_web_mounts(pack_root: Path) -> tuple[dict[str, Any], ...]:
     ui_root = Path(pack_root).resolve() / "ui"
     return (
         {
+            "path_prefix": "/search",
+            "web_root": ui_root / "search",
+            "spa_fallback": True,
+            "index_file": "index.html",
+            "auth_required": True,
+            "auth_bootstrap": True,
+        },
+        {
             "path_prefix": "/p",
             "web_root": ui_root,
             "spa_fallback": True,

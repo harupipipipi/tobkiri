@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 import socket
 import threading
 import time
@@ -21,6 +22,7 @@ class HttpRequestLifetime:
         self, *, timeout: float, deadline: float | None = None,
         cancellation: threading.Event | None = None,
         clock: Callable[[], float] = time.monotonic,
+        authority_check: Callable[[], bool] | None = None,
     ) -> None:
         now = clock()
         if not math.isfinite(timeout) or timeout <= 0:
@@ -31,6 +33,7 @@ class HttpRequestLifetime:
         if not math.isfinite(self._deadline):
             raise ValueError("HTTP request deadline is invalid")
         self._clock = clock
+        self._authority_check = authority_check
         self._cancellation = cancellation or threading.Event()
         self._done = threading.Event()
         self._interrupted = threading.Event()
@@ -50,6 +53,7 @@ class HttpRequestLifetime:
             self._done.is_set()
             or self._interrupted.is_set()
             or self._cancellation.is_set()
+            or not self._authority_active()
         ):
             raise InterruptedError("HTTP request cancelled")
 
@@ -73,7 +77,11 @@ class HttpRequestLifetime:
 
     def _watch(self) -> None:
         while not self._done.wait(0.025):
-            if self._cancellation.is_set() or self._clock() >= self._deadline:
+            if (
+                self._cancellation.is_set()
+                or self._clock() >= self._deadline
+                or not self._authority_active()
+            ):
                 with self._lock:
                     self._interrupted.set()
                     if self._socket is not None:
@@ -81,4 +89,24 @@ class HttpRequestLifetime:
                             self._socket.shutdown(socket.SHUT_RDWR)
                         except OSError:
                             pass
+                        if os.name == "nt":
+                            # Winsock shutdown need not wake a select-backed
+                            # buffered recv. Transfer the owned native handle
+                            # before closing it, so deferred SocketIO cleanup
+                            # cannot later close a reused handle. The reader
+                            # itself remains owned and closed by the IO thread.
+                            try:
+                                handle = self._socket.detach()
+                                if handle != -1:
+                                    socket.close(handle)
+                            except OSError:
+                                pass
                 return
+
+    def _authority_active(self) -> bool:
+        if self._authority_check is None:
+            return True
+        try:
+            return self._authority_check() is True
+        except Exception:
+            return False

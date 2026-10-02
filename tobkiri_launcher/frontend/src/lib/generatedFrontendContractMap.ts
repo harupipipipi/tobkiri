@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:6d0667f33f55b57b698b9b1d6655884a4b7c69598e61887cebdfa67020123cbb
+// Raw source digest: sha256:e5821e7935f919b9b7c0101515a98b45557c1d829b3657f160b726b78101a5e8
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,14 +28,32 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:6d0667f33f55b57b698b9b1d6655884a4b7c69598e61887cebdfa67020123cbb" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:e5821e7935f919b9b7c0101515a98b45557c1d829b3657f160b726b78101a5e8" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:6d0667f33f55b57b698b9b1d6655884a4b7c69598e61887cebdfa67020123cbb",
+  "artifact_digest": "sha256:e5821e7935f919b9b7c0101515a98b45557c1d829b3657f160b726b78101a5e8",
   "routes": [
+    {
+      "method": "POST",
+      "path": "/api/search/answer",
+      "presentation": "search_answer",
+      "targets": [
+        {
+          "contribution_id": "defaults.search.answer",
+          "contract_id": "tobkiri.service.ai.generate.v1",
+          "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+          "provider_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+          "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+          "allowed_payload_keys": [
+            "input",
+            "model"
+          ]
+        }
+      ]
+    },
     {
       "method": "GET",
       "path": "/api/coding/workspaces",
@@ -1252,6 +1270,22 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
 };
 
 const EXPECTED_ROUTES = {
+  "POST /api/search/answer": {
+    "presentation": "search_answer",
+    "targets": [
+      {
+        "contribution_id": "defaults.search.answer",
+        "contract_id": "tobkiri.service.ai.generate.v1",
+        "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+        "provider_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+        "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+        "allowed_payload_keys": [
+          "input",
+          "model"
+        ]
+      }
+    ]
+  },
   "GET /api/coding/workspaces": {
     "presentation": "workspace_list",
     "targets": [

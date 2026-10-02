@@ -231,7 +231,7 @@ export function NavigationReview({
   const selectedTitle = candidate?.title || (destination.ok ? "選択した移動先" : "ブロックされた移動先");
 
   return (
-    <section aria-labelledby="route-review-title" style={styles.card}>
+    <section className="route-review" aria-labelledby="route-review-title" style={styles.card}>
       <div style={styles.headingRow}>
         <div>
           <p style={styles.eyebrow}>移動前の確認</p>
@@ -239,7 +239,7 @@ export function NavigationReview({
             {selectedTitle}
           </h2>
           <p style={styles.muted}>
-            Search Homeは自動では移動しません。ホストと警告を確認してから開いてください。
+            Tobkiri Searchは自動では移動しません。ホストと警告を確認してから開いてください。
           </p>
         </div>
         <span style={styles.host}>{destination.ok ? destination.host : "ブロック"}</span>

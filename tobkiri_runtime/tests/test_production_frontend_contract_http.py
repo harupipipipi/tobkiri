@@ -85,6 +85,45 @@ from tests.conformance_support.host_contract import host_contract
 pytestmark = pytest.mark.contract
 
 
+def test_search_answer_rejects_untrusted_input_before_dispatch(
+    production_server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Search accepts only query/model under the authenticated captured Profile."""
+    server, session, _authority = production_server
+    route = _contract("POST", "/api/search/answer")
+    status, result, _ = _request(
+        server, "POST", route, body={"input": "hello", "model": "fixture"}
+    )
+    assert status == 401, result
+    cookie, csrf, origin = _authenticate(server)
+    observed: list[RequestEnvelope] = []
+    original_dispatch = session.broker._dispatch
+
+    def observe_dispatch(backend, envelope, *args, **kwargs):
+        observed.append(envelope)
+        return original_dispatch(backend, envelope, *args, **kwargs)
+
+    monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+    for body in (
+        {"input": "hello", "model": "fixture", "profile_id": "other"},
+        {"input": "hello", "model": "fixture", "approved": True},
+        {"input": "hello", "model": "fixture", "endpoint": "http://example.com"},
+        {"input": "hello", "model": "fixture", "messages": []},
+        {"input": "", "model": "fixture"},
+        {"input": "hello", "model": ""},
+        {"input": "hello", "model": 1},
+        {"input": "hello\u0000", "model": "fixture"},
+    ):
+        status, result, _ = _request(
+            server, "POST", route, body=body,
+            headers={"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+                     "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        assert status == 400, (body, result)
+    assert observed == []
+
+
 RUNTIME_ROOT = Path(__file__).resolve().parents[1]
 FRONTEND_MUTATION_TIMEOUT_SECONDS = 10
 EVENTUAL_RECONCILIATION_TIMEOUT_SECONDS = 30
