@@ -96,6 +96,7 @@ class _Fixture:
         with monkeypatch.context() as patch:
             patch.setattr(authority_fixtures, "_principal", principal)
             self.harness = authority_fixtures._Harness(tmp_path / "authority")
+        self.harness.clock.value = time.time()
         self.activation = {"activation_id": "activation-1", "security_epoch": 1}
         self.context = replace(_context(self.harness), activation_digest=digest(self.activation))
         fixture = self
