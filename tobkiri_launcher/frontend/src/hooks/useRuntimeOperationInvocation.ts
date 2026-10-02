@@ -14,6 +14,7 @@ import {
   isMutationResultUnknown,
   markMutationUnknown,
   listMutationJournal,
+  subscribeMutationCompletion,
   MUTATION_UNKNOWN_MESSAGE,
   MutationBlockedError,
   type MutationJournalRecord,
@@ -68,17 +69,6 @@ export type RuntimeOperationInvoker = (request: {
   requestId?: string;
 }) => Promise<unknown>;
 
-function stablePayload(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stablePayload).join(',')}]`;
-  if (value && typeof value === 'object') {
-    return `{${Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => `${JSON.stringify(key)}:${stablePayload(item)}`)
-      .join(',')}}`;
-  }
-  return JSON.stringify(value) ?? String(value);
-}
-
 export function useRuntimeOperationInvocation(
   envelope: RuntimeSurfaceEnvelope<unknown> | null,
   operation: RuntimeOperationDescriptor | null,
@@ -86,12 +76,14 @@ export function useRuntimeOperationInvocation(
 ) {
   const [state, setState] = useState<RuntimeInvocationState>('idle');
   const [error, setError] = useState<RuntimeInvocationError | null>(null);
+  const [journalGeneration, setJournalGeneration] = useState(0);
   const identity = envelope && operation
     ? runtimeOperationIdentity(envelope, operation)
     : null;
   const nextToken = useRef(0);
   const active = useRef<ActiveInvocation | null>(null);
   const unknownMutationKey = useRef<string | null>(null);
+  const peerBlockedKey = useRef<string | null>(null);
   const binding = useRef<{envelope: RuntimeSurfaceEnvelope<unknown> | null; identity: string | null} | null>(null);
   const envelopeRef = useRef(envelope);
   const operationRef = useRef(operation);
@@ -99,6 +91,27 @@ export function useRuntimeOperationInvocation(
   envelopeRef.current = envelope;
   operationRef.current = operation;
   identityRef.current = identity;
+
+  useEffect(() => subscribeMutationCompletion((record) => {
+    if (peerBlockedKey.current !== record.key || unknownMutationKey.current !== record.key) return;
+    unknownMutationKey.current = null;
+    peerBlockedKey.current = null;
+    if (identityRef.current && record.key.startsWith(`runtime:invoke:${identityRef.current}:`)) {
+      const remaining = listMutationJournal().find((item) => item.key.startsWith(`runtime:invoke:${identityRef.current}:`));
+      if (remaining) {
+        unknownMutationKey.current = remaining.key;
+        peerBlockedKey.current = remaining.key;
+        setState('unknown');
+        setError({code: 'TIMEOUT', message: MUTATION_UNKNOWN_MESSAGE});
+        setJournalGeneration((value) => value + 1);
+        return;
+      }
+      // A different mounted caller may have owned the request. Its confirmed
+      // cleanup permits another explicit submit; it does not prove ours ran.
+      setState('idle');
+      setError(null);
+    }
+  }), []);
 
   useEffect(() => {
     const currentUnknownKey = unknownMutationKey.current;
@@ -108,6 +121,7 @@ export function useRuntimeOperationInvocation(
       // durable and can be recovered when that selection returns, but it must
       // never remain the active pointer for the newly selected operation.
       unknownMutationKey.current = null;
+      peerBlockedKey.current = null;
     }
     const changed = binding.current !== null
       && (binding.current.envelope !== envelope || binding.current.identity !== identity);
@@ -168,13 +182,25 @@ export function useRuntimeOperationInvocation(
       // journaled and blocked until a later authenticated reconciliation.
       return null;
     }
+    const bindingStillCurrent = isCurrent() && identityRef.current === expectedIdentity;
     if (reconciled.reconciled && unknownMutationKey.current === record.key) {
       // Terminal cleanup is bound to this exact durable request, not to the
       // currently selected operation. A newer selection must not inherit A's
       // result, but it must also not remain blocked by A's completed journal.
       unknownMutationKey.current = null;
+      peerBlockedKey.current = null;
     }
-    if (!isCurrent() || identityRef.current !== expectedIdentity) return reconciled;
+    if (!bindingStillCurrent) return reconciled;
+    if (reconciled.reconciled) {
+      const remaining = listMutationJournal().find((item) => item.key.startsWith(`runtime:invoke:${expectedIdentity}:`));
+      if (remaining) {
+        unknownMutationKey.current = remaining.key;
+        setState('unknown');
+        setError({code: 'TIMEOUT', message: MUTATION_UNKNOWN_MESSAGE});
+        setJournalGeneration((value) => value + 1);
+        return reconciled;
+      }
+    }
     if (reconciled.state === 'succeeded') {
       unknownMutationKey.current = null;
       setState('succeeded');
@@ -219,7 +245,7 @@ export function useRuntimeOperationInvocation(
   useEffect(() => {
     if (!identity || !unknownMutationKey.current || !operation) return;
     void reconcileUnknown();
-  }, [identity, operation?.contract_id, operation?.operation_id, reconcileUnknown]);
+  }, [identity, operation?.contract_id, operation?.operation_id, reconcileUnknown, journalGeneration]);
 
   const invoke = useCallback(async (payload: Record<string, unknown>): Promise<void> => {
     if (!envelope || !operation || active.current || state === 'unknown') return;
@@ -231,19 +257,27 @@ export function useRuntimeOperationInvocation(
       identity: invocationIdentity,
       envelope,
     };
-    const mutationKey = `runtime:invoke:${invocationIdentity}:${stablePayload(payload)}`;
+    // Inputs may contain write-only credentials or private content. Keep only
+    // an opaque request identity in durable storage, never payloads or their hashes.
+    const mutationPrefix = `runtime:invoke:${invocationIdentity}:`;
+    let mutationKey: string;
     let mutation: MutationJournalRecord;
     try {
+      const existing = listMutationJournal().find((record) => record.key.startsWith(mutationPrefix));
+      if (existing) throw new MutationBlockedError(existing);
+      const requestId = crypto.randomUUID();
+      mutationKey = `${mutationPrefix}request:${requestId}`;
       mutation = beginMutation(mutationKey, {
         kind: 'runtime-operation-invocation',
         operation_id: operation.operation_id,
         contract_id: operation.contract_id,
         contract_map_digest: PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST,
-      });
+      }, {primary: requestId});
     } catch (cause) {
       active.current = null;
       if (cause instanceof MutationBlockedError) {
-        unknownMutationKey.current = mutationKey;
+        unknownMutationKey.current = cause.mutationKey;
+        peerBlockedKey.current = cause.mutationKey;
         setState('unknown');
         setError({code: 'TIMEOUT', message: MUTATION_UNKNOWN_MESSAGE});
         return;
@@ -279,7 +313,9 @@ export function useRuntimeOperationInvocation(
       if (isMutationResultUnknown(cause)) {
         resultUnknown = true;
         const unknown = markMutationUnknown(mutationKey, mutation.requestId);
+        if (!isCurrent()) return;
         unknownMutationKey.current = mutationKey;
+        peerBlockedKey.current = null;
         setState('unknown');
         setError({code: 'TIMEOUT', message: MUTATION_UNKNOWN_MESSAGE});
         const reconciled = await reconcileRecord(

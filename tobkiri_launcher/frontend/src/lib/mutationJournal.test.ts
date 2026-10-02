@@ -13,6 +13,36 @@ import {
   mutationRequestId,
 } from './mutationJournal.ts';
 
+test('legacy runtime payload keys are scrubbed without losing unknown request identities', () => {
+  const previousStorage = globalThis.localStorage;
+  const values = new Map<string, string>();
+  const identity = Array.from({length: 15}, (_, index) => `field-${index}`).join('\u0000');
+  const secret = 'synthetic-old-secret';
+  const ids = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'];
+  values.set('tobkiri-launcher-mutation-journal-v1', JSON.stringify(ids.map((requestId, index) => ({
+    key: `runtime:invoke:${identity}:${JSON.stringify({api_key: secret, index})}`,
+    requestId, state: 'pending', createdAt: 1,
+    metadata: {kind: 'runtime-operation-invocation', operation_id: 'test-operation'},
+  }))));
+  Object.defineProperty(globalThis, 'localStorage', {configurable: true, value: {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+    removeItem: (key: string) => values.delete(key),
+  }});
+  try {
+    const records = listMutationJournal();
+    assert.equal(records.length, 2);
+    assert.deepEqual(records.map((record) => record.requestId), ids);
+    assert.ok(records.every((record) => record.state === 'unknown'));
+    assert.ok(records.every((record) => record.key === `runtime:invoke:${identity}:request:${record.requestId}`));
+    assert.equal([...values.values()].some((value) => value.includes(secret) || value.includes('api_key')), false);
+    completeMutation(records[0].key, ids[0]);
+    assert.deepEqual(listMutationJournal().map((record) => record.requestId), [ids[1]]);
+  } finally {
+    Object.defineProperty(globalThis, 'localStorage', {value: previousStorage, configurable: true});
+  }
+});
+
 test('explicit indeterminate API response retains the request for reconciliation', () => {
   const key = `test:indeterminate:${Date.now()}:${Math.random()}`;
   const requestId = '66666666-6666-4666-8666-666666666666';

@@ -45,8 +45,16 @@ export class MutationBlockedError extends MutationResultUnknownError {
 }
 
 const memoryJournal = new Map<string, MutationJournalRecord>();
+const completionListeners = new Set<(record: MutationJournalRecord) => void>();
 let observedStorage: unknown = null;
 let observedStorageKey = '';
+let memoryFallbackActive = false;
+
+/** Observe explicit, exact-request completion in this browsing context. */
+export function subscribeMutationCompletion(listener: (record: MutationJournalRecord) => void): () => void {
+  completionListeners.add(listener);
+  return () => { completionListeners.delete(listener); };
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -71,8 +79,19 @@ function currentStorageKey(): string {
 function synchronizeStorageContext(storage: Storage | null, storageKey: string): void {
   if (storage === observedStorage && storageKey === observedStorageKey) return;
   memoryJournal.clear();
+  memoryFallbackActive = false;
   observedStorage = storage;
   observedStorageKey = storageKey;
+}
+
+function secretFreeRuntimeKey(key: unknown, requestId: unknown): unknown {
+  if (typeof key !== 'string' || !key.startsWith('runtime:invoke:')) return key;
+  // Old runtime-operation keys appended a JSON object after the final identity
+  // field. Migrate that suffix without parsing or retaining any input values.
+  // Preserve the exact request ID so unknown outcomes remain reconcilable.
+  const payloadStart = key.indexOf(':{', key.lastIndexOf('\u0000') + 1);
+  if (payloadStart < 0) return key;
+  return `${key.slice(0, payloadStart)}:request:${isUuid(requestId) ? requestId : 'invalid'}`;
 }
 
 function parseStoredRecords(raw: string | null): MutationJournalRecord[] {
@@ -82,7 +101,7 @@ function parseStoredRecords(raw: string | null): MutationJournalRecord[] {
     if (!Array.isArray(parsed)) return [];
     return parsed.flatMap((value): MutationJournalRecord[] => {
       if (!isRecord(value)) return [];
-      const key = value.key;
+      const key = secretFreeRuntimeKey(value.key, value.requestId);
       const requestId = value.requestId;
       const state = value.state;
       const createdAt = value.createdAt;
@@ -151,6 +170,7 @@ function allRecords(): MutationJournalRecord[] {
   const storage = currentStorage();
   const storageKey = currentStorageKey();
   synchronizeStorageContext(storage, storageKey);
+  if (memoryFallbackActive) return [...memoryJournal.values()];
   const storedRecords = readStoredRecords(storage, storageKey);
   const merged = new Map<string, MutationJournalRecord>();
   for (const record of storedRecords) {
@@ -191,15 +211,18 @@ function persist(records: MutationJournalRecord[]): void {
   const storage = currentStorage();
   const storageKey = currentStorageKey();
   synchronizeStorageContext(storage, storageKey);
+  memoryJournal.clear();
   for (const record of records) memoryJournal.set(record.key, record);
   if (!storage) return;
   if (!writeSafeStorageValue(storage, storageKey, JSON.stringify(records))) {
+    memoryFallbackActive = true;
     recordClientDiagnostic({
       code: 'mutation.journal.memory_fallback',
       operation: 'mutation.journal.persist',
     });
     return;
   }
+  memoryFallbackActive = false;
   if (storageKey !== LEGACY_MUTATION_JOURNAL_STORAGE_KEY) {
     // Clear only after the exact records have been durably adopted by the
     // root-scoped key. This prevents the old global origin key from leaking
@@ -281,6 +304,15 @@ export function completeMutation(key: string, requestId?: string): void {
   if (current && requestId && current.requestId !== requestId) return;
   persist(records.filter((record) => record.key !== key));
   memoryJournal.delete(key);
+  if (current) {
+    for (const listener of completionListeners) {
+      try {
+        listener(current);
+      } catch {
+        recordClientDiagnostic({code: 'mutation.completion_listener_failed', operation: 'mutation.complete'});
+      }
+    }
+  }
 }
 
 /**

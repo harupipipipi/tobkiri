@@ -98,11 +98,21 @@ VM with host execution or edit its attestation files.
 
 ### Clone and install
 
+These steps currently target the Pack v4 development snapshot in
+[PR #1496](https://github.com/harupipipipi/tobkiri/pull/1496), following
+[PR #1322](https://github.com/harupipipipi/tobkiri/pull/1322). The repository's
+default branch is not this snapshot. Fetch and select the PR head before
+installing dependencies; do not mix these instructions with another revision.
+The commands below create a new checkout and leave it at that exact fetched
+commit. This is a development build, not a released installer.
+
 Windows PowerShell:
 
 ```powershell
 git clone https://github.com/harupipipipi/tobkiri.git
 cd tobkiri
+git fetch origin pull/1496/head
+git switch --detach FETCH_HEAD
 
 py -3 -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -127,6 +137,8 @@ macOS / Linux:
 ```bash
 git clone https://github.com/harupipipipi/tobkiri.git
 cd tobkiri
+git fetch origin pull/1496/head
+git switch --detach FETCH_HEAD
 
 python3 -m venv .venv
 source .venv/bin/activate

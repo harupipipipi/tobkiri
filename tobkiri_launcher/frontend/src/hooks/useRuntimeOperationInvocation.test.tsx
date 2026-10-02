@@ -12,6 +12,7 @@ import type {
   RuntimeOperationDescriptor,
   RuntimeSurfaceEnvelope,
 } from '@/src/lib/runtimeSurface';
+import {listMutationJournal} from '@/src/lib/mutationJournal';
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 
@@ -70,14 +71,16 @@ const testEnvelope = envelope();
 function Probe({
   currentOperation,
   invoker,
+  payload = {},
 }: {
   currentOperation: RuntimeOperationDescriptor;
   invoker: RuntimeOperationInvoker;
+  payload?: Record<string, unknown>;
 }) {
   const invocation = useRuntimeOperationInvocation(testEnvelope, currentOperation, invoker);
   return (
     <div>
-      <button type="button" disabled={invocation.busy} onClick={() => void invocation.invoke({})}>Invoke</button>
+      <button type="button" disabled={invocation.busy} onClick={() => void invocation.invoke(payload)}>Invoke</button>
       <span data-state="state">{invocation.state}</span>
       {invocation.error ? <span data-state="error">{invocation.error.code}</span> : null}
     </div>
@@ -129,6 +132,85 @@ test('runtime invocation binds completion to token and operation identity', asyn
     assert.equal(container.querySelector('[data-state="state"]')?.textContent, 'idle');
     assert.equal(container.querySelector('[data-state="error"]'), null);
   } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    Object.defineProperties(globalThis, {
+      window: {value: previousWindow, configurable: true},
+      document: {value: previousDocument, configurable: true},
+    });
+  }
+});
+
+test('credential-bearing invocation persists only opaque identity through timeout and unmount', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousStorage = globalThis.localStorage;
+  const values = new Map<string, string>();
+  const writes: string[] = [];
+  Object.defineProperty(globalThis, 'localStorage', {configurable: true, value: {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { writes.push(value); values.set(key, value); },
+    removeItem: (key: string) => values.delete(key),
+  }});
+  const {dom, root, container} = createDom();
+  const secret = 'synthetic-secret-do-not-persist';
+  let requestId: string | undefined;
+  const invoker: RuntimeOperationInvoker = async (request) => {
+    assert.equal(request.payload.api_key, secret);
+    requestId = request.requestId;
+    throw new Error('POST request timed out after 10000ms');
+  };
+  try {
+    await act(async () => {
+      root.render(<Probe currentOperation={operation('credential-test')} invoker={invoker} payload={{api_key: secret}} />);
+    });
+    await act(async () => { container.querySelector<HTMLButtonElement>('button')!.click(); });
+    assert.equal(container.querySelector('[data-state="state"]')?.textContent, 'unknown');
+    const record = listMutationJournal().find((item) => item.requestId === requestId);
+    assert.ok(record);
+    assert.ok(record.key.endsWith(`:request:${requestId}`));
+    assert.equal(record.state, 'unknown');
+    assert.equal(writes.some((value) => value.includes(secret) || value.includes('api_key')), false);
+    await act(async () => root.unmount());
+    assert.equal([...values.values()].some((value) => value.includes(secret)), false);
+    assert.equal(listMutationJournal().find((item) => item.requestId === requestId)?.state, 'unknown');
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    Object.defineProperties(globalThis, {
+      window: {value: previousWindow, configurable: true},
+      document: {value: previousDocument, configurable: true},
+      localStorage: {value: previousStorage, configurable: true},
+    });
+  }
+});
+
+test('another mounted caller cannot replace an unresolved operation with different input', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const {dom, root, container} = createDom();
+  let release: (() => void) | undefined;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  let calls = 0;
+  const invoker: RuntimeOperationInvoker = async () => { calls += 1; await pending; };
+  const selected = operation(`same-operation-${Date.now()}`);
+  try {
+    await act(async () => root.render(<>
+      <Probe currentOperation={selected} invoker={invoker} payload={{value: 'first'}} />
+      <Probe currentOperation={selected} invoker={invoker} payload={{value: 'second'}} />
+    </>));
+    const buttons = container.querySelectorAll<HTMLButtonElement>('button');
+    await act(async () => { buttons[0].click(); buttons[1].click(); });
+    assert.equal(calls, 1);
+    assert.equal(container.querySelectorAll('[data-state="state"]')[1].textContent, 'unknown');
+    release?.();
+    await act(async () => pending);
+    assert.equal(container.querySelectorAll('[data-state="state"]')[1].textContent, 'idle');
+    assert.equal(buttons[1].disabled, false);
+    await act(async () => { buttons[1].click(); });
+    assert.equal(calls, 2);
+  } finally {
+    release?.();
     act(() => root.unmount());
     dom.window.close();
     Object.defineProperties(globalThis, {
