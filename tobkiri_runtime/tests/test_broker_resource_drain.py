@@ -192,3 +192,47 @@ def test_retry_never_repeats_successful_resource_stage() -> None:
     drain.run()
     drain.run()
     assert calls == ["resources", "owner"]
+
+
+def test_close_during_admission_keeps_failed_release_and_owner_retryable() -> None:
+    """The exact acquired ticket is retained even if close wins before setup."""
+    fixture = make_broker()
+    acquire, release = fixture.admission.acquire, fixture.admission.release
+    owners: list[str] = []
+    attempts = 0
+
+    def acquire_while_closing(*args: Any) -> Any:
+        ticket = acquire(*args)
+        fixture.broker._closed = True
+        return ticket
+
+    def fail_release_until_retry(ticket: Any) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise RuntimeError("admission release failed")
+        release(ticket)
+
+    fixture.admission.acquire = acquire_while_closing
+    fixture.admission.release = fail_release_until_retry
+    try:
+        with pytest.raises(RuntimeError, match="admission release failed"):
+            fixture.broker.invoke(
+                frame(),
+                context(),
+                effect_scope={},
+                on_resources_drained=lambda: owners.append("released"),
+            )
+        assert not fixture.admission.released
+        assert owners == []
+        assert fixture.broker.has_undrained_requests()
+        with pytest.raises(RuntimeError, match="cleanup remains pending"):
+            fixture.broker.retry_resource_drains()
+        assert owners == []
+        fixture.broker.retry_resource_drains()
+        assert fixture.admission.released
+        assert owners == ["released"]
+        assert fixture.backend.starts == fixture.backend.invocations == 0
+        assert not fixture.broker.has_undrained_requests()
+    finally:
+        fixture.broker.close()

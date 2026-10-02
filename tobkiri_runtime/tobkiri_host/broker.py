@@ -619,6 +619,16 @@ class RequestBroker:
             estimate,
             min(30.0, remaining),
         )
+        admission_released = False
+
+        def release_admission_once() -> None:
+            nonlocal admission_released
+            if not admission_released:
+                self._admission.release(ticket)
+                admission_released = True
+
+        # Admission accounting is owned before any close race or further setup.
+        resource_drain.handoff(release_admission_once)
         cancellation_signal = (
             cancellation_requested
             if cancellation_requested is not None
@@ -629,13 +639,8 @@ class RequestBroker:
             binding.operation.effect_class,
             (binding.operation.contract_id, binding.operation.operation_id),
         )
-        with self._lifecycle_lock:
-            if self._closed:
-                self._admission.release(ticket)
-                raise RuntimeError("request broker is closed")
-            active_request_id = self._next_active_request_id
-            self._next_active_request_id += 1
-            self._active_requests[active_request_id] = active_request
+        active_request_id: int | None = None
+        materialization_attempted = False
         lease_issued = False
         background_requests: list[Future[object]] = []
         acceptance_request_id: str | None = None
@@ -647,7 +652,7 @@ class RequestBroker:
             nonlocal resources_released
             if resources_released:
                 return
-            if isinstance(backend, RequestScopedBackend):
+            if isinstance(backend, RequestScopedBackend) and materialization_attempted:
                 materialization_released = False
                 try:
                     backend.release_materialization(ticket.reservation.reservation_id)
@@ -672,7 +677,7 @@ class RequestBroker:
                         raise BackendUnavailableError(
                             "resident backend materialization is unaccounted"
                         )
-            self._admission.release(ticket)
+            release_admission_once()
             if acceptance_request_id is not None and self._acceptance_receipts is not None:
                 self._acceptance_receipts.record_resources_released(
                     acceptance_request_id,
@@ -680,13 +685,14 @@ class RequestBroker:
                     materialization=materialization_released,
                 )
             with self._lifecycle_lock:
-                self._active_requests.pop(active_request_id, None)
+                if active_request_id is not None:
+                    self._active_requests.pop(active_request_id, None)
             active_request.completed.set()
             if nested_cancellation_proof is not None and draining_future is not None:
                 nested_cancellation_proof.record_resource_drain(draining_future)
             resources_released = True
 
-        resource_drain.handoff(release_resources)
+        resource_drain.extend_cleanup(release_resources)
 
         def finish_resources(completed: Future[object] | None = None) -> None:
             resource_drain.run()
@@ -701,6 +707,12 @@ class RequestBroker:
                 pass
 
         try:
+            with self._lifecycle_lock:
+                if self._closed:
+                    raise RuntimeError("request broker is closed")
+                active_request_id = self._next_active_request_id
+                self._next_active_request_id += 1
+                self._active_requests[active_request_id] = active_request
             workload_key = WorkloadInstanceKey(
                 profile_id=context.profile_id,
                 activation_id=context.activation_id,
@@ -708,6 +720,7 @@ class RequestBroker:
                 execution_domain_profile=binding.route.execution_domain_profile,
                 security_epoch=context.security_epoch,
             )
+            materialization_attempted = True
             evidence = self._materialization.materialize(
                 workload_key,
                 backend,

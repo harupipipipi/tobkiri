@@ -32,6 +32,20 @@ class RequestResourceDrain:
             self._owned = True
             self._cleanup = cleanup
 
+    def extend_cleanup(self, cleanup: Callable[[], None]) -> None:
+        """Add verified resources before the already-owned admission cleanup."""
+        with self._lock:
+            if not self._owned or self._ready:
+                raise RuntimeError("request cleanup cannot be extended after drain")
+            prior = self._cleanup
+
+            def combined() -> None:
+                cleanup()
+                if prior is not None:
+                    prior()
+
+            self._cleanup = combined
+
     @property
     def ready(self) -> bool:
         """Return whether retry cannot race a still-running Provider."""
