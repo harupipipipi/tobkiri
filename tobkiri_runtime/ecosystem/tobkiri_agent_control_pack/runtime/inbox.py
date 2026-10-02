@@ -44,9 +44,7 @@ def deliver(
         integer(value["expires_at_ms"])
     old = next((x for x in plan["inbox"] if x["id"] == event_id), None)
     if old:
-        compare = {
-            k: v for k, v in value.items() if k not in {"at_ms", "status", "input_id"}
-        }
+        compare = {k: v for k, v in value.items() if k not in {"at_ms", "status", "input_id"}}
         if any(old[k] != v for k, v in compare.items()):
             raise Conflict("inbox event ID was rebound")
         return {"status": old["status"], "event": deepcopy(old), "deduplicated": True}
@@ -73,9 +71,7 @@ def deliver(
     return {"status": "pending", "event": deepcopy(value)}
 
 
-def prepare_input(
-    plan: dict[str, Any], values: Mapping[str, Any], now_ms: int
-) -> dict[str, Any]:
+def prepare_input(plan: dict[str, Any], values: Mapping[str, Any], now_ms: int) -> dict[str, Any]:
     """Receive at a real safe boundary; repeated input IDs retain the same batch."""
     if values["boundary"] not in SAFE_BOUNDARIES:
         raise ValueError("instruction boundary is unsafe")

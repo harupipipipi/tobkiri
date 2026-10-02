@@ -16,10 +16,11 @@ from tobkiri_protocol.work_plan_v1 import (
     REPLACE_CONTRACT,
     RESOURCE_CONTRACT,
 )
-from .ports import AGENT, CONVERSATION, GENERATE, MODEL
+from .ports import SAVED, CONVERSATION, GENERATE, MODEL
 from .schedules import SCHEDULE_ACTION, SCHEDULE_RESOURCE
 from .service import Actor, WorkPlanService
 from .store import PlanStore, digest, identifier, new_plan
+from .workflow import WORKFLOW, REVIEW, ReviewWorkflow
 
 PACK_ID = "tobkiri_agent_control_pack"
 CONTRACTS = {
@@ -31,9 +32,10 @@ CONTRACTS = {
     "inbox": (INBOX_CONTRACT, "inbox-action"),
     "execute": ("tobkiri.action.work-plan.execute.v1", "work-plan-execute"),
     "job": ("tobkiri.action.job.adapter.v1", "work-plan-job"),
+    "review": (REVIEW, "work-plan-review"),
 }
 DEPENDENCIES = frozenset(
-    {CONVERSATION, SCHEDULE_ACTION, SCHEDULE_RESOURCE, MODEL, GENERATE, AGENT}
+    {CONVERSATION, SCHEDULE_ACTION, SCHEDULE_RESOURCE, MODEL, GENERATE, SAVED, WORKFLOW}
 )
 _ACTIONS = {
     "goal.set",
@@ -94,11 +96,7 @@ class WorkPlanHostFactory:
                 or payload.get("profile_id", context.profile_id) != context.profile_id
             ):
                 raise PermissionError("work-plan invocation scope is invalid")
-            values = {
-                k: v
-                for k, v in payload.items()
-                if k not in {"profile_id", "_session_id"}
-            }
+            values = {k: v for k, v in payload.items() if k not in {"profile_id", "_session_id"}}
             actor_id = invocation.presentation_owner_principal_id
             # Grants derive from the exact Broker-admitted operation; selecting a
             # model, supplying approved:true or writing actor text grants nothing.
@@ -110,16 +108,14 @@ class WorkPlanHostFactory:
                 "inbox": {"inbox.consume"},
                 "execute": {"plan.execute"},
                 "job": {"plan.review"},
+                "review": {"plan.review"},
                 "resource": set(),
             }[self.kind]
             actor = Actor(actor_id, frozenset(grants))
             if self.kind == "resource":
                 if values == {"operation": "list"}:
                     return {"plans": store.list()}
-                if (
-                    set(values) == {"operation", "plan_id"}
-                    and values["operation"] == "get"
-                ):
+                if set(values) == {"operation", "plan_id"} and values["operation"] == "get":
                     return {"plan": _display(store.get(identifier(values["plan_id"])))}
                 if (
                     set(values) == {"operation", "conversation_id"}
@@ -152,27 +148,16 @@ class WorkPlanHostFactory:
                 f"request-{digest(invocation.envelope.context.request_id)[:24]}",
             )
             if "conversation_id" in values:
-                values.setdefault(
-                    "plan_id", f"plan-{digest(values['conversation_id'])[:24]}"
-                )
+                values.setdefault("plan_id", f"plan-{digest(values['conversation_id'])[:24]}")
             if values.get("operation") == "goal.set":
                 values.setdefault("goal_id", f"goal-{digest(values['plan_id'])[:24]}")
             if values.get("operation") == "goal.prepare_replace":
-                values.setdefault(
-                    "preview_id", f"preview-{digest(values['operation_id'])[:24]}"
-                )
+                values.setdefault("preview_id", f"preview-{digest(values['operation_id'])[:24]}")
             if values.get("operation") == "todo.add":
-                values.setdefault(
-                    "item_id", f"todo-{digest(values['operation_id'])[:24]}"
-                )
+                values.setdefault("item_id", f"todo-{digest(values['operation_id'])[:24]}")
             if values.get("operation") == "remind.deliver":
-                values.setdefault(
-                    "event_id", f"event-{digest(values['operation_id'])[:24]}"
-                )
-            if (
-                values.get("operation") == "settings.configure"
-                and "settings" not in values
-            ):
+                values.setdefault("event_id", f"event-{digest(values['operation_id'])[:24]}")
+            if values.get("operation") == "settings.configure" and "settings" not in values:
                 values["settings"] = {
                     key: values.pop(key)
                     for key in ("executor", "reviewer", "enabled", "interval_seconds")
@@ -192,9 +177,7 @@ class WorkPlanHostFactory:
                     else {"goal.commit_replace"}
                 )
                 if values.get("operation") not in allowed:
-                    raise PermissionError(
-                        "work-plan action does not match its authority"
-                    )
+                    raise PermissionError("work-plan action does not match its authority")
                 return service.action(values, actor)
             if self.kind == "context":
                 if values.get("operation") == "prepare_input_for_conversation":
@@ -225,6 +208,10 @@ class WorkPlanHostFactory:
                 if values.pop("operation", None) != "run_next":
                     raise ValueError("execution operation is invalid")
                 return service.run_next(values, actor)
+            if self.kind == "review":
+                if values.pop("operation", None) != "inspect":
+                    raise ValueError("review operation is invalid")
+                return service.review(values, actor)
             if values.get("operation") == "describe":
                 return {"action_ids": ["agent-control.review", "agent-control.remind"]}
             if values.get("operation") in {"status", "cancel"}:
@@ -233,6 +220,10 @@ class WorkPlanHostFactory:
                 if not plan:
                     return {"status": "cancelled"}
                 key = f"occurrence-{__import__('hashlib').sha256(str(values.get('idempotency_key')).encode()).hexdigest()[:24]}"
+                if values.get("action_id") == "agent-control.review":
+                    return ReviewWorkflow(client).status(
+                        key, cancel=values["operation"] == "cancel"
+                    )
                 if values["operation"] == "cancel":
                     return {
                         "status": "cancelled"

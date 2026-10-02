@@ -13,6 +13,8 @@ import json
 import re
 from typing import Any
 
+from tobkiri_protocol.saved_task_context import validate_saved_task_context
+
 TARGETS = (
     ("tobkiri.resource.conversation.v1", "rumi_conversation_store_pack.conversation-resource"),
     ("tobkiri.action.message.manage.v1", "rumi_conversation_store_pack.message-manage"),
@@ -164,6 +166,7 @@ def _request(value: Any) -> dict[str, Any]:
         "tool_selection",
         "strategy_reference",
         "thinking_level",
+        "task_context",
     } != _REQUEST_FIELDS:
         raise ValueError("saved conversation request fields are invalid")
     if "strategy_reference" in value and value["strategy_reference"] is not None:
@@ -178,6 +181,12 @@ def _request(value: Any) -> dict[str, Any]:
     _identifier(value["turn_id"])
     _identifier(value["conversation_id"])
     _revision(value["conversation_revision"])
+    if "task_context" in value:
+        validate_saved_task_context(
+            value["task_context"],
+            conversation_id=value["conversation_id"],
+            turn_id=value["turn_id"],
+        )
     if not _saved_user_content(value["content"]):
         raise ValueError("saved conversation user content is invalid")
     selection = value.get("tool_selection", {})
@@ -215,7 +224,7 @@ def _request(value: Any) -> dict[str, Any]:
 def _state_request(value: Any) -> dict[str, Any]:
     """Validate compact request identity retained after the user append."""
     fields = {"turn_id", "conversation_id", "conversation_revision"}
-    optional = {"tool_selection", "strategy_reference", "thinking_level"}
+    optional = {"tool_selection", "strategy_reference", "thinking_level", "task_context"}
     if type(value) is not dict or set(value) - optional != fields:
         raise ValueError("saved continuation request fields are invalid")
     _identifier(value["turn_id"])
@@ -227,7 +236,7 @@ def _state_request(value: Any) -> dict[str, Any]:
         "none", "low", "medium", "high", "xhigh"
     }:
         raise ValueError("saved conversation thinking level is invalid")
-    if "tool_selection" in value:
+    if "tool_selection" in value or "task_context" in value:
         _request({**value, "content": "saved content"})
     return value
 

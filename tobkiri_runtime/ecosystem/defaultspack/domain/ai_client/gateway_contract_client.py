@@ -11,7 +11,6 @@ from core_runtime.global_contract_dispatch import (
     invoke_global_contract,
 )
 from core_runtime.profile_paths import active_profile_id
-from domain.chat.instruction_context import acknowledge_instruction_context
 
 _GENERATE_CONTRACT = "rumi.service.ai.generate.v1"
 _STREAM_CONTRACT = "rumi.service.ai.stream.v1"
@@ -137,16 +136,6 @@ def _invoke(contract_id: str, operation: str, payload: Mapping[str, Any]) -> Any
     )
 
 
-def _acknowledge_accepted_context(request: Mapping[str, Any]) -> None:
-    """Record acceptance after a successful model response, never at preparation."""
-    projection = request.get("instruction_context")
-    if isinstance(projection, Mapping):
-        session = get_container().get_or_none("v4_dispatch_session")
-        if session is None:
-            raise GlobalContractUnavailable("context acceptance session is unavailable")
-        acknowledge_instruction_context(session, projection)
-
-
 class ContractLLMGateway:
     """Compatibility object for orchestration that expects gateway methods."""
 
@@ -167,7 +156,7 @@ class ContractLLMGateway:
             parameters = request.get("parameters")
         parameters = dict(parameters or {}) if isinstance(parameters, Mapping) else {}
         try:
-            response = generate(
+            return generate(
                 {
                     "request_id": request.get("request_id"),
                     "messages": list(request.get("messages") or []),
@@ -187,8 +176,6 @@ class ContractLLMGateway:
                     },
                 }
             )
-            _acknowledge_accepted_context(request)
-            return response
         except (GlobalContractInvocationError, GlobalContractUnavailable):
             raise
 
@@ -200,7 +187,7 @@ class ContractLLMGateway:
             parameters = request.get("parameters")
         parameters = dict(parameters or {}) if isinstance(parameters, Mapping) else {}
         try:
-            events = (
+            return iter(
                 stream(
                     {
                         "request_id": request.get("request_id"),
@@ -222,8 +209,5 @@ class ContractLLMGateway:
                     }
                 )
             )
-            if any(event.get("type") == "stream_end" and event.get("finish_reason") != "error" for event in events):
-                _acknowledge_accepted_context(request)
-            return iter(events)
         except (GlobalContractInvocationError, GlobalContractUnavailable):
             raise

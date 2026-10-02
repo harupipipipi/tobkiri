@@ -80,9 +80,7 @@ def claim(plan: dict[str, Any], item_id: str, run_id: str) -> dict[str, Any]:
     item = next_item(plan)
     if not item or item["id"] != item_id:
         raise Conflict("Todo is not ready for a claim")
-    item.update(
-        {"status": "in_progress", "run_id": run_id, "revision": item["revision"] + 1}
-    )
+    item.update({"status": "in_progress", "run_id": run_id, "revision": item["revision"] + 1})
     return {"status": "claimed", "todo": item}
 
 

@@ -9,7 +9,7 @@ from ecosystem.tobkiri_agent_control_pack.runtime.inbox import (
     prepare_input,
 )
 from ecosystem.tobkiri_agent_control_pack.runtime.ports import (
-    AGENT,
+    SAVED,
     CONVERSATION,
     GENERATE,
     MODEL,
@@ -21,6 +21,7 @@ from ecosystem.tobkiri_agent_control_pack.runtime.schedules import (
 from ecosystem.tobkiri_agent_control_pack.runtime.service import Actor, WorkPlanService
 from ecosystem.tobkiri_agent_control_pack.runtime.store import Conflict, PlanStore
 from ecosystem.rumi_agent_runtime_service_pack.runtime.runtime import _task_context
+from tobkiri_protocol.canonical import canonical_digest
 
 USER = Actor(
     "operator",
@@ -49,23 +50,22 @@ class FakePorts:
             "id": "conversation",
             "conversation_revision": 1,
             "model": "test-model",
-            "messages": [
-                {"id": "evidence-1", "role": "tool", "content": "test failed"}
-            ],
+            "messages": [{"id": "evidence-1", "role": "tool", "content": "test failed"}],
         }
         self.verdict = "drift"
         self.fail: str | None = None
         self.status = "completed"
         self.tools = 0
         self.callback: Any = None
+        self.receipts: dict[str, Any] = {}
 
-    def invoke(
-        self, contract: str, operation: str, payload: Mapping[str, Any]
-    ) -> dict[str, Any]:
+    def invoke(self, contract: str, operation: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         self.calls.append((contract, operation, deepcopy(dict(payload))))
         if contract == self.fail:
             raise RuntimeError("offline adapter")
         if contract == CONVERSATION:
+            if payload["operation"] == "saved_receipt":
+                return {"receipt": deepcopy(self.receipts.get(payload["turn_id"]))}
             return {"conversation": deepcopy(self.conversation)}
         if contract == SCHEDULE_RESOURCE:
             return {
@@ -125,18 +125,57 @@ class FakePorts:
                     "instruction": "Return to the failing test.",
                 },
             }
-        if contract == AGENT:
+        if contract == SAVED:
             self.tools += 1
-            assert payload["task_context"]["version"] == "tobkiri.context-projection.v1"
+            request = payload["request"]
+            assert request["task_context"]["version"] == "tobkiri.saved-task-context.v1"
+            ids = [
+                "message:"
+                + canonical_digest(
+                    [request["conversation_id"], request["turn_id"], role]
+                ).removeprefix("sha256:")
+                for role in ("user", "assistant")
+            ]
+            reference = {
+                "assistant_message_id": ids[1],
+                "conversation_id": request["conversation_id"],
+                "conversation_revision": request["conversation_revision"] + 2,
+                "user_message_id": ids[0],
+                "outcome_digest": canonical_digest("fixture"),
+            }
+            receipt = {
+                "turn_id": request["turn_id"],
+                "conversation_id": request["conversation_id"],
+                "initial_revision": request["conversation_revision"],
+                "user_revision": request["conversation_revision"] + 1,
+                "user_message_id": ids[0],
+                "assistant_message_id": ids[1],
+                "input_digest": canonical_digest(payload),
+                "result_reference": reference,
+            }
+            self.receipts[request["turn_id"]] = receipt
+            self.conversation["messages"].append(
+                {
+                    "id": ids[1],
+                    "parent_id": ids[0],
+                    "role": "assistant",
+                    "content": "finished",
+                    "tool_logs": [
+                        {
+                            "tool_name": "test-tool",
+                            "tool_call_id": "tool-one",
+                            "result": '{"status":"ok"}',
+                        }
+                    ],
+                }
+            )
             return {
                 "status": self.status,
-                "input_accepted": True,
-                "tool_results": [
-                    {
-                        "intent": {"operation": "test-tool"},
-                        "result": {"status": "ok", "value": self.tools},
-                    }
-                ],
+                "turn": {
+                    "id": request["turn_id"],
+                    "input_digest": receipt["input_digest"],
+                    "result_reference": reference,
+                },
             }
         raise AssertionError((contract, operation))
 
@@ -144,9 +183,7 @@ class FakePorts:
 @pytest.fixture
 def rig(tmp_path: Path) -> tuple[WorkPlanService, FakePorts]:
     ports = FakePorts()
-    return WorkPlanService(
-        PlanStore(tmp_path, "profile-a"), ports, clock=lambda: ports.now
-    ), ports
+    return WorkPlanService(PlanStore(tmp_path, "profile-a"), ports, clock=lambda: ports.now), ports
 
 
 def apply(service: WorkPlanService, operation: str, **fields: Any) -> dict[str, Any]:
@@ -168,7 +205,7 @@ def configure(service: WorkPlanService) -> None:
     apply(
         service,
         "settings.configure",
-        settings={"executor": "executor", "reviewer": "reviewer"},
+        settings={"executor": "conversation:conversation", "reviewer": "reviewer"},
     )
 
 
@@ -193,11 +230,11 @@ def run(service: WorkPlanService, key: str = "run-one") -> dict[str, Any]:
 
 def trigger(service: WorkPlanService, key: str = "occurrence-1") -> dict[str, Any]:
     plan = service.store.get("plan")
-    return service.dispatch(
+    return service.review(
         {
-            "action_id": "agent-control.review",
             "occurrence_id": key,
-            "payload": {"plan_id": "plan", "generation": plan["generation"]},
+            "plan_id": "plan",
+            "generation": plan["generation"],
         },
         USER,
     )
@@ -291,9 +328,7 @@ def test_dependency_order_runs_actual_test_callable_without_timer_wait(
         ("failed", "blocked"),
     ],
 )
-def test_wait_cancel_failure_are_not_completed(
-    rig: Any, status: str, expected: str
-) -> None:
+def test_wait_cancel_failure_are_not_completed(rig: Any, status: str, expected: str) -> None:
     service, ports = rig
     configure(service)
     add(service)
@@ -306,9 +341,7 @@ def test_natural_language_self_report_without_supported_receipts_is_unverified(
 ) -> None:
     service, _ = rig
     configure(service)
-    apply(
-        service, "todo.add", item_id="one", body="Work", criteria=["natural condition"]
-    )
+    apply(service, "todo.add", item_id="one", body="Work", criteria=["natural condition"])
     assert run(service)["status"] == "needs_review"
 
 
@@ -316,11 +349,9 @@ def test_ambiguous_result_and_restart_never_reissue_uncertain_tool(rig: Any) -> 
     service, ports = rig
     configure(service)
     add(service)
-    ports.fail = AGENT
+    ports.fail = SAVED
     run(service)
-    restarted = WorkPlanService(
-        PlanStore(service.store.path.parents[4], "profile-a"), ports
-    )
+    restarted = WorkPlanService(PlanStore(service.store.path.parents[4], "profile-a"), ports)
     assert restarted.store.path == service.store.path
     assert run(restarted)["status"] == "waiting" and ports.tools == 0
 
@@ -345,7 +376,9 @@ def test_drift_replay_and_unresolved_finding_coalesce_and_ack_is_not_resolution(
     trigger(service)
     trigger(service, "occurrence-2")
     plan = service.store.get("plan")
-    assert len(plan["inbox"]) == 1 and plan["inbox"][0]["agent_binding"] == "executor"
+    assert (
+        len(plan["inbox"]) == 1 and plan["inbox"][0]["agent_binding"] == "conversation:conversation"
+    )
     accepted = service.prepare_input(
         {
             "plan_id": "plan",
@@ -353,16 +386,35 @@ def test_drift_replay_and_unresolved_finding_coalesce_and_ack_is_not_resolution(
             "expected_revision": plan["revision"],
             "operation_id": "input-one",
             "input_id": "turn-one",
-            "agent_binding": "executor",
+            "agent_binding": "conversation:conversation",
             "boundary": "before_turn",
         },
         USER,
     )
+    initial = {
+        "request": {
+            "turn_id": "turn-one",
+            "conversation_id": "conversation",
+            "conversation_revision": 1,
+            "content": "Keep original bytes",
+            "task_context": accepted["task_context"],
+        }
+    }
+    ports.receipts["turn-one"] = {
+        "turn_id": "turn-one",
+        "conversation_id": "conversation",
+        "initial_revision": 1,
+        "user_revision": 2,
+        "input_digest": canonical_digest(initial),
+        "user_message_id": "message:"
+        + canonical_digest(["conversation", "turn-one", "user"]).removeprefix("sha256:"),
+    }
     service.ack(
         {
             "plan_id": "plan",
             "expected_revision": accepted["plan"]["revision"],
             "operation_id": "ack-one",
+            "accepted_input": initial,
             "input_id": "turn-one",
             "event_ids": [plan["inbox"][0]["id"]],
         },
@@ -398,7 +450,7 @@ def test_manual_scheduled_instruction_uses_same_inbox_without_review(rig: Any) -
         "remind.create",
         reminder_id="manual",
         body="Continue",
-        agent_binding="executor",
+        agent_binding="conversation:conversation",
         timezone="Asia/Tokyo",
         delay_seconds=600,
     )
@@ -412,12 +464,11 @@ def test_manual_scheduled_instruction_uses_same_inbox_without_review(rig: Any) -
             "generation": reminder["generation"],
         },
     }
-    assert service.dispatch(values, USER)["status"] == "pending"
+    assert service.dispatch(values, USER)["status"] == "completed"
     assert not any(x[0] == GENERATE for x in ports.calls)
     apply(service, "remind.cancel", reminder_id="manual")
     assert (
-        service.dispatch({**values, "occurrence_id": "manual-two"}, USER)["status"]
-        == "cancelled"
+        service.dispatch({**values, "occurrence_id": "manual-two"}, USER)["status"] == "cancelled"
     )
 
 
@@ -430,7 +481,7 @@ def test_extra_instruction_does_not_replace_goal_or_recompact(rig: Any) -> None:
         "remind.deliver",
         event_id="extra",
         body="Start with X",
-        agent_binding="executor",
+        agent_binding="conversation:conversation",
     )
     assert service.store.get("plan")["goal"] == before["goal"]
     assert service.store.get("plan")["context"] == before["context"]
@@ -442,12 +493,8 @@ def test_whole_goal_commit_is_atomic_with_checkpoint_and_compaction_failure_roll
 ) -> None:
     service, ports = rig
     configure(service)
-    apply(
-        service, "goal.set", goal_id="goal", body="Old", constraints=["ask before push"]
-    )
-    preview = apply(service, "goal.prepare_replace", preview_id="preview", body="New")[
-        "preview"
-    ]
+    apply(service, "goal.set", goal_id="goal", body="Old", constraints=["ask before push"])
+    preview = apply(service, "goal.prepare_replace", preview_id="preview", body="New")["preview"]
     before = service.store.get("plan")
     ports.fail = GENERATE
     with pytest.raises(RuntimeError):
@@ -467,9 +514,7 @@ def test_whole_goal_commit_is_atomic_with_checkpoint_and_compaction_failure_roll
     )
     assert result["plan"]["goal"]["body"] == "New"
     assert result["plan"]["goal"]["constraints"] == ["ask before push"]
-    assert (
-        result["plan"]["context"]["goal_revision"] == result["plan"]["goal"]["revision"]
-    )
+    assert result["plan"]["context"]["goal_revision"] == result["plan"]["goal"]["revision"]
     assert result["plan"]["history"][-1]["checkpoint"]["goal"]["body"] == "Old"
 
 
@@ -516,7 +561,7 @@ def test_idempotency_rebinding_revision_and_conversation_scope(rig: Any) -> None
             conversation_id="other",
             event_id="extra",
             body="x",
-            agent_binding="executor",
+            agent_binding="conversation:conversation",
         )
 
 
@@ -532,7 +577,7 @@ def test_wrong_recipient_unsafe_boundary_and_stale_ack(rig: Any) -> None:
                 "expected_revision": plan["revision"],
                 "operation_id": "bad",
                 "input_id": "turn",
-                "agent_binding": "executor",
+                "agent_binding": "conversation:conversation",
                 "boundary": "before_turn",
             },
             Actor("outsider", frozenset({"inbox.consume"})),
@@ -541,7 +586,7 @@ def test_wrong_recipient_unsafe_boundary_and_stale_ack(rig: Any) -> None:
         prepare_input(
             plan,
             {
-                "agent_binding": "executor",
+                "agent_binding": "conversation:conversation",
                 "input_id": "turn",
                 "boundary": "inside_tool",
             },
