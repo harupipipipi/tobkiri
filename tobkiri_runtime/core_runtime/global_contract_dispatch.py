@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -65,6 +65,14 @@ class HostCredentialTransport(Protocol):
     ) -> Mapping[str, Any]:
         """Perform exactly one Host-bound credentialed JSON request."""
 
+    def stream_json(
+        self, *, endpoint: str, headers: Mapping[str, str], body: Mapping[str, Any],
+        credential_handle: str, provider_instance_id: str, credential_scope: str,
+        credential_scheme: str, deadline: float,
+        on_event: Callable[[Mapping[str, Any]], None],
+    ) -> Mapping[str, Any]:
+        """Perform one incremental Host-bound request; callbacks receive sanitized frames."""
+
     def select_git_https_credential(
         self,
         *,
@@ -100,6 +108,12 @@ class HostLocalModelTransport(Protocol):
         self, *, provider_instance_id: str, body: Mapping[str, Any], deadline: float,
     ) -> Mapping[str, Any]:
         """Invoke only the preapproved local text model, without caller URLs."""
+
+    def stream_chat(
+        self, *, provider_instance_id: str, body: Mapping[str, Any], deadline: float,
+        on_event: Callable[[Mapping[str, Any]], None],
+    ) -> Mapping[str, Any]:
+        """Deliver bounded actual frames without accepting an endpoint."""
 
 
 def _require_v4_session(value: object) -> V4ContractDispatch:
@@ -199,6 +213,40 @@ class GlobalContractClient:
             operation,
             payload,
         )
+
+    def stream_local_model_chat(
+        self, *, provider_instance_id: str, body: Mapping[str, Any], deadline: float,
+        on_event: Callable[[Mapping[str, Any]], None],
+    ) -> None:
+        """Use only the invocation-bound local streaming capability."""
+        if self.host_local_model_transport is None:
+            raise PermissionError("Host local model transport is unavailable")
+        self.host_local_model_transport.stream_chat(
+            provider_instance_id=provider_instance_id, body=body, deadline=deadline,
+            on_event=on_event,
+        )
+
+    def stream_json_with_credential(
+        self, *, endpoint: str, headers: Mapping[str, str], body: Mapping[str, Any],
+        credential_handle: str, provider_instance_id: str, credential_scope: str,
+        credential_scheme: str, deadline: float,
+        on_event: Callable[[Mapping[str, Any]], None],
+    ) -> None:
+        """Keep credential application and per-frame redaction inside Host."""
+        if self.host_credential_transport is None:
+            raise PermissionError("Host credential transport is unavailable")
+        try:
+            self.host_credential_transport.stream_json(
+                endpoint=endpoint, headers=headers, body=body,
+                credential_handle=credential_handle,
+                provider_instance_id=provider_instance_id,
+                credential_scope=credential_scope, credential_scheme=credential_scheme,
+                deadline=deadline, on_event=on_event,
+            )
+            return
+        except Exception:
+            pass
+        raise HostCredentialTransportError
 
     def post_local_model_chat(
         self, *, provider_instance_id: str, body: Mapping[str, Any], deadline: float,

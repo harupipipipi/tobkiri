@@ -17,6 +17,8 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderInvocationContextV4,
 )
 from core_runtime.local_model_authority import LocalModelRequest
+from ecosystem.rumi_provider_adapters_pack.runtime.streaming import stream_request
+from tobkiri_protocol.turn_progress_v1 import ACTION as PROGRESS_CONTRACT
 
 REGISTRY_CONTRACT = "tobkiri.resource.ai.provider.registry.v1"
 REGISTRY_GENERATE_OPERATION = (
@@ -222,13 +224,18 @@ def _openai_compatible(
     body = {
         "model": _provider_model_id(request),
         "messages": list(request.get("messages") or []),
-        "stream": False,
         **dict(request.get("parameters") or {}),
+        "stream": streaming,
     }
     tools = request.get("tools")
     if isinstance(tools, list) and tools:
         body["tools"] = tools
     headers = dict(DEFAULT_JSON_HEADERS)
+    if streaming:
+        return stream_request(
+            client, request, connection, body=body, endpoint=endpoint, headers=headers,
+            credential_handle=credential_handle, credential_scope=credential_scope,
+        )
     value = _post(
         client,
         endpoint,
@@ -269,8 +276,13 @@ def _local_openai(
         raise GlobalContractInvocationError("incompatible", "local model route supports plain text only")
     body = {
         **dict(parameters), "model": _provider_model_id(request),
-        "messages": _local_text_messages(request.get("messages")), "stream": False,
+        "messages": _local_text_messages(request.get("messages")), "stream": streaming,
     }
+    if streaming:
+        return stream_request(
+            client, request, connection, body=body, endpoint=None,
+            headers={}, local=True,
+        )
     try:
         value = client.post_local_model_chat(
             provider_instance_id=str(connection["provider_instance_id"]),
@@ -329,11 +341,18 @@ def _anthropic(
         "messages": list(request.get("messages") or []),
         "max_tokens": int(parameters.pop("max_tokens", 1024)),
         **parameters,
+        "stream": streaming,
     }
     headers = {
         **DEFAULT_JSON_HEADERS,
         "anthropic-version": "2023-06-01",
     }
+    if streaming:
+        return stream_request(
+            client, request, connection, body=body, endpoint=endpoint, headers=headers,
+            credential_handle=credential_handle, credential_scope=credential_scope,
+            scheme="anthropic", protocol="anthropic",
+        )
     value = _post(
         client,
         endpoint,
@@ -551,7 +570,10 @@ class ProviderAdapterHostFactoryV4:
             invocation: HostProviderInvocationContextV4,
         ) -> Mapping[str, Any]:
             client = invocation.contract_client(
-                allowed_contract_ids=frozenset({REGISTRY_CONTRACT}),
+                allowed_contract_ids=frozenset(
+                    {REGISTRY_CONTRACT, PROGRESS_CONTRACT}
+                    if operation_factory is create_stream_operation else {REGISTRY_CONTRACT}
+                ),
                 consumer_pack_id="rumi_provider_adapters_pack",
             )
             return operation_factory(client)(operation_name, payload)

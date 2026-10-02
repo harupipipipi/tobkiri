@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from core_runtime.authority.v4 import LeaseState
 from tobkiri_host.broker import RequestEnvelope
@@ -18,9 +18,24 @@ class CapturedInvocationScopeV4:
     assert_current: Callable[[], None]
     parent: CapturedInvocationScopeV4 | None = None
 
+    def public_payload(self) -> dict[str, Any]:
+        """Copy normalized input without Host session metadata or mutable aliases."""
+
+        def copy(value: Any) -> Any:
+            if isinstance(value, Mapping):
+                return {key: copy(item) for key, item in value.items()}
+            if isinstance(value, (tuple, list)):
+                return [copy(item) for item in value]
+            return value
+
+        return {
+            key: copy(item) for key, item in self.envelope.payload.items() if key != "_session_id"
+        }
+
 
 def assert_dispatched_invocation(
-    envelope: RequestEnvelope, authority_store: Any,
+    envelope: RequestEnvelope,
+    authority_store: Any,
 ) -> None:
     """Check the actual sealed lease and all revocations without minting authority."""
 
@@ -31,15 +46,19 @@ def assert_dispatched_invocation(
         or authority_store.security_epoch != context.security_epoch
     ):
         raise PermissionError("captured invocation is no longer active")
-    durable, state = authority_store.inspect_lease_token(
-        envelope.lease.token.decode("ascii")
-    )
+    durable, state = authority_store.inspect_lease_token(envelope.lease.token.decode("ascii"))
     if state is not LeaseState.DISPATCHED or (
         durable.caller.principal_id != context.caller_principal.value
         or durable.target.principal_id != envelope.target_principal.value
         or durable.target.operation_id != envelope.operation_id
         or durable.profile_id != context.profile_id
         or durable.activation_id != context.activation_id
+        or durable.activation_digest != context.activation_digest
+        or durable.plan_digest != context.plan_digest
+        or durable.profile_authority_digest != context.profile_authority_digest
+        or durable.fencing_token != context.fencing_token
+        or durable.caller_domain_id != context.caller_domain_id
+        or durable.caller_boot_epoch != context.caller_boot_epoch
         or durable.security_epoch != context.security_epoch
         or durable.target_domain_id != context.target_domain_id
         or durable.target_boot_epoch != context.target_boot_epoch
@@ -47,14 +66,17 @@ def assert_dispatched_invocation(
         or durable.request_digest != envelope.request_digest
     ):
         raise PermissionError("captured invocation lease does not match")
-    if any(authority_store.is_revoked(kind, identity) for kind, identity in (
-        ("function_principal", durable.caller.principal_id),
-        ("function_principal", durable.target.principal_id),
-        ("execution_domain", durable.caller_domain_id),
-        ("execution_domain", durable.target_domain_id),
-        ("profile", durable.profile_id),
-        ("activation", durable.activation_id),
-        ("grant", durable.grant_id),
-        ("provider_authority", durable.provider_authority_id),
-    )):
+    if any(
+        authority_store.is_revoked(kind, identity)
+        for kind, identity in (
+            ("function_principal", durable.caller.principal_id),
+            ("function_principal", durable.target.principal_id),
+            ("execution_domain", durable.caller_domain_id),
+            ("execution_domain", durable.target_domain_id),
+            ("profile", durable.profile_id),
+            ("activation", durable.activation_id),
+            ("grant", durable.grant_id),
+            ("provider_authority", durable.provider_authority_id),
+        )
+    ):
         raise PermissionError("captured invocation authority was revoked")

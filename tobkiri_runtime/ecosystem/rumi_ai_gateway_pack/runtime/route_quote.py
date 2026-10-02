@@ -32,9 +32,17 @@ _READ_OPERATIONS = frozenset({
     (gateway.REQUEST_PREPARE_CONTRACT, gateway.REQUEST_PREPARE_GENERATE_OPERATION),
     (gateway.ROUTING_CONTRACT, gateway.ROUTING_GENERATE_OPERATION),
 })
+_READ_OPERATIONS = _READ_OPERATIONS | frozenset({
+    (gateway.CATALOG_CONTRACT, gateway.CATALOG_STREAM_OPERATION),
+    (gateway.HEALTH_CONTRACT, gateway.HEALTH_STREAM_OPERATION),
+    (gateway.MODEL_PROFILE_CONTRACT, gateway.MODEL_PROFILE_STREAM_OPERATION),
+    (gateway.PROVIDER_REGISTRY_CONTRACT, gateway.PROVIDER_REGISTRY_STREAM_OPERATION),
+    (gateway.REQUEST_PREPARE_CONTRACT, gateway.REQUEST_PREPARE_STREAM_OPERATION),
+    (gateway.ROUTING_CONTRACT, gateway.ROUTING_STREAM_OPERATION),
+})
 _CONTRACTS = frozenset(contract for contract, _ in _READ_OPERATIONS) | {
     # Read provider metadata only to prove that the selected route is executable.
-    gateway.GENERATE_PROVIDER_CONTRACT,
+    gateway.GENERATE_PROVIDER_CONTRACT, gateway.STREAM_PROVIDER_CONTRACT,
 }
 
 
@@ -83,7 +91,6 @@ def create_route_quote_operation(
         allowed_contract_ids=client.allowed_contract_ids & _CONTRACTS,
         consumer_pack_id=client.consumer_pack_id,
     )
-    resolve = gateway.create_generate_operation(readonly)
 
     def operation(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         if name != FUNCTION_ID:
@@ -92,6 +99,10 @@ def create_route_quote_operation(
         model_profile_id, model_reference = _quote_model_reference(payload)
         if not (model_profile_id or model_reference):
             raise ValueError("AI route quote requires a model reference")
+        streaming = payload.get("delivery_mode", "buffered") == "incremental"
+        resolve = gateway.create_stream_operation(readonly) if streaming else gateway.create_generate_operation(readonly)
+        provider_contract = gateway.STREAM_PROVIDER_CONTRACT if streaming else gateway.GENERATE_PROVIDER_CONTRACT
+        provider_operation = gateway.STREAM_PROVIDER_OPERATION if streaming else gateway.GENERATE_PROVIDER_OPERATION
         resolved = resolve(
             "resolve",
             {
@@ -110,10 +121,10 @@ def create_route_quote_operation(
         )
         selected = [
             item
-            for item in readonly.providers(gateway.GENERATE_PROVIDER_CONTRACT)
+            for item in readonly.providers(provider_contract)
             if item.get("provider_instance_id")
             == resolved.get("provider_instance_id")
-            and item.get("operation_id") == gateway.GENERATE_PROVIDER_OPERATION
+            and item.get("operation_id") == provider_operation
         ]
         if len(selected) != 1:
             raise GlobalContractUnavailable(
@@ -182,10 +193,12 @@ def _validate_quote_input(payload: Mapping[str, Any]) -> None:
         "model_profile_id",
         "model_reference",
         "messages",
-        "requirements",
+        "requirements", "delivery_mode",
     }
     if set(payload) - permitted:
         raise ValueError("AI route quote input fields are invalid")
+    if payload.get("delivery_mode", "buffered") not in {"buffered", "incremental"}:
+        raise ValueError("AI route quote delivery mode is invalid")
     messages = payload.get("messages")
     if (
         not isinstance(messages, list)

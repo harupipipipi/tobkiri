@@ -2459,15 +2459,33 @@ def capture_production_dispatch(
                 if target[0]
                 in {
                     "tobkiri.service.ai.generate.v1",
+                    "tobkiri.service.ai.stream.v1",
                     "tobkiri.service.ai.strategy.dispatch.v1",
                 }
                 else project_saved_tool_result if target[0] == "tobkiri.service.tool.invoke.v1" else None
             ),
         )
 
+    def saved_stream_available(
+        outer_request: object, request: Mapping[str, Any], conversation: Mapping[str, Any],
+    ) -> bool:
+        from tobkiri_protocol.turn_progress_v1 import (
+            AI_STREAM, ACTION, ACTION_OPERATION, RESOURCE, RESOURCE_OPERATION,
+        )
+        try:
+            require_saved_targets(outer_request, (
+                AI_STREAM, (ACTION, ACTION_OPERATION), (RESOURCE, RESOURCE_OPERATION),
+            ))
+            outcome = saved_dispatch(outer_request, (ACTION, ACTION_OPERATION), {"phase": "ready"})
+            value = outcome.get("value")
+            return outcome.get("status") == "ok" and isinstance(value, Mapping) and value.get("ready") is True
+        except (AuthorityDenied, PermissionError, RuntimeError, ValueError):
+            return False
+
     saved_callbacks = SavedBridgeCallbacks(
         saved_dispatch,
         require_saved_targets,
+        saved_stream_available,
     )
 
     def saved_capability_bridge(

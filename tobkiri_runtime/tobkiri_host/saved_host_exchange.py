@@ -53,17 +53,13 @@ class SavedHostExchange:
         if request is not None:
             initial = validate_saved_conversation_input({"request": dict(request)})
             plan = SavedTurnPlan(initial["request"])
-            self._tool_plan = (
-                plan
-                if plan.enabled or plan.strategy_reference is not None
-                else None
-            )
+            self._tool_plan = plan
             self._max_frame_bytes = MAX_SAVED_FRAME_BYTES
 
     @property
     def maximum_hops(self) -> int:
         """Return the Host-owned finite bound for this initial request."""
-        return MAX_SAVED_TOOL_HOPS if self._tool_plan else len(TARGETS)
+        return MAX_SAVED_TOOL_HOPS if self._tool_plan and (self._tool_plan.enabled or self._tool_plan.strategy_reference is not None) else len(TARGETS)
 
     def callback_frame(self, frame: ValidatedContinuation) -> SavedToolFrame:
         """Pass Host-bound branch and tool scope without serializing either claim."""
@@ -78,6 +74,7 @@ class SavedHostExchange:
             stage,
             self._user_revision,
             self._user_current_node_id,
+            self._tool_plan.ai_mode if self._tool_plan else "buffered",
         )
 
     def accept(self, wrapper: Mapping[str, Any]) -> ValidatedContinuation:

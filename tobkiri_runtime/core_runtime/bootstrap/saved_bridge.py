@@ -25,6 +25,10 @@ from tobkiri_protocol.saved_conversation import (
 )
 
 from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_HOPS, saved_tool_messages, saved_tool_logs
+from tobkiri_protocol.turn_progress_v1 import (
+    AI_STREAM, ACTION, ACTION_OPERATION, RESOURCE, RESOURCE_OPERATION,
+    TTL_SECONDS, payload_digest,
+)
 from tobkiri_protocol.saved_context import (
     PROMPT_TARGET,
     resolved_saved_prompt,
@@ -78,6 +82,7 @@ ALLOWED_TARGETS = (
     STRATEGY_CATALOG,
     *TOOL_TARGETS,
     PROMPT_TARGET,
+    AI_STREAM, (ACTION, ACTION_OPERATION), (RESOURCE, RESOURCE_OPERATION),
 )
 Dispatch = Callable[[object, Target, Mapping[str, Any]], Mapping[str, Any]]
 RequireTargets = Callable[[object, tuple[Target, ...]], None]
@@ -371,9 +376,38 @@ class SavedBridgeCallbacks:
         self,
         dispatch: Dispatch,
         require_targets: RequireTargets,
+        stream_available: Callable[[object, Mapping[str, Any], Mapping[str, Any]], bool] | None = None,
     ) -> None:
         self._dispatch = dispatch
         self._require_targets = require_targets
+        self._stream_available = stream_available
+
+    def _stream_ready(
+        self, outer: object, request: Mapping[str, Any], conversation: Mapping[str, Any],
+    ) -> bool:
+        """Resolve an exact stream route before selecting its first signed intent."""
+        if self._stream_available is None:
+            return False
+        try:
+            if not self._stream_available(outer, request, conversation):
+                return False
+            prompt = self._system_prompt(outer, conversation)
+            requirements: dict[str, Any] = {}
+            if _contains_inline_images(request["content"]):
+                requirements["modalities"] = ["image", "text"]
+            outcome = self._dispatch(outer, READINESS, {
+                "model_profile_id": conversation["model_reference"],
+                "messages": [
+                    *_messages(conversation, flatten_text_blocks=True, system_prompt=prompt),
+                    {"role": "user", "content": saved_user_text(request["content"])},
+                    *saved_task_context_messages(request),
+                ],
+                "requirements": requirements, "delivery_mode": "incremental",
+            })
+            value = outcome.get("value")
+            return outcome.get("status") == "ok" and isinstance(value, Mapping) and value.get("ready") is True
+        except (AuthorityDenied, ValueError, RuntimeError):
+            return False
 
     def _conversation(self, outer: object, request: Mapping[str, Any]) -> Mapping[str, Any]:
         conversation = self._read_conversation(outer, request["conversation_id"])
@@ -579,9 +613,11 @@ class SavedBridgeCallbacks:
         trace: list[dict[str, Any]] = []
         owner_revision: int | None = None
         owner_current_node_id: str | None = None
+        ai_mode = "buffered"
         if isinstance(frame, SavedToolFrame):
             owner_revision = frame.expected_conversation_revision
             owner_current_node_id = frame.expected_current_node_id
+            ai_mode = frame.ai_mode
             stage = frame.stage
             if enabled:
                 if frame.initial_digest != canonical_digest({"request": request}):
@@ -616,7 +652,7 @@ class SavedBridgeCallbacks:
             "user": TARGETS[1],
             "ai": STRATEGY
             if request.get("strategy_reference") is not None
-            else TARGETS[2],
+            else AI_STREAM if ai_mode == "incremental" else TARGETS[2],
             "assistant": TARGETS[3],
             "tool": TOOL,
         }.get(stage)
@@ -639,6 +675,17 @@ class SavedBridgeCallbacks:
             value: dict[str, Any] = {
                 "conversation": _saved_read_projection(conversation)
             }
+            # The route selection is an authenticated Host outcome; it never
+            # comes from Guest input or redirects an already sealed AI intent.
+            if (
+                self._stream_available is not None
+                and request.get("strategy_reference") is None
+                and request.get("tool_selection", {}).get("mode", "none") == "none"
+                and self._stream_ready(outer, request, conversation)
+            ):
+                value["delivery_mode"] = "incremental"
+            elif self._stream_available is not None:
+                value["delivery_mode"] = "buffered"
             prompt = self._system_prompt(outer, conversation)
             if prompt is not None:
                 value["system_prompt_digest"] = saved_prompt_digest(prompt)
@@ -778,6 +825,26 @@ class SavedBridgeCallbacks:
                 else arguments
             )
             self._recheck_linked_context(outer, request, conversation)
+            if target == AI_STREAM:
+                outer_context = getattr(outer, "context", None)
+                arguments["request_id"] = str(getattr(outer_context, "request_id", ""))
+                arguments["deadline"] = min(
+                    int(time.time()) + TTL_SECONDS,
+                    int(_strategy_deadline(outer) / 1000),
+                )
+                progress = self._dispatch(outer, (ACTION, ACTION_OPERATION), {
+                    "phase": "begin", "turn_id": request["turn_id"],
+                    "conversation_id": request["conversation_id"],
+                    "conversation_revision": owner_revision,
+                    "parent_id": owner_current_node_id,
+                    "input_digest": canonical_digest({"request": request}),
+                    "request_id": arguments["request_id"],
+                    "ai_input_digest": payload_digest(arguments),
+                })
+                value = progress.get("value")
+                if progress.get("status") != "ok" or not isinstance(value, Mapping) or not isinstance(value.get("progress_id"), str):
+                    raise AuthorityDenied("saved live progress reservation failed")
+                arguments["progress_id"] = value["progress_id"]
             outcome = self._dispatch(outer, target, dispatch_arguments)
             additions: dict[str, Any] = {}
             if (

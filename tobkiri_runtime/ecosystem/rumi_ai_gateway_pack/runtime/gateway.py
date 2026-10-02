@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from tobkiri_protocol.turn_progress_v1 import ACTION as PROGRESS_CONTRACT, ACTION_OPERATION as PROGRESS_OPERATION
+from tobkiri_protocol.turn_progress_v1 import payload_digest
+
 import math
 import threading
 import time
@@ -126,6 +129,7 @@ _GENERATE_ALLOWED_CONTRACTS = frozenset(
 _STREAM_ALLOWED_CONTRACTS = frozenset(
     {
         CATALOG_CONTRACT,
+        PROGRESS_CONTRACT,
         STREAM_PROVIDER_CONTRACT,
         HEALTH_CONTRACT,
         USAGE_CONTRACT,
@@ -203,12 +207,12 @@ def create_stream_operation(client: GlobalContractClient):
 
     def operation(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         if name not in {
-            "stream",
+            "stream", "resolve",
             "invoke",
             "rumi_ai_gateway_pack.ai-gateway.stream",
         }:
             raise ValueError(f"unknown stream operation: {name}")
-        return _invoke(client, payload, streaming=True)
+        return _invoke(client, {**dict(payload), "resolve_only": name == "resolve"}, streaming=True)
 
     return operation
 
@@ -485,6 +489,14 @@ def _invoke(
             attempt_candidate.raw.get("provider_id") or ""
         )
         try:
+            if streaming and payload.get("progress_id") is not None:
+                invocation["progress_id"] = payload["progress_id"]
+                metadata = provider_metadata[attempt_candidate.provider_instance_id]
+                client.invoke(PROGRESS_CONTRACT, PROGRESS_OPERATION, {
+                    "phase": "bind", "progress_id": payload["progress_id"],
+                    "producer": metadata["principal_id"],
+                    "producer_input_digest": payload_digest(invocation),
+                })
             value = client.invoke(
                 provider_contract,
                 STREAM_PROVIDER_OPERATION if streaming else GENERATE_PROVIDER_OPERATION,
@@ -514,6 +526,10 @@ def _invoke(
                 _attach_stream_usage_cost(client, events, attempt_candidate)
                 _attach_stream_tool_intents(client, events, request_id)
                 return _maybe_packvm_safe_response({
+                    "status": "ok", "output": value.get("output", ""),
+                    "tool_intents": value.get("tool_intents", []),
+                    "finish_reason": value.get("finish_reason"),
+                    "delivery_mode": value.get("delivery_mode", "buffered"),
                     "request_id": request_id,
                     "model_id": attempt_candidate.model_id,
                     "provider_instance_id": attempt_candidate.provider_instance_id,
@@ -551,6 +567,9 @@ def _invoke(
                 "error_code": failure.code,
             }
         )
+        if streaming:
+            # A lost streaming outcome must never start a second billable request.
+            raise failure
         failover = client.invoke(
             FAILOVER_CONTRACT,
             FAILOVER_STREAM_OPERATION if streaming else FAILOVER_GENERATE_OPERATION,

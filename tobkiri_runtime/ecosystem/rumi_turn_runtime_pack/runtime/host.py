@@ -11,6 +11,7 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderInvocationContextV4,
 )
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
+from ecosystem.rumi_turn_runtime_pack.runtime.progress_host import progress_operation
 from ecosystem.rumi_turn_runtime_pack.runtime.input_context import execute_with_input_context
 from ecosystem.rumi_turn_runtime_pack.runtime.saved import (
     RECONCILE_CONTRACTS, SAVED_CONTRACTS, execute_saved_turn, reconcile_saved_turn,
@@ -24,6 +25,8 @@ _CONTRACTS = {
     "saved": ("tobkiri.action.turn.saved.v1", "turn-saved"),
     "reconcile": ("tobkiri.action.turn.reconcile.v1", "turn-reconcile"),
     "stop": ("tobkiri.action.turn.stop.v1", "turn-stop"),
+    "progress": ("tobkiri.action.turn.progress.v1", "turn-progress"),
+    "progress-resource": ("tobkiri.resource.turn.progress.v1", "turn-progress-resource"),
 }
 _MUTATIONS = {
     "transition": ({"status"}, {"details"}),
@@ -75,6 +78,13 @@ class TurnHostFactoryV4:
             payload: Mapping[str, Any],
             invocation: HostProviderInvocationContextV4,
         ) -> Mapping[str, Any]:
+            if self.kind in {"progress", "progress-resource"}:
+                if operation_id != self.operation_id:
+                    raise PermissionError("progress operation does not match capture")
+                return progress_operation(
+                    context, store, resource=self.kind == "progress-resource",
+                    payload=payload, invocation=invocation,
+                )
             if self.kind == "stop":
                 values = {key: value for key, value in payload.items() if key != "_session_id"}
                 if operation_id != self.operation_id or set(values) != {"turn_id"}:
