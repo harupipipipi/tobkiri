@@ -87,6 +87,13 @@ const reserved = new Set([
   "profile_id", "profile_revision", "activation_id", "plan_digest", "plan_hash",
   "principal_id", "owner_pack_id", "catalog_hash",
 ]);
+const threadOverrides = new Set([
+  "profile_id", "execution_profile_id", "principal", "principal_ref", "broker_context", "host_context",
+  "model", "model_id", "model_profile", "model_profile_id", "model_reference", "model_policy", "model_override",
+  "provider", "provider_id", "system_prompt", "tools", "tool_selection", "thinking_level", "reasoning_effort",
+  "strategy", "strategy_reference", "approval_mode", "approval_policy", "permissions", "grants", "capabilities",
+  "workspace", "workspace_id", "workspace_root", "cwd",
+]);
 const own = (value: object, key: PropertyKey) => Object.prototype.hasOwnProperty.call(value, key);
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -127,6 +134,17 @@ export function validPublicViewInput(value: unknown, depth = 0): boolean {
   } else if (value !== null && typeof value !== "boolean"
     && !(typeof value === "number" && Number.isFinite(value))) return false;
   return depth > 0 || new TextEncoder().encode(JSON.stringify(value)).length <= 65536;
+}
+
+/** Thread UI input cannot choose execution/model/tool/workspace authority. */
+export function validConversationThreadInput(value: unknown): boolean {
+  if (!validPublicViewInput(value)) return false;
+  const admissible = (item: unknown): boolean => {
+    if (record(item)) return Object.entries(item).every(([key, child]) =>
+      !threadOverrides.has(key) && admissible(child));
+    return !Array.isArray(item) || item.every(admissible);
+  };
+  return admissible(value);
 }
 
 const operationValid = (value: unknown, withInput = false) => record(value)
@@ -214,14 +232,14 @@ function validThreadRequest(value: unknown, send: boolean): boolean {
     ...(send ? ["content_key"] : []),
   ]) || !operationValid(value.operation) || value.turn_id_key !== "turn_id"
     || (send && value.content_key !== "content")
-    || (own(value, "input") && (!record(value.input) || !validPublicViewInput(value.input)))) return false;
+    || (own(value, "input") && (!record(value.input) || !validConversationThreadInput(value.input)))) return false;
   const claimed = new Set(Object.keys(record(value.input) ? value.input : {}));
   for (const key of ["source_bindings", "context_bindings"]) {
     const bindings = value[key] ?? {};
     if (!record(bindings) || Object.keys(bindings).length > (key === "context_bindings" ? 16 : 32)
       || (key === "context_bindings" && !validContextBindings(bindings, value.input))) return false;
     for (const [inputKey, path] of Object.entries(bindings)) {
-      if (!/^[a-z][a-z0-9_]{0,63}$/.test(inputKey) || !validPublicViewInput({ [inputKey]: null })
+      if (!/^[a-z][a-z0-9_]{0,63}$/.test(inputKey) || !validConversationThreadInput({ [inputKey]: null })
         || claimed.has(inputKey) || (key === "source_bindings" && !validViewPath(path))) return false;
       claimed.add(inputKey);
     }
@@ -254,6 +272,8 @@ export function parseCatalogView(value: unknown): CatalogView | null {
     : own(value, "record_editor")) return null;
   if (value.renderer === "conversation_thread" ? !own(value, "data_source")
     || !parseConversationThread(value.conversation_thread) : own(value, "conversation_thread")) return null;
+  if (value.renderer === "conversation_thread" && record(value.data_source)
+    && !validConversationThreadInput(value.data_source.input ?? {})) return null;
   if (own(value, "fields") && (!Array.isArray(value.fields) || value.fields.length > 32
     || !value.fields.every((field) => record(field)
       && keys(field, ["label", "path", "kind", "total_path"])
@@ -350,7 +370,8 @@ export function viewOperationRequest(
       item.contribution_id === registered.item.contribution_id
       && item.owner_pack_id === registered.item.owner_pack_id
       && item.descriptor_hash === registered.item.descriptor_hash).length !== 1
-    || !validPublicViewInput(payload)) return null;
+    || !validPublicViewInput(payload)
+    || (registered.view.renderer === "conversation_thread" && !validConversationThreadInput(payload))) return null;
   const declared = [
     registered.view.data_source,
     ...(registered.view.controls ?? []).map((control) => control.operation),

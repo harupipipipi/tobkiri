@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   choicePayload, controlPayload, matchesViewReference, parseCatalogView,
   readViewPath, requestContextInput, validPublicViewInput,
-  viewChoices, viewOperationRequest, viewReadRequest, viewsForSlot, viewContextKey,
+  viewChoices, viewOperationRequest, viewReadRequest, viewsForSlot, viewContextKey, validConversationThreadInput,
   type CatalogView, type ConversationThreadDefinition, type ViewControl,
 } from "./catalogViewRegistry";
 import { FrontendViewSlot } from "./FrontendViewSlot";
@@ -244,6 +244,24 @@ test("thread grammar admits only canonical text/turn keys and exact declared req
     owner_pack_id: "logic", action_contract: operation.contract_id, operation_id: "logic.send", view: null }));
   const registered = viewsForSlot(value, "sidebar", "plan")[0];
   assert.ok(viewOperationRequest(value, registered, thread.send.operation, { content: "hello", turn_id: "ticket" }));
+  assert.equal(viewOperationRequest(value, registered, thread.send.operation,
+    { content: "hello", turn_id: "ticket", nested: { model: "override" } }), null);
   assert.equal(viewReadRequest(value, registered, thread.send.operation, {}), null);
   assert.ok(viewReadRequest(value, registered, thread.events!.operation, { turn_id: "ticket" }));
+});
+
+test("thread descriptors and bound payloads cannot choose models, tools, approval, or workspaces", () => {
+  for (const key of ["model", "provider_id", "system_prompt", "tool_selection", "thinking_level",
+    "strategy_reference", "approval_mode", "permissions", "grants", "workspace_id", "model_policy"]) {
+    assert.equal(validConversationThreadInput({ nested: { [key]: "override" } }), false);
+    assert.equal(parseCatalogView({ ...view, renderer: "conversation_thread", conversation_thread: {
+      ...thread, send: { ...thread.send, input: { [key]: "override" } },
+    } }), null);
+    assert.equal(parseCatalogView({ ...view, renderer: "conversation_thread", conversation_thread: {
+      ...thread, send: { ...thread.send, source_bindings: { [key]: "thread.context.model_reference" } },
+    } }), null);
+    assert.equal(parseCatalogView({ ...view, renderer: "conversation_thread", conversation_thread: thread,
+      data_source: { ...operation, input: { [key]: "override" } } }), null);
+  }
+  assert.equal(validConversationThreadInput({ content: "hello", turn_id: "ticket", conversation_id: "child" }), true);
 });
