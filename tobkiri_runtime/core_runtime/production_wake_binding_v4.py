@@ -14,7 +14,7 @@ from core_runtime.captured_wake_v4 import (
     HostProcessWakeAdapterV4,
     LateBoundWakePortV4,
 )
-from core_runtime.authority.v4 import GrantLifetime
+from core_runtime.authority.v4 import AuthorityScope, GrantLifetime
 from tobkiri_host.models import InvocationFrame, OpaqueAuthorityRef, RequestContext
 from tobkiri_host.ports import StaticAuthorityQuery
 from tobkiri_host.triggers import TriggerRegistration
@@ -84,6 +84,8 @@ def bind_production_wake_v4(
         with context_scope("admission") as context:
             if context.caller_principal.value != owner_principal_id:
                 raise PermissionError("wake caller is not the selected owner")
+            requested_effect_scope = effect_scope(context)
+            requested_scope = AuthorityScope.from_dict(requested_effect_scope)
             # SESSION/ONE_SHOT authority from an interactive call is never
             # promoted into recurring authority.
             recurring = [
@@ -93,15 +95,19 @@ def bind_production_wake_v4(
                 and grant.target.principal_id == target_principal_id
                 and grant.profile_id == context.profile_id
                 and grant.activation_id == context.activation_id
+                and grant.profile_authority_digest == context.profile_authority_digest
                 and grant.security_epoch == context.security_epoch
                 and not grant.revoked
+                and not authority_store.is_revoked("grant", grant.grant_id)
                 and grant.lifetime
                 in {
                     GrantLifetime.PERSISTENT_PROFILE,
                     GrantLifetime.WORKFLOW_REVISION,
                     GrantLifetime.POLICY_EPHEMERAL,
                 }
+                and grant.issued_at <= wall_clock()
                 and (grant.expires_at is None or wall_clock() < grant.expires_at)
+                and requested_scope.is_subset_of(grant.scope)
             ]
             if not recurring:
                 raise PermissionError("exact recurring wake Grant is unavailable")
@@ -113,7 +119,7 @@ def bind_production_wake_v4(
                     context,
                     OpaqueAuthorityRef(target_principal_id),
                     prepared.request_digest,
-                    effect_scope(context),
+                    requested_effect_scope,
                 )
             )
 

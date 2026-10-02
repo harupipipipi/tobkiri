@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from core_runtime.captured_wake_v4 import CapturedWakeDeclarationV4, LateBoundWakePortV4
+from core_runtime.authority.v4 import GrantLifetime
 from core_runtime.production_wake_binding_v4 import bind_production_wake_v4
 from tests.test_authority_v4_lifecycle import _Harness
 from tests.test_captured_wake_v4 import _Adapter
@@ -142,3 +143,60 @@ def test_sources_are_fenced_before_broker_shutdown() -> None:
     )
     session.close()
     assert events == ["wake", "broker"]
+
+
+def test_insufficient_recurring_grant_cannot_promote_one_shot_authority(
+    tmp_path: Path,
+) -> None:
+    harness = _Harness(tmp_path, grant_lifetime=GrantLifetime.ONE_SHOT, max_uses=1)
+    approval = replace(harness.approval, approval_id="approval-recurring")
+    recurring = replace(
+        harness.grant,
+        grant_id="grant-recurring",
+        approval_id=approval.approval_id,
+        lifetime=GrantLifetime.PERSISTENT_PROFILE,
+        max_uses=None,
+        scope=replace(harness.scope, quotas={"max_bytes": 512}),
+    )
+    harness.kernel.commit_approval_bundle(
+        approval,
+        provider_authorities=(replace(harness.provider, record_id="provider-recurring"),),
+        grants=(recurring,),
+    )
+    authority = _adapter(harness)
+    broker = _broker(harness, authority, ProviderOutcome({"status": "ok"}))
+
+    @contextmanager
+    def scope(occurrence: str) -> Any:
+        yield _context(harness, request_id=f"wake-{occurrence}")
+
+    driver = bind_production_wake_v4(
+        port=LateBoundWakePortV4(),
+        declaration=CapturedWakeDeclarationV4("host.http", "invoke", {"operation": "tick"}, 1000),
+        owner_principal_id=harness.caller.principal_id,
+        target_principal_id=harness.target.principal_id,
+        state_path=tmp_path / "wake.sqlite3",
+        identity={
+            "profile_id": "profile-1",
+            "activation_digest": _context(harness).activation_digest,
+            "security_epoch": 1,
+        },
+        broker=broker,
+        authority=authority,
+        authority_store=harness.store,
+        context_scope=scope,
+        effect_scope=lambda _: harness.scope.to_dict(),
+        assert_current=lambda: None,
+        wall_clock=harness.clock,
+        monotonic_clock=lambda: 0.0,
+        adapter_factory=_Adapter,
+    )
+    try:
+        with pytest.raises(PermissionError, match="recurring wake Grant"):
+            driver.arm(5000)
+        assert driver.status()["armed"] is False
+        assert harness.store.grant_usage(harness.grant.grant_id) == (0, 0)
+        assert harness.store.grant_usage(recurring.grant_id) == (0, 0)
+    finally:
+        driver.close()
+        broker.close()
