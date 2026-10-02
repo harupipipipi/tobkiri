@@ -97,7 +97,7 @@ class WorkspaceStore:
     def get(self, workspace_id: str) -> dict[str, Any] | None:
         """Read one public checkpoint without returning writer identity or lease."""
         identifier(workspace_id)
-        if not self.path.exists():
+        if not self.path.exists() or self.path.stat().st_size == 0:
             return None
         with self.connection() as connection:
             row = connection.execute(
@@ -107,7 +107,7 @@ class WorkspaceStore:
 
     def list(self) -> list[dict[str, Any]]:
         """Return bounded public checkpoint summaries without creating state."""
-        if not self.path.exists():
+        if not self.path.exists() or self.path.stat().st_size == 0:
             return []
         with self.connection() as connection:
             rows = connection.execute("SELECT value FROM heads ORDER BY id").fetchall()
@@ -139,7 +139,7 @@ class WorkspaceStore:
 
     def replay(self, request_id: str, fingerprint: str) -> dict[str, Any] | None:
         """Return the exact prior result before repeating an expensive read."""
-        if not self.path.exists():
+        if not self.path.exists() or self.path.stat().st_size == 0:
             return None
         with self.connection() as connection:
             row = connection.execute(
