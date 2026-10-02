@@ -61,7 +61,10 @@ class SurfaceResourceScope:
     presentation_owner_session_id: str
     view_descriptor_hash: str
     renderer_id: str
+    renderer_api_version: str
     renderer_digest: str
+    renderer_descriptor_hash: str
+    renderer_expires_at_ms: int
     consumer_contract_id: str
     consumer_operation_id: str
     consumer_provider_id: str
@@ -74,8 +77,11 @@ class SurfaceResourceScope:
         for field in fields(self):
             value = getattr(self, field.name)
             if field.name == "security_epoch":
-                if type(value) is not int or value < 0:
+                if type(value) is not int or value <= 0:
                     raise ValueError("resource security epoch is invalid")
+            elif field.name == "renderer_expires_at_ms":
+                if type(value) is not int or not 0 < value <= 2**53 - 1:
+                    raise ValueError("resource renderer expiry is invalid")
             elif not _text(value, 512):
                 raise ValueError("resource capture is incomplete")
             elif (
@@ -84,6 +90,8 @@ class SurfaceResourceScope:
             ):
                 if _DIGEST.fullmatch(value) is None:
                     raise ValueError("resource capture digest is invalid")
+        if self.renderer_api_version != "1.0.0":
+            raise ValueError("resource renderer API is unavailable")
 
 
 @dataclass(frozen=True)
@@ -106,7 +114,7 @@ class CapturedSurfaceResourceProvider:
     it has not returned. Optional ``cancel`` stops pending selection callbacks.
     """
 
-    acquire: Callable[[ResourceKind], PrivateSurfaceSelection]
+    acquire: Callable[[ResourceKind, RequestContext], PrivateSurfaceSelection]
     exchange: Callable[[object, RequestContext], PrivateSurfaceSelection]
     revoke: Callable[[object], None]
     consume: Callable[[object, RequestContext], object] | None = None
@@ -179,12 +187,19 @@ class SurfaceResourcePort:
         with self._lock:
             self._require_open()
             if operation == "exchange":
+                if selection_id is None:
+                    raise SurfaceResourceRejected("resource selection is missing")
                 ticket = self._lookup(selection_id, scope, kind, "selected")
                 del self._tickets[selection_id]
             else:
                 if self._size() >= self._max_entries:
                     raise SurfaceResourceRejected("resource entry quota exceeded")
-                expires, expires_ms = self._expiry(ttl_seconds, deadline_monotonic)
+                renderer_deadline = self._clock() + (
+                    scope.renderer_expires_at_ms / 1000 - self._wall_clock()
+                )
+                expires, expires_ms = self._expiry(
+                    ttl_seconds, min(deadline_monotonic, renderer_deadline)
+                )
                 ticket = _Ticket(
                     scope,
                     kind,
@@ -202,7 +217,7 @@ class SurfaceResourcePort:
             self._require_live(ticket)
             result = _callback(
                 lambda: (
-                    provider.acquire(kind)
+                    provider.acquire(kind, context)
                     if operation == "acquire"
                     else provider.exchange(ticket.selection.reference, context)
                 )
@@ -274,7 +289,8 @@ class SurfaceResourcePort:
         self._guard(scope, context, assert_current, deadline_monotonic)
         self._purge()
         provider = self._require_provider()
-        if provider.consume is None:
+        rebind = provider.consume
+        if rebind is None:
             raise SurfaceResourceUnavailable("resource rebinding is unavailable")
         with self._lock:
             self._require_open()
@@ -287,9 +303,7 @@ class SurfaceResourcePort:
         try:
             self._guard(scope, context, assert_current, deadline_monotonic)
             self._require_live(ticket)
-            result = _callback(
-                lambda: provider.consume(ticket.selection.reference, context)
-            )
+            result = _callback(lambda: rebind(ticket.selection.reference, context))
             if result is None or result is ticket.selection.reference:
                 raise SurfaceResourceProviderError(
                     "resource rebinding returned no fresh reference"
@@ -379,7 +393,10 @@ class SurfaceResourcePort:
             raise SurfaceResourceRejected(
                 "resource invocation is no longer current"
             ) from None
-        if self._clock() >= deadline:
+        if (
+            self._clock() >= deadline
+            or self._wall_clock() * 1000 >= scope.renderer_expires_at_ms
+        ):
             raise SurfaceResourceRejected("resource invocation expired")
 
     def _require_provider(self) -> CapturedSurfaceResourceProvider:
@@ -490,12 +507,24 @@ class SurfaceResourceEnvelope(Protocol):
     @property
     def deadline_monotonic(self) -> float: ...
 
+    @property
+    def contract_id(self) -> str: ...
+
+    @property
+    def operation_id(self) -> str: ...
+
 
 class SurfaceResourceInvocation(Protocol):
     """Structural subset of HostProviderInvocationContextV4; never client input."""
 
     @property
     def envelope(self) -> SurfaceResourceEnvelope: ...
+
+    @property
+    def presentation_owner_principal_id(self) -> str: ...
+
+    @property
+    def presentation_owner_session_id(self) -> str: ...
 
     def assert_current(self) -> None:
         """Recheck the Host invocation capture and cancellation/deadline fences."""
@@ -516,14 +545,51 @@ class SurfaceResourceActionAdapter:
     ) -> dict[str, object]:
         """Derive scope/context on the server and invoke the public resource action."""
         invocation.assert_current()
+        scope = self._scope(invocation)
         return self.port.invoke(
             request,
-            scope=self.scope_for(invocation),
+            scope=scope,
             context=invocation.envelope.context,
             assert_current=invocation.assert_current,
             deadline_monotonic=invocation.envelope.deadline_monotonic,
             ttl_seconds=self.ttl_seconds,
         )
+
+    def consume(
+        self,
+        selection_id: str,
+        *,
+        kind: ResourceKind,
+        invocation: SurfaceResourceInvocation,
+    ) -> object:
+        """Rebind a token inside its exact authenticated consuming invocation."""
+        invocation.assert_current()
+        scope = self._scope(invocation)
+        if (
+            invocation.envelope.contract_id != scope.consumer_contract_id
+            or invocation.envelope.operation_id != scope.consumer_operation_id
+        ):
+            raise SurfaceResourceRejected("resource consuming operation changed")
+        return self.port.consume(
+            selection_id,
+            kind=kind,
+            scope=scope,
+            context=invocation.envelope.context,
+            assert_current=invocation.assert_current,
+            deadline_monotonic=invocation.envelope.deadline_monotonic,
+        )
+
+    def _scope(self, invocation: SurfaceResourceInvocation) -> SurfaceResourceScope:
+        scope = self.scope_for(invocation)
+        if (
+            not isinstance(scope, SurfaceResourceScope)
+            or scope.presentation_owner_principal_id
+            != invocation.presentation_owner_principal_id
+            or scope.presentation_owner_session_id
+            != invocation.presentation_owner_session_id
+        ):
+            raise SurfaceResourceRejected("resource originating owner changed")
+        return scope
 
 
 def _text(value: object, limit: int) -> bool:

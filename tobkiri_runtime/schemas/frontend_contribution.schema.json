@@ -14,8 +14,13 @@
     "accessibility"
   ],
   "properties": {
-    "version": {"const": "rumi.ui.contribution.v1"},
-    "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$"},
+    "version": {
+      "const": "rumi.ui.contribution.v1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$"
+    },
     "kind": {
       "enum": [
         "route",
@@ -29,15 +34,39 @@
         "view"
       ]
     },
-    "mode": {"enum": ["declarative", "isolated", "same_origin_builtin"]},
-    "label": {"type": "string", "minLength": 1},
-    "description": {"type": "string"},
-    "priority": {"type": "integer"},
-    "route": {"type": "string", "pattern": "^/[a-zA-Z0-9/_-]*$"},
-    "region": {"type": "string"},
-    "renderer": {"type": "string"},
-    "schema": {"type": "object"},
-    "view": {"type": "object"},
+    "mode": {
+      "enum": [
+        "declarative",
+        "isolated",
+        "same_origin_builtin"
+      ]
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "priority": {
+      "type": "integer"
+    },
+    "route": {
+      "type": "string",
+      "pattern": "^/[a-zA-Z0-9/_-]*$"
+    },
+    "region": {
+      "type": "string"
+    },
+    "renderer": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "object"
+    },
+    "view": {
+      "type": "object"
+    },
     "action_contract": {
       "type": "string",
       "pattern": "^rumi\\.action\\.[a-z0-9]+(?:[._-][a-z0-9]+)*\\.v[1-9][0-9]*$"
@@ -53,14 +82,23 @@
     "command": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "properties": {
         "name": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9_-]{0,63}$"
         },
-        "label": {"type": "string", "minLength": 1, "maxLength": 256},
-        "description": {"type": "string", "maxLength": 1024},
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1024
+        },
         "aliases": {
           "type": "array",
           "items": {
@@ -75,38 +113,76 @@
     "module": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "export", "content_hash"],
+      "required": [
+        "path",
+        "export",
+        "content_hash"
+      ],
       "properties": {
-        "path": {"type": "string", "pattern": "^/static/packs/[a-zA-Z0-9._/-]+\\.js$"},
-        "export": {"type": "string", "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$"},
-        "content_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+        "path": {
+          "type": "string",
+          "pattern": "^/static/packs/[a-zA-Z0-9._/-]+\\.js$"
+        },
+        "export": {
+          "type": "string",
+          "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$"
+        },
+        "content_hash": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
       }
     },
     "isolated": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "rpc_contracts"],
+      "required": [
+        "path",
+        "rpc_contracts"
+      ],
       "properties": {
-        "path": {"type": "string", "pattern": "^/isolated/packs/[a-zA-Z0-9._/-]+$"},
+        "path": {
+          "type": "string",
+          "pattern": "^/isolated/packs/[a-zA-Z0-9._/-]+$"
+        },
         "rpc_contracts": {
           "type": "array",
-          "items": {"type": "string", "pattern": "^rumi\\.(action|resource)\\."},
+          "items": {
+            "type": "string",
+            "pattern": "^rumi\\.(action|resource)\\."
+          },
           "uniqueItems": true
         }
       }
     },
     "localization": {
       "type": "object",
-      "additionalProperties": {"type": "string"}
+      "additionalProperties": {
+        "type": "string"
+      }
     },
     "accessibility": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "keyboard"],
+      "required": [
+        "name",
+        "keyboard"
+      ],
       "properties": {
-        "name": {"type": "string", "minLength": 1},
-        "keyboard": {"type": "boolean"},
-        "live": {"enum": ["off", "polite", "assertive"]}
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "keyboard": {
+          "type": "boolean"
+        },
+        "live": {
+          "enum": [
+            "off",
+            "polite",
+            "assertive"
+          ]
+        }
       }
     }
   },
@@ -114,49 +190,1238 @@
     {
       "if": {
         "allOf": [
-          {"properties": {"mode": {"const": "declarative"}}},
-          {"properties": {"kind": {"not": {"const": "ai_strategy"}}}}
+          {
+            "properties": {
+              "mode": {
+                "const": "declarative"
+              }
+            }
+          },
+          {
+            "properties": {
+              "kind": {
+                "not": {
+                  "const": "ai_strategy"
+                }
+              }
+            }
+          }
         ]
       },
-      "then": {"required": ["view"]}
+      "then": {
+        "required": [
+          "view"
+        ]
+      }
     },
     {
-      "if": {"properties": {"mode": {"const": "isolated"}}},
-      "then": {"required": ["isolated"]}
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "isolated"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "isolated"
+        ]
+      }
     },
     {
-      "if": {"properties": {"mode": {"const": "same_origin_builtin"}}},
-      "then": {"required": ["module"]}
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "same_origin_builtin"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "module"
+        ]
+      }
     },
     {
-      "if": {"properties": {"kind": {"const": "route"}}},
-      "then": {"required": ["route"]}
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "route"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "route"
+        ]
+      }
     },
     {
-      "if": {"properties": {"kind": {"const": "renderer"}}},
-      "then": {"required": ["renderer"]}
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "renderer"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "renderer"
+        ]
+      }
     },
     {
-      "if": {"properties": {"kind": {"const": "shell_region"}}},
-      "then": {"required": ["region"]}
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "shell_region"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "region"
+        ]
+      }
     },
     {
-      "if": {"properties": {"kind": {"const": "action"}}},
-      "then": {"required": ["action_contract"]}
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "action"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "action_contract"
+        ]
+      }
     },
     {
-      "if": {"properties": {"kind": {"const": "data_source"}}},
-      "then": {"required": ["data_source_contract"]}
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "data_source"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "data_source_contract"
+        ]
+      }
     },
     {
-      "if": {"properties": {"kind": {"const": "settings"}}},
-      "then": {"required": ["schema"]}
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "settings"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "schema"
+        ]
+      }
     },
     {
-      "if": {"properties": {"kind": {"const": "ai_strategy"}}},
-      "then": {"required": ["strategy_reference"]}
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "ai_strategy"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "strategy_reference"
+        ]
+      }
     },
-    {"if":{"properties":{"kind":{"const":"view"}}},"then":{"properties":{"mode":{"const":"declarative"},"view":{"$ref":"#/$defs/catalog_view"}},"required":["view"]}}
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "view"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "mode": {
+            "const": "declarative"
+          },
+          "view": {
+            "$ref": "#/$defs/catalog_view"
+          }
+        },
+        "required": [
+          "view"
+        ]
+      }
+    }
   ],
-  "$defs": {"id":{"type":"string","pattern":"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$","maxLength":256},"path":{"type":"string","maxLength":256,"pattern":"^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,15}$"},"operation":{"type":"object","additionalProperties":false,"required":["contribution_id","contract_id","operation_id"],"properties":{"contribution_id":{"$ref":"#/$defs/id"},"contract_id":{"$ref":"#/$defs/id"},"operation_id":{"$ref":"#/$defs/id"}}},"input":{"type":"object","maxProperties":32},"request":{"type":"object","additionalProperties":false,"required":["contribution_id","contract_id","operation_id"],"properties":{"contribution_id":{"$ref":"#/$defs/id"},"contract_id":{"$ref":"#/$defs/id"},"operation_id":{"$ref":"#/$defs/id"},"input":{"$ref":"#/$defs/input"},"context_bindings":{"$ref":"#/$defs/context_bindings"}}},"field":{"type":"object","additionalProperties":false,"required":["label","path","kind"],"properties":{"label":{"type":"string","minLength":1,"maxLength":256},"path":{"$ref":"#/$defs/path"},"kind":{"enum":["text","status","progress"]},"total_path":{"$ref":"#/$defs/path"}}},"control":{"type":"object","additionalProperties":false,"required":["id","label","kind","operation"],"properties":{"id":{"$ref":"#/$defs/id"},"label":{"type":"string","minLength":1,"maxLength":256},"kind":{"enum":["button","toggle","text","choice"]},"operation":{"$ref":"#/$defs/operation"},"input":{"$ref":"#/$defs/input"},"input_bindings":{"type":"object","maxProperties":32,"additionalProperties":{"$ref":"#/$defs/path"}},"value_key":{"type":"string","pattern":"^[a-z][a-z0-9_]{0,63}$"},"value_path":{"$ref":"#/$defs/path"},"options_path":{"$ref":"#/$defs/path"},"id_path":{"$ref":"#/$defs/path"},"label_path":{"$ref":"#/$defs/path"},"disabled_path":{"$ref":"#/$defs/path"},"multiple":{"type":"boolean"},"context_bindings":{"$ref":"#/$defs/context_bindings"}},"allOf":[{"if":{"properties":{"kind":{"enum":["toggle","text","choice"]}}},"then":{"required":["value_key"]}},{"if":{"properties":{"kind":{"const":"choice"}}},"then":{"required":["options_path","id_path","label_path"]}}]},"context_bindings":{"type":"object","maxProperties":16,"propertyNames":{"pattern":"^[a-z][a-z0-9_]{0,63}$"},"additionalProperties":{"enum":["conversation_id","turn_id"]}},"bindings":{"type":"object","maxProperties":32,"propertyNames":{"pattern":"^[a-z][a-z0-9_]{0,63}$"},"additionalProperties":{"$ref":"#/$defs/path"}},"condition":{"type":"object","additionalProperties":false,"required":["path","equals"],"properties":{"path":{"$ref":"#/$defs/path"},"equals":{"type":["string","number","boolean","null"],"maxLength":256}}},"record_save":{"type":"object","additionalProperties":false,"required":["operation","draft_key"],"properties":{"operation":{"$ref":"#/$defs/operation"},"input":{"$ref":"#/$defs/input"},"context_bindings":{"$ref":"#/$defs/context_bindings"},"source_bindings":{"$ref":"#/$defs/bindings"},"record_bindings":{"$ref":"#/$defs/bindings"},"draft_key":{"type":"string","pattern":"^[a-z][a-z0-9_]{0,63}$"}}},"record_action":{"type":"object","additionalProperties":false,"required":["id","label","operation"],"properties":{"operation":{"$ref":"#/$defs/operation"},"input":{"$ref":"#/$defs/input"},"context_bindings":{"$ref":"#/$defs/context_bindings"},"source_bindings":{"$ref":"#/$defs/bindings"},"record_bindings":{"$ref":"#/$defs/bindings"},"id":{"$ref":"#/$defs/id"},"label":{"type":"string","minLength":1,"maxLength":256},"available_when":{"$ref":"#/$defs/condition"},"disabled_when":{"$ref":"#/$defs/condition"}}},"record_field":{"type":"object","additionalProperties":false,"required":["id","label","path","kind"],"properties":{"id":{"$ref":"#/$defs/id"},"label":{"type":"string","minLength":1,"maxLength":256},"path":{"$ref":"#/$defs/path"},"kind":{"enum":["text","multiline","integer","datetime","json"]},"required":{"type":"boolean"},"read_only":{"type":"boolean"},"min":{"type":"number"},"max":{"type":"number"}}},"record_column":{"type":"object","additionalProperties":false,"required":["label","path","kind"],"properties":{"label":{"type":"string","minLength":1,"maxLength":256},"path":{"$ref":"#/$defs/path"},"kind":{"enum":["text","status","datetime"]}}},"record_editor":{"type":"object","additionalProperties":false,"required":["records_path","id_path","title_path","fields","save"],"properties":{"records_path":{"$ref":"#/$defs/path"},"id_path":{"$ref":"#/$defs/path"},"title_path":{"$ref":"#/$defs/path"},"search_paths":{"type":"array","maxItems":8,"uniqueItems":true,"items":{"$ref":"#/$defs/path"}},"columns":{"type":"array","maxItems":12,"items":{"$ref":"#/$defs/record_column"}},"fields":{"type":"array","minItems":1,"maxItems":16,"items":{"$ref":"#/$defs/record_field"}},"save":{"$ref":"#/$defs/record_save"},"actions":{"type":"array","maxItems":16,"items":{"$ref":"#/$defs/record_action"}}}},"thread_request":{"type":"object","additionalProperties":false,"required":["operation","turn_id_key"],"properties":{"operation":{"$ref":"#/$defs/operation"},"input":{"$ref":"#/$defs/input"},"context_bindings":{"$ref":"#/$defs/context_bindings"},"source_bindings":{"$ref":"#/$defs/bindings"},"turn_id_key":{"const":"turn_id"}}},"thread_send":{"type":"object","additionalProperties":false,"required":["operation","turn_id_key","content_key"],"properties":{"operation":{"$ref":"#/$defs/operation"},"input":{"$ref":"#/$defs/input"},"context_bindings":{"$ref":"#/$defs/context_bindings"},"source_bindings":{"$ref":"#/$defs/bindings"},"turn_id_key":{"const":"turn_id"},"content_key":{"const":"content"}}},"conversation_thread":{"type":"object","additionalProperties":false,"required":["conversation_path","messages_path","pending_turn_path","send"],"properties":{"conversation_path":{"$ref":"#/$defs/path"},"messages_path":{"$ref":"#/$defs/path"},"pending_turn_path":{"$ref":"#/$defs/path"},"model_reference_path":{"$ref":"#/$defs/path"},"send":{"$ref":"#/$defs/thread_send"},"stop":{"$ref":"#/$defs/thread_request"},"events":{"$ref":"#/$defs/thread_request"},"reconcile":{"$ref":"#/$defs/thread_request"}}},"catalog_view":{"type":"object","additionalProperties":false,"required":["version","slot","renderer"],"properties":{"version":{"const":"tobkiri.ui.view.v1"},"slot":{"enum":["workspace_tab","sidebar","settings","chat_header","composer_above","composer_below"]},"renderer":{"enum":["panel","status","entity_picker","record_editor","conversation_thread"]},"title":{"type":"string","maxLength":256},"body":{"type":"string","maxLength":4096},"data_source":{"$ref":"#/$defs/request"},"fields":{"type":"array","maxItems":32,"items":{"$ref":"#/$defs/field"}},"controls":{"type":"array","maxItems":16,"items":{"$ref":"#/$defs/control"}},"record_editor":{"$ref":"#/$defs/record_editor"},"conversation_thread":{"$ref":"#/$defs/conversation_thread"}},"allOf":[{"if":{"properties":{"renderer":{"const":"record_editor"}}},"then":{"required":["record_editor"]},"else":{"not":{"required":["record_editor"]}}},{"if":{"properties":{"renderer":{"const":"conversation_thread"}}},"then":{"required":["conversation_thread","data_source"]},"else":{"not":{"required":["conversation_thread"]}}}]}}
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+      "maxLength": 256
+    },
+    "path": {
+      "type": "string",
+      "maxLength": 256,
+      "pattern": "^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,15}$"
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contribution_id",
+        "contract_id",
+        "operation_id"
+      ],
+      "properties": {
+        "contribution_id": {
+          "$ref": "#/$defs/id"
+        },
+        "contract_id": {
+          "$ref": "#/$defs/id"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/id"
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "maxProperties": 32
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contribution_id",
+        "contract_id",
+        "operation_id"
+      ],
+      "properties": {
+        "contribution_id": {
+          "$ref": "#/$defs/id"
+        },
+        "contract_id": {
+          "$ref": "#/$defs/id"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/id"
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        },
+        "context_bindings": {
+          "$ref": "#/$defs/context_bindings"
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "path",
+        "kind"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "status",
+            "progress"
+          ]
+        },
+        "total_path": {
+          "$ref": "#/$defs/path"
+        }
+      }
+    },
+    "control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "kind",
+        "operation"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "kind": {
+          "enum": [
+            "button",
+            "toggle",
+            "text",
+            "choice"
+          ]
+        },
+        "operation": {
+          "$ref": "#/$defs/operation"
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        },
+        "input_bindings": {
+          "type": "object",
+          "maxProperties": 32,
+          "additionalProperties": {
+            "$ref": "#/$defs/path"
+          }
+        },
+        "value_key": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$"
+        },
+        "value_path": {
+          "$ref": "#/$defs/path"
+        },
+        "options_path": {
+          "$ref": "#/$defs/path"
+        },
+        "id_path": {
+          "$ref": "#/$defs/path"
+        },
+        "label_path": {
+          "$ref": "#/$defs/path"
+        },
+        "disabled_path": {
+          "$ref": "#/$defs/path"
+        },
+        "multiple": {
+          "type": "boolean"
+        },
+        "context_bindings": {
+          "$ref": "#/$defs/context_bindings"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "toggle",
+                  "text",
+                  "choice"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "value_key"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "choice"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "options_path",
+              "id_path",
+              "label_path"
+            ]
+          }
+        }
+      ]
+    },
+    "context_bindings": {
+      "type": "object",
+      "maxProperties": 16,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]{0,63}$"
+      },
+      "additionalProperties": {
+        "enum": [
+          "conversation_id",
+          "turn_id"
+        ]
+      }
+    },
+    "bindings": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]{0,63}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/path"
+      }
+    },
+    "condition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "equals"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "equals": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "maxLength": 256
+        }
+      }
+    },
+    "record_save": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation",
+        "draft_key"
+      ],
+      "properties": {
+        "operation": {
+          "$ref": "#/$defs/operation"
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        },
+        "context_bindings": {
+          "$ref": "#/$defs/context_bindings"
+        },
+        "source_bindings": {
+          "$ref": "#/$defs/bindings"
+        },
+        "record_bindings": {
+          "$ref": "#/$defs/bindings"
+        },
+        "draft_key": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$"
+        }
+      }
+    },
+    "record_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "operation"
+      ],
+      "properties": {
+        "operation": {
+          "$ref": "#/$defs/operation"
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        },
+        "context_bindings": {
+          "$ref": "#/$defs/context_bindings"
+        },
+        "source_bindings": {
+          "$ref": "#/$defs/bindings"
+        },
+        "record_bindings": {
+          "$ref": "#/$defs/bindings"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "available_when": {
+          "$ref": "#/$defs/condition"
+        },
+        "disabled_when": {
+          "$ref": "#/$defs/condition"
+        }
+      }
+    },
+    "record_field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "path",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "multiline",
+            "integer",
+            "datetime",
+            "json"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "read_only": {
+          "type": "boolean"
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        }
+      }
+    },
+    "record_column": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "path",
+        "kind"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "status",
+            "datetime"
+          ]
+        }
+      }
+    },
+    "record_editor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "records_path",
+        "id_path",
+        "title_path",
+        "fields",
+        "save"
+      ],
+      "properties": {
+        "records_path": {
+          "$ref": "#/$defs/path"
+        },
+        "id_path": {
+          "$ref": "#/$defs/path"
+        },
+        "title_path": {
+          "$ref": "#/$defs/path"
+        },
+        "search_paths": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/path"
+          }
+        },
+        "columns": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/record_column"
+          }
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/record_field"
+          }
+        },
+        "save": {
+          "$ref": "#/$defs/record_save"
+        },
+        "actions": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/record_action"
+          }
+        }
+      }
+    },
+    "thread_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation",
+        "turn_id_key"
+      ],
+      "properties": {
+        "operation": {
+          "$ref": "#/$defs/operation"
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        },
+        "context_bindings": {
+          "$ref": "#/$defs/context_bindings"
+        },
+        "source_bindings": {
+          "$ref": "#/$defs/bindings"
+        },
+        "turn_id_key": {
+          "const": "turn_id"
+        }
+      }
+    },
+    "thread_send": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation",
+        "turn_id_key",
+        "content_key"
+      ],
+      "properties": {
+        "operation": {
+          "$ref": "#/$defs/operation"
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        },
+        "context_bindings": {
+          "$ref": "#/$defs/context_bindings"
+        },
+        "source_bindings": {
+          "$ref": "#/$defs/bindings"
+        },
+        "turn_id_key": {
+          "const": "turn_id"
+        },
+        "content_key": {
+          "const": "content"
+        }
+      }
+    },
+    "conversation_thread": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "conversation_path",
+        "messages_path",
+        "pending_turn_path",
+        "send"
+      ],
+      "properties": {
+        "conversation_path": {
+          "$ref": "#/$defs/path"
+        },
+        "messages_path": {
+          "$ref": "#/$defs/path"
+        },
+        "pending_turn_path": {
+          "$ref": "#/$defs/path"
+        },
+        "model_reference_path": {
+          "$ref": "#/$defs/path"
+        },
+        "send": {
+          "$ref": "#/$defs/thread_send"
+        },
+        "stop": {
+          "$ref": "#/$defs/thread_request"
+        },
+        "events": {
+          "$ref": "#/$defs/thread_request"
+        },
+        "reconcile": {
+          "$ref": "#/$defs/thread_request"
+        }
+      }
+    },
+    "surface_operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contribution_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "contract_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "operation_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "contribution_id",
+        "contract_id",
+        "operation_id"
+      ]
+    },
+    "surface_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "$ref": "#/$defs/surface_operation"
+        },
+        "input": {
+          "type": "object",
+          "maxProperties": 32
+        },
+        "source_bindings": {
+          "type": "object",
+          "maxProperties": 32,
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,15}$",
+            "maxLength": 256
+          }
+        },
+        "context_bindings": {
+          "type": "object",
+          "maxProperties": 16,
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]{0,63}$"
+          },
+          "additionalProperties": {
+            "enum": [
+              "conversation_id",
+              "turn_id"
+            ]
+          }
+        }
+      },
+      "required": [
+        "operation"
+      ]
+    },
+    "surface_intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "event": {
+          "enum": [
+            "activate",
+            "retry",
+            "dismiss",
+            "cancel",
+            "submit",
+            "select",
+            "confirm",
+            "decline",
+            "close"
+          ]
+        },
+        "request": {
+          "$ref": "#/$defs/surface_request"
+        },
+        "intent_key": {
+          "const": "surface_intent"
+        },
+        "outcome_path": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,15}$",
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "event",
+        "request",
+        "intent_key"
+      ]
+    },
+    "surface_node": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "pattern": {
+          "enum": [
+            "content",
+            "problem",
+            "notice",
+            "progress",
+            "resource_input",
+            "choice",
+            "form",
+            "confirmation",
+            "collection",
+            "detail"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "value_path": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,15}$",
+          "maxLength": 256
+        },
+        "total_path": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,15}$",
+          "maxLength": 256
+        },
+        "items_path": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,15}$",
+          "maxLength": 256
+        },
+        "id_path": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,15}$",
+          "maxLength": 256
+        },
+        "label_path": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*){0,15}$",
+          "maxLength": 256
+        },
+        "intents": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/surface_intent"
+          }
+        },
+        "choices": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            },
+            "required": [
+              "id",
+              "label"
+            ]
+          }
+        },
+        "multiple": {
+          "type": "boolean"
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "type": {
+                "enum": [
+                  "text",
+                  "integer",
+                  "boolean"
+                ]
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "min": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "max": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "type"
+            ]
+          }
+        },
+        "resource": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "file",
+                "image",
+                "audio"
+              ]
+            },
+            "acquire": {
+              "$ref": "#/$defs/surface_request"
+            },
+            "exchange": {
+              "$ref": "#/$defs/surface_request"
+            }
+          },
+          "required": [
+            "kind",
+            "acquire",
+            "exchange"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "pattern",
+        "label"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "pattern": {
+                "const": "progress"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "value_path",
+              "total_path"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "pattern": {
+                "const": "choice"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "choices"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "pattern": {
+                "const": "form"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "fields"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "pattern": {
+                "const": "collection"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "items_path",
+              "id_path",
+              "label_path"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "pattern": {
+                "const": "resource_input"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "resource"
+            ]
+          }
+        }
+      ]
+    },
+    "surface_template": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": "tobkiri.ui.surface-template.v1"
+        },
+        "template_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "renderer_contribution_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "renderer_api_version": {
+          "const": "1.0.0"
+        },
+        "nodes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/surface_node"
+          }
+        }
+      },
+      "required": [
+        "version",
+        "template_id",
+        "renderer_contribution_id",
+        "renderer_api_version",
+        "nodes"
+      ]
+    },
+    "catalog_view": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "slot",
+        "renderer"
+      ],
+      "properties": {
+        "version": {
+          "const": "tobkiri.ui.view.v1"
+        },
+        "slot": {
+          "enum": [
+            "workspace_tab",
+            "sidebar",
+            "settings",
+            "chat_header",
+            "composer_above",
+            "composer_below"
+          ]
+        },
+        "renderer": {
+          "enum": [
+            "panel",
+            "status",
+            "entity_picker",
+            "record_editor",
+            "conversation_thread",
+            "surface_template"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "body": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "data_source": {
+          "$ref": "#/$defs/request"
+        },
+        "fields": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/field"
+          }
+        },
+        "controls": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/control"
+          }
+        },
+        "record_editor": {
+          "$ref": "#/$defs/record_editor"
+        },
+        "conversation_thread": {
+          "$ref": "#/$defs/conversation_thread"
+        },
+        "surface_template": {
+          "$ref": "#/$defs/surface_template"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "renderer": {
+                "const": "record_editor"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "record_editor"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "record_editor"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "renderer": {
+                "const": "conversation_thread"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "conversation_thread",
+              "data_source"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "conversation_thread"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "renderer": {
+                "const": "surface_template"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "surface_template"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "surface_template"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
 }
