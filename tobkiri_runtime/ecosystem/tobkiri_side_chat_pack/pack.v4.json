@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:74ce5846ac704d590cd1142e5109b0d86430ba79e8cb19dc27ad6d28fbad96aa",
+      "digest": "sha256:8abe39ab7de58c002b83892c391b42a4c857f47d926c61473996ce2413b427eb",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:aac053b2d2e7a3751142ffb6defb9d9593bb324ea77cb25a023508cd96195c04",
+      "digest": "sha256:958d74bad1056445bbe7c93a054659113c9b3820ce9fe0aab5c4079dd65203a6",
       "kind": "sidecar",
       "path": "frontend/contributions/side-chat.json"
     },
@@ -82,9 +82,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:d51be5b47021bc5dd94a9069edff67db85d0a3748e4495acf1e69e9daf9bda6a",
-    "contract_catalog_digest": "sha256:24c83a5b92089d3acc952cd0ccfa94777bf7f5ac8630e59971af56030e3bc5bc",
-    "source_identity": "sha256:f761edd952ee32814ea052dec719703dbcc8b8c3b319460cb14685ee13960d68"
+    "artifact_set_digest": "sha256:12f9e46baf1bd2d2309a0c1ef4c8ba7f9fcdaca37e1bd4b4d04c926a0178370e",
+    "contract_catalog_digest": "sha256:c0b4bbc9c21ef9276af3bfe444d8519c812e9fd012fa9b642cbaf098fa40c275",
+    "source_identity": "sha256:095b4c1d91a14c7f9942fbcb37cd5f5b4577c32be9ef47932df59db0266f5cfd"
   },
   "migration": {
     "compatibility": "read_only",
@@ -128,7 +128,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:d51be5b47021bc5dd94a9069edff67db85d0a3748e4495acf1e69e9daf9bda6a",
+    "artifact_digest": "sha256:12f9e46baf1bd2d2309a0c1ef4c8ba7f9fcdaca37e1bd4b4d04c926a0178370e",
     "display_name": "Tobkiri Side Chat",
     "id": "tobkiri_side_chat_pack",
     "kind": "host_extension",
@@ -138,7 +138,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:f761edd952ee32814ea052dec719703dbcc8b8c3b319460cb14685ee13960d68",
+        "digest": "sha256:095b4c1d91a14c7f9942fbcb37cd5f5b4577c32be9ef47932df59db0266f5cfd",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -149,7 +149,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:f761edd952ee32814ea052dec719703dbcc8b8c3b319460cb14685ee13960d68",
+    "source_digest": "sha256:095b4c1d91a14c7f9942fbcb37cd5f5b4577c32be9ef47932df59db0266f5cfd",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_side_chat_pack"
   },
