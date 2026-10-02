@@ -543,9 +543,11 @@ def test_view_inputs_cannot_claim_authority(input_value: object) -> None:
         validate_public_input(input_value)
 
 
+@pytest.mark.parametrize("shipped_side_chat", [False, True])
 def test_selected_signed_view_is_projected_and_unregister_has_no_stale_route(
     tmp_path: Path,
     monkeypatch,
+    shipped_side_chat: bool,
 ) -> None:
     root = tmp_path / PACK_ID
     scaffold_pack(root, pack_id=PACK_ID, display_name="Public view fixture")
@@ -560,6 +562,11 @@ def test_selected_signed_view_is_projected_and_unregister_has_no_stale_route(
         "view": _view(),
         "accessibility": {"name": "Independent view", "keyboard": True},
     }
+    if shipped_side_chat:
+        payload = json.loads((
+            Path(__file__).resolve().parents[1]
+            / "ecosystem/tobkiri_side_chat_pack/frontend/contributions/side-chat.json"
+        ).read_text(encoding="utf-8"))
     _write(root / DESCRIPTOR, payload)
     refresh_scaffold_artifacts(root)
     manifest = json.loads((root / "pack.v4.json").read_text())
@@ -585,7 +592,7 @@ def test_selected_signed_view_is_projected_and_unregister_has_no_stale_route(
     assert diagnostics == []
     assert quarantined == []
     assert projected[0]["kind"] == "view"
-    assert projected[0]["view"] == _view()
+    assert projected[0]["view"] == payload["view"]
     assert "action_contract" not in projected[0]
     from ecosystem.defaultspack.defaultspack.v4_frontend_contributions import (
         project_selected_declarative_routes,
