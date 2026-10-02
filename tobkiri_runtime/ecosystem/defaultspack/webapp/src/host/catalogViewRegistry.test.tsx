@@ -123,6 +123,9 @@ test("automatic sources cannot invoke mutations while explicit controls retain c
   assert.ok(viewOperationRequest(value, registered, operation, {}));
   delete value.contributions[1].read_only;
   assert.equal(viewReadRequest(value, registered, operation, {}), null);
+  value.contributions.push({ ...value.contributions[1], action_contract: "other.v1", read_only: true });
+  assert.equal(viewOperationRequest(value, registered, operation, {}), null);
+  assert.equal(viewReadRequest(value, registered, operation, {}), null);
 });
 
 test("nested identity/private/prototype hints and nonfinite values are rejected", () => {
