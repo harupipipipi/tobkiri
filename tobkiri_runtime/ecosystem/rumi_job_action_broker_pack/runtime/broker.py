@@ -186,7 +186,7 @@ class JobActionBroker:
 
     def _provider(self, action_id: str) -> Mapping[str, Any]:
         if self.canonical:
-            providers = self.client.providers("tobkiri.action.job.adapter.v1")
+            providers = self.client.providers("tobkiri.action.job.adapter.v2")
             matches = []
             for item in providers:
                 operation = str(item.get("operation_id") or "")
@@ -218,7 +218,7 @@ class JobActionBroker:
             if not operation_id:
                 raise RuntimeError("selected job adapter operation is unavailable")
             result = self.client.invoke(
-                "tobkiri.action.job.adapter.v1",
+                "tobkiri.action.job.adapter.v2",
                 operation_id,
                 {**dict(payload), "operation": operation},
             )
@@ -371,7 +371,7 @@ def _invoke_v4_owner(
     }:
         raise PermissionError("job broker payload is invalid")
     client = invocation.contract_client(
-        allowed_contract_ids=frozenset({"tobkiri.action.job.adapter.v1"}),
+        allowed_contract_ids=frozenset({"tobkiri.action.job.adapter.v2"}),
         consumer_pack_id=SERVICE_PACK_ID,
         include_credentials=False,
     )

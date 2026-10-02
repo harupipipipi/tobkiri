@@ -27,6 +27,7 @@ from tobkiri_host.ports import (
 )
 from tobkiri_host.operation_cancellation import OwnedCancellationBinding
 from tobkiri_protocol.canonical import canonical_digest
+from core_runtime.captured_wake_v4 import CapturedWakePortV4
 
 
 class HostProviderInvocationContextV4(Protocol):
@@ -126,6 +127,9 @@ class HostProviderCaptureContextV4:
     interactive_effect_port: InteractiveEffectPort | None = None
     workspace_mutation_port: WorkspaceMutationPort | None = None
     declared_pack_data: tuple[CapturedHostPackDataV4, ...] = ()
+    # Supplied only to a verified factory declaring one fixed wake target.
+    # It cannot reuse an invocation, choose a caller/target or mint a Grant.
+    wake_port: CapturedWakePortV4 | None = None
 
 
 @dataclass(frozen=True)
