@@ -458,6 +458,7 @@ def test_workspace_task_approval_resumes_the_exact_snapshot_once(
         == "approval_pending"
     )
     _decide(fixture, pending.approval_request_id, "approve")
+    prior_events = len(fixture.harness.store.audit_events())
     assert (
         fixture.service.resume_interactive_effect(
             _owner(fixture, pending.effect_id)
@@ -473,7 +474,7 @@ def test_workspace_task_approval_resumes_the_exact_snapshot_once(
     assert fixture.backend.invocations == 1
     execution_states = [
         event["event_state"]
-        for event in fixture.harness.store.audit_events()
+        for event in fixture.harness.store.audit_events()[prior_events:]
         if event["event_state"] in {"reserved", "dispatched", "committed"}
     ]
     assert execution_states == [
@@ -635,20 +636,23 @@ def test_adoption_schema_preserves_each_finite_kind_and_management_phase() -> No
     from ecosystem.defaultspack.defaultspack.http_dynamic_targets import (
         _captured_input_schema,
     )
+    from ecosystem.defaultspack.defaultspack.v4_view_contract import (
+        validate_schema_declared_profile_targets,
+    )
 
     assert _captured_input_schema(schema)
     validator = Draft202012Validator(schema)
     correlation_id = "a7188ed0-45d5-4b1b-9abc-6de80c41d5a1"
     for kind in INTERACTIVE_EFFECT_SPECS:
         request = _request(_coordinator_context()) if kind == "workspace_task" else {}
-        validator.validate(
-            {
-                "phase": "prepare",
-                "effect_kind": kind,
-                "request": request,
-                "correlation_id": correlation_id,
-            }
-        )
+        prepare_payload = {
+            "phase": "prepare",
+            "effect_kind": kind,
+            "request": request,
+            "correlation_id": correlation_id,
+        }
+        validator.validate(prepare_payload)
+        validate_schema_declared_profile_targets(prepare_payload, schema)
         validator.validate(
             {"phase": "lookup", "effect_kind": kind, "correlation_id": correlation_id}
         )
