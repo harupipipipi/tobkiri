@@ -27,7 +27,8 @@
       "enum": [
         "panel",
         "status",
-        "entity_picker"
+        "entity_picker",
+        "record_editor"
       ]
     },
     "title": {
@@ -54,6 +55,9 @@
       "items": {
         "$ref": "#/$defs/control"
       }
+    },
+    "record_editor": {
+      "$ref": "#/$defs/record_editor"
     }
   },
   "$defs": {
@@ -260,6 +264,255 @@
           "turn_id"
         ]
       }
+    },
+    "bindings": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]{0,63}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/path"
+      }
+    },
+    "condition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "equals"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "equals": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "maxLength": 256
+        }
+      }
+    },
+    "record_save": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation",
+        "draft_key"
+      ],
+      "properties": {
+        "operation": {
+          "$ref": "#/$defs/operation"
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        },
+        "context_bindings": {
+          "$ref": "#/$defs/context_bindings"
+        },
+        "source_bindings": {
+          "$ref": "#/$defs/bindings"
+        },
+        "record_bindings": {
+          "$ref": "#/$defs/bindings"
+        },
+        "draft_key": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$"
+        }
+      }
+    },
+    "record_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "operation"
+      ],
+      "properties": {
+        "operation": {
+          "$ref": "#/$defs/operation"
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        },
+        "context_bindings": {
+          "$ref": "#/$defs/context_bindings"
+        },
+        "source_bindings": {
+          "$ref": "#/$defs/bindings"
+        },
+        "record_bindings": {
+          "$ref": "#/$defs/bindings"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "available_when": {
+          "$ref": "#/$defs/condition"
+        },
+        "disabled_when": {
+          "$ref": "#/$defs/condition"
+        }
+      }
+    },
+    "record_field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "path",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "multiline",
+            "integer",
+            "datetime",
+            "json"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "read_only": {
+          "type": "boolean"
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        }
+      }
+    },
+    "record_column": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "path",
+        "kind"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "status",
+            "datetime"
+          ]
+        }
+      }
+    },
+    "record_editor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "records_path",
+        "id_path",
+        "title_path",
+        "fields",
+        "save"
+      ],
+      "properties": {
+        "records_path": {
+          "$ref": "#/$defs/path"
+        },
+        "id_path": {
+          "$ref": "#/$defs/path"
+        },
+        "title_path": {
+          "$ref": "#/$defs/path"
+        },
+        "search_paths": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/path"
+          }
+        },
+        "columns": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/record_column"
+          }
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/record_field"
+          }
+        },
+        "save": {
+          "$ref": "#/$defs/record_save"
+        },
+        "actions": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/record_action"
+          }
+        }
+      }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "renderer": {
+            "const": "record_editor"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "record_editor"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "record_editor"
+          ]
+        }
+      }
+    }
+  ]
 }

@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   choicePayload, controlPayload, matchesViewReference, parseCatalogView,
   readViewPath, requestContextInput, validPublicViewInput,
-  viewChoices, viewOperationRequest, viewsForSlot,
+  viewChoices, viewOperationRequest, viewsForSlot, viewContextKey,
   type CatalogView, type ViewControl,
 } from "./catalogViewRegistry";
 import { FrontendViewSlot } from "./FrontendViewSlot";
@@ -115,9 +115,11 @@ test("duplicate/mismatched/unready targets remain unavailable", () => {
 });
 
 test("nested identity/private/prototype hints and nonfinite values are rejected", () => {
-  for (const key of ["profile_id", "approved", "_session_id", "constructor", "__proto__"]) {
+  for (const key of ["profile_revision", "approved", "_session_id", "constructor", "__proto__"]) {
     assert.equal(validPublicViewInput({ nested: { [key]: true } }), false);
   }
+  assert.equal(validPublicViewInput({ profile_id: "execution-override" }), false);
+  assert.equal(validPublicViewInput({ model_policy: { fixed: { profile_id: "model-target" } } }), true);
   assert.equal(validPublicViewInput({ count: Infinity }), false);
   assert.equal(validPublicViewInput({ text: "x".repeat(16385) }), false);
   assert.equal(readViewPath({ state: "ready" }, "state"), "ready");
@@ -165,4 +167,37 @@ test("shipped slot renderer escapes Pack text and exposes unavailable state with
     contributionId="surface.public.view" reference={{ ...reference, profileId: "other" }}
     capabilities={{ invokeAction: async () => ({}), readDataSource: async () => ({}) }} />);
   assert.match(stale, /view-unavailable/);
+});
+
+const editor = {
+  records_path: "items", id_path: "id", title_path: "title",
+  fields: [{ id: "title", label: "Title", path: "title", kind: "text" }],
+  save: { operation, draft_key: "updates", record_bindings: { item_id: "id", expected_revision: "revision" } },
+  actions: [{ id: "pause", label: "Pause", operation, input: { operation: "pause" },
+    record_bindings: { item_id: "id" }, available_when: { path: "state", equals: "running" } }],
+};
+test("record editor admits only finite field/action/data bindings and shipped renderer", () => {
+  assert.ok(parseCatalogView({ ...view, renderer: "record_editor", record_editor: editor }));
+  for (const unsafe of [
+    { ...editor, fields: [...editor.fields, { ...editor.fields[0] }] },
+    { ...editor, fields: [{ ...editor.fields[0], path: "constructor.id" }] },
+    { ...editor, save: { ...editor.save, input: { updates: {} } } },
+    { ...editor, save: { ...editor.save, record_bindings: { profile_id: "id" } } },
+    { ...editor, actions: [{ ...editor.actions[0], url: "/api/run" }] },
+    { ...editor, fields: [{ ...editor.fields[0], path: "timing" }, { id: "at", label: "At", path: "timing.at", kind: "text" }] },
+  ]) {
+    assert.equal(parseCatalogView({ ...view, renderer: "record_editor", record_editor: unsafe }), null);
+  }
+  assert.equal(parseCatalogView({ ...view, record_editor: editor }), null);
+});
+
+test("unused turn context cannot remount conversation-only or profile-only editors", () => {
+  const value = catalog();
+  const registered = viewsForSlot(value, "sidebar", "plan")[0];
+  assert.equal(viewContextKey(registered, { turn_id: "a" }), viewContextKey(registered, { turn_id: "b" }));
+  registered.view.data_source = { ...operation, context_bindings: { conversation_id: "conversation_id" } };
+  assert.equal(viewContextKey(registered, { conversation_id: "chat", turn_id: "a" }),
+    viewContextKey(registered, { conversation_id: "chat", turn_id: "b" }));
+  assert.notEqual(viewContextKey(registered, { conversation_id: "chat-a" }),
+    viewContextKey(registered, { conversation_id: "chat-b" }));
 });

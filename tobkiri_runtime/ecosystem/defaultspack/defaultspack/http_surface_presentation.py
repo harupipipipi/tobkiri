@@ -66,7 +66,10 @@ from .chat_continuation_presentation import (
     present_chat_continuation,
 )
 from .ai_strategy_presentation import present_ai_strategy_catalog
-from .v4_view_contract import validate_public_input
+from .v4_view_contract import (
+    validate_public_input,
+    validate_schema_declared_profile_targets,
+)
 
 _PROJECT_READ_TARGET = (
     "defaults.projects.read", "tobkiri.resource.project.state.v1",
@@ -520,8 +523,9 @@ class DefaultspackHTTPPresentation:
             return dict(payload)
         if target.input_schema and target.contract_id != "tobkiri.service.media.inspect.v1":
             session.assert_current()
-            validate_public_input(payload)
+            validate_public_input(payload, allow_domain_profile_ids=True)
             schema = strict_loads(target.input_schema)
+            validate_schema_declared_profile_targets(payload, schema)
             normalized = dict(payload)
             if "profile_id" in schema["properties"]:
                 profile_id = str(getattr(session, "profile_id", ""))

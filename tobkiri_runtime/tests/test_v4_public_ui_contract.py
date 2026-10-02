@@ -159,6 +159,54 @@ def test_nested_operation_schema_is_captured_and_profile_is_host_derived() -> No
     assert presented == {"profile_id": "profile", "settings": {"enabled": True}}
 
 
+def test_nested_model_policy_target_is_domain_data_but_execution_profile_is_captured() -> None:
+    schema = {
+        **SCHEMA,
+        "properties": {
+            **SCHEMA["properties"],
+            "model_policy": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "fixed": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {"profile_id": {"type": "string"}},
+                    },
+                },
+            },
+        },
+    }
+    session = _Session()
+    target = _snapshot(session, _catalog(schema)).targets[0]
+    payload = {
+        "settings": {"enabled": True},
+        "model_policy": {"fixed": {"profile_id": "reviewer-model-profile"}},
+    }
+    result = DefaultspackHTTPPresentation().normalize_payload(
+        target,
+        payload,
+        session=session,
+        workspace_binding_resolver=None,
+    )
+    assert result["profile_id"] == "profile"
+    assert result["model_policy"] == payload["model_policy"]
+    with pytest.raises(ValueError):
+        DefaultspackHTTPPresentation().normalize_payload(
+            target,
+            {**payload, "profile_id": "execution-override"},
+            session=session,
+            workspace_binding_resolver=None,
+        )
+    with pytest.raises(ValueError):
+        DefaultspackHTTPPresentation().normalize_payload(
+            target,
+            {"settings": {"enabled": True, "profile_id": "forged"}},
+            session=session,
+            workspace_binding_resolver=None,
+        )
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -354,18 +402,18 @@ def test_selected_signed_view_is_projected_and_unregister_has_no_stale_route(
     _write(root / DESCRIPTOR, payload)
     refresh_scaffold_artifacts(root)
     manifest = json.loads((root / "pack.v4.json").read_text())
-    next(item for item in manifest["artifacts"] if item["path"] == DESCRIPTOR)[
-        "kind"
-    ] = "ui.contribution"
+    next(item for item in manifest["artifacts"] if item["path"] == DESCRIPTOR)["kind"] = (
+        "ui.contribution"
+    )
     digest = canonical_digest(manifest["artifacts"])
     manifest["pack"]["artifact_digest"] = digest
     manifest["integrity"]["artifact_set_digest"] = digest
     _write(root / "pack.v4.json", manifest)
     index = json.loads((root / "artifact-index.v4.json").read_text())
     index["artifact_set_digest"] = digest
-    next(item for item in index["artifacts"] if item["path"] == "pack.v4.json")[
-        "digest"
-    ] = _digest(root / "pack.v4.json")
+    next(item for item in index["artifacts"] if item["path"] == "pack.v4.json")["digest"] = _digest(
+        root / "pack.v4.json"
+    )
     index["integrity_seal"]["signed_digest"] = canonical_digest(
         {key: value for key, value in index.items() if key != "integrity_seal"}
     )

@@ -13,6 +13,31 @@ export type ViewOperation = {
 };
 export type ViewInputContext = { conversation_id?: string; turn_id?: string };
 type ContextBindings = Record<string, keyof ViewInputContext>;
+export type ViewNavigationGuard = () => boolean;
+export type ViewNavigationGuardChange = (
+  ownerId: string, guard: ViewNavigationGuard | null,
+) => void;
+export type RecordEditorRequest = {
+  operation: ViewOperation; input?: Record<string, unknown>;
+  context_bindings?: ContextBindings; source_bindings?: Record<string, string>;
+  record_bindings?: Record<string, string>;
+};
+export type RecordEditorField = {
+  id: string; label: string; path: string;
+  kind: "text" | "multiline" | "integer" | "datetime" | "json";
+  required?: boolean; read_only?: boolean; min?: number; max?: number;
+};
+export type RecordEditorCondition = { path: string; equals: string | number | boolean | null };
+export type RecordEditorAction = RecordEditorRequest & {
+  id: string; label: string;
+  available_when?: RecordEditorCondition; disabled_when?: RecordEditorCondition;
+};
+export type RecordEditorDefinition = {
+  records_path: string; id_path: string; title_path: string; search_paths?: string[];
+  columns?: Array<{ label: string; path: string; kind: "text" | "status" | "datetime" }>;
+  fields: RecordEditorField[];
+  save: RecordEditorRequest & { draft_key: string }; actions?: RecordEditorAction[];
+};
 export type ViewField = {
   label: string; path: string; kind: "text" | "status" | "progress";
   total_path?: string;
@@ -27,12 +52,13 @@ export type ViewControl = {
 };
 export type CatalogView = {
   version: typeof VIEW_VERSION; slot: ViewSlot;
-  renderer: "panel" | "status" | "entity_picker";
+  renderer: "panel" | "status" | "entity_picker" | "record_editor";
   title?: string; body?: string;
   data_source?: ViewOperation & {
     input?: Record<string, unknown>; context_bindings?: ContextBindings;
   };
   fields?: ViewField[]; controls?: ViewControl[];
+  record_editor?: RecordEditorDefinition;
 };
 export type CatalogViewReference = {
   contributionId: string; ownerPackId: string; descriptorHash: string;
@@ -79,7 +105,7 @@ export function validPublicViewInput(value: unknown, depth = 0): boolean {
   if (record(value)) {
     if (Object.keys(value).length > 64) return false;
     if (!Object.entries(value).every(([key, item]) =>
-      key.length <= 128 && !reserved.has(key) && !key.startsWith("_")
+      key.length <= 128 && (!reserved.has(key) || (key === "profile_id" && depth > 0)) && !key.startsWith("_")
       && validPublicViewInput(item, depth + 1))) return false;
   } else if (Array.isArray(value)) {
     if (value.length > 256 || !value.every((item) =>
@@ -106,16 +132,82 @@ function validContextBindings(value: unknown, input: unknown): boolean {
       && (!record(input) || !own(input, key)));
 }
 
+function validRecordRequest(value: unknown, save: boolean): boolean {
+  if (!record(value) || !keys(value, [
+    "operation", "input", "context_bindings", "source_bindings", "record_bindings",
+    ...(save ? ["draft_key"] : ["id", "label", "available_when", "disabled_when"]),
+  ]) || !operationValid(value.operation)
+    || (own(value, "input") && (!record(value.input) || !validPublicViewInput(value.input)))) return false;
+  const claimed = new Set(Object.keys(record(value.input) ? value.input : {}));
+  for (const key of ["source_bindings", "record_bindings", "context_bindings"]) {
+    const bindings = value[key] ?? {};
+    if (!record(bindings) || Object.keys(bindings).length > 32) return false;
+    if (key === "context_bindings" && !validContextBindings(bindings, value.input)) return false;
+    for (const [inputKey, path] of Object.entries(bindings)) {
+      if (!validPublicViewInput({ [inputKey]: null }) || claimed.has(inputKey)
+        || (key !== "context_bindings" && !validViewPath(path))) return false;
+      claimed.add(inputKey);
+    }
+  }
+  if (save) {
+    return bounded(value.draft_key, 64, 1) && /^[a-z][a-z0-9_]*$/.test(value.draft_key)
+      && validPublicViewInput({ [value.draft_key]: null }) && !claimed.has(value.draft_key);
+  }
+  if (!identifier(value.id) || !bounded(value.label, 256, 1)) return false;
+  return ["available_when", "disabled_when"].every((key) => {
+    const condition = value[key];
+    if (!own(value, key)) return true;
+    return record(condition) && keys(condition, ["path", "equals"])
+      && validViewPath(condition.path) && own(condition, "equals")
+      && (condition.equals === null || typeof condition.equals === "boolean"
+        || bounded(condition.equals, 256)
+        || (typeof condition.equals === "number" && Number.isFinite(condition.equals)));
+  });
+}
+
+export function parseRecordEditor(value: unknown): RecordEditorDefinition | null {
+  if (!record(value) || !keys(value, [
+    "records_path", "id_path", "title_path", "search_paths", "columns", "fields", "save", "actions",
+  ]) || !["records_path", "id_path", "title_path"].every((key) => validViewPath(value[key]))
+    || !validRecordRequest(value.save, true)) return null;
+  const searches = value.search_paths ?? [];
+  const columns = value.columns ?? [];
+  const fields = value.fields;
+  const actions = value.actions ?? [];
+  if (!Array.isArray(searches) || searches.length > 8 || new Set(searches).size !== searches.length
+    || !searches.every(validViewPath) || !Array.isArray(columns) || columns.length > 12
+    || !columns.every((column) => record(column) && keys(column, ["label", "path", "kind"])
+      && bounded(column.label, 256, 1) && validViewPath(column.path)
+      && ["text", "status", "datetime"].includes(String(column.kind)))
+    || !Array.isArray(fields) || fields.length === 0 || fields.length > 16
+    || !fields.every((field) => record(field)
+      && keys(field, ["id", "label", "path", "kind", "required", "min", "max", "read_only"])
+      && identifier(field.id) && bounded(field.label, 256, 1) && validViewPath(field.path)
+      && ["text", "multiline", "integer", "datetime", "json"].includes(String(field.kind))
+      && ["required", "read_only"].every((key) => !own(field, key) || typeof field[key] === "boolean")
+      && ["min", "max"].every((key) => !own(field, key)
+        || (typeof field[key] === "number" && Number.isFinite(field[key])))
+      && !(typeof field.min === "number" && typeof field.max === "number" && field.min > field.max))
+    || !Array.isArray(actions) || actions.length > 16 || !actions.every((action) => validRecordRequest(action, false))) return null;
+  if (new Set(fields.map((field) => field.id)).size !== fields.length
+    || new Set(actions.map((action) => action.id)).size !== actions.length
+    || fields.some((field, index) => fields.some((other, otherIndex) => index !== otherIndex
+      && (field.path === other.path || field.path.startsWith(other.path + "."))))) return null;
+  return value as unknown as RecordEditorDefinition;
+}
+
 /** Validate the complete view before resolving any shipped renderer. */
 export function parseCatalogView(value: unknown): CatalogView | null {
   if (!record(value) || !keys(value, [
-    "version", "slot", "renderer", "title", "body", "data_source", "fields", "controls",
+    "version", "slot", "renderer", "title", "body", "data_source", "fields", "controls", "record_editor",
   ]) || value.version !== VIEW_VERSION
     || !VIEW_SLOTS.includes(value.slot as ViewSlot)
-    || !["panel", "status", "entity_picker"].includes(String(value.renderer))
+    || !["panel", "status", "entity_picker", "record_editor"].includes(String(value.renderer))
     || (own(value, "title") && !bounded(value.title, 256))
     || (own(value, "body") && !bounded(value.body, 4096))
     || (own(value, "data_source") && !operationValid(value.data_source, true))) return null;
+  if (value.renderer === "record_editor" ? !parseRecordEditor(value.record_editor)
+    : own(value, "record_editor")) return null;
   if (own(value, "fields") && (!Array.isArray(value.fields) || value.fields.length > 32
     || !value.fields.every((field) => record(field)
       && keys(field, ["label", "path", "kind", "total_path"])
@@ -216,6 +308,8 @@ export function viewOperationRequest(
   const declared = [
     registered.view.data_source,
     ...(registered.view.controls ?? []).map((control) => control.operation),
+    registered.view.record_editor?.save.operation,
+    ...(registered.view.record_editor?.actions ?? []).map((action) => action.operation),
   ];
   if (!declared.some((item) => item
     && item.contribution_id === operation.contribution_id
@@ -287,4 +381,19 @@ export function requestContextInput(
     payload[key] = value;
   }
   return validPublicViewInput(payload) ? payload : null;
+}
+
+/** Unrelated turn/context changes cannot erase an editor that never consumes them. */
+export function viewContextKey(
+  registered: RegisteredCatalogView, context: ViewInputContext,
+): string {
+  const requests = [
+    registered.view.data_source,
+    ...(registered.view.controls ?? []),
+    registered.view.record_editor?.save,
+    ...(registered.view.record_editor?.actions ?? []),
+  ];
+  const consumed = new Set(requests.flatMap((request) =>
+    Object.values(request?.context_bindings ?? {})));
+  return JSON.stringify([...consumed].sort().map((key) => [key, context[key] ?? null]));
 }
