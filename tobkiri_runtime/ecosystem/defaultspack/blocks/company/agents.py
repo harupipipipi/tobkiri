@@ -1,7 +1,7 @@
 from blocks._common import ok, error
-from domain.company.agent_store import CompanyAgentStore
+from domain.company.contract_facade import CompanyContractFacade, CompanyFacadeError
 
-from ._helpers import company_id_from, invalid, missing_company, require_dict, subagent_team_write_denied
+from ._helpers import company_id_from, invalid, missing_company, require_dict
 
 
 def run(input_data, context):
@@ -11,10 +11,10 @@ def run(input_data, context):
     if not company_id:
         return invalid("company_id is required")
     action = str(input_data.get("action") or "list").lower()
-    store = CompanyAgentStore()
     try:
+        facade = CompanyContractFacade(input_data, context)
         if action == "list":
-            agents = store.list(company_id)
+            agents = facade.run("list_agents")
             if agents is None:
                 return missing_company(company_id)
             return ok({"agents": agents, "total": len(agents)})
@@ -22,32 +22,28 @@ def run(input_data, context):
             agent_id = input_data.get("agent_id")
             if not agent_id:
                 return invalid("agent_id is required")
-            agent = store.get(company_id, str(agent_id))
+            agent = facade.run("get_agent")
             if agent is None:
                 return error("agent not found: " + str(agent_id), "NOT_FOUND")
             return ok(agent)
         if action in {"upsert", "update", "create"}:
-            blocked = subagent_team_write_denied(company_id)
-            if blocked is not None:
-                return blocked
             agent = input_data.get("agent")
             if not isinstance(agent, dict):
                 return invalid("agent must be a dict")
-            updated = store.upsert(company_id, agent)
+            updated = facade.run("upsert_agent")
             if updated is None:
                 return missing_company(company_id)
             return ok(updated)
         if action in {"remove", "delete"}:
-            blocked = subagent_team_write_denied(company_id)
-            if blocked is not None:
-                return blocked
             agent_id = input_data.get("agent_id")
             if not agent_id:
                 return invalid("agent_id is required")
-            removed = store.remove(company_id, str(agent_id))
+            removed = facade.run("delete_agent")
             if not removed:
                 return error("agent not found: " + str(agent_id), "NOT_FOUND")
             return ok({"deleted": True, "agent_id": str(agent_id)})
         return invalid("unsupported agents action: " + action)
+    except CompanyFacadeError as exc:
+        return error(str(exc), exc.code)
     except Exception as exc:
         return error("company agents failed: " + str(exc), "COMPANY_AGENTS_ERROR")

@@ -72,6 +72,15 @@ class AgentRun:
     completed_at: Optional[str] = None
     parent_run_id: Optional[str] = None
     root_run_id: Optional[str] = None
+    root_scope_id: Optional[str] = None
+    agent_kind: str = "subagent"
+    runtime_kind: str = "agent_run"
+    subagent_role: Optional[str] = None
+    placement_id: Optional[str] = None
+    placement_revision: Optional[str] = None
+    placement_map_id: Optional[str] = None
+    effective_plan_hash: Optional[str] = None
+    protocol_membership_json: list[str] = field(default_factory=list)
     current_transcript_id: Optional[str] = None
     compaction_count: int = 0
     heartbeat_at: Optional[str] = None

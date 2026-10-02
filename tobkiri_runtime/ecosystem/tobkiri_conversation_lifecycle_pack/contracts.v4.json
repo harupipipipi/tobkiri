@@ -1,0 +1,276 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.resource.conversation.lifecycle.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:conversation.lifecycle.read",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:83445aed0fdb09b3914bb6ef42d9aa15d5f4e107a9ca0e8a03583e72255adb79",
+          "operation_id": "tobkiri_conversation_lifecycle_pack.lifecycle-status",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "tobkiri_conversation_lifecycle_pack",
+      "provenance": {
+        "evidence": [],
+        "generator": "tobkiri-protocol",
+        "generator_version": "1.0.0",
+        "normative": false,
+        "repository_commit": "f5ebf978fa9b89120a98a17bad308ea1607ed6ce",
+        "repository_tree": "82fb5519a2fad814e6f81c1b750cb695d36016eca9bc7f75ab1325ffaa8cf79c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:b3ee8db441c81d140f1290f258ec2910aafdb55aa54c56402e6577db0e5ac3a4",
+        "source_kind": "repository",
+        "source_path": "ecosystem/tobkiri_conversation_lifecycle_pack/pack-source.v1.json"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "tobkiri_conversation_lifecycle_pack",
+          "introduced": "1.0.0"
+        },
+        "provider_id": "tobkiri_conversation_lifecycle_pack.status",
+        "required_capabilities": [
+          "conversation.lifecycle.read"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:4bc3b88e023480947e3bbf9a5668a707301d13005d55c7a3e0ab17169ff04beb",
+      "schema_catalog": {
+        "sha256:83445aed0fdb09b3914bb6ef42d9aa15d5f4e107a9ca0e8a03583e72255adb79": {
+          "additionalProperties": false,
+          "properties": {
+            "_session_id": {
+              "type": "string"
+            },
+            "conversation_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "operation": {
+              "const": "get"
+            },
+            "profile_id": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "profile_id",
+            "operation",
+            "conversation_id"
+          ],
+          "type": "object"
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.conversation.lifecycle.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:conversation.lifecycle.manage",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a3228d3d58829f53ed54f752a8d82dbcbe783a390fc7d42f41166300a11e29de",
+          "operation_id": "tobkiri_conversation_lifecycle_pack.lifecycle-manage",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "tobkiri_conversation_lifecycle_pack",
+      "provenance": {
+        "evidence": [],
+        "generator": "tobkiri-protocol",
+        "generator_version": "1.0.0",
+        "normative": false,
+        "repository_commit": "f5ebf978fa9b89120a98a17bad308ea1607ed6ce",
+        "repository_tree": "82fb5519a2fad814e6f81c1b750cb695d36016eca9bc7f75ab1325ffaa8cf79c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:b3ee8db441c81d140f1290f258ec2910aafdb55aa54c56402e6577db0e5ac3a4",
+        "source_kind": "repository",
+        "source_path": "ecosystem/tobkiri_conversation_lifecycle_pack/pack-source.v1.json"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "tobkiri_conversation_lifecycle_pack",
+          "introduced": "1.0.0"
+        },
+        "provider_id": "tobkiri_conversation_lifecycle_pack.manage",
+        "required_capabilities": [
+          "conversation.lifecycle.manage"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:09edadfed8333374d03977e25f4203c7e4e3c66367e1e53a362eae8b56bc4849",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:a3228d3d58829f53ed54f752a8d82dbcbe783a390fc7d42f41166300a11e29de": {
+          "additionalProperties": false,
+          "properties": {
+            "_session_id": {
+              "type": "string"
+            },
+            "conversation_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "mode": {
+              "enum": [
+                "manual",
+                "archive_after_completion"
+              ]
+            },
+            "operation": {
+              "const": "configure"
+            },
+            "profile_id": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "profile_id",
+            "operation",
+            "conversation_id",
+            "mode"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.job.adapter.v2",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:conversation.lifecycle.archive",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:d88c0e445cff94ffdfe9bb4e721ff36a0e835265e51e871ded9ec7d94fb3e3c2",
+          "operation_id": "tobkiri_conversation_lifecycle_pack.archive-job-adapter",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "tobkiri_conversation_lifecycle_pack",
+      "provenance": {
+        "evidence": [],
+        "generator": "tobkiri-protocol",
+        "generator_version": "1.0.0",
+        "normative": false,
+        "repository_commit": "f5ebf978fa9b89120a98a17bad308ea1607ed6ce",
+        "repository_tree": "82fb5519a2fad814e6f81c1b750cb695d36016eca9bc7f75ab1325ffaa8cf79c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:b3ee8db441c81d140f1290f258ec2910aafdb55aa54c56402e6577db0e5ac3a4",
+        "source_kind": "repository",
+        "source_path": "ecosystem/tobkiri_conversation_lifecycle_pack/pack-source.v1.json"
+      },
+      "provider_semantics": {
+        "cardinality": "many",
+        "failure": "fail_closed",
+        "instance_key": "conversation-lifecycle.archive-due",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "tobkiri_conversation_lifecycle_pack",
+          "introduced": "1.0.0"
+        },
+        "provider_id": "tobkiri_conversation_lifecycle_pack.archive-job",
+        "required_capabilities": [
+          "conversation.lifecycle.archive"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:023c9504c82201f499275a7d72850916efbe0c7161b327f0dd42c9f430906fa2",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:d88c0e445cff94ffdfe9bb4e721ff36a0e835265e51e871ded9ec7d94fb3e3c2": {
+          "additionalProperties": false,
+          "properties": {
+            "action_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "idempotency_key": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "lease_id": {
+              "maxLength": 256,
+              "type": "string"
+            },
+            "operation": {
+              "enum": [
+                "describe",
+                "dispatch",
+                "cancel",
+                "status"
+              ]
+            },
+            "payload": {
+              "type": "object"
+            },
+            "profile_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "schedule_id": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "2.0.0"
+    }
+  ],
+  "pack_id": "tobkiri_conversation_lifecycle_pack",
+  "source_identity": "sha256:b3ee8db441c81d140f1290f258ec2910aafdb55aa54c56402e6577db0e5ac3a4"
+}

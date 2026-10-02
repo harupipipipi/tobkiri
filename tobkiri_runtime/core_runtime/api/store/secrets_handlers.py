@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import re
 
+from .._helpers import _log_internal_error, _SAFE_ERROR_MSG
+
 # secrets_store.py と同じ制約を早期にチェックする
 _KEY_PATTERN = re.compile(r"^[A-Z0-9_]{1,64}$")
 
 # value の最大サイズ (1 MB)
 _MAX_VALUE_BYTES = 1_048_576
-
-from .._helpers import _log_internal_error, _SAFE_ERROR_MSG
 
 
 def _get_secrets_grant_manager():
@@ -309,8 +309,8 @@ def _secrets_grants_delete_key(self, pack_id: str, secret_key: str) -> dict:
 
 
 # Attach to SecretsHandlersMixin so PackAPIHandler inherits them
-SecretsHandlersMixin._secrets_grants_list = _secrets_grants_list
-SecretsHandlersMixin._secrets_grants_get = _secrets_grants_get
-SecretsHandlersMixin._secrets_grants_grant = _secrets_grants_grant
-SecretsHandlersMixin._secrets_grants_delete = _secrets_grants_delete
-SecretsHandlersMixin._secrets_grants_delete_key = _secrets_grants_delete_key
+setattr(SecretsHandlersMixin, "_secrets_grants_list", _secrets_grants_list)
+setattr(SecretsHandlersMixin, "_secrets_grants_get", _secrets_grants_get)
+setattr(SecretsHandlersMixin, "_secrets_grants_grant", _secrets_grants_grant)
+setattr(SecretsHandlersMixin, "_secrets_grants_delete", _secrets_grants_delete)
+setattr(SecretsHandlersMixin, "_secrets_grants_delete_key", _secrets_grants_delete_key)

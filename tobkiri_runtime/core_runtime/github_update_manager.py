@@ -1,4 +1,4 @@
-"""GitHub-backed update manager for Rumi runtime and defaultspack.
+"""GitHub-backed updater driven by verified target descriptors.
 
 The updater is intentionally conservative:
 - it downloads GitHub Release source archives, so no custom update server is
@@ -20,25 +20,30 @@ import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Literal, Mapping, Optional
+from typing import Any, Iterable, Mapping, Optional
+import re
+
+from .host_contract import host_contract_value
 
 
-UpdateTarget = Literal["tobkiri", "defaultspack"]
-UpdateTargetInput = Literal["tobkiri", "rumiai", "defaultspack"]
+UpdateTarget = str
 
 DEFAULT_REPO = "harupipipipi/rumiai"
 DEFAULT_TIMEOUT = 20
 MAX_ARCHIVE_BYTES = 250 * 1024 * 1024
 AUTO_UPDATE_INTERVAL_HOURS = 24
-UPDATE_TARGETS: tuple[UpdateTarget, ...] = ("tobkiri", "defaultspack")
+UPDATE_TARGET_DESCRIPTOR_SCHEMA = "io.tobkiri.update-target.v1"
+_UPDATE_TARGET_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,127}$")
 
 
 def normalize_update_target(target: str) -> UpdateTarget:
-    if target == "rumiai":
+    """Normalize the retained host product alias without choosing a Pack."""
+    normalized = str(target or "").strip()
+    if normalized == "rumiai":
         return "tobkiri"
-    if target in UPDATE_TARGETS:
-        return target  # type: ignore[return-value]
-    raise GitHubUpdateError(f"unsupported update target: {target}")
+    if not _UPDATE_TARGET_ID_RE.fullmatch(normalized):
+        raise GitHubUpdateError(f"unsupported update target: {target}")
+    return normalized
 
 _COMMON_EXCLUDES = (
     ".git/**",
@@ -51,8 +56,63 @@ _COMMON_EXCLUDES = (
     "**/.DS_Store",
 )
 
-_PROTECTED_BY_TARGET: dict[UpdateTarget, tuple[str, ...]] = {
-    "tobkiri": (
+@dataclass(frozen=True)
+class UpdateTargetDescriptor:
+    """One host-verified source-to-destination update contribution."""
+
+    target: str
+    source_root: str
+    destination_root: str
+    version_path: str
+    version_format: str
+    protected_paths: tuple[str, ...] = ()
+    restart_required: bool = False
+    runtime_reload_recommended: bool = False
+
+    def __post_init__(self) -> None:
+        if not _UPDATE_TARGET_ID_RE.fullmatch(self.target):
+            raise ValueError("update target id is invalid")
+        for value in (self.source_root, self.destination_root, self.version_path):
+            _relative_update_path(value)
+        if self.version_format not in {"pyproject", "json"}:
+            raise ValueError("update target version_format is invalid")
+        if any(not isinstance(item, str) or not item for item in self.protected_paths):
+            raise ValueError("update target protected_paths are invalid")
+
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, Any]) -> "UpdateTargetDescriptor":
+        """Validate a signed host/Pack update contribution mapping."""
+        if raw.get("schema") != UPDATE_TARGET_DESCRIPTOR_SCHEMA:
+            raise ValueError("update target descriptor schema is invalid")
+        protected_paths = raw.get("protected_paths", [])
+        if not isinstance(protected_paths, list):
+            raise ValueError("update target protected_paths must be a list")
+        return cls(
+            target=normalize_update_target(str(raw.get("target") or "")),
+            source_root=str(raw.get("source_root") or ""),
+            destination_root=str(raw.get("destination_root") or ""),
+            version_path=str(raw.get("version_path") or ""),
+            version_format=str(raw.get("version_format") or ""),
+            protected_paths=tuple(str(item) for item in protected_paths),
+            restart_required=raw.get("restart_required") is True,
+            runtime_reload_recommended=raw.get("runtime_reload_recommended") is True,
+        )
+
+
+def _relative_update_path(value: str) -> Path:
+    path = Path(value)
+    if not value or path.is_absolute() or ".." in path.parts:
+        raise ValueError("update target path is invalid")
+    return path
+
+
+_HOST_UPDATE_DESCRIPTOR = UpdateTargetDescriptor(
+    target="tobkiri",
+    source_root="tobkiri_runtime",
+    destination_root=".",
+    version_path="pyproject.toml",
+    version_format="pyproject",
+    protected_paths=(
         "user_data",
         "user_data/**",
         "ecosystem",
@@ -60,15 +120,30 @@ _PROTECTED_BY_TARGET: dict[UpdateTarget, tuple[str, ...]] = {
         "bundled",
         "bundled/**",
     ),
-    "defaultspack": (
-        "user_data",
-        "user_data/**",
-        "pack_backups",
-        "pack_backups/**",
-        "pack_staging",
-        "pack_staging/**",
-    ),
-}
+    restart_required=True,
+)
+
+
+def _signed_update_target_descriptors() -> list[UpdateTargetDescriptor]:
+    """Load only signed host-contract update target contributions."""
+    raw = host_contract_value("update_target_descriptors")
+    if not raw:
+        return []
+    try:
+        decoded = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(decoded, list):
+        return []
+    descriptors: list[UpdateTargetDescriptor] = []
+    for item in decoded:
+        if not isinstance(item, Mapping):
+            continue
+        try:
+            descriptors.append(UpdateTargetDescriptor.from_mapping(item))
+        except ValueError:
+            continue
+    return descriptors
 
 
 @dataclass(frozen=True)
@@ -171,6 +246,9 @@ class GitHubUpdateManager:
         base_dir: str | Path | None = None,
         repo: str | None = None,
         timeout: int = DEFAULT_TIMEOUT,
+        update_target_descriptors: Iterable[
+            UpdateTargetDescriptor | Mapping[str, Any]
+        ] | None = None,
     ) -> None:
         self.base_dir = Path(base_dir) if base_dir is not None else Path(__file__).resolve().parent.parent
         self.repo = repo or os.environ.get("RUMI_UPDATE_REPO", DEFAULT_REPO)
@@ -179,6 +257,34 @@ class GitHubUpdateManager:
         self.staging_dir = self.user_data_dir / "update_staging"
         self.backup_dir = self.user_data_dir / "update_backups"
         self.settings_path = self.user_data_dir / "settings" / "update_preferences.json"
+        raw_descriptors = (
+            list(update_target_descriptors)
+            if update_target_descriptors is not None
+            else [_HOST_UPDATE_DESCRIPTOR, *_signed_update_target_descriptors()]
+        )
+        descriptors: dict[str, UpdateTargetDescriptor] = {}
+        for raw_descriptor in raw_descriptors:
+            descriptor = (
+                raw_descriptor
+                if isinstance(raw_descriptor, UpdateTargetDescriptor)
+                else UpdateTargetDescriptor.from_mapping(raw_descriptor)
+            )
+            if descriptor.target in descriptors:
+                raise ValueError("duplicate update target descriptor")
+            descriptors[descriptor.target] = descriptor
+        self._update_targets = descriptors
+
+    @property
+    def update_target_ids(self) -> tuple[UpdateTarget, ...]:
+        """Return the only target IDs the verified descriptor set permits."""
+        return tuple(self._update_targets)
+
+    def _descriptor(self, target: UpdateTarget) -> UpdateTargetDescriptor:
+        normalized = normalize_update_target(target)
+        descriptor = self._update_targets.get(normalized)
+        if descriptor is None:
+            raise GitHubUpdateError(f"unsupported update target: {target}")
+        return descriptor
 
     def check(self, target: UpdateTarget) -> UpdateCheck:
         return self.check_many([target])[0]
@@ -277,7 +383,7 @@ class GitHubUpdateManager:
     def set_auto_update_settings(self, auto_update: Mapping[str, Any]) -> dict[str, Any]:
         current = self.read_auto_update_settings()
         next_auto = dict(current["auto_update"])
-        for target in UPDATE_TARGETS:
+        for target in self.update_target_ids:
             if target in auto_update:
                 next_auto[target] = bool(auto_update[target])
 
@@ -292,7 +398,7 @@ class GitHubUpdateManager:
     def run_auto_updates_once(self, *, force: bool = False) -> AutoUpdateRunResult:
         settings = self.read_auto_update_settings()
         enabled_targets = [
-            target for target in UPDATE_TARGETS
+            target for target in self.update_target_ids
             if settings["auto_update"].get(target) is True
         ]
         if not enabled_targets:
@@ -338,8 +444,12 @@ class GitHubUpdateManager:
                         "latest_version": applied.latest_version,
                         "backup_dir": applied.backup_dir,
                         "applied_count": len(applied.applied_files),
-                        "restart_required": check.target == "tobkiri",
-                        "routes_reload_recommended": check.target == "defaultspack",
+                        "restart_required": self._descriptor(
+                            check.target
+                        ).restart_required,
+                        "routes_reload_recommended": self._descriptor(
+                            check.target
+                        ).runtime_reload_recommended,
                     })
                 except Exception as exc:
                     results.append({
@@ -395,11 +505,8 @@ class GitHubUpdateManager:
             raise GitHubUpdateError(f"failed to download GitHub archive: {exc}") from exc
 
     def current_version(self, target: UpdateTarget) -> str:
-        if target == "tobkiri":
-            return _read_pyproject_version(self.base_dir / "pyproject.toml") or "0.0.0"
-        if target == "defaultspack":
-            return _read_ecosystem_version(self.base_dir / "ecosystem" / "defaultspack" / "ecosystem.json") or "0.0.0"
-        raise GitHubUpdateError(f"unsupported update target: {target}")
+        descriptor = self._descriptor(target)
+        return self._version_at(self._dest_dir_for_target(target), descriptor) or "0.0.0"
 
     def plan_overlay(self, target: UpdateTarget, source_dir: Path, dest_dir: Path) -> FilePlan:
         add: list[str] = []
@@ -426,11 +533,15 @@ class GitHubUpdateManager:
             raise GitHubUpdateError(f"failed to read GitHub release metadata: {exc}") from exc
 
     def _request(self, url: str) -> urllib.request.Request:
+        primary_target = next(iter(self._update_targets), None)
+        current_version = (
+            self.current_version(primary_target) if primary_target is not None else "0.0.0"
+        )
         headers = {
             "Accept": "application/vnd.github+json",
-            "User-Agent": f"tobkiri-updater/{self.current_version('tobkiri')}",
+            "User-Agent": f"tobkiri-updater/{current_version}",
         }
-        token = os.environ.get("RUMI_UPDATE_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN")
+        token = host_contract_value("github_update_token", provider_id="github")
         if token:
             headers["Authorization"] = f"Bearer {token}"
         return urllib.request.Request(url, headers=headers)
@@ -441,7 +552,7 @@ class GitHubUpdateManager:
             raw_auto = {}
         auto_update = {
             target: bool(raw_auto.get(target, False))
-            for target in UPDATE_TARGETS
+            for target in self.update_target_ids
         }
         last_results = data.get("last_results")
         if not isinstance(last_results, list):
@@ -477,36 +588,39 @@ class GitHubUpdateManager:
         return elapsed.total_seconds() >= AUTO_UPDATE_INTERVAL_HOURS * 60 * 60
 
     def _source_dir_for_target(self, target: UpdateTarget, extracted_root: Path) -> Path:
-        if target == "tobkiri":
-            source = _find_child_with(extracted_root, Path("tobkiri_runtime") / "app.py")
-            if source is None:
-                raise GitHubUpdateError("source archive does not contain tobkiri_runtime/app.py")
-            return source / "tobkiri_runtime"
-        if target == "defaultspack":
-            marker = Path("tobkiri_runtime") / "ecosystem" / "defaultspack" / "ecosystem.json"
-            source = _find_child_with(extracted_root, marker)
-            if source is None:
-                raise GitHubUpdateError("source archive does not contain defaultspack")
-            return source / "tobkiri_runtime" / "ecosystem" / "defaultspack"
-        raise GitHubUpdateError(f"unsupported update target: {target}")
+        descriptor = self._descriptor(target)
+        source_root = _relative_update_path(descriptor.source_root)
+        version_path = _relative_update_path(descriptor.version_path)
+        source = _find_child_with(extracted_root, source_root / version_path)
+        if source is None:
+            raise GitHubUpdateError("source archive does not contain update target")
+        return source / source_root
 
     def _dest_dir_for_target(self, target: UpdateTarget) -> Path:
-        if target == "tobkiri":
-            return self.base_dir
-        if target == "defaultspack":
-            return self.base_dir / "ecosystem" / "defaultspack"
-        raise GitHubUpdateError(f"unsupported update target: {target}")
+        descriptor = self._descriptor(target)
+        destination = self.base_dir / _relative_update_path(descriptor.destination_root)
+        try:
+            destination.resolve().relative_to(self.base_dir.resolve())
+        except (OSError, ValueError) as exc:
+            raise GitHubUpdateError("update destination escapes runtime root") from exc
+        return destination
+
+    def _source_version(self, target: UpdateTarget, source_dir: Path) -> str | None:
+        return self._version_at(source_dir, self._descriptor(target))
 
     @staticmethod
-    def _source_version(target: UpdateTarget, source_dir: Path) -> str | None:
-        if target == "tobkiri":
-            return _read_pyproject_version(source_dir / "pyproject.toml")
-        if target == "defaultspack":
-            return _read_ecosystem_version(source_dir / "ecosystem.json")
-        return None
+    def _version_at(
+        root: Path,
+        descriptor: UpdateTargetDescriptor,
+    ) -> str | None:
+        version_path = _relative_update_path(descriptor.version_path)
+        path = root / version_path
+        if descriptor.version_format == "pyproject":
+            return _read_pyproject_version(path)
+        return _read_ecosystem_version(path)
 
     def _is_protected(self, target: UpdateTarget, rel: str) -> bool:
-        patterns = _COMMON_EXCLUDES + _PROTECTED_BY_TARGET[target]
+        patterns = _COMMON_EXCLUDES + self._descriptor(target).protected_paths
         return any(fnmatch.fnmatch(rel, pattern) for pattern in patterns)
 
     def _backup_target(self, target: UpdateTarget, dest_dir: Path) -> Path:

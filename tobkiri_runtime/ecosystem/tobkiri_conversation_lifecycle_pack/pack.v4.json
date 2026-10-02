@@ -1,0 +1,226 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3",
+      "kind": "executable",
+      "path": "runtime/host.py"
+    },
+    {
+      "digest": "sha256:b09cf3c3fcc5105f49d2a14c9622a42f92a6c566331cfd991d28fef916d26d18",
+      "kind": "sidecar",
+      "path": "runtime/lifecycle.py"
+    },
+    {
+      "digest": "sha256:d609cc58478a17072146aa4f9a2263237a483b13d29430052a10918724f61750",
+      "kind": "ui.contribution",
+      "path": "frontend/contributions/lifecycle.json"
+    },
+    {
+      "digest": "sha256:b2a504c8f0495a06d3049988ee361dcf8570bb2cf2f2589313660e21c17805fa",
+      "kind": "sidecar",
+      "path": "pack-source.v1.json"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.resource.conversation.lifecycle.v1",
+      "operations": [
+        "tobkiri_conversation_lifecycle_pack.lifecycle-status"
+      ],
+      "revision_digest": "sha256:4bc3b88e023480947e3bbf9a5668a707301d13005d55c7a3e0ab17169ff04beb"
+    },
+    {
+      "contract_id": "tobkiri.action.conversation.lifecycle.v1",
+      "operations": [
+        "tobkiri_conversation_lifecycle_pack.lifecycle-manage"
+      ],
+      "revision_digest": "sha256:09edadfed8333374d03977e25f4203c7e4e3c66367e1e53a362eae8b56bc4849"
+    },
+    {
+      "contract_id": "tobkiri.action.job.adapter.v2",
+      "operations": [
+        "tobkiri_conversation_lifecycle_pack.archive-job-adapter"
+      ],
+      "revision_digest": "sha256:023c9504c82201f499275a7d72850916efbe0c7161b327f0dd42c9f430906fa2"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:4bc3b88e023480947e3bbf9a5668a707301d13005d55c7a3e0ab17169ff04beb",
+      "id": "tobkiri_conversation_lifecycle_pack.status",
+      "implementation_digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3",
+      "operations": [
+        "tobkiri_conversation_lifecycle_pack.lifecycle-status"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:09edadfed8333374d03977e25f4203c7e4e3c66367e1e53a362eae8b56bc4849",
+      "id": "tobkiri_conversation_lifecycle_pack.manage",
+      "implementation_digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3",
+      "operations": [
+        "tobkiri_conversation_lifecycle_pack.lifecycle-manage"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:023c9504c82201f499275a7d72850916efbe0c7161b327f0dd42c9f430906fa2",
+      "id": "tobkiri_conversation_lifecycle_pack.archive-job",
+      "implementation_digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3",
+      "operations": [
+        "tobkiri_conversation_lifecycle_pack.archive-job-adapter"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:a5af224da7a917ef108fea0ed16f23ca569e3c2db957097a1fd5b49384f556db",
+    "contract_catalog_digest": "sha256:786ffd95a985baeb37e61e4d219e703e9cd9f9d60bcd37741ae8a01a3ba9076e",
+    "source_identity": "sha256:b3ee8db441c81d140f1290f258ec2910aafdb55aa54c56402e6577db0e5ac3a4"
+  },
+  "migration": {
+    "compatibility": "none",
+    "legacy_ids": [],
+    "removal_wave": 0,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.resource.conversation.lifecycle.v1",
+      "effect_ceiling": [
+        "capability:conversation.lifecycle.read",
+        "host:brokered-execution"
+      ],
+      "operation_id": "tobkiri_conversation_lifecycle_pack.lifecycle-status",
+      "owner": "tobkiri_conversation_lifecycle_pack",
+      "provider_id": "tobkiri_conversation_lifecycle_pack.status",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.action.conversation.lifecycle.v1",
+      "effect_ceiling": [
+        "capability:conversation.lifecycle.manage",
+        "host:brokered-execution"
+      ],
+      "operation_id": "tobkiri_conversation_lifecycle_pack.lifecycle-manage",
+      "owner": "tobkiri_conversation_lifecycle_pack",
+      "provider_id": "tobkiri_conversation_lifecycle_pack.manage",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.action.job.adapter.v2",
+      "effect_ceiling": [
+        "capability:conversation.lifecycle.archive",
+        "host:brokered-execution"
+      ],
+      "operation_id": "tobkiri_conversation_lifecycle_pack.archive-job-adapter",
+      "owner": "tobkiri_conversation_lifecycle_pack",
+      "provider_id": "tobkiri_conversation_lifecycle_pack.archive-job",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:2a57598dfba9207c84b524fc22248d5324215253478df30ca0fd2c0b0903cef5",
+    "display_name": "Tobkiri Conversation Lifecycle",
+    "id": "tobkiri_conversation_lifecycle_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [],
+    "generator": "tobkiri-protocol",
+    "generator_version": "1.0.0",
+    "normative": false,
+    "repository_commit": "f5ebf978fa9b89120a98a17bad308ea1607ed6ce",
+    "repository_tree": "82fb5519a2fad814e6f81c1b750cb695d36016eca9bc7f75ab1325ffaa8cf79c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:b3ee8db441c81d140f1290f258ec2910aafdb55aa54c56402e6577db0e5ac3a4",
+    "source_kind": "repository",
+    "source_path": "ecosystem/tobkiri_conversation_lifecycle_pack/pack-source.v1.json"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.resource.conversation.lifecycle.v1",
+      "operations": [
+        "tobkiri_conversation_lifecycle_pack.lifecycle-status"
+      ],
+      "owner": "tobkiri_conversation_lifecycle_pack",
+      "provider_id": "tobkiri_conversation_lifecycle_pack.status"
+    },
+    {
+      "contract_reference": "tobkiri.action.conversation.lifecycle.v1",
+      "operations": [
+        "tobkiri_conversation_lifecycle_pack.lifecycle-manage"
+      ],
+      "owner": "tobkiri_conversation_lifecycle_pack",
+      "provider_id": "tobkiri_conversation_lifecycle_pack.manage"
+    },
+    {
+      "contract_reference": "tobkiri.action.job.adapter.v2",
+      "operations": [
+        "tobkiri_conversation_lifecycle_pack.archive-job-adapter"
+      ],
+      "owner": "tobkiri_conversation_lifecycle_pack",
+      "provider_id": "tobkiri_conversation_lifecycle_pack.archive-job"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "conversation.read",
+      "conversation.manage",
+      "schedule.read",
+      "schedule.manage",
+      "conversation.lifecycle.read",
+      "conversation.lifecycle.manage",
+      "conversation.lifecycle.archive"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.conversation.v1",
+        "operations": [
+          "rumi_conversation_store_pack.conversation-resource"
+        ],
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.conversation.manage.v1",
+        "operations": [
+          "rumi_conversation_store_pack.conversation-manage"
+        ],
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.schedule.v1",
+        "operations": [
+          "rumi_schedule_store_pack.schedule-resource"
+        ],
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.schedule.v1",
+        "operations": [
+          "rumi_schedule_store_pack.schedule-action"
+        ],
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "none"
+  }
+}

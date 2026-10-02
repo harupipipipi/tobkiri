@@ -1,4 +1,10 @@
-import { defaultspackApiFetch, explainDefaultspackApiError } from "./api";
+import {
+  defaultspackApiFetch,
+  defaultspackContractRoute,
+  defaultspackContractUrl,
+  explainDefaultspackApiError,
+  type DefaultspackContractRoute,
+} from "./api";
 
 type ApiErrorPayload = {
   code?: string;
@@ -309,9 +315,12 @@ function fallbackApiHeaders(method: string, headers?: HeadersInit): Headers {
   return nextHeaders;
 }
 
-function fallbackApiFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+function fallbackApiFetch(input: RequestInfo | URL | DefaultspackContractRoute, init: RequestInit = {}): Promise<Response> {
   const method = (init.method ?? "GET").toUpperCase();
-  return fetch(input, {
+  const requestInput = typeof input === "object" && "kind" in input
+    ? defaultspackContractUrl(input as DefaultspackContractRoute, method)
+    : input;
+  return fetch(requestInput, {
     ...init,
     method,
     headers: fallbackApiHeaders(method, init.headers),
@@ -325,7 +334,7 @@ function formatFallbackApiError(status: number, error?: ApiErrorPayload, statusT
   return `${label}${code}${message}`;
 }
 
-function adaptiveFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+function adaptiveFetch(input: RequestInfo | URL | DefaultspackContractRoute, init?: RequestInit): Promise<Response> {
   const fetcher = typeof defaultspackApiFetch === "function" ? defaultspackApiFetch : fallbackApiFetch;
   return fetcher(input, init);
 }
@@ -361,7 +370,7 @@ function errorPayloadFrom(value: unknown): ApiErrorPayload | undefined {
   };
 }
 
-export async function adaptiveApiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function adaptiveApiRequest<T>(path: DefaultspackContractRoute, init: RequestInit = {}): Promise<T> {
   const response = await adaptiveFetch(path, init);
   let payload: unknown;
 
@@ -389,14 +398,14 @@ export async function adaptiveApiRequest<T>(path: string, init: RequestInit = {}
 }
 
 export function fetchAdaptiveOnboarding(): Promise<AdaptiveOnboardingState> {
-  return adaptiveApiRequest<Record<string, unknown>>("/api/onboarding/status", { cache: "no-store" })
+  return adaptiveApiRequest<Record<string, unknown>>(defaultspackContractRoute("api/onboarding/status"), { cache: "no-store" })
     .then(toOnboardingState);
 }
 
 export function normalizeAdaptiveOnboardingAnswers(
   answers: AdaptiveOnboardingAnswers,
 ): Promise<AdaptiveOnboardingApiResult> {
-  return adaptiveApiRequest<Record<string, unknown>>("/api/onboarding/answers/normalize", {
+  return adaptiveApiRequest<Record<string, unknown>>(defaultspackContractRoute("api/onboarding/answers/normalize"), {
     method: "POST",
     body: JSON.stringify({ draft: answers }),
   }).then(toOnboardingApiResult);
@@ -405,7 +414,7 @@ export function normalizeAdaptiveOnboardingAnswers(
 export function compileAdaptiveOnboardingAnswers(
   answers: AdaptiveOnboardingAnswers,
 ): Promise<AdaptiveOnboardingApiResult> {
-  return adaptiveApiRequest<Record<string, unknown>>("/api/onboarding/compile", {
+  return adaptiveApiRequest<Record<string, unknown>>(defaultspackContractRoute("api/onboarding/compile"), {
     method: "POST",
     body: JSON.stringify(onboardingAnswersPayload(answers)),
   }).then(toOnboardingApiResult);
@@ -414,7 +423,7 @@ export function compileAdaptiveOnboardingAnswers(
 export function simulateAdaptiveOnboardingAnswers(
   answers: AdaptiveOnboardingAnswers,
 ): Promise<AdaptiveOnboardingApiResult> {
-  return adaptiveApiRequest<Record<string, unknown>>("/api/onboarding/simulate", {
+  return adaptiveApiRequest<Record<string, unknown>>(defaultspackContractRoute("api/onboarding/simulate"), {
     method: "POST",
     body: JSON.stringify(onboardingAnswersPayload(answers)),
   }).then(toOnboardingApiResult);
@@ -424,31 +433,31 @@ export function applyAdaptiveOnboardingPlan(
   answers: AdaptiveOnboardingAnswers,
   plan?: Record<string, unknown>,
 ): Promise<AdaptiveOnboardingApiResult> {
-  return adaptiveApiRequest<Record<string, unknown>>("/api/onboarding/apply", {
+  return adaptiveApiRequest<Record<string, unknown>>(defaultspackContractRoute("api/onboarding/apply"), {
     method: "POST",
     body: JSON.stringify(plan ? { plan } : onboardingAnswersPayload(answers)),
   }).then(toOnboardingApiResult);
 }
 
 export function fetchAdaptiveOperatingProfile(): Promise<AdaptiveOperatingProfile> {
-  return adaptiveApiRequest<Record<string, unknown>>("/api/onboarding/status", { cache: "no-store" })
+  return adaptiveApiRequest<Record<string, unknown>>(defaultspackContractRoute("api/onboarding/status"), { cache: "no-store" })
     .then(toOperatingProfile);
 }
 
 export function saveAdaptiveOperatingProfile(profile: AdaptiveOperatingProfile): Promise<AdaptiveOperatingProfile> {
-  return adaptiveApiRequest<Record<string, unknown>>(`/api/operating-profiles/${encodeURIComponent(profile.id)}/preview`, {
+  return adaptiveApiRequest<Record<string, unknown>>(defaultspackContractRoute(`api/operating-profiles/${encodeURIComponent(profile.id)}/preview`), {
     method: "POST",
     body: JSON.stringify({ answers: { profile_id: profile.id, role_context: profile.role } }),
   }).then(() => profile);
 }
 
 export function fetchAdaptiveActivity(): Promise<AdaptiveActivityState> {
-  return adaptiveApiRequest<Record<string, unknown>>("/api/activity-center", { cache: "no-store" })
+  return adaptiveApiRequest<Record<string, unknown>>(defaultspackContractRoute("api/activity-center"), { cache: "no-store" })
     .then(toActivityState);
 }
 
 export function fetchAdaptiveAutomations(): Promise<AdaptiveAutomationState> {
-  return adaptiveApiRequest<Record<string, unknown>>("/api/activity-center", { cache: "no-store" })
+  return adaptiveApiRequest<Record<string, unknown>>(defaultspackContractRoute("api/activity-center"), { cache: "no-store" })
     .then(toAutomationState);
 }
 
@@ -456,21 +465,21 @@ export function updateAdaptiveAutomation(
   automationId: string,
   patch: Partial<AdaptiveAutomation>,
 ): Promise<AdaptiveAutomation> {
-  return adaptiveApiRequest<Record<string, unknown>>(`/api/automations/${encodeURIComponent(automationId)}`, {
+  return adaptiveApiRequest<Record<string, unknown>>(defaultspackContractRoute(`api/automations/${encodeURIComponent(automationId)}`), {
     method: "PUT",
     body: JSON.stringify({ patch }),
   }).then((updated) => toAutomation(recordValue(updated.automation ?? updated), automationId));
 }
 
 export function fetchAdaptiveEvidence(): Promise<AdaptiveEvidenceBundle> {
-  return adaptiveApiRequest<Record<string, unknown>>("/api/context/evidence", {
+  return adaptiveApiRequest<Record<string, unknown>>(defaultspackContractRoute("api/context/evidence"), {
     method: "POST",
     body: JSON.stringify({ items: [] }),
   }).then(toEvidenceBundle);
 }
 
 export function fetchAdaptiveRepositoryMap(): Promise<AdaptiveRepositoryMap> {
-  return adaptiveApiRequest<Record<string, unknown>>("/api/context/repository-map", { cache: "no-store" })
+  return adaptiveApiRequest<Record<string, unknown>>(defaultspackContractRoute("api/context/repository-map"), { cache: "no-store" })
     .then(toRepositoryMap);
 }
 

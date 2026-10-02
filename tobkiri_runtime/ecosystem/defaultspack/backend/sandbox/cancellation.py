@@ -2,10 +2,24 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import os
-import signal
+from pathlib import Path
+import re
+import shutil
 import subprocess
 import threading
-from typing import Any, Iterator, Sequence
+from typing import Iterator, Sequence
+
+from core_runtime.bounded_process_runner import (
+    HostBoundedProcessRunner,
+    ProcessExecutionCancelled,
+    ProcessExecutionPolicy,
+)
+
+
+_DEFAULT_MAX_TIMEOUT_SECONDS = 3600.0
+_DEFAULT_MAX_STDIN_BYTES = 128 * 1024 * 1024
+_DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024
+_SECRET_ENV_KEY = re.compile(r"(?i)(?:api[_-]?key|password|secret|token)")
 
 
 class RuntimeOperationCancelled(Exception):
@@ -14,14 +28,17 @@ class RuntimeOperationCancelled(Exception):
 
 class CancellationToken:
     def __init__(self) -> None:
-        self._lock = threading.RLock()
-        self._cancelled = False
-        self._processes: set[subprocess.Popen[str]] = set()
+        self._lock = threading.Lock()
+        self._cancelled = threading.Event()
 
     @property
     def cancelled(self) -> bool:
-        with self._lock:
-            return self._cancelled
+        return self._cancelled.is_set()
+
+    @property
+    def cancel_event(self) -> threading.Event:
+        """The event consumed by the Host-owned bounded process runner."""
+        return self._cancelled
 
     def raise_if_cancelled(self) -> None:
         if self.cancelled:
@@ -29,24 +46,9 @@ class CancellationToken:
 
     def cancel(self) -> bool:
         with self._lock:
-            was_cancelled = self._cancelled
-            self._cancelled = True
-            processes = list(self._processes)
-        for process in processes:
-            _terminate_process_tree(process)
+            was_cancelled = self._cancelled.is_set()
+            self._cancelled.set()
         return not was_cancelled
-
-    def register(self, process: subprocess.Popen[str]) -> None:
-        with self._lock:
-            self._processes.add(process)
-            cancelled = self._cancelled
-        if cancelled:
-            _terminate_process_tree(process)
-            raise RuntimeOperationCancelled("Runtime operation was cancelled.")
-
-    def unregister(self, process: subprocess.Popen[str]) -> None:
-        with self._lock:
-            self._processes.discard(process)
 
 
 class CancellationRegistry:
@@ -105,90 +107,93 @@ def run_cancellable_subprocess(
     token = current_cancellation_token()
     if token is not None:
         token.raise_if_cancelled()
-    process = subprocess.Popen(
-        list(command),
-        stdin=subprocess.PIPE if input_text is not None else None,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        # Managed WSL frame capture may surface non-UTF-8 bytes through the
-        # Windows subprocess reader. Decode deterministically instead of
-        # falling back to the host locale (for example cp932) and crashing a
-        # desktop frame request with UnicodeDecodeError.
-        encoding="utf-8",
-        errors="replace",
-        start_new_session=os.name != "nt",
-        creationflags=_windows_process_group_flags(),
-    )
-    if token is not None:
-        token.register(process)
     try:
-        stdout, stderr = process.communicate(input=input_text, timeout=timeout)
-        if token is not None:
-            token.raise_if_cancelled()
-        return subprocess.CompletedProcess(
-            args=list(command),
-            returncode=int(process.returncode or 0),
-            stdout=stdout or "",
-            stderr=stderr or "",
+        argv, cwd, environment = _host_process_request(command)
+        timeout_seconds = _bounded_timeout(timeout)
+        result = HostBoundedProcessRunner().run_local(
+            argv=argv,
+            cwd=cwd,
+            stdin=input_text,
+            timeout_seconds=timeout_seconds,
+            environment=environment,
+            policy=ProcessExecutionPolicy(
+                allowed_executables=frozenset({argv[0]}),
+                allowed_argv=(argv,),
+                allowed_cwds=(cwd,),
+                allowed_environment=frozenset(environment),
+                max_stdin_bytes=_DEFAULT_MAX_STDIN_BYTES,
+                max_stdout_bytes=_DEFAULT_MAX_OUTPUT_BYTES,
+                max_stderr_bytes=_DEFAULT_MAX_OUTPUT_BYTES,
+                max_timeout_seconds=timeout_seconds,
+                redact_values=_environment_redact_values(environment),
+            ),
+            cancel_event=token.cancel_event if token is not None else None,
         )
-    except subprocess.TimeoutExpired:
-        _kill_process_tree(process)
-        stdout, stderr = process.communicate()
+    except ProcessExecutionCancelled as exc:
+        raise RuntimeOperationCancelled("Runtime operation was cancelled.") from exc
+    if result.timed_out:
         raise subprocess.TimeoutExpired(
-            cmd=list(command),
-            timeout=timeout,
-            output=stdout,
-            stderr=stderr,
+            cmd=list(argv),
+            timeout=timeout_seconds,
+            output=result.stdout,
+            stderr=result.stderr,
         )
-    finally:
-        if token is not None:
-            token.unregister(process)
+    if result.exit_code is None:
+        raise OSError(result.transport_error or "Host process transport failed")
+    return subprocess.CompletedProcess(
+        args=list(argv),
+        returncode=int(result.exit_code),
+        stdout=result.stdout,
+        stderr=result.stderr,
+    )
 
 
-def _windows_process_group_flags() -> int:
-    if os.name != "nt":
-        return 0
-    return int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+def _host_process_request(
+    command: Sequence[str],
+) -> tuple[tuple[str, ...], Path, dict[str, str]]:
+    if isinstance(command, (str, bytes)) or not command:
+        raise ValueError("runtime process command is empty")
+    raw_argv = tuple(str(part) for part in command)
+    executable = raw_argv[0]
+    resolved_executable = (
+        Path(executable).resolve()
+        if Path(executable).is_absolute()
+        else Path(shutil.which(executable) or "")
+    )
+    if not resolved_executable.is_file() or not os.access(resolved_executable, os.X_OK):
+        raise FileNotFoundError(executable)
+    cwd = Path.cwd().resolve()
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if key and "=" not in key and "\x00" not in key and "\x00" not in value
+    }
+    return (str(resolved_executable), *raw_argv[1:]), cwd, environment
 
 
-def _terminate_process_tree(process: subprocess.Popen[Any]) -> None:
-    if process.poll() is not None:
-        return
-    try:
-        if os.name != "nt":
-            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-        else:
-            process.terminate()
-    except ProcessLookupError:
-        return
-    except Exception:
-        try:
-            process.terminate()
-        except Exception:
-            return
-    try:
-        process.wait(timeout=1)
-    except subprocess.TimeoutExpired:
-        _kill_process_tree(process)
+def _bounded_timeout(timeout: float | None) -> float:
+    if timeout is None:
+        return _DEFAULT_MAX_TIMEOUT_SECONDS
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0:
+        raise ValueError("runtime process timeout must be a positive number")
+    return min(float(timeout), _DEFAULT_MAX_TIMEOUT_SECONDS)
 
 
-def _kill_process_tree(process: subprocess.Popen[Any]) -> None:
-    if process.poll() is not None:
-        return
-    try:
-        if os.name != "nt":
-            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-        else:
-            process.kill()
-    except ProcessLookupError:
-        return
-    except Exception:
-        try:
-            process.kill()
-        except Exception:
-            return
-    try:
-        process.wait(timeout=1)
-    except subprocess.TimeoutExpired:
-        pass
+def _environment_redact_values(environment: dict[str, str]) -> tuple[str, ...]:
+    """Return bounded secret values that must never survive child output."""
+    values: list[str] = []
+    total_bytes = 0
+    for key in sorted(environment):
+        value = environment[key]
+        encoded_bytes = len(value.encode("utf-8"))
+        if (
+            not value
+            or not _SECRET_ENV_KEY.search(key)
+            or encoded_bytes > 4096
+            or total_bytes + encoded_bytes > 64 * 1024
+            or len(values) >= 128
+        ):
+            continue
+        values.append(value)
+        total_bytes += encoded_bytes
+    return tuple(values)
