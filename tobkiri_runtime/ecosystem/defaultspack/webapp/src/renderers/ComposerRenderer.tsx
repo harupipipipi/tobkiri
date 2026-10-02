@@ -3917,7 +3917,7 @@ export function ComposerRenderer({
   const handleSubmitWithApiKeyGuard = useCallback(
     (event: React.SyntheticEvent) => {
       event.preventDefault();
-      if (voiceStatus !== "idle") return;
+      if (voiceStatus !== "idle" && !isGenerating) return;
       if (isGenerating) {
         const prompt = input.trim();
         if (prompt && !steerBusy) {
@@ -3974,13 +3974,21 @@ export function ComposerRenderer({
     const selection = voiceOriginalDraftRef.current.selection;
     window.setTimeout(() => {
       textareaRef.current?.focus({ preventScroll: true });
-      textareaRef.current?.setSelectionRange(selection.start, selection.end);
+      if (textareaRef.current?.value === voiceOriginalDraftRef.current.value) {
+        textareaRef.current.setSelectionRange(selection.start, selection.end);
+      }
     }, 0);
   }, []);
 
   useEffect(() => {
-    cancelVoiceInput();
-  }, [cancelVoiceInput, voiceScopeKey, widgetContext?.activeConversationId, selectedProfile?.profile_id]);
+    voiceGenerationRef.current.invalidate();
+    voiceRecorderRef.current?.cancel();
+    voiceRecorderRef.current = null;
+    setVoiceElapsedSeconds(0);
+    setVoiceTranscript("");
+    setVoiceError("");
+    setVoiceStatus("idle");
+  }, [voiceScopeKey, widgetContext?.activeConversationId, selectedProfile?.profile_id, isGenerating]);
 
   const stopAndTranscribeVoice = useCallback(async () => {
     const recorder = voiceRecorderRef.current;
@@ -4089,9 +4097,16 @@ export function ComposerRenderer({
       return;
     }
     if (voiceStatus === "starting" || voiceStatus === "transcribing") return;
+    if (voiceStatus !== "review") {
+      const start = textareaRef.current?.selectionStart ?? input.length;
+      voiceOriginalDraftRef.current = {
+        value: input,
+        selection: { start, end: textareaRef.current?.selectionEnd ?? start },
+      };
+    }
     setVoiceError("");
     setVoiceStatus(voiceStatus === "review" ? "review" : "consent");
-  }, [isGenerating, stopAndTranscribeVoice, templateAllowsVoiceInput, voiceInputEnabled, voiceStatus]);
+  }, [input, isGenerating, stopAndTranscribeVoice, templateAllowsVoiceInput, voiceInputEnabled, voiceStatus]);
 
   useEffect(() => {
     if (!["starting", "listening", "transcribing"].includes(voiceStatus)) return undefined;
