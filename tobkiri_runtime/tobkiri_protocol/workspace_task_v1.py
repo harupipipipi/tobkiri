@@ -81,7 +81,11 @@ def task_identity(request: Mapping[str, Any], private_owner: str) -> str:
     request = validate_task_request(request)
     return (
         "task-"
-        + digest(canonical([request["task_request_id"], private_owner, request]))[7:39]
+        + digest(
+            canonical(
+                [request["profile_id"], request["task_request_id"], private_owner]
+            )
+        )[7:39]
     )
 
 
