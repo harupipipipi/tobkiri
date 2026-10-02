@@ -105,6 +105,20 @@ This metadata recipe has no bound provisioning port, so its start remains
 unavailable. The captured task provider executes work in a separate COW container
 and reports its own task state. Developer Docker smoke evidence is separate from production
 Host support and does not substitute for the Tobkiri PackVM backend.
+`docs/task-container-smoke.v1.json` records an actual local task at source
+`ccc63b7b6a594202d7314d6f593e1793c63f9af8` through `ContainerTasks` and the
+bounded Host process runner. The exact current task recipe and guest driver ran
+in the separate cached worker image without a pull or build. The task verified
+UID 501, no network routes, exact tmpfs byte/inode limits, actual ENOSPC and
+read-only driver input. It generated `result.json`, sealed a result capsule and
+applied revision 2 through the original writer fence; replay issued no second
+Docker command. The owned container was removed and its absence verified.
+This isolated developer smoke used the root task's explicit authorization below
+Broker. It does not claim the production approval chain, installed optional
+Pack/UI activation, the metadata Dockerfile or cloud execution. An earlier
+attempt stopped after creation because transport redaction masked the ownership
+inspection field; no workload started, and its own created container was removed.
+
 `docs/container-smoke.v1.json` records a historical local Docker build and healthy
 nonroot run using a digest-pinned cached worker base with Python 3.10.12. No image
 was pulled. Exact capsule restoration, UID 65532, health and workspace endpoints
