@@ -16,7 +16,7 @@
 
 ## Optional Integrations
 
-- `rumi_reference_ui_pack`: Hosts reference UI manifests and review surfaces for artifact runtime UI contracts.
+- `rumi_frontend_design_pack`: Owns frontend design generation and UI review workflows for artifact runtime contracts.
 - `defaultspack`: Owns artifact persistence, sandbox execution, MCP and API execution, share-link creation, and media/runtime delivery.
 - `rumi_default_tools_pack`: Owns browser automation and operator-side inspection tools used around artifact apps.
 

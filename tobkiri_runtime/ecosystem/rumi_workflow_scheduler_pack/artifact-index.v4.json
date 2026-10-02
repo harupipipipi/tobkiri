@@ -1,0 +1,32 @@
+{
+  "artifact_set_digest": "sha256:93d4a9e6dd3577dd6fe1d8cb539ce49e330f718555137008e696903a47cbb9e9",
+  "artifacts": [
+    {
+      "digest": "sha256:fc3029cf6ef970ca5426fcbe7bb87e6c3605a1908c54a68808dd4bcbb9df4add",
+      "path": "catalog/delivery_handoffs.yaml",
+      "role": "asset"
+    },
+    {
+      "digest": "sha256:ac7452848673a9e35aae8166698c69b6c33f732a4fb68b8f55ba13a3c4b0fbed",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:af06cc07a864864964cb71f993ecd7c23c08be781dacb36dbc8724cc52430856",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:3bf2219243088c6a698e2ada36c6a4a17883060591ad3fb3f5ed05a70e6ce74b",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:0302671367692711ba1447df0383b0ceb629cacef404388e3f11d77e639ed6c3"
+  },
+  "pack_id": "rumi_workflow_scheduler_pack",
+  "source_identity": "sha256:aa4f79a11ab87030f3a18d051e42b96b56d3f25f4720065c02fdfa14e2f543c6"
+}

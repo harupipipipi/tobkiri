@@ -3,30 +3,19 @@ from __future__ import annotations
 from typing import Any
 
 from blocks._common import error
-from blocks.sandbox import api as sandbox_api
-from blocks.coding.sandbox_common import run_sandbox_action
+from blocks.coding.sandbox_common import run_sandbox_observe
 
 
 def run(input_data: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:
     if not input_data.get("path"):
         return error("'path' is required", code="INVALID_INPUT")
-    if str(input_data.get("sandbox_id") or "").strip():
-        return sandbox_api.run(
-            {
-                **input_data,
-                "_handler": "sandbox_files_read",
-                "sandbox_id": str(input_data.get("sandbox_id") or "").strip(),
-            },
-            context or {},
-        )
-    return run_sandbox_action(
+    return run_sandbox_observe(
         input_data,
         context,
-        lambda manager, workspace: manager.read_file(
-            workspace,
-            input_data.get("path"),
-            start_line=input_data.get("start_line"),
-            end_line=input_data.get("end_line"),
-            max_chars=input_data.get("max_chars") or input_data.get("max_output_chars"),
-        ),
+        legacy_operation="sandbox.file_read",
+        observe_operation="read",
+        payload={
+            "path": input_data.get("path"),
+            "encoding": input_data.get("encoding") or "utf-8",
+        },
     )

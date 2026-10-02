@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.dev/tool/v3.json",
+  "title": "Tobkiri Tool manifest v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "id",
+    "version",
+    "display_name",
+    "description",
+    "discovery",
+    "contract",
+    "effects",
+    "risk",
+    "approval",
+    "execution",
+    "requirements",
+    "security",
+    "ui"
+  ],
+  "properties": {
+    "$schema": {"type": "string"},
+    "schema_version": {"const": "tobkiri.tool/v3"},
+    "kind": {"const": "tool"},
+    "category": {"const": "tool"},
+    "id": {"$ref": "#/$defs/stableId"},
+    "version": {"$ref": "#/$defs/semver"},
+    "enabled": {"type": "boolean"},
+    "priority": {"type": "integer"},
+    "display_name": {"$ref": "#/$defs/localizedText"},
+    "description": {"$ref": "#/$defs/localizedText"},
+    "discovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "aliases": {"$ref": "#/$defs/stringList"},
+        "keywords": {"$ref": "#/$defs/stringList"},
+        "activity_ids": {"$ref": "#/$defs/stringList"},
+        "service_id": {"type": "string"},
+        "visibility": {"enum": ["public", "advanced", "internal"]},
+        "schema_loading": {"enum": ["always", "on_demand"]}
+      }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_schema"],
+      "properties": {
+        "input_schema": {"type": "object"},
+        "output_schema": {"type": "object"}
+      }
+    },
+    "effects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["class", "operation"],
+        "properties": {
+          "class": {"type": "string"},
+          "operation": {"type": "string"},
+          "reversible": {"type": "boolean"},
+          "external": {"type": "boolean"}
+        }
+      }
+    },
+    "risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level"],
+      "properties": {
+        "level": {"enum": ["low", "medium", "high", "critical"]},
+        "reasons": {"$ref": "#/$defs/stringList"}
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default", "minimum"],
+      "properties": {
+        "default": {"enum": ["inherit", "auto", "confirm", "deny"]},
+        "minimum": {"enum": ["auto", "confirm", "deny"]}
+      }
+    },
+    "execution": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "enum": [
+            "rumi_function",
+            "capability",
+            "mcp",
+            "global_contract",
+            "sandbox_function",
+            "declarative_http"
+          ]
+        },
+        "qualified_name": {"type": "string"},
+        "permission_id": {"type": "string"},
+        "server_name": {"type": "string"},
+        "contract_id": {"type": "string"},
+        "provider_instance_id": {"type": "string"},
+        "operation": {"type": "string"},
+        "timeout_ms": {"type": "integer", "minimum": 1},
+        "cancellable": {"type": "boolean"},
+        "idempotency": {"enum": ["none", "idempotent", "keyed"]},
+        "retry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_attempts": {"type": "integer", "minimum": 1, "maximum": 10},
+            "backoff_ms": {"type": "integer", "minimum": 0, "maximum": 60000}
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runtime_capabilities": {"$ref": "#/$defs/stringList"},
+        "model_capabilities": {"$ref": "#/$defs/stringList"},
+        "connections": {"$ref": "#/$defs/stringList"},
+        "env": {"$ref": "#/$defs/stringList"}
+      }
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sandbox": {"type": "string"},
+        "network": {"enum": ["deny", "allowlist", "unrestricted"]},
+        "filesystem": {"enum": ["deny", "workspace", "scoped"]}
+      }
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "icon": {"type": "string"},
+        "visibility": {"enum": ["public", "advanced", "internal"]}
+      }
+    },
+    "metadata": {"type": "object", "additionalProperties": false},
+    "config": {"type": "object", "additionalProperties": false},
+    "capabilities": {"type": "object", "additionalProperties": false},
+    "marketplace": {"type": "object", "additionalProperties": false},
+    "signing": {"type": "object", "additionalProperties": false}
+  },
+  "$defs": {
+    "stableId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._/-][a-z0-9]+)*$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "localizedText": {
+      "oneOf": [
+        {"type": "string"},
+        {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"type": "string", "minLength": 1}
+        }
+      ]
+    },
+    "stringList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}

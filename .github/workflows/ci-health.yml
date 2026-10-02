@@ -6,7 +6,7 @@ on:
   push:
     branches: [soon]
   pull_request:
-    branches: [soon]
+    branches: [soon, codex/pack-architecture-program-soon]
 
 jobs:
   health-check:

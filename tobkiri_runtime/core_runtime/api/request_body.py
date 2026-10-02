@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from http.server import BaseHTTPRequestHandler as _HTTPHandlerBase
+else:
+    _HTTPHandlerBase = object
 from urllib.parse import parse_qs, urlparse
 
 from .api_response import APIResponse
@@ -12,7 +17,17 @@ from ..validation import MAX_REQUEST_BODY_BYTES
 logger = logging.getLogger(__name__)
 
 
-class RequestBodyMixin:
+class RequestBodyMixin(_HTTPHandlerBase):
+    _raw_body_bytes: bytes
+
+    if TYPE_CHECKING:
+        def _send_response(
+            self,
+            response: APIResponse,
+            status: int = 200,
+            extra_headers: list[tuple[str, str]] | None = None,
+        ) -> None: ...
+
     def _read_raw_body(self) -> Optional[bytes]:
         raw_cl = self.headers.get("Content-Length", "0")
         try:
@@ -34,6 +49,9 @@ class RequestBodyMixin:
             return b""
         if content_length > MAX_REQUEST_BODY_BYTES:
             self._send_response(APIResponse(False, error="Request body too large"), 413)
+            # The rejected body stays undrained; keep-alive would let its
+            # bytes poison the next pipelined request.
+            self.close_connection = True
             return None
         raw = self.rfile.read(content_length)
         self._raw_body_bytes = raw
@@ -62,6 +80,13 @@ class RequestBodyMixin:
             content_length = 0
         if content_length <= 0:
             return
+        # The request was already rejected; draining more than the accepted
+        # body bound only lets a rejected client pin the worker longer.
+        # Anything still undrained after the cap cannot be trusted as the
+        # next request boundary, so the connection must close.
+        if content_length > MAX_REQUEST_BODY_BYTES:
+            self.close_connection = True
+        content_length = min(content_length, MAX_REQUEST_BODY_BYTES)
         try:
             self.rfile.read(content_length)
         except Exception:

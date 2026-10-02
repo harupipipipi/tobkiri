@@ -1,0 +1,131 @@
+{
+  "version": "rumi.ui.contribution.v1",
+  "id": "tobkiri.side-chat",
+  "kind": "view",
+  "mode": "declarative",
+  "label": "Side chat",
+  "priority": 0,
+  "accessibility": {
+    "name": "Side chat",
+    "keyboard": true
+  },
+  "view": {
+    "version": "tobkiri.ui.view.v1",
+    "slot": "workspace_tab",
+    "renderer": "conversation_thread",
+    "data_source": {
+      "contribution_id": "pack.tobkiri_side_chat_pack.tobkiri_side_chat_pack.side-chat-resource",
+      "contract_id": "tobkiri.resource.side-chat.v1",
+      "operation_id": "tobkiri_side_chat_pack.side-chat-resource",
+      "input": {
+        "operation": "get"
+      },
+      "context_bindings": {
+        "parent_conversation_id": "conversation_id"
+      }
+    },
+    "conversation_thread": {
+      "conversation_path": "thread.conversation",
+      "messages_path": "thread.messages",
+      "pending_turn_path": "thread.pending_turn",
+      "model_reference_path": "thread.context.model_reference",
+      "send": {
+        "operation": {
+          "contribution_id": "pack.tobkiri_side_chat_pack.tobkiri_side_chat_pack.side-chat-turn",
+          "contract_id": "tobkiri.service.side-chat.turn.v1",
+          "operation_id": "tobkiri_side_chat_pack.side-chat-turn"
+        },
+        "input": {
+          "operation": "send"
+        },
+        "source_bindings": {
+          "conversation_id": "conversation_id",
+          "expected_child_revision": "revision",
+          "expected_parent_revision": "parent_revision"
+        },
+        "content_key": "content",
+        "turn_id_key": "turn_id"
+      },
+      "stop": {
+        "operation": {
+          "contribution_id": "pack.tobkiri_side_chat_pack.tobkiri_side_chat_pack.side-chat-turn",
+          "contract_id": "tobkiri.service.side-chat.turn.v1",
+          "operation_id": "tobkiri_side_chat_pack.side-chat-turn"
+        },
+        "input": {
+          "operation": "stop"
+        },
+        "source_bindings": {
+          "conversation_id": "conversation_id"
+        },
+        "turn_id_key": "turn_id"
+      },
+      "events": {
+        "operation": {
+          "contribution_id": "pack.tobkiri_side_chat_pack.tobkiri_side_chat_pack.side-chat-resource",
+          "contract_id": "tobkiri.resource.side-chat.v1",
+          "operation_id": "tobkiri_side_chat_pack.side-chat-resource"
+        },
+        "input": {
+          "operation": "events"
+        },
+        "source_bindings": {
+          "conversation_id": "conversation_id"
+        },
+        "turn_id_key": "turn_id"
+      },
+      "reconcile": {
+        "operation": {
+          "contribution_id": "pack.tobkiri_side_chat_pack.tobkiri_side_chat_pack.side-chat-turn",
+          "contract_id": "tobkiri.service.side-chat.turn.v1",
+          "operation_id": "tobkiri_side_chat_pack.side-chat-turn"
+        },
+        "input": {
+          "operation": "reconcile"
+        },
+        "source_bindings": {
+          "conversation_id": "conversation_id"
+        },
+        "turn_id_key": "turn_id"
+      }
+    },
+    "controls": [
+      {
+        "id": "open",
+        "label": "Open side chat",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.tobkiri_side_chat_pack.tobkiri_side_chat_pack.side-chat-manage",
+          "contract_id": "tobkiri.action.side-chat.v1",
+          "operation_id": "tobkiri_side_chat_pack.side-chat-manage"
+        },
+        "input": {
+          "operation": "ensure"
+        },
+        "input_bindings": {
+          "expected_parent_revision": "parent_revision"
+        },
+        "context_bindings": {
+          "parent_conversation_id": "conversation_id"
+        }
+      },
+      {
+        "id": "reconcile",
+        "label": "最新の実行を復旧",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.tobkiri_side_chat_pack.tobkiri_side_chat_pack.side-chat-turn",
+          "contract_id": "tobkiri.service.side-chat.turn.v1",
+          "operation_id": "tobkiri_side_chat_pack.side-chat-turn"
+        },
+        "input": {
+          "operation": "reconcile"
+        },
+        "input_bindings": {
+          "conversation_id": "conversation_id",
+          "turn_id": "thread.pending_turn.id"
+        }
+      }
+    ]
+  }
+}

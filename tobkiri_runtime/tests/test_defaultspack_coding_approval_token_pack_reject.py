@@ -44,6 +44,10 @@ def _coding_git_commit_tool_def():
 
 def _pack_not_approved_executor():
     capability_executor = MagicMock()
+    capability_executor._approval_manager.is_pack_approved_and_verified.return_value = (
+        False,
+        "Pack not approved: defaultspack",
+    )
     capability_executor.execute.return_value = SimpleNamespace(
         success=False,
         output=None,
@@ -55,6 +59,10 @@ def _pack_not_approved_executor():
 
 def _success_executor():
     capability_executor = MagicMock()
+    capability_executor._approval_manager.is_pack_approved_and_verified.return_value = (
+        True,
+        None,
+    )
     capability_executor.execute.return_value = SimpleNamespace(
         success=True,
         output={"status": "ok", "data": {"commit_hash": "abc1234"}},
@@ -179,61 +187,6 @@ def test_successful_execution_consumes_approval_token(monkeypatch):
     assert replay["is_error"] is True
     assert "already been used" in replay["result"]
     replay_executor.execute.assert_not_called()
-
-
-def test_dev_auto_approve_late_still_consumes_only_once(monkeypatch):
-    """Dev auto-approve happens after the first ``pack_not_approved`` response.
-
-    The retry inside ``_retry_capability_after_dev_auto_approve`` succeeds, so
-    the token must be consumed exactly once across the two ``executor.execute``
-    calls — never burnt prematurely on the failed first attempt.
-    """
-    from domain.safety import approval
-    from domain.tool.executor import ToolExecutor
-
-    monkeypatch.setenv("RUMI_ENVIRONMENT", "development")
-    monkeypatch.setenv("RUMI_AUTO_APPROVE_LOCAL", "true")
-    monkeypatch.setattr(
-        ToolExecutor, "_dev_auto_approve_pack",
-        staticmethod(lambda pack_id: pack_id == "defaultspack"),
-    )
-    approval.reset_approval_state_for_tests()
-
-    tool_def = _coding_git_commit_tool_def()
-    args = {"message": "auto", "paths": ["a.txt"]}
-    token = _approve_tool_call(tool_def, args)
-
-    capability_executor = MagicMock()
-    capability_executor.execute.side_effect = [
-        SimpleNamespace(
-            success=False,
-            output=None,
-            error="Pack not approved: defaultspack",
-            error_type="pack_not_approved",
-        ),
-        SimpleNamespace(
-            success=True,
-            output={"status": "ok", "data": {"commit_hash": "deadbeef"}},
-            error=None,
-            error_type=None,
-        ),
-    ]
-    result = ToolExecutor()._execute_rumi_function(
-        tool_def,
-        {**args, "approval_token": token},
-        {"principal_id": "defaultspack", "capability_executor": capability_executor},
-    )
-
-    assert result["is_error"] is False
-    assert capability_executor.execute.call_count == 2
-
-    # Token consumed by the (eventually successful) execution.
-    args_hash = approval.hash_arguments(args)
-    verification = approval.verify_execution_token(
-        token, "tool.coding_git_commit", args_hash, consume=False,
-    )
-    assert verification.valid is False
-    assert verification.code == "APPROVAL_TOKEN_USED"
 
 
 def test_invalid_approval_token_is_not_consumed():

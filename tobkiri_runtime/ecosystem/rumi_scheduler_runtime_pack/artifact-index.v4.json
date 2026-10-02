@@ -1,0 +1,37 @@
+{
+  "artifact_set_digest": "sha256:552e4171d4f06a0677d2315a61950216ada9cff90d26794accac7eac5761c7a5",
+  "artifacts": [
+    {
+      "digest": "sha256:116541787ed69011ee98e2e2386770e7384247adf3395c8e58bf25e153ae9eac",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:80c97030aca0b5ec7479e670514a59898dcab0cdf4283b7d3385aafc2fa0e3af",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:c2161343d098dc476b1c39b31cf75d5a5fffe7ba029203cff77b27fc95d6ffd5",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:e791852be8e726c6fb26f992d1e59f7654cbff9648336c672228616aa9e769fd",
+      "path": "runtime/clock.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:a302c3cb9f6fa884f23cca7b03845d378128ec931d0a6d855d2620246e4ac2d7",
+      "path": "runtime/scheduler.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:822bf50cf4bd0c4900ae866051c602dfaddf584915570d53b4947a5f05023378"
+  },
+  "pack_id": "rumi_scheduler_runtime_pack",
+  "source_identity": "sha256:6628f641c038a751e3761d30ac3bddbc44e7bb1d840ed302dab331792cbf24f3"
+}

@@ -1,0 +1,10 @@
+{
+  "artifacts": [
+    {
+      "path": "frontend/contributions/research.json",
+      "role": "ui_contribution",
+      "sha256": "sha256:e8f6c5315bd2285240a9d293cddbdbb060e3da1ed41d8cc462eb586c470fe9c0"
+    }
+  ],
+  "schema_version": "rumi.artifact-manifest.v1"
+}

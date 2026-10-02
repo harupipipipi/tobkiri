@@ -4,13 +4,11 @@ domain.tool.screen_controller — コンテナ画面操作。
 Docker コンテナ内で Xvfb + xdotool を利用して座標ベースの操作を行う。
 Docker がない local-only モードでは画面操作は無効。
 """
-import base64
 import time
 
 from domain.tool.container_manager import (
     get_container,
     exec_in_container,
-    is_docker_available,
 )
 
 

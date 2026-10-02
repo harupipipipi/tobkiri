@@ -1,0 +1,39 @@
+{
+  "function_id": "coding_pack_status",
+  "description": "Read Pack approval and verification status.",
+  "tags": [
+    "coding"
+  ],
+  "risk": "low",
+  "requires": [],
+  "caller_requires": [],
+  "host_execution": false,
+  "calling_convention": "subprocess",
+  "entrypoint": "main.py:run",
+  "vocab_aliases": [
+    "defaultspack.coding.pack_status",
+    "defaultspack.coding.pack.status"
+  ],
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": true
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "status": {
+        "type": "string"
+      },
+      "data": {},
+      "error": {
+        "type": "object"
+      }
+    }
+  },
+  "extensions": {
+    "defaultspack": {
+      "block_module": "blocks.coding.pack_status",
+      "default_args": {}
+    }
+  }
+}

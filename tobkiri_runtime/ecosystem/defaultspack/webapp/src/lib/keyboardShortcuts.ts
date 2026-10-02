@@ -14,7 +14,11 @@ type KeyboardEventLike = {
   shiftKey?: boolean;
   target?: EventTarget | null;
   isComposing?: boolean;
+  defaultPrevented?: boolean;
+  repeat?: boolean;
 };
+
+export type WorkspaceTabShortcutAction = "create_chat" | "close_active" | "restore_last_closed";
 
 const MODIFIER_ALIASES: Record<string, keyof Omit<ShortcutSpec, "key">> = {
   alt: "alt",
@@ -79,7 +83,7 @@ export function normalizeShortcutSpec(value: unknown): ShortcutSpec | null {
     spec.key = normalizeShortcutKey(part);
   }
   if (!spec.key || isModifierKey(spec.key)) return null;
-  if (!spec.ctrl && !spec.alt && !spec.meta && !spec.shift) return null;
+  if (!spec.ctrl && !spec.alt && !spec.meta && !spec.shift && !isFunctionKey(spec.key)) return null;
   return spec;
 }
 
@@ -111,6 +115,36 @@ export function shortcutSpecMatchesEvent(
   return key === spec.key;
 }
 
+/** Resolve browser-style workspace-tab shortcuts without excluding text inputs. */
+export function workspaceTabShortcutAction(
+  event: KeyboardEventLike,
+): WorkspaceTabShortcutAction | null {
+  if (event.defaultPrevented || event.repeat || event.isComposing) return null;
+  const matches = (shortcut: string) => shortcutSpecMatchesEvent(
+    shortcut,
+    event,
+    { allowTextInput: true },
+  );
+  if (matches("Ctrl+Shift+T") || matches("Cmd+Shift+T")) return "restore_last_closed";
+  if (matches("Ctrl+T") || matches("Cmd+T")) return "create_chat";
+  if (matches("Ctrl+W") || matches("Cmd+W")) return "close_active";
+  return null;
+}
+
+/** Consume recognized repeats without letting the browser close its own window. */
+export function workspaceTabShortcutDisposition(event: KeyboardEventLike): {
+  action: WorkspaceTabShortcutAction | null;
+  consume: boolean;
+} {
+  const chord = workspaceTabShortcutAction({
+    key: event.key, altKey: event.altKey, ctrlKey: event.ctrlKey,
+    metaKey: event.metaKey, shiftKey: event.shiftKey,
+    defaultPrevented: event.defaultPrevented, isComposing: event.isComposing,
+    repeat: false,
+  });
+  return { action: event.repeat ? null : chord, consume: chord !== null };
+}
+
 function normalizeShortcutKey(value: string): string {
   const trimmed = String(value || "").trim();
   if (!trimmed) return "";
@@ -130,6 +164,10 @@ function displayShortcutKey(value: string): string {
 
 function isModifierKey(value: string): boolean {
   return Boolean(MODIFIER_ALIASES[value.toLowerCase()]);
+}
+
+function isFunctionKey(value: string): boolean {
+  return /^f(?:[1-9]|1[0-2])$/.test(value);
 }
 
 function isTextInputTarget(target: EventTarget | null): boolean {
