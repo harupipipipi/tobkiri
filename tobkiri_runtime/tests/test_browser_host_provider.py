@@ -358,7 +358,7 @@ def test_production_browser_capture_executes_owned_state_and_fences_revocation(
 ) -> None:
     from core_runtime.authority.v4 import AuthorityDenied
     from tests.conformance_support.host_profile import captured_host_profile
-    from tobkiri_host.errors import ProviderExecutionError
+    from tobkiri_host.errors import AuthorizationError, ProviderExecutionError
 
     factories = host_provider.BROWSER_HOST_PROVIDER_FACTORIES
     os_browser_calls: list[str] = []
@@ -413,8 +413,10 @@ def test_production_browser_capture_executes_owned_state_and_fences_revocation(
             target_kind="host_extension", target_id=extension_ids.pop(),
             reason="browser owner test revocation",
         )
-        with pytest.raises(AuthorityDenied):
+        with pytest.raises(AuthorizationError, match="^static authorization failed$") as failure:
             invoke(control, "browser.profile.delete", {"profile_id": "model"})
+        assert isinstance(failure.value.__cause__, AuthorityDenied)
+        assert str(failure.value.__cause__) == "Host Extension trust is unavailable"
         assert state.read_bytes() == before
 
 
