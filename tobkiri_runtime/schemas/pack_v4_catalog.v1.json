@@ -4960,7 +4960,49 @@
         "mode": "canonical-v4",
         "owner": "rumi_coding_sandbox_service_pack",
         "source_format": "pack.v4.json"
-      }
+      },
+      "functions": [
+        {
+          "function_id": "rumi_coding_sandbox_service_pack.coding-sandbox.control",
+          "contract_id": "tobkiri.action.coding.sandbox.v1",
+          "implementation_digest": "sha256:8fab76d8f3a830cb634c186ffa32c4ffc3d067c9bbdd671baa2f55e256725f2f",
+          "operation_ids": [
+            "rumi_coding_sandbox_service_pack.sandbox-control"
+          ]
+        },
+        {
+          "function_id": "rumi_coding_sandbox_service_pack.coding-sandbox.observe",
+          "contract_id": "tobkiri.resource.coding.sandbox.v1",
+          "implementation_digest": "sha256:8fab76d8f3a830cb634c186ffa32c4ffc3d067c9bbdd671baa2f55e256725f2f",
+          "operation_ids": [
+            "rumi_coding_sandbox_service_pack.sandbox-observe"
+          ]
+        },
+        {
+          "function_id": "rumi_coding_sandbox_service_pack.task-execute",
+          "contract_id": "tobkiri.action.workspace.container.v1",
+          "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
+          "operation_ids": [
+            "rumi_coding_sandbox_service_pack.task-execute"
+          ]
+        },
+        {
+          "function_id": "rumi_coding_sandbox_service_pack.task-prepare",
+          "contract_id": "tobkiri.action.workspace.container.v1",
+          "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
+          "operation_ids": [
+            "rumi_coding_sandbox_service_pack.task-prepare"
+          ]
+        },
+        {
+          "function_id": "rumi_coding_sandbox_service_pack.task-resource",
+          "contract_id": "tobkiri.resource.workspace.container-task.v1",
+          "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
+          "operation_ids": [
+            "rumi_coding_sandbox_service_pack.task-resource"
+          ]
+        }
+      ]
     },
     {
       "approval_policy": "capability_gated",

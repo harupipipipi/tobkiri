@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:ee062c3a282e3ccb12a0876a969b087dd0303d20d99414e4032bb6fba3d8f5ff",
+  "catalog_digest": "sha256:59b608b03cddd0d41183a551b4b564a0309321ba183f1242fb6176d49f6f7aa3",
   "pack_id": "rumi_coding_sandbox_service_pack",
-  "source_identity": "sha256:e3546b70784a2e43364732b44354b90e2696f78fb481ff9fddc4f521672b5909",
+  "source_identity": "sha256:1bfb6140cf9e6f4a94797b60738d43975dd139c0a24711c07caf0ce7f1975c5f",
   "variants": [
     {
       "architecture": "any",
@@ -270,14 +270,29 @@
               }
             ]
           },
-          "operation_id": "rumi_coding_sandbox_service_pack.task-prepare",
+          "operation_id": "rumi_coding_sandbox_service_pack.task-execute",
           "output_schema": {
             "type": "object"
           },
           "revision_digest": "sha256:79ae5ae2ac25f237ec70cf208663990855c4d2d409b5d07781b62e94c1f6ea72",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
-        },
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_coding_sandbox_service_pack.task-execute.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_coding_sandbox_service_pack.task-prepare",
+      "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
+      "implementation_path": "runtime/host_v4.py",
+      "materialization_mode": "on_demand",
+      "operations": [
         {
           "contract_id": "tobkiri.action.workspace.container.v1",
           "contract_version": "1.0.0",
@@ -466,7 +481,7 @@
               }
             ]
           },
-          "operation_id": "rumi_coding_sandbox_service_pack.task-execute",
+          "operation_id": "rumi_coding_sandbox_service_pack.task-prepare",
           "output_schema": {
             "type": "object"
           },
@@ -477,7 +492,7 @@
       ],
       "platform": "any",
       "runtime_abi": "python3.13",
-      "variant_id": "rumi_coding_sandbox_service_pack.task-execute.python"
+      "variant_id": "rumi_coding_sandbox_service_pack.task-prepare.python"
     },
     {
       "architecture": "any",

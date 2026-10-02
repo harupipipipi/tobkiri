@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_coding_sandbox_service_pack",
-  "source_identity": "sha256:bb3c87077d3f9762067ae0a3b21815cacc10cd3665e44945f62e5e6a0201bedb",
+  "source_identity": "sha256:ff0dc3518101d2a86b2f23bbef395e5a11394b30b2e62f038d94cde35539d666",
   "variants": [
     {
       "variant_id": "rumi_coding_sandbox_service_pack.coding-sandbox.control.python",
@@ -88,7 +88,7 @@
           "contract_id": "tobkiri.action.workspace.container.v1",
           "contract_version": "1.0.0",
           "revision_digest": "sha256:79ae5ae2ac25f237ec70cf208663990855c4d2d409b5d07781b62e94c1f6ea72",
-          "operation_id": "rumi_coding_sandbox_service_pack.task-prepare",
+          "operation_id": "rumi_coding_sandbox_service_pack.task-execute",
           "input_schema": {
             "oneOf": [
               {
@@ -279,12 +279,27 @@
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000,
           "idempotency": "none"
-        },
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_coding_sandbox_service_pack.task-prepare.python",
+      "function_id": "rumi_coding_sandbox_service_pack.task-prepare",
+      "implementation_path": "runtime/host_v4.py",
+      "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
         {
           "contract_id": "tobkiri.action.workspace.container.v1",
           "contract_version": "1.0.0",
           "revision_digest": "sha256:79ae5ae2ac25f237ec70cf208663990855c4d2d409b5d07781b62e94c1f6ea72",
-          "operation_id": "rumi_coding_sandbox_service_pack.task-execute",
+          "operation_id": "rumi_coding_sandbox_service_pack.task-prepare",
           "input_schema": {
             "oneOf": [
               {
@@ -570,6 +585,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:ee062c3a282e3ccb12a0876a969b087dd0303d20d99414e4032bb6fba3d8f5ff",
-  "catalog_digest": "sha256:d17651753bc29b6cc280c5c2e476fa84459a8c0bb419c70546591f95d45239e4"
+  "materialization_catalog_digest": "sha256:59b608b03cddd0d41183a551b4b564a0309321ba183f1242fb6176d49f6f7aa3",
+  "catalog_digest": "sha256:0770bc5bea4bc65ad0d624b23103a5ae59705b0553b6c904ca853b89475bebf0"
 }
