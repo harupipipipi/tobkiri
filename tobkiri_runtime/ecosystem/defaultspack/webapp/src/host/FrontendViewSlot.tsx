@@ -127,6 +127,7 @@ function CatalogViewHost({
         registered={registered} catalog={catalog} capabilities={capabilities} snapshot={snapshot}
         onRefresh={refresh} context={context} sourceReady={sourceReady}
         onDirtyChange={onNavigationGuardChange} />}
+      {registered.view.renderer === "conversation_thread" && <UnavailableView />}
       {(registered.view.controls ?? []).map((control) => <CatalogControl
         key={control.id} control={control} snapshot={snapshot}
         registered={registered} catalog={catalog} capabilities={capabilities}

@@ -5,7 +5,7 @@ import {
   choicePayload, controlPayload, matchesViewReference, parseCatalogView,
   readViewPath, requestContextInput, validPublicViewInput,
   viewChoices, viewOperationRequest, viewReadRequest, viewsForSlot, viewContextKey,
-  type CatalogView, type ViewControl,
+  type CatalogView, type ConversationThreadDefinition, type ViewControl,
 } from "./catalogViewRegistry";
 import { FrontendViewSlot } from "./FrontendViewSlot";
 import type { FrontendCatalog, VerifiedFrontendContribution } from "./frontendContracts";
@@ -211,4 +211,36 @@ test("unused turn context cannot remount conversation-only or profile-only edito
     viewContextKey(registered, { conversation_id: "chat", turn_id: "b" }));
   assert.notEqual(viewContextKey(registered, { conversation_id: "chat-a" }),
     viewContextKey(registered, { conversation_id: "chat-b" }));
+});
+
+const thread: ConversationThreadDefinition = {
+  conversation_path: "thread.conversation", messages_path: "thread.messages",
+  pending_turn_path: "thread.pending_turn", model_reference_path: "thread.context.model_reference",
+  send: { operation: { ...operation, operation_id: "logic.send", contribution_id: "pack.logic.logic.send" },
+    content_key: "content", turn_id_key: "turn_id",
+    source_bindings: { conversation_id: "conversation_id", expected_child_revision: "revision" } },
+  events: { operation, turn_id_key: "turn_id" },
+};
+test("thread grammar admits only canonical text/turn keys and exact declared requests", () => {
+  const declared = { ...view, renderer: "conversation_thread", conversation_thread: thread };
+  assert.ok(parseCatalogView(declared));
+  for (const unsafe of [
+    { ...thread, url: "/api/send" },
+    { ...thread, messages_path: "constructor.messages" },
+    { ...thread, send: { ...thread.send, content_key: "model_override" } },
+    { ...thread, send: { ...thread.send, input: { turn_id: "forged" } } },
+    { ...thread, send: { ...thread.send, context_bindings: { content: "conversation_id" } } },
+    { ...thread, send: { ...thread.send, source_bindings: { profile_id: "thread.id" } } },
+    { ...thread, events: { ...thread.events, content_key: "content" } },
+  ]) assert.equal(parseCatalogView({ ...declared, conversation_thread: unsafe }), null);
+  assert.equal(parseCatalogView({ ...declared, data_source: undefined }), null);
+  assert.equal(parseCatalogView({ ...view, conversation_thread: thread }), null);
+  const value = catalog();
+  value.contributions[0].view = declared;
+  value.contributions.push(contribution({ kind: "action", contribution_id: thread.send.operation.contribution_id,
+    owner_pack_id: "logic", action_contract: operation.contract_id, operation_id: "logic.send", view: null }));
+  const registered = viewsForSlot(value, "sidebar", "plan")[0];
+  assert.ok(viewOperationRequest(value, registered, thread.send.operation, { content: "hello", turn_id: "ticket" }));
+  assert.equal(viewReadRequest(value, registered, thread.send.operation, {}), null);
+  assert.ok(viewReadRequest(value, registered, thread.events!.operation, { turn_id: "ticket" }));
 });

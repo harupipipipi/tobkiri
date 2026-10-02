@@ -38,6 +38,17 @@ export type RecordEditorDefinition = {
   fields: RecordEditorField[];
   save: RecordEditorRequest & { draft_key: string }; actions?: RecordEditorAction[];
 };
+export type ConversationThreadRequest = {
+  operation: ViewOperation; input?: Record<string, unknown>;
+  context_bindings?: ContextBindings; source_bindings?: Record<string, string>;
+  turn_id_key: "turn_id"; content_key?: "content";
+};
+export type ConversationThreadDefinition = {
+  conversation_path: string; messages_path: string; pending_turn_path: string;
+  model_reference_path?: string;
+  send: ConversationThreadRequest & { content_key: "content" };
+  stop?: ConversationThreadRequest; events?: ConversationThreadRequest;
+};
 export type ViewField = {
   label: string; path: string; kind: "text" | "status" | "progress";
   total_path?: string;
@@ -52,13 +63,14 @@ export type ViewControl = {
 };
 export type CatalogView = {
   version: typeof VIEW_VERSION; slot: ViewSlot;
-  renderer: "panel" | "status" | "entity_picker" | "record_editor";
+  renderer: "panel" | "status" | "entity_picker" | "record_editor" | "conversation_thread";
   title?: string; body?: string;
   data_source?: ViewOperation & {
     input?: Record<string, unknown>; context_bindings?: ContextBindings;
   };
   fields?: ViewField[]; controls?: ViewControl[];
   record_editor?: RecordEditorDefinition;
+  conversation_thread?: ConversationThreadDefinition;
 };
 export type CatalogViewReference = {
   contributionId: string; ownerPackId: string; descriptorHash: string;
@@ -196,18 +208,52 @@ export function parseRecordEditor(value: unknown): RecordEditorDefinition | null
   return value as unknown as RecordEditorDefinition;
 }
 
+function validThreadRequest(value: unknown, send: boolean): boolean {
+  if (!record(value) || !keys(value, [
+    "operation", "input", "source_bindings", "context_bindings", "turn_id_key",
+    ...(send ? ["content_key"] : []),
+  ]) || !operationValid(value.operation) || value.turn_id_key !== "turn_id"
+    || (send && value.content_key !== "content")
+    || (own(value, "input") && (!record(value.input) || !validPublicViewInput(value.input)))) return false;
+  const claimed = new Set(Object.keys(record(value.input) ? value.input : {}));
+  for (const key of ["source_bindings", "context_bindings"]) {
+    const bindings = value[key] ?? {};
+    if (!record(bindings) || Object.keys(bindings).length > (key === "context_bindings" ? 16 : 32)
+      || (key === "context_bindings" && !validContextBindings(bindings, value.input))) return false;
+    for (const [inputKey, path] of Object.entries(bindings)) {
+      if (!/^[a-z][a-z0-9_]{0,63}$/.test(inputKey) || !validPublicViewInput({ [inputKey]: null })
+        || claimed.has(inputKey) || (key === "source_bindings" && !validViewPath(path))) return false;
+      claimed.add(inputKey);
+    }
+  }
+  return !claimed.has("turn_id") && (!send || !claimed.has("content"));
+}
+
+/** A thread uses canonical data and fixed text/turn keys, never model authority. */
+export function parseConversationThread(value: unknown): ConversationThreadDefinition | null {
+  if (!record(value) || !keys(value, [
+    "conversation_path", "messages_path", "pending_turn_path", "model_reference_path", "send", "stop", "events",
+  ]) || !["conversation_path", "messages_path", "pending_turn_path"].every((key) => validViewPath(value[key]))
+    || (own(value, "model_reference_path") && !validViewPath(value.model_reference_path))
+    || !validThreadRequest(value.send, true)
+    || ["stop", "events"].some((key) => own(value, key) && !validThreadRequest(value[key], false))) return null;
+  return value as unknown as ConversationThreadDefinition;
+}
+
 /** Validate the complete view before resolving any shipped renderer. */
 export function parseCatalogView(value: unknown): CatalogView | null {
   if (!record(value) || !keys(value, [
-    "version", "slot", "renderer", "title", "body", "data_source", "fields", "controls", "record_editor",
+    "version", "slot", "renderer", "title", "body", "data_source", "fields", "controls", "record_editor", "conversation_thread",
   ]) || value.version !== VIEW_VERSION
     || !VIEW_SLOTS.includes(value.slot as ViewSlot)
-    || !["panel", "status", "entity_picker", "record_editor"].includes(String(value.renderer))
+    || !["panel", "status", "entity_picker", "record_editor", "conversation_thread"].includes(String(value.renderer))
     || (own(value, "title") && !bounded(value.title, 256))
     || (own(value, "body") && !bounded(value.body, 4096))
     || (own(value, "data_source") && !operationValid(value.data_source, true))) return null;
   if (value.renderer === "record_editor" ? !parseRecordEditor(value.record_editor)
     : own(value, "record_editor")) return null;
+  if (value.renderer === "conversation_thread" ? !own(value, "data_source")
+    || !parseConversationThread(value.conversation_thread) : own(value, "conversation_thread")) return null;
   if (own(value, "fields") && (!Array.isArray(value.fields) || value.fields.length > 32
     || !value.fields.every((field) => record(field)
       && keys(field, ["label", "path", "kind", "total_path"])
@@ -310,6 +356,9 @@ export function viewOperationRequest(
     ...(registered.view.controls ?? []).map((control) => control.operation),
     registered.view.record_editor?.save.operation,
     ...(registered.view.record_editor?.actions ?? []).map((action) => action.operation),
+    registered.view.conversation_thread?.send.operation,
+    registered.view.conversation_thread?.stop?.operation,
+    registered.view.conversation_thread?.events?.operation,
   ];
   if (!declared.some((item) => item
     && item.contribution_id === operation.contribution_id
@@ -403,6 +452,9 @@ export function viewContextKey(
     ...(registered.view.controls ?? []),
     registered.view.record_editor?.save,
     ...(registered.view.record_editor?.actions ?? []),
+    registered.view.conversation_thread?.send,
+    registered.view.conversation_thread?.stop,
+    registered.view.conversation_thread?.events,
   ];
   const consumed = new Set(requests.flatMap((request) =>
     Object.values(request?.context_bindings ?? {})));
