@@ -228,7 +228,7 @@ test('generated Contract Map is pinned to the canonical raw artifact and include
     GENERATED_FRONTEND_CONTRACT_MAP.artifact_digest,
     PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST,
   );
-  assert.equal(GENERATED_FRONTEND_CONTRACT_MAP.routes.length, 63);
+  assert.equal(GENERATED_FRONTEND_CONTRACT_MAP.routes.length, 65);
   for (const path of ['/api/ai/provider-key', '/api/ai/profiles', '/api/chat/turn/stop']) {
     assert.ok(GENERATED_FRONTEND_CONTRACT_MAP.routes.some(
       (route) => route.method === 'POST' && route.path === path,
@@ -302,6 +302,34 @@ test('generated Contract Map is pinned to the canonical raw artifact and include
     () => validateGeneratedFrontendContractMap(stale),
     /stale|tampered/i,
   );
+});
+
+test('Browser routes retain exact observation and control bindings and payload scope', () => {
+  const paths = new Set<string>();
+  for (const [access, contractId] of [
+    ['observe', 'tobkiri.resource.browser.host.v1'],
+    ['control', 'tobkiri.action.browser.host.v1'],
+  ] as const) {
+    const contributionId = `defaults.browser.${access}`;
+    const routes = GENERATED_FRONTEND_CONTRACT_MAP.routes.filter(
+      (route) => route.targets.some((target) => target.contribution_id === contributionId),
+    );
+    assert.equal(routes.length, 1);
+    const route = routes[0];
+    assert.ok(route);
+    assert.equal(route.method, 'POST');
+    assert.equal(route.presentation, 'broker_result');
+    assert.deepEqual(route.targets, [{
+      contribution_id: contributionId,
+      contract_id: contractId,
+      operation_id: `rumi_browser_host_service_pack.browser-host-${access}`,
+      provider_id: `rumi_browser_host_service_pack.browser-host.${access}`,
+      function_id: `rumi_browser_host_service_pack.browser-host.${access}`,
+      allowed_payload_keys: ['operation', 'arguments'],
+    }]);
+    paths.add(route.path);
+  }
+  assert.equal(paths.size, 2);
 });
 
 function profileCatalogData() {

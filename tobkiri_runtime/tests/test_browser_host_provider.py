@@ -403,8 +403,14 @@ def test_production_browser_capture_executes_owned_state_and_fences_revocation(
         audit = json.dumps(authority.audit_events())
         assert "PROFILE_LABEL_PRIVATE_CANARY" not in audit
         assert "COOKIE_IMPORT_SECRET_CANARY" not in audit
-        authority.revoke(
-            target_kind="host_extension", target_id=host_provider.PACK_ID,
+        extension_ids = {
+            record.host_extension_id for record in authority.list_provider_authorities()
+            if record.provider.function_id == control.function_id
+        }
+        assert len(extension_ids) == 1
+        assert session.authority_control is not None
+        session.authority_control.revoke(
+            target_kind="host_extension", target_id=extension_ids.pop(),
             reason="browser owner test revocation",
         )
         with pytest.raises(AuthorityDenied):

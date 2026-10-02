@@ -52,6 +52,7 @@ def test_owner_lists_resolves_and_keeps_packaged_schemas_isolated(
         "kind": "local", "contract_id": "tobkiri.service.tool.browser.operation.v1",
         "provider_instance_id": "rumi_browser_host_service_pack.browser-host.tool",
         "operation": "rumi_browser_host_service_pack.browser-tool-execute",
+        "namespace": "",
     }
     calculator["input_schema"]["properties"].clear()
     assert (

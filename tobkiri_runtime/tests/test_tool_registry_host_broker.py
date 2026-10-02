@@ -25,7 +25,10 @@ def test_production_registry_uses_only_selected_pack_data(
         monkeypatch,
         packs=() if selected else ("rumi_default_tool_projection_pack",), edges=(),
         exclude_packs=() if selected else ("rumi_default_tools_pack",),
-        exclude_callers=() if selected else ("rumi_tool_local_executor_pack.tool-executor.local",),
+        exclude_callers=() if selected else (
+            "rumi_tool_local_executor_pack.tool-executor.local",
+            "rumi_browser_host_service_pack.browser-host.tool",
+        ),
         backends=(),
     ) as (session, _store):
         result = session.invoke(
@@ -104,7 +107,9 @@ def test_production_tool_broker_resolves_owner_and_rejects_unavailable_executor(
         exclude_packs=() if local_selected else (
             "rumi_tool_local_executor_pack", "rumi_default_tool_projection_pack",
         ),
-        exclude_callers=(factory.function_id, local),
+        exclude_callers=(
+            factory.function_id, local, "rumi_browser_host_service_pack.browser-host.tool",
+        ),
         edges=edges, backends=(),
     ) as (session, _store):
         session.assert_operation_ready(broker.CONTRACT, broker.OPERATION)

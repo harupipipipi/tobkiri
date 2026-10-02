@@ -1201,38 +1201,354 @@
     },
     "rumi_browser_host_service_pack": {
       "pack_id": "rumi_browser_host_service_pack",
-      "review_attestation_digest": "sha256:cf96bf3a4a71799b0d6b034d952c29b9c27a5358cd6aea3f30aae0358911454a",
+      "review_attestation_digest": "sha256:d6b3f983b1976cfcfea20961f4624d741397a85b08702446bb7e642868444e8c",
       "review_basis": {
+        "evidence_file_digests": [
+          {
+            "digest": "sha256:8d3b212a13fd269327b80e0eace1e9c96147bc71b41eec57f7407825b3a70701",
+            "path": "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/rumi.pack.v3.json"
+          },
+          {
+            "digest": "sha256:065d93443d7fb68b749153e93391e2d106fea4ab8e42138d5f7cfa9d01f82794",
+            "path": "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/artifact-manifest.json"
+          },
+          {
+            "digest": "sha256:de7afee2b69ea813e535b5ef1cefcb8074351ab689811b878da9cd86fd766a61",
+            "path": "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/pack.v4.json"
+          },
+          {
+            "digest": "sha256:ee57fd2b301f08d51d101bf52464ebdf3067b4d9372f452767a22fe22c0d25d5",
+            "path": "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/contracts.v4.json"
+          },
+          {
+            "digest": "sha256:54664c64ec58cbd1d6a081a4eadfd69aae2274d7f1cbf2b4ee862b6f2852b2cd",
+            "path": "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/artifact-index.v4.json"
+          },
+          {
+            "digest": "sha256:18a75bfcfbffa69d981007615f78a87d538d0e3674710e03314ef5adb8b89b6a",
+            "path": "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/executables.v4.json"
+          },
+          {
+            "digest": "sha256:9809ed85e759874b616b90976c0e47a53e7426430e3e39710a92577bee7fb4ce",
+            "path": "tobkiri_runtime/schemas/executable_sources.v1.json"
+          },
+          {
+            "digest": "sha256:4a8bd681a56fa17773a3c545e4a8a12d034a59d26bdf933b6a99e66d64056baa",
+            "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+          },
+          {
+            "digest": "sha256:d5b1005115072df5f3faab5a84899d3bd1953136385ef468a4395f860616d261",
+            "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/tools/browser_managed/manifest.json"
+          },
+          {
+            "digest": "sha256:2c1d488de63073a3d96824936278bb0ccf1042f5f8b106e0634de55779029233",
+            "path": "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/service.py"
+          },
+          {
+            "digest": "sha256:07c1a2a92dd1999fec3287b34c9c973a850bc5c7db9fe5e2dbbacace01c0f216",
+            "path": "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/browser_tool.py"
+          },
+          {
+            "digest": "sha256:67c27de33e485dcdc0f0fedf6175134cd651adac82d466b5d277b4608cdaab62",
+            "path": "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/host_provider.py"
+          },
+          {
+            "digest": "sha256:8f33af9424c3b71571ad15b699285e635fdf1f3cd01dd37a87e7b80d3f0ea2de",
+            "path": "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/managed.py"
+          },
+          {
+            "digest": "sha256:a7e4b0736cda2605bae4fe486f19dc4ae0bd3eff263389a25b5436777a63bd60",
+            "path": "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/runner.py"
+          },
+          {
+            "digest": "sha256:24062c88104c192777c68bcd82f722f0d542ea91b1166ff7fb50e7536c1bdbef",
+            "path": "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/cookies.py"
+          },
+          {
+            "digest": "sha256:a9140b2b2ee1d6f2fb3b28d847ce11faa9fdd6f79d600b8f7ce4a2f769fd61f2",
+            "path": "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/extensions.py"
+          },
+          {
+            "digest": "sha256:8a8409008846976230757b5cf8bed2af02cfcdb7c3ac911480e192fad84ed906",
+            "path": "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/cdp.py"
+          },
+          {
+            "digest": "sha256:2bbb47f631cbc7b7b0e1cd0b4d5a641cf545262244652de167a372a6b8ecabaa",
+            "path": "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/devtools.py"
+          },
+          {
+            "digest": "sha256:07ed722524b0b04004c29496371415b43aba5a6c8e29d1ae340c55da7d0d256a",
+            "path": "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/storage.py"
+          }
+        ],
         "evidence_paths": [
           "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/rumi.pack.v3.json",
           "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/artifact-manifest.json",
           "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/pack.v4.json",
           "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/artifact-index.v4.json",
           "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/executables.v4.json",
-          "tobkiri_runtime/schemas/executable_sources.v1.json"
+          "tobkiri_runtime/schemas/executable_sources.v1.json",
+          "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json",
+          "tobkiri_runtime/ecosystem/rumi_default_tools_pack/tools/browser_managed/manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/service.py",
+          "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/browser_tool.py",
+          "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/host_provider.py",
+          "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/managed.py",
+          "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/runner.py",
+          "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/cookies.py",
+          "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/extensions.py",
+          "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/cdp.py",
+          "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/devtools.py",
+          "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/runtime/storage.py"
         ],
         "excluded_claims": [
           "runtime admission",
           "installation",
           "isolated conformance",
-          "release readiness"
+          "release readiness",
+          "live Browser/CDP operation execution",
+          "unchanged historical runtime behavior",
+          "historical availability or behavior equivalence of the newly added Browser tool"
         ],
         "method": "independent-file-by-file-review.v1",
         "verified_claims": [
-          "one-to-one operation identity",
-          "canonical input/output schema equality",
-          "runtime artifact path/digest equality",
-          "target owner equality",
-          "authority field equality",
-          "Pack-qualified provider identity"
+          "one-to-one operation identities between the current checked-in source declarations and current v4 executable catalog",
+          "canonical equality of currently declared generic input/output envelope schemas",
+          "current executable source paths/digests agree with actual indexed bytes and target owner identities",
+          "current provider authority fields reviewed separately from newly added or projected executable declarations",
+          "current Browser-related tool data and finite captured Registry/Executor/Host routing changes independently inspected"
         ]
       },
-      "reviewed_at": "2026-09-26T11:30:00+09:00",
-      "reviewer_id": "codex:independent-semantic-review:v1",
-      "semantic_record_digest": "sha256:1d2d6f5112ef78676a238ae093f857cdd68842979ea1af133b0f4fbf0e887488",
-      "source_digest": "sha256:535f0bd90224cd2d44d8350019e4cb0412ffc8ec50fdbd17ec7d151f90c4651b",
+      "reviewed_at": "2026-10-02T20:16:03Z",
+      "reviewer_id": "codex:browser_frontend:managed-browser-pack-review:2026-10-03",
+      "semantic_record": {
+        "accepted_divergences": [
+          "function_mapping"
+        ],
+        "current_executable_source_registry_digest": "sha256:1547868d665c4c604e5f4297da229e6bf30e337d73d64c54235ce1bd88676ad7",
+        "equivalence_scope": "Equivalence is limited to the reviewed one-to-one correspondence between current checked-in executable source declarations/projections and current v4 operation, generic envelope-schema and authority records. It does not assert unchanged historical runtime behavior or previously deployed feature availability.",
+        "equivalent": true,
+        "inventory_basis": {
+          "current_source_records": "Two current v3-shaped observe/control records and one explicit tool record newly introduced by this PR.",
+          "historical_v3_entrypoint_count": 2,
+          "new_explicit_declaration_count": 1
+        },
+        "kind": "operation-mapping",
+        "method": "curated-operation-mapping-review.v1",
+        "operation_inventory": {
+          "legacy_count": 3,
+          "v4_count": 3
+        },
+        "operation_mappings": [
+          {
+            "authority_mapping": {
+              "legacy": {
+                "artifact_role": "runtime",
+                "cardinality": "one",
+                "contract_id": "rumi.action.browser.host.v1",
+                "failure": "fail_closed",
+                "isolation": "process",
+                "lifecycle": {
+                  "data_owner": "rumi_browser_host_service_pack",
+                  "deprecated": false,
+                  "introduced": "1.0.0"
+                },
+                "provider_instance_id": "browser-host.control",
+                "required_capabilities": [
+                  "browser.host.control"
+                ],
+                "security": "restricted"
+              },
+              "status": "verified",
+              "v4": {
+                "cardinality": "one",
+                "contract_id": "tobkiri.action.browser.host.v1",
+                "failure": "fail_closed",
+                "function_role": "host_capability_provider",
+                "isolation": "process",
+                "lifecycle": {
+                  "data_owner": "rumi_browser_host_service_pack",
+                  "deprecated": false,
+                  "introduced": "1.0.0"
+                },
+                "provider_id": "rumi_browser_host_service_pack.browser-host.control",
+                "required_capabilities": [
+                  "browser.host.control"
+                ],
+                "security": "restricted"
+              }
+            },
+            "function_id": "rumi_browser_host_service_pack.browser-host.control",
+            "implementation_mapping": {
+              "current_indexed_bytes_verified": true,
+              "legacy_artifact_record_for_current_path": true,
+              "source_registry_digest": "sha256:2c1d488de63073a3d96824936278bb0ccf1042f5f8b106e0634de55779029233",
+              "source_registry_path": "runtime/service.py",
+              "status": "verified",
+              "v4_digest": "sha256:2c1d488de63073a3d96824936278bb0ccf1042f5f8b106e0634de55779029233",
+              "v4_path": "runtime/service.py"
+            },
+            "legacy_operation_id": "browser-host-control",
+            "legacy_operation_kind": "legacy-v3-entrypoint",
+            "parameter_mapping": {
+              "legacy_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+              "method": "canonical-json-schema-equality",
+              "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+              "rules": [
+                "input:identity of current declared generic envelope schema",
+                "output:identity of current declared generic envelope schema"
+              ],
+              "status": "verified",
+              "v4_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0"
+            },
+            "v4_contract_id": "tobkiri.action.browser.host.v1",
+            "v4_operation_id": "rumi_browser_host_service_pack.browser-host-control"
+          },
+          {
+            "authority_mapping": {
+              "legacy": {
+                "artifact_role": "runtime",
+                "cardinality": "one",
+                "contract_id": "rumi.resource.browser.host.v1",
+                "failure": "fail_closed",
+                "isolation": "process",
+                "lifecycle": {
+                  "data_owner": "rumi_browser_host_service_pack",
+                  "deprecated": false,
+                  "introduced": "1.0.0"
+                },
+                "provider_instance_id": "browser-host.observe",
+                "required_capabilities": [
+                  "browser.host.observe"
+                ],
+                "security": "sensitive"
+              },
+              "status": "verified",
+              "v4": {
+                "cardinality": "one",
+                "contract_id": "tobkiri.resource.browser.host.v1",
+                "failure": "fail_closed",
+                "function_role": "host_capability_provider",
+                "isolation": "process",
+                "lifecycle": {
+                  "data_owner": "rumi_browser_host_service_pack",
+                  "deprecated": false,
+                  "introduced": "1.0.0"
+                },
+                "provider_id": "rumi_browser_host_service_pack.browser-host.observe",
+                "required_capabilities": [
+                  "browser.host.observe"
+                ],
+                "security": "sensitive"
+              }
+            },
+            "function_id": "rumi_browser_host_service_pack.browser-host.observe",
+            "implementation_mapping": {
+              "current_indexed_bytes_verified": true,
+              "legacy_artifact_record_for_current_path": true,
+              "source_registry_digest": "sha256:2c1d488de63073a3d96824936278bb0ccf1042f5f8b106e0634de55779029233",
+              "source_registry_path": "runtime/service.py",
+              "status": "verified",
+              "v4_digest": "sha256:2c1d488de63073a3d96824936278bb0ccf1042f5f8b106e0634de55779029233",
+              "v4_path": "runtime/service.py"
+            },
+            "legacy_operation_id": "browser-host-observe",
+            "legacy_operation_kind": "legacy-v3-entrypoint",
+            "parameter_mapping": {
+              "legacy_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+              "method": "canonical-json-schema-equality",
+              "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+              "rules": [
+                "input:identity of current declared generic envelope schema",
+                "output:identity of current declared generic envelope schema"
+              ],
+              "status": "verified",
+              "v4_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0"
+            },
+            "v4_contract_id": "tobkiri.resource.browser.host.v1",
+            "v4_operation_id": "rumi_browser_host_service_pack.browser-host-observe"
+          },
+          {
+            "authority_mapping": {
+              "legacy": {
+                "authority_declaration": "The new explicit executable-source fixture does not declare historical v3 provider authority.",
+                "contract_id": "tobkiri.service.tool.browser.operation.v1",
+                "historical_v3_entrypoint_available": false,
+                "owner": "rumi_browser_host_service_pack",
+                "source_kind": "legacy-explicit-entrypoint"
+              },
+              "status": "verified",
+              "v4": {
+                "cardinality": "many",
+                "contract_id": "tobkiri.service.tool.browser.operation.v1",
+                "failure": "fail_closed",
+                "function_role": "host_capability_provider",
+                "isolation": "in_process",
+                "lifecycle": {
+                  "data_owner": "rumi_browser_host_service_pack",
+                  "deprecated": false,
+                  "introduced": "1.0.0"
+                },
+                "provider_id": "rumi_browser_host_service_pack.browser-host.tool",
+                "required_capabilities": [
+                  "tool.local.operation"
+                ],
+                "routing_keys": [
+                  "browser_managed"
+                ],
+                "security": "restricted"
+              }
+            },
+            "function_id": "rumi_browser_host_service_pack.browser-host.tool",
+            "implementation_mapping": {
+              "current_indexed_bytes_verified": true,
+              "legacy_artifact_record_for_current_path": false,
+              "source_registry_digest": "sha256:07c1a2a92dd1999fec3287b34c9c973a850bc5c7db9fe5e2dbbacace01c0f216",
+              "source_registry_path": "runtime/browser_tool.py",
+              "status": "verified",
+              "v4_digest": "sha256:07c1a2a92dd1999fec3287b34c9c973a850bc5c7db9fe5e2dbbacace01c0f216",
+              "v4_path": "runtime/browser_tool.py"
+            },
+            "legacy_operation_id": "rumi_browser_host_service_pack.browser-tool-execute",
+            "legacy_operation_kind": "legacy-explicit-entrypoint",
+            "parameter_mapping": {
+              "legacy_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+              "method": "canonical-json-schema-equality",
+              "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+              "rules": [
+                "input:identity of current declared generic envelope schema",
+                "output:identity of current declared generic envelope schema"
+              ],
+              "status": "verified",
+              "v4_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0"
+            },
+            "source_provenance": {
+              "historical_v3_availability_claimed": false,
+              "introduced_with": "This managed Browser PR",
+              "json_pointer": "/packs/rumi_browser_host_service_pack/entries/0",
+              "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+            },
+            "v4_contract_id": "tobkiri.service.tool.browser.operation.v1",
+            "v4_operation_id": "rumi_browser_host_service_pack.browser-tool-execute"
+          }
+        ],
+        "rationale": "The current inventory contains the two v3-shaped observe/control projections and one explicit Browser tool declaration newly introduced by this PR. The new tool source is actually marked legacy-explicit-entrypoint by the source registry; it is not a historical v3 entrypoint. The comparator only accepts legacy-v3-entrypoint and consequently reports function_mapping for this new source kind. File-by-file review verified the new explicit declaration agrees with the v4 tool operation identity, generic envelope schemas, owner and indexed implementation bytes. Its new v4 provider requires tool.local.operation and delegates through the separately captured browser.host.observe/control providers. No historical Browser-tool provider, authority grant, availability or behavior equivalence is asserted.",
+        "review_observations": [
+          "Observe/control operation identities, generic schemas and provider authority records agree with their current v3-shaped declarations.",
+          "The Browser tool is new explicit executable-source data introduced by this PR; there is no corresponding historical v3 entrypoint.",
+          "The tool provider requires tool.local.operation; the tool descriptor labels browser.control; nested Host providers separately require browser.host.observe or browser.host.control.",
+          "Model actions select finite observed/control contracts and exact captured providers; caller-supplied authority material is rejected by the Host adapter.",
+          "Managed runtime, tab/profile ownership, bounded extension/cookie/DevTools inputs, loopback CDP discovery and bounded redacted network metadata were inspected in their current source files.",
+          "Screenshot forwarding remains text metadata only; native encrypted cookie database import is outside the implemented export-file import path."
+        ],
+        "semantic_record_digest": "sha256:aa1bce4a0b2d117d63fa519b90a3b58769d4699747275ddc98b0efa4c7543654",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:aa1bce4a0b2d117d63fa519b90a3b58769d4699747275ddc98b0efa4c7543654",
+      "source_digest": "sha256:25415f85944d0fe46856fe690e303508b26bc259f97e2950528889f3bb7a31e8",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:50ee7dbc13da91c9ed3e867204f5e0a06bed040e7e878931cd7e5701df1f423e"
+      "target_digest": "sha256:d265e2ea2ba43c9c27ede38a25de623f82a383b05f03c705c7488579289af4c7"
     },
     "rumi_browser_session_replay_pack": {
       "pack_id": "rumi_browser_session_replay_pack",
@@ -2738,38 +3054,93 @@
     },
     "rumi_default_tools_pack": {
       "pack_id": "rumi_default_tools_pack",
-      "review_attestation_digest": "sha256:7a0b9e0bbc5ed12dc24176ee7380fa20f1910fd4515c194d57528470965d542e",
+      "review_attestation_digest": "sha256:c14a66e2692d6f40e4ea6a9ac226c8cff3582332d8ec4d85043512ecb716b796",
       "review_basis": {
+        "equivalence_scope": "Equivalence is limited to the reviewed one-to-one correspondence between current checked-in executable source declarations/projections and current v4 operation, generic envelope-schema and authority records. It does not assert unchanged historical runtime behavior or previously deployed feature availability.",
+        "evidence_file_digests": [
+          {
+            "digest": "sha256:0a454f5848e5fcb1329b3d46eed982e9b1e6ffbf524dfc92d544d4d7d3a6cd7f",
+            "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/rumi.pack.v3.json"
+          },
+          {
+            "digest": "sha256:e9c1c7133c93149fa171552e89cc97efe24f6ed71eb3ceb51c4532c78dd6e358",
+            "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/artifact-manifest.json"
+          },
+          {
+            "digest": "sha256:b4b2d27698437524d0b134e71f5eb4860df772e3acc78640fda4781095f07903",
+            "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json"
+          },
+          {
+            "digest": "sha256:b4b8ff84a80cdde8ea9ec3527d54da5cf8741f70ec464ec7ecd7b38ec9ea6071",
+            "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/contracts.v4.json"
+          },
+          {
+            "digest": "sha256:322d271c9948e4ecef83470f48ae87419b4c31651efb14aaa7bc1bfbcb0360b7",
+            "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/artifact-index.v4.json"
+          },
+          {
+            "digest": "sha256:83b58eb44a747d98139bc21a30fb129fe6ef16d422d13cc72ed8e70dc88dca4c",
+            "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/executables.v4.json"
+          },
+          {
+            "digest": "sha256:9809ed85e759874b616b90976c0e47a53e7426430e3e39710a92577bee7fb4ce",
+            "path": "tobkiri_runtime/schemas/executable_sources.v1.json"
+          },
+          {
+            "digest": "sha256:d5b1005115072df5f3faab5a84899d3bd1953136385ef468a4395f860616d261",
+            "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/tools/browser_managed/manifest.json"
+          },
+          {
+            "digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa",
+            "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/runtime/calculator.py"
+          }
+        ],
         "evidence_paths": [
           "tobkiri_runtime/ecosystem/rumi_default_tools_pack/rumi.pack.v3.json",
           "tobkiri_runtime/ecosystem/rumi_default_tools_pack/artifact-manifest.json",
           "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
           "tobkiri_runtime/ecosystem/rumi_default_tools_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_default_tools_pack/artifact-index.v4.json",
           "tobkiri_runtime/ecosystem/rumi_default_tools_pack/executables.v4.json",
-          "tobkiri_runtime/schemas/executable_sources.v1.json"
+          "tobkiri_runtime/schemas/executable_sources.v1.json",
+          "tobkiri_runtime/ecosystem/rumi_default_tools_pack/tools/browser_managed/manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_default_tools_pack/runtime/calculator.py"
         ],
         "excluded_claims": [
           "runtime admission",
           "installation",
           "isolated conformance",
-          "release readiness"
+          "release readiness",
+          "live Browser/CDP operation execution",
+          "unchanged historical runtime behavior",
+          "historical availability or behavior equivalence of the newly added Browser tool"
         ],
         "method": "independent-file-by-file-review.v1",
+        "operation_inventory": {
+          "legacy_count": 1,
+          "v4_count": 1
+        },
+        "rationale": "The current v3-shaped Calculator declaration and v4 Calculator provider retain one corresponding operation with matching declared generic envelope schemas, current indexed implementation bytes and authority semantics. The new tools/browser_managed/manifest.json is sealed tool-definition data in this Pack; its declared execution belongs to the Browser Host service Pack and therefore does not add an executable operation to this Pack. The new descriptor declares browser.control with approval_policy ask, without granting authority itself.",
+        "review_observations": [
+          "Calculator remains the sole executable operation of this Pack.",
+          "Browser model actions and bounded payload keys are declared in sealed tool data, with execution delegated to the exact Browser Host Pack-qualified provider/operation.",
+          "The descriptor requires approval and labels required browser.control authority; the descriptor itself cannot grant Host execution."
+        ],
+        "semantic_record_mode": "digest-reference-to-current-generated-comparison",
         "verified_claims": [
-          "one-to-one operation identity",
-          "canonical input/output schema equality",
-          "runtime artifact path/digest equality",
-          "target owner equality",
-          "authority field equality",
-          "Pack-qualified provider identity"
+          "one-to-one operation identities between the current checked-in source declarations and current v4 executable catalog",
+          "canonical equality of currently declared generic input/output envelope schemas",
+          "current executable source paths/digests agree with actual indexed bytes and target owner identities",
+          "current provider authority fields reviewed separately from newly added or projected executable declarations",
+          "current Browser-related tool data and finite captured Registry/Executor/Host routing changes independently inspected"
         ]
       },
-      "reviewed_at": "2026-09-26T11:30:00+09:00",
-      "reviewer_id": "codex:independent-semantic-review:v1",
+      "reviewed_at": "2026-10-02T20:16:03Z",
+      "reviewer_id": "codex:browser_frontend:managed-browser-pack-review:2026-10-03",
       "semantic_record_digest": "sha256:fd6b91fed3092c7f19bfd97bc70c7237713d7a2b0133a558c732473ebb072371",
-      "source_digest": "sha256:fd95ffad0f8011575bf8b3668e40784bdd5f3cad194d9ff2aeff4519ae5c126c",
+      "source_digest": "sha256:206bdbdbb1f4a7ac2ecf4e4eee151c875a46db1d40e1c589b3d1e2b0d6ff1899",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:afaf7fda61ba33d093772d5741d39ff5f0d49527adb0085018ebfa964062f5aa"
+      "target_digest": "sha256:99f3a186427b804243e84764ea106161a0360d64547527021ed8ba5eaad6d233"
     },
     "rumi_desktop_host_service_pack": {
       "pack_id": "rumi_desktop_host_service_pack",
@@ -8269,38 +8640,93 @@
     },
     "rumi_tool_local_executor_pack": {
       "pack_id": "rumi_tool_local_executor_pack",
-      "review_attestation_digest": "sha256:cdf73dabdb86a2ff55796404801774e7c6ab389f771bc0cb6bbc1ae33c4b93ae",
+      "review_attestation_digest": "sha256:7257eb3ad0ea1f49fa529c6720da32e43c7074c8ef93bbe11fc2edff977b85c8",
       "review_basis": {
+        "equivalence_scope": "Equivalence is limited to the reviewed one-to-one correspondence between current checked-in executable source declarations/projections and current v4 operation, generic envelope-schema and authority records. It does not assert unchanged historical runtime behavior or previously deployed feature availability.",
+        "evidence_file_digests": [
+          {
+            "digest": "sha256:d9a298022d91d6353a27769f7d23f9f44a0fb2cafe0575d8775c6ae87545cd48",
+            "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/rumi.pack.v3.json"
+          },
+          {
+            "digest": "sha256:102c7da605ec08d384f45b63165ccccdda346b159887cc5471b72ceac84228d8",
+            "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/artifact-manifest.json"
+          },
+          {
+            "digest": "sha256:8f12123b3972df146180763c6e174025358b6467164196bf7d44c83ab439efb2",
+            "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/pack.v4.json"
+          },
+          {
+            "digest": "sha256:b7988a58d1151197577e1b3878aaec0727ceacbf0a6f140cc64fcdb3f5689c10",
+            "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/contracts.v4.json"
+          },
+          {
+            "digest": "sha256:8dad867a1d97de485e111a4fe59fe7baaab1ee386abf25dbfd3b78fd0f48b62b",
+            "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/artifact-index.v4.json"
+          },
+          {
+            "digest": "sha256:02b0d73f37e4b492a982dec611170aa580eae2fd82a56e55ba9217b5f8984c63",
+            "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/executables.v4.json"
+          },
+          {
+            "digest": "sha256:9809ed85e759874b616b90976c0e47a53e7426430e3e39710a92577bee7fb4ce",
+            "path": "tobkiri_runtime/schemas/executable_sources.v1.json"
+          },
+          {
+            "digest": "sha256:e93ac0d12dcac61de36f1e8abe9e0ee1ce69c18cb992223b188050f472d32968",
+            "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/runtime/executor.py"
+          },
+          {
+            "digest": "sha256:d5b1005115072df5f3faab5a84899d3bd1953136385ef468a4395f860616d261",
+            "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/tools/browser_managed/manifest.json"
+          }
+        ],
         "evidence_paths": [
           "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/rumi.pack.v3.json",
           "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/artifact-manifest.json",
           "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/pack.v4.json",
           "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/artifact-index.v4.json",
           "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/executables.v4.json",
-          "tobkiri_runtime/schemas/executable_sources.v1.json"
+          "tobkiri_runtime/schemas/executable_sources.v1.json",
+          "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/runtime/executor.py",
+          "tobkiri_runtime/ecosystem/rumi_default_tools_pack/tools/browser_managed/manifest.json"
         ],
         "excluded_claims": [
           "runtime admission",
           "installation",
           "isolated conformance",
-          "release readiness"
+          "release readiness",
+          "live Browser/CDP operation execution",
+          "unchanged historical runtime behavior",
+          "historical availability or behavior equivalence of the newly added Browser tool"
         ],
         "method": "independent-file-by-file-review.v1",
+        "operation_inventory": {
+          "legacy_count": 1,
+          "v4_count": 1
+        },
+        "rationale": "The current v3-shaped local executor and v4 provider retain one tool.execute operation with matching declared generic envelope schemas and authority semantics. The changed adapter permits only the existing local-operation contract and the new dedicated Browser-operation contract. It re-resolves the owner definition, compares the exact definition, requires one matching captured provider and invokes the selected contract through the existing Host client. This review verifies the current source-to-v4 mapping and intended finite extension; it does not assert unchanged historical execution behavior.",
+        "review_observations": [
+          "Local execution remains one tool.execute operation, not a new Browser executable owner.",
+          "The owner definition is re-resolved and compared before dispatch; only two finite operation contracts are accepted.",
+          "The chosen provider must match the exact declared operation and be uniquely available in the captured route; nested execution retains Host authority, deadline and cancellation."
+        ],
+        "semantic_record_mode": "digest-reference-to-current-generated-comparison",
         "verified_claims": [
-          "one-to-one operation identity",
-          "canonical input/output schema equality",
-          "runtime artifact path/digest equality",
-          "target owner equality",
-          "authority field equality",
-          "Pack-qualified provider identity"
+          "one-to-one operation identities between the current checked-in source declarations and current v4 executable catalog",
+          "canonical equality of currently declared generic input/output envelope schemas",
+          "current executable source paths/digests agree with actual indexed bytes and target owner identities",
+          "current provider authority fields reviewed separately from newly added or projected executable declarations",
+          "current Browser-related tool data and finite captured Registry/Executor/Host routing changes independently inspected"
         ]
       },
-      "reviewed_at": "2026-09-26T11:30:00+09:00",
-      "reviewer_id": "codex:independent-semantic-review:v1",
+      "reviewed_at": "2026-10-02T20:16:03Z",
+      "reviewer_id": "codex:browser_frontend:managed-browser-pack-review:2026-10-03",
       "semantic_record_digest": "sha256:8df915ea46480275146dc8a2b2ca5269765143cc45133af73c07fed15eba9047",
-      "source_digest": "sha256:99dba1fa74cdb5965312ae52fd26aded18da287f9aabe9a142261b669d61716c",
+      "source_digest": "sha256:f248b6fa8512293061f04fc24b2aca9f845969016c4ca1dc78126be8602c1d5c",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:6b215235ee684abfa5befd56759ef5685be77e33dfba8cb0277307405048016a"
+      "target_digest": "sha256:c3b913ae0094d9f927d51fde9120b5dc80d7a91527d6630b085d2d14a1d78090"
     },
     "rumi_tool_mcp_executor_pack": {
       "pack_id": "rumi_tool_mcp_executor_pack",
@@ -8374,40 +8800,93 @@
     },
     "rumi_tool_registry_pack": {
       "pack_id": "rumi_tool_registry_pack",
-      "review_attestation_digest": "sha256:c6970eb39f26ed7c67ac2426b764f158ea7ab41d8f3c27f84a787ff3bb76e0df",
+      "review_attestation_digest": "sha256:2cdd3b6a26841410b2dfdfe242fd2620484cb8188e0d896044c6b96843f9d6db",
       "review_basis": {
+        "evidence_file_digests": [
+          {
+            "digest": "sha256:9795ea65f418b0a470314cf485b562b95af6a4413752f17550a92c2182ee203f",
+            "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/rumi.pack.v3.json"
+          },
+          {
+            "digest": "sha256:51aa69e3496c6c2b19b1279c6dfc1d43c46d60a6ea1c320276a968dc845fb4ee",
+            "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/artifact-manifest.json"
+          },
+          {
+            "digest": "sha256:692116ae4b02a92c71fd509f92b73f9c462aca74394283aefb107c6d238d5f90",
+            "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/pack.v4.json"
+          },
+          {
+            "digest": "sha256:14c8100bedf893c66379065ff9bf6edc7aac01437d7f21af8336c383efb96131",
+            "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/contracts.v4.json"
+          },
+          {
+            "digest": "sha256:5be8c719b03fa158d0eb4fcdca6e754a32dc17e627c6d0aa9ae4971e21c613cb",
+            "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/artifact-index.v4.json"
+          },
+          {
+            "digest": "sha256:551f58e9a74c55bddd9cd669a37e941804c0f356d5c9c6f1059157f846380932",
+            "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/executables.v4.json"
+          },
+          {
+            "digest": "sha256:9809ed85e759874b616b90976c0e47a53e7426430e3e39710a92577bee7fb4ce",
+            "path": "tobkiri_runtime/schemas/executable_sources.v1.json"
+          },
+          {
+            "digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+            "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/host.py"
+          },
+          {
+            "digest": "sha256:34816bfafd0727beb55f23b3c4a9a09269814c346aab29a229d9857eafd6a88f",
+            "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/pack_data.py"
+          },
+          {
+            "digest": "sha256:9034193df026171a7c2317314108a2eb2c689a00b6d4b372796da2cb9be6ad37",
+            "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/selection.py"
+          },
+          {
+            "digest": "sha256:bbdc2d4a7a815064f9ddca10b5ec3d2becec821b095e341965e075242f9031ea",
+            "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/registry.py"
+          }
+        ],
         "evidence_paths": [
-          "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/pack.v4.json",
-          "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/contracts.v4.json",
-          "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/executables.v4.json",
-          "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/artifact-index.v4.json",
-          "tobkiri_runtime/schemas/executable_sources.v1.json",
-          "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json",
           "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/rumi.pack.v3.json",
           "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/artifact-manifest.json",
-          "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/ecosystem.json"
+          "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json",
+          "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/host.py",
+          "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/pack_data.py",
+          "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/selection.py",
+          "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/registry.py"
         ],
         "excluded_claims": [
           "runtime admission",
           "installation",
           "isolated conformance",
-          "release readiness"
+          "release readiness",
+          "live Browser/CDP operation execution",
+          "unchanged historical runtime behavior",
+          "historical availability or behavior equivalence of the newly added Browser tool"
         ],
         "method": "independent-file-by-file-review.v1",
         "verified_claims": [
-          "one-to-one operation identity between committed legacy source records and the v4 executable catalog",
-          "v4 contract and provider identity recorded per operation",
-          "legacy source record bound by exact digest",
-          "target artifact bound by exact digest",
-          "canonical input/output schema equality where declared"
+          "one-to-one operation identities between the current checked-in source declarations and current v4 executable catalog",
+          "canonical equality of currently declared generic input/output envelope schemas",
+          "current executable source paths/digests agree with actual indexed bytes and target owner identities",
+          "current provider authority fields reviewed separately from newly added or projected executable declarations",
+          "current Browser-related tool data and finite captured Registry/Executor/Host routing changes independently inspected"
         ]
       },
-      "reviewed_at": "2026-09-26T15:40:00+09:00",
-      "reviewer_id": "devin:independent-semantic-review:v1",
+      "reviewed_at": "2026-10-02T20:16:03Z",
+      "reviewer_id": "codex:browser_frontend:managed-browser-pack-review:2026-10-03",
       "semantic_record": {
         "accepted_divergences": [
           "legacy_artifact_record_missing"
         ],
+        "current_executable_source_registry_digest": "sha256:5f65d03dc79f73e281e55575e8b99bfda301010b276ac1a7f3154b8013848d44",
+        "equivalence_scope": "Equivalence is limited to the reviewed one-to-one correspondence between current checked-in executable source declarations/projections and current v4 operation, generic envelope-schema and authority records. It does not assert unchanged historical runtime behavior or previously deployed feature availability.",
         "equivalent": true,
         "kind": "operation-mapping",
         "method": "curated-operation-mapping-review.v1",
@@ -8421,7 +8900,6 @@
               "legacy": {
                 "cardinality": "one",
                 "contract_id": "rumi.resource.tool.definition.v1",
-                "contract_version": "1.0.0",
                 "failure": "fail_closed",
                 "isolation": "in_process",
                 "lifecycle": {
@@ -8455,6 +8933,17 @@
               }
             },
             "function_id": "rumi_tool_registry_pack.tool-registry.definition",
+            "implementation_mapping": {
+              "current_indexed_bytes_verified": true,
+              "legacy_artifact_record_for_current_path": false,
+              "legacy_v3_entrypoint_module": "ecosystem.rumi_tool_registry_pack.runtime.registry",
+              "relationship": "Legacy entrypoint projects runtime.registry; current v4 execution uses the indexed, captured runtime.host adapter delegating owned Registry operations.",
+              "source_registry_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+              "source_registry_path": "runtime/host.py",
+              "status": "verified",
+              "v4_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+              "v4_path": "runtime/host.py"
+            },
             "legacy_operation_id": "tool-definition-resource",
             "legacy_operation_kind": "legacy-v3-entrypoint",
             "parameter_mapping": {
@@ -8462,8 +8951,8 @@
               "method": "canonical-json-schema-equality",
               "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
               "rules": [
-                "input:identity",
-                "output:identity"
+                "input:identity of current declared generic envelope schema",
+                "output:identity of current declared generic envelope schema"
               ],
               "status": "verified",
               "v4_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0"
@@ -8476,7 +8965,6 @@
               "legacy": {
                 "cardinality": "one",
                 "contract_id": "rumi.action.tool.definition.manage.v1",
-                "contract_version": "1.0.0",
                 "failure": "fail_closed",
                 "isolation": "in_process",
                 "lifecycle": {
@@ -8510,6 +8998,17 @@
               }
             },
             "function_id": "rumi_tool_registry_pack.tool-registry.manage",
+            "implementation_mapping": {
+              "current_indexed_bytes_verified": true,
+              "legacy_artifact_record_for_current_path": false,
+              "legacy_v3_entrypoint_module": "ecosystem.rumi_tool_registry_pack.runtime.registry",
+              "relationship": "Legacy entrypoint projects runtime.registry; current v4 execution uses the indexed, captured runtime.host adapter delegating owned Registry operations.",
+              "source_registry_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+              "source_registry_path": "runtime/host.py",
+              "status": "verified",
+              "v4_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+              "v4_path": "runtime/host.py"
+            },
             "legacy_operation_id": "tool-definition-manage",
             "legacy_operation_kind": "legacy-v3-entrypoint",
             "parameter_mapping": {
@@ -8517,8 +9016,8 @@
               "method": "canonical-json-schema-equality",
               "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
               "rules": [
-                "input:identity",
-                "output:identity"
+                "input:identity of current declared generic envelope schema",
+                "output:identity of current declared generic envelope schema"
               ],
               "status": "verified",
               "v4_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0"
@@ -8531,7 +9030,6 @@
               "legacy": {
                 "cardinality": "one",
                 "contract_id": "rumi.action.tool.definition.migrate.v1",
-                "contract_version": "1.0.0",
                 "failure": "fail_closed",
                 "isolation": "in_process",
                 "lifecycle": {
@@ -8569,6 +9067,17 @@
               }
             },
             "function_id": "rumi_tool_registry_pack.tool-registry.migrate",
+            "implementation_mapping": {
+              "current_indexed_bytes_verified": true,
+              "legacy_artifact_record_for_current_path": false,
+              "legacy_v3_entrypoint_module": "ecosystem.rumi_tool_registry_pack.runtime.registry",
+              "relationship": "Legacy entrypoint projects runtime.registry; current v4 execution uses the indexed, captured runtime.host adapter delegating owned Registry operations.",
+              "source_registry_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+              "source_registry_path": "runtime/host.py",
+              "status": "verified",
+              "v4_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+              "v4_path": "runtime/host.py"
+            },
             "legacy_operation_id": "tool-definition-migrate",
             "legacy_operation_kind": "legacy-v3-entrypoint",
             "parameter_mapping": {
@@ -8576,8 +9085,8 @@
               "method": "canonical-json-schema-equality",
               "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
               "rules": [
-                "input:identity",
-                "output:identity"
+                "input:identity of current declared generic envelope schema",
+                "output:identity of current declared generic envelope schema"
               ],
               "status": "verified",
               "v4_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0"
@@ -8586,14 +9095,20 @@
             "v4_operation_id": "rumi_tool_registry_pack.tool-definition-migrate"
           }
         ],
-        "rationale": "Independent file-by-file review confirmed a complete one-to-one operation inventory (3 operations). The deterministic comparator flagged legacy_artifact_record_missing; each flagged difference was inspected and accepted as the intended v4 evolution by product-owner decision (user-decision 2026-09-26).",
-        "semantic_record_digest": "sha256:c669062da790f689667aae583de3d9b116f416012883251f3ab228805f37fc86",
+        "rationale": "The current three definition/manage/migrate operation identities and declared generic envelope schemas map to the three v4 Host providers. The v3 entrypoints name runtime/registry.py, and the legacy artifact manifest contains only runtime/__init__.py and runtime/registry.py. The current source registry and v4 catalog instead identify the captured runtime/host.py adapter. Its absence from the legacy artifact manifest is an actual projection difference, not a missing current v4 artifact: host.py is present, indexed and digest-pinned. Review of host.py verified exact captured Profile/principal/activation/Plan/epoch checks and delegation to the same owned Registry. The Browser descriptor intake and selection changes add a finite declared contract route and require captured executor/provider availability; they do not grant invocation authority. This acceptance records the current reviewed adapter/projection relationship and does not borrow a prior product-owner decision.",
+        "review_observations": [
+          "Definition, manage and migration authority requirements and operation identities remain three separate current v4 providers.",
+          "Current host.py is an indexed captured Host adapter, while the legacy projection artifact list only names __init__.py and registry.py.",
+          "Browser descriptor intake accepts a finite dedicated contract identifier; selection requires exactly one captured executor and matching operation provider.",
+          "Host invocation validates Profile, principal, activation, Plan, epoch and exact payload; packaged names remain reserved from Registry writes."
+        ],
+        "semantic_record_digest": "sha256:e29be6fbe1353366994edc8eb589b64683daeb6edbc39d7446cb44e783f5a477",
         "status": "verified"
       },
-      "semantic_record_digest": "sha256:c669062da790f689667aae583de3d9b116f416012883251f3ab228805f37fc86",
-      "source_digest": "sha256:13e6b2f05ae250b42ca7622ef3334c490f85749b968cebdbe7edfc26d1afeb33",
+      "semantic_record_digest": "sha256:e29be6fbe1353366994edc8eb589b64683daeb6edbc39d7446cb44e783f5a477",
+      "source_digest": "sha256:2ef9584b97893c26df3141c6f61de876ca480a8ad75bfce204f3557a33ee8d60",
       "source_kind": "independent-curated",
-      "target_digest": "sha256:7881d7cce661bbf2044718fa736a2fd556156a6980a6d69dd9fca5f554170108"
+      "target_digest": "sha256:b621990771269f642b4b72534823b0dabbe04096542964ff4d76d81a1176a775"
     },
     "rumi_tool_remote_executor_pack": {
       "pack_id": "rumi_tool_remote_executor_pack",

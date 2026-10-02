@@ -1,15 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { managedBrowserRequest } from "../../../lib/api";
+import { defaultspackContractUrl, managedBrowserRequest } from "../../../lib/api";
 import { browserResources } from "./browserResources";
 
 test("managed browser reads use observation contracts and mutation or capture uses control", () => {
   for (const action of ["browser.runtime.status", "browser.profiles.list", "browser.tabs", "browser.extensions.list", "browser.cookies.list", "browser.devtools.inspect"]) {
-    assert.equal(managedBrowserRequest(action).route.apiPath, "/api/browser/observe", action);
+    assert.equal(
+      decodeURIComponent(defaultspackContractUrl(managedBrowserRequest(action).route, "POST")),
+      "/api/contracts/defaultspack/POST /api/browser/observe",
+      action,
+    );
   }
   for (const action of ["browser.runtime.start", "browser.runtime.stop", "browser.open_url", "browser.extensions.install", "browser.extensions.remove", "browser.cookies.import", "browser.devtools.evaluate", "browser.network.capture"]) {
-    assert.equal(managedBrowserRequest(action).route.apiPath, "/api/browser/control", action);
+    assert.equal(
+      decodeURIComponent(defaultspackContractUrl(managedBrowserRequest(action).route, "POST")),
+      "/api/contracts/defaultspack/POST /api/browser/control",
+      action,
+    );
   }
   assert.equal(managedBrowserRequest("browser.tabs").body.operation, "browser.tabs.list");
   assert.equal(managedBrowserRequest("browser.open_url").body.operation, "browser.navigate");

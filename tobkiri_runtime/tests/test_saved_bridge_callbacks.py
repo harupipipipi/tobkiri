@@ -535,6 +535,7 @@ def test_production_capture_binds_saved_edges_and_real_owner_broker(
             saved_function,
             "rumi_tool_broker_pack.tool-broker.invoke",
             "rumi_tool_local_executor_pack.tool-executor.local",
+            "rumi_browser_host_service_pack.browser-host.tool",
         }
         and not (missing_readiness and item["caller_function_id"] == READINESS[1])
     ]

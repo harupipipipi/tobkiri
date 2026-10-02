@@ -1,5 +1,6 @@
 """Selected data capture uses Profile digests and never extends executable roots."""
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -38,7 +39,15 @@ def test_selected_admitted_data_is_pinned_and_cached(
     lock["effective_set"][0]["artifact_digest"] = "sha256:" + "0" * 64
     captured = owner.capture_for(_factory())
     assert captured[0].artifact_digest == digest
-    assert len(captured[0].files) == 30
+    manifest = json.loads((root / "pack.v4.json").read_bytes())
+    expected_paths = {
+        artifact["path"]
+        for artifact in manifest["artifacts"]
+        if artifact["path"].startswith("tools/")
+    }
+    assert expected_paths
+    assert {item.path for item in captured[0].files} == expected_paths
+    assert len(captured[0].files) == len(expected_paths)
     (root / "tools/calculator/manifest.json").write_text("changed after capture")
     assert owner.capture_for(_factory())[0] is captured[0]
     assert calls == [(PACK_ID, root.parent)]
