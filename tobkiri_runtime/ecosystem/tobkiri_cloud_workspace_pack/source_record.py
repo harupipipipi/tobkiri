@@ -72,9 +72,11 @@ def build_source() -> dict[str, Any]:
         ],
         "runtime_user": "65532:65532",
         "privileged": False,
-        "base_image_policy": "approved-host-resolved-oci-digest-required",
+        "base_image_policy": "reviewed-oci-index-digest-pinned",
+        "base_image_reference": "python:3.13-slim@sha256:bb2988715db2cf7ace7b53f38f3cffbef7c7046a656bee66245eb0ed386e2e81",
         "container_port": 8765,
         "container_execution": "unverified",
+        "workload_execution": "not_implemented",
         "required_mounts": {
             "capsule": "/input/workspace.zip:ro",
             "workspace": "/workspace:rw",

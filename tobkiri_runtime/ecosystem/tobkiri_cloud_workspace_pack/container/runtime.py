@@ -12,6 +12,7 @@ from typing import Any
 from urllib.request import urlopen
 
 from capsule import MAX_ARCHIVE_BYTES, canonical, import_archive
+from recipe import RECIPE_DIGEST
 
 
 def restore(capsule: Path, workspace: Path) -> dict[str, Any]:
@@ -21,6 +22,8 @@ def restore(capsule: Path, workspace: Path) -> dict[str, Any]:
     with capsule.open("rb") as stream:
         data = stream.read(MAX_ARCHIVE_BYTES + 1)
     manifest, blobs = import_archive(data)
+    if manifest["recipe_digest"] != RECIPE_DIGEST:
+        raise ValueError("workspace capsule recipe differs from this runtime")
     if workspace.is_symlink() or not workspace.is_dir() or any(workspace.iterdir()):
         raise ValueError("container workspace must be an empty nonroot writable mount")
     # An empty mount is a provisioning precondition. Partial extraction is
@@ -54,7 +57,8 @@ def serve(workspace: Path, manifest: dict[str, Any], listen: str, port: int) -> 
                     "workspace_id": manifest["workspace_id"],
                     "checkpoint_digest": manifest["manifest_digest"],
                     "file_count": len(manifest["files"]),
-                    "execution": "local_container",
+                    "execution": "metadata_service_ready",
+                    "workload_execution": "not_implemented",
                     "remote_ingress": "unconfigured",
                 }
             else:

@@ -3,22 +3,24 @@
   "files": [
     {
       "path": "container/Dockerfile",
-      "digest": "sha256:ea2581e55223a9fbfcc0bbdd7bf8006aa5295cca3e0eb6b9fa6ae51f6aa53e29"
+      "digest": "sha256:3d5115328dab16a358312566b0933b2d257e6bde5b9824cb27ee0aaf3739b9e7"
     },
     {
       "path": "container/runtime.py",
-      "digest": "sha256:d41df57726f6c649f3556376ad643d19ae47e9fbde928cadd14ed6eff3c64ff0"
+      "digest": "sha256:d0f7eebff0d994e580a67d7a5477f0bf3d32e68065d60b33825d228ad827c8a7"
     },
     {
       "path": "runtime/capsule.py",
-      "digest": "sha256:94e87d304539e7eb359d8fc2b474719e2c3b59cf0233790cd4ec36ff76f01edb"
+      "digest": "sha256:1e0103b8c3c4d6fe3f6f8ea72d5df36e6ab27ce2d7e8a69c415e8a34497c90a8"
     }
   ],
   "runtime_user": "65532:65532",
   "privileged": false,
-  "base_image_policy": "approved-host-resolved-oci-digest-required",
+  "base_image_policy": "reviewed-oci-index-digest-pinned",
+  "base_image_reference": "python:3.13-slim@sha256:bb2988715db2cf7ace7b53f38f3cffbef7c7046a656bee66245eb0ed386e2e81",
   "container_port": 8765,
   "container_execution": "unverified",
+  "workload_execution": "not_implemented",
   "required_mounts": {
     "capsule": "/input/workspace.zip:ro",
     "workspace": "/workspace:rw"

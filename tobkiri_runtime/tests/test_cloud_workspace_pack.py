@@ -19,6 +19,7 @@ import zlib
 import pytest
 
 from ecosystem.tobkiri_cloud_workspace_pack.runtime import capsule
+from ecosystem.tobkiri_cloud_workspace_pack.runtime import recipe
 from ecosystem.tobkiri_cloud_workspace_pack.runtime import store as store_module
 from ecosystem.tobkiri_cloud_workspace_pack.runtime.host import (
     CloudWorkspaceHostFactoryV4,
@@ -64,6 +65,7 @@ def test_capsule_export_is_deterministic_and_restores_exact_bytes(
     monkeypatch = pytest.MonkeyPatch()
     try:
         monkeypatch.setitem(sys.modules, "capsule", capsule)
+        monkeypatch.setitem(sys.modules, "recipe", recipe)
         runtime = runpy.run_path(str(PACK / "container/runtime.py"))
         input_file, destination = tmp_path / "work.zip", tmp_path / "work"
         input_file.write_bytes(archive)
@@ -73,6 +75,23 @@ def test_capsule_export_is_deterministic_and_restores_exact_bytes(
         assert (destination / "data.bin").read_bytes() == b"\0\xff"
         with pytest.raises(ValueError, match="empty"):
             runtime["restore"](input_file, destination)
+        changed = deepcopy(manifest)
+        changed["recipe_digest"] = "sha256:" + "b" * 64
+        changed["manifest_digest"] = capsule.digest(
+            capsule.canonical(
+                {
+                    key: value
+                    for key, value in changed.items()
+                    if key != "manifest_digest"
+                }
+            )
+        )
+        input_file.write_bytes(capsule.export_archive(changed, blobs))
+        empty = tmp_path / "foreign-recipe"
+        empty.mkdir()
+        with pytest.raises(ValueError, match="recipe"):
+            runtime["restore"](input_file, empty)
+        assert not list(empty.iterdir())
     finally:
         monkeypatch.undo()
 
@@ -100,6 +119,10 @@ def test_capsule_export_is_deterministic_and_restores_exact_bytes(
         "user_data/x",
         "cert.pem",
         "capsule-manifest.json",
+        "capsule-manifest.json/x",
+        "other/CAPSULE-MANIFEST.JSON/x",
+        "あ" * 86,
+        "cafe\u0301.txt",
         "NUL.txt",
         "a\x00b",
     ],

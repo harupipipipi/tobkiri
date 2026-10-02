@@ -316,7 +316,7 @@
       },
       {
         "path": "runtime/capsule.py",
-        "digest": "sha256:94e87d304539e7eb359d8fc2b474719e2c3b59cf0233790cd4ec36ff76f01edb",
+        "digest": "sha256:1e0103b8c3c4d6fe3f6f8ea72d5df36e6ab27ce2d7e8a69c415e8a34497c90a8",
         "kind": "executable"
       },
       {
@@ -331,22 +331,22 @@
       },
       {
         "path": "runtime/recipe.py",
-        "digest": "sha256:da533c89379b03c375baeaf785fe79e59b448eab9fb207bcf3f9634c1f1cea5d",
+        "digest": "sha256:fcc38b1cd5f5af3730e4db5a2506eae34c8f23940cff8ea74fd46a3d976af7fa",
         "kind": "executable"
       },
       {
         "path": "container/Dockerfile",
-        "digest": "sha256:ea2581e55223a9fbfcc0bbdd7bf8006aa5295cca3e0eb6b9fa6ae51f6aa53e29",
+        "digest": "sha256:3d5115328dab16a358312566b0933b2d257e6bde5b9824cb27ee0aaf3739b9e7",
         "kind": "sidecar"
       },
       {
         "path": "container/runtime.py",
-        "digest": "sha256:d41df57726f6c649f3556376ad643d19ae47e9fbde928cadd14ed6eff3c64ff0",
+        "digest": "sha256:d0f7eebff0d994e580a67d7a5477f0bf3d32e68065d60b33825d228ad827c8a7",
         "kind": "sidecar"
       },
       {
         "path": "container/recipe.v1.json",
-        "digest": "sha256:9c9fe76c4606e2ecb2019201ebf34248836c94e0b4c1ad7a541fa941d8f0b633",
+        "digest": "sha256:e2c2604cc6ba50715cf43901220a24ec3e14672c8945c7f0c431f4fb56a8ea84",
         "kind": "sidecar"
       },
       {
