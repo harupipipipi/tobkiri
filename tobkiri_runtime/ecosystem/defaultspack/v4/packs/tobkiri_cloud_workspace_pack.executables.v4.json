@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "tobkiri_cloud_workspace_pack",
-  "source_identity": "sha256:ce1f159e29fefcfda0bddfb51ec4ef685a2c4efb19b7c82389e534ebd6a14ccc",
+  "source_identity": "sha256:702772d919c8680aae0f39268796c86ceb5af59b2e8cc7a63f817cd2fc9e979b",
   "variants": [
     {
       "variant_id": "tobkiri_cloud_workspace_pack.manage.python",
       "function_id": "tobkiri_cloud_workspace_pack.manage",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:3ebfb5695037c2a7cff6c15cc2f92aeee2f3ea6bf605564e9cc6d29d7384cc28",
+      "implementation_digest": "sha256:7998f8a586f083338a3ed1dad38bfc4a6cbdb3d0be84303bf9b883a5f9afe947",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -19,7 +19,7 @@
         {
           "contract_id": "tobkiri.action.cloud.workspace.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:a1ce63a2b3f4c127192863f9d19672a5d73d702028de414ab88bdd385b387a9c",
+          "revision_digest": "sha256:031f7c49057bb7993cc162cec2525f2a821c744d19fcddf7fb8151a547470171",
           "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage",
           "input_schema": {
             "additionalProperties": false,
@@ -86,11 +86,77 @@
                   "expected_revision",
                   "expected_writer_epoch"
                 ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "task_prepare"
+                  }
+                },
+                "required": [
+                  "argv_json",
+                  "conversation_id",
+                  "expected_revision",
+                  "expected_writer_epoch"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "task_resume"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "expected_revision",
+                  "expected_writer_epoch"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "task_status"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "expected_revision",
+                  "expected_writer_epoch"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "task_cancel"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "expected_revision",
+                  "expected_writer_epoch"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "task_apply"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "expected_revision",
+                  "expected_writer_epoch"
+                ]
               }
             ],
             "properties": {
               "archive_base64": {
                 "maxLength": 13981016,
+                "minLength": 1,
+                "type": "string"
+              },
+              "argv_json": {
+                "maxLength": 24000,
                 "minLength": 1,
                 "type": "string"
               },
@@ -121,7 +187,12 @@
                   "capture",
                   "import",
                   "restore",
-                  "prepare_handoff"
+                  "prepare_handoff",
+                  "task_prepare",
+                  "task_resume",
+                  "task_status",
+                  "task_cancel",
+                  "task_apply"
                 ]
               },
               "paths": {
@@ -159,7 +230,7 @@
       "variant_id": "tobkiri_cloud_workspace_pack.resource.python",
       "function_id": "tobkiri_cloud_workspace_pack.resource",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:3ebfb5695037c2a7cff6c15cc2f92aeee2f3ea6bf605564e9cc6d29d7384cc28",
+      "implementation_digest": "sha256:7998f8a586f083338a3ed1dad38bfc4a6cbdb3d0be84303bf9b883a5f9afe947",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -171,7 +242,7 @@
         {
           "contract_id": "tobkiri.resource.cloud.workspace.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:57c3e62cf75ee697fefb5a9ad19a08d75ca335e08a7e6d8fbd799c8b6e58e268",
+          "revision_digest": "sha256:05c5d63bcf6cb3e188d60ae0a5f442a22291cc967dd4f704136162f22e45ca0c",
           "operation_id": "tobkiri_cloud_workspace_pack.workspace-resource",
           "input_schema": {
             "additionalProperties": false,
@@ -207,6 +278,18 @@
                   "expected_revision",
                   "workspace_id"
                 ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "task_source"
+                  }
+                },
+                "required": [
+                  "expected_revision",
+                  "expected_writer_epoch",
+                  "workspace_id"
+                ]
               }
             ],
             "properties": {
@@ -221,11 +304,17 @@
                 "minimum": 0,
                 "type": "integer"
               },
+              "expected_writer_epoch": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
               "operation": {
                 "enum": [
                   "get_for_conversation",
                   "export",
-                  "verify"
+                  "verify",
+                  "task_source"
                 ]
               },
               "profile_id": {
@@ -261,6 +350,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:0cb946379beee43c4cee5144f0652e29dc90b8c766c565c7867a0a42e33ade7c",
-  "catalog_digest": "sha256:3e1af8f40415997efb38be35c7286c79cee723a52da7680c327327b6d6d00ddb"
+  "materialization_catalog_digest": "sha256:3f3fb366f8e1ec965aaecf6cf9b610a7e84f444d6bfd1dc923ab40f6786dea2c",
+  "catalog_digest": "sha256:06a17776539ca40cf5aea4dad6287d68c1e3c5c7b74ece2147050ad2eff6e2df"
 }

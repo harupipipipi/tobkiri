@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:0cb946379beee43c4cee5144f0652e29dc90b8c766c565c7867a0a42e33ade7c",
+  "catalog_digest": "sha256:3f3fb366f8e1ec965aaecf6cf9b610a7e84f444d6bfd1dc923ab40f6786dea2c",
   "pack_id": "tobkiri_cloud_workspace_pack",
-  "source_identity": "sha256:ff70a6d87995bf3a65a50e67d4c47d58300401fb7c9268fc9db9829ead89e899",
+  "source_identity": "sha256:2db3f4828100e5aebc52b9866af8e006b45d86656a5054a5e8f5e839a42b2539",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri_cloud_workspace_pack.manage",
-      "implementation_digest": "sha256:3ebfb5695037c2a7cff6c15cc2f92aeee2f3ea6bf605564e9cc6d29d7384cc28",
+      "implementation_digest": "sha256:7998f8a586f083338a3ed1dad38bfc4a6cbdb3d0be84303bf9b883a5f9afe947",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -87,11 +87,77 @@
                   "expected_revision",
                   "expected_writer_epoch"
                 ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "task_prepare"
+                  }
+                },
+                "required": [
+                  "argv_json",
+                  "conversation_id",
+                  "expected_revision",
+                  "expected_writer_epoch"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "task_resume"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "expected_revision",
+                  "expected_writer_epoch"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "task_status"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "expected_revision",
+                  "expected_writer_epoch"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "task_cancel"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "expected_revision",
+                  "expected_writer_epoch"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "task_apply"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "expected_revision",
+                  "expected_writer_epoch"
+                ]
               }
             ],
             "properties": {
               "archive_base64": {
                 "maxLength": 13981016,
+                "minLength": 1,
+                "type": "string"
+              },
+              "argv_json": {
+                "maxLength": 24000,
                 "minLength": 1,
                 "type": "string"
               },
@@ -122,7 +188,12 @@
                   "capture",
                   "import",
                   "restore",
-                  "prepare_handoff"
+                  "prepare_handoff",
+                  "task_prepare",
+                  "task_resume",
+                  "task_status",
+                  "task_cancel",
+                  "task_apply"
                 ]
               },
               "paths": {
@@ -147,7 +218,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:a1ce63a2b3f4c127192863f9d19672a5d73d702028de414ab88bdd385b387a9c",
+          "revision_digest": "sha256:031f7c49057bb7993cc162cec2525f2a821c744d19fcddf7fb8151a547470171",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }
@@ -162,7 +233,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri_cloud_workspace_pack.resource",
-      "implementation_digest": "sha256:3ebfb5695037c2a7cff6c15cc2f92aeee2f3ea6bf605564e9cc6d29d7384cc28",
+      "implementation_digest": "sha256:7998f8a586f083338a3ed1dad38bfc4a6cbdb3d0be84303bf9b883a5f9afe947",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -208,6 +279,18 @@
                   "expected_revision",
                   "workspace_id"
                 ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "task_source"
+                  }
+                },
+                "required": [
+                  "expected_revision",
+                  "expected_writer_epoch",
+                  "workspace_id"
+                ]
               }
             ],
             "properties": {
@@ -222,11 +305,17 @@
                 "minimum": 0,
                 "type": "integer"
               },
+              "expected_writer_epoch": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
               "operation": {
                 "enum": [
                   "get_for_conversation",
                   "export",
-                  "verify"
+                  "verify",
+                  "task_source"
                 ]
               },
               "profile_id": {
@@ -252,7 +341,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:57c3e62cf75ee697fefb5a9ad19a08d75ca335e08a7e6d8fbd799c8b6e58e268",
+          "revision_digest": "sha256:05c5d63bcf6cb3e188d60ae0a5f442a22291cc967dd4f704136162f22e45ca0c",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

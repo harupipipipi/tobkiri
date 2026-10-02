@@ -6341,7 +6341,8 @@
                   "enum": [
                     "get_for_conversation",
                     "export",
-                    "verify"
+                    "verify",
+                    "task_source"
                   ]
                 },
                 "conversation_id": {
@@ -6357,6 +6358,11 @@
                   "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
                 },
                 "expected_revision": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "expected_writer_epoch": {
                   "type": "integer",
                   "minimum": 0,
                   "maximum": 9007199254740991
@@ -6398,6 +6404,18 @@
                     "expected_revision",
                     "workspace_id"
                   ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "task_source"
+                    }
+                  },
+                  "required": [
+                    "expected_revision",
+                    "expected_writer_epoch",
+                    "workspace_id"
+                  ]
                 }
               ]
             },
@@ -6434,7 +6452,12 @@
                     "capture",
                     "import",
                     "restore",
-                    "prepare_handoff"
+                    "prepare_handoff",
+                    "task_prepare",
+                    "task_resume",
+                    "task_status",
+                    "task_cancel",
+                    "task_apply"
                   ]
                 },
                 "conversation_id": {
@@ -6457,6 +6480,11 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 32768
+                },
+                "argv_json": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 24000
                 },
                 "archive_base64": {
                   "type": "string",
@@ -6536,6 +6564,67 @@
                     "expected_revision",
                     "expected_writer_epoch"
                   ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "task_prepare"
+                    }
+                  },
+                  "required": [
+                    "argv_json",
+                    "conversation_id",
+                    "expected_revision",
+                    "expected_writer_epoch"
+                  ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "task_resume"
+                    }
+                  },
+                  "required": [
+                    "conversation_id",
+                    "expected_revision",
+                    "expected_writer_epoch"
+                  ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "task_status"
+                    }
+                  },
+                  "required": [
+                    "conversation_id",
+                    "expected_revision",
+                    "expected_writer_epoch"
+                  ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "task_cancel"
+                    }
+                  },
+                  "required": [
+                    "conversation_id",
+                    "expected_revision",
+                    "expected_writer_epoch"
+                  ]
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "const": "task_apply"
+                    }
+                  },
+                  "required": [
+                    "conversation_id",
+                    "expected_revision",
+                    "expected_writer_epoch"
+                  ]
                 }
               ]
             },
@@ -6543,6 +6632,413 @@
               "type": "object"
             },
             "error": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "rumi_coding_sandbox_service_pack": {
+      "entries": [
+        {
+          "contract_id": "tobkiri.action.workspace.container.v1",
+          "contract_version": "1.0.0",
+          "function_id": "rumi_coding_sandbox_service_pack.task-prepare",
+          "implementation_path": "runtime/host_v4.py",
+          "operation_ids": [
+            "rumi_coding_sandbox_service_pack.task-prepare"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "argv": {
+                  "items": {
+                    "maxLength": 8192,
+                    "type": "string"
+                  },
+                  "maxItems": 64,
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "expected_revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "expected_writer_epoch": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "profile_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "type": "string"
+                },
+                "task_request_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "type": "string"
+                },
+                "timeout_seconds": {
+                  "maximum": 120,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "workspace_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "argv",
+                "expected_revision",
+                "expected_writer_epoch",
+                "profile_id",
+                "task_request_id",
+                "timeout_seconds",
+                "workspace_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "additionalProperties": false,
+              "properties": {
+                "executed": {
+                  "const": false
+                },
+                "task_plan": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "argv": {
+                      "items": {
+                        "maxLength": 8192,
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "checkpoint_digest": {
+                      "pattern": "^sha256:[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "expected_revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "expected_writer_epoch": {
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "expires_at_ms": {
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "image_reference": {
+                      "maxLength": 272,
+                      "type": "string"
+                    },
+                    "plan_digest": {
+                      "pattern": "^sha256:[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "profile_id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                      "type": "string"
+                    },
+                    "recipe_digest": {
+                      "pattern": "^sha256:[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "request_digest": {
+                      "pattern": "^sha256:[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "security_epoch": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "task_id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                      "type": "string"
+                    },
+                    "task_request_id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                      "type": "string"
+                    },
+                    "timeout_seconds": {
+                      "maximum": 120,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "version": {
+                      "const": "tobkiri.workspace-task-plan.v1"
+                    },
+                    "workspace_id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "argv",
+                    "checkpoint_digest",
+                    "expected_revision",
+                    "expected_writer_epoch",
+                    "expires_at_ms",
+                    "image_reference",
+                    "plan_digest",
+                    "profile_id",
+                    "recipe_digest",
+                    "request_digest",
+                    "security_epoch",
+                    "task_id",
+                    "task_request_id",
+                    "timeout_seconds",
+                    "version",
+                    "workspace_id"
+                  ],
+                  "type": "object"
+                },
+                "task_plan_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "executed",
+                "task_plan",
+                "task_plan_digest"
+              ],
+              "type": "object"
+            }
+          }
+        },
+        {
+          "contract_id": "tobkiri.action.workspace.container.v1",
+          "contract_version": "1.0.0",
+          "function_id": "rumi_coding_sandbox_service_pack.task-execute",
+          "implementation_path": "runtime/host_v4.py",
+          "operation_ids": [
+            "rumi_coding_sandbox_service_pack.task-execute"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "task_plan": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "argv": {
+                      "items": {
+                        "maxLength": 8192,
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "checkpoint_digest": {
+                      "pattern": "^sha256:[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "expected_revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "expected_writer_epoch": {
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "expires_at_ms": {
+                      "maximum": 9007199254740991,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "image_reference": {
+                      "maxLength": 272,
+                      "type": "string"
+                    },
+                    "plan_digest": {
+                      "pattern": "^sha256:[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "profile_id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                      "type": "string"
+                    },
+                    "recipe_digest": {
+                      "pattern": "^sha256:[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "request_digest": {
+                      "pattern": "^sha256:[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "security_epoch": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "task_id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                      "type": "string"
+                    },
+                    "task_request_id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                      "type": "string"
+                    },
+                    "timeout_seconds": {
+                      "maximum": 120,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "version": {
+                      "const": "tobkiri.workspace-task-plan.v1"
+                    },
+                    "workspace_id": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "argv",
+                    "checkpoint_digest",
+                    "expected_revision",
+                    "expected_writer_epoch",
+                    "expires_at_ms",
+                    "image_reference",
+                    "plan_digest",
+                    "profile_id",
+                    "recipe_digest",
+                    "request_digest",
+                    "security_epoch",
+                    "task_id",
+                    "task_request_id",
+                    "timeout_seconds",
+                    "version",
+                    "workspace_id"
+                  ],
+                  "type": "object"
+                },
+                "task_plan_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "task_plan",
+                "task_plan_digest"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "contract_id": "tobkiri.resource.workspace.container-task.v1",
+          "contract_version": "1.0.0",
+          "function_id": "rumi_coding_sandbox_service_pack.task-resource",
+          "implementation_path": "runtime/host_v4.py",
+          "operation_ids": [
+            "rumi_coding_sandbox_service_pack.task-resource"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "oneOf": [
+                {
+                  "not": {
+                    "required": [
+                      "task_id"
+                    ]
+                  },
+                  "properties": {
+                    "operation": {
+                      "const": "availability"
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "operation": {
+                      "enum": [
+                        "status",
+                        "export"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "task_id"
+                  ]
+                }
+              ],
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "availability",
+                    "status",
+                    "export"
+                  ]
+                },
+                "profile_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "type": "string"
+                },
+                "task_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id",
+                "operation"
+              ],
+              "type": "object"
+            },
+            "output": {
               "type": "object"
             }
           }
