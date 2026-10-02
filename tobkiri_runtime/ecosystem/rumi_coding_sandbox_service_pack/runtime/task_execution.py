@@ -51,7 +51,9 @@ class TaskExecution:
 
     def inspect(self, reference: str) -> dict[str, Any] | None:
         """Read exact CID/token/state without accepting a name as deletion authority."""
-        template = '{"id":{{json .Id}},"token":{{json (index .Config.Labels "tobkiri.task-token")}},"state":{{json .State}}}'
+        # This is a private object label, not an authorization credential. A
+        # secret-assignment key would be redacted by the bounded Host transport.
+        template = '{"id":{{json .Id}},"ownership":{{json (index .Config.Labels "tobkiri.task-token")}},"state":{{json .State}}}'
         result = self.command(["container", "inspect", "--format", template, reference])
         if (
             result.exit_code == 1
@@ -64,7 +66,7 @@ class TaskExecution:
         value = json.loads(result.stdout)
         if (
             not isinstance(value, dict)
-            or set(value) != {"id", "token", "state"}
+            or set(value) != {"id", "ownership", "state"}
             or not isinstance(value["id"], str)
             or CID.fullmatch(value["id"]) is None
             or (CID.fullmatch(reference) is not None and value["id"] != reference)
@@ -80,7 +82,7 @@ class TaskExecution:
             owned = self.inspect(reference)
             if owned is None:
                 return True
-            if owned["token"] != self.token:
+            if owned["ownership"] != self.token:
                 # A foreign name is not ours; a confirmed CID still present is
                 # ambiguous and must never count as verified cleanup.
                 return CID.fullmatch(reference) is None
@@ -193,7 +195,7 @@ class TaskExecution:
             if (
                 owned is None
                 or owned["id"] != reference
-                or owned["token"] != self.token
+                or owned["ownership"] != self.token
             ):
                 raise RuntimeError("created task container ownership differs")
             self.tasks.state.bind_container(task_id, name, self.token, reference)
@@ -229,7 +231,7 @@ class TaskExecution:
             observed = self.inspect(reference)
             state = (
                 observed["state"]
-                if observed and observed["token"] == self.token
+                if observed and observed["ownership"] == self.token
                 else {}
             )
             started = bool(

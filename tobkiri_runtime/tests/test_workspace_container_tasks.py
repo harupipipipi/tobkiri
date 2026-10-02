@@ -16,6 +16,7 @@ import pytest
 
 from core_runtime.bounded_process_runner import (
     BoundedProcessResult,
+    HostBoundedProcessRunner,
     HostProcessAttestation,
     ProcessExecutionCancelled,
 )
@@ -110,7 +111,7 @@ class DockerFixture:
                         "id": "c" * 64
                         if self.started and self.changed_id
                         else self.cid,
-                        "token": "foreign"
+                        "ownership": "foreign"
                         if self.name_conflict or (self.started and self.changed_token)
                         else self.token,
                         "state": {
@@ -551,6 +552,26 @@ def test_confirmed_container_identity_change_never_claims_verified_cleanup(
     assert (env.tasks.state.root / payload["task_plan"]["task_id"]).exists()
     with pytest.raises(LookupError):
         env.tasks.resource(payload["task_plan"]["task_id"], OWNER, export=True)
+
+
+def test_private_object_label_survives_actual_host_transport_redaction(
+    environment: Any,
+) -> None:
+    env = environment
+    original = env.docker.run_local
+
+    def redacted(**request: Any) -> BoundedProcessResult:
+        result = original(**request)
+        return process(
+            result.exit_code,
+            stdout=HostBoundedProcessRunner._redact(result.stdout, request["policy"]),
+            stderr=HostBoundedProcessRunner._redact(result.stderr, request["policy"]),
+        )
+
+    env.tasks.runner = SimpleNamespace(run_local=redacted)
+    receipt = execute(env, prepared(env))
+    assert receipt["status"] == "completed"
+    assert receipt["container_cleanup_verified"]
 
 
 def test_guard_failure_before_claim_starts_nothing_and_invalid_guest_output_is_rejected(
