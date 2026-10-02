@@ -65,6 +65,7 @@ _ID_FIELDS = {
     "provider_instance_id",
     "distribution_id",
     "caller_function_id",
+    "caller_operation_id",
     "target_provider_id",
 }
 _REFERENCE_FIELDS = {
@@ -241,7 +242,7 @@ def _semantic_diagnostics(
                 validate_canonical_id(value, field=key)
             except ProtocolError as exc:
                 diagnostics.append(f"{path}: {exc}")
-        elif key == "contract_id" and isinstance(value, str):
+        elif key in {"contract_id", "caller_contract_id"} and isinstance(value, str):
             try:
                 validate_contract_id(value, field=key)
             except ProtocolError as exc:
@@ -330,6 +331,9 @@ def _duplicate_identity_diagnostics(document: Mapping[str, Any]) -> list[str]:
                     str(target_provider_id or ""),
                     str(item.get("contract_id") or ""),
                     str(item.get("operation_id") or ""),
+                    str(item.get("caller_contract_id") or ""),
+                    str(item.get("caller_operation_id") or ""),
+                    str(item.get("caller_contract_revision_digest") or ""),
                 )
                 previous = seen_edges.get(binding_identity)
                 if previous is not None:

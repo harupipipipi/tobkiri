@@ -15,7 +15,13 @@ from core_runtime.authority.v4 import (
     InvocationContext,
 )
 from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.errors import ProtocolError
+from tobkiri_protocol.profile_edges import require_profile_edge_bindings
 from tobkiri_protocol.validation import validate_document
+from core_runtime.profile_caller_edges_v4 import (
+    SelectedCallerOperationV4,
+    resolve_selected_caller,
+)
 
 from .authority_v4 import AuthorityV4Adapter, PrincipalReferenceResolver
 from .contracts import OperationCatalog, OperationRoute
@@ -187,7 +193,7 @@ class HostV4Composition:
             )
 
         principals: dict[str, FunctionPrincipal] = {}
-        principals_by_function: dict[str, list[FunctionPrincipal]] = {}
+        selected_callers: list[SelectedCallerOperationV4] = []
         for artifact in artifacts:
             for function in artifact.functions:
                 for operation in function.operations:
@@ -201,9 +207,18 @@ class HostV4Composition:
                     if principal.principal_id in principals:
                         raise ResolutionError("duplicate Function principal in inventory")
                     principals[principal.principal_id] = principal
-                    principals_by_function.setdefault(function.function_id, []).append(
-                        principal
-                    )
+                    if artifact.pack_id == checked_profile["shell"]["pack_id"]:
+                        selected_callers.append(SelectedCallerOperationV4(
+                            operation.contract_id, principal
+                        ))
+
+        for item in checked_plan["bindings"]:
+            principal = FunctionPrincipal.from_dict(item["function_principal"])
+            if principals.get(principal.principal_id) != principal:
+                raise ResolutionError("ResolvedPlan principal is outside verified inventory")
+            selected_callers.append(SelectedCallerOperationV4(
+                str(item["contract_id"]), principal
+            ))
 
         # Shared operation names are valid only when every selected edge still
         # resolves to the same immutable target.  OperationCatalog has one
@@ -240,22 +255,19 @@ class HostV4Composition:
         expected_route_counts: dict[tuple[str, str, str, str, str], int] = {}
         expected_authority_edges: set[AuthorityEdgeKey] = set()
         target_operation_keys: dict[str, tuple[str, str]] = {}
-        seen_plan_edges: set[tuple[str, str, str]] = set()
+        seen_plan_edges: set[tuple[str, ...]] = set()
         profile_id = str(checked_profile["profile_id"])
         activation_id = str(checked_activation["activation_id"])
         for item in checked_plan["bindings"]:
             principal = FunctionPrincipal.from_dict(item["function_principal"])
             if principals.get(principal.principal_id) != principal:
                 raise ResolutionError("ResolvedPlan principal is outside verified inventory")
-            caller_candidates = tuple(
-                principals_by_function.get(str(item["caller_function_id"]), ())
-            )
-            if len(caller_candidates) != 1:
-                raise ResolutionError(
-                    "ResolvedPlan caller Function does not identify one principal"
-                )
+            try:
+                caller = resolve_selected_caller(item, selected_callers)
+            except AuthorityDenied as exc:
+                raise ResolutionError(str(exc)) from exc
             operation_key = (str(item["contract_id"]), str(item["operation_id"]))
-            plan_edge_key = (str(item["caller_function_id"]), *operation_key)
+            plan_edge_key = (caller.principal_id, *operation_key)
             if plan_edge_key in seen_plan_edges:
                 raise ResolutionError("ResolvedPlan contains a duplicate operation edge")
             seen_plan_edges.add(plan_edge_key)
@@ -282,7 +294,7 @@ class HostV4Composition:
                 _authority_edge_key(
                     profile_id=profile_id,
                     activation_id=activation_id,
-                    caller=caller_candidates[0],
+                    caller=caller,
                     target=principal,
                     contract_id=operation_key[0],
                     operation_id=operation_key[1],
@@ -391,6 +403,10 @@ class HostV4Composition:
         plan: Mapping[str, Any],
         activation: Mapping[str, Any],
     ) -> None:
+        try:
+            require_profile_edge_bindings(profile["requested_edges"], plan["bindings"])
+        except ProtocolError as exc:
+            raise ResolutionError(str(exc)) from exc
         profile_revision = canonical_digest(profile)
         plan_digest = canonical_digest(
             {key: value for key, value in plan.items() if key != "plan_digest"}

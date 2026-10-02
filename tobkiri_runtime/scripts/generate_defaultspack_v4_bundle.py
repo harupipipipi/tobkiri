@@ -25,6 +25,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tobkiri_protocol.canonical import canonical_digest  # noqa: E402
+from tobkiri_protocol.profile_edges import profile_edge_identity  # noqa: E402
 from tobkiri_protocol.defaultspack_bundle_order import (  # noqa: E402
     canonical_defaultspack_bundle_entries,
 )
@@ -1134,12 +1135,7 @@ def _validate_catalog(catalog: BundledCatalog) -> None:
             raise ValueError("Development Realm Tauri toolchain cannot enter production Profile")
 
         edge_keys = [
-            (
-                str(edge["caller_function_id"]),
-                str(edge["target_provider_id"]),
-                str(edge["contract_id"]),
-                str(edge["operation_id"]),
-            )
+            profile_edge_identity(edge)
             for edge in profile["requested_edges"]
         ]
         if len(edge_keys) != len(set(edge_keys)):

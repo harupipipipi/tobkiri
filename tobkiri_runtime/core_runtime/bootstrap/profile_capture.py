@@ -379,15 +379,9 @@ def _verify_installed_bundle_binding(runtime_root: Path, bundle_root: Path) -> N
 
 
 def _edge_key(edge: Mapping[str, Any]) -> str:
-    return "|".join(
-        str(edge[field])
-        for field in (
-            "caller_function_id",
-            "target_provider_id",
-            "contract_id",
-            "operation_id",
-        )
-    )
+    from tobkiri_protocol.profile_edges import profile_edge_key
+
+    return profile_edge_key(edge)
 
 
 def _authority_reference(edge: Mapping[str, Any], snapshot_digest: str) -> str:

@@ -25,6 +25,8 @@ _SOURCES = {
     "tobkiri_protocol/packvm_serial.py": "tobkiri_protocol/packvm_serial.py",
     "tobkiri_protocol/canonical.py": "tobkiri_protocol/canonical.py",
     "tobkiri_protocol/errors.py": "tobkiri_protocol/errors.py",
+    "tobkiri_protocol/ids.py": "tobkiri_protocol/ids.py",
+    "tobkiri_protocol/profile_edges.py": "tobkiri_protocol/profile_edges.py",
     "tobkiri_protocol/saved_context.py": "tobkiri_protocol/saved_context.py",
     "tobkiri_protocol/saved_task_context.py": "tobkiri_protocol/saved_task_context.py",
     "tobkiri_protocol/conversation_context.py": "tobkiri_protocol/conversation_context.py",

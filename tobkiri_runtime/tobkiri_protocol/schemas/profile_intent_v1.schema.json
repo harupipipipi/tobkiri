@@ -68,9 +68,9 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["caller_function_id", "target_provider_id", "contract_id", "operation_id", "requested_scope_template"],
+        "required": ["caller_function_id", "target_provider_id", "contract_id", "operation_id", "requested_scope_template"], "dependentRequired": {"caller_contract_id": ["caller_operation_id"], "caller_operation_id": ["caller_contract_id"], "caller_contract_revision_digest": ["caller_contract_id", "caller_operation_id"]},
         "properties": {
-          "caller_function_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+          "caller_function_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"}, "caller_contract_id": {"type": "string", "maxLength": 128, "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*\\.v[1-9][0-9]*$"}, "caller_operation_id": {"type": "string", "maxLength": 128, "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"}, "caller_contract_revision_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
           "target_provider_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
           "contract_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*\\.v[1-9][0-9]*$"},
           "operation_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},

@@ -27,6 +27,11 @@ from packaging.version import InvalidVersion, Version
 
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
 from tobkiri_protocol.errors import ProtocolError
+from tobkiri_protocol.profile_edges import (
+    caller_operation_selector,
+    profile_edge_key,
+    require_profile_edge_bindings,
+)
 from tobkiri_protocol.executable_catalog import materialization_catalog_digest
 from tobkiri_protocol.profile_scope import normalize_requested_scope_template
 from tobkiri_protocol.platform_artifact import verify_platform_artifact
@@ -328,15 +333,10 @@ def project_runtime_launch_selector(active: ActiveDefaultProfile) -> dict[str, A
 
 
 def _edge_key(edge: Mapping[str, Any]) -> str:
-    return "|".join(
-        str(edge.get(field) or "")
-        for field in (
-            "caller_function_id",
-            "target_provider_id",
-            "contract_id",
-            "operation_id",
-        )
-    )
+    try:
+        return profile_edge_key(edge)
+    except ProtocolError as exc:
+        raise ProfileResolutionDenied(str(exc)) from exc
 
 
 def _authority_mode(edge: Mapping[str, Any]) -> str:
@@ -1177,7 +1177,48 @@ def resolve_default_profile(
         }
         if authority_mode == "interactive_only":
             binding["authority_mode"] = authority_mode
+        binding.update(caller_operation_selector(edge))
         bindings.append(binding)
+
+    from core_runtime.authority.v4 import AuthorityDenied, FunctionPrincipal
+    from core_runtime.profile_caller_edges_v4 import (
+        SelectedCallerOperationV4,
+        resolve_selected_caller,
+    )
+
+    selected_callers = [
+        SelectedCallerOperationV4(
+            str(binding["contract_id"]),
+            FunctionPrincipal.from_dict(binding["function_principal"]),
+        )
+        for binding in bindings
+    ]
+    for function in shell_manifest["functions"]:
+        for contract in shell_manifest["contracts"]:
+            if function["contract_revision_digest"] != contract["revision_digest"]:
+                continue
+            for operation in function["operations"]:
+                if operation in contract["operations"]:
+                    selected_callers.append(SelectedCallerOperationV4(
+                        str(contract["contract_id"]),
+                        FunctionPrincipal(
+                            shell_manifest["pack"]["artifact_digest"],
+                            function["implementation_digest"],
+                            function["id"],
+                            contract["revision_digest"],
+                            operation,
+                        ),
+                    ))
+    resolved_caller_edges: set[tuple[str, str, str]] = set()
+    for edge in resolved_edges:
+        try:
+            caller = resolve_selected_caller(edge, selected_callers)
+        except AuthorityDenied as exc:
+            raise ProfileResolutionDenied(str(exc)) from exc
+        identity = (caller.principal_id, str(edge["contract_id"]), str(edge["operation_id"]))
+        if identity in resolved_caller_edges:
+            raise ProfileResolutionDenied("Profile contains a duplicate selected caller edge")
+        resolved_caller_edges.add(identity)
 
     profile = dict(source)
     profile["state"] = "resolved"
@@ -3118,6 +3159,10 @@ class ActivationStore:
             plan["application"]["artifact_digest"],
         ):
             raise ProfileResolutionDenied("Profile Application binding is stale")
+        try:
+            require_profile_edge_bindings(profile["requested_edges"], plan["bindings"])
+        except ProtocolError as exc:
+            raise ProfileResolutionDenied(str(exc)) from exc
         edge_bindings = {
             _edge_key(edge): (
                 edge["authority_reference"],
@@ -3127,14 +3172,7 @@ class ActivationStore:
             for edge in profile["requested_edges"]
         }
         plan_bindings = {
-            _edge_key(
-                {
-                    "caller_function_id": binding["caller_function_id"],
-                    "target_provider_id": binding["function_principal"]["function_id"],
-                    "contract_id": binding["contract_id"],
-                    "operation_id": binding["operation_id"],
-                }
-            ): binding
+            _edge_key(binding): binding
             for binding in plan["bindings"]
         }
         for edge in profile["requested_edges"]:
@@ -3145,6 +3183,7 @@ class ActivationStore:
                 and binding["caller_function_id"] == edge["caller_function_id"]
                 and binding["contract_id"] == edge["contract_id"]
                 and binding["operation_id"] == edge["operation_id"]
+                and _edge_key(binding) == _edge_key(edge)
             ]
             if (
                 len(matches) != 1

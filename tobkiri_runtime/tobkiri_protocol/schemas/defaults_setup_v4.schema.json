@@ -128,9 +128,9 @@
     "binding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["caller_function_id", "pack_id", "artifact_digest", "function_principal", "contract_id", "operation_id", "domain_kind", "executable_catalog_digest", "variant_id", "platform", "architecture", "runtime_abi", "backend", "execution_kind", "authority_reference", "requested_scope_digest", "adapter_digests"],
+      "required": ["caller_function_id", "pack_id", "artifact_digest", "function_principal", "contract_id", "operation_id", "domain_kind", "executable_catalog_digest", "variant_id", "platform", "architecture", "runtime_abi", "backend", "execution_kind", "authority_reference", "requested_scope_digest", "adapter_digests"], "dependentRequired": {"caller_contract_id": ["caller_operation_id"], "caller_operation_id": ["caller_contract_id"], "caller_contract_revision_digest": ["caller_contract_id", "caller_operation_id"]},
       "properties": {
-        "caller_function_id": {"$ref": "#/$defs/id"},
+        "caller_function_id": {"$ref": "#/$defs/id"}, "caller_contract_id": {"type": "string", "maxLength": 128, "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*\\.v[1-9][0-9]*$"}, "caller_operation_id": {"type": "string", "maxLength": 128, "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"}, "caller_contract_revision_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
         "pack_id": {"$ref": "#/$defs/id"},
         "artifact_digest": {"$ref": "#/$defs/digest"},
         "function_principal": {"$ref": "#/$defs/functionPrincipal"},

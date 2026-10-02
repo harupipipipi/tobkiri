@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Any, Mapping
 
 from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.profile_edges import profile_edge_identity
 
 from ..profile_definition_store_v4 import ProfileDefinitionStoreConflict
 
@@ -104,18 +105,15 @@ def profile_scope_successor(
     exact-confirmation activation. Custom scopes and authority modes are never
     replaced, and absent source edges are retained for normal resolution checks.
     """
-    identity_fields = (
-        "caller_function_id", "target_provider_id", "contract_id", "operation_id"
-    )
     source_edges = {
-        tuple(edge[key] for key in identity_fields): edge
+        profile_edge_identity(edge): edge
         for edge in source["requested_edges"]
     }
     if len(source_edges) != len(source["requested_edges"]):
         raise ProfileDefinitionStoreConflict("scope successor contains duplicate edges")
     result = deepcopy(dict(current))
     for edge in result["requested_edges"]:
-        replacement = source_edges.get(tuple(edge[key] for key in identity_fields))
+        replacement = source_edges.get(profile_edge_identity(edge))
         if replacement is None:
             continue
         proposed = deepcopy(dict(replacement))
@@ -161,7 +159,10 @@ def profile_source_additions(
         for rows, append in ((current[field], False), (source[field], True)):
             seen: set[tuple[str, ...]] = set()
             for row in rows:
-                identity = tuple(row[key] for key in identity_fields)
+                identity = (
+                    profile_edge_identity(row) if field == "requested_edges"
+                    else tuple(row[key] for key in identity_fields)
+                )
                 if identity in seen:
                     raise ProfileDefinitionStoreConflict(
                         f"additive Profile update contains duplicate {field}"
