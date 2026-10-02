@@ -202,6 +202,9 @@ def test_profile_schema_accepts_only_the_finite_complete_caller_selector(schema:
     if schema == "profile_v4.schema.json":
         document["profile_api_version"] = "io.tobkiri.profile.v4"
         document["shell"].pop("executable_artifact_digest", None)
+        document.pop("frontend_entry_id", None)
+        for edge in document["requested_edges"]:
+            edge.pop("authority_mode", None)
     document["requested_edges"][0].update(
         caller_contract_id=CONTRACT, caller_operation_id="run.advance"
     )
