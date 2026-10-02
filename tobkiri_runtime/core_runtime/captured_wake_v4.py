@@ -194,9 +194,10 @@ class HostProcessWakeAdapterV4:
 class _OccurrenceGate:
     """Host-private one-shot wake gate, separate from execution authority."""
 
-    def __init__(self, check: Callable[[], None]) -> None:
+    def __init__(self, check: Callable[[], None], clock: Callable[[], float]) -> None:
         self.check = check
-        self.tokens: set[bytes] = set()
+        self.clock = clock
+        self.tokens: dict[bytes, tuple[str, str, str, int, float]] = {}
 
     def issue_trigger_lease(
         self,
@@ -207,13 +208,29 @@ class _OccurrenceGate:
     ) -> OpaqueInvocationLease:
         self.check()
         token = secrets.token_bytes(32)
-        self.tokens.add(token)
+        self.tokens[token] = (
+            registration_id,
+            occurrence_id,
+            target.value,
+            security_epoch,
+            self.clock() + 30.0,
+        )
         return OpaqueInvocationLease(token)
 
     def consume(self, delivery: TriggerDelivery) -> None:
-        if delivery.lease.token not in self.tokens:
+        bound = self.tokens.pop(delivery.lease.token, None)
+        if (
+            bound is None
+            or bound[:4]
+            != (
+                delivery.registration.registration_id,
+                delivery.occurrence_id,
+                delivery.registration.target.value,
+                delivery.registration.security_epoch,
+            )
+            or bound[4] <= self.clock()
+        ):
             raise PermissionError("wake gate is unknown or already consumed")
-        self.tokens.remove(delivery.lease.token)
 
 
 class CapturedWakeDriverV4:
@@ -267,7 +284,7 @@ class CapturedWakeDriverV4:
             "CREATE TABLE IF NOT EXISTS wake_state (id INTEGER PRIMARY KEY CHECK(id=1), identity TEXT NOT NULL, generation INTEGER NOT NULL, enabled INTEGER NOT NULL, expires_wall REAL NOT NULL, next_wall REAL NOT NULL, claim_until REAL NOT NULL DEFAULT 0)"
         )
         self._database.commit()
-        self._gate = _OccurrenceGate(self._check)
+        self._gate = _OccurrenceGate(self._check, self._mono)
         self._adapter = adapter_factory(self.deliver_due) if adapter_factory else None
         self._kernel_db = sqlite3.connect(":memory:", check_same_thread=False)
         self._kernel = TriggerWakeKernel(
@@ -341,6 +358,7 @@ class CapturedWakeDriverV4:
             self._check()
             if self._adapter is None or not self._adapter.status.available:
                 raise PermissionError("Host wake adapter is unavailable")
+            self._delivery_cancellation.set()
             state = self._state()
             generation = int(state[1]) + 1 if state else 1
             if self._registered:
@@ -445,8 +463,10 @@ class CapturedWakeDriverV4:
                 self._arm_kernel(self._state())  # type: ignore[arg-type]
         except Exception:
             with self._lock:
-                self.disarm()
-                self._reason = "wake_execution_unavailable"
+                current = self._state()
+                if current and current[1] == generation:
+                    self.disarm()
+                    self._reason = "wake_execution_unavailable"
 
     def status(self) -> Mapping[str, Any]:
         """Armed requires an existing driver, source lease and finite intent."""
