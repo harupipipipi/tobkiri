@@ -236,7 +236,7 @@ raw writer and unused replacement helper were removed, and both valid JSON and
 diagnostic bytes use one store-owned atomic writer. This consolidates I/O but
 does not yet migrate ownership or authorize a new live settings operation.
 
-The DeepThink state read now derives the value and logical revision from one
+The tobkirithink state read now derives the value and logical revision from one
 store snapshot. A second read (or an independently cached value paired with a
 new revision) could describe a state that never existed during concurrent
 updates. The shared pure revision reader rejects negative and non-integer

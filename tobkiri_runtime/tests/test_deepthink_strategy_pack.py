@@ -1,4 +1,4 @@
-"""Tests for the externally installable DeepThink PackVM strategy Pack."""
+"""Tests for the externally installable tobkirithink PackVM strategy Pack."""
 
 from __future__ import annotations
 
@@ -397,7 +397,69 @@ def test_strategy_ui_contribution_is_declarative_and_uses_full_reference() -> No
     assert descriptor["kind"] == "ai_strategy"
     assert descriptor["mode"] == "declarative"
     assert descriptor["strategy_reference"] == strategy.EXECUTE_OPERATION_ID
-    assert descriptor["command"]["name"] == "deepthink"
+    assert descriptor["command"]["name"] == "tobkirithink"
+    assert descriptor["label"] == "tobkirithink"
+    assert descriptor["command"]["label"] == "tobkirithink"
+    assert descriptor["accessibility"]["name"] == "tobkirithink"
+    assert descriptor["command"]["aliases"] == ["deepthink", "dt"]
+    assert descriptor["id"] == "rumi_deepthink_pack.deepthink"
+    assert strategy.PACK_ID == "rumi_deepthink_pack"
+    manifest = json.loads((_PACK_ROOT / "pack.v4.json").read_text(encoding="utf-8"))
+    assert manifest["pack"]["display_name"] == "tobkirithink"
+    assert manifest["pack"]["id"] == strategy.PACK_ID
+
+
+
+def test_strategy_brand_projects_from_exact_canonical_pack(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """New copy and old aliases use the same verified strategy principal."""
+
+    from ecosystem.defaultspack.defaultspack import v4_frontend_contributions
+
+    manifest = json.loads((_PACK_ROOT / "pack.v4.json").read_text(encoding="utf-8"))
+    digest = manifest["pack"]["artifact_digest"]
+    monkeypatch.setattr(
+        v4_frontend_contributions, "resolve_admitted_pack_root", lambda _: _PACK_ROOT
+    )
+    monkeypatch.setattr(
+        v4_frontend_contributions,
+        "load_admitted_pack_catalog",
+        lambda: {
+            strategy.PACK_ID: {
+                "runtime_artifacts": manifest["artifacts"],
+            }
+        },
+    )
+    projected, diagnostics, quarantined = (
+        v4_frontend_contributions.project_selected_ai_strategies(
+            [{
+                "role": "pack",
+                "identity": strategy.PACK_ID,
+                "artifact_digest": digest,
+            }],
+            {"strategies": [{
+                "strategy_reference": strategy.EXECUTE_OPERATION_ID,
+                "pack_id": strategy.PACK_ID,
+                "artifact_digest": digest,
+            }]},
+            profile_id="defaults",
+            profile_revision="brand-test-revision",
+            activation_id="brand-test-activation",
+            plan_digest="brand-test-plan",
+        )
+    )
+    assert diagnostics == []
+    assert quarantined == []
+    assert len(projected) == 1
+    contribution = projected[0]
+    assert contribution["label"] == "tobkirithink"
+    assert contribution["accessibility"]["name"] == "tobkirithink"
+    assert contribution["command"]["name"] == "tobkirithink"
+    assert contribution["command"]["aliases"] == ["deepthink", "dt"]
+    assert contribution["strategy_reference"] == strategy.EXECUTE_OPERATION_ID
+    assert contribution["owner_pack_id"] == strategy.PACK_ID
+    assert contribution["owner_pack_hash"] == digest
 
 
 def test_staged_strategy_exports_only_the_packvm_abi() -> None:

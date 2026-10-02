@@ -1,23 +1,23 @@
 {
-  "artifact_set_digest": "sha256:4b369e33e66252dd59a68b924f735cff557c05d98a15822cb729a8b481917a7d",
+  "artifact_set_digest": "sha256:84a8f44f491b0658d671bbb24bef56cc243d3f9922355b37adc6672f430e23a6",
   "artifacts": [
     {
-      "digest": "sha256:50e66141fb9260bcdf3f56a944a3032f77dc32e565181b354a0daf3f1b6fce97",
+      "digest": "sha256:3b176e839e7c504358a4d9641ca56ddaa3e725799cd938e54d2eedce1e910ea3",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:2264490bae5bb2c80c5d611992398f0a2dbf4fa243cd3e55e07c4e21ce802c9a",
+      "digest": "sha256:7c5ddbc8dab3920109a0ba53fb52f2e3ea6bdb6f2796ba7ecbfca4a670946c75",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:2292db6276ebff6f5019f7e06c8f87837642c00f0056d13b1af871785045dd50",
+      "digest": "sha256:99012984fe6716c02a57f514838957b63e5a71ab22654393b75c04091967379f",
       "path": "frontend/contributions/ai-strategy.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:726fe0ecfc988e542d35bba2cb9d5346a8c1ce48820ca6cf6c8c0ede1e57a109",
+      "digest": "sha256:25ad75d6bd5816784f5f4ae329bdf15b797981954c0ec4e9ed5246fa44a9877b",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -30,8 +30,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:178b7d2eaba726076322ff725eb809dfef44dc0713ecc0eced49be0e78f71c38"
+    "signed_digest": "sha256:9330f8c46e3bf0605b2aaa6b59786c7fc678a9b5804acce8ada8b5856db274a6"
   },
   "pack_id": "rumi_deepthink_pack",
-  "source_identity": "sha256:1fbc6d186115a1c7fe2bc381ff3adc649f6a31a1f6930b62cbc5e27dd61b1762"
+  "source_identity": "sha256:b1b41217b96a9ab47a43d183e99aa20769f4c64b50c38ac174819aab4fb29ec6"
 }

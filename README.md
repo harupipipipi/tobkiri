@@ -2,43 +2,31 @@
 
 Tobkiri is a modular AI runtime and tooling workspace.
 
-The project is being renamed from Rumi AI. Existing package names, commands,
-paths, environment variables, and application identifiers remain unchanged
-during the compatibility transition.
+The project is being renamed from Rumi AI. The canonical Python package is
+`tobkiri`; legacy internal paths, environment variables and installed
+`tobkiri_runtime/rumi_ai` compatibility remain during the transition.
 
-The repository keeps the runtime implementation under `tobkiri_runtime/`, while `rumi_ai/` provides a version-stable Python entrypoint. The canonical control panel frontend source lives in `tobkiri_launcher/frontend`; the kernel serves its built artifact at `/panel/`.
+The runtime implementation lives under `tobkiri_runtime/`. The root `tobkiri/`
+package delegates to that canonical package. The control panel frontend source
+lives in `tobkiri_launcher/frontend`; the Launcher connects to its built artifact
+at `/panel/`.
 
-## Quick Start (5 minutes)
+## Supported startup
 
-Get Tobkiri running in 5 minutes:
+Start **Tobkiri Launcher**, then activate a Defaults Profile and prepare the
+PackVM through its setup screens. A fresh checkout is a native development
+build, not a five-minute Python-only installation. Building the desktop shell,
+preparing verified Defaults artifacts and provisioning a VM are separate steps.
 
-```bash
-# 1. Clone the repository
-git clone https://github.com/harupipipipi/tobkiri.git
-cd tobkiri
+- Already have an installer? Follow the [Launcher guide](./tobkiri_runtime/docs/tobkiri_launcher_start.md) for your platform
+- Developing from source? Complete [Setup](#setup), then [Start](#start)
+- Checking a running Host? Use the [health diagnostic](#backend-health-check)
 
-# 2. Set up Python environment
-python3 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-python -m pip install --upgrade pip
-
-# 3. Install dependencies
-pip install -r tobkiri_runtime/requirements.txt
-pip install -r tobkiri_runtime/requirements-dev.txt
-pip install -e ./tobkiri_runtime
-
-# 4. Start the runtime (keeps running; blocks this terminal)
-python -m app
-
-# 5. In a second terminal, check the running Host's health
-python -m app --health
-```
-
-`python -m app --health` probes `http://127.0.0.1:8765/health` on the already-running Host. It never binds the listen port itself, so it is safe to run while an instance is up, and it exits non-zero when no Host is listening.
-
-After starting, open http://localhost:8765/panel/ in your browser to access the control panel.
-
-> `python -m rumi_ai` is a compatibility shim, not a startup command. Outside the repo checkout it resolves to `tobkiri_runtime/rumi_ai`, which intentionally fails closed with `Tobkiri requires a Launcher-injected Pack v4 activation snapshot` — the Pack v4 Host can only be activated by the real composition root (`python -m app`) or by Tobkiri Launcher.
+`python -m tobkiri` deliberately fails closed without a Launcher-injected Pack
+v4 activation snapshot. `python -m app` is an internal Host composition entrypoint,
+not a standalone Defaults setup command. Neither command replaces the native
+Launcher, verified Profile activation or PackVM provisioning. Opening `/panel/`
+in a regular browser also does not establish native approval authority.
 
 ## Read This When...
 
@@ -46,10 +34,10 @@ After starting, open http://localhost:8765/panel/ in your browser to access the 
 |---|---|---|
 | 目的別にドキュメントを辿りたい | [`tobkiri_runtime/docs/README.md`](./tobkiri_runtime/docs/README.md) | 「何をしたいか」から読む順番を案内します |
 | 用語の意味を揃えたい | [`tobkiri_runtime/docs/terminology.md`](./tobkiri_runtime/docs/terminology.md) | `rule`, `skill`, `team workspace`, `subagent` 互換名の整理です |
-| とにかく起動したい | [`README.md`](./README.md) の `Start` | 最短の起動コマンドだけを載せています |
+| とにかく起動したい | [`README.md`](./README.md) の `Setup` と `Start` | Launcher の前提と起動手順を確認します |
 | runtime / kernel の全体像を知りたい | [`tobkiri_runtime/README.md`](./tobkiri_runtime/README.md) | アーキテクチャと主要ディレクトリの説明があります |
 | コードを読まずに仕組みを理解したい | [`tobkiri_runtime/docs/concepts/system-mechanism.md`](./tobkiri_runtime/docs/concepts/system-mechanism.md) | 起動・Flow・承認・Grant の流れを文章で追えます |
-| まず動作確認したい（チュートリアル） | [`tobkiri_runtime/docs/tutorials/runtime-quickstart.md`](./tobkiri_runtime/docs/tutorials/runtime-quickstart.md) | `--health` から `/panel/` まで最短手順です |
+| まず動作確認したい（チュートリアル） | [`tobkiri_runtime/docs/tutorials/runtime-quickstart.md`](./tobkiri_runtime/docs/tutorials/runtime-quickstart.md) | Launcher 起動、Profile、PackVM、health を段階別に確認します |
 | `tobkiri_launcher` を起動したい / viewer の詰まり方を見たい | [`tobkiri_runtime/docs/tobkiri_launcher_start.md`](./tobkiri_runtime/docs/tobkiri_launcher_start.md) | 起動手順、`401`, 黒画面, `defaultspack` との関係をまとめています |
 | macOS版の配布方式と制約を知りたい | [`tobkiri_runtime/docs/macos-unsigned-distribution.md`](./tobkiri_runtime/docs/macos-unsigned-distribution.md) | unsigned/ad-hoc配布、Gatekeeper、quarantine、TCCの前提を説明します |
 | viewer 側を直したい | [`tobkiri_launcher/src-tauri/src/config.rs`](./tobkiri_launcher/src-tauri/src/config.rs) と [`tobkiri_launcher/src-tauri/src/kernel_manager.rs`](./tobkiri_launcher/src-tauri/src/kernel_manager.rs) | viewer は Tauri shell、kernel 起動は Rust 側が担当です |
@@ -62,7 +50,8 @@ After starting, open http://localhost:8765/panel/ in your browser to access the 
 ## Repository Layout
 
 - `tobkiri_runtime/`: kernel/runtime/API/backend source tree
-- `rumi_ai/`: compatibility Python entrypoint package
+- `tobkiri/`: repository entrypoint shim for the canonical Python package
+- `tobkiri_runtime/rumi_ai/`: installed legacy Python compatibility package
 - `pack-shell/`: desktop pack launcher
 - `tobkiri_launcher/`: desktop shell and control panel frontend source
 - `tobkiri_mobile/`: Flutter iOS/Android app for trusted-LAN defaultspack access
@@ -70,35 +59,42 @@ After starting, open http://localhost:8765/panel/ in your browser to access the 
 
 ## Setup
 
-### Prerequisites
+### Prerequisites for source development
 
-- Python 3.10+
-- Node.js 20.19.x または 22.12+（Node 22 推奨）
-- npm
-- uv (`tobkiri_launcher` を触る場合)
-- Rust / Cargo (`tobkiri_launcher` を触る場合)
-- MSVC Build Tools (`tobkiri_launcher` を Windows で触る場合)
-- Flutter SDK (`tobkiri_mobile` を触る場合)
+- Git and Python 3.10+ with `venv` and `pip`
+- Node.js **22.22.0 or newer** and npm, as required by the Launcher frontend
+- Rust/Cargo and the **Cargo Tauri CLI 2.x** on `PATH`. The development hook
+  invokes `cargo tauri` to build the Defaults Shell; installing only the npm
+  Tauri CLI is insufficient
+- `uv` 0.11.14, installed by the pinned Python development requirements below
+- Platform-native [Tauri 2 build prerequisites](https://v2.tauri.app/start/prerequisites/):
+  Xcode Command Line Tools on macOS; MSVC C++ Build Tools and WebView2 on Windows;
+  WebKitGTK 4.1 and the listed development libraries on Linux
+- At least 5 GiB of free disk space for the Launcher build preflight. Rust build
+  artifacts, dependency caches and VM assets can require substantially more
+- A clean, committed checkout whose generated source closure matches its
+  manifest. Development preparation refuses to attest uncommitted source
 
-### Dockerless sandbox on macOS
-
-Docker is optional on macOS. Tobkiri uses a managed Lima VM for untrusted
-function, Pack process, and coding-terminal execution:
+If `cargo tauri --version` is unavailable, install the Cargo CLI as the repository's
+installer workflow does:
 
 ```bash
-brew install lima
+cargo install tauri-cli --version "^2" --locked
+cargo tauri --version
 ```
 
-Open the runtime setup flow once after installation. Tobkiri creates an Ubuntu
-VM with no host mounts, SSH agent forwarding, proxy propagation, containerd, or
-guest port forwarding. Each untrusted operation then runs inside an additional
-Bubblewrap user/PID/filesystem/network namespace in that VM. Network is denied
-unless the calling tool explicitly receives an approved network policy.
+Flutter is needed only for `tobkiri_mobile` development.
 
-The first setup downloads an Ubuntu image and installs the guest packages.
-Desktop GUI applications share the managed guest identity, so the GUI desktop
-is not itself an untrusted application boundary; Pack and terminal commands use
-the per-operation boundary described above.
+### PackVM readiness
+
+A working Launcher window or an activated Profile does not prove that a VM can
+boot. Defaults Chat and Pack execution need verified VM assets, explicit
+provisioning consent and a healthy attested PackVM on the actual device.
+An ordinary developer build does not download or produce every platform's VM
+assets. Use **Packs** → **PackVM lifecycle** and the
+[Launcher guide](./tobkiri_runtime/docs/tobkiri_launcher_start.md#packvm-and-platform-readiness)
+to inspect the reason when it reports **Not ready**. Do not replace the missing
+VM with host execution or edit its attestation files.
 
 ### Clone and install
 
@@ -113,7 +109,7 @@ py -3 -m venv .venv
 python -m pip install --upgrade pip
 python -m pip install -r tobkiri_runtime\requirements.txt
 python -m pip install -r tobkiri_runtime\requirements-dev.txt
-python -m pip install -e .\tobkiri_runtime
+python -m pip install --no-deps -e .\tobkiri_runtime
 
 cd tobkiri_launcher\frontend
 npm ci
@@ -121,7 +117,10 @@ npm run tauri -- info
 cd ..\..
 ```
 
-If `py` is not available, use `python -m venv .venv` instead. If PowerShell blocks `Activate.ps1`, run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` in the same terminal, then activate the venv again.
+If `py` is unavailable, use `python -m venv .venv`. If PowerShell blocks
+activation, use `.\.venv\Scripts\python.exe` explicitly for the Python commands
+and make `.venv\Scripts` available on `PATH` for the development tools; follow
+your machine's execution-policy rules rather than changing them just to run this guide.
 
 macOS / Linux:
 
@@ -134,7 +133,7 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r tobkiri_runtime/requirements.txt
 python -m pip install -r tobkiri_runtime/requirements-dev.txt
-python -m pip install -e ./tobkiri_runtime
+python -m pip install --no-deps -e ./tobkiri_runtime
 
 cd tobkiri_launcher/frontend
 npm ci
@@ -144,27 +143,56 @@ cd ../..
 
 ## Start
 
-Windows PowerShell:
+First, from the repo root, check `git status --short` and resolve any tracked or
+untracked source changes. If a build regenerates tracked frontend assets, review
+and commit the intended output before retrying. Keep manifests and source from
+the same revision; do not mark a modified checkout as clean.
 
-```powershell
-.\.venv\Scripts\Activate.ps1
-python -m app --health
-cd tobkiri_launcher\frontend
-npm run tauri -- dev
-```
-
-macOS / Linux:
+macOS (explicit, ad-hoc **Tobkiri Launcher Developer** configuration):
 
 ```bash
 source .venv/bin/activate
-python -m app --health
+cd tobkiri_launcher/frontend
+npm run tauri -- dev --config src-tauri/tauri.macos.dev.conf.json
+```
+
+Linux:
+
+```bash
+source .venv/bin/activate
 cd tobkiri_launcher/frontend
 npm run tauri -- dev
 ```
 
-When the Launcher window opens, complete setup if prompted. On Apple Silicon macOS, provision PackVM in **Packs**, then use **Home** → **Launch Defaults Profile** to open Defaultspack. The current Windows build can activate the Profile but cannot launch Defaultspack Chat or Pack functions because its PackVM backend is unfinished; see the [Launcher start guide](./tobkiri_runtime/docs/tobkiri_launcher_start.md) and [Windows support issue #1494](https://github.com/harupipipipi/tobkiri/issues/1494). `python -m app` is useful for starting or checking the kernel, but it does not replace Launcher and PackVM setup.
+Windows PowerShell:
 
-`--health` は起動中の Host の `/health` endpoint を probe します。Host が未起動の場合は `status: "down"` と非ゼロの exit code を返すので、先に `python -m app` または Launcher で kernel を起動してください。
+```powershell
+.\.venv\Scripts\Activate.ps1
+cd tobkiri_launcher\frontend
+npm run tauri -- dev
+```
+
+Keep that terminal running for the development session. The Tauri hook builds
+the panel and Defaults Shell, prepares the Defaults bundle, then starts the
+native Launcher. The Launcher owns the Host bootstrap and panel connection;
+do not start a second Host manually. `npm run dev` alone serves frontend code
+and does not start the native Launcher or establish Authority.
+
+In the Launcher:
+
+1. Choose **Open Setup** if offered, review the Defaults Profile and confirm
+   **Activate Defaults Profile** once. Wait for verification; use **Verify
+   activation** if offered rather than submitting activation again
+2. In **Packs**, inspect **PackVM lifecycle**. If a verified provisioning plan is
+   offered, review its downloads, digests and storage requirements, then record
+   explicit consent and provision it
+3. Wait for **Healthy and attested**, then choose **Home** → **Launch Defaults
+   Profile**. If setup or VM readiness fails, record the displayed reason
+
+See the [Launcher start guide](./tobkiri_runtime/docs/tobkiri_launcher_start.md)
+for installed apps, platform asset requirements and troubleshooting. A
+successful source/import check, frontend build or installer workflow is not
+proof that Defaults launched on your device.
 
 ## Common Tasks
 
@@ -180,38 +208,31 @@ just integrity
 
 ### Backend health check
 
+After the Launcher has started the Host, open a second terminal at the repo
+root, activate the same `.venv`, and run:
+
 ```bash
 python -m app --health
 ```
 
-### Runtime startup
+This probes `http://127.0.0.1:8765/health` without binding the port or starting a
+Host. The port follows `RUMI_PORT`. `status: "down"` returns a nonzero exit code
+when nothing is listening. Inspect `runtime_ready`, `needs_setup` and any
+`runtime_error` in the response; a reachable Host does not prove Profile
+activation, PackVM readiness or a usable Defaults window.
 
-```bash
-python -m app
-```
+### Launcher development
 
-### Viewer development
+For subsequent sessions with dependencies already installed, use the matching
+platform command in [Start](#start). Source changes still require matching
+artifacts and clean committed provenance. Keep the foreground development
+process alive until you finish. A standalone Developer app must be prepared and
+bundled through the proper native build workflow; copying a debug executable or
+opening a leftover app is not equivalent to `tauri dev`.
 
-```bash
-cd tobkiri_launcher/frontend
-npm install
-npm run tauri -- info
-npm run tauri -- dev
-```
-
-2 回目以降、`tobkiri_launcher/frontend/node_modules` が残っている場合は次だけで起動できます。
-
-```bash
-cd tobkiri_launcher/frontend
-npm run tauri -- dev
-```
-
-開発用 Tobkiri Launcher は repo 内の `tobkiri_runtime/` を自動検出して kernel を起動します。
-開発用 Defaults バンドルを準備する前に、ソース変更をコミットして作業ツリーをクリーンにしてください。ビルド元のコミットと実際のソースが一致しない場合、準備処理は停止します。
-Tauri の起動前処理は Python 3 を使います。macOS/Linux では `python3` を優先し、Windows では Python Launcher (`py -3`) を優先するため、`python` という別名を作る必要はありません。
-Viewer build は起動前に空き容量を確認します。`Rumi Viewer build preflight failed: not enough free disk space.` が出た場合はディスク容量を空けてから再実行してください。検証済みの環境で閾値だけを調整したい場合は `RUMI_VIEWER_MIN_FREE_MB=<MB>` を指定できます。
-Apple Silicon macOS で **Launch Defaults Profile** を使うと、開発起動では repo 同梱の `defaultspack` を優先して開きます。Windows の現行ビルドは PackVM を準備できないため、Chat や Pack 実行は起動できません。
-起動時の詰まり方を含めたガイドは [`tobkiri_runtime/docs/tobkiri_launcher_start.md`](./tobkiri_runtime/docs/tobkiri_launcher_start.md) を参照してください。
+The preflight error may still use the compatibility text `Rumi Viewer build
+preflight failed: not enough free disk space.` Free disk space before retrying;
+passing a smaller threshold does not create room for the build or a VM.
 
 ## Development
 
@@ -231,11 +252,16 @@ python -m pytest tests/test_capability_trust_store.py
 
 ## HMAC Migration
 
-The legacy `python -m rumi_ai migrate-hmac` subcommand was retired with the Pack v4 composition root. `python -m app` accepts only `--headless` and `--health`; unsigned configuration files are re-signed during Launcher-driven activation.
+The legacy `python -m rumi_ai migrate-hmac` subcommand was retired with the
+Pack v4 composition root. The internal `app` parser accepts `--headless` and
+`--health`; `--headless` does not supply a Launcher activation snapshot or bypass
+setup. Use Launcher-driven activation rather than manually rewriting signed
+configuration files.
 
 ## Components
 
-- `rumi_ai`: compatibility CLI and module entrypoint
+- `tobkiri`: canonical Python package and CLI; root source shim delegates to it
+- `tobkiri_runtime/rumi_ai`: installed legacy module compatibility
 - `tobkiri_runtime`: kernel, runtime, API, backend, and docs
 - `pack-shell`: launches desktop packs and brokers token/bootstrap flow
 - `tobkiri_launcher`: viewer-side application shell and canonical panel frontend source
@@ -252,10 +278,10 @@ The legacy `python -m rumi_ai migrate-hmac` subcommand was retired with the Pack
 
 **Solution**: `--health` only probes an already-running Host at
 `http://127.0.0.1:8765/health`; it never starts one. `status: "down"` means no
-Host is listening — start it with `python -m app` or Tobkiri Launcher.
-`status: "error"` means a Host answered but reports an unhealthy runtime; check
-the `runtime_status` / `runtime_error` fields in the JSON output. The probe port
-follows `RUMI_PORT`.
+Host is listening. Start Tobkiri Launcher using [Start](#start).
+`status: "error"` can indicate an HTTP error, an invalid response or a reported
+unhealthy state. Inspect the complete JSON, including `error`, `runtime_status`
+and `runtime_error`. The probe port follows `RUMI_PORT`.
 ```bash
 # Confirm whether a Host is listening
 lsof -nP -iTCP:8765 -sTCP:LISTEN
@@ -263,7 +289,7 @@ lsof -nP -iTCP:8765 -sTCP:LISTEN
 
 #### 2. Port 8765 already in use
 
-**Problem**: `python -m app` fails with "Address already in use".
+**Problem**: Launcher Host startup reports "Address already in use".
 
 **Solution**: Identify the listener first. Stop only the matching old Tobkiri/Rumi
 process gracefully; do not use a forced kill for routine port cleanup.
@@ -275,12 +301,12 @@ lsof -nP -iTCP:8765 -sTCP:LISTEN
 kill -TERM <PID>
 ```
 
-#### 3. Viewer shows 401 error
+#### 3. Launcher shows 401 error
 
 **Problem**: Opening the panel shows 401 Unauthorized.
 
 **Solution**: First check that an old kernel has not claimed port 8765 and that the
-viewer bootstrap secret belongs to the same runtime. Do not set an arbitrary API
+Launcher bootstrap secret belongs to the same runtime. Do not set an arbitrary API
 token to work around a bootstrap failure.
 ```bash
 lsof -nP -iTCP:8765 -sTCP:LISTEN
@@ -302,10 +328,12 @@ npm run build
 
 **Problem**: `ModuleNotFoundError` when running tests.
 
-**Solution**: Ensure you're in the virtual environment and package is installed.
+**Solution**: Ensure you are at the repo root and using the `.venv` created in [Setup](#setup).
+For a diagnostic that should not start the runtime, try `python -m app --help`.
+An import succeeding does not establish Launcher activation.
 ```bash
 source .venv/bin/activate
-pip install -e ./tobkiri_runtime
+python -m pip install --no-deps -e ./tobkiri_runtime
 ```
 
 ### Getting Help

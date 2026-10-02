@@ -499,12 +499,12 @@
     {
       "path": "packs/rumi_deepthink_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:51640c183fb3575dfdfa6a3c8f8a10fa0329eeec3b939e2853500990423f1245"
+      "digest": "sha256:7695b95c60aa54425384f273af721d0cdbd3a034b23983bce1aa8ac7dfaefb06"
     },
     {
       "path": "packs/rumi_deepthink_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:e63d86acee2cf629ec9dc3c2653b01fc0c232bd4b8b61071fe51881b1c4589c9"
+      "digest": "sha256:8a35ecc907de820be850fcf4c348cf67a7f28ea4f1559200b3275d08fa1e27ae"
     },
     {
       "path": "packs/rumi_default_tool_projection_pack.executables.v4.json",

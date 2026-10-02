@@ -1,1 +1,1 @@
-"""DeepThink deliberation strategy Pack."""
+"""tobkirithink deliberation strategy Pack."""

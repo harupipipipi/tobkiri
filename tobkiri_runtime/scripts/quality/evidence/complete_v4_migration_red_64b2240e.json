@@ -16,8 +16,9 @@
     },
     "legacy_manifest_declared_packs": 143,
     "migration_status": {
+      "generated-draft": 1,
       "release-verified": 48,
-      "semantically-reviewed": 95
+      "semantically-reviewed": 94
     },
     "production_pack_directories": 143,
     "v4_artifact_files": 572,
@@ -318,7 +319,14 @@
       },
       {
         "errors": [
-          "runtime_receipt_operation_execution_missing"
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing",
+          "pack_specific_migration_receipt_missing",
+          "curated_review_target_digest_mismatch",
+          "runtime_receipt_target_digest_mismatch",
+          "runtime_receipt_operation_execution_missing",
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing"
         ],
         "line": 1,
         "pack_id": "rumi_deepthink_pack",
@@ -1016,8 +1024,9 @@
           "rumi_connector_inbound_broker_pack"
         ],
         "status_counts": {
+          "generated-draft": 1,
           "release-verified": 48,
-          "semantically-reviewed": 95
+          "semantically-reviewed": 94
         },
         "symbol": "migration_release_proof_missing",
         "unverified_count": 95
@@ -1358,7 +1367,14 @@
         },
         {
           "errors": [
-            "runtime_receipt_operation_execution_missing"
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing",
+            "pack_specific_migration_receipt_missing",
+            "curated_review_target_digest_mismatch",
+            "runtime_receipt_target_digest_mismatch",
+            "runtime_receipt_operation_execution_missing",
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing"
           ],
           "line": 1,
           "pack_id": "rumi_deepthink_pack",
@@ -2056,8 +2072,9 @@
             "rumi_connector_inbound_broker_pack"
           ],
           "status_counts": {
+            "generated-draft": 1,
             "release-verified": 48,
-            "semantically-reviewed": 95
+            "semantically-reviewed": 94
           },
           "symbol": "migration_release_proof_missing",
           "unverified_count": 95
@@ -2827,8 +2844,9 @@
       ]
     },
     "migration_status_counts": {
+      "generated-draft": 1,
       "release-verified": 48,
-      "semantically-reviewed": 95
+      "semantically-reviewed": 94
     },
     "migration_status_records": [
       {
@@ -3208,7 +3226,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "semantically-reviewed",
+        "classified_as": "generated-draft",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_deepthink_pack",
@@ -4131,8 +4149,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "b29efbad76c486939d48e3bcf3f861b114a512c0",
-    "semantic_digest": "sha256:5048f0aab507d6a9d5321aa815caf0ada146179960a345cfca645a7aa3fac307",
+    "observed_head_sha": "4769ab63bce8bd0ff013292eb6821cf99ef5f534",
+    "semantic_digest": "sha256:621e0ce2e47cdec61d0d82b3e7960162dbf0815fafe6dc66234f87fce6b8b605",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }

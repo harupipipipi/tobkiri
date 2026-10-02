@@ -1,4 +1,4 @@
-# Rumi AI OS
+# Tobkiri Runtime
 
 **「基盤のない基盤」** — 改造される「本体」が存在しないモジュラーAIフレームワーク
 
@@ -12,8 +12,8 @@
 |---|---|---|
 | 目的別にドキュメントを辿りたい | [`docs/README.md`](./docs/README.md) | 「何をしたいか→どのドキュメントか」を一枚で辿れる |
 | 用語の意味を揃えたい | [`docs/terminology.md`](./docs/terminology.md) | `rule`, `skill`, `team workspace`, `delegation` の使い分けを確認できる |
-| まず起動したい | ルートの [`README.md`](../README.md) | 最短の起動コマンドと repo の入口 |
-| まず手を動かして確認したい | [`docs/tutorials/runtime-quickstart.md`](./docs/tutorials/runtime-quickstart.md) | `--health` から `/panel/` までの最短チュートリアル |
+| まず起動したい | ルートの [`README.md`](../README.md) | Launcher の前提と platform 別起動コマンド |
+| まず手を動かして確認したい | [`docs/tutorials/runtime-quickstart.md`](./docs/tutorials/runtime-quickstart.md) | Launcher、Profile、PackVM、Host の確認 |
 | コードを読まずに runtime の仕組みを理解したい | [`docs/concepts/system-mechanism.md`](./docs/concepts/system-mechanism.md) | 起動・Flow・承認・Grant・viewer 連携の実行経路 |
 | `tobkiri_launcher` の起動手順と詰まり方を見たい | [`docs/tobkiri_launcher_start.md`](./docs/tobkiri_launcher_start.md) | `401`, 黒画面, panel と defaultspack の関係 |
 | defaultspack の frontend を拡張したい | [`ecosystem/defaultspack/docs/frontend_extensions.md`](./ecosystem/defaultspack/docs/frontend_extensions.md) | 右バー、設定、chat renderer、preview feed の増やし方 |
@@ -29,7 +29,7 @@
 
 ## 最短の見取り図
 
-1. `app.py` が kernel を起動する
+1. Launcher が verified activation と native Authority を管理し、内部 entrypoint `app.py` で Host を起動する
 2. `core_runtime/` が Flow, Pack, 承認, 実行基盤を持つ
 3. `ecosystem/<pack_id>/` が機能本体を提供する
 4. `user_data/` が承認状態, secrets, stores, audit を持つ
@@ -37,21 +37,26 @@
 
 ## よく使う入口
 
-### 起動確認
+### Launcher 起動と Host 診断
+
+repo ルートの [Setup と Start](../README.md#setup) を完了し、native Launcher を
+foreground 開発セッションで起動してください。macOS は explicit Developer overlay を
+使います。Profile activation と PackVM doctor の **Healthy and attested** を確認して
+から、**Home** → **Launch Defaults Profile** を選びます。
+
+Launcher が Host を起動したあと、repo ルートの同じ `.venv` を使う別ターミナルで:
 
 ```bash
-python -m app          # Host を起動（このターミナルはブロックされる）
-python -m app --health # 別ターミナルで起動中の Host の /health を probe
+python -m app --health
 ```
 
-`python -m rumi_ai` は互換 shim で、Launcher 注入の Pack v4 activation snapshot がない環境では意図的に fail closed します。手動起動・ヘルスチェックには `python -m app` を使ってください。
+これは起動中の Host を診断するだけで、Host を起動しません。
+`python -m tobkiri` は Launcher 注入の Pack v4 activation snapshot がなければ
+意図的に fail closed します。installed `rumi_ai` 互換 package も残っています。
+`python -m app` や `--headless` は Defaults の初期設定を代替しません。
 
-### viewer 開発起動
-
-```bash
-cd ../tobkiri_launcher/src-tauri
-cargo tauri dev
-```
+platform 別コマンド、VM assets の条件、起動トラブルは
+[Launcher start guide](./docs/tobkiri_launcher_start.md) を参照してください。
 
 ### 代表的なテスト
 
@@ -336,38 +341,16 @@ Prompt behavior lives in `ecosystem/defaultspack/domain/prompt/` and `ecosystem/
 
 ---
 
-## クイックスタート
+## 現在の起動手順
 
-### 必要条件
+[repo ルートの Setup と Start](../README.md#setup) と
+[Launcher start guide](./docs/tobkiri_launcher_start.md) を使ってください。
+Python、npm frontend server、旧 bootstrap CLI だけでは native Launcher の Authority、
+verified Profile activation、PackVM readiness は成立しません。
 
-- Python 3.10+
-- Docker（本番環境で必須）
-- Git
-
-### インストール
-
-```bash
-git clone https://github.com/harupipipipi/rumiai.git
-cd rumiai/tobkiri_runtime
-python bootstrap.py --cli init
-```
-
-### 起動
-
-```bash
-# 本番（Docker 必須）
-python app.py
-
-# 開発（Docker 不要）
-python app.py --permissive
-```
-
-### Pack 承認
-
-```bash
-curl -X POST http://localhost:8765/api/packs/{pack_id}/approve \
-  -H "Authorization: Bearer YOUR_TOKEN"
-```
+旧 `app.py --permissive`、`--validate`、Bearer token だけでの Pack approval は
+現在の startup workflow ではありません。承認は Launcher の native approval window
+で行い、署名済み設定や attestation の手動編集で回避しないでください。
 
 ---
 

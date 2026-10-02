@@ -401,9 +401,14 @@ class LinuxQemuProcess(QemuProcessCore[LinuxQemuLaunchConfig, subprocess.Popen[b
                     ):
                         raise BackendUnavailableError("Linux QEMU socket ownership is unsafe")
                     connection.connect(_socket_address(directory))
+                    peer_credentials = getattr(socket, "SO_PEERCRED", None)
+                    if not isinstance(peer_credentials, int):
+                        raise BackendUnavailableError(
+                            "Linux QEMU peer credentials are unavailable"
+                        )
                     pid, uid, _gid = struct.unpack(
                         "3i",
-                        connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12),
+                        connection.getsockopt(socket.SOL_SOCKET, peer_credentials, 12),
                     )
                     if uid != os.geteuid() or pid != self.pid:
                         raise BackendUnavailableError(

@@ -7477,7 +7477,7 @@
         "rumi_ai_strategy_runtime_pack": ">=1.0.0,<2.0.0"
       },
       "description": "Bounded provider-neutral deliberation strategy using quoted AI gateway routes.",
-      "display_name": "DeepThink Strategy",
+      "display_name": "tobkirithink",
       "execution_boundary": "sandbox",
       "kind": "normal_sandbox",
       "legacy_ids": [],
@@ -7791,7 +7791,7 @@
           "kind": "sidecar",
           "index_role": "sidecar",
           "path": "frontend/contributions/ai-strategy.json",
-          "digest": "sha256:2292db6276ebff6f5019f7e06c8f87837642c00f0056d13b1af871785045dd50"
+          "digest": "sha256:99012984fe6716c02a57f514838957b63e5a71ab22654393b75c04091967379f"
         }
       ]
     },

@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_deepthink_pack",
-  "source_identity": "sha256:726fe0ecfc988e542d35bba2cb9d5346a8c1ce48820ca6cf6c8c0ede1e57a109",
+  "source_identity": "sha256:25ad75d6bd5816784f5f4ae329bdf15b797981954c0ec4e9ed5246fa44a9877b",
   "variants": [
     {
       "variant_id": "rumi_deepthink_pack.deepthink.execute.python",
@@ -266,6 +266,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:7caa3fd16a3cc10bd6df7ba14f893b6c80b7211ed200856634cf37806a19edbe",
-  "catalog_digest": "sha256:ca1cbcd308e4a5e9f3a1b51413a0883dd70f0c571c4626d63605a1b88a282128"
+  "materialization_catalog_digest": "sha256:68c681a592ec76212a95f3334fc85195ba3f64e0a8293e733c6eebfed3e88f8a",
+  "catalog_digest": "sha256:d32b7c00fb5ba17e142bd11774eaa11dec08a8a3afdf387e3a6c344e0ada94e5"
 }

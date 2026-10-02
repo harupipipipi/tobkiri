@@ -770,6 +770,20 @@ def test_connect_uses_short_local_pin_and_closes_it_without_socket(serial_withou
     assert stat.S_ISDIR(os.fstat(global_directory).st_mode)
 
 
+def test_missing_peer_credentials_fails_closed_without_socket(
+    serial_without_socket: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vm, _, connection, _, calls = serial_without_socket
+    monkeypatch.delattr(qemu.socket, "SO_PEERCRED")
+    with pytest.raises(BackendUnavailableError, match="peer credentials are unavailable"):
+        vm.wait_for_serial(1)
+    assert connection.closed and vm._channel is None
+    assert len(calls) == 1
+    _assert_fd_closed(calls[0])
+    assert vm._run_root_fd is not None
+
+
 @pytest.mark.parametrize("change", ["mode", "owner", "kind", "peer_uid", "peer_pid"])
 def test_short_endpoint_preserves_socket_security_without_socket(
     serial_without_socket: Any,

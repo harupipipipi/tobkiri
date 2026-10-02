@@ -1,84 +1,87 @@
-# Tutorial: Runtime Quickstart
+# Tutorial: Launcher startup and runtime checks
 
-このチュートリアルは **「今のリポジトリで runtime が動くところまで」** を最短で確認する手順です。
+このチュートリアルでは Launcher、Profile activation、PackVM、Host の疎通を
+別々に確認します。Python コマンドだけで Defaults を起動できる手順ではありません。
 
-> Tobkiri の公開名への移行中のため、互換 CLI `python -m rumi_ai` も残っていますが、
-> Launcher 注入の activation snapshot がない環境では意図的に fail closed します。
-> このチュートリアルでは実際の composition root である `python -m app` を使います。
+`python -m tobkiri` は Launcher 注入の Pack v4 activation snapshot がなければ
+意図的に fail closed します。`python -m app` は内部の Host composition entrypoint
+であり、Launcher の初期設定や PackVM provisioning を代替しません。
 
-## 前提
+## Step 1. Launcher を起動
 
-- repo ルートで作業する
-- `pip install -e ./tobkiri_runtime` 済みの Python 環境が使える
+インストーラーを使う場合は [Launcher start guide](../tobkiri_launcher_start.md) を
+参照してください。ソースから開発起動する場合は、先に repo の
+[Setup](../../../README.md#setup) を完了します。Node.js 22.22.0+、Cargo Tauri CLI 2.x、
+platform native build prerequisites、repo の `.venv`、clean committed source が必要です。
 
-## Step 1. runtime を起動
+macOS では repo ルートから:
 
 ```bash
-python -m app
+source .venv/bin/activate
+cd tobkiri_launcher/frontend
+npm run tauri -- dev --config src-tauri/tauri.macos.dev.conf.json
 ```
 
-このコマンドは HTTP server を起動したままにします。
+Linux / Windows のコマンドは [README の Start](../../../README.md#start) にあります。
+開発セッション中はこのターミナルを動かしたままにしてください。
 
-## Step 2. ヘルスチェックを実行
+`npm run dev` だけでは native Launcher は起動しません。別の Host や
+`pack-shell` を先に起動せず、Launcher に bootstrap と panel 接続を任せます。
 
-別ターミナルで:
+## Step 2. Profile と PackVM を確認
+
+1. **Open Setup** が表示されたら Defaults Profile を確認して
+   **Activate Defaults Profile** を一度だけ実行する
+2. Host の再起動と検証を待つ。表示された場合は **Verify activation** を使い、
+   activation を重複送信しない
+3. **Packs** → **PackVM lifecycle** で plan と doctor の状態を確認する
+4. verified plan が表示された場合、ダウンロード、digest、空き容量を確認して
+   明示的に同意し、provisioning を実行する
+5. **Healthy and attested** を確認してから **Home** → **Launch Defaults Profile** を選ぶ
+
+**Not ready** や activation エラーが残る場合は、表示された理由を記録してください。
+Profile が active でも、VM assets や device accelerator が利用できなければ Defaults
+Chat / Pack 実行は利用可能とは言えません。platform ごとの条件は
+[PackVM and platform readiness](../tobkiri_launcher_start.md#packvm-and-platform-readiness)
+にあります。ホスト実行への切替や attestation の手動編集で回避しないでください。
+
+## Step 3. 起動中の Host を診断
+
+別ターミナルを repo ルートで開き、同じ `.venv` を有効にして:
 
 ```bash
 python -m app --health
 ```
 
-`--health` は起動中の Host の `http://127.0.0.1:8765/health` を probe するだけで、
-listen port は取りません。`status: "ok"` なら正常で exit code 0、Host 未起動の
-`"down"` や `"error"` の場合は JSON を出力して exit code 1 になります。probe 先の
-ポートは `RUMI_PORT` に従います。
+`--health` は起動中の Host の `http://127.0.0.1:8765/health` を probe するだけです。
+Host を起動せず、listen port を取りません。Host 未起動の `status: "down"` は
+非ゼロの exit code になります。probe 先のポートは `RUMI_PORT` に従います。
 
-## Step 3. API の疎通確認
+response の `runtime_ready`、`needs_setup`、エラーも確認してください。HTTP response
+が返ることは、Profile activation、VM boot、Defaults window の成功を証明しません。
+通常のブラウザで `/panel/` が表示されても native approval authority は得られません。
 
-別ターミナルで:
+## Step 4. 開発セッションを停止
 
-```bash
-curl http://127.0.0.1:8765/health
-```
+起動用ターミナルで `Ctrl+C` を実行します。開発プロセス停止後に残った debug app を
+開くことは、準備済み standalone Developer bundle の起動と同じではありません。
 
-HTTP 200 と JSON が返れば API は利用可能です。
+## ソース確認と native 検証を区別する
 
-## Step 4. panel ルート確認（任意）
-
-ブラウザで `http://127.0.0.1:8765/panel/` を開き、画面が表示されることを確認します。
-
-## Step 5. 停止
-
-起動したターミナルで `Ctrl+C`。
-
-## 補足: headless 初期化だけを確認する場合
+runtime を起動しない parser 確認は、repo ルートの同じ `.venv` で実行できます:
 
 ```bash
-python -m app --headless
+python -m app --help
 ```
 
-`--headless` は Host HTTP surface を capture して検証したあと、待機せずに終了します。
-プロセスは残らないため、このモードでは `/health` と `/panel/` の確認は行いません。
-
-## 検証スクリーンショット
-
-> 実行確認で取得した画像です。環境により表示は多少変わります。
-
-### /health（ブラウザ表示）
-
-![Runtime health screenshot](../assets/tutorials/runtime-health.png)
-
-### /panel（ブラウザ表示）
-
-![Runtime panel screenshot](../assets/tutorials/runtime-panel.png)
-
-## 実行ログ
-
-実行時の生ログは以下に保存しています。
-
-- [../assets/tutorials/runtime-quickstart.log](../assets/tutorials/runtime-quickstart.log)
+これは CLI が import できる確認であり、Host、Profile、PackVM は起動しません。
+`--headless` も Launcher の activation snapshot を作成したり、承認を省略したりする
+コマンドではありません。古い tutorial の screenshot / 実行ログは現在の native 起動の
+証拠として使わないでください。native 検証では source revision / artifact、Launcher
+window、activation、device の PackVM 状態をそれぞれ記録します。
 
 ## 次に読む
 
+- Launcher の platform 条件と起動トラブル: [../tobkiri_launcher_start.md](../tobkiri_launcher_start.md)
 - 仕組みを追う: [../concepts/system-mechanism.md](../concepts/system-mechanism.md)
 - 運用/API 詳細: [../operations.md](../operations.md)
-- viewer 側の起動経路: [../tobkiri_launcher_start.md](../tobkiri_launcher_start.md)

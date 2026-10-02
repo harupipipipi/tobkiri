@@ -1,9 +1,10 @@
-# === git root (rumi_ai/) 用 ===
+# === Tobkiri repository root ===
 /*
 !.gitignore
 !/.github/
 !/AGENTS.md
 !/justfile
+!/tobkiri/
 !/tobkiri_runtime/
 !/tobkiri_launcher/
 !/pack-shell/

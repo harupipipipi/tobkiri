@@ -59,7 +59,8 @@ def test_optional_strategy_name_is_owned_by_its_pack() -> None:
                 continue
             if path.name in GENERATED_NAMES:
                 continue
-            if "deepthink" in path.read_text(encoding="utf-8").casefold():
+            source = path.read_text(encoding="utf-8").casefold()
+            if any(name in source for name in ("deepthink", "tobkirithink")):
                 violations.append(relative.as_posix())
     assert not violations, "Pack-specific strategy code leaked into: " + ", ".join(
         sorted(violations)

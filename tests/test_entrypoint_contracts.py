@@ -1,4 +1,8 @@
 import re
+import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 
@@ -9,25 +13,55 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_root_entrypoint_targets_legacy_app_main():
-    entrypoint = _read(ROOT / "rumi_ai" / "__main__.py")
-    assert "_LEGACY_ROOT" in entrypoint
-    assert "from tobkiri_runtime.app import main" in entrypoint
+def test_root_entrypoint_targets_canonical_authority_bound_main():
+    entrypoint = _read(ROOT / "tobkiri" / "__main__.py")
+    assert "from .runtime import main" in entrypoint
+    assert "sys.path" not in entrypoint
     assert 'if __name__ == "__main__":' in entrypoint
+    assert not (ROOT / "rumi_ai").exists()
 
 
 def test_version_contract_matches_package_version():
-    init_text = _read(ROOT / "rumi_ai" / "__init__.py")
     pyproject_text = _read(ROOT / "tobkiri_runtime" / "pyproject.toml")
-
-    init_match = re.search(r'__version__\s*=\s*"([^"]+)"', init_text)
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", "import tobkiri; print(tobkiri.__version__)"],
+        cwd=ROOT, capture_output=True, text=True, check=True, timeout=20,
+    )
     pyproject_match = re.search(
         r'^\s*version\s*=\s*"([^"]+)"', pyproject_text, re.MULTILINE
     )
 
-    assert init_match, "rumi_ai.__version__ not found"
     assert pyproject_match, "project.version in pyproject.toml not found"
-    assert init_match.group(1) == pyproject_match.group(1)
+    assert result.stdout.strip() == pyproject_match.group(1)
+
+
+def test_repository_package_keeps_canonical_cli_modules_importable():
+    result = subprocess.run(
+        [sys.executable, "-B", "-c",
+         "import json, tobkiri.cli, tobkiri.runtime; "
+         "print(json.dumps([tobkiri.cli.__file__, tobkiri.runtime.__file__]))"],
+        cwd=ROOT, capture_output=True, text=True, check=True, timeout=20,
+    )
+    paths = [Path(value).resolve() for value in json.loads(result.stdout)]
+    assert paths == [ROOT / "tobkiri_runtime/tobkiri/cli.py",
+                     ROOT / "tobkiri_runtime/tobkiri/runtime.py"]
+
+
+def test_checkout_and_installed_layouts_reject_unbound_startup(tmp_path):
+    for cwd, module, runtime_path in (
+        (ROOT, "tobkiri", ""),
+        (tmp_path, "tobkiri", str(ROOT / "tobkiri_runtime")),
+        (tmp_path, "rumi_ai", str(ROOT / "tobkiri_runtime")),
+    ):
+        environment = {**os.environ, "PYTHONPATH": runtime_path,
+                       "PYTHONDONTWRITEBYTECODE": "1"}
+        result = subprocess.run(
+            [sys.executable, "-B", "-m", module], cwd=cwd, env=environment,
+            capture_output=True, text=True, timeout=20,
+        )
+        assert result.returncode != 0
+        assert "Launcher-injected Pack v4 activation snapshot" in result.stderr
+        assert "Traceback" not in result.stderr
 
 
 def test_control_panel_bundle_uses_v3_startup_profile_contract():

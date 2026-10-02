@@ -2054,7 +2054,7 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
             service = service_cls.return_value
             service.set_deepthink_enabled.return_value = {
                 "enabled": True,
-                "message": "DeepThinkをONにしました。タスクには数時間かかる可能性があります。",
+                "message": "tobkirithinkをONにしました。タスクには数時間かかる可能性があります。",
             }
             result = registry.execute(
                 {"command": "deepthink", "mode": "chat", "args": {"enabled": "on"}},
@@ -2082,7 +2082,7 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
             service = service_cls.return_value
             service.set_deepthink_enabled.return_value = {
                 "enabled": True,
-                "message": "DeepThinkをONにしました。",
+                "message": "tobkirithinkをONにしました。",
                 "state_snapshot": snapshot,
             }
             result = registry.execute(
