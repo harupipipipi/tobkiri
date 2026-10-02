@@ -102,7 +102,12 @@ def validate_task_plan(value: Mapping[str, Any]) -> dict[str, Any]:
     integer(plan["expires_at_ms"], 1)
     for key in ("plan_digest", "checkpoint_digest", "recipe_digest", "request_digest"):
         content_digest(plan[key])
-    image = plan["image_reference"]
+    validate_task_image(plan["image_reference"])
+    return plan
+
+
+def validate_task_image(image: Any) -> str:
+    """Require a bounded immutable OCI digest reference before touching Docker."""
     if not isinstance(image, str) or "@sha256:" not in image:
         raise ValueError("workspace task image is not pinned")
     name, image_digest = image.split("@", 1)
@@ -113,7 +118,7 @@ def validate_task_plan(value: Mapping[str, Any]) -> dict[str, Any]:
     ):
         raise ValueError("workspace task image is invalid")
     content_digest(image_digest)
-    return plan
+    return image
 
 
 def execute_payload(
