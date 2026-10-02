@@ -249,8 +249,10 @@ class WorkflowAttemptServiceConfigV4:
         RequestContext,
     ]
     execution_scope: Callable[
-        [RequestContext, HostProviderInvocationContextV4], ContextManager[None]
+        [RequestContext, HostProviderInvocationContextV4],
+        ContextManager[Callable[[], None]],
     ]
+    retire_context: Callable[[RequestContext], None]
     presentation_owner_scope: Callable[[RequestContext, str, str], ContextManager[None]]
     assert_current_capture: Callable[[], None]
     state_path: Path
@@ -261,6 +263,7 @@ class WorkflowAttemptServiceConfigV4:
     activation_digest: str
     plan_digest: str
     security_epoch: int
+    max_active_attempts: int = 64
     clock: Callable[[], float] = time.time
     monotonic_clock: Callable[[], float] = time.monotonic
 

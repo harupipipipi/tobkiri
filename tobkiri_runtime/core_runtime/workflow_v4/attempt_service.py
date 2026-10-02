@@ -13,6 +13,7 @@ from core_runtime.workflow_v4.attempt_port import (
     WorkflowAttemptDeclarationV4,
     WorkflowAttemptServiceConfigV4,
 )
+from core_runtime.workflow_v4.attempt_lifetime import WorkflowAttemptLifetimeV4
 from core_runtime.workflow_v4.attempt_store import (
     WorkflowAttemptStoreV4,
     WorkflowCallerPendingPersistenceV4,
@@ -53,6 +54,11 @@ class HostWorkflowAttemptServiceV4:
 
     def __init__(self, config: WorkflowAttemptServiceConfigV4) -> None:
         self._config = config
+        if (
+            type(config.max_active_attempts) is not int
+            or not 1 <= config.max_active_attempts <= 256
+        ):
+            raise WorkflowDenied("Workflow attempt retention bound is invalid")
         self._coordinators = {
             (
                 binding.operation.contract_id,
@@ -79,6 +85,7 @@ class HostWorkflowAttemptServiceV4:
         ):
             raise WorkflowDenied("Workflow attempt routes are invalid")
         self._store = WorkflowAttemptStoreV4(config.state_path)
+        self._lifetime = WorkflowAttemptLifetimeV4(self._store, config.retire_context)
         self._controllers = {
             caller_id: PendingEffectController(
                 persistence=WorkflowCallerPendingPersistenceV4(self._store, caller_id),
@@ -100,6 +107,21 @@ class HostWorkflowAttemptServiceV4:
                 self._store.cas(record["reservation_id"], revision, record)
         for controller in self._controllers.values():
             controller.recover()
+        self._sweep()
+
+    def _sweep(self) -> None:
+        for revision, record in self._store.list_attempts():
+            if self._config.clock() >= record["expires_at"] and record["state"] in {
+                "preparing",
+                "pending",
+                "reserved",
+            }:
+                controller = self._controllers.get(record["dispatch_caller"])
+                if record.get("effect_id") is not None and controller is not None:
+                    controller.cancel(record["effect_id"])
+                record["state"] = "expired"
+                self._store.cas(record["reservation_id"], revision, record)
+            self._lifetime.retire_if_terminal(record["reservation_id"])
 
     def _guard(self, invocation: HostProviderInvocationContextV4) -> None:
         self._config.assert_current_capture()
@@ -246,8 +268,9 @@ class HostWorkflowAttemptServiceV4:
         run: Mapping[str, Any],
         attempt: Mapping[str, Any],
     ) -> AuthorityReservation:
-        """Prepare a sealed request; existing Profile Grants need no new prompt."""
+        """Reserve bounded private context storage before creating any session."""
         self._guard(invocation)
+        self._sweep()
         request = attempt["request"]
         if (
             digest(request) != attempt["request_digest"]
@@ -258,41 +281,12 @@ class HostWorkflowAttemptServiceV4:
             raise WorkflowDenied("Workflow attempt request or activation changed")
         route = self._route(request, invocation.envelope.target_principal.value)
         reservation_id = attempt_identity(self._config.profile_id, request["request_id"])
-        context = self._context(invocation, route, reservation_id)
-        prepared = self._config.broker.prepare(
-            InvocationFrame(
-                contract_id=route.binding.operation.contract_id,
-                version_range=f"=={route.binding.operation.contract_version}",
-                operation_id=route.binding.operation.operation_id,
-                payload=request["input"],
-                timeout_ms=request["timeout_ms"],
-                idempotency_key=request["idempotency_key"],
-            ),
-            context,
-        )
-        if (
-            prepared.binding.operation != route.binding.operation
-            or prepared.binding.principal_ref != route.binding.principal_ref
-            or prepared.binding.function != route.binding.function
-            or prepared.binding.artifact != route.binding.artifact
-        ):
-            raise WorkflowDenied("Workflow prepared target changed")
         owner_id = "workflow-owner." + digest(
             {
                 "owner": self._owner(invocation),
                 "reservation_id": reservation_id,
             }
         ).removeprefix("sha256:")
-        scope = self._scope(route, context, prepared.request_digest, owner_id)
-        if route.authority_mode == "profile_grant":
-            self._config.authority.check_static_path(
-                StaticAuthorityQuery(
-                    context,
-                    route.binding.principal_ref,
-                    prepared.request_digest,
-                    scope.to_dict(),
-                )
-            )
         record = {
             "reservation_id": reservation_id,
             "dispatch_caller": invocation.envelope.target_principal.value,
@@ -310,44 +304,91 @@ class HostWorkflowAttemptServiceV4:
             ),
             "state": "preparing",
             "authority_mode": route.authority_mode,
-            "context": _context_document(context),
-            "snapshot": prepared.to_snapshot().to_dict(),
-            "effect_scope": scope.to_dict(),
+            "context": None,
+            "snapshot": None,
+            "effect_scope": None,
             "owner_id": owner_id,
             "expires_at": self._config.clock() + 300.0,
             "effect_id": None,
+            "resources_drained": True,
+            "context_retired": False,
         }
-        if not self._store.insert(reservation_id, record):
+        if not self._store.insert(
+            reservation_id, record, max_active_attempts=self._config.max_active_attempts
+        ):
             _, previous = self._owned(invocation, reservation_id)
             if (
                 previous["request_digest"] != record["request_digest"]
                 or previous["request"] != record["request"]
-                or previous["context"] != record["context"]
-                or previous["snapshot"] != record["snapshot"]
+                or previous["catalog_digest"] != record["catalog_digest"]
+                or previous["authority_mode"] != route.authority_mode
             ):
                 raise WorkflowDenied("Workflow attempt retransmission changed")
             return self.inspect(invocation, reservation_id)
-        self._guard(invocation)
-        if route.authority_mode == "interactive_only":
-            status = self._controllers[record["dispatch_caller"]].prepare(
-                prepared=prepared,
-                context=context,
-                effect_scope=scope.to_dict(),
-                invocation_owner_id=owner_id,
-                presentation_owner_principal_id=invocation.presentation_owner_principal_id,
-                presentation_owner_session_id=invocation.presentation_owner_session_id,
-                presentation_metadata={
-                    "title": "Tobkiri Workflow step",
-                    "operation_id": request["operation_id"],
-                    "contract_id": request["contract_id"],
-                    "request_digest": prepared.request_digest,
-                },
-                expires_at=record["expires_at"],
+        revision = 1
+        try:
+            context = self._context(invocation, route, reservation_id)
+            record["context"] = _context_document(context)
+            prepared = self._config.broker.prepare(
+                InvocationFrame(
+                    contract_id=route.binding.operation.contract_id,
+                    version_range=f"=={route.binding.operation.contract_version}",
+                    operation_id=route.binding.operation.operation_id,
+                    payload=request["input"],
+                    timeout_ms=request["timeout_ms"],
+                    idempotency_key=request["idempotency_key"],
+                ),
+                context,
             )
-            record.update(state="pending", effect_id=status.effect_id)
-        else:
-            record["state"] = "reserved"
-        self._store.cas(reservation_id, 1, record)
+            if (
+                prepared.binding.operation != route.binding.operation
+                or prepared.binding.principal_ref != route.binding.principal_ref
+                or prepared.binding.function != route.binding.function
+                or prepared.binding.artifact != route.binding.artifact
+            ):
+                raise WorkflowDenied("Workflow prepared target changed")
+            scope = self._scope(route, context, prepared.request_digest, owner_id)
+            if route.authority_mode == "profile_grant":
+                self._config.authority.check_static_path(
+                    StaticAuthorityQuery(
+                        context,
+                        route.binding.principal_ref,
+                        prepared.request_digest,
+                        scope.to_dict(),
+                    )
+                )
+            record.update(snapshot=prepared.to_snapshot().to_dict(), effect_scope=scope.to_dict())
+            revision = self._store.cas(reservation_id, revision, record)
+            self._guard(invocation)
+            if route.authority_mode == "interactive_only":
+                status = self._controllers[record["dispatch_caller"]].prepare(
+                    prepared=prepared,
+                    context=context,
+                    effect_scope=scope.to_dict(),
+                    invocation_owner_id=owner_id,
+                    presentation_owner_principal_id=invocation.presentation_owner_principal_id,
+                    presentation_owner_session_id=invocation.presentation_owner_session_id,
+                    presentation_metadata={
+                        "title": "Tobkiri Workflow step",
+                        "operation_id": request["operation_id"],
+                        "contract_id": request["contract_id"],
+                        "request_digest": prepared.request_digest,
+                    },
+                    expires_at=record["expires_at"],
+                )
+                record.update(state="pending", effect_id=status.effect_id)
+            else:
+                record["state"] = "reserved"
+            self._store.cas(reservation_id, revision, record)
+        except Exception:
+            # No provider entered during preparation. Preserve the slot until
+            # the exact newly created context is safely retired by the Host.
+            current_revision, current = self._store.get(reservation_id)
+            if current["state"] == "preparing":
+                record["state"] = "stale"
+                self._store.cas(reservation_id, current_revision, record)
+                self._lifetime.retire_if_terminal(reservation_id)
+            raise
         return self.inspect(invocation, reservation_id)
 
     def inspect(
@@ -454,7 +495,10 @@ class HostWorkflowAttemptServiceV4:
             # snapshot contains no old parent lease or cancellation authority.
             remaining = invocation.envelope.deadline_monotonic - self._config.monotonic_clock()
             deadline = min(record["expires_at"], self._config.clock() + remaining)
-            with self._config.execution_scope(context, invocation):
+            revision, current = self._owned(invocation, authority.reservation_id)
+            current["resources_drained"] = False
+            self._store.cas(authority.reservation_id, revision, current)
+            with self._config.execution_scope(context, invocation) as release_scope:
                 result = self._config.broker.invoke_prepared(
                     snapshot,
                     context,
@@ -471,6 +515,10 @@ class HostWorkflowAttemptServiceV4:
                     ),
                     parent_deadline_monotonic=invocation.envelope.deadline_monotonic,
                     execution_guard=lambda: self._guard(invocation),
+                    on_resources_drained=self._lifetime.drained_callback(
+                        authority.reservation_id,
+                        release_scope,
+                    ),
                 )
             return InvocationOutcome(output=result)
         except Exception:
@@ -514,6 +562,7 @@ class HostWorkflowAttemptServiceV4:
                     self._controllers[record["dispatch_caller"]].cancel(record["effect_id"])
         record.update(state=final, outcome_digest=outcome_digest)
         self._store.cas(reservation_id, revision, record)
+        self._lifetime.retire_if_terminal(reservation_id)
 
     def revoke(
         self, invocation: HostProviderInvocationContextV4, reservation_id: str, *, reason: str
@@ -522,6 +571,7 @@ class HostWorkflowAttemptServiceV4:
         del reason
         revision, record = self._owned(invocation, reservation_id, control=True)
         if record["state"] in {"succeeded", "failed", "ambiguous", "cancelled", "stale"}:
+            self._lifetime.retire_if_terminal(reservation_id)
             return
         record["state"] = (
             "ambiguous" if record["state"] in {"claimed", "dispatched"} else "cancelled"
@@ -529,6 +579,7 @@ class HostWorkflowAttemptServiceV4:
         if record["effect_id"] is not None:
             self._controllers[record["dispatch_caller"]].cancel(record["effect_id"])
         self._store.cas(reservation_id, revision, record)
+        self._lifetime.retire_if_terminal(reservation_id)
         with self._lock:
             active = self._active.get(reservation_id)
             if active is not None:

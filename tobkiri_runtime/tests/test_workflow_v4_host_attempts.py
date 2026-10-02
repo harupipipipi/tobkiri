@@ -130,6 +130,8 @@ class _Fixture:
         self.authority = _adapter(self.harness)
         self.broker = _broker(self.harness, self.authority, ProviderOutcome({"review": "reached"}))
         self.target = _binding(self.harness)
+        self.retired_contexts: list[Any] = []
+        self.released_scopes: list[bool] = []
         self.bindings = {}
         for operation in (
             "definition.create",
@@ -201,7 +203,10 @@ class _Fixture:
                 ),
             ),
             context_for_attempt=lambda route, invocation, identity: self.context,
-            execution_scope=lambda context, invocation: nullcontext(),
+            execution_scope=lambda context, invocation: nullcontext(
+                lambda: self.released_scopes.append(True)
+            ),
+            retire_context=self.retired_contexts.append,
             presentation_owner_scope=lambda context, principal, session: nullcontext(),
             assert_current_capture=lambda: None,
             state_path=tmp_path / "private" / "attempts.bin",
@@ -328,6 +333,7 @@ def test_real_approval_wait_then_new_invocation_resumes_frozen_request(
             fixture.authority.approve_interactive_approval(
                 replace(command, context=fixture.context)
             )
+        fixture.harness.kernel.assert_interactive_approval_grant(approval_id)
         fresh = _Invocation(fixture)
         fresh.envelope = replace(
             fresh.envelope,
@@ -443,3 +449,47 @@ def test_state_key_permissions_and_journal_tamper_fail_closed(fixture: _Fixture)
 def test_late_bound_port_without_service_stays_unavailable() -> None:
     with pytest.raises(WorkflowDenied, match="unavailable"):
         LateBoundWorkflowAttemptPortV4().inspect(None, "opaque")  # type: ignore[arg-type]
+
+
+def test_terminal_context_retires_once_after_real_broker_drain(fixture: _Fixture) -> None:
+    fixture.call("run.advance", {"run_id": "run.review"})
+    _, record = fixture.service._store.list_attempts()[0]
+    assert record["resources_drained"] is True and record["context_retired"] is True
+    assert len(fixture.retired_contexts) == len(fixture.released_scopes) == 1
+    fixture.service._sweep()
+    assert len(fixture.retired_contexts) == 1
+
+
+def test_pending_context_expiry_retires_without_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _Fixture(tmp_path, monkeypatch, "interactive_only")
+    try:
+        fixture.prepare_run()
+        fixture.call("run.advance", {"run_id": "run.review"})
+        assert fixture.retired_contexts == fixture.released_scopes == []
+        fixture.harness.clock.value += 301
+        fixture.service._sweep()
+        _, record = fixture.service._store.list_attempts()[0]
+        assert record["state"] == "expired" and record["context_retired"] is True
+        assert len(fixture.retired_contexts) == 1
+        assert fixture.harness.store.grant_usage(fixture.harness.grant.grant_id) == (0, 0)
+    finally:
+        fixture.close()
+
+
+def test_active_attempt_capacity_is_atomic_and_includes_failed_cleanup(
+    tmp_path: Path,
+) -> None:
+    store = WorkflowAttemptStoreV4(tmp_path / "private" / "attempts.bin")
+    first = {"idempotency_identity": "first", "state": "ambiguous", "context_retired": False}
+    assert store.insert("first", first, max_active_attempts=1)
+    with pytest.raises(WorkflowDenied, match="capacity"):
+        store.insert("second", {**first, "idempotency_identity": "second"}, max_active_attempts=1)
+    revision, record = store.get("first")
+    record["context_retired"] = True
+    store.cas("first", revision, record)
+    assert store.insert(
+        "second", {**first, "idempotency_identity": "second"}, max_active_attempts=1
+    )

@@ -118,13 +118,20 @@ class WorkflowAttemptStoreV4:
                 raise WorkflowDenied("Workflow attempt reservation is unavailable")
             return row["revision"], row["payload"]
 
-    def insert(self, reservation_id: str, payload: Mapping[str, Any]) -> bool:
+    def insert(
+        self, reservation_id: str, payload: Mapping[str, Any], *, max_active_attempts: int = 64
+    ) -> bool:
         """Reserve exact request identity and prevent a second effect retry."""
         with self._locked():
             document = self._read()
             rows = document["attempts"]
             if reservation_id in rows:
                 return False
+            if (
+                sum(not row["payload"].get("context_retired", False) for row in rows.values())
+                >= max_active_attempts
+            ):
+                raise WorkflowDenied("Workflow active attempt capacity is exhausted")
             for row in rows.values():
                 previous = row["payload"]
                 if previous["idempotency_identity"] == payload["idempotency_identity"] and previous[
