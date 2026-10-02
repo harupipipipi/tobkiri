@@ -17,6 +17,9 @@ from ecosystem.rumi_coding_sandbox_service_pack.runtime.task_container import (
     ContainerTasks,
 )
 from ecosystem.rumi_coding_sandbox_service_pack.runtime.task_state import TaskState
+from ecosystem.rumi_coding_sandbox_service_pack.runtime.task_execution import (
+    GUEST_FILES,
+)
 from tobkiri_protocol.workspace_capsule_v1 import (
     canonical,
     content_digest,
@@ -68,6 +71,11 @@ def reviewed_recipe(context: HostProviderCaptureContextV4) -> dict[str, Any]:
             "read_only_root",
             "max_timeout_seconds",
             "max_work_bytes",
+            "workspace_tmpfs_bytes",
+            "workspace_tmpfs_inodes",
+            "tmp_tmpfs_bytes",
+            "tmp_tmpfs_inodes",
+            "files",
         }
         or recipe["version"] != "tobkiri.workspace-task-recipe.v1"
         or recipe["network"] != "none"
@@ -75,11 +83,43 @@ def reviewed_recipe(context: HostProviderCaptureContextV4) -> dict[str, Any]:
         or recipe["read_only_root"] is not True
         or recipe["max_timeout_seconds"] != 120
         or recipe["max_work_bytes"] != 4 * 1024 * 1024
+        or recipe["workspace_tmpfs_bytes"] != 8 * 1024 * 1024
+        or recipe["workspace_tmpfs_inodes"] != 512
+        or recipe["tmp_tmpfs_bytes"] != 16 * 1024 * 1024
+        or recipe["tmp_tmpfs_inodes"] != 256
     ):
         raise PermissionError("reviewed container task recipe policy is invalid")
     validate_task_image(recipe["image_reference"])
     content_digest(recipe["portable_recipe_digest"])
     return recipe
+
+
+def reviewed_guest_files(
+    context: HostProviderCaptureContextV4, recipe: Mapping[str, Any]
+) -> dict[str, bytes]:
+    """Verify the exact recipe-bound guest bytes from immutable selected Pack data."""
+    files = {
+        file.path: file
+        for record in context.declared_pack_data
+        if record.pack_id == CLOUD_PACK and record.path_prefix == "container/"
+        for file in record.files
+    }
+    declarations = recipe["files"]
+    if (
+        not isinstance(declarations, list)
+        or len(declarations) != len(GUEST_FILES)
+        or {entry.get("path") for entry in declarations} != set(GUEST_FILES)
+    ):
+        raise PermissionError("guest task recipe source set is invalid")
+    result = {}
+    for entry in declarations:
+        if set(entry) != {"path", "digest"} or entry["path"] not in files:
+            raise PermissionError("guest task source is unavailable")
+        file = files[entry["path"]]
+        if entry["digest"] != file.digest or digest(file.content) != file.digest:
+            raise PermissionError("guest task source digest differs")
+        result[file.path] = file.content
+    return result
 
 
 class ContainerTaskHostFactoryV4:
@@ -111,12 +151,14 @@ class ContainerTaskHostFactoryV4:
             or not domain
         ):
             raise PermissionError("workspace task capture identity is invalid")
+        recipe = reviewed_recipe(context)
         tasks = ContainerTasks(
             TaskState(context.user_data_root, context.profile_id),
             profile_id=context.profile_id,
             plan_digest=context.plan_digest,
             security_epoch=context.security_epoch,
-            recipe=reviewed_recipe(context),
+            recipe=recipe,
+            guest_files=reviewed_guest_files(context, recipe),
         )
 
         def invoke(

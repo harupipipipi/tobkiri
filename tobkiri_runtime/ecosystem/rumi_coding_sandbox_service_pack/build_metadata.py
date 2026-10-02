@@ -67,7 +67,14 @@ def build() -> dict[str, Any]:
                 "security": "restricted",
                 "failure": "fail_closed",
                 "isolation": "in_process",
-                "required_capabilities": [item["capability"] for item in providers],
+                "required_capabilities": sorted(
+                    {
+                        effect.removeprefix("capability:")
+                        for item in providers
+                        for effect in item["effect_ceiling"]
+                        if effect.startswith("capability:")
+                    }
+                ),
                 "lifecycle": {"introduced": "1.0.0", "data_owner": pack_id},
             },
             "provenance": provenance,
@@ -100,6 +107,7 @@ def build() -> dict[str, Any]:
                         "id": item["operation_id"],
                         "entrypoint_id": item["operation_id"].split(".")[-1],
                         "implementation_digest": implementation,
+                        "effect_ceiling": item["effect_ceiling"],
                     }
                     for item in providers
                 ],
@@ -219,6 +227,7 @@ def build() -> dict[str, Any]:
     integration = {
         "schema": "tobkiri.pack-integration-input.v1",
         "pack_catalog_record": {
+            "functions": manifest["functions"],
             "pack_id": pack_id,
             "authority": "v4-authoritative",
             "display_name": source["display_name"],
@@ -242,9 +251,7 @@ def build() -> dict[str, Any]:
                 "source_format": "pack.v4.json",
             },
         },
-        "semantic_source_entry": {
-            "entries": [*compatibility["semantic_entries"], *semantic]
-        },
+        "semantic_source_entry": {"entries": semantic},
         "effect_reviews": source["providers"],
         "host_factory": {
             "module": source["runtime_module"],

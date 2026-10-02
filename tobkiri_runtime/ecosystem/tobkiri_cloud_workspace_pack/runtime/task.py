@@ -129,6 +129,8 @@ class WorkspaceTasks:
         request = task["request"]
         if (
             plan["request_digest"] != digest(canonical(request))
+            or plan["expected_revision"] != revision
+            or plan["expected_writer_epoch"] != epoch
             or any(plan[key] != value for key, value in request.items())
             or plan["task_id"] != task["task_id"]
             or plan["plan_digest"] != workspace.plan_digest
@@ -155,6 +157,12 @@ class WorkspaceTasks:
             != result["receipt"]["output_checkpoint_digest"]
         ):
             raise PermissionError("workspace task result capsule differs")
+
+        def writer_guard() -> None:
+            workspace.guard()
+            store.assert_writer(workspace_id, revision, epoch, workspace.actor)
+
+        writer_guard()
         return store.publish(
             manifest,
             blobs,
@@ -163,7 +171,7 @@ class WorkspaceTasks:
             actor=workspace.actor,
             request_id=workspace.request_id,
             fingerprint=fingerprint,
-            guard=workspace.guard,
+            guard=writer_guard,
         )
 
     def _resource(self, operation: str, task_id: str | None = None) -> dict[str, Any]:

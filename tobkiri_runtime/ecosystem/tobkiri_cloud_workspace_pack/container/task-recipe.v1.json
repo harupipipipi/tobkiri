@@ -6,5 +6,23 @@
   "nonroot": true,
   "read_only_root": true,
   "max_timeout_seconds": 120,
-  "max_work_bytes": 4194304
+  "max_work_bytes": 4194304,
+  "workspace_tmpfs_bytes": 8388608,
+  "workspace_tmpfs_inodes": 512,
+  "tmp_tmpfs_bytes": 16777216,
+  "tmp_tmpfs_inodes": 256,
+  "files": [
+    {
+      "path": "container/task_runner.py",
+      "digest": "sha256:dc7b2b4ece00de7cae00789ead5ead3dfb7092f63c75d001f025d11abab736e7"
+    },
+    {
+      "path": "container/workspace_capsule_v1.py",
+      "digest": "sha256:27ac7545ce0ad483b7d0847a60c3b70d600f5bad2499d9beb502f0a81e34163a"
+    },
+    {
+      "path": "container/workspace_tree_v1.py",
+      "digest": "sha256:d4f2727e1d8485d020c4d52071d881ffa6c99e6b0dce97d8279eb5d6fc6ea6de"
+    }
+  ]
 }

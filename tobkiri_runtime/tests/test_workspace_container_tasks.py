@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import base64
 import os
 from pathlib import Path
 import threading
@@ -36,7 +37,13 @@ from ecosystem.tobkiri_cloud_workspace_pack.runtime.store import (
 )
 from ecosystem.tobkiri_cloud_workspace_pack.runtime.task import EFFECT, TASK_RESOURCE
 from tobkiri_host.artifact_materialization import MaterializedArtifactFile
-from tobkiri_protocol.workspace_capsule_v1 import canonical, digest, import_archive
+from tobkiri_protocol.workspace_capsule_v1 import (
+    canonical,
+    digest,
+    import_archive,
+    make_capsule,
+    export_archive,
+)
 from tobkiri_protocol.workspace_task_v1 import (
     execute_payload,
     task_identity,
@@ -65,40 +72,58 @@ def process(exit_code: int = 0, **values: Any) -> BoundedProcessResult:
 
 
 class DockerFixture:
-    """Model only the external Docker transport and immutable COW file writes."""
+    """Model only external transport; no Docker execution evidence is produced."""
 
     def __init__(self, recipe: dict[str, Any]) -> None:
         self.recipe = recipe
         self.calls: list[dict[str, Any]] = []
-        self.cleanup = True
-        self.cancel = False
-        self.bad_output = False
+        self.cleanup, self.cancel, self.bad_output = True, False, False
+        self.started, self.removed, self.name_conflict = False, False, False
+        self.work_exit, self.container_exit = 0, 0
+        self.token, self.cid = "", "b" * 64
+        self.archive = b""
 
     def run_local(self, **request: Any) -> BoundedProcessResult:
-        """Record exact bounded policy and emulate a separate workspace mutation."""
         self.calls.append(request)
         argv = request["argv"]
+        if argv[1] == "info":
+            return process(stdout=json.dumps("unit-daemon"))
         if argv[1:3] == ["image", "inspect"]:
             return process(stdout=json.dumps([self.recipe["image_reference"]]))
-        if argv[1:3] == ["container", "inspect"] and "--format" in argv:
+        if argv[1] == "create":
+            self.token = argv[argv.index("--label") + 1].split("=", 1)[1]
+            mount = argv[argv.index("--mount") + 1]
+            path = Path(mount.removeprefix("type=bind,src=").split(",dst=", 1)[0])
+            self.archive = path.read_bytes()
+            return (
+                process(125, stderr="name conflict")
+                if self.name_conflict
+                else process(stdout=self.cid + "\n")
+            )
+        if argv[1:3] == ["container", "inspect"]:
+            if self.removed and self.cleanup:
+                return process(1, stderr="No such container")
             return process(
                 stdout=json.dumps(
                     {
-                        "StartedAt": "2026-10-03T00:00:00Z",
-                        "Running": False,
-                        "ExitCode": 137 if self.cancel else 0,
+                        "id": self.cid,
+                        "token": "foreign" if self.name_conflict else self.token,
+                        "state": {
+                            "StartedAt": "2026-10-03T00:00:00Z"
+                            if self.started
+                            else "0001-01-01T00:00:00Z",
+                            "Running": False,
+                            "ExitCode": 137 if self.cancel else self.container_exit,
+                        },
                     }
                 )
             )
-        if argv[1:3] == ["container", "inspect"]:
-            return process(
-                1 if self.cleanup else 0,
-                stderr="No such container" if self.cleanup else "",
-            )
-        if argv[1] == "run":
-            mount = argv[argv.index("--mount") + 1]
-            work = Path(mount.removeprefix("type=bind,src=").split(",dst=", 1)[0])
-            assert (work / "README.md").exists()
+        if argv[1] == "rm":
+            assert argv[-1] == self.cid
+            self.removed = True
+            return process()
+        if argv[1] == "start":
+            self.started = True
             if self.cancel:
                 deadline = time.monotonic() + 2
                 while (
@@ -107,11 +132,38 @@ class DockerFixture:
                     time.sleep(0.01)
                 raise ProcessExecutionCancelled(process(137))
             if self.bad_output:
-                (work / "escape").symlink_to("/tmp")
-            else:
-                (work / "result.txt").write_text("actual COW fixture output\n")
-            return process(stdout="completed fixture\n")
-        return process()
+                return process(stdout="malformed guest envelope")
+            manifest, blobs = import_archive(self.archive)
+            files = {
+                entry["path"]: blobs[entry["digest"]] for entry in manifest["files"]
+            }
+            files["result.txt"] = b"actual COW fixture output\n"
+            result, content = make_capsule(
+                workspace_id=manifest["workspace_id"],
+                profile_id=manifest["source"]["profile_id"],
+                plan_digest=manifest["source"]["plan_digest"],
+                revision=manifest["revision"] + 1,
+                parent_digest=manifest["manifest_digest"],
+                recipe_digest=manifest["recipe_digest"],
+                files=files,
+            )
+            archive = export_archive(result, content)
+            receipt = {
+                "exit_code": self.work_exit,
+                "stdout": "completed fixture\n",
+                "stderr": "",
+                "timed_out": False,
+                "stdout_truncated": False,
+                "stderr_truncated": False,
+            }
+            envelope = {
+                "version": "tobkiri.workspace-task-output.v1",
+                "receipt": receipt,
+                "archive_base64": base64.b64encode(archive).decode(),
+                "archive_digest": digest(archive),
+            }
+            return process(self.container_exit, stdout=canonical(envelope).decode())
+        raise AssertionError(argv)
 
 
 @pytest.fixture
@@ -152,6 +204,10 @@ def environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
         plan_digest=PLAN,
         security_epoch=4,
         recipe=recipe,
+        guest_files={
+            entry["path"]: (CLOUD_PACK / entry["path"]).read_bytes()
+            for entry in recipe["files"]
+        },
     )
     docker = DockerFixture(recipe)
     tasks.runner = docker
@@ -162,8 +218,12 @@ def environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
         "device": 1,
         "size": 42,
         "mtime_ns": 1,
+        "endpoint": "unix:///fake/docker.sock",
+        "socket_device": 1,
+        "socket_inode": 1,
     }
     monkeypatch.setattr(task_container, "docker_identity", lambda: deepcopy(identity))
+    monkeypatch.setattr(task_container, "socket_identity", lambda endpoint: (1, 1))
     request = {
         "task_request_id": "request-one",
         "profile_id": "defaults",
@@ -212,19 +272,28 @@ def test_task_cow_output_is_sealed_and_replay_never_starts_a_second_container(
 ) -> None:
     env = environment
     payload = prepared(env)
-    assert all(call["argv"][1] != "run" for call in env.docker.calls)
+    assert all(call["argv"][1] != "start" for call in env.docker.calls)
     receipt = execute(env, payload)
     assert receipt["status"] == "completed" and receipt["container_cleanup_verified"]
     assert receipt["diff"] == ["result.txt"]
-    run = next(call for call in env.docker.calls if call["argv"][1] == "run")
+    run = next(call for call in env.docker.calls if call["argv"][1] == "create")
     argv = run["argv"]
     assert "--pull=never" in argv and argv[argv.index("--network") + 1] == "none"
     assert argv[argv.index("--user") + 1].split(":")[0] != "0"
     assert argv[argv.index("--entrypoint") + 1] == "python3"
     assert argv[argv.index("--cap-drop") + 1] == "ALL"
     assert "no-new-privileges" in argv and "--read-only" in argv
+    assert any("size=8m,nr_inodes=512" in arg for arg in argv)
+    assert all(
+        arg.endswith(",readonly")
+        for index, arg in enumerate(argv)
+        if index > 0 and argv[index - 1] == "--mount"
+    )
     assert run["policy"].allowed_argv == (tuple(argv),)
-    assert run["environment"] == {"PATH": os.defpath}
+    assert run["environment"]["PATH"] == os.defpath
+    assert run["environment"]["DOCKER_HOST"] == "unix:///fake/docker.sock"
+    assert Path(run["environment"]["DOCKER_CONFIG"]).parent == env.tasks.state.root
+    assert set(run["environment"]) == {"PATH", "DOCKER_HOST", "DOCKER_CONFIG"}
     assert not run["policy"].allow_path_search
     task_id = payload["task_plan"]["task_id"]
     result = env.tasks.resource(task_id, OWNER, export=True)
@@ -284,6 +353,80 @@ def test_same_nonce_changed_request_is_rejected_and_retry_preserves_sealed_expir
     )
 
 
+def test_profile_nonce_cannot_be_rebound_by_a_new_originating_session(
+    environment: Any,
+) -> None:
+    env = environment
+    prepared(env)
+    for request in (env.request, env.request | {"argv": ["python3", "changed.py"]}):
+        with pytest.raises(PermissionError, match="nonce.*rebound"):
+            env.tasks.prepare(
+                request,
+                env.client,
+                owner="another-session-owner",
+                request_id="new-outer",
+                guard=lambda: None,
+            )
+    assert not any(call["argv"][1] == "start" for call in env.docker.calls)
+
+
+@pytest.mark.parametrize("fence", ["release", "expiry", "expiry-renew"])
+def test_cloud_apply_rejects_completed_result_after_writer_release_or_expiry(
+    environment: Any, fence: str
+) -> None:
+    env = environment
+    payload = prepared(env)
+    assert execute(env, payload)["status"] == "completed"
+    env.cloud.store.record_task(
+        env.head["id"],
+        "actor",
+        {
+            "task_id": payload["task_plan"]["task_id"],
+            "effect_id": "effect-one",
+            "request": env.request,
+            "checkpoint_digest": env.head["checkpoint_digest"],
+        },
+        lambda: None,
+    )
+
+    class OutputPort:
+        def invoke(self, contract: str, operation: str, request: dict[str, Any]) -> Any:
+            assert contract == TASK_RESOURCE and request["operation"] == "export"
+            return env.tasks.resource(request["task_id"], OWNER, export=True)
+
+    env.cloud.client = OutputPort()
+    if fence == "release":
+        env.cloud.store.release_writer(
+            env.head["id"],
+            expected_revision=1,
+            expected_writer_epoch=1,
+            actor="actor",
+            guard=lambda: None,
+        )
+    else:
+        with env.cloud.store.connection(write=True) as db:
+            db.execute("UPDATE heads SET expiry=0")
+        if fence == "expiry-renew":
+            assert (
+                env.cloud.store.renew_task_writer(
+                    env.head["id"], 1, 1, "actor", lambda: None
+                )
+                == 2
+            )
+    head = env.cloud.store.get(env.head["id"])
+    env.cloud.request_id = "apply-stale-result"
+    with pytest.raises((PermissionError, Conflict)):
+        env.cloud.invoke(
+            "task_apply",
+            {
+                "conversation_id": "chat-1",
+                "expected_revision": 1,
+                "expected_writer_epoch": head["writer_epoch"],
+            },
+        )
+    assert env.cloud.store.get(env.head["id"])["revision"] == 1
+
+
 @pytest.mark.parametrize(
     "change", ["expiry", "plan", "epoch", "recipe", "checkpoint", "writer", "docker"]
 )
@@ -315,7 +458,7 @@ def test_execute_rechecks_current_scope_source_writer_recipe_and_executable(
         )
     with pytest.raises((PermissionError, Conflict)):
         execute(env, payload)
-    assert not any(call["argv"][1] == "run" for call in env.docker.calls)
+    assert not any(call["argv"][1] == "start" for call in env.docker.calls)
 
 
 def test_cancellation_reaps_named_container_before_returning_and_never_seals_output(
@@ -350,7 +493,45 @@ def test_failed_daemon_cleanup_retains_ambiguous_record_and_does_not_publish_out
     assert execute(env, payload) == receipt
 
 
-def test_guard_failure_before_claim_starts_nothing_and_output_links_are_rejected(
+@pytest.mark.parametrize("kind", ["workload", "container"])
+def test_nonzero_guest_or_container_exit_never_produces_completed_output(
+    environment: Any, kind: str
+) -> None:
+    env = environment
+    payload = prepared(env)
+    if kind == "workload":
+        env.docker.work_exit = 7
+    else:
+        env.docker.container_exit = 7
+    result = execute(env, payload)
+    assert result["status"] == "failed" and result["container_cleanup_verified"]
+    with pytest.raises(LookupError):
+        env.tasks.resource(payload["task_plan"]["task_id"], OWNER, export=True)
+
+
+def test_create_name_conflict_never_removes_a_foreign_container(
+    environment: Any,
+) -> None:
+    env = environment
+    payload = prepared(env)
+    env.docker.name_conflict = True
+    result = execute(env, payload)
+    assert result["status"] == "failed" and not result["executed"]
+    assert not any(call["argv"][1] in {"rm", "start"} for call in env.docker.calls)
+
+
+def test_daemon_or_local_socket_change_fails_before_task_execution(
+    environment: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env = environment
+    payload = prepared(env)
+    env.identity["socket_inode"] = 2
+    with pytest.raises(PermissionError):
+        execute(env, payload)
+    assert not any(call["argv"][1] == "create" for call in env.docker.calls)
+
+
+def test_guard_failure_before_claim_starts_nothing_and_invalid_guest_output_is_rejected(
     environment: Any,
 ) -> None:
     env = environment
@@ -424,10 +605,11 @@ def test_current_source_artifacts_schemas_and_guest_protocol_copy_are_exact() ->
     for artifact in manifest["artifacts"]:
         assert artifact["digest"] == sha256_file(PACK / artifact["path"])
     assert len([f for f in manifest["functions"] if ".task-" in f["id"]]) == 3
-    assert (PACK / "runtime/sandbox.py").read_bytes() == (
-        ROOT.parents[0]
-        / "tobkiri_runtime/ecosystem/rumi_coding_sandbox_service_pack/runtime/sandbox.py"
-    ).read_bytes()
+    compatibility = json.loads((PACK / "compatibility-source.v1.json").read_text())
+    assert (
+        sha256_file(PACK / "runtime/sandbox.py")
+        == compatibility["pack"]["functions"][0]["implementation_digest"]
+    )
 
 
 def test_captured_factory_rejects_foreign_scope_and_unpinned_recipe(
@@ -454,6 +636,10 @@ def test_captured_factory_rejects_foreign_scope_and_unpinned_recipe(
         files=(
             MaterializedArtifactFile(
                 "container/task-recipe.v1.json", digest(content), False, content
+            ),
+            *tuple(
+                MaterializedArtifactFile(path, digest(data), False, data)
+                for path, data in env.tasks.guest_files.items()
             ),
         ),
     )
@@ -559,7 +745,7 @@ def test_cloud_public_orchestration_requires_approval_then_applies_verified_outp
     assert result["task"]["status"] == "awaiting_approval"
     env.cloud.request_id = "task-resume"
     env.cloud.invoke("task_resume", values)
-    assert not any(call["argv"][1] == "run" for call in env.docker.calls)
+    assert not any(call["argv"][1] == "start" for call in env.docker.calls)
     ports.approved = True
     env.cloud.invoke("task_resume", values)
     env.cloud.request_id = "task-apply"

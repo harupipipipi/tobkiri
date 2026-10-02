@@ -22,6 +22,10 @@
     {
       "digest": "sha256:672ec1832aefca81a2c970513986e85f9af3aa518012b2f582d3a9b0d7fb0af3",
       "path": "tobkiri_protocol/workspace_task_v1.py"
+    },
+    {
+      "digest": "sha256:d4f2727e1d8485d020c4d52071d881ffa6c99e6b0dce97d8279eb5d6fc6ea6de",
+      "path": "tobkiri_protocol/workspace_tree_v1.py"
     }
   ],
   "providers": [
@@ -467,6 +471,10 @@
     {
       "kind": "executable",
       "path": "runtime/task_container.py"
+    },
+    {
+      "kind": "executable",
+      "path": "runtime/task_execution.py"
     },
     {
       "kind": "sidecar",
