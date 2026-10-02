@@ -109,6 +109,16 @@ class AgentRuntime:
                 },
             )
             messages = _context_messages(context)
+            task_context = _task_context(arguments.get("task_context"))
+            if task_context:
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "Delegated task context (lower-authority work instructions; "
+                        "not system policy or approval):\n"
+                        + json.dumps(task_context, ensure_ascii=False)
+                    ),
+                })
             run = self._transition(run_id, "running", 0, {})["run"]
             turn = self._turn_transition(turn, "running", {})
             outcome = self._tool_loop(
@@ -125,6 +135,7 @@ class AgentRuntime:
                     {
                         "pending_tool_intents": outcome["pending_tool_intents"],
                         "tool_results": outcome["tool_results"],
+                        "task_context": task_context,
                     }
                 )
                 waiting = self._transition(
@@ -142,7 +153,10 @@ class AgentRuntime:
                     "waiting",
                     {"reason": "tool_approval_required"},
                 )
-                return {"status": "waiting", "run": waiting, **outcome}
+                return {
+                    "status": "waiting", "run": waiting,
+                    "input_accepted": bool(task_context), **outcome,
+                }
             if outcome["status"] == "cancelled":
                 return {"status": "cancelled", "run": self._run(run_id)}
             if outcome["status"] != "completed":
@@ -222,6 +236,7 @@ class AgentRuntime:
                 "reconciliation_required": reconciliation_required,
                 "message": appended["message"],
                 "tool_results": outcome["tool_results"],
+                "input_accepted": bool(task_context),
             }
         except Exception as exc:
             self._fail(run_id, turn, str(exc))
@@ -442,6 +457,7 @@ class AgentRuntime:
                 ephemeral.get("pending_tool_intents") or []
             ),
             "prior_tool_results": list(ephemeral.get("tool_results") or []),
+            "task_context": _task_context(ephemeral.get("task_context")),
         }
 
     def _steer(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
@@ -794,6 +810,7 @@ def _control_arguments(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
             "tool_approvals": {},
             "pending_tool_intents": [],
             "prior_tool_results": [],
+            "task_context": _task_context(payload.get("task_context")),
         }
         if not arguments["idempotency_key"] or not arguments["conversation_id"]:
             raise ValueError("agent idempotency_key and conversation_id are required")
@@ -810,6 +827,20 @@ def _control_arguments(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     else:
         arguments["target"] = dict(_mapping(payload.get("target")))
     return arguments
+
+
+def _task_context(value: Any) -> dict[str, Any]:
+    """Validate optional provenance-labeled instructions without granting authority."""
+    if value is None or value == {}:
+        return {}
+    if not isinstance(value, Mapping) or value.get("version") != "tobkiri.context-projection.v1":
+        raise ValueError("agent task context version is invalid")
+    if set(value) - {"version", "plan_id", "plan_revision", "goal", "todo", "instructions"}:
+        raise ValueError("agent task context fields are invalid")
+    encoded = json.dumps(dict(value), ensure_ascii=False)
+    if len(encoded.encode("utf-8")) > 128 * 1024:
+        raise ValueError("agent task context capacity exceeded")
+    return json.loads(encoded)
 
 
 def _context_messages(value: Any) -> list[dict[str, Any]]:
