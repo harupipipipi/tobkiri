@@ -26,7 +26,10 @@ from ecosystem.tobkiri_cloud_workspace_pack.runtime.service import (
     WORKSPACE,
     CloudWorkspace,
 )
-from ecosystem.tobkiri_cloud_workspace_pack.runtime.store import Conflict, WorkspaceStore
+from ecosystem.tobkiri_cloud_workspace_pack.runtime.store import (
+    Conflict,
+    WorkspaceStore,
+)
 from tobkiri_protocol.provenance import sha256_file
 from tobkiri_protocol.validation import validate_document
 
@@ -46,8 +49,12 @@ def sealed(revision: int = 1, parent: str = "", **files: bytes) -> Any:
     )
 
 
-def test_capsule_export_is_deterministic_and_restores_exact_bytes(tmp_path: Path) -> None:
-    manifest, blobs = sealed(**{"src/main.py": b"print('hello')\n", "data.bin": b"\0\xff"})
+def test_capsule_export_is_deterministic_and_restores_exact_bytes(
+    tmp_path: Path,
+) -> None:
+    manifest, blobs = sealed(
+        **{"src/main.py": b"print('hello')\n", "data.bin": b"\0\xff"}
+    )
     archive = capsule.export_archive(manifest, blobs)
     assert archive == capsule.export_archive(manifest, blobs)
     assert capsule.import_archive(archive) == (manifest, blobs)
@@ -89,6 +96,7 @@ def test_capsule_export_is_deterministic_and_restores_exact_bytes(tmp_path: Path
         "leases/active",
         "user_data/x",
         "cert.pem",
+        "capsule-manifest.json",
         "NUL.txt",
         "a\x00b",
     ],
@@ -158,6 +166,10 @@ def publish(store: WorkspaceStore, manifest: Any, blobs: Any, **kwargs: Any) -> 
         manifest,
         blobs,
         expected_revision=manifest["revision"] - 1,
+        expected_writer_epoch=kwargs.get(
+            "expected_writer_epoch",
+            (store.get(manifest["workspace_id"]) or {}).get("writer_epoch", 0),
+        ),
         actor=kwargs.get("actor", "writer-a"),
         request_id=kwargs.get("request_id", "r1"),
         fingerprint=kwargs.get("fingerprint", "one"),
@@ -180,10 +192,30 @@ def test_local_checkpoint_cas_replay_fencing_and_release(tmp_path: Path) -> None
     next_manifest, next_blobs = sealed(2, manifest["manifest_digest"])
     with pytest.raises(Conflict, match="another"):
         publish(store, next_manifest, next_blobs, actor="writer-b", request_id="r2")
-    store.release_writer("work-1", expected_revision=1, actor="writer-a", guard=lambda: None)
+    store.release_writer(
+        "work-1",
+        expected_revision=1,
+        expected_writer_epoch=1,
+        actor="writer-a",
+        guard=lambda: None,
+    )
+    with pytest.raises(Conflict, match="epoch"):
+        publish(
+            store,
+            next_manifest,
+            next_blobs,
+            request_id="stale-writer",
+            expected_writer_epoch=1,
+        )
     publish(store, next_manifest, next_blobs, actor="writer-b", request_id="r2")
     with pytest.raises(Conflict, match="current"):
-        store.release_writer("work-1", expected_revision=2, actor="writer-a", guard=lambda: None)
+        store.release_writer(
+            "work-1",
+            expected_revision=2,
+            expected_writer_epoch=3,
+            actor="writer-a",
+            guard=lambda: None,
+        )
     with store.connection() as connection:
         assert connection.execute("SELECT fence FROM heads").fetchone()[0] == 3
     assert WorkspaceStore(tmp_path, "other").get("work-1") is None
@@ -214,14 +246,21 @@ def test_local_writer_expiry_and_guard_failure_roll_back(tmp_path: Path) -> None
     assert store.get("work-1")["revision"] == 1
     assert store.replay("r2", "one") is None
     assert (
-        publish(store, successor, contents, actor="writer-b", request_id="r2", now_ms=120_101)[
-            "revision"
-        ]
+        publish(
+            store,
+            successor,
+            contents,
+            actor="writer-b",
+            request_id="r2",
+            now_ms=120_101,
+        )["revision"]
         == 2
     )
 
 
-def test_restore_never_takes_a_host_path_or_overwrites_existing_copy(tmp_path: Path) -> None:
+def test_restore_never_takes_a_host_path_or_overwrites_existing_copy(
+    tmp_path: Path,
+) -> None:
     store = WorkspaceStore(tmp_path, "defaults")
     manifest, blobs = sealed()
     publish(store, manifest, blobs)
@@ -254,7 +293,11 @@ class PublicFiles:
                 "revision": 2 if self.changed and count == 2 else 1,
                 "selected_workspace_id": "host-work",
                 "mounts": [
-                    {"id": "host-work", "mount_revision": 1, "root_path": "/private/host/root"}
+                    {
+                        "id": "host-work",
+                        "mount_revision": 1,
+                        "root_path": "/private/host/root",
+                    }
                 ],
             }
         assert contract == INSPECT and payload["require_selected"] is True
@@ -274,12 +317,24 @@ def test_public_selected_capture_exports_work_without_host_path(tmp_path: Path) 
     client = PublicFiles()
     store = WorkspaceStore(tmp_path, "defaults")
     service = CloudWorkspace(
-        store, client, plan_digest=PLAN, actor="actor", request_id="capture", guard=lambda: None
+        store,
+        client,
+        plan_digest=PLAN,
+        actor="actor",
+        request_id="capture",
+        guard=lambda: None,
     )
-    values = {"conversation_id": "chat-1", "expected_revision": 0, "paths": "src/main.py"}
+    values = {
+        "conversation_id": "chat-1",
+        "expected_revision": 0,
+        "expected_writer_epoch": 0,
+        "paths": "src/main.py",
+    }
     result = service.invoke("capture", values)
     exported = service.export(result["id"], 1)
-    manifest, blobs = capsule.import_archive(base64.b64decode(exported["archive_base64"]))
+    manifest, blobs = capsule.import_archive(
+        base64.b64decode(exported["archive_base64"])
+    )
     assert list(blobs.values()) == [b"captured"]
     assert b"/private/host/root" not in capsule.canonical(manifest)
     assert service.snapshot("chat-1")["container"]["started"] is False
@@ -291,9 +346,19 @@ def test_capture_mount_change_or_secret_path_publishes_nothing(tmp_path: Path) -
     client.changed = True
     store = WorkspaceStore(tmp_path, "defaults")
     service = CloudWorkspace(
-        store, client, plan_digest=PLAN, actor="actor", request_id="capture", guard=lambda: None
+        store,
+        client,
+        plan_digest=PLAN,
+        actor="actor",
+        request_id="capture",
+        guard=lambda: None,
     )
-    values = {"conversation_id": "chat-1", "expected_revision": 0, "paths": "main.py"}
+    values = {
+        "conversation_id": "chat-1",
+        "expected_revision": 0,
+        "expected_writer_epoch": 0,
+        "paths": "main.py",
+    }
     with pytest.raises(Conflict, match="changed"):
         service.invoke("capture", values)
     assert store.list() == []
@@ -301,7 +366,9 @@ def test_capture_mount_change_or_secret_path_publishes_nothing(tmp_path: Path) -
         service.invoke("capture", values | {"paths": ".env"})
 
 
-def test_import_rebinds_local_profile_and_handoff_never_starts_remote(tmp_path: Path) -> None:
+def test_import_rebinds_local_profile_and_handoff_never_starts_remote(
+    tmp_path: Path,
+) -> None:
     manifest, blobs = sealed()
     raw = base64.b64encode(capsule.export_archive(manifest, blobs)).decode()
     store = WorkspaceStore(tmp_path, "another-profile")
@@ -314,14 +381,25 @@ def test_import_rebinds_local_profile_and_handoff_never_starts_remote(tmp_path: 
         guard=lambda: None,
     )
     result = service.invoke(
-        "import", {"conversation_id": "chat-1", "expected_revision": 0, "archive_base64": raw}
+        "import",
+        {
+            "conversation_id": "chat-1",
+            "expected_revision": 0,
+            "expected_writer_epoch": 0,
+            "archive_base64": raw,
+        },
     )
     assert result["source_profile_id"] == "another-profile"
     assert result["source_plan_digest"] != PLAN
     service.request_id = "handoff"
     offer = service.invoke(
         "prepare_handoff",
-        {"conversation_id": "chat-1", "expected_revision": 1, "expected_receiver_head": ""},
+        {
+            "conversation_id": "chat-1",
+            "expected_revision": 1,
+            "expected_writer_epoch": 1,
+            "expected_receiver_head": "",
+        },
     )
     assert offer["remote_execution"] == "unavailable"
     assert "lease" not in offer and "actor" not in offer
@@ -337,7 +415,10 @@ def test_v4_source_and_ui_bytes_are_current_and_schema_valid() -> None:
     manifest = json.loads((PACK / "pack.v4.json").read_text())
     for artifact in manifest["artifacts"]:
         assert artifact["digest"] == sha256_file(PACK / artifact["path"])
-    assert manifest["requirements"]["network"] == {"allowed_domains": [], "allowed_ports": []}
+    assert manifest["requirements"]["network"] == {
+        "allowed_domains": [],
+        "allowed_ports": [],
+    }
     assert manifest["requirements"]["secrets"] == []
     slots = []
     for path in (PACK / "frontend/contributions").glob("*.json"):
@@ -347,10 +428,14 @@ def test_v4_source_and_ui_bytes_are_current_and_schema_valid() -> None:
     assert sorted(slots) == ["composer_above", "workspace_tab"]
 
 
-def test_host_factory_fails_closed_on_foreign_scope_and_authority_fields(tmp_path: Path) -> None:
+def test_host_factory_fails_closed_on_foreign_scope_and_authority_fields(
+    tmp_path: Path,
+) -> None:
     factory = CloudWorkspaceHostFactoryV4("manage")
     binding = SimpleNamespace(
-        function=SimpleNamespace(function_id=factory.function_id, implementation_digest=PLAN),
+        function=SimpleNamespace(
+            function_id=factory.function_id, implementation_digest=PLAN
+        ),
         operation=SimpleNamespace(
             contract_id=factory.contract_id,
             operation_id=factory.operation_id,
@@ -383,12 +468,21 @@ def test_host_factory_fails_closed_on_foreign_scope_and_authority_fields(tmp_pat
         presentation_owner_principal_id="actor",
         contract_client=lambda **kw: None,
     )
-    request = {"operation": "initialize", "conversation_id": "chat-1", "expected_revision": 0}
+    request = {
+        "operation": "initialize",
+        "conversation_id": "chat-1",
+        "expected_revision": 0,
+        "expected_writer_epoch": 0,
+    }
     with pytest.raises(PermissionError, match="fields"):
-        contribution.invoke(factory.operation_id, request | {"approved": True}, invocation)
+        contribution.invoke(
+            factory.operation_id, request | {"approved": True}, invocation
+        )
     captured.plan_digest = "sha256:" + "b" * 64
     with pytest.raises(PermissionError, match="scope"):
         contribution.invoke(factory.operation_id, request, invocation)
     assert not (tmp_path / "packs").exists()
     captured.plan_digest = PLAN
-    assert contribution.invoke(factory.operation_id, request, invocation)["revision"] == 1
+    assert (
+        contribution.invoke(factory.operation_id, request, invocation)["revision"] == 1
+    )

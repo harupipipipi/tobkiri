@@ -52,7 +52,9 @@ def build() -> dict[str, Any]:
                     "idempotency": {"mode": "none"},
                 }
             ],
-            "schema_catalog": {canonical_digest(value): value for value in schemas.values()},
+            "schema_catalog": {
+                canonical_digest(value): value for value in schemas.values()
+            },
             "provider_semantics": {
                 "provider_id": function,
                 "cardinality": "one",
@@ -149,7 +151,11 @@ def build() -> dict[str, Any]:
             }
         )
     assets = [
-        {"path": item["path"], "digest": sha256_file(PACK / item["path"]), "kind": item["kind"]}
+        {
+            "path": item["path"],
+            "digest": sha256_file(PACK / item["path"]),
+            "kind": item["kind"],
+        }
         for item in source["runtime_artifacts"]
     ]
     requirements = {
@@ -283,4 +289,6 @@ def build() -> dict[str, Any]:
 
 if __name__ == "__main__":
     for filename, document in build().items():
-        (PACK / filename).write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n")
+        (PACK / filename).write_text(
+            json.dumps(document, ensure_ascii=False, indent=2) + "\n"
+        )

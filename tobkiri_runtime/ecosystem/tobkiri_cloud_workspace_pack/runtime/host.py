@@ -30,11 +30,26 @@ FIELDS = {
         "verify": {"workspace_id", "expected_revision"},
     },
     "manage": {
-        "initialize": {"conversation_id", "expected_revision"},
-        "capture": {"conversation_id", "expected_revision", "paths"},
-        "import": {"conversation_id", "expected_revision", "archive_base64"},
-        "restore": {"conversation_id", "expected_revision"},
-        "prepare_handoff": {"conversation_id", "expected_revision", "expected_receiver_head"},
+        "initialize": {"conversation_id", "expected_revision", "expected_writer_epoch"},
+        "capture": {
+            "conversation_id",
+            "expected_revision",
+            "expected_writer_epoch",
+            "paths",
+        },
+        "import": {
+            "conversation_id",
+            "expected_revision",
+            "expected_writer_epoch",
+            "archive_base64",
+        },
+        "restore": {"conversation_id", "expected_revision", "expected_writer_epoch"},
+        "prepare_handoff": {
+            "conversation_id",
+            "expected_revision",
+            "expected_writer_epoch",
+            "expected_receiver_head",
+        },
     },
 }
 
@@ -113,7 +128,9 @@ class CloudWorkspaceHostFactoryV4:
             if self.kind == "resource":
                 if action == "get_for_conversation":
                     return service.snapshot(values["conversation_id"])
-                return getattr(service, action)(values["workspace_id"], values["expected_revision"])
+                return getattr(service, action)(
+                    values["workspace_id"], values["expected_revision"]
+                )
             return service.invoke(action, values)
 
         return CapturedHostProviderV4(

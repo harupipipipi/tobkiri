@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "tobkiri_cloud_workspace_pack",
-  "source_identity": "sha256:52d3563a461adf581613241cd096899034ac2dcbe5265327f90b8a639b82438e",
+  "source_identity": "sha256:a76668949060e273f85baa07d5e4228d51a24b0acc35891db1fb860bbb37afa6",
   "variants": [
     {
       "variant_id": "tobkiri_cloud_workspace_pack.resource.python",
       "function_id": "tobkiri_cloud_workspace_pack.resource",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:1bcb7281ccbeb22f1e2e12a81e974a22f03d407eda0dd9e4be128e16462e7e97",
+      "implementation_digest": "sha256:3ebfb5695037c2a7cff6c15cc2f92aeee2f3ea6bf605564e9cc6d29d7384cc28",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -19,7 +19,7 @@
         {
           "contract_id": "tobkiri.resource.cloud.workspace.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:7dec2dbf79d4cc694a7e991593b0a059738593a84274fcb91c6d41e19ca47b67",
+          "revision_digest": "sha256:44e0ae110234928834d2cd089c857b769a5fbd1d47e039f5873a75b180e165b1",
           "operation_id": "tobkiri_cloud_workspace_pack.workspace-resource",
           "input_schema": {
             "type": "object",
@@ -112,7 +112,7 @@
       "variant_id": "tobkiri_cloud_workspace_pack.manage.python",
       "function_id": "tobkiri_cloud_workspace_pack.manage",
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:1bcb7281ccbeb22f1e2e12a81e974a22f03d407eda0dd9e4be128e16462e7e97",
+      "implementation_digest": "sha256:3ebfb5695037c2a7cff6c15cc2f92aeee2f3ea6bf605564e9cc6d29d7384cc28",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -124,7 +124,7 @@
         {
           "contract_id": "tobkiri.action.cloud.workspace.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:8d473a66c1b37eb10fe118bf62f98f14d3bab96370dbf24819331e0a6ab6dd8f",
+          "revision_digest": "sha256:7c65c579ff27345448b34ae36df699a4687c71d3016118d4828b95f1b2efe642",
           "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage",
           "input_schema": {
             "type": "object",
@@ -152,6 +152,11 @@
                 "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
               },
               "expected_revision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "expected_writer_epoch": {
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 9007199254740991
@@ -185,7 +190,8 @@
                 },
                 "required": [
                   "conversation_id",
-                  "expected_revision"
+                  "expected_revision",
+                  "expected_writer_epoch"
                 ]
               },
               {
@@ -197,6 +203,7 @@
                 "required": [
                   "conversation_id",
                   "expected_revision",
+                  "expected_writer_epoch",
                   "paths"
                 ]
               },
@@ -209,7 +216,8 @@
                 "required": [
                   "archive_base64",
                   "conversation_id",
-                  "expected_revision"
+                  "expected_revision",
+                  "expected_writer_epoch"
                 ]
               },
               {
@@ -220,7 +228,8 @@
                 },
                 "required": [
                   "conversation_id",
-                  "expected_revision"
+                  "expected_revision",
+                  "expected_writer_epoch"
                 ]
               },
               {
@@ -232,7 +241,8 @@
                 "required": [
                   "conversation_id",
                   "expected_receiver_head",
-                  "expected_revision"
+                  "expected_revision",
+                  "expected_writer_epoch"
                 ]
               }
             ]
@@ -251,5 +261,5 @@
       ]
     }
   ],
-  "catalog_digest": "sha256:ee6a340f029d539b3b4325c37632070d61323a88a8f2f7a5a8b491bac0ff3cab"
+  "catalog_digest": "sha256:1e9004d3601be7edce8dcba700a75643d7c55a0cfe5e1d45daffd45ebe1ed044"
 }

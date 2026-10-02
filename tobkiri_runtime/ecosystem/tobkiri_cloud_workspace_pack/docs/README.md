@@ -36,8 +36,10 @@ existing complete UTF-8 inspection contract. Capture checks the selected mount
 before and after reads; it is not a filesystem-wide frozen snapshot.
 
 SQLite `BEGIN IMMEDIATE` serializes local checkpoint publications. Exact revision
-CAS, parent digest, request replay and owner fencing prevent two local writers
+CAS, parent digest, request replay and local writer epoch fencing prevent two local writers
 from publishing the same head. Preparing a handoff releases that local writer.
+Every local mutation carries its opening writer epoch; a request from before
+writer release is rejected even when its checkpoint revision is still current.
 The versioned offer describes a future receiver's expected head; it is not a
 distributed lock or proof that a remote machine resumed. A deployment coordinator
 must atomically accept/reject the expected head, fence the previous writer and
@@ -52,6 +54,11 @@ isolate networking, bind the input read-only and own the writable workspace.
 The current Pack has no bound provisioning port, so it always reports container
 start as unavailable. Developer Docker smoke evidence is separate from production
 Host support and does not substitute for the Tobkiri PackVM backend.
+`docs/container-smoke.v1.json` records an actual local Docker build and healthy
+nonroot run using a digest-pinned cached worker base with Python 3.10.12. No image
+was pulled. Exact capsule restoration, UID 65532, health and workspace endpoints
+passed with networking disabled and resource limits; the test container was
+removed. This does not activate production Host provisioning or cloud deployment.
 
 Regenerate only this Pack's records from `tobkiri_runtime/`:
 

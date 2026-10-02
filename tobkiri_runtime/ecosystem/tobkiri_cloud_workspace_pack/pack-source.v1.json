@@ -144,6 +144,11 @@
               "minimum": 0,
               "maximum": 9007199254740991
             },
+            "expected_writer_epoch": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
             "paths": {
               "type": "string",
               "minLength": 1,
@@ -173,7 +178,8 @@
               },
               "required": [
                 "conversation_id",
-                "expected_revision"
+                "expected_revision",
+                "expected_writer_epoch"
               ]
             },
             {
@@ -185,6 +191,7 @@
               "required": [
                 "conversation_id",
                 "expected_revision",
+                "expected_writer_epoch",
                 "paths"
               ]
             },
@@ -197,7 +204,8 @@
               "required": [
                 "archive_base64",
                 "conversation_id",
-                "expected_revision"
+                "expected_revision",
+                "expected_writer_epoch"
               ]
             },
             {
@@ -208,7 +216,8 @@
               },
               "required": [
                 "conversation_id",
-                "expected_revision"
+                "expected_revision",
+                "expected_writer_epoch"
               ]
             },
             {
@@ -220,7 +229,8 @@
               "required": [
                 "conversation_id",
                 "expected_receiver_head",
-                "expected_revision"
+                "expected_revision",
+                "expected_writer_epoch"
               ]
             }
           ]

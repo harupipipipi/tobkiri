@@ -5,13 +5,13 @@
     "version": "1.0.0",
     "kind": "host_extension",
     "display_name": "Tobkiri Cloud Workspace",
-    "artifact_digest": "sha256:c2d565a1763bf30b65965f4cf272dcbe41878205aa442dabcd966d96b11cafbf"
+    "artifact_digest": "sha256:fe24e1e88ebaa9246ef50140ce4baff952f6e0487fe1a418d4429765e3078f70"
   },
   "functions": [
     {
       "id": "tobkiri_cloud_workspace_pack.resource",
-      "implementation_digest": "sha256:1bcb7281ccbeb22f1e2e12a81e974a22f03d407eda0dd9e4be128e16462e7e97",
-      "contract_revision_digest": "sha256:7dec2dbf79d4cc694a7e991593b0a059738593a84274fcb91c6d41e19ca47b67",
+      "implementation_digest": "sha256:3ebfb5695037c2a7cff6c15cc2f92aeee2f3ea6bf605564e9cc6d29d7384cc28",
+      "contract_revision_digest": "sha256:44e0ae110234928834d2cd089c857b769a5fbd1d47e039f5873a75b180e165b1",
       "operations": [
         "tobkiri_cloud_workspace_pack.workspace-resource"
       ],
@@ -19,8 +19,8 @@
     },
     {
       "id": "tobkiri_cloud_workspace_pack.manage",
-      "implementation_digest": "sha256:1bcb7281ccbeb22f1e2e12a81e974a22f03d407eda0dd9e4be128e16462e7e97",
-      "contract_revision_digest": "sha256:8d473a66c1b37eb10fe118bf62f98f14d3bab96370dbf24819331e0a6ab6dd8f",
+      "implementation_digest": "sha256:3ebfb5695037c2a7cff6c15cc2f92aeee2f3ea6bf605564e9cc6d29d7384cc28",
+      "contract_revision_digest": "sha256:7c65c579ff27345448b34ae36df699a4687c71d3016118d4828b95f1b2efe642",
       "operations": [
         "tobkiri_cloud_workspace_pack.workspace-manage"
       ],
@@ -30,14 +30,14 @@
   "contracts": [
     {
       "contract_id": "tobkiri.resource.cloud.workspace.v1",
-      "revision_digest": "sha256:7dec2dbf79d4cc694a7e991593b0a059738593a84274fcb91c6d41e19ca47b67",
+      "revision_digest": "sha256:44e0ae110234928834d2cd089c857b769a5fbd1d47e039f5873a75b180e165b1",
       "operations": [
         "tobkiri_cloud_workspace_pack.workspace-resource"
       ]
     },
     {
       "contract_id": "tobkiri.action.cloud.workspace.v1",
-      "revision_digest": "sha256:8d473a66c1b37eb10fe118bf62f98f14d3bab96370dbf24819331e0a6ab6dd8f",
+      "revision_digest": "sha256:7c65c579ff27345448b34ae36df699a4687c71d3016118d4828b95f1b2efe642",
       "operations": [
         "tobkiri_cloud_workspace_pack.workspace-manage"
       ]
@@ -51,57 +51,57 @@
     },
     {
       "path": "runtime/host.py",
-      "digest": "sha256:1bcb7281ccbeb22f1e2e12a81e974a22f03d407eda0dd9e4be128e16462e7e97",
+      "digest": "sha256:3ebfb5695037c2a7cff6c15cc2f92aeee2f3ea6bf605564e9cc6d29d7384cc28",
       "kind": "executable"
     },
     {
       "path": "runtime/capsule.py",
-      "digest": "sha256:b2875bdaf5dab1927bc37c0173c2a53d99f3a86da8539d832c22e9bad20a0286",
+      "digest": "sha256:2bedefe682b7d37175d2111c4af98cb4766ee63bdcfe325f4716efdde6cf2591",
       "kind": "executable"
     },
     {
       "path": "runtime/store.py",
-      "digest": "sha256:758fea08a1944d9ef05225624fb5ebfa117b3000ca8053557ef6a74bc2d82eeb",
+      "digest": "sha256:0385b3b82ba4161e587a4d6516b46079166d91d6f9a4e54045cd1f00be142d7e",
       "kind": "executable"
     },
     {
       "path": "runtime/service.py",
-      "digest": "sha256:c22890f998295d152677e0477128b65848e5fc12194df69e27e3eca9912bff62",
+      "digest": "sha256:a9bc279b25c91106b7ed697d0e487be2c69ba8cdc1359681c9dda7ffbb6ff7dc",
       "kind": "executable"
     },
     {
       "path": "runtime/recipe.py",
-      "digest": "sha256:a9bf02cc84216f16e0a5105eb1db658ae209bbe8b3765cdb81c99b0af0845bbe",
+      "digest": "sha256:0d1b2d37289359c3dcc8b20bb362984afc0e946a02595712cdb5239908d5f55a",
       "kind": "executable"
     },
     {
       "path": "container/Dockerfile",
-      "digest": "sha256:a3fbc537756ea95b0e68b5efbcf4612d06ee8337aa1311757f72553a1e39e5ab",
+      "digest": "sha256:ea2581e55223a9fbfcc0bbdd7bf8006aa5295cca3e0eb6b9fa6ae51f6aa53e29",
       "kind": "sidecar"
     },
     {
       "path": "container/runtime.py",
-      "digest": "sha256:11d137b46fb789f2ff403651c8bc6d9ba09cbb43d5991da5a6eeef2143bb07cb",
+      "digest": "sha256:d41df57726f6c649f3556376ad643d19ae47e9fbde928cadd14ed6eff3c64ff0",
       "kind": "sidecar"
     },
     {
       "path": "container/recipe.v1.json",
-      "digest": "sha256:2413505a6761c38ffeb96a8fe829365a67964e811ebe150fd75549f8c4e0c7f3",
+      "digest": "sha256:74fd0d347074d6e922ac62a7aa49d41685e9fd7aee041c09c7f578f22edebb9b",
       "kind": "sidecar"
     },
     {
       "path": "pack-source.v1.json",
-      "digest": "sha256:257c2b98275f0afc32824a51f66a7d1bf6c110a689de11768d5e6153268f3f2d",
+      "digest": "sha256:f3a7e897d863f3916d8899f5e203522659a770a527c13706c67e33500c7f4231",
       "kind": "sidecar"
     },
     {
       "path": "frontend/contributions/composer.json",
-      "digest": "sha256:1a97a8878a44aa07773bc22f0e6fecc480cc3855e863236993ffd47a107f0d33",
+      "digest": "sha256:d1cffed385bd8ce925a8b142772043376d1dd15297ec6121a10fdf8dbf644eed",
       "kind": "sidecar"
     },
     {
       "path": "frontend/contributions/workspace.json",
-      "digest": "sha256:a73e841f2020ce0217f1810088d7178987360f962796e4c1c27fefd3af65182a",
+      "digest": "sha256:892c919f3a5171b0e3135771a2128eabf8930b8e51f4dbce5e1b8b52752c3c09",
       "kind": "sidecar"
     }
   ],
@@ -184,16 +184,16 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:52d3563a461adf581613241cd096899034ac2dcbe5265327f90b8a639b82438e",
-    "artifact_set_digest": "sha256:dc926a62ddd0512ad33e6fdb4fed65c375e7f49140bf12fa88d34000afd9d6e6",
-    "contract_catalog_digest": "sha256:5a6be6c3d589950a343861f0287c4f6f1a88553f0620943321ffb7f83ca8ee84"
+    "source_identity": "sha256:a76668949060e273f85baa07d5e4228d51a24b0acc35891db1fb860bbb37afa6",
+    "artifact_set_digest": "sha256:5ab6d1d4db649c66ce80aed5b077085e1b79296cba81117991b4007949cba2e5",
+    "contract_catalog_digest": "sha256:1b499068a9e2a36afb4792dabae80b45a71fa23b865184c83976b410e865912d"
   },
   "provenance": {
     "source_kind": "repository",
     "source_path": "ecosystem/tobkiri_cloud_workspace_pack/pack-source.v1.json",
-    "source_digest": "sha256:52d3563a461adf581613241cd096899034ac2dcbe5265327f90b8a639b82438e",
-    "repository_commit": "1526e1f8e63124c0a5637f6a2f42be6e8c3fd692",
-    "repository_tree": "d42d3d6caf0866e1f8131244883fcb23da2a0f6943353714396729fc51da141d",
+    "source_digest": "sha256:a76668949060e273f85baa07d5e4228d51a24b0acc35891db1fb860bbb37afa6",
+    "repository_commit": "065f6f81bc32217747e22db6641f3dc5bdaa8475",
+    "repository_tree": "414377e61aedb69b64a993e93bb5e053bbb4272a007c6ca0c33490b1ddf9f5a1",
     "generator": "tobkiri-protocol",
     "generator_version": "1.0.0",
     "normative": false,

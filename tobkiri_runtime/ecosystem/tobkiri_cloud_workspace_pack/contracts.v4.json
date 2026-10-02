@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
   "pack_id": "tobkiri_cloud_workspace_pack",
-  "source_identity": "sha256:52d3563a461adf581613241cd096899034ac2dcbe5265327f90b8a639b82438e",
+  "source_identity": "sha256:a76668949060e273f85baa07d5e4228d51a24b0acc35891db1fb860bbb37afa6",
   "contracts": [
     {
       "contract_api_version": "io.tobkiri.contract.v4",
@@ -120,16 +120,16 @@
       "provenance": {
         "source_kind": "repository",
         "source_path": "ecosystem/tobkiri_cloud_workspace_pack/pack-source.v1.json",
-        "source_digest": "sha256:52d3563a461adf581613241cd096899034ac2dcbe5265327f90b8a639b82438e",
-        "repository_commit": "1526e1f8e63124c0a5637f6a2f42be6e8c3fd692",
-        "repository_tree": "d42d3d6caf0866e1f8131244883fcb23da2a0f6943353714396729fc51da141d",
+        "source_digest": "sha256:a76668949060e273f85baa07d5e4228d51a24b0acc35891db1fb860bbb37afa6",
+        "repository_commit": "065f6f81bc32217747e22db6641f3dc5bdaa8475",
+        "repository_tree": "414377e61aedb69b64a993e93bb5e053bbb4272a007c6ca0c33490b1ddf9f5a1",
         "generator": "tobkiri-protocol",
         "generator_version": "1.0.0",
         "normative": false,
         "evidence": [],
         "schema": "io.tobkiri.provenance.v1"
       },
-      "revision_digest": "sha256:7dec2dbf79d4cc694a7e991593b0a059738593a84274fcb91c6d41e19ca47b67"
+      "revision_digest": "sha256:44e0ae110234928834d2cd089c857b769a5fbd1d47e039f5873a75b180e165b1"
     },
     {
       "contract_api_version": "io.tobkiri.contract.v4",
@@ -140,7 +140,7 @@
       "operations": [
         {
           "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage",
-          "input_schema_digest": "sha256:59858a36a3f58a8fa6414a02156cc59e8641a13babccba77713c0bd254c4939b",
+          "input_schema_digest": "sha256:b2f36da2acb4d702eb8124f8329a3a29e97dca1af3e33f1db9a4722afdab603a",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "effect_ceiling": [
@@ -154,7 +154,7 @@
         }
       ],
       "schema_catalog": {
-        "sha256:59858a36a3f58a8fa6414a02156cc59e8641a13babccba77713c0bd254c4939b": {
+        "sha256:b2f36da2acb4d702eb8124f8329a3a29e97dca1af3e33f1db9a4722afdab603a": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
@@ -180,6 +180,11 @@
               "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
             },
             "expected_revision": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "expected_writer_epoch": {
               "type": "integer",
               "minimum": 0,
               "maximum": 9007199254740991
@@ -213,7 +218,8 @@
               },
               "required": [
                 "conversation_id",
-                "expected_revision"
+                "expected_revision",
+                "expected_writer_epoch"
               ]
             },
             {
@@ -225,6 +231,7 @@
               "required": [
                 "conversation_id",
                 "expected_revision",
+                "expected_writer_epoch",
                 "paths"
               ]
             },
@@ -237,7 +244,8 @@
               "required": [
                 "archive_base64",
                 "conversation_id",
-                "expected_revision"
+                "expected_revision",
+                "expected_writer_epoch"
               ]
             },
             {
@@ -248,7 +256,8 @@
               },
               "required": [
                 "conversation_id",
-                "expected_revision"
+                "expected_revision",
+                "expected_writer_epoch"
               ]
             },
             {
@@ -260,7 +269,8 @@
               "required": [
                 "conversation_id",
                 "expected_receiver_head",
-                "expected_revision"
+                "expected_revision",
+                "expected_writer_epoch"
               ]
             }
           ]
@@ -286,16 +296,16 @@
       "provenance": {
         "source_kind": "repository",
         "source_path": "ecosystem/tobkiri_cloud_workspace_pack/pack-source.v1.json",
-        "source_digest": "sha256:52d3563a461adf581613241cd096899034ac2dcbe5265327f90b8a639b82438e",
-        "repository_commit": "1526e1f8e63124c0a5637f6a2f42be6e8c3fd692",
-        "repository_tree": "d42d3d6caf0866e1f8131244883fcb23da2a0f6943353714396729fc51da141d",
+        "source_digest": "sha256:a76668949060e273f85baa07d5e4228d51a24b0acc35891db1fb860bbb37afa6",
+        "repository_commit": "065f6f81bc32217747e22db6641f3dc5bdaa8475",
+        "repository_tree": "414377e61aedb69b64a993e93bb5e053bbb4272a007c6ca0c33490b1ddf9f5a1",
         "generator": "tobkiri-protocol",
         "generator_version": "1.0.0",
         "normative": false,
         "evidence": [],
         "schema": "io.tobkiri.provenance.v1"
       },
-      "revision_digest": "sha256:8d473a66c1b37eb10fe118bf62f98f14d3bab96370dbf24819331e0a6ab6dd8f"
+      "revision_digest": "sha256:7c65c579ff27345448b34ae36df699a4687c71d3016118d4828b95f1b2efe642"
     }
   ]
 }

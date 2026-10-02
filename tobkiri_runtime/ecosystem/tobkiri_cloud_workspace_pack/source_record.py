@@ -28,6 +28,7 @@ def _schema(kind: str) -> dict[str, Any]:
         "conversation_id": ID,
         "workspace_id": ID,
         "expected_revision": REVISION,
+        "expected_writer_epoch": REVISION,
         "paths": {"type": "string", "minLength": 1, "maxLength": 32768},
         "archive_base64": {"type": "string", "minLength": 1, "maxLength": 13981016},
         "expected_receiver_head": {
@@ -43,7 +44,10 @@ def _schema(kind: str) -> dict[str, Any]:
         "properties": {k: v for k, v in properties.items() if k in used},
         "required": ["profile_id", "operation"],
         "oneOf": [
-            {"properties": {"operation": {"const": operation}}, "required": sorted(required)}
+            {
+                "properties": {"operation": {"const": operation}},
+                "required": sorted(required),
+            }
             for operation, required in fields.items()
         ],
     }
@@ -51,13 +55,18 @@ def _schema(kind: str) -> dict[str, Any]:
 
 def build_source() -> dict[str, Any]:
     """Derive current byte digests and public finite operation requirements."""
-    recipe_paths = ["container/Dockerfile", "container/runtime.py", "runtime/capsule.py"]
+    recipe_paths = [
+        "container/Dockerfile",
+        "container/runtime.py",
+        "runtime/capsule.py",
+    ]
     recipe = {
         "version": "tobkiri.workspace-container-recipe.v1",
         "files": [
             {
                 "path": path,
-                "digest": "sha256:" + hashlib.sha256((PACK / path).read_bytes()).hexdigest(),
+                "digest": "sha256:"
+                + hashlib.sha256((PACK / path).read_bytes()).hexdigest(),
             }
             for path in recipe_paths
         ],
@@ -66,10 +75,13 @@ def build_source() -> dict[str, Any]:
         "base_image_policy": "approved-host-resolved-oci-digest-required",
         "container_port": 8765,
         "container_execution": "unverified",
-        "required_mounts": {"capsule": "/input/workspace.zip:ro", "workspace": "/workspace:rw"},
+        "required_mounts": {
+            "capsule": "/input/workspace.zip:ro",
+            "workspace": "/workspace:rw",
+        },
         "health_route": "/health",
         "start_command": [
-            "python",
+            "python3",
             "-B",
             "/opt/tobkiri/workspace_runtime.py",
             "--capsule",
@@ -100,7 +112,12 @@ def build_source() -> dict[str, Any]:
     )
     providers = []
     for kind, contract, operation, effect in [
-        ("resource", "tobkiri.resource.cloud.workspace.v1", "workspace-resource", "read"),
+        (
+            "resource",
+            "tobkiri.resource.cloud.workspace.v1",
+            "workspace-resource",
+            "read",
+        ),
         ("manage", "tobkiri.action.cloud.workspace.v1", "workspace-manage", "write"),
     ]:
         capability = f"cloud.workspace.{kind}"
@@ -147,7 +164,10 @@ def build_source() -> dict[str, Any]:
         "factory_symbol": "HOST_PROVIDER_FACTORY",
         "providers": providers,
         "runtime_artifacts": [
-            {"path": path, "kind": "executable" if path.startswith("runtime/") else "sidecar"}
+            {
+                "path": path,
+                "kind": "executable" if path.startswith("runtime/") else "sidecar",
+            }
             for path in artifact_paths
         ],
         "public_capabilities": ["workspace.metadata.read", "file.inspect"],
