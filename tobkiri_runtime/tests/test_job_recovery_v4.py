@@ -9,6 +9,7 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 from pathlib import Path
+from threading import Event, Thread
 from types import SimpleNamespace
 from typing import Any, Mapping
 
@@ -25,6 +26,7 @@ from ecosystem.rumi_job_action_broker_pack.runtime.broker import JobActionBroker
 from ecosystem.rumi_schedule_store_pack.runtime.store import ScheduleStore, _arguments
 from ecosystem.rumi_scheduler_runtime_pack.runtime.scheduler import SchedulerRuntime
 from ecosystem.tobkiri_agent_control_pack.runtime.host import WorkPlanHostFactory
+from ecosystem.tobkiri_agent_control_pack.runtime.ports import SAVED, SAVED_OP
 from ecosystem.tobkiri_agent_control_pack.runtime.service import WorkPlanService
 from ecosystem.tobkiri_agent_control_pack.runtime.store import PlanStore
 from ecosystem.tobkiri_agent_control_pack.runtime.workflow import (
@@ -140,14 +142,15 @@ def test_copied_ledger_and_client_approval_never_grant_cross_profile_dispatch(
 
 
 @pytest.mark.parametrize("operation", ["dispatch", "status", "cancel"])
+@pytest.mark.parametrize("missing", ["dispatch_envelope", "provider_binding"])
 def test_old_incomplete_binding_requires_reconciliation_without_redispatch(
-    tmp_path: Path, operation: str
+    tmp_path: Path, operation: str, missing: str
 ) -> None:
     adapter = Adapter()
     broker = JobActionBroker(adapter, PROFILE, root=tmp_path, canonical=True)
     broker.invoke("dispatch", request())
     ledger = json.loads(broker.path.read_text())
-    ledger["entries"]["schedule:lease"].pop("dispatch_envelope")
+    ledger["entries"]["schedule:lease"].pop(missing)
     broker.path.write_text(json.dumps(ledger))
     count = len(adapter.calls)
     assert broker.invoke(operation, request())["status"] == "reconciliation_required"
@@ -176,6 +179,38 @@ def test_exception_does_not_authorize_a_new_dispatch_after_restart(tmp_path: Pat
     assert restarted.invoke("dispatch", request())["deduplicated"] is True
     assert [x["operation"] for x in adapter.calls].count("dispatch") == 1
     assert restarted.invoke("status", request())["status"] == "running"
+
+
+def test_confirmed_cancel_fences_late_dispatch_completion(tmp_path: Path) -> None:
+    entered, release = Event(), Event()
+
+    class BlockingAdapter(Adapter):
+        def invoke(
+            self, contract: str, operation: str, payload: Mapping[str, Any]
+        ) -> dict[str, Any]:
+            if payload["operation"] != "dispatch":
+                return super().invoke(contract, operation, payload)
+            self.calls.append(deepcopy(dict(payload)))
+            entered.set()
+            assert release.wait(5)
+            return {"status": "completed"}
+
+    adapter = BlockingAdapter()
+    broker = JobActionBroker(adapter, PROFILE, root=tmp_path, canonical=True)
+    outcomes: list[dict[str, Any]] = []
+    worker = Thread(target=lambda: outcomes.append(broker.invoke("dispatch", request())))
+    worker.start()
+    try:
+        assert entered.wait(5)
+        restarted = JobActionBroker(adapter, PROFILE, root=tmp_path, canonical=True)
+        assert restarted.invoke("cancel", request())["status"] == "cancelled"
+    finally:
+        release.set()
+        worker.join(5)
+    assert not worker.is_alive()
+    assert outcomes[0]["status"] == "cancelled"
+    assert outcomes[0]["result"]["status"] == "cancelled"
+    assert restarted.invoke("status", request())["status"] == "cancelled"
 
 
 class PublicOwners(FakePorts):
@@ -339,3 +374,149 @@ def test_pause_during_review_never_publishes_late_finding(tmp_path: Path) -> Non
     SchedulerRuntime(ports, PROFILE, clock=lambda: clock[0], canonical=True).control("tick", {})
     plan = ports.service.store.get("plan")
     assert plan["status"] == "paused" and plan["review"] is None and plan["inbox"] == []
+
+
+def test_explicit_resume_reenables_a_cancelled_review_schedule(tmp_path: Path) -> None:
+    clock = [1000000]
+    ports = PublicOwners(tmp_path, clock, waiting=True)
+    configure(ports.service)
+    add(ports.service)
+    clock[0] += 600000
+    SchedulerRuntime(ports, PROFILE, clock=lambda: clock[0], canonical=True).control("tick", {})
+    apply(ports.service, "plan.pause")
+    restarted = SchedulerRuntime(ports, PROFILE, clock=lambda: clock[0], canonical=True)
+    restarted.control("stop", {})
+    plan = ports.service.store.get("plan")
+    assert ports.store.get(plan["schedule"]["id"])["status"] == "cancelled"
+    apply(ports.service, "plan.resume")
+    latest = ports.store.get(plan["schedule"]["id"])
+    assert latest["status"] == "scheduled" and latest["enabled"]
+    assert latest["payload"]["generation"] == ports.service.store.get("plan")["generation"]
+
+
+def scheduled_reminder(ports: PublicOwners) -> tuple[str, dict[str, Any]]:
+    """Enqueue one actually dispatched public reminder, without waking an executor."""
+    apply(
+        ports.service,
+        "remind.create",
+        reminder_id="notice",
+        body="Keep the requirement",
+        agent_binding="conversation:conversation",
+        timezone="UTC",
+        delay_seconds=1,
+    )
+    ports.clock[0] += 1000
+    SchedulerRuntime(ports, PROFILE, clock=lambda: ports.clock[0], canonical=True).control(
+        "tick", {}
+    )
+    plan = ports.service.store.get("plan")
+    event = plan["inbox"][0]
+    schedule = ports.store.get(plan["reminders"]["notice"]["schedule_id"])
+    # The public job ledger owns the dispatch key even after enqueue completed.
+    entry = next(
+        value
+        for value in ports.broker._read()["entries"].values()
+        if value["action_id"] == "agent-control.remind"
+    )
+    assert schedule["status"] == "completed" and event["status"] == "pending"
+    return entry["idempotency_key"], event
+
+
+def test_reminder_cancel_fences_pending_enqueue_without_false_apply(tmp_path: Path) -> None:
+    clock = [1000000]
+    ports = PublicOwners(tmp_path, clock)
+    configure(ports.service)
+    key, _ = scheduled_reminder(ports)
+    result = apply(ports.service, "remind.cancel", reminder_id="notice")
+    assert result["delivery_cancellation"]["status"] == "completed"
+    assert ports.broker.invoke("cancel", {"idempotency_key": key})["status"] == "cancelled"
+    plan = ports.service.store.get("plan")
+    assert plan["inbox"][0]["status"] == "cancelled"
+    received = ports.service.prepare_input(
+        {
+            "plan_id": "plan",
+            "conversation_id": "conversation",
+            "expected_revision": plan["revision"],
+            "operation_id": "prepare-cancelled",
+            "input_id": "after-cancel",
+            "agent_binding": "conversation:conversation",
+            "boundary": "before_turn",
+        },
+        USER,
+    )
+    assert received["instructions"] == []
+
+
+def test_received_reminder_requires_canonical_acceptance_and_never_claims_cancel(
+    tmp_path: Path,
+) -> None:
+    clock = [1000000]
+    ports = PublicOwners(tmp_path, clock)
+    configure(ports.service)
+    key, _ = scheduled_reminder(ports)
+    plan = ports.service.store.get("plan")
+    received = ports.service.prepare_input(
+        {
+            "plan_id": "plan",
+            "conversation_id": "conversation",
+            "expected_revision": plan["revision"],
+            "operation_id": "prepare-input",
+            "input_id": "input",
+            "agent_binding": "conversation:conversation",
+            "boundary": "before_turn",
+        },
+        USER,
+    )
+    source = {
+        "request": {
+            "turn_id": "input",
+            "conversation_id": "conversation",
+            "conversation_revision": 1,
+            "content": "Original content",
+            "tool_selection": {"mode": "auto"},
+            "task_context": received["task_context"],
+        }
+    }
+    pending = ports.broker.invoke("cancel", {"idempotency_key": key})
+    assert pending["status"] == "cancellation_pending"
+    plan = ports.service.store.get("plan")
+    with pytest.raises(ValueError):
+        ports.service.ack(
+            {
+                "plan_id": "plan",
+                "expected_revision": plan["revision"],
+                "operation_id": "ack-unaccepted",
+                "input_id": "input",
+                "event_ids": [plan["inbox"][0]["id"]],
+                "accepted_input": source,
+            },
+            USER,
+        )
+    assert ports.service.store.get("plan")["inbox"][0]["status"] == "received"
+    # The canonical saved owner fixture accepts this exact immutable input.
+    ports.invoke(SAVED, SAVED_OP, source)
+    plan = ports.service.store.get("plan")
+    accepted = ports.service.ack(
+        {
+            "plan_id": "plan",
+            "expected_revision": plan["revision"],
+            "operation_id": "ack-accepted",
+            "input_id": "input",
+            "event_ids": [plan["inbox"][0]["id"]],
+            "accepted_input": source,
+        },
+        USER,
+    )
+    assert accepted["status"] == "applied"
+    assert ports.broker.invoke("cancel", {"idempotency_key": key})["status"] == "completed"
+    assert ports.service.store.get("plan")["inbox"][0]["status"] == "applied"
+
+
+def test_unknown_workflow_run_is_reconciliation_not_a_new_run(tmp_path: Path) -> None:
+    ports = PublicOwners(tmp_path, [1000000])
+    before = ports.workflow.invoke("definition.list", {})["definitions"]
+    assert (
+        ReviewWorkflow(ports).status("lost-owner", cancel=True)["status"]
+        == "reconciliation_required"
+    )
+    assert ports.workflow.invoke("definition.list", {})["definitions"] == before

@@ -225,6 +225,11 @@ class WorkPlanService:
                 reminder = plan["reminders"][arguments["reminder_id"]]
                 reminder["status"] = "cancelled"
                 reminder["generation"] += 1
+                for event in plan["inbox"]:
+                    if event.get("reminder_id") == reminder["id"]:
+                        event["cancel_requested"] = True
+                        if event["status"] == "pending":
+                            event["status"] = "cancelled"
                 return {"status": "cancelled"}
             raise ValueError("unknown work-plan operation")
 
@@ -247,6 +252,23 @@ class WorkPlanService:
         result["plan"] = self.store.get(plan_id)
         if action in {"remind.create", "remind.cancel"}:
             self._schedule_reminder(plan_id, arguments["reminder_id"])
+            if action == "remind.cancel":
+                retained = self.store.get(plan_id)
+                events = [
+                    event
+                    for event in (retained or {}).get("inbox", [])
+                    if event.get("reminder_id") == arguments["reminder_id"]
+                ]
+                result["delivery_cancellation"] = {
+                    "status": "cancellation_pending"
+                    if any(event["status"] == "received" for event in events)
+                    else "reconciliation_required"
+                    if any(
+                        event["source"] == "scheduled" and not event.get("reminder_id")
+                        for event in (retained or {}).get("inbox", [])
+                    )
+                    else "completed",
+                }
             result["plan"] = self.store.get(plan_id)
         return result
 
@@ -532,13 +554,44 @@ class WorkPlanService:
         """Prove durable enqueue or fence the exact unaccepted delivery occurrence."""
         actor.require("plan.review")
         plan = self.store.get(identifier(values["payload"]["plan_id"]))
-        if plan is None or plan["status"] != "active":
-            return {"status": "cancelled"}
+        if plan is None:
+            return {"status": "reconciliation_required", "reason": "delivery_plan_unavailable"}
         event_id = f"delivery-{digest(values['occurrence_id'])[:24]}"
         event = next((item for item in plan["inbox"] if item["id"] == event_id), None)
         if event is None:
             return {"status": "reconciliation_required"}
-        if cancel and event["status"] in {"pending", "received"}:
+        if (cancel or event.get("cancel_requested")) and event["status"] == "received":
+            # A prepared immutable input may already have been accepted. The
+            # Pack cannot retract it or invent an acknowledgement/cancel proof.
+            try:
+                from .ports import CONVERSATION, CONVERSATION_OP
+
+                receipt = self.ports.client.invoke(
+                    CONVERSATION,
+                    CONVERSATION_OP,
+                    {
+                        "operation": "saved_receipt",
+                        "profile_id": self.store.profile_id,
+                        "turn_id": event["input_id"],
+                    },
+                ).get("receipt")
+            except Exception:
+                return {
+                    "status": "reconciliation_required",
+                    "reason": "input_acceptance_unavailable",
+                }
+            if receipt is not None:
+                return {
+                    "status": "completed",
+                    "delivery_status": "received",
+                    "reason": "input_acceptance_cannot_be_retracted",
+                }
+            return {
+                "status": "cancellation_pending",
+                "delivery_status": "received",
+                "reason": "input_acceptance_unconfirmed",
+            }
+        if cancel and event["status"] == "pending":
             self.store.mutate(
                 plan["id"],
                 plan["revision"],
@@ -575,13 +628,9 @@ class WorkPlanService:
                 or reminder["generation"] != payload["generation"]
             ):
                 return {"status": "cancelled"}
-            delivered = self.store.mutate(
-                plan["id"],
-                plan["revision"],
-                occurrence,
-                values,
-                actor.principal_id,
-                lambda current: inbox.deliver(
+
+            def enqueue(current: dict[str, Any]) -> Mapping[str, Any]:
+                result = inbox.deliver(
                     current,
                     {
                         "event_id": f"delivery-{digest(occurrence)[:24]}",
@@ -591,7 +640,24 @@ class WorkPlanService:
                     },
                     actor.principal_id,
                     self.clock(),
-                ),
+                )
+                event = next(
+                    entry for entry in current["inbox"] if entry["id"] == result["event"]["id"]
+                )
+                event.update(
+                    reminder_id=reminder["id"],
+                    reminder_generation=reminder["generation"],
+                    occurrence_id=occurrence,
+                )
+                return result
+
+            delivered = self.store.mutate(
+                plan["id"],
+                plan["revision"],
+                occurrence,
+                values,
+                actor.principal_id,
+                enqueue,
                 guard=self.guard,
             )
             current = self.store.get(plan["id"])

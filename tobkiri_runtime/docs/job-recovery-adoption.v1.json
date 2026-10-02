@@ -16,7 +16,8 @@
     "rumi_job_action_broker_pack/runtime/broker.py",
     "rumi_scheduler_runtime_pack/runtime/scheduler.py",
     "tobkiri_agent_control_pack/runtime/service.py",
-    "tobkiri_agent_control_pack/runtime/workflow.py"
+    "tobkiri_agent_control_pack/runtime/workflow.py",
+    "tobkiri_agent_control_pack/runtime/schedules.py"
   ],
   "preserve": [
     "tobkiri.action.job.v1 1.0.0",

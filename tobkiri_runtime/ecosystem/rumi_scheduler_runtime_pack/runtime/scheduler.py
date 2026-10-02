@@ -433,7 +433,8 @@ def _succeeded(result: Any) -> bool:
 
 def _pending(result: Any) -> bool:
     """Only confirmed terminal owner outcomes may finish or retry a lease."""
-    return not isinstance(result, Mapping) or result.get("status") not in {
+    status = result.get("status") if isinstance(result, Mapping) else None
+    return not isinstance(status, str) or status not in {
         "ok",
         "completed",
         "failed",

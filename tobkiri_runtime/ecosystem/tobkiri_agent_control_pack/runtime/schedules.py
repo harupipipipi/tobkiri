@@ -78,7 +78,7 @@ class Schedules:
             current, revision = changed["schedule"], changed["revision"]
         if not enabled and current["status"] not in {"paused", "cancelled"}:
             current = self._action("pause", revision, schedule_id)["schedule"]
-        elif enabled and current["status"] == "paused":
+        elif enabled and current["status"] in {"paused", "cancelled", "failed", "completed"}:
             current = self._action("resume", revision, schedule_id)["schedule"]
         return dict(current)
 

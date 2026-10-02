@@ -114,6 +114,8 @@ class JobActionBroker:
                         {"version": ENVELOPE_VERSION, **retained}
                     ) != envelope_digest(envelope):
                         raise PermissionError("idempotency key scheduler binding changed")
+                    if self._retained_provider(current) is None:
+                        return self._reconciliation(key, "retained_job_provider_unavailable")
                 return {
                     "status": current["status"],
                     "deduplicated": True,
@@ -181,7 +183,7 @@ class JobActionBroker:
         return {
             "status": entry["status"],
             "idempotency_key": key,
-            "result": result,
+            "result": entry["result"],
             "provider_instance_id": entry["provider_instance_id"],
         }
 
@@ -209,7 +211,7 @@ class JobActionBroker:
             entry["status"] = status if status in TERMINAL else "cancellation_pending"
             entry["result"] = _bounded(result)
             entry = self._finish(key, entry)
-            return {"status": entry["status"], "idempotency_key": key, "result": result}
+            return {"status": entry["status"], "idempotency_key": key, "result": entry["result"]}
         provider_id = str(entry.get("provider_instance_id") or "")
         if not provider_id:
             return {"status": "cancellation_pending", "idempotency_key": key}
@@ -362,6 +364,12 @@ class JobActionBroker:
                 incoming_envelope = self._retained_envelope(entry, key)
                 if current_envelope != incoming_envelope:
                     raise PermissionError("job dispatch envelope changed during execution")
+                current_binding = current.get("provider_binding")
+                if isinstance(current_binding, Mapping):
+                    if envelope_digest(current_binding) != current.get("provider_binding_digest"):
+                        raise PermissionError("retained job provider hash changed")
+                    if current_binding != entry.get("provider_binding"):
+                        raise PermissionError("job provider changed during execution")
                 entry["cancel_requested"] = bool(
                     entry.get("cancel_requested") or current.get("cancel_requested")
                 )
