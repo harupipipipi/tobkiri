@@ -6,7 +6,7 @@
       "path": "domain/tool/calculator.py"
     },
     {
-      "digest": "sha256:fa7621fae6585e5074342fdeaf70ded0b25a6c093a39731260a74ef5df8253de",
+      "digest": "sha256:83b58eb44a747d98139bc21a30fb129fe6ef16d422d13cc72ed8e70dc88dca4c",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -31,7 +31,7 @@
       "path": "tools/browser_computer/manifest.json"
     },
     {
-      "digest": "sha256:8564ebfc5d962dc9db5f94468baec59452f67edd29289de326986ba9b3c5c9cf",
+      "digest": "sha256:d5b1005115072df5f3faab5a84899d3bd1953136385ef468a4395f860616d261",
       "kind": "sidecar",
       "path": "tools/browser_managed/manifest.json"
     },
@@ -198,9 +198,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:7fe75b6558e7eae2d3823a80f92925002e8ba11b96e645fd444e0b4a75101bec",
-    "contract_catalog_digest": "sha256:8d4d11a0194060a7360a130e0463476fcb6c732850ab33921cb28e4bff6ec0cd",
-    "source_identity": "sha256:0a3a5eb39479ffb72d5214305acb13d52e9a9f63c56c4414daa77e126c9f205b"
+    "artifact_set_digest": "sha256:99f3a186427b804243e84764ea106161a0360d64547527021ed8ba5eaad6d233",
+    "contract_catalog_digest": "sha256:b4b8ff84a80cdde8ea9ec3527d54da5cf8741f70ec464ec7ecd7b38ec9ea6071",
+    "source_identity": "sha256:4ea1f3d1996bc6b34c70ba3d4e75e6f12e23294170758edfe344d0134a4c0743"
   },
   "migration": {
     "compatibility": "read_only",
@@ -225,7 +225,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:7fe75b6558e7eae2d3823a80f92925002e8ba11b96e645fd444e0b4a75101bec",
+    "artifact_digest": "sha256:99f3a186427b804243e84764ea106161a0360d64547527021ed8ba5eaad6d233",
     "display_name": "rumi_default_tools_pack",
     "id": "rumi_default_tools_pack",
     "kind": "host_extension",
@@ -235,7 +235,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:0a3a5eb39479ffb72d5214305acb13d52e9a9f63c56c4414daa77e126c9f205b",
+        "digest": "sha256:4ea1f3d1996bc6b34c70ba3d4e75e6f12e23294170758edfe344d0134a4c0743",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -246,7 +246,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:0a3a5eb39479ffb72d5214305acb13d52e9a9f63c56c4414daa77e126c9f205b",
+    "source_digest": "sha256:4ea1f3d1996bc6b34c70ba3d4e75e6f12e23294170758edfe344d0134a4c0743",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_default_tools_pack"
   },

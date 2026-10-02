@@ -1,8 +1,8 @@
 {
-  "artifact_set_digest": "sha256:7fe75b6558e7eae2d3823a80f92925002e8ba11b96e645fd444e0b4a75101bec",
+  "artifact_set_digest": "sha256:99f3a186427b804243e84764ea106161a0360d64547527021ed8ba5eaad6d233",
   "artifacts": [
     {
-      "digest": "sha256:8d4d11a0194060a7360a130e0463476fcb6c732850ab33921cb28e4bff6ec0cd",
+      "digest": "sha256:b4b8ff84a80cdde8ea9ec3527d54da5cf8741f70ec464ec7ecd7b38ec9ea6071",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
@@ -12,7 +12,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:fa7621fae6585e5074342fdeaf70ded0b25a6c093a39731260a74ef5df8253de",
+      "digest": "sha256:83b58eb44a747d98139bc21a30fb129fe6ef16d422d13cc72ed8e70dc88dca4c",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -22,7 +22,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:5e5a43731cc47bd19d9144a29d62798e8f88b99ad5a1a126024c37a901783b41",
+      "digest": "sha256:b4b2d27698437524d0b134e71f5eb4860df772e3acc78640fda4781095f07903",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -42,7 +42,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:8564ebfc5d962dc9db5f94468baec59452f67edd29289de326986ba9b3c5c9cf",
+      "digest": "sha256:d5b1005115072df5f3faab5a84899d3bd1953136385ef468a4395f860616d261",
       "path": "tools/browser_managed/manifest.json",
       "role": "runtime"
     },
@@ -190,8 +190,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:a09d61702b4cc54f48eb4d7e0443b4eb5f91146c2ae6be78e08e93c8eb0d2104"
+    "signed_digest": "sha256:02a6f3fc12ccd3f6e21ae5676cf52a3759b7c4cf45b0048a4d0d0891b436165a"
   },
   "pack_id": "rumi_default_tools_pack",
-  "source_identity": "sha256:0a3a5eb39479ffb72d5214305acb13d52e9a9f63c56c4414daa77e126c9f205b"
+  "source_identity": "sha256:4ea1f3d1996bc6b34c70ba3d4e75e6f12e23294170758edfe344d0134a4c0743"
 }

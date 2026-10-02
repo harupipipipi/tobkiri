@@ -5246,14 +5246,14 @@
       "variant_id": "rumi_browser_host_service_pack.browser-host.observe.python"
     },
     "rumi_browser_host_service_pack.browser-host.tool": {
-      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "contract_id": "tobkiri.service.tool.browser.operation.v1",
       "contract_version": "1.0.0",
       "error_schema": {
         "type": "object"
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_browser_host_service_pack.browser-host.tool",
-      "implementation_digest": "sha256:335d8b4f5dca4b2b88fd19e5b0a66762e8b7d1d97b517007361d5b66a624774e",
+      "implementation_digest": "sha256:07c1a2a92dd1999fec3287b34c9c973a850bc5c7db9fe5e2dbbacace01c0f216",
       "implementation_path": "runtime/browser_tool.py",
       "input_schema": {
         "type": "object"
@@ -5261,13 +5261,13 @@
       "operation_id": "rumi_browser_host_service_pack.browser-tool-execute",
       "operations": [
         {
-          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_id": "tobkiri.service.tool.browser.operation.v1",
           "contract_version": "1.0.0",
           "entrypoint_id": "rumi_browser_host_service_pack.browser-tool-execute",
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:335d8b4f5dca4b2b88fd19e5b0a66762e8b7d1d97b517007361d5b66a624774e",
+          "implementation_digest": "sha256:07c1a2a92dd1999fec3287b34c9c973a850bc5c7db9fe5e2dbbacace01c0f216",
           "implementation_path": "runtime/browser_tool.py",
           "input_schema": {
             "type": "object"
@@ -14089,7 +14089,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_tool_local_executor_pack.tool-executor.local",
-      "implementation_digest": "sha256:7a42e7a8469fc7ca3bb948c5833247ca07d0d2f1acb05faf29474bcd9c4d7ae1",
+      "implementation_digest": "sha256:e93ac0d12dcac61de36f1e8abe9e0ee1ce69c18cb992223b188050f472d32968",
       "implementation_path": "runtime/executor.py",
       "input_schema": {
         "type": "object"
@@ -14103,7 +14103,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:7a42e7a8469fc7ca3bb948c5833247ca07d0d2f1acb05faf29474bcd9c4d7ae1",
+          "implementation_digest": "sha256:e93ac0d12dcac61de36f1e8abe9e0ee1ce69c18cb992223b188050f472d32968",
           "implementation_path": "runtime/executor.py",
           "input_schema": {
             "type": "object"
@@ -18341,7 +18341,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:1d847e368848ae31ed6efd24a65aae7be44d9ae2846dca56562b0619404f6eef",
+    "input_digest": "sha256:2cee8c76f0976d5f4b70a83d05b9e0c8c356d6269084f1e566ec1b415e017789",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -19042,7 +19042,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_guard_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:91d9d9ca262e015108ab10156593ac4ebf9e9604184260a5a6c51be74062e2b2",
+        "digest": "sha256:102c7da605ec08d384f45b63165ccccdda346b159887cc5471b72ceac84228d8",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/artifact-manifest.json"
       },
@@ -19092,7 +19092,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:62cb2d0f81006d2e051d28e96e69bb836597bb7840457ffe1721e6a1bfdbcc9c",
+        "digest": "sha256:4a8bd681a56fa17773a3c545e4a8a12d034a59d26bdf933b6a99e66d64056baa",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -19147,7 +19147,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_artifact_app_runtime_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:308ecb8cf6239aa75da39f22d1cfdae20c3637d64d7a24f15c45c237b3507f00",
+        "digest": "sha256:8d3b212a13fd269327b80e0eace1e9c96147bc71b41eec57f7407825b3a70701",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_browser_host_service_pack/rumi.pack.v3.json"
       },
@@ -19257,7 +19257,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_default_tool_projection_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:6ca3e5bb90d3356a941e867d8cf0852e9b6a16cc0f966b918b53f5db52b9a107",
+        "digest": "sha256:0a454f5848e5fcb1329b3d46eed982e9b1e6ffbf524dfc92d544d4d7d3a6cd7f",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/rumi.pack.v3.json"
       },
@@ -19532,7 +19532,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_guard_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:53ea7adc49e8822719688380ac2a536838dd8700dff546be56963fd908166a84",
+        "digest": "sha256:d9a298022d91d6353a27769f7d23f9f44a0fb2cafe0575d8775c6ae87545cd48",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_local_executor_pack/rumi.pack.v3.json"
       },
@@ -19547,7 +19547,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_policy_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:230bc3aebfe7bc0afe5b98607cb9fca8fd8aab6a7329b6ccc532d98c721e6410",
+        "digest": "sha256:9795ea65f418b0a470314cf485b562b95af6a4413752f17550a92c2182ee203f",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/rumi.pack.v3.json"
       },

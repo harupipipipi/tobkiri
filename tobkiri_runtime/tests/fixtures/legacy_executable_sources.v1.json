@@ -3947,10 +3947,10 @@
         {
           "function_id": "rumi_browser_host_service_pack.browser-host.tool",
           "owner": "rumi_browser_host_service_pack",
-          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_id": "tobkiri.service.tool.browser.operation.v1",
           "contract_version": "1.0.0",
           "implementation_path": "runtime/browser_tool.py",
-          "implementation_digest": "sha256:335d8b4f5dca4b2b88fd19e5b0a66762e8b7d1d97b517007361d5b66a624774e",
+          "implementation_digest": "sha256:07c1a2a92dd1999fec3287b34c9c973a850bc5c7db9fe5e2dbbacace01c0f216",
           "operation_ids": [
             "rumi_browser_host_service_pack.browser-tool-execute"
           ],

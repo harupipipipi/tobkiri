@@ -9,7 +9,7 @@ import pytest
 
 from core_runtime.host_provider_backend_v4 import CapturedHostPackDataV4
 from ecosystem.rumi_tool_registry_pack.runtime import host
-from ecosystem.rumi_tool_registry_pack.runtime.pack_data import definitions_from_pack_data
+from ecosystem.rumi_tool_registry_pack.runtime.pack_data import _execution, definitions_from_pack_data
 from tests.test_declared_pack_data import PACK_ID, _capture, data_pack as data_pack
 from tests.test_pack_architecture_wave6 import _definition
 from tests.test_tool_registry_host import registry_host as registry_host
@@ -28,7 +28,7 @@ def test_owner_lists_resolves_and_keeps_packaged_schemas_isolated(
 ) -> None:
     invoke, client = registry_host
     result = invoke("definition", {"operation": "list"}, pack_data=captured_data)
-    assert len(result["definitions"]) == 30
+    assert len(result["definitions"]) == 31
     assert result["pack_data_sources"] == [
         {
             "pack_id": PACK_ID,
@@ -44,6 +44,15 @@ def test_owner_lists_resolves_and_keeps_packaged_schemas_isolated(
     assert calculator["execution"]["contract_id"] == "tobkiri.service.tool.local.operation.v1"
     assert calculator["execution"]["provider_instance_id"] == "rumi_default_tools_pack.calculator"
     assert calculator["execution"]["operation"] == "rumi_default_tools_pack.calculator-evaluate"
+    browser = invoke(
+        "definition", {"operation": "resolve", "tool_id": "browser_managed"},
+        pack_data=captured_data,
+    )["definition"]
+    assert browser["execution"] == {
+        "kind": "local", "contract_id": "tobkiri.service.tool.browser.operation.v1",
+        "provider_instance_id": "rumi_browser_host_service_pack.browser-host.tool",
+        "operation": "rumi_browser_host_service_pack.browser-tool-execute",
+    }
     calculator["input_schema"]["properties"].clear()
     assert (
         "expression"
@@ -67,10 +76,32 @@ def test_stored_and_selected_contributions_remain_visible(captured_data, registr
         )
     ]
     result = invoke("definition", {"operation": "list"}, pack_data=captured_data)
-    assert len(result["definitions"]) == 32
+    assert len(result["definitions"]) == 33
     assert result["aliases"]["component.alias"] == "component.read"
     assert result["revision"] == 1
     assert client.calls[0][1] == "component.list"
+
+
+@pytest.mark.parametrize("contract", [
+    "tobkiri.service.tool.local.operation.v1", "tobkiri.service.tool.browser.operation.v1",
+])
+def test_execution_declaration_preserves_only_the_two_owned_local_contracts(contract):
+    declaration = {
+        "type": "global_contract", "contract_id": contract,
+        "provider_instance_id": "owner.provider", "operation": "owner.operation",
+    }
+    assert _execution({"execution": declaration}) == {
+        "kind": "local", **{key: value for key, value in declaration.items() if key != "type"},
+    }
+
+
+@pytest.mark.parametrize("contract", ["foreign.operation.v1", "", None, ["foreign"]])
+def test_execution_declaration_rejects_unlisted_contract_without_legacy_fallback(contract):
+    with pytest.raises(ValueError, match="local operation declaration"):
+        _execution({"execution": {
+            "type": "global_contract", "contract_id": contract,
+            "provider_instance_id": "owner.provider", "operation": "owner.operation",
+        }})
 
 
 @pytest.mark.parametrize(
@@ -213,7 +244,7 @@ def test_captured_pack_names_are_rejected_before_any_mutation(
     assert not (tmp_path / "packs").exists()
     assert client.calls == []
     listed = invoke("definition", {"operation": "list"}, pack_data=captured_data)
-    assert listed["revision"] == 0 and len(listed["definitions"]) == 30
+    assert listed["revision"] == 0 and len(listed["definitions"]) == 31
 
 
 @pytest.fixture

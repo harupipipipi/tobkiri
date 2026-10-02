@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:1b8adea9c753647433d2df70cc20564e1c9b581b33e36ec55bb381f6975abe3c",
+      "digest": "sha256:18a75bfcfbffa69d981007615f78a87d538d0e3674710e03314ef5adb8b89b6a",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -11,7 +11,7 @@
       "path": "runtime/__init__.py"
     },
     {
-      "digest": "sha256:335d8b4f5dca4b2b88fd19e5b0a66762e8b7d1d97b517007361d5b66a624774e",
+      "digest": "sha256:07c1a2a92dd1999fec3287b34c9c973a850bc5c7db9fe5e2dbbacace01c0f216",
       "kind": "executable",
       "path": "runtime/browser_tool.py"
     },
@@ -56,7 +56,7 @@
       "path": "runtime/service.py"
     },
     {
-      "digest": "sha256:eb1cc6c57c8dd40472d47cb046b907f737e2e3c6c6a650aeebd77d444bc0a2e2",
+      "digest": "sha256:07ed722524b0b04004c29496371415b43aba5a6c8e29d1ae340c55da7d0d256a",
       "kind": "executable",
       "path": "runtime/storage.py"
     }
@@ -77,11 +77,11 @@
       "revision_digest": "sha256:f4266b8bc3b1fd6e062c9e70fa1bb0ea14970ddd5d701131adc2d57b44c9e275"
     },
     {
-      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "contract_id": "tobkiri.service.tool.browser.operation.v1",
       "operations": [
         "rumi_browser_host_service_pack.browser-tool-execute"
       ],
-      "revision_digest": "sha256:adbc6a37477bad718477a9b1ba8b3a8d48b582459080feb8ea5a726ed31994f5"
+      "revision_digest": "sha256:a0259672de88a111716b404672db950df643af47ea937bfac74158452a888743"
     }
   ],
   "functions": [
@@ -106,9 +106,9 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:adbc6a37477bad718477a9b1ba8b3a8d48b582459080feb8ea5a726ed31994f5",
+      "contract_revision_digest": "sha256:a0259672de88a111716b404672db950df643af47ea937bfac74158452a888743",
       "id": "rumi_browser_host_service_pack.browser-host.tool",
-      "implementation_digest": "sha256:335d8b4f5dca4b2b88fd19e5b0a66762e8b7d1d97b517007361d5b66a624774e",
+      "implementation_digest": "sha256:07c1a2a92dd1999fec3287b34c9c973a850bc5c7db9fe5e2dbbacace01c0f216",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_browser_host_service_pack.browser-tool-execute"
@@ -117,9 +117,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:47e994663ae49aca3dba411f0a5f3c14c7a8baa2c4d1b10257a937a8901a032e",
-    "contract_catalog_digest": "sha256:b11e6f7dae492ae0b07ccc31bc13eab3d210b67cc112c44d4a0f3a1a7e9bb511",
-    "source_identity": "sha256:78263b0cfe2393362c133389a1cc00d32e9a2458ffbc1f36e8b730990c94d097"
+    "artifact_set_digest": "sha256:d265e2ea2ba43c9c27ede38a25de623f82a383b05f03c705c7488579289af4c7",
+    "contract_catalog_digest": "sha256:ee57fd2b301f08d51d101bf52464ebdf3067b4d9372f452767a22fe22c0d25d5",
+    "source_identity": "sha256:f601bc421c81b83978ec2b1911f6c399fef2498849b7d57041d76ae085dcb36f"
   },
   "migration": {
     "compatibility": "read_only",
@@ -156,7 +156,7 @@
       "source_kind": "canonical_v4_contract"
     },
     {
-      "contract_reference": "tobkiri.service.tool.local.operation.v1",
+      "contract_reference": "tobkiri.service.tool.browser.operation.v1",
       "effect_ceiling": [
         "capability:tool.local.operation",
         "host:brokered-execution"
@@ -168,7 +168,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:47e994663ae49aca3dba411f0a5f3c14c7a8baa2c4d1b10257a937a8901a032e",
+    "artifact_digest": "sha256:d265e2ea2ba43c9c27ede38a25de623f82a383b05f03c705c7488579289af4c7",
     "display_name": "Tobkiri Browser Host Service",
     "id": "rumi_browser_host_service_pack",
     "kind": "host_extension",
@@ -178,7 +178,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:78263b0cfe2393362c133389a1cc00d32e9a2458ffbc1f36e8b730990c94d097",
+        "digest": "sha256:f601bc421c81b83978ec2b1911f6c399fef2498849b7d57041d76ae085dcb36f",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -189,7 +189,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:78263b0cfe2393362c133389a1cc00d32e9a2458ffbc1f36e8b730990c94d097",
+    "source_digest": "sha256:f601bc421c81b83978ec2b1911f6c399fef2498849b7d57041d76ae085dcb36f",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_browser_host_service_pack"
   },
@@ -211,7 +211,7 @@
       "provider_id": "rumi_browser_host_service_pack.browser-host.observe"
     },
     {
-      "contract_reference": "tobkiri.service.tool.local.operation.v1",
+      "contract_reference": "tobkiri.service.tool.browser.operation.v1",
       "operations": [
         "rumi_browser_host_service_pack.browser-tool-execute"
       ],

@@ -178,7 +178,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
-    "source_digest": "sha256:bc78101a0049619b8d402b99d839fa53c2aa699845c5e1385a4cb52b80152d74",
+    "source_digest": "sha256:7876653ad1460aa03a775e3639e4cbdc47d4008c7768fd83d9c567071237390e",
     "repository_commit": "working-tree",
     "repository_tree": "c873994334bc031353714592c0fa391f71780b036e87a26e44d4f4a6b7f19ae6",
     "generator": "tobkiri-profile-artifacts",
@@ -3645,15 +3645,15 @@
     },
     {
       "caller_function_id": "rumi_tool_local_executor_pack.tool-executor.local",
-      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "contract_id": "tobkiri.service.tool.browser.operation.v1",
       "operation_id": "rumi_browser_host_service_pack.browser-tool-execute",
       "target_provider_id": "rumi_browser_host_service_pack.browser-host.tool",
       "requested_scope_template": {
         "capability": "operation.invoke",
-        "semantics_digest": "sha256:adbc6a37477bad718477a9b1ba8b3a8d48b582459080feb8ea5a726ed31994f5",
+        "semantics_digest": "sha256:a0259672de88a111716b404672db950df643af47ea937bfac74158452a888743",
         "dimensions": {
           "contract": [
-            "tobkiri.service.tool.local.operation.v1"
+            "tobkiri.service.tool.browser.operation.v1"
           ],
           "operation": [
             "rumi_browser_host_service_pack.browser-tool-execute"

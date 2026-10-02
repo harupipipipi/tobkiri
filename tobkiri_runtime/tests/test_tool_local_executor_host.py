@@ -49,7 +49,9 @@ def local_host(tmp_path):
 
         def contract_client(**kwargs):
             assert kwargs == {
-                "allowed_contract_ids": frozenset({executor.DEFINITION, executor.LOCAL_OPERATION}),
+                "allowed_contract_ids": frozenset({
+                    executor.DEFINITION, executor.LOCAL_OPERATION, executor.BROWSER_OPERATION,
+                }),
                 "consumer_pack_id": executor.PACK_ID, "include_credentials": False,
             }
             return client
@@ -75,12 +77,14 @@ class _Client:
             "operation_id": "owner.invoke", "backend_id": "test", "implementation_digest": "impl",
         }]
         self.calls = []
+        self.provider_queries = []
         self.found = True
         self.cancel_after_read = False
         self.failure = None
 
     def providers(self, contract):
-        assert contract == executor.LOCAL_OPERATION
+        assert contract == self.definition["execution"]["contract_id"]
+        self.provider_queries.append(contract)
         return self.metadata
 
     def invoke(self, contract, operation, payload, **kwargs):
@@ -91,22 +95,35 @@ class _Client:
             if self.cancel_after_read:
                 self.invocation.stale = True
             return {"found": self.found, "resolved_tool_id": "sample", "definition": self.definition}
-        assert contract == executor.LOCAL_OPERATION
+        assert contract == self.definition["execution"]["contract_id"]
         if self.failure:
             raise self.failure
         return {"result": payload["arguments"]["value"]}
 
 
 @pytest.mark.parametrize("provider", ["owner.tool-adapter", "tool-adapter"])
-def test_local_target_uses_exact_captured_function_or_instance_identity(local_host, provider):
+@pytest.mark.parametrize("contract", [executor.LOCAL_OPERATION, executor.BROWSER_OPERATION])
+def test_local_target_uses_exact_captured_function_or_instance_identity(local_host, provider, contract):
     invoke, client, _ = local_host
     client.definition["execution"]["provider_instance_id"] = provider
+    client.definition["execution"]["contract_id"] = contract
     assert invoke() == {"result": 7}
+    assert client.provider_queries == [contract]
     assert client.calls[-1] == (
-        executor.LOCAL_OPERATION, "owner.invoke",
+        contract, "owner.invoke",
         {"tool_id": "sample", "tool_call_id": "call-1", "arguments": {"value": 7}},
         {"provider_instance_id": "tool-adapter"},
     )
+
+
+@pytest.mark.parametrize("contract", ["foreign.operation.v1", "", None, [executor.BROWSER_OPERATION]])
+def test_local_executor_rejects_unlisted_contract_before_provider_discovery(local_host, contract):
+    invoke, client, _ = local_host
+    client.definition["execution"]["contract_id"] = contract
+    with pytest.raises(ValueError, match="execution descriptor"):
+        invoke()
+    assert len(client.calls) == 1
+    assert client.provider_queries == []
 
 
 @pytest.mark.parametrize("field", [

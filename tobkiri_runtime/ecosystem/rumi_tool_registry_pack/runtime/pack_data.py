@@ -20,6 +20,10 @@ _DATA_SOURCES = frozenset(
 )
 _LOCAL_PROVIDER = "rumi_default_tool_projection_pack.tool-adapter.defaultspack-compat"
 _LOCAL_OPERATION = "rumi_default_tool_projection_pack.default-tool-local-operation"
+_LOCAL_OPERATION_CONTRACTS = frozenset({
+    "tobkiri.service.tool.local.operation.v1",
+    "tobkiri.service.tool.browser.operation.v1",
+})
 _AUTHORITIES = frozenset(
     {
         "file.read",
@@ -146,7 +150,8 @@ def _execution(config: dict[str, Any]) -> dict[str, str]:
         }
     if (
         set(value) != {"type", "contract_id", "provider_instance_id", "operation"}
-        or value["contract_id"] != "tobkiri.service.tool.local.operation.v1"
+        or not isinstance(value["contract_id"], str)
+        or value["contract_id"] not in _LOCAL_OPERATION_CONTRACTS
         or any(
             not isinstance(value[key], str)
             or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}", value[key]) is None

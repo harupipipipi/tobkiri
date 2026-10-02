@@ -25,6 +25,7 @@ from ecosystem.rumi_browser_host_service_pack.runtime.service import (
 from ecosystem.rumi_browser_host_service_pack.runtime.storage import (
     MAX_METADATA_BYTES,
     checked_path,
+    read_json,
     write_json,
 )
 
@@ -597,6 +598,24 @@ def test_oversized_metadata_write_preserves_existing_state(tmp_path: Path) -> No
         write_json(tmp_path, state, {"value": "a" * MAX_METADATA_BYTES})
     assert state.read_bytes() == original
     assert not list(tmp_path.glob(".metadata.*"))
+
+
+def test_metadata_at_exact_byte_limit_remains_readable(tmp_path: Path) -> None:
+    """Accepted UTF-8 bytes cannot expand past the read limit on Windows."""
+    state = tmp_path / "state.json"
+    empty_body = (json.dumps({"value": ""}, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode(
+        "utf-8"
+    )
+    remaining = MAX_METADATA_BYTES - len(empty_body)
+    value = {"value": "é" * (remaining // 2) + "x" * (remaining % 2)}
+    expected = (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
+    assert len(expected) == MAX_METADATA_BYTES
+
+    write_json(tmp_path, state, value)
+
+    assert state.stat().st_size == MAX_METADATA_BYTES
+    assert state.read_bytes() == expected
+    assert read_json(tmp_path, state) == value
 
 
 def test_aggregate_cookie_queue_rejects_overflow_without_bricking_state(

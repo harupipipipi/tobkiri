@@ -19,6 +19,8 @@ PACK_ID = "rumi_tool_local_executor_pack"
 CONTRACT = "tobkiri.service.tool.execute.v1"
 OPERATION = f"{PACK_ID}.tool-local-execute"
 LOCAL_OPERATION = "tobkiri.service.tool.local.operation.v1"
+BROWSER_OPERATION = "tobkiri.service.tool.browser.operation.v1"
+_LOCAL_OPERATION_CONTRACTS = frozenset({LOCAL_OPERATION, BROWSER_OPERATION})
 DEFINITION = "tobkiri.resource.tool.definition.v1"
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}")
 
@@ -39,7 +41,7 @@ def _bind(_context: HostProviderCaptureContextV4) -> HostFunction:
         ):
             raise ValueError("local tool invocation payload is invalid")
         client = invocation.contract_client(
-            allowed_contract_ids=frozenset({DEFINITION, LOCAL_OPERATION}),
+            allowed_contract_ids=frozenset({DEFINITION}) | _LOCAL_OPERATION_CONTRACTS,
             consumer_pack_id=PACK_ID,
             include_credentials=False,
         )
@@ -63,7 +65,8 @@ def _bind(_context: HostProviderCaptureContextV4) -> HostFunction:
         if (
             not isinstance(execution, Mapping)
             or execution.get("kind") != "local"
-            or execution.get("contract_id") != LOCAL_OPERATION
+            or not isinstance(execution.get("contract_id"), str)
+            or execution["contract_id"] not in _LOCAL_OPERATION_CONTRACTS
             or any(
                 not isinstance(execution.get(key), str)
                 or not _IDENTIFIER.fullmatch(execution[key])
@@ -71,8 +74,9 @@ def _bind(_context: HostProviderCaptureContextV4) -> HostFunction:
             )
         ):
             raise ValueError("local tool execution descriptor is invalid")
+        operation_contract = execution["contract_id"]
         candidates = [
-            item for item in client.providers(LOCAL_OPERATION)
+            item for item in client.providers(operation_contract)
             if execution["provider_instance_id"] in (
                 item.get("provider_instance_id"), item.get("function_id"),
             )
@@ -87,7 +91,7 @@ def _bind(_context: HostProviderCaptureContextV4) -> HostFunction:
         # cancellation and authority. Neither the tool's labels nor this adapter
         # can authorize the target or replay it through a legacy executor.
         return client.invoke(
-            LOCAL_OPERATION, execution["operation"],
+            operation_contract, execution["operation"],
             {key: payload[key] for key in ("tool_id", "tool_call_id", "arguments")},
             provider_instance_id=candidates[0]["provider_instance_id"],
         )

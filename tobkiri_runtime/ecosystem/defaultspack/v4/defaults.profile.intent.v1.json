@@ -3438,14 +3438,14 @@
     },
     {
       "caller_function_id": "rumi_tool_local_executor_pack.tool-executor.local",
-      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "contract_id": "tobkiri.service.tool.browser.operation.v1",
       "operation_id": "rumi_browser_host_service_pack.browser-tool-execute",
       "target_provider_id": "rumi_browser_host_service_pack.browser-host.tool",
       "requested_scope_template": {
         "capability": "operation.invoke",
         "dimensions": {
           "contract": [
-            "tobkiri.service.tool.local.operation.v1"
+            "tobkiri.service.tool.browser.operation.v1"
           ],
           "operation": [
             "rumi_browser_host_service_pack.browser-tool-execute"

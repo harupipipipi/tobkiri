@@ -73,16 +73,16 @@ def read_json(root: Path, path: Path) -> dict[str, Any]:
 
 
 def write_json(root: Path, path: Path, value: Mapping[str, Any]) -> None:
-    """Replace owned metadata atomically with private file permissions."""
+    """Replace owned metadata atomically using the validated UTF-8 bytes."""
 
-    body = json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
-    if len(body.encode("utf-8")) > MAX_METADATA_BYTES:
+    body = (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
+    if len(body) > MAX_METADATA_BYTES:
         raise ValueError("Managed browser metadata exceeds the 4 MiB storage limit")
     private_directory(root, path.parent)
     checked_path(root, path)
     descriptor, temporary = tempfile.mkstemp(prefix=".metadata.", dir=path.parent)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        with os.fdopen(descriptor, "wb") as handle:
             os.chmod(temporary, 0o600)
             handle.write(body)
             handle.flush()

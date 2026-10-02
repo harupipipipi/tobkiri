@@ -17,7 +17,7 @@ from core_runtime.host_provider_function_v4 import (
 
 PACK_ID = "rumi_browser_host_service_pack"
 FUNCTION = f"{PACK_ID}.browser-host.tool"
-CONTRACT = "tobkiri.service.tool.local.operation.v1"
+CONTRACT = "tobkiri.service.tool.browser.operation.v1"
 OPERATION = f"{PACK_ID}.browser-tool-execute"
 _OBSERVE = "tobkiri.resource.browser.host.v1"
 _CONTROL = "tobkiri.action.browser.host.v1"

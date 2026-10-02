@@ -9,8 +9,10 @@ from tobkiri_protocol.tool_groups import infer_tool_service
 
 EXECUTE = "tobkiri.service.tool.execute.v1"
 LOCAL = "tobkiri.service.tool.local.operation.v1"
+BROWSER = "tobkiri.service.tool.browser.operation.v1"
+_LOCAL_OPERATION_CONTRACTS = frozenset({LOCAL, BROWSER})
 MCP = "tobkiri.service.mcp.tool.call.v1"
-ROUTE_CONTRACTS = frozenset({EXECUTE, LOCAL, MCP})
+ROUTE_CONTRACTS = frozenset({EXECUTE, MCP}) | _LOCAL_OPERATION_CONTRACTS
 
 
 def select_tools(
@@ -63,8 +65,10 @@ def _available(definition: Mapping[str, Any], routes: Mapping[str, tuple]) -> bo
     kind = execution.get("kind")
     if kind not in {"local", "mcp"}:
         return False
-    contract = LOCAL if kind == "local" else MCP
-    if execution.get("contract_id") != contract:
+    contract = execution.get("contract_id")
+    if not isinstance(contract, str) or (
+        contract not in _LOCAL_OPERATION_CONTRACTS if kind == "local" else contract != MCP
+    ):
         return False
     pack = f"rumi_tool_{kind}_executor_pack"
     executors = [

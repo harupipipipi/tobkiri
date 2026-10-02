@@ -51,12 +51,23 @@ def test_defaults_tools_catalog_is_authenticated_read_only_and_not_an_execution_
     metadata = session.provider_metadata(local)
     assert {(item["function_id"], item["operation_id"]) for item in metadata} == {
         ("rumi_default_tools_pack.calculator", "rumi_default_tools_pack.calculator-evaluate"),
+    }
+    browser = "tobkiri.service.tool.browser.operation.v1"
+    assert {
+        (item["function_id"], item["operation_id"])
+        for item in session.provider_metadata(browser)
+    } == {
         ("rumi_browser_host_service_pack.browser-host.tool", "rumi_browser_host_service_pack.browser-tool-execute"),
     }
     with pytest.raises(AuthorityDenied):
         session.invoke(local, "rumi_default_tools_pack.calculator-evaluate", {
             "tool_id": "calculator", "tool_call_id": "direct-call",
             "arguments": {"expression": "6*7"}, "_session_id": "catalog-reader",
+        })
+    with pytest.raises(AuthorityDenied):
+        session.invoke(browser, "rumi_browser_host_service_pack.browser-tool-execute", {
+            "tool_id": "browser_managed", "tool_call_id": "direct-call",
+            "arguments": {"action": "browser.runtime.status"}, "_session_id": "catalog-reader",
         })
     assert not (tmp_path / "user-data/packs/rumi_tool_registry_pack").exists()
     for query in ("profile_id=foreign", "operation=save", "approved=true", "pack_id=foreign"):

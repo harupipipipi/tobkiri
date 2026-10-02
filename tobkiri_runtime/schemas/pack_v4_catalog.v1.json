@@ -3937,7 +3937,7 @@
         },
         {
           "cardinality": "many",
-          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_id": "tobkiri.service.tool.browser.operation.v1",
           "failure": "fail_closed",
           "isolation": "in_process",
           "lifecycle": {
@@ -3949,7 +3949,7 @@
             {
               "entrypoint_id": "browser-tool-execute",
               "id": "rumi_browser_host_service_pack.browser-tool-execute",
-              "implementation_digest": "sha256:335d8b4f5dca4b2b88fd19e5b0a66762e8b7d1d97b517007361d5b66a624774e"
+              "implementation_digest": "sha256:07c1a2a92dd1999fec3287b34c9c973a850bc5c7db9fe5e2dbbacace01c0f216"
             }
           ],
           "owner": "rumi_browser_host_service_pack",
@@ -4009,7 +4009,7 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:335d8b4f5dca4b2b88fd19e5b0a66762e8b7d1d97b517007361d5b66a624774e",
+          "digest": "sha256:07c1a2a92dd1999fec3287b34c9c973a850bc5c7db9fe5e2dbbacace01c0f216",
           "kind": "executable",
           "path": "runtime/browser_tool.py"
         },
@@ -4039,7 +4039,7 @@
           "path": "runtime/host_provider.py"
         },
         {
-          "digest": "sha256:eb1cc6c57c8dd40472d47cb046b907f737e2e3c6c6a650aeebd77d444bc0a2e2",
+          "digest": "sha256:07ed722524b0b04004c29496371415b43aba5a6c8e29d1ae340c55da7d0d256a",
           "kind": "executable",
           "path": "runtime/storage.py"
         },
@@ -8260,7 +8260,7 @@
           "path": "domain/tool/calculator.py"
         },
         {
-          "digest": "sha256:8564ebfc5d962dc9db5f94468baec59452f67edd29289de326986ba9b3c5c9cf",
+          "digest": "sha256:d5b1005115072df5f3faab5a84899d3bd1953136385ef468a4395f860616d261",
           "kind": "sidecar",
           "path": "tools/browser_managed/manifest.json"
         }
@@ -17344,7 +17344,7 @@
             {
               "entrypoint_id": "tool-local-execute",
               "id": "rumi_tool_local_executor_pack.tool-local-execute",
-              "implementation_digest": "sha256:7a42e7a8469fc7ca3bb948c5833247ca07d0d2f1acb05faf29474bcd9c4d7ae1"
+              "implementation_digest": "sha256:e93ac0d12dcac61de36f1e8abe9e0ee1ce69c18cb992223b188050f472d32968"
             }
           ],
           "owner": "rumi_tool_capability_executor_pack",
@@ -17379,11 +17379,17 @@
           "contract_id": "tobkiri.resource.tool.definition.v1",
           "optional": false,
           "version_range": "^1.0.0"
+        },
+        {
+          "cardinality": "many",
+          "contract_id": "tobkiri.service.tool.browser.operation.v1",
+          "optional": true,
+          "version_range": "^1.0.0"
         }
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:7a42e7a8469fc7ca3bb948c5833247ca07d0d2f1acb05faf29474bcd9c4d7ae1",
+          "digest": "sha256:e93ac0d12dcac61de36f1e8abe9e0ee1ce69c18cb992223b188050f472d32968",
           "kind": "executable",
           "path": "runtime/executor.py"
         }
@@ -17798,6 +17804,12 @@
           "contract_id": "tobkiri.service.mcp.tool.call.v1",
           "optional": true,
           "version_range": "^1.0.0"
+        },
+        {
+          "cardinality": "many",
+          "contract_id": "tobkiri.service.tool.browser.operation.v1",
+          "optional": true,
+          "version_range": "^1.0.0"
         }
       ],
       "runtime_artifacts": [
@@ -17817,12 +17829,12 @@
           "path": "runtime/host.py"
         },
         {
-          "digest": "sha256:3a3e843263f6f30bbd554424a2afdc58024271a136e25cee57901f0371b81ae6",
+          "digest": "sha256:34816bfafd0727beb55f23b3c4a9a09269814c346aab29a229d9857eafd6a88f",
           "kind": "executable",
           "path": "runtime/pack_data.py"
         },
         {
-          "digest": "sha256:d2903c083ee91411637658c93b388a50dd6fb2d53a149c9560044c85dc89708e",
+          "digest": "sha256:9034193df026171a7c2317314108a2eb2c689a00b6d4b372796da2cb9be6ad37",
           "kind": "executable",
           "path": "runtime/selection.py"
         }

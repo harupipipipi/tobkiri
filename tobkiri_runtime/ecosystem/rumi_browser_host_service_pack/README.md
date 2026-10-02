@@ -64,8 +64,9 @@ storage. Cookie values are hidden in inspection results.
 
 ## DevTools and model tools
 
-The `browser_managed` tool is registered through the canonical local-operation
-Contract and dispatches through the same browser observe/control providers as
+The `browser_managed` tool is registered through the canonical
+`tobkiri.service.tool.browser.operation.v1` Contract and dispatches through the
+same browser observe/control providers as
 the workspace. Its actions cover runtime status/start/stop, profiles, live tabs,
 navigation, extensions, cookie import, DOM inspection, viewport screenshots,
 JavaScript evaluation and network capture. For example:

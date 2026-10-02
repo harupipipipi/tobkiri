@@ -11,14 +11,14 @@
       "executable_source_registry": 0,
       "launcher_safety": 0,
       "legacy_registry_and_installed_lookup": 0,
-      "migration_evidence": 3,
+      "migration_evidence": 5,
       "offline_projection": 0
     },
     "legacy_manifest_declared_packs": 143,
     "migration_status": {
-      "generated-draft": 1,
-      "release-verified": 141,
-      "semantically-reviewed": 1
+      "generated-draft": 2,
+      "release-verified": 139,
+      "semantically-reviewed": 2
     },
     "production_pack_directories": 143,
     "v4_artifact_files": 572,
@@ -66,20 +66,51 @@
         "symbol": "pack_release_proof_invalid"
       },
       {
+        "errors": [
+          "curated_review_source_digest_mismatch",
+          "curated_review_target_digest_mismatch",
+          "runtime_receipt_target_digest_mismatch"
+        ],
+        "line": 1,
+        "pack_id": "rumi_tool_local_executor_pack",
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "pack_release_proof_invalid",
+        "symbol": "pack_release_proof_invalid"
+      },
+      {
+        "errors": [
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing",
+          "pack_specific_migration_receipt_missing",
+          "curated_review_source_digest_mismatch",
+          "curated_review_target_digest_mismatch",
+          "runtime_receipt_target_digest_mismatch",
+          "pack_specific_semantic_comparison_unverified",
+          "pack_specific_operation_mapping_missing"
+        ],
+        "line": 1,
+        "pack_id": "rumi_tool_registry_pack",
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "pack_release_proof_invalid",
+        "symbol": "pack_release_proof_invalid"
+      },
+      {
         "line": 1,
         "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
         "rule": "migration_release_proof_missing",
         "sample_pack_ids": [
           "rumi_browser_host_service_pack",
-          "rumi_default_tools_pack"
+          "rumi_default_tools_pack",
+          "rumi_tool_local_executor_pack",
+          "rumi_tool_registry_pack"
         ],
         "status_counts": {
-          "generated-draft": 1,
-          "release-verified": 141,
-          "semantically-reviewed": 1
+          "generated-draft": 2,
+          "release-verified": 139,
+          "semantically-reviewed": 2
         },
         "symbol": "migration_release_proof_missing",
-        "unverified_count": 2
+        "unverified_count": 4
       }
     ],
     "offline_projection": []
@@ -164,20 +195,51 @@
           "symbol": "pack_release_proof_invalid"
         },
         {
+          "errors": [
+            "curated_review_source_digest_mismatch",
+            "curated_review_target_digest_mismatch",
+            "runtime_receipt_target_digest_mismatch"
+          ],
+          "line": 1,
+          "pack_id": "rumi_tool_local_executor_pack",
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "pack_release_proof_invalid",
+          "symbol": "pack_release_proof_invalid"
+        },
+        {
+          "errors": [
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing",
+            "pack_specific_migration_receipt_missing",
+            "curated_review_source_digest_mismatch",
+            "curated_review_target_digest_mismatch",
+            "runtime_receipt_target_digest_mismatch",
+            "pack_specific_semantic_comparison_unverified",
+            "pack_specific_operation_mapping_missing"
+          ],
+          "line": 1,
+          "pack_id": "rumi_tool_registry_pack",
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "pack_release_proof_invalid",
+          "symbol": "pack_release_proof_invalid"
+        },
+        {
           "line": 1,
           "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
           "rule": "migration_release_proof_missing",
           "sample_pack_ids": [
             "rumi_browser_host_service_pack",
-            "rumi_default_tools_pack"
+            "rumi_default_tools_pack",
+            "rumi_tool_local_executor_pack",
+            "rumi_tool_registry_pack"
           ],
           "status_counts": {
-            "generated-draft": 1,
-            "release-verified": 141,
-            "semantically-reviewed": 1
+            "generated-draft": 2,
+            "release-verified": 139,
+            "semantically-reviewed": 2
           },
           "symbol": "migration_release_proof_missing",
-          "unverified_count": 2
+          "unverified_count": 4
         }
       ],
       "status": "RED"
@@ -940,9 +1002,9 @@
       ]
     },
     "migration_status_counts": {
-      "generated-draft": 1,
-      "release-verified": 141,
-      "semantically-reviewed": 1
+      "generated-draft": 2,
+      "release-verified": 139,
+      "semantically-reviewed": 2
     },
     "migration_status_records": [
       {
@@ -1946,7 +2008,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "release-verified",
+        "classified_as": "semantically-reviewed",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_local_executor_pack",
@@ -1970,7 +2032,7 @@
         "v4_only": false
       },
       {
-        "classified_as": "release-verified",
+        "classified_as": "generated-draft",
         "declared_authority": "v4-authoritative",
         "legacy_manifest_authority": "v4-authoritative",
         "pack_id": "rumi_tool_registry_pack",
@@ -2245,8 +2307,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "176c0a15b0bf3cc976770f313a07d0d38fa59b70",
-    "semantic_digest": "sha256:6df9808ed9440f8392013a498a71ca6fcf9f8424cc3c86e72f3ae9f9121bc1de",
+    "observed_head_sha": "8d3289dc961fb52f5c473928805b6af78d9e0fb4",
+    "semantic_digest": "sha256:1fa29dd1adca296e337b3c895d254288b05a78bfa49cc2915ffa64194adaff78",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }

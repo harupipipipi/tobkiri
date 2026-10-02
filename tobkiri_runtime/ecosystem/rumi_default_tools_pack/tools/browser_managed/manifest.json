@@ -63,7 +63,7 @@
     },
     "execution": {
       "type": "global_contract",
-      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "contract_id": "tobkiri.service.tool.browser.operation.v1",
       "provider_instance_id": "rumi_browser_host_service_pack.browser-host.tool",
       "operation": "rumi_browser_host_service_pack.browser-tool-execute"
     },

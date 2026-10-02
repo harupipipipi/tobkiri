@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:9af7592cb559a35945230a7da7ca312c27dcddea0b237449a0178c79ad5c7bab",
+  "catalog_digest": "sha256:45c19a0826d215ce39e703fa2d4e0ce5af6ce31c8fc33a567fd83467ea55152c",
   "pack_id": "rumi_browser_host_service_pack",
-  "source_identity": "sha256:78263b0cfe2393362c133389a1cc00d32e9a2458ffbc1f36e8b730990c94d097",
+  "source_identity": "sha256:f601bc421c81b83978ec2b1911f6c399fef2498849b7d57041d76ae085dcb36f",
   "variants": [
     {
       "architecture": "any",
@@ -78,12 +78,12 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_browser_host_service_pack.browser-host.tool",
-      "implementation_digest": "sha256:335d8b4f5dca4b2b88fd19e5b0a66762e8b7d1d97b517007361d5b66a624774e",
+      "implementation_digest": "sha256:07c1a2a92dd1999fec3287b34c9c973a850bc5c7db9fe5e2dbbacace01c0f216",
       "implementation_path": "runtime/browser_tool.py",
       "materialization_mode": "on_demand",
       "operations": [
         {
-          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_id": "tobkiri.service.tool.browser.operation.v1",
           "contract_version": "1.0.0",
           "effect_class": "privileged",
           "error_schema": {
@@ -97,7 +97,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:adbc6a37477bad718477a9b1ba8b3a8d48b582459080feb8ea5a726ed31994f5",
+          "revision_digest": "sha256:a0259672de88a111716b404672db950df643af47ea937bfac74158452a888743",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

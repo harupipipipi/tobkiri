@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import pytest
 
-from ecosystem.rumi_tool_registry_pack.runtime.selection import EXECUTE, LOCAL
+from ecosystem.rumi_tool_registry_pack.runtime.selection import BROWSER, EXECUTE, LOCAL, _available
 from tests.test_pack_architecture_wave6 import _definition
 from tests.test_tool_registry_host import registry_host as _registry_host
 
@@ -14,12 +14,12 @@ def registry_host(tmp_path):
     return _registry_host.__wrapped__(tmp_path)
 
 
-def _selected(registry_host):
+def _selected(registry_host, contract=LOCAL):
     invoke, client = registry_host
     definition = _definition()
     definition["execution"] = {
         "kind": "local",
-        "contract_id": LOCAL,
+        "contract_id": contract,
         "provider_instance_id": "fixture.read",
         "operation": "fixture.read",
     }
@@ -32,7 +32,7 @@ def _selected(registry_host):
             "backend_id": "test",
         }
     ]
-    client.routes[LOCAL] = [
+    client.routes[contract] = [
         {
             "function_id": "fixture.read",
             "operation_id": "fixture.read",
@@ -43,8 +43,9 @@ def _selected(registry_host):
     return invoke, client
 
 
-def test_selected_schema_has_owner_hash_and_never_invokes_execution(registry_host):
-    invoke, client = _selected(registry_host)
+@pytest.mark.parametrize("contract", [LOCAL, BROWSER])
+def test_selected_schema_has_owner_hash_and_never_invokes_execution(registry_host, contract):
+    invoke, client = _selected(registry_host, contract)
     selected = invoke("definition", {"operation": "select", "selection": {"mode": "auto"}})
     owned = invoke("definition", {"operation": "resolve", "tool_id": "sample.read"})
     assert selected["definitions"] == {"sample.read": owned["definition"]["definition_hash"]}
@@ -57,13 +58,14 @@ def test_selected_schema_has_owner_hash_and_never_invokes_execution(registry_hos
 
 
 @pytest.mark.parametrize("change", ["missing", "ambiguous", "backend", "operation", "provider"])
-def test_unavailable_route_is_filtered_and_explicit_selection_is_denied(registry_host, change):
-    invoke, client = _selected(registry_host)
-    route = client.routes[LOCAL][0]
+@pytest.mark.parametrize("contract", [LOCAL, BROWSER])
+def test_unavailable_route_is_filtered_and_explicit_selection_is_denied(registry_host, change, contract):
+    invoke, client = _selected(registry_host, contract)
+    route = client.routes[contract][0]
     if change == "missing":
-        client.routes[LOCAL] = []
+        client.routes[contract] = []
     elif change == "ambiguous":
-        client.routes[LOCAL].append(deepcopy(route))
+        client.routes[contract].append(deepcopy(route))
     elif change == "backend":
         route["backend_unavailable_reason"] = "not registered"
     elif change == "operation":
@@ -85,6 +87,11 @@ def test_unavailable_route_is_filtered_and_explicit_selection_is_denied(registry
             },
         )
     assert client.calls == []
+
+
+@pytest.mark.parametrize("contract", ["foreign.operation.v1", "", None, [BROWSER]])
+def test_selection_rejects_unlisted_contract_before_route_lookup(contract):
+    assert _available({"execution": {"kind": "local", "contract_id": contract}}, {}) is False
 
 
 def test_alias_exclusion_and_must_use_do_not_create_an_execution_route(registry_host):

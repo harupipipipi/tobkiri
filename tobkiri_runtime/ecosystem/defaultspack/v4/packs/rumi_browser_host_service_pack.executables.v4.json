@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_browser_host_service_pack",
-  "source_identity": "sha256:a2d9b7537d025cb5fa531d234f2ed5c222a4da46e786f51013ba4353efd08a3f",
+  "source_identity": "sha256:de7afee2b69ea813e535b5ef1cefcb8074351ab689811b878da9cd86fd766a61",
   "variants": [
     {
       "variant_id": "rumi_browser_host_service_pack.browser-host.control.python",
@@ -75,7 +75,7 @@
       "variant_id": "rumi_browser_host_service_pack.browser-host.tool.python",
       "function_id": "rumi_browser_host_service_pack.browser-host.tool",
       "implementation_path": "runtime/browser_tool.py",
-      "implementation_digest": "sha256:335d8b4f5dca4b2b88fd19e5b0a66762e8b7d1d97b517007361d5b66a624774e",
+      "implementation_digest": "sha256:07c1a2a92dd1999fec3287b34c9c973a850bc5c7db9fe5e2dbbacace01c0f216",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -85,9 +85,9 @@
       "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
-          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_id": "tobkiri.service.tool.browser.operation.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:adbc6a37477bad718477a9b1ba8b3a8d48b582459080feb8ea5a726ed31994f5",
+          "revision_digest": "sha256:a0259672de88a111716b404672db950df643af47ea937bfac74158452a888743",
           "operation_id": "rumi_browser_host_service_pack.browser-tool-execute",
           "input_schema": {
             "type": "object"
@@ -106,6 +106,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:9af7592cb559a35945230a7da7ca312c27dcddea0b237449a0178c79ad5c7bab",
-  "catalog_digest": "sha256:27e476e140f30d7e08e83c3bfe335e459c6601251b2dabd2bb3b5790504a1164"
+  "materialization_catalog_digest": "sha256:45c19a0826d215ce39e703fa2d4e0ce5af6ce31c8fc33a567fd83467ea55152c",
+  "catalog_digest": "sha256:52e3acb8d45fdd6717104dfaa1594f216dc668fea3250aea91fc30138bedbbbe"
 }
