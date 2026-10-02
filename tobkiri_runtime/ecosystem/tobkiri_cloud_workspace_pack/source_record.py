@@ -30,6 +30,7 @@ def _schema(kind: str) -> dict[str, Any]:
         "expected_revision": REVISION,
         "expected_writer_epoch": REVISION,
         "paths": {"type": "string", "minLength": 1, "maxLength": 32768},
+        "argv_json": {"type": "string", "minLength": 1, "maxLength": 24000},
         "archive_base64": {"type": "string", "minLength": 1, "maxLength": 13981016},
         "expected_receiver_head": {
             "type": "string",
@@ -55,10 +56,12 @@ def _schema(kind: str) -> dict[str, Any]:
 
 def build_source() -> dict[str, Any]:
     """Derive current byte digests and public finite operation requirements."""
+    shared = PACK.parents[1] / "tobkiri_protocol/workspace_capsule_v1.py"
+    (PACK / "container/workspace_capsule_v1.py").write_bytes(shared.read_bytes())
     recipe_paths = [
         "container/Dockerfile",
         "container/runtime.py",
-        "runtime/capsule.py",
+        "container/workspace_capsule_v1.py",
     ]
     recipe = {
         "version": "tobkiri.workspace-container-recipe.v1",
@@ -108,9 +111,31 @@ def build_source() -> dict[str, Any]:
         ).hexdigest()
     )
     (PACK / "container/recipe.v1.json").write_text(json.dumps(recipe, indent=2) + "\n")
+    task_recipe = {
+        "version": "tobkiri.workspace-task-recipe.v1",
+        "image_reference": "rumiai/mimo-coding-company-worker@sha256:1c4c9e219f46c9311bc4cba2f328303208ff24d95e2e39f769ba12383ef075ec",
+        "portable_recipe_digest": recipe_digest,
+        "network": "none",
+        "nonroot": True,
+        "read_only_root": True,
+        "max_timeout_seconds": 120,
+        "max_work_bytes": 4 * 1024 * 1024,
+    }
+    (PACK / "container/task-recipe.v1.json").write_text(
+        json.dumps(task_recipe, indent=2) + "\n"
+    )
+    task_digest = (
+        "sha256:"
+        + hashlib.sha256(
+            json.dumps(
+                task_recipe, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            ).encode()
+        ).hexdigest()
+    )
     (PACK / "runtime/recipe.py").write_text(
         '"""Digest of the reviewed container recipe; no provision capability."""\n\n'
         f'RECIPE_DIGEST = (\n    "{recipe_digest}"\n)\n'
+        f'TASK_RECIPE_DIGEST = (\n    "{task_digest}"\n)\n'
     )
     providers = []
     for kind, contract, operation, effect in [
@@ -146,10 +171,13 @@ def build_source() -> dict[str, Any]:
         "runtime/capsule.py",
         "runtime/store.py",
         "runtime/service.py",
+        "runtime/task.py",
         "runtime/recipe.py",
         "container/Dockerfile",
         "container/runtime.py",
         "container/recipe.v1.json",
+        "container/task-recipe.v1.json",
+        "container/workspace_capsule_v1.py",
         "pack-source.v1.json",
         "frontend/contributions/composer.json",
         "frontend/contributions/workspace.json",
@@ -172,8 +200,25 @@ def build_source() -> dict[str, Any]:
             }
             for path in artifact_paths
         ],
-        "public_capabilities": ["workspace.metadata.read", "file.inspect"],
+        "public_capabilities": [
+            "workspace.metadata.read",
+            "file.inspect",
+            "coding.sandbox.task.read",
+            "host.authority.consume",
+        ],
         "public_dependencies": [
+            {
+                "contract_id": "tobkiri.service.interactive-effect.v1",
+                "version_range": ">=1.0.0 <2.0.0",
+                "operation_id": "interactive_effect.manage",
+                "optional": True,
+            },
+            {
+                "contract_id": "tobkiri.resource.workspace.container-task.v1",
+                "version_range": ">=1.0.0 <2.0.0",
+                "operation_id": "rumi_coding_sandbox_service_pack.task-resource",
+                "optional": True,
+            },
             {
                 "contract_id": "tobkiri.resource.workspace.v1",
                 "version_range": ">=1.0.0 <2.0.0",

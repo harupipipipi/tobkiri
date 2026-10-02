@@ -17,6 +17,8 @@ from ecosystem.tobkiri_cloud_workspace_pack.runtime.service import (
     CloudWorkspace,
 )
 from ecosystem.tobkiri_cloud_workspace_pack.runtime.store import WorkspaceStore
+from ecosystem.tobkiri_cloud_workspace_pack.runtime.task import DEPENDENCIES
+from tobkiri_protocol.workspace_capsule_v1 import canonical, digest
 
 PACK_ID = "tobkiri_cloud_workspace_pack"
 BINDINGS = {
@@ -28,6 +30,7 @@ FIELDS = {
         "get_for_conversation": {"conversation_id"},
         "export": {"workspace_id", "expected_revision"},
         "verify": {"workspace_id", "expected_revision"},
+        "task_source": {"workspace_id", "expected_revision", "expected_writer_epoch"},
     },
     "manage": {
         "initialize": {"conversation_id", "expected_revision", "expected_writer_epoch"},
@@ -50,6 +53,28 @@ FIELDS = {
             "expected_writer_epoch",
             "expected_receiver_head",
         },
+        "task_prepare": {
+            "conversation_id",
+            "expected_revision",
+            "expected_writer_epoch",
+            "argv_json",
+        },
+        "task_resume": {
+            "conversation_id",
+            "expected_revision",
+            "expected_writer_epoch",
+        },
+        "task_status": {
+            "conversation_id",
+            "expected_revision",
+            "expected_writer_epoch",
+        },
+        "task_cancel": {
+            "conversation_id",
+            "expected_revision",
+            "expected_writer_epoch",
+        },
+        "task_apply": {"conversation_id", "expected_revision", "expected_writer_epoch"},
     },
 }
 
@@ -112,7 +137,7 @@ class CloudWorkspaceHostFactoryV4:
             } or not fields <= set(payload):
                 raise PermissionError("cloud workspace request fields are invalid")
             client = invocation.contract_client(
-                allowed_contract_ids=frozenset({WORKSPACE, INSPECT}),
+                allowed_contract_ids=frozenset({WORKSPACE, INSPECT}) | DEPENDENCIES,
                 consumer_pack_id=PACK_ID,
                 include_credentials=False,
             )
@@ -123,11 +148,21 @@ class CloudWorkspaceHostFactoryV4:
                 actor=invocation.presentation_owner_principal_id,
                 request_id=captured.request_id,
                 guard=invocation.assert_current,
+                private_owner=digest(
+                    canonical(
+                        [
+                            invocation.presentation_owner_principal_id,
+                            invocation.presentation_owner_session_id,
+                        ]
+                    )
+                ),
             )
             values = {key: payload[key] for key in fields}
             if self.kind == "resource":
                 if action == "get_for_conversation":
                     return service.snapshot(values["conversation_id"])
+                if action == "task_source":
+                    return service.task_source(**values)
                 return getattr(service, action)(
                     values["workspace_id"], values["expected_revision"]
                 )

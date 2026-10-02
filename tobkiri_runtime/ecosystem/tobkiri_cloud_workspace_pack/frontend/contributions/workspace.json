@@ -15,7 +15,7 @@
     "slot": "workspace_tab",
     "renderer": "panel",
     "title": "Cloud workspace",
-    "body": "Capture only the complete UTF-8 files you name from the selected Host workspace. Separate names with commas. Secrets and Host state paths are rejected. Restore creates an immutable copy in this Pack's local storage. Preparing a handoff releases the local writer and creates a protocol offer; no cloud connection or remote execution occurs.",
+    "body": "Capture only the complete UTF-8 files you name from the selected Host workspace. Separate names with commas. Secrets and Host state paths are rejected. Restore creates an immutable copy in this Pack's local storage. Preparing a handoff releases the local writer and creates a protocol offer; no cloud connection or remote execution occurs. Prepare a local task with JSON argv, for example [\"python3\", \"main.py\"]. Approve it in the ordinary Host approval window, then resume. The task runs in a separate nonroot, network-disabled container copy. Check its bounded output before applying a new checkpoint. Local tasks require a cached reviewed image and at most 4 MiB of work; cloud deployment remains deferred.",
     "data_source": {
       "contribution_id": "pack.tobkiri_cloud_workspace_pack.tobkiri_cloud_workspace_pack.workspace-resource",
       "contract_id": "tobkiri.resource.cloud.workspace.v1",
@@ -51,6 +51,21 @@
       {
         "label": "Cloud",
         "path": "cloud.reason",
+        "kind": "text"
+      },
+      {
+        "label": "Local task",
+        "path": "task.status",
+        "kind": "status"
+      },
+      {
+        "label": "Task output",
+        "path": "task.receipt.stdout",
+        "kind": "text"
+      },
+      {
+        "label": "Task error output",
+        "path": "task.receipt.stderr",
         "kind": "text"
       }
     ],
@@ -146,6 +161,107 @@
         "input": {
           "operation": "prepare_handoff",
           "expected_receiver_head": ""
+        },
+        "input_bindings": {
+          "expected_revision": "workspace.revision",
+          "expected_writer_epoch": "workspace.writer_epoch"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        }
+      },
+      {
+        "id": "task_prepare",
+        "label": "Prepare local task (JSON argv)",
+        "kind": "text",
+        "operation": {
+          "contribution_id": "pack.tobkiri_cloud_workspace_pack.tobkiri_cloud_workspace_pack.workspace-manage",
+          "contract_id": "tobkiri.action.cloud.workspace.v1",
+          "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage"
+        },
+        "input": {
+          "operation": "task_prepare"
+        },
+        "input_bindings": {
+          "expected_revision": "workspace.revision",
+          "expected_writer_epoch": "workspace.writer_epoch"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        },
+        "value_key": "argv_json"
+      },
+      {
+        "id": "task_resume",
+        "label": "Resume approved local task",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.tobkiri_cloud_workspace_pack.tobkiri_cloud_workspace_pack.workspace-manage",
+          "contract_id": "tobkiri.action.cloud.workspace.v1",
+          "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage"
+        },
+        "input": {
+          "operation": "task_resume"
+        },
+        "input_bindings": {
+          "expected_revision": "workspace.revision",
+          "expected_writer_epoch": "workspace.writer_epoch"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        }
+      },
+      {
+        "id": "task_status",
+        "label": "Refresh task status",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.tobkiri_cloud_workspace_pack.tobkiri_cloud_workspace_pack.workspace-manage",
+          "contract_id": "tobkiri.action.cloud.workspace.v1",
+          "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage"
+        },
+        "input": {
+          "operation": "task_status"
+        },
+        "input_bindings": {
+          "expected_revision": "workspace.revision",
+          "expected_writer_epoch": "workspace.writer_epoch"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        }
+      },
+      {
+        "id": "task_cancel",
+        "label": "Cancel local task",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.tobkiri_cloud_workspace_pack.tobkiri_cloud_workspace_pack.workspace-manage",
+          "contract_id": "tobkiri.action.cloud.workspace.v1",
+          "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage"
+        },
+        "input": {
+          "operation": "task_cancel"
+        },
+        "input_bindings": {
+          "expected_revision": "workspace.revision",
+          "expected_writer_epoch": "workspace.writer_epoch"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        }
+      },
+      {
+        "id": "task_apply",
+        "label": "Apply verified task output as checkpoint",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.tobkiri_cloud_workspace_pack.tobkiri_cloud_workspace_pack.workspace-manage",
+          "contract_id": "tobkiri.action.cloud.workspace.v1",
+          "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage"
+        },
+        "input": {
+          "operation": "task_apply"
         },
         "input_bindings": {
           "expected_revision": "workspace.revision",

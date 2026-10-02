@@ -23,6 +23,7 @@ from ecosystem.tobkiri_cloud_workspace_pack.runtime.store import (
     WorkspaceStore,
 )
 from ecosystem.tobkiri_cloud_workspace_pack.runtime.recipe import RECIPE_DIGEST
+from ecosystem.tobkiri_cloud_workspace_pack.runtime.task import WorkspaceTasks
 
 WORKSPACE = "tobkiri.resource.workspace.v1"
 WORKSPACE_OPERATION = "rumi_workspace_mount_pack.workspace-resource"
@@ -44,10 +45,14 @@ class CloudWorkspace:
         actor: str,
         request_id: str,
         guard: Callable[[], None],
+        private_owner: str = "",
     ) -> None:
         self.store, self.client = store, client
         self.plan_digest, self.actor = plan_digest, actor
         self.request_id, self.guard = request_id, guard
+        self.tasks = WorkspaceTasks(
+            self, private_owner or digest(canonical([actor, ""]))
+        )
 
     def snapshot(self, conversation_id: str) -> dict[str, Any]:
         """Expose a compact public state near the composer without private paths."""
@@ -65,6 +70,7 @@ class CloudWorkspace:
         return {
             "workspace": workspace,
             "workspaces": self.store.list(),
+            "task": self.tasks.snapshot(workspace_id),
             "container": {
                 "status": "unavailable",
                 "started": False,
@@ -109,6 +115,8 @@ class CloudWorkspace:
             raise Conflict("workspace checkpoint revision is stale")
         if (current["writer_epoch"] if current else 0) != writer_epoch:
             raise Conflict("workspace writer epoch is stale")
+        if action.startswith("task_"):
+            return self.tasks.invoke(action, values, fingerprint=fingerprint)
         if action in {"initialize", "capture", "import"}:
             if action == "initialize":
                 if current is not None:
@@ -195,6 +203,23 @@ class CloudWorkspace:
             "status": "verified_locally",
             "container_started": False,
         }
+
+    def task_source(
+        self,
+        workspace_id: str,
+        expected_revision: int,
+        expected_writer_epoch: int,
+    ) -> dict[str, Any]:
+        """Export work only for a live owner-fenced local task, without its lease."""
+        self.store.assert_writer(
+            workspace_id, expected_revision, expected_writer_epoch, self.actor
+        )
+        result = self.export(workspace_id, expected_revision)
+        self.guard()
+        self.store.assert_writer(
+            workspace_id, expected_revision, expected_writer_epoch, self.actor
+        )
+        return result
 
     def _capture(self, raw_paths: Any) -> dict[str, bytes]:
         if not isinstance(raw_paths, str) or len(raw_paths) > 32_768:

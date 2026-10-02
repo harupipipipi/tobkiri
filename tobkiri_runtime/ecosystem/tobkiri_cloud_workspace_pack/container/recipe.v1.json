@@ -3,15 +3,15 @@
   "files": [
     {
       "path": "container/Dockerfile",
-      "digest": "sha256:3d5115328dab16a358312566b0933b2d257e6bde5b9824cb27ee0aaf3739b9e7"
+      "digest": "sha256:60fa57140cb083f7a83b83423bca9e738eebca7b6eef4eb2d4039fa0ba4df270"
     },
     {
       "path": "container/runtime.py",
       "digest": "sha256:d0f7eebff0d994e580a67d7a5477f0bf3d32e68065d60b33825d228ad827c8a7"
     },
     {
-      "path": "runtime/capsule.py",
-      "digest": "sha256:1e0103b8c3c4d6fe3f6f8ea72d5df36e6ab27ce2d7e8a69c415e8a34497c90a8"
+      "path": "container/workspace_capsule_v1.py",
+      "digest": "sha256:27ac7545ce0ad483b7d0847a60c3b70d600f5bad2499d9beb502f0a81e34163a"
     }
   ],
   "runtime_user": "65532:65532",

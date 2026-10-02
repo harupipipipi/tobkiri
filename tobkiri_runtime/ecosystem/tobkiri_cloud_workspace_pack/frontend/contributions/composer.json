@@ -42,6 +42,11 @@
         "label": "Cloud",
         "path": "cloud.status",
         "kind": "status"
+      },
+      {
+        "label": "Local task",
+        "path": "task.status",
+        "kind": "status"
       }
     ],
     "controls": [
