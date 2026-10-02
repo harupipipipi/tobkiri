@@ -4,7 +4,11 @@ on:
   push:
     branches: [master, soon]
   pull_request:
-    branches: [master, soon, codex/pack-architecture-program-soon]
+    branches:
+      - master
+      - soon
+      - codex/pack-architecture-program-soon
+      - agent/add-pack-architecture-implementation-plan
     types: [opened, synchronize, reopened, ready_for_review, labeled]
 
 concurrency:
@@ -639,6 +643,42 @@ jobs:
       - name: Verify defaultspack frontend bundle is synchronized
         if: matrix.app == 'tobkiri_runtime/ecosystem/defaultspack/webapp'
         run: git diff --exit-code -- tobkiri_runtime/ecosystem/defaultspack/ui
+
+  defaultspack-ui-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: tobkiri_runtime/ecosystem/defaultspack/webapp/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: tobkiri_runtime/ecosystem/defaultspack/webapp
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: tobkiri_runtime/ecosystem/defaultspack/webapp
+        run: npx playwright install --with-deps chromium
+
+      - name: Run defaultspack UI contract tests
+        working-directory: tobkiri_runtime/ecosystem/defaultspack/webapp
+        run: npm run test:e2e:ui-contract
+
+      - name: Upload defaultspack UI contract artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: defaultspack-ui-contract-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            tobkiri_runtime/ecosystem/defaultspack/webapp/playwright-report
+            tobkiri_runtime/ecosystem/defaultspack/webapp/test-results
+          if-no-files-found: warn
 
   tobkiri-static-checks:
     runs-on: ubuntu-latest

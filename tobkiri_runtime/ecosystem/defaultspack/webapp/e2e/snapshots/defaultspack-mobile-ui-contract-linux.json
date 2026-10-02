@@ -1,0 +1,35 @@
+{
+  "viewport": {
+    "width": 390,
+    "height": 820
+  },
+  "elements": {
+    "mobile-workspace-picker": {
+      "box": {
+        "x": 76,
+        "y": 748,
+        "width": 200,
+        "height": 32
+      },
+      "text": "Main Repo"
+    },
+    "mobile-composer": {
+      "box": {
+        "x": 64,
+        "y": 600,
+        "width": 320,
+        "height": 212
+      },
+      "text": "MENTIONS 2 @Live Review Require evidence-backed verification. skill @README.md workspace file file Enterで送信 · / でコマンド · @ で候補 Project Main Repo Main Repo main codex/pr97 . src"
+    },
+    "mobile-mention-menu": {
+      "box": {
+        "x": 64,
+        "y": 452,
+        "width": 316,
+        "height": 140
+      },
+      "text": "MENTIONS 2 @Live Review Require evidence-backed verification. skill @README.md workspace file file"
+    }
+  }
+}
