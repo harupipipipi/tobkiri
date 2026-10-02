@@ -12,6 +12,7 @@ from core_runtime.bootstrap.saved_bridge import project_saved_ai_result
 from ecosystem.defaultspack.runtime import saved_conversation as saved
 from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationConflict
 from tests.test_saved_host_exchange import _Exchange
+from tests.test_conversation_lifecycle_pack import _confirm
 from tobkiri_protocol.conversation_lifecycle import active_task_gap_context
 
 BASE_MS = 1_790_899_200_000
@@ -44,7 +45,7 @@ def _exchange(tmp_path: Path, ai: dict[str, Any]) -> _Exchange:
 @pytest.mark.parametrize(
     "signal,state",
     [
-        ({"finish_reason": "stop"}, "completed"),
+        ({"finish_reason": "stop"}, "running"),
         ({}, "unknown"),
         ({"finish_reason": "waiting_user"}, "waiting_user"),
         ({"finish_reason": "stop", "task_state": "waiting_user"}, "waiting_user"),
@@ -80,7 +81,13 @@ def test_real_producer_stamps_only_authenticated_successful_terminal_result(
     exchange.host.finish(exchange.intent)
     source = exchange.store.get("conversation-1")["lifecycle"]
     assert source["state"] == state
-    assert source["completed_at_ms"] == (BASE_MS if state == "completed" else None)
+    assert source["completed_at_ms"] is None
+    if signal == {"finish_reason": "stop"}:
+        assert source["completion_candidate"]["completed_at_ms"] == BASE_MS
+        _confirm(exchange.store, exchange.outer.payload)
+        confirmed = exchange.store.get("conversation-1")["lifecycle"]
+        assert confirmed["state"] == "completed"
+        assert confirmed["completed_at_ms"] == BASE_MS
 
 
 def test_guest_cannot_upgrade_authenticated_wait_to_completed(
@@ -126,11 +133,12 @@ def test_saved_ai_reads_atomic_receipt_gap_without_rewriting_user_body(
     )
     for _ in range(4):
         exchange.step()
+    _confirm(exchange.store, exchange.outer.payload)
     now[0] += elapsed
     exchange.outer.payload["request"] = {
         **exchange.outer.payload["request"],
         "turn_id": "turn-2",
-        "conversation_revision": 3,
+        "conversation_revision": exchange.store.get("conversation-1")["conversation_revision"],
         "content": "どう？",
     }
     # A new authenticated exchange owns its own continuation identity/state.

@@ -14,6 +14,7 @@ from ecosystem.rumi_conversation_store_pack.runtime.store import (
     ConversationConflict,
     ConversationStore,
 )
+from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
 from ecosystem.tobkiri_conversation_lifecycle_pack.runtime.lifecycle import (
     CONVERSATION,
     CONVERSATION_ACTION,
@@ -95,6 +96,21 @@ def _saved_finish(owner: ConversationStore, intent: Any, initial: Any) -> None:
         expected_conversation_revision=owner.get("conversation")["conversation_revision"],
         saved_input=initial,
     )
+    _confirm(owner, initial)
+
+
+def _confirm(owner: ConversationStore, initial: Any) -> None:
+    """Confirm against real durable terminal state through an explicit test adapter."""
+    turns = DurableTurnRuntime(owner.profile_id, user_data_root=owner.root.parents[3])
+    turns.begin_saved(initial)
+    claim = turns.claim_saved(initial)
+    turn_id = initial["request"]["turn_id"]
+    terminal = turns.mutate(
+        "transition", turn_id, expected_revision=claim["turn"]["revision"],
+        status="completed",
+        details={"result_reference": owner.saved_receipt(turn_id)["result_reference"]},
+    )
+    assert owner.confirm_saved_completion(terminal)["confirmed"]
 
 
 def _complete(owner: ConversationStore) -> None:
