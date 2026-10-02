@@ -73,32 +73,27 @@ After starting, open http://localhost:8765/panel/ in your browser to access the 
 ### Prerequisites
 
 - Python 3.10+
-- Node.js 20.19.x または 22.12+（Node 22 推奨）
+- Node.js 22.22+（Node 22 LTS 推奨）
 - npm
 - uv (`tobkiri_launcher` を触る場合)
 - Rust / Cargo (`tobkiri_launcher` を触る場合)
+- Xcode command line tools / Swift（Apple Silicon macOS のデスクトップ起動）
 - MSVC Build Tools (`tobkiri_launcher` を Windows で触る場合)
 - Flutter SDK (`tobkiri_mobile` を触る場合)
 
 ### Dockerless sandbox on macOS
 
-Docker is optional on macOS. Tobkiri uses a managed Lima VM for untrusted
-function, Pack process, and coding-terminal execution:
+Apple Silicon macOS uses the native Virtualization.framework PackVM. Docker
+and Lima are not required. The desktop command below builds Tobkiri Launcher,
+its Defaults Shell, and the PackVM helper from the checkout. It signs the local
+application and helper ad hoc, verifies their manifests, and then starts the
+application. No signing certificate or cloud API key is required.
 
-```bash
-brew install lima
-```
-
-Open the runtime setup flow once after installation. Tobkiri creates an Ubuntu
-VM with no host mounts, SSH agent forwarding, proxy propagation, containerd, or
-guest port forwarding. Each untrusted operation then runs inside an additional
-Bubblewrap user/PID/filesystem/network namespace in that VM. Network is denied
-unless the calling tool explicitly receives an approved network policy.
-
-The first setup downloads an Ubuntu image and installs the guest packages.
-Desktop GUI applications share the managed guest identity, so the GUI desktop
-is not itself an untrusted application boundary; Pack and terminal commands use
-the per-operation boundary described above.
+Allow at least 12 GiB of free space for the first build and PackVM setup. The
+build and provisioning flows check available space before proceeding. PackVM
+setup downloads a pinned 3 GiB Ubuntu image after you approve the displayed
+plan in the Launcher. The VM and its per-operation sandbox enforce the normal
+isolation and network policy.
 
 ### Clone and install
 
@@ -153,14 +148,25 @@ cd tobkiri_launcher\frontend
 npm run tauri -- dev
 ```
 
-macOS / Linux:
+Apple Silicon macOS (complete desktop, without Docker):
+
+```bash
+source .venv/bin/activate
+cd tobkiri_launcher/frontend
+npm run desktop
+```
+
+After the Launcher is ready, check it from a second terminal in the repo root:
 
 ```bash
 source .venv/bin/activate
 python -m app --health
-cd tobkiri_launcher/frontend
-npm run tauri -- dev
 ```
+
+`npm run desktop` builds and starts **Tobkiri Launcher Developer.app** with its
+native PackVM helper. Reuse this command for later starts. Keep the terminal
+open while using the app. The raw `npm run tauri -- dev` command is for Launcher
+UI development; it does not bundle the PackVM helper needed to run Defaults.
 
 When the Launcher window opens, complete setup if prompted. On Apple Silicon macOS, provision PackVM in **Packs**, then use **Home** → **Launch Defaults Profile** to open Defaultspack. The current Windows build can activate the Profile but cannot launch Defaultspack Chat or Pack functions because its PackVM backend is unfinished; see the [Launcher start guide](./tobkiri_runtime/docs/tobkiri_launcher_start.md) and [Windows support issue #1494](https://github.com/harupipipipi/tobkiri/issues/1494). `python -m app` is useful for starting or checking the kernel, but it does not replace Launcher and PackVM setup.
 

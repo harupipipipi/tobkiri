@@ -72,11 +72,32 @@ your Mac. Follow the in-app status for that device.
 
 ## Build and start from source
 
+For a complete Apple Silicon macOS desktop without Docker, first install the
+root README dependencies, including the repo `.venv`, then run:
+
 ```bash
+source .venv/bin/activate
 cd tobkiri_launcher/frontend
-npm install
-npm run tauri -- dev
+npm ci
+npm run desktop
 ```
+
+This builds the current checkout as **Tobkiri Launcher Developer.app**, stages
+and ad-hoc signs the native PackVM helper, and verifies its manifest and code
+signature before launching. It uses the existing development authority checks
+and separate development data. Commit source edits before starting so the
+Defaults bundle can be bound to the exact source commit. Use the same command
+again after changing source. `npm run desktop -- --build-only` prepares the app
+without opening it.
+
+Complete **Open Setup**, then **Packs → PackVM lifecycle → Prepare plan**,
+review and approve the plan, and provision PackVM. After it reports
+**Healthy and attested**, use **Home → Launch Defaults Profile**. A visible
+Launcher window alone does not mean the Defaults runtime is ready.
+
+The raw `npm run tauri -- dev` command remains available for Launcher UI
+iteration, but does not bundle the native PackVM helper. It is not the complete
+Docker-free desktop startup path.
 
 The launcher owns the kernel bootstrap and panel connection. `defaultspack`
 is opened from the launcher after the panel is ready; starting a second

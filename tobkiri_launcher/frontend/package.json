@@ -7,6 +7,7 @@
     "node": ">=22.22.0"
   },
   "scripts": {
+    "desktop": "python3 -B ../scripts/start_development_launcher.py",
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build && node scripts/measure-build.mjs && node scripts/copy-panel-build.mjs",
     "prebuild": "npm run generate:contract-map:check && npm run generate:defaults-setup-contract:check",

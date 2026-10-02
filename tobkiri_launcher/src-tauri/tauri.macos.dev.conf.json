@@ -2,6 +2,9 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Tobkiri Launcher Developer",
   "identifier": "dev.tobkiri.local-launcher",
+  "build": {
+    "beforeBuildCommand": "cd ../frontend && node scripts/preflight-viewer-build.mjs && npm run build && cd ../.. && node tobkiri_launcher/scripts/run_prepare_viewer_runtime.mjs --mode dev"
+  },
   "bundle": {
     "resources": null,
     "macOS": {

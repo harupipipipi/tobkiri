@@ -503,7 +503,8 @@ def prepare_dev_defaults(repo_root: Path, target: str) -> Path:
     spec = _target_shell_spec(repo_root, target)
     run_command(
         [
-            "cargo", "tauri", "build", "--debug", "--target", target,
+            "npm", "exec", "--prefix", "frontend", "--", "tauri", "build",
+            "--debug", "--target", target,
             "--config", "src-tauri/tauri.shell.conf.json",
             "--bundles", str(spec["bundle"]), "--ci",
         ],
