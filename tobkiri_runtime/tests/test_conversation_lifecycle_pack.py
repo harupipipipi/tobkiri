@@ -442,7 +442,7 @@ def test_captured_adapter_describes_exact_action_and_rejects_claims(
                 operation=SimpleNamespace(
                     contract_id=JOB_CONTRACT,
                     operation_id=operation_id,
-                    contract_version="1.0.0",
+                    contract_version="2.0.0",
                 ),
                 principal_ref=SimpleNamespace(value="principal"),
                 artifact=SimpleNamespace(digest="artifact"),
@@ -465,7 +465,7 @@ def test_captured_adapter_describes_exact_action_and_rejects_claims(
             {"profile_id": "fixture", "operation": "describe", "approved": True},
             invocation,
         )
-    context.provider_bindings[0].operation.contract_version = "2.0.0"
+    context.provider_bindings[0].operation.contract_version = "3.0.0"
     with pytest.raises(PermissionError):
         HOST_PROVIDER_FACTORY[function_id].capture(context)
 
