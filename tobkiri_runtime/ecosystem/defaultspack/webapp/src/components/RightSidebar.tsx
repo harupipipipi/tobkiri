@@ -51,6 +51,7 @@ import {
   MoreVertical,
   Pin,
   PinOff,
+  Folder,
   FolderCheck,
   FolderX,
   Plus,
@@ -76,9 +77,12 @@ import { compareToolUiItems, sortedToolGroups, sortedToolUiItems, supportedCompo
 import { PlacementHtmlRenderer } from "./PlacementHtmlRenderer";
 import { ToolFilterLogWidget, ToolManagerWidget } from "./ToolStatusWidgets";
 import { WorkspaceTabRailPanel, type WorkspaceTab, type WorkspaceTabCreateOption, type WorkspaceTabKind } from "./WorkspaceTabs";
+import type { ConversationPresentation } from "../features/conversations/conversationPresentation";
 import { LayerPortal } from "../ui/layers/LayerPortal";
 import { PromptSidebarWidget } from "./prompts/PromptSidebarWidget";
 import type { ContextUsageInfo } from "../renderers/types";
+import { declarativeIconForName } from "../lib/declarativeIcons";
+import { WidgetAttentionIcon } from "../lib/widgetAttention";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -215,22 +219,6 @@ const CATEGORY_META: Record<SidebarCategory | "all", { label: string; icon: Reac
   system: { label: "System", icon: <Settings size={16} /> },
   integration: { label: "Integrations", icon: <Blocks size={16} /> },
   capability: { label: "Capabilities", icon: <ShieldCheck size={16} /> },
-};
-
-const TOOL_GROUP_ICONS: Record<string, ReactElement> = {
-  agent: <Cpu size={16} />,
-  browser: <Monitor size={16} />,
-  build: <Hammer size={16} />,
-  coding: <Code2 size={16} />,
-  computer: <Monitor size={16} />,
-  file: <FileText size={16} />,
-  git: <GitBranch size={16} />,
-  planning: <ListTodo size={16} />,
-  research: <Search size={16} />,
-  operate: <Monitor size={16} />,
-  manage: <Cpu size={16} />,
-  terminal: <Terminal size={16} />,
-  other: <Wrench size={16} />,
 };
 
 const TOOL_GROUP_LABELS: Record<string, string> = {
@@ -487,15 +475,17 @@ export function sidebarActionDisabledReason(action: SidebarAction, activeConvers
   return "";
 }
 
-function iconForItem(item: SidebarItem) {
+export function iconForItem(item: SidebarItem, railSize?: number) {
   const declaredIcon = item.ui?.item_icon || item.ui?.group_icon;
-  if (declaredIcon && ITEM_ICONS[declaredIcon]) return ITEM_ICONS[declaredIcon];
+  const DeclaredIcon = declarativeIconForName(declaredIcon);
+  let icon: ReactElement | undefined = DeclaredIcon ? <DeclaredIcon size={18} /> : undefined;
+  if (!icon && declaredIcon && Object.prototype.hasOwnProperty.call(ITEM_ICONS, declaredIcon)) icon = ITEM_ICONS[declaredIcon];
 
   // Legacy fallback for pre-ui metadata tools.
   const direct = item.id.toLowerCase();
-  if (ITEM_ICONS[direct]) return ITEM_ICONS[direct];
+  if (!icon && Object.prototype.hasOwnProperty.call(ITEM_ICONS, direct)) icon = ITEM_ICONS[direct];
   const normalized = item.label.toLowerCase().replace(/\s+/g, "_");
-  if (ITEM_ICONS[normalized]) return ITEM_ICONS[normalized];
+  if (!icon && Object.prototype.hasOwnProperty.call(ITEM_ICONS, normalized)) icon = ITEM_ICONS[normalized];
   const byCategory: Record<SidebarCategory, ReactElement> = {
     activity: <Route size={18} />,
     tool: <Wrench size={18} />,
@@ -504,7 +494,17 @@ function iconForItem(item: SidebarItem) {
     integration: <Blocks size={18} />,
     capability: <ShieldCheck size={18} />,
   };
-  return byCategory[item.category];
+  const attention = item.presentation?.icon_attention ?? item.ui?.icon_attention;
+  const baseIcon = icon ?? byCategory[item.category];
+  return (
+    <WidgetAttentionIcon attention={attention} widgetId={item.id}>
+      {railSize === undefined ? baseIcon : railIcon(baseIcon, railSize)}
+    </WidgetAttentionIcon>
+  );
+}
+
+export function toolGroupRailIcon(item: SidebarItem, count: number): ReactElement {
+  return count === 1 ? iconForItem(item) : <Folder size={18} />;
 }
 
 function railIcon(item: ReactElement, size = 18): ReactElement {
@@ -516,16 +516,17 @@ function railIcon(item: ReactElement, size = 18): ReactElement {
 }
 
 const StableToolGroupRailGlyph = memo(function StableToolGroupRailGlyph({
-  iconName,
-  groupId,
+  count,
+  item,
 }: {
-  iconName?: string;
-  groupId: string;
+  count: number;
+  item: SidebarItem;
 }) {
-  const icon = (iconName && TOOL_GROUP_ICONS[iconName]) || TOOL_GROUP_ICONS[groupId] || TOOL_GROUP_ICONS.other;
+  const icon = toolGroupRailIcon(item, count);
   return (
     <span
       aria-hidden="true"
+      data-tool-group-icon={count === 1 ? "item" : "folder"}
       className="rumi-rail-stable-glyph pointer-events-none flex h-5 w-5 shrink-0 items-center justify-center text-zinc-400 [backface-visibility:hidden] [transform:translateZ(0)] [will-change:transform] [&>svg]:block"
     >
       {railIcon(icon, 20)}
@@ -986,6 +987,7 @@ export function RightSidebar({
   workspaceTabs = [],
   workspaceTabsEnabled = true,
   workspaceTabCreateOptions,
+  conversationPresentations = {},
   activeWorkspaceTabId = null,
   activeConversationId = null,
   onSettingChange,
@@ -1021,6 +1023,7 @@ export function RightSidebar({
   workspaceTabs?: WorkspaceTab[];
   workspaceTabsEnabled?: boolean;
   workspaceTabCreateOptions?: WorkspaceTabCreateOption[];
+  conversationPresentations?: Readonly<Record<string, ConversationPresentation | undefined>>;
   activeWorkspaceTabId?: string | null;
   activeConversationId?: string | null;
   onSettingChange: (sectionId: string, fieldId: string, value: unknown) => void;
@@ -1704,7 +1707,7 @@ export function RightSidebar({
       )}
       title={item.label}
     >
-      {railIcon(iconForItem(item), pinnedZone ? 21 : 20)}
+      {iconForItem(item, pinnedZone ? 21 : 20)}
 
       {activePanel === item.id && (
         <div className={cn("absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-r-full", categoryColor(item.category, "indicator"))} />
@@ -1950,6 +1953,7 @@ export function RightSidebar({
                 tabs={workspaceTabs}
                 activeTabId={activeWorkspaceTabId ?? ""}
                 createOptions={workspaceTabCreateOptions}
+                conversationPresentations={conversationPresentations}
                 onSelect={(tabId) => onWorkspaceTabSelect?.(tabId)}
                 onClose={(tabId) => onWorkspaceTabClose?.(tabId)}
                 onCreate={(kind) => onWorkspaceTabCreate?.(kind)}
@@ -2662,10 +2666,7 @@ export function RightSidebar({
                               )}
                     title={`${group.path?.length ? group.path.join(" / ") : group.label || TOOL_GROUP_LABELS[group.id] || group.id} (${group.count})`}
                   >
-                    <StableToolGroupRailGlyph iconName={group.icon} groupId={group.id} />
-                    <span className="absolute -top-0.5 -right-0.5 text-[7px] bg-zinc-700 text-zinc-300 px-0.5 rounded-full leading-tight">
-                      {group.count}
-                    </span>
+                    <StableToolGroupRailGlyph count={group.count} item={group.items[0]} />
                     <span className="absolute right-full mr-2 px-2 py-1 bg-zinc-800 text-zinc-200 text-[10px] rounded-md opacity-0 group-hover/group:opacity-100 pointer-events-none transition-opacity whitespace-nowrap border border-zinc-700 shadow-lg rumi-layer-global-overlay">
                       {group.path?.length && group.path.length > 1 ? group.path.join(" / ") : group.label || TOOL_GROUP_LABELS[group.id] || group.id}
                     </span>

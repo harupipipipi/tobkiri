@@ -26,12 +26,9 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  Bot, BookOpen, BriefcaseBusiness, Bug, Calendar, ChartNoAxesColumn,
-  Cloud, Coffee, Database, FlaskConical, Globe, Heart, Image, Mail, Map as MapIcon,
-  MessageSquare, Music, Palette, PenLine, Search, Server, Settings,
-  Shield, ShoppingCart, Terminal, Video, Wrench, Zap,
+  Calendar, Globe, MessageSquare, Settings, Shield, Terminal,
   Plus, ChevronRight,
-  GripVertical, FolderOpen, Folder, X,
+  AlertTriangle, Check, Download, GripVertical, FolderOpen, Folder, RotateCcw, Undo2, X,
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -44,7 +41,13 @@ import { ConversationTagFilter } from './history/ConversationTagFilter';
 import { HistoryNavigation } from './history/HistoryNavigation';
 import { ModalFoundation } from './ModalFoundation';
 import { LayerPortal } from '../ui/layers/LayerPortal';
+import { ConversationAttentionIndicator } from './conversation/ConversationAttentionIndicator';
+import { ConversationGlyph } from './conversation/ConversationGlyph';
 import { WarmActionIcon } from './WarmActionIcon';
+import {
+  fallbackConversationPresentation,
+  type ConversationPresentation,
+} from '../features/conversations/conversationPresentation';
 import {
   PROJECTS_CHANGED_EVENT,
   loadProjects,
@@ -52,6 +55,15 @@ import {
   saveProjects,
   type ProjectInfo,
 } from '../features/projects/projectStorage';
+import {
+  applyHistoryOrganization,
+  loadHistoryOrganization,
+  historyOrganizationStorageKey,
+  organizationFromGroups,
+  resetHistoryOrganization,
+  saveHistoryOrganization,
+  type HistoryOrganizationV1,
+} from '../features/history/historyOrganization';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -76,73 +88,29 @@ export type ChatItem = {
   companyId?: string | null;
   workspaceId?: string | null;
   metadata?: Record<string, unknown> | null;
+  presentation?: ConversationPresentation;
   children?: ChatItem[];
 };
 
 const HISTORY_CHAT_ICON_SIZE = 14;
-const HISTORY_ICON_COMPONENTS = {
-  ai: Bot,
-  book: BookOpen,
-  briefcase: BriefcaseBusiness,
-  bug: Bug,
-  calendar: Calendar,
-  chart: ChartNoAxesColumn,
-  chat: MessageSquare,
-  cloud: Cloud,
-  code: Terminal,
-  coffee: Coffee,
-  database: Database,
-  email: Mail,
-  folder: Folder,
-  globe: Globe,
-  heart: Heart,
-  image: Image,
-  lightning: Zap,
-  map: MapIcon,
-  music: Music,
-  paint: Palette,
-  science: FlaskConical,
-  search: Search,
-  security: Shield,
-  server: Server,
-  settings: Settings,
-  shield: Shield,
-  shopping: ShoppingCart,
-  terminal: Terminal,
-  tools: Wrench,
-  video: Video,
-  write: PenLine,
-} as const;
+
+function presentationForChat(chat: ChatItem): ConversationPresentation {
+  return chat.presentation ?? fallbackConversationPresentation({
+    conversationId: chat.id,
+    title: chat.title,
+    metadata: chat.metadata,
+  });
+}
 
 function HistoryChatIcon({ chat, tone = "text-zinc-500" }: { chat: ChatItem; tone?: string }) {
-  const iconId = typeof chat.metadata?.icon_id === "string" ? chat.metadata.icon_id : "";
-  const Icon = HISTORY_ICON_COMPONENTS[iconId as keyof typeof HISTORY_ICON_COMPONENTS]
-    ?? (chat.type === "research"
-      ? Globe
-      : chat.type === "code"
-        ? Terminal
-        : MessageSquare);
-  const className = cn(
-    "flex h-3.5 w-3.5 min-h-3.5 min-w-3.5 shrink-0 items-center justify-center overflow-hidden leading-none [&>svg]:block [&>svg]:h-full [&>svg]:w-full",
-    tone,
-  );
-  const style = {
-    width: HISTORY_CHAT_ICON_SIZE,
-    height: HISTORY_CHAT_ICON_SIZE,
-    flexBasis: HISTORY_CHAT_ICON_SIZE,
-  };
-
   return (
-    <span
-      aria-hidden="true"
-      data-history-chat-icon="true"
-      data-history-chat-icon-id={iconId || undefined}
-      data-history-chat-icon-size={HISTORY_CHAT_ICON_SIZE}
-      className={className}
-      style={style}
-    >
-      <Icon size={HISTORY_CHAT_ICON_SIZE} strokeWidth={2} />
-    </span>
+    <ConversationGlyph
+      presentation={presentationForChat(chat)}
+      fallbackKind={chat.type}
+      size={HISTORY_CHAT_ICON_SIZE}
+      tone={tone}
+      historyCompatibility
+    />
   );
 }
 
@@ -604,6 +572,37 @@ function mapGroups(groups: ChatGroup[], fn: (g: ChatGroup) => ChatGroup): ChatGr
   });
 }
 
+export function toggleHistoryGroupCollapsed(groups: ChatGroup[], id: string): ChatGroup[] {
+  return mapGroups(groups, group => (
+    group.id === id ? { ...group, isCollapsed: !group.isCollapsed } : group
+  ));
+}
+
+function filterGroupsToChats(groups: ChatGroup[], visibleChatIds: Set<string>): ChatGroup[] {
+  return groups.flatMap((group) => {
+    const chats = group.chats.filter((chat) => visibleChatIds.has(chat.id));
+    const subGroups = filterGroupsToChats(group.subGroups, visibleChatIds);
+    if (chats.length === 0 && subGroups.length === 0) return [];
+    return [{ ...group, chats, subGroups }];
+  });
+}
+
+function groupCollapsedState(groups: ChatGroup[], result = new Map<string, boolean | undefined>()) {
+  for (const group of groups) {
+    result.set(group.id, group.isCollapsed);
+    groupCollapsedState(group.subGroups, result);
+  }
+  return result;
+}
+
+function withCollapsedState(groups: ChatGroup[], collapsed: Map<string, boolean | undefined>): ChatGroup[] {
+  return groups.map((group) => ({
+    ...group,
+    isCollapsed: collapsed.get(group.id) ?? group.isCollapsed,
+    subGroups: withCollapsedState(group.subGroups, collapsed),
+  }));
+}
+
 function getAllChatIds(groups: ChatGroup[]): string[] {
   const ids: string[] = [];
   for (const g of groups) {
@@ -718,6 +717,7 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
     else setTitle(chat.title);
   };
 
+  const presentation = presentationForChat(chat);
   const icon = <HistoryChatIcon chat={chat} />;
 
   return (
@@ -788,6 +788,7 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
             isActive ? "text-zinc-100" : "text-zinc-300 group-hover/chat:text-zinc-100"
           )}>{chat.title}</span>
         )}
+        {!isEditing && <ConversationAttentionIndicator presentation={presentation} />}
         {!isEditing && chat.date && (
           <span className="ml-auto hidden shrink-0 font-mono text-[10px] leading-none text-zinc-600 opacity-0 transition-opacity group-hover/chat:inline group-hover/chat:opacity-100 group-focus-within/chat:inline group-focus-within/chat:opacity-100">
             {chat.date}
@@ -1232,6 +1233,7 @@ function ExtractDropZone() {
 // ============================================================
 
 interface HistoryBoardProps {
+  profileId?: string;
   activeChatId: string | null;
   chatItems: ChatItem[];
   account?: AccountInfo;
@@ -1263,6 +1265,11 @@ interface HistoryBoardProps {
 }
 
 type GroupWorkspaceChoice = "none" | "current" | "custom";
+type HistorySaveState = {
+  kind: "idle" | "saved" | "unsaved" | "corrupt";
+  message: string;
+  raw?: string;
+};
 
 function workspaceSummary(workspaceId?: string | null, workspaceLabel?: string | null, workspaceRoot?: string | null): string {
   if (workspaceLabel) return workspaceLabel;
@@ -1444,6 +1451,7 @@ function filterChatTree(chats: ChatItem[], query: string, activeTag: string | nu
 }
 
 export function HistoryBoard({
+  profileId,
   activeChatId,
   chatItems,
   account,
@@ -1476,8 +1484,31 @@ export function HistoryBoard({
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const visibleChatItems = useMemo(() => filterChatTree(chatItems, searchQuery, activeTag), [activeTag, chatItems, searchQuery]);
-  const [customGroups, setCustomGroups] = useState<CustomGroupInfo[]>(() => loadCustomGroups());
-  const [groups, setGroups] = useState<ChatGroup[]>(() => buildGroupsFromChats(visibleChatItems, customGroups));
+  const [customGroups, setCustomGroups] = useState<CustomGroupInfo[]>(() => loadProjects());
+  const initialOrganizationLoad = useMemo(() => loadHistoryOrganization(undefined, profileId), [profileId]);
+  const initialOrganization = initialOrganizationLoad.status === "ready"
+    ? initialOrganizationLoad.organization
+    : null;
+  const organizationRef = useRef<HistoryOrganizationV1 | null>(initialOrganization);
+  const organizationRevisionRef = useRef(initialOrganization?.revision ?? 0);
+  const [groups, setGroups] = useState<ChatGroup[]>(() => applyHistoryOrganization(
+    buildGroupsFromChats(chatItems, customGroups),
+    initialOrganization,
+  ));
+  const groupsRef = useRef(groups);
+  const pendingGroupsRef = useRef<ChatGroup[] | null>(null);
+  const undoGroupsRef = useRef<ChatGroup[] | null>(null);
+  const [saveState, setSaveState] = useState<HistorySaveState>(() => {
+    if (initialOrganizationLoad.status === "corrupt") {
+      return { kind: "corrupt", message: initialOrganizationLoad.message, raw: initialOrganizationLoad.raw };
+    }
+    if (initialOrganizationLoad.status === "unavailable") {
+      return { kind: "unsaved", message: initialOrganizationLoad.message };
+    }
+    return { kind: "idle", message: "" };
+  });
+  const [historyAnnouncement, setHistoryAnnouncement] = useState("");
+  const [resetArmed, setResetArmed] = useState(false);
   const [expandedChatIds, setExpandedChatIds] = useState<Set<string>>(() => new Set());
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const projectNameRef = useRef<HTMLInputElement>(null);
@@ -1494,26 +1525,172 @@ export function HistoryBoard({
     return () => window.removeEventListener(PROJECTS_CHANGED_EVENT, refreshProjects);
   }, []);
 
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== historyOrganizationStorageKey(profileId)) return;
+      const current = loadHistoryOrganization(undefined, profileId);
+      if (pendingGroupsRef.current) {
+        setSaveState({ kind: "unsaved", message: "History changed in another window. Your unsaved arrangement is preserved for export." });
+        return;
+      }
+      if (current.status === "ready" || current.status === "empty") {
+        organizationRef.current = current.status === "ready" ? current.organization : null;
+        organizationRevisionRef.current = current.status === "ready" ? current.organization.revision : 0;
+        const next = applyHistoryOrganization(buildGroupsFromChats(chatItems, customGroups), organizationRef.current);
+        groupsRef.current = next;
+        setGroups(next);
+        setSaveState({ kind: "idle", message: "" });
+      } else {
+        setSaveState({ kind: current.status === "corrupt" ? "corrupt" : "unsaved", message: current.message });
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [profileId, chatItems, customGroups]);
+
   const selectedCodingWorkspace = useMemo(
     () => codingWorkspaces.find((workspace) => workspace.workspace_id === selectedCodingWorkspaceId) ?? null,
     [codingWorkspaces, selectedCodingWorkspaceId],
   );
 
   useEffect(() => {
-    setGroups((previousGroups) => {
-      const collapsedById = new Map(previousGroups.map((group) => [group.id, group.isCollapsed]));
-      return buildGroupsFromChats(visibleChatItems, customGroups).map((group) => ({
-        ...group,
-        isCollapsed: collapsedById.get(group.id) ?? group.isCollapsed,
-      }));
-    });
-  }, [visibleChatItems, customGroups]);
+    const collapsed = groupCollapsedState(groupsRef.current);
+    const organization = pendingGroupsRef.current
+      ? organizationFromGroups(pendingGroupsRef.current, organizationRevisionRef.current)
+      : organizationRef.current;
+    const next = withCollapsedState(
+      applyHistoryOrganization(buildGroupsFromChats(chatItems, customGroups), organization),
+      collapsed,
+    );
+    groupsRef.current = next;
+    setGroups(next);
+  }, [chatItems, customGroups]);
+
+  const visibleChatIds = useMemo(() => {
+    const ids = new Set<string>();
+    visitChats(visibleChatItems, (chat) => ids.add(chat.id));
+    return ids;
+  }, [visibleChatItems]);
+  const isFilteringHistory = Boolean(searchQuery.trim() || activeTag);
+  const displayGroups = useMemo(
+    () => isFilteringHistory ? filterGroupsToChats(groups, visibleChatIds) : groups,
+    [groups, isFilteringHistory, visibleChatIds],
+  );
+
+  const replaceGroups = (next: ChatGroup[]) => {
+    groupsRef.current = next;
+    setGroups(next);
+  };
+
+  const persistArrangement = (next: ChatGroup[], previous: ChatGroup[], message: string) => {
+    replaceGroups(next);
+    const result = saveHistoryOrganization(next, organizationRevisionRef.current, undefined, undefined, profileId);
+    undoGroupsRef.current = previous;
+    setResetArmed(false);
+    if (result.ok) {
+      organizationRef.current = result.organization;
+      organizationRevisionRef.current = result.organization.revision;
+      pendingGroupsRef.current = null;
+      setSaveState({ kind: "saved", message: "Saved locally" });
+      setHistoryAnnouncement(`${message} Saved locally. Undo is available.`);
+      return;
+    }
+    pendingGroupsRef.current = next;
+    setSaveState({ kind: result.reason === "corrupt" ? "corrupt" : "unsaved", message: result.message });
+    setHistoryAnnouncement(`${message} Not saved. ${result.message}`);
+  };
+
+  const retryHistorySave = () => {
+    const pending = pendingGroupsRef.current;
+    if (!pending) return;
+    const current = loadHistoryOrganization(undefined, profileId);
+    if (current.status === "corrupt") {
+      setSaveState({ kind: "corrupt", message: current.message, raw: current.raw });
+      setHistoryAnnouncement(`Retry failed. ${current.message}`);
+      return;
+    }
+    if (current.status === "unavailable") {
+      setSaveState({ kind: "unsaved", message: current.message });
+      setHistoryAnnouncement(`Retry failed. ${current.message}`);
+      return;
+    }
+    const currentRevision = current.status === "ready" ? current.organization.revision : 0;
+    if (currentRevision !== organizationRevisionRef.current) {
+      setSaveState({ kind: "unsaved", message: "History changed in another window. Export your unsaved arrangement before resetting or reopening History." });
+      return;
+    }
+    const result = saveHistoryOrganization(pending, organizationRevisionRef.current, undefined, undefined, profileId);
+    if (!result.ok) {
+      setSaveState({ kind: result.reason === "corrupt" ? "corrupt" : "unsaved", message: result.message });
+      setHistoryAnnouncement(`Retry failed. ${result.message}`);
+      return;
+    }
+    organizationRef.current = result.organization;
+    organizationRevisionRef.current = result.organization.revision;
+    pendingGroupsRef.current = null;
+    setSaveState({ kind: "saved", message: "Saved locally" });
+    setHistoryAnnouncement("History organization saved locally.");
+  };
+
+  const undoHistoryChange = () => {
+    const previous = undoGroupsRef.current;
+    if (!previous) return;
+    const current = groupsRef.current;
+    undoGroupsRef.current = null;
+    persistArrangement(previous, current, "History organization change undone.");
+    undoGroupsRef.current = null;
+  };
+
+  const exportHistoryOrganization = () => {
+    const projectItems = loadProjects();
+    const historyLoad = loadHistoryOrganization(undefined, profileId);
+    const exportValue = JSON.stringify({
+      schema: "io.tobkiri.history-recovery.v1",
+      history: historyLoad.status === "corrupt"
+        ? { status: historyLoad.status, raw: historyLoad.raw }
+        : pendingGroupsRef.current
+          ? organizationFromGroups(pendingGroupsRef.current, organizationRevisionRef.current)
+          : organizationRef.current ?? organizationFromGroups(groupsRef.current, organizationRevisionRef.current),
+      projects: projectItems,
+    }, null, 2);
+    const url = URL.createObjectURL(new Blob([exportValue], { type: "application/json" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "tobkiri-history-organization.json";
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setHistoryAnnouncement("History organization recovery file exported.");
+  };
+
+  const resetHistoryArrangement = () => {
+    if (!resetArmed) {
+      setResetArmed(true);
+      setHistoryAnnouncement("Reset requires confirmation. Activate Confirm reset to continue.");
+      return;
+    }
+    if (!resetHistoryOrganization(undefined, profileId)) {
+      setSaveState({ kind: "unsaved", message: "History organization storage could not be reset." });
+      setHistoryAnnouncement("History organization could not be reset.");
+      return;
+    }
+    const previous = groupsRef.current;
+    const next = buildGroupsFromChats(chatItems, customGroups);
+    organizationRef.current = null;
+    organizationRevisionRef.current = 0;
+    pendingGroupsRef.current = null;
+    undoGroupsRef.current = previous;
+    replaceGroups(next);
+    setResetArmed(false);
+    setSaveState({ kind: "saved", message: "Arrangement reset locally" });
+    setHistoryAnnouncement("History organization reset. Undo is available.");
+  };
 
   const [activeColumnDrag, setActiveColumnDrag] = useState<ChatGroup | null>(null);
   const [activeChat, setActiveChat] = useState<ChatItem | null>(null);
   const [overColumnId, setOverColumnId] = useState<string | null>(null);
   const [activeType, setActiveType] = useState<string | null>(null);
   const activeDragStartPointRef = useRef<ClientPoint | null>(null);
+  const activeDragGroupsSnapshotRef = useRef<ChatGroup[] | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -1523,6 +1700,7 @@ export function HistoryBoard({
   // --- Drag Start ---
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
+    activeDragGroupsSnapshotRef.current = groupsRef.current;
     if (active.data.current?.type === 'ColumnDrag') {
       setActiveColumnDrag(active.data.current.group);
       setActiveType('ColumnDrag');
@@ -1556,7 +1734,8 @@ export function HistoryBoard({
     const isOverSubGroup = over.data.current?.type === 'SubGroup';
 
     if (isOverChat) {
-      setGroups(prev => {
+      const prev = groupsRef.current;
+      const next = (() => {
         const activeGroupId = findGroupContainingChat(prev, active.id as string);
         const overGroupId = findGroupContainingChat(prev, over.id as string);
         if (!activeGroupId || !overGroupId) return prev;
@@ -1584,27 +1763,33 @@ export function HistoryBoard({
             return g;
           });
         }
-      });
+      })();
+      replaceGroups(next);
     }
 
     if (isOverColumn || isOverSubGroup) {
       const targetId = isOverSubGroup ? over.data.current?.group?.id : over.id as string;
       if (!targetId) return;
-      setGroups(prev => {
+      const prev = groupsRef.current;
+      const next = (() => {
         const currentGroupId = findGroupContainingChat(prev, active.id as string);
         if (currentGroupId === targetId) return prev;
         const { groups: stripped, chat } = removeChatFromTree(prev, active.id as string);
         if (!chat) return prev;
         return addChatToGroup(stripped, targetId, chat);
-      });
+      })();
+      replaceGroups(next);
     }
   };
 
   // --- Drag End ---
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+    const dragSnapshot = activeDragGroupsSnapshotRef.current;
+    activeDragGroupsSnapshotRef.current = null;
     const draggedChat = active.data.current?.type === 'Chat' ? active.data.current.chat as ChatItem : null;
     const dragStartPoint = activeDragStartPointRef.current;
+    let droppedOnKanban = false;
     if (draggedChat && dragStartPoint) {
       const finalPoint = {
         x: dragStartPoint.x + event.delta.x,
@@ -1613,6 +1798,7 @@ export function HistoryBoard({
       const kanbanColumnId = kanbanColumnIdAtPoint(finalPoint);
       if (kanbanColumnId) {
         dispatchHistoryChatKanbanDrop(draggedChat, kanbanColumnId);
+        droppedOnKanban = true;
       }
     }
     activeDragStartPointRef.current = null;
@@ -1620,6 +1806,18 @@ export function HistoryBoard({
     setActiveChat(null);
     setOverColumnId(null);
     setActiveType(null);
+
+    if (active.data.current?.type === 'Chat') {
+      if (!dragSnapshot) return;
+      if (droppedOnKanban || !over) {
+        replaceGroups(dragSnapshot);
+        return;
+      }
+      if (groupsRef.current !== dragSnapshot) {
+        persistArrangement(groupsRef.current, dragSnapshot, `Moved ${draggedChat?.title ?? "chat"}.`);
+      }
+      return;
+    }
 
     if (!over || active.id === over.id) return;
 
@@ -1629,7 +1827,9 @@ export function HistoryBoard({
       const targetGroupId = over.id as string;
       if (draggedGroupId === targetGroupId) return;
 
-      setGroups(prev => {
+      const previous = groupsRef.current;
+      const next = (() => {
+        const prev = previous;
         const draggedGroup = findGroupById(prev, draggedGroupId);
         if (!draggedGroup) return prev;
         if (findGroupById(draggedGroup.subGroups, targetGroupId)) return prev;
@@ -1643,7 +1843,9 @@ export function HistoryBoard({
           }
           return g;
         });
-      });
+      })();
+      if (next !== previous) persistArrangement(next, previous, `Moved ${active.data.current.group.title}.`);
+      return;
     }
 
     // Column → SubGroup: nest inside subgroup
@@ -1652,7 +1854,9 @@ export function HistoryBoard({
       const targetGroupId = over.data.current.group.id;
       if (draggedGroupId === targetGroupId) return;
 
-      setGroups(prev => {
+      const previous = groupsRef.current;
+      const next = (() => {
+        const prev = previous;
         const draggedGroup = findGroupById(prev, draggedGroupId);
         if (!draggedGroup) return prev;
         if (findGroupById(draggedGroup.subGroups, targetGroupId)) return prev;
@@ -1666,17 +1870,21 @@ export function HistoryBoard({
           }
           return g;
         });
-      });
+      })();
+      if (next !== previous) persistArrangement(next, previous, `Moved ${active.data.current.group.title}.`);
+      return;
     }
 
     // Column → extract zone: promote to top-level
     if (active.data.current?.type === 'ColumnDrag' && over.id === 'extract-to-top-level') {
       const draggedGroupId = active.data.current.group.id;
-      setGroups(prev => {
-        const { groups: stripped, removed } = removeGroupFromTree(prev, draggedGroupId);
-        if (!removed) return prev;
+      const previous = groupsRef.current;
+      const next = (() => {
+        const { groups: stripped, removed } = removeGroupFromTree(previous, draggedGroupId);
+        if (!removed) return previous;
         return [...stripped, { ...removed, isCollapsed: false }];
-      });
+      })();
+      if (next !== previous) persistArrangement(next, previous, `Promoted ${active.data.current.group.title}.`);
     }
   };
 
@@ -1694,7 +1902,8 @@ export function HistoryBoard({
   };
 
   const handleToggleCollapse = (id: string) => {
-    setGroups(prev => mapGroups(prev, g => g.id === id ? { ...g, isCollapsed: !g.isCollapsed } : g));
+    // Drag handlers read groupsRef, so collapse changes must update that snapshot too.
+    replaceGroups(toggleHistoryGroupCollapsed(groupsRef.current, id));
   };
 
   const handleGroupHeaderClick = (group: ChatGroup) => {
@@ -1711,14 +1920,15 @@ export function HistoryBoard({
   };
 
   const handleRenameChat = (chatId: string, newTitle: string) => {
-    setGroups(prev => mapGroups(prev, g => ({
+    replaceGroups(mapGroups(groupsRef.current, g => ({
       ...g,
       chats: g.chats.map(c => c.id === chatId ? { ...c, title: newTitle } : c),
     })));
   };
 
   const handleUngroup = (subGroupId: string) => {
-    setGroups(prev => mapGroups(prev, g => {
+    const previous = groupsRef.current;
+    const next = mapGroups(previous, g => {
       const subIdx = g.subGroups.findIndex(s => s.id === subGroupId);
       if (subIdx !== -1) {
         const sub = g.subGroups[subIdx];
@@ -1729,7 +1939,8 @@ export function HistoryBoard({
         };
       }
       return g;
-    }));
+    });
+    if (next !== previous) persistArrangement(next, previous, "Removed nested project grouping.");
   };
 
   const openCreateGroup = () => {
@@ -1761,7 +1972,9 @@ export function HistoryBoard({
       isCollapsed: false,
       custom: true,
     };
-    setGroups(prev => [...prev, newGroup]);
+    const previous = groupsRef.current;
+    persistArrangement([...previous, newGroup], previous, `Created ${customGroup.title}.`);
+    return true;
   };
 
   const handleSelectGroupDirectory = async () => {
@@ -1898,8 +2111,8 @@ export function HistoryBoard({
   };
 
   const allSortableIds = [
-    ...getAllGroupDragIds(groups),
-    ...getAllChatIds(groups),
+    ...getAllGroupDragIds(displayGroups),
+    ...getAllChatIds(displayGroups),
   ];
 
   const collisionDetection = createCustomCollision(activeType);
@@ -1908,7 +2121,7 @@ export function HistoryBoard({
   const accountInitial = account?.initial || accountName.charAt(0).toUpperCase();
   const accountIcon = account?.avatar_url || '';
   const accountIconIsImage = /^(https?:|data:image|\/)/.test(accountIcon);
-  const compactRailItems = useMemo(() => buildCompactHistoryRailItems(groups), [groups]);
+  const compactRailItems = useMemo(() => buildCompactHistoryRailItems(displayGroups), [displayGroups]);
   const currentWorkspaceText = selectedCodingWorkspace
     ? workspaceSummary(selectedCodingWorkspace.workspace_id, selectedCodingWorkspace.label, selectedCodingWorkspace.root_path)
     : "";
@@ -2069,6 +2282,7 @@ export function HistoryBoard({
     return (
       <div className="relative flex h-full w-full flex-col items-center bg-[var(--rumi-surface-base)] text-zinc-400">
         {navigation}
+        <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{historyAnnouncement}</span>
 
         <div className="flex min-h-0 w-full flex-1 flex-col items-center overflow-x-hidden overflow-y-auto px-2.5">
           {compactRailItems.map((item) => {
@@ -2108,6 +2322,10 @@ export function HistoryBoard({
               >
                 <HistoryChatIcon chat={chat} tone={isActive ? "text-zinc-100" : "text-zinc-500"} />
                 {isActive && <span className="absolute left-0 h-5 w-0.5 rounded-r bg-zinc-400" />}
+                <ConversationAttentionIndicator
+                  presentation={presentationForChat(chat)}
+                  className="absolute -bottom-0.5 -right-0.5 rounded-full bg-[#09090b]"
+                />
               </button>
             );
           })}
@@ -2143,11 +2361,75 @@ export function HistoryBoard({
         )}
       >
         {navigation}
+        <div className="px-3 py-1">
+          <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+            {historyAnnouncement}
+          </span>
+          {saveState.kind !== "idle" && (
+            <div
+              className={cn(
+                "mt-1 rounded-lg border px-2 py-2 text-[10px]",
+                saveState.kind === "saved"
+                  ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-100"
+                  : "border-amber-500/30 bg-amber-500/10 text-amber-100",
+              )}
+              data-history-save-state={saveState.kind}
+            >
+              <div className="flex items-start gap-2">
+                {saveState.kind === "saved"
+                  ? <Check size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                  : <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />}
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold">{saveState.kind === "saved" ? saveState.message : "History changes are not saved"}</p>
+                  {saveState.kind !== "saved" && <p className="mt-0.5 text-amber-200/75">{saveState.message}</p>}
+                </div>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
+                {undoGroupsRef.current && (
+                  <button
+                    type="button"
+                    onClick={undoHistoryChange}
+                    className="flex min-h-11 items-center justify-center gap-1 rounded-md border border-current/20 px-2 font-semibold hover:bg-white/10"
+                  >
+                    <Undo2 size={12} aria-hidden="true" /> Undo
+                  </button>
+                )}
+                {pendingGroupsRef.current && (
+                  <button
+                    type="button"
+                    onClick={retryHistorySave}
+                    className="flex min-h-11 items-center justify-center gap-1 rounded-md border border-current/20 px-2 font-semibold hover:bg-white/10"
+                  >
+                    <RotateCcw size={12} aria-hidden="true" /> Retry
+                  </button>
+                )}
+                {saveState.kind !== "saved" && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={exportHistoryOrganization}
+                      className="flex min-h-11 items-center justify-center gap-1 rounded-md border border-current/20 px-2 font-semibold hover:bg-white/10"
+                    >
+                      <Download size={12} aria-hidden="true" /> Export
+                    </button>
+                    <button
+                      type="button"
+                      onClick={resetHistoryArrangement}
+                      className="min-h-11 rounded-md border border-current/20 px-2 font-semibold hover:bg-white/10"
+                    >
+                      {resetArmed ? "Confirm reset" : "Reset"}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Columns */}
         <SortableContext items={allSortableIds} strategy={verticalListSortingStrategy}>
           <div className="flex flex-1 flex-col overflow-x-hidden overflow-y-auto pb-12">
-            {groups.map((group) => (
+            {displayGroups.map((group) => (
               <DraggableColumnHandle key={group.id} group={group}>
                 {(dragHandleProps) => (
                   <DroppableColumn
@@ -2218,6 +2500,7 @@ export function HistoryBoard({
             <GripVertical size={12} className="text-zinc-500" />
             <HistoryChatIcon chat={activeChat} tone="text-zinc-400" />
             <span className="text-sm truncate text-zinc-100">{activeChat.title}</span>
+            <ConversationAttentionIndicator presentation={presentationForChat(activeChat)} />
           </div>
         ) : null}
       </DragOverlay>

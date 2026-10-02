@@ -3,6 +3,7 @@ import {
   isDefaultspackRouteKey,
   type ComposerWidgetAction,
   type ComposerWidgetKind,
+  type SidebarItem,
 } from "./api";
 import type { ComposerExtensionItem, ComposerSkillItem, DroppedWidget } from "../renderers/types";
 import { extractMentionTokens, hasUnescapedMentionSyntax } from "./mentionContract";
@@ -25,6 +26,20 @@ export type ReconciledComposerSemanticDraft = {
   selectedToolIds: string[];
 };
 
+export function composerExtensionItems(items: SidebarItem[]): ComposerExtensionItem[] {
+  return items
+    .filter((item) => item.category === "tool" || item.category === "capability")
+    .map((item) => ({
+      id: item.id,
+      label: item.label,
+      category: item.category,
+      description: item.description,
+      tags: item.tags ?? [],
+      ui: item.ui,
+      presentation: item.presentation,
+    }));
+}
+
 const COMPOSER_ENDPOINT_ACTION_ALLOWLIST = new Set([
   `GET ${defaultspackCanonicalRouteKey("api/coding/git/status")}`,
 ]);
@@ -33,9 +48,15 @@ function composerWidgetTypeForKind(kind: ComposerWidgetKind): DroppedWidget["typ
   return kind === "tool_toggle" ? "tool" : kind;
 }
 
+function presentationFromItem(item: ComposerExtensionItem): DroppedWidget["presentation"] {
+  const iconAttention = item.presentation?.icon_attention ?? item.ui?.icon_attention;
+  return iconAttention === undefined ? undefined : { icon_attention: iconAttention };
+}
+
 function trustedComposerWidgetFromItem(item: ComposerExtensionItem, kind: ComposerWidgetKind, enabled = true): DroppedWidget {
   const label = item.ui?.composer_label ?? item.label ?? item.id;
   const description = item.ui?.composer_description ?? item.description;
+  const presentation = presentationFromItem(item);
   return {
     id: item.id,
     type: composerWidgetTypeForKind(kind),
@@ -46,6 +67,7 @@ function trustedComposerWidgetFromItem(item: ComposerExtensionItem, kind: Compos
     sourceItemId: item.id,
     description,
     icon: item.ui?.composer_icon ?? item.ui?.item_icon ?? item.ui?.group_icon,
+    ...(presentation ? { presentation } : {}),
     metadata: {
       source: "composer_catalog_drop",
       tool: {
@@ -119,6 +141,7 @@ export function composerToolMentionDisplay(item: ComposerExtensionItem): { label
 export function composerToolMentionWidget(item: ComposerExtensionItem, syntaxOverride?: string): DroppedWidget {
   const label = item.ui?.composer_label ?? item.label ?? item.id;
   const description = item.ui?.composer_description ?? item.description;
+  const presentation = presentationFromItem(item);
   return {
     id: item.id,
     type: "tool",
@@ -129,6 +152,7 @@ export function composerToolMentionWidget(item: ComposerExtensionItem, syntaxOve
     sourceItemId: item.id,
     description,
     icon: item.ui?.composer_icon ?? item.ui?.item_icon ?? item.ui?.group_icon,
+    ...(presentation ? { presentation } : {}),
     metadata: {
       source: "composer_at_mention",
       mention: {
@@ -147,6 +171,19 @@ export function composerToolMentionWidget(item: ComposerExtensionItem, syntaxOve
         ui: item.ui ?? null,
       },
     },
+  };
+}
+
+export function widgetWithCurrentPresentation(
+  widget: DroppedWidget,
+  items: ComposerExtensionItem[],
+): DroppedWidget {
+  if (widget.type !== "tool" && widget.widgetKind !== "tool_toggle") return widget;
+  const itemId = widget.sourceItemId || widget.id;
+  const current = items.find((item) => item.id === itemId);
+  return {
+    ...widget,
+    presentation: current ? presentationFromItem(current) : undefined,
   };
 }
 

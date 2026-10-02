@@ -5,14 +5,29 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   getRailFloatingMenuPosition,
+  iconForItem,
   RightSidebar,
   shouldShowToolManagerEmptyState,
   sidebarActionDisabledReason,
+  toolGroupRailIcon,
   toolManagerBaseItemsForNameSearch,
 } from "./RightSidebar";
 import { PromptSidebarWidget } from "./prompts/PromptSidebarWidget";
 
 const noop = () => undefined;
+
+test("declarative notification icons render on items and single-item rails", () => {
+  const notificationItem = {
+    id: "notifications",
+    label: "Notifications",
+    category: "widget" as const,
+    ui: { item_icon: "notification" },
+  };
+
+  assert.match(renderToStaticMarkup(iconForItem(notificationItem)), /lucide-bell-ring/);
+  assert.match(renderToStaticMarkup(toolGroupRailIcon(notificationItem, 1)), /lucide-bell-ring/);
+  assert.match(renderToStaticMarkup(toolGroupRailIcon(notificationItem, 2)), /lucide-folder/);
+});
 
 test("share and export actions are disabled until a conversation is saved", () => {
   assert.equal(
@@ -116,6 +131,42 @@ test("right sidebar initially focuses the rail on activities", () => {
   assert.match(html, /title="Browser"/);
   assert.doesNotMatch(html, /title="other \(1\)"/);
   assert.doesNotMatch(html, /title="Widget A"/);
+});
+
+test("right sidebar renders allowlisted attention and rejects unknown values", () => {
+  const render = (tone: string, source: "presentation" | "ui" = "presentation") => renderToStaticMarkup(
+    createElement(RightSidebar, {
+      items: [{
+        id: "browser",
+        label: "Browser",
+        category: "activity",
+        ...(source === "presentation"
+          ? { presentation: { icon_attention: { active: true, tone, effect: "pulse", accessible_label: "Browser attention" } } }
+          : { ui: { icon_attention: { active: true, tone, effect: "pulse", accessible_label: "Browser attention" } } }),
+      }],
+      settingsValues: {
+        sidebar: { pinned_item_ids: [], starred_item_ids: [], custom_tool_tags: {}, ui_placements: [] },
+        tools: { disabled_tool_ids: [], hidden_tool_ids: [] },
+      },
+      settingsSections: [],
+      selectedToolIds: [],
+      onSettingChange: noop,
+      onOpenSettings: noop,
+    }),
+  );
+
+  const infoHtml = render("info");
+  assert.match(infoHtml, /data-widget-icon-attention="active"/);
+  assert.match(infoHtml, /data-attention-tone="info"/);
+  assert.match(infoHtml, /aria-label="Browser attention"/);
+  assert.match(infoHtml, /data-widget-attention-cue="dot"/);
+  assert.match(infoHtml, /data-widget-icon-attention="active".*<svg[^>]*width="20"/);
+
+  const uiHtml = render("success", "ui");
+  assert.match(uiHtml, /data-attention-tone="success"/);
+
+  const unknownHtml = render("magenta");
+  assert.doesNotMatch(unknownHtml, /data-widget-icon-attention/);
 });
 
 test("right sidebar rail avoids transform and replayed entrance animations", () => {

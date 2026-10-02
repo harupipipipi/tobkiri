@@ -4,6 +4,7 @@ import type { ChatActivityEvent, ChatContentBlock, CodingContextEntry, CodingGit
 import type { DesktopSystemInfo } from "../lib/desktopSystemInfo";
 import type { ComposerCommandItem, RuntimeHealth } from "../lib/api";
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "../components/HistoryBoard";
+import type { ConversationPresentation } from "../features/conversations/conversationPresentation";
 import type { ToolPreviewItem, ToolPreviewMode } from "../components/ToolPreview";
 import type { LocaleSetting } from "../lib/i18n";
 import type { RuntimeCapabilitySnapshot, ToolFilterEntry } from "../lib/toolStatus";
@@ -63,6 +64,7 @@ export type ComposerExtensionItem = {
   /** Explicit catalog service identifier, when this tool belongs to an integration. */
   serviceId?: string;
   ui?: SidebarItem["ui"];
+  presentation?: import("../lib/widgetAttention").WidgetPresentation;
 };
 
 export type ComposerSkillItem = {
@@ -125,6 +127,7 @@ export type TitleBarRendererProps = {
 };
 
 export type HistoryBoardRendererProps = {
+  profileId?: string;
   activeChatId: string | null;
   chatItems: ChatItem[];
   account?: NonNullable<UICatalog["app"]>["account"];
@@ -187,6 +190,7 @@ export type ChatMessagesRendererProps = {
 };
 
 export type ComposerRendererProps = {
+  voiceScopeKey?: string;
   widgetContext?: WidgetConversationContext;
   input: string;
   placeholder: string;
@@ -309,6 +313,7 @@ export type RightSidebarRendererProps = {
   workspaceTabs?: WorkspaceTab[];
   workspaceTabsEnabled?: boolean;
   workspaceTabCreateOptions?: WorkspaceTabCreateOption[];
+  conversationPresentations?: Readonly<Record<string, ConversationPresentation | undefined>>;
   activeWorkspaceTabId?: string | null;
   activeConversationId?: string | null;
   onSettingChange: SettingChangeHandler;
@@ -395,5 +400,6 @@ export type DroppedWidget = {
   sourceItemId?: string;
   description?: string;
   icon?: string;
+  presentation?: import("../lib/widgetAttention").WidgetPresentation;
   metadata?: Record<string, unknown>;
 };

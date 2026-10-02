@@ -38,8 +38,13 @@ import {
   WORKSPACE_TAB_CREATE_OPTIONS,
   WorkspaceLaunchpad,
   WorkspaceTabBar,
+  closeWorkspaceTab,
   createWorkspaceTab,
+  restoreLastClosedWorkspaceTab,
+  rememberClosedWorkspaceTab,
   workspaceTabDisplayTitle,
+  type ClosedWorkspaceTab,
+  workspaceTabsForConversation,
   type WorkspaceTab,
   type WorkspaceTabKind,
 } from "./components/WorkspaceTabs";
@@ -49,7 +54,7 @@ import {
   workspaceKindForPathname,
   workspaceUrlForKind,
 } from "./lib/workspaceRouting";
-import { applicationPathname, profileScreenPathFromLocation } from "./lib/profileRoute";
+import { applicationPathname, parseProfileScreenPath, profileScreenPathFromLocation } from "./lib/profileRoute";
 import { UiPrecisionComparator } from "./pages/UiPrecisionComparator";
 import { ConversationShareLanding, ImportedConversationNotice } from "./pages/ConversationShareLanding";
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "./components/HistoryBoard";
@@ -71,6 +76,11 @@ import {
 } from "./features/models";
 import type { ConversationToolPreferences } from "./features/tools/types";
 import { useToolSelectionController } from "./features/tools/useToolSelectionController";
+import {
+  buildConversationPresentations,
+  conversationTimestamp,
+  type ConversationPresentation,
+} from "./features/conversations/conversationPresentation";
 import {
   AUTHORITY_WAITING_TEXT,
   authorityApprovalTitle,
@@ -117,8 +127,8 @@ import { boundedDurationLabel } from "./lib/duration";
 import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/desktopApproval";
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
-import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
 import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
+import { shortcutLabel, shortcutSpecMatchesEvent, workspaceTabShortcutAction } from "./lib/keyboardShortcuts";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
 import { reportClientDiagnostic } from "./lib/clientDiagnostics";
 import {
@@ -1419,7 +1429,10 @@ function externalConversationSection(conversation: Conversation): { id: string; 
   };
 }
 
-function toChatItem(conversation: Conversation): ChatItem {
+function toChatItem(
+  conversation: Conversation,
+  presentation?: ConversationPresentation,
+): ChatItem {
   const section = externalConversationSection(conversation);
   const metadata = conversation.metadata ?? {};
   const groupId = cleanOptionalString(conversation.group_id) ?? cleanOptionalString(metadata.group_id ?? metadata.groupId);
@@ -1429,7 +1442,7 @@ function toChatItem(conversation: Conversation): ChatItem {
   };
   return {
     id: conversation.id,
-    title: conversation.title,
+    title: presentation?.title ?? conversation.title,
     date: formatBoardDate(conversation.updated_at),
     type: "chat",
     parentId: conversation.parent_conversation_id ?? null,
@@ -1442,10 +1455,14 @@ function toChatItem(conversation: Conversation): ChatItem {
     companyId: typeof normalizedMetadata.company_id === "string" ? normalizedMetadata.company_id : null,
     workspaceId: typeof normalizedMetadata.workspace_id === "string" ? normalizedMetadata.workspace_id : null,
     metadata: normalizedMetadata,
+    presentation,
   };
 }
 
-function buildChatItems(conversations: Conversation[]): ChatItem[] {
+function buildChatItems(
+  conversations: Conversation[],
+  presentations: Readonly<Record<string, ConversationPresentation | undefined>> = {},
+): ChatItem[] {
   const byId = new Map(conversations.map((conversation) => [conversation.id, conversation]));
   const childIds = new Set<string>();
 
@@ -1471,7 +1488,10 @@ function buildChatItems(conversations: Conversation[]): ChatItem[] {
       .filter((child): child is Conversation => Boolean(child))
       .sort((a, b) => b.updated_at - a.updated_at)
       .map(build);
-    return { ...toChatItem(conversation), children: linkedChildren };
+    return {
+      ...toChatItem(conversation, presentations[conversation.id]),
+      children: linkedChildren,
+    };
   };
 
   return conversations
@@ -2255,6 +2275,7 @@ export function composerExtensionItems(items: SidebarItem[]): ComposerExtensionI
       sourcePackId: item.tool_info?.source_pack_id,
       serviceId: item.tool_info?.service_id ?? item.ui?.service_id,
       ui: item.ui,
+      presentation: item.presentation,
     }));
 }
 
@@ -2526,6 +2547,7 @@ function modelCommandInputQuery(value: string): string | null {
 
 export function ChatApp() {
   const [catalog, setCatalog] = useState<UICatalog | null>(null);
+  const runtimeProfileId = parseProfileScreenPath(window.location.pathname)?.profileId ?? "unavailable";
   const [modelProfiles, setModelProfiles] = useState<ModelProfile[]>([]);
   useEffect(() => {
     let disposed = false;
@@ -2609,6 +2631,7 @@ export function ChatApp() {
   const [showPromptUsageInMessages, setShowPromptUsageInMessages] = useLocalStorage("rumi-show-prompt-usage-in-messages", true);
   const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTab[]>(() => initialWorkspaceTabsForPathname(window.location.pathname));
   const [activeWorkspaceTabId, setActiveWorkspaceTabId] = useState(() => initialActiveWorkspaceTabIdForPathname(window.location.pathname));
+  const closedWorkspaceTabsRef = useRef<{ profileId: string; tabs: ClosedWorkspaceTab[] }>({ profileId: runtimeProfileId, tabs: [] });
   const [isHistoryMinimized, setIsHistoryMinimized] = useLocalStorage("rumi-history-minimized", false);
   const [isNewChatLaunching, setIsNewChatLaunching] = useState(false);
   const [modelSteerStatus, setModelSteerStatus] = useState<ComposerSteerStatus | null>(null);
@@ -2649,8 +2672,12 @@ export function ChatApp() {
   const [droppedWidgets, setDroppedWidgets] = useState<DroppedWidget[]>([]);
   const [composerEntityReferences, setComposerEntityReferences] = useState<ComposerEntityReference[]>([]);
   const [storedSelectedToolIds, setStoredSelectedToolIds] = useLocalStorage<string[]>("rumi-selected-tool-ids", []);
-  const pendingStorageKey = "rumi-pending-chat-requests";
+  const pendingStorageKey = `rumi-pending-chat-requests:${encodeURIComponent(runtimeProfileId)}`;
   const [pendingRequests, setPendingRequests] = useLocalStorage<Record<string, PendingChatRequest>>(pendingStorageKey, {});
+  const [conversationReadAt, setConversationReadAt] = useLocalStorage<Record<string, number>>(
+    `rumi-conversation-read-at-v1:${encodeURIComponent(runtimeProfileId)}`,
+    {},
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const shouldFollowMessagesRef = useRef(true);
@@ -2732,7 +2759,44 @@ export function ChatApp() {
   }, [shareDialogOpen]);
 
   const rawSidebarItems: SidebarItem[] = catalog?.sidebar.items ?? [];
-  const chatItems = buildChatItems(conversations);
+  const markConversationRead = useCallback((conversationId: string) => {
+    const listedUpdatedAt = conversationTimestamp(
+      conversations.find((conversation) => conversation.id === conversationId)?.updated_at,
+    );
+    const readAt = Math.max(Date.now(), listedUpdatedAt);
+    setConversationReadAt((current) => (
+      (current[conversationId] ?? 0) >= readAt
+        ? current
+        : { ...current, [conversationId]: readAt }
+    ));
+  }, [conversations, setConversationReadAt]);
+  const conversationPresentations = useMemo(
+    () => buildConversationPresentations(conversations, {
+      activeConversationId,
+      runningConversationId: isGenerating ? activeConversationId : null,
+      pendingRequests,
+      readAtByConversation: conversationReadAt,
+    }),
+    [activeConversationId, conversationReadAt, conversations, isGenerating, pendingRequests],
+  );
+  const chatItems = buildChatItems(conversations, conversationPresentations);
+  useEffect(() => {
+    setConversationReadAt((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const conversation of conversations) {
+        if (conversation.id in next) continue;
+        const metadata = conversation.metadata ?? {};
+        if (metadata.unread === true || metadata.is_unread === true) continue;
+        next[conversation.id] = conversationTimestamp(conversation.updated_at) || Date.now();
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [conversations, setConversationReadAt]);
+  useEffect(() => {
+    if (activeConversationId) markConversationRead(activeConversationId);
+  }, [activeConversation?.updated_at, activeConversationId, markConversationRead]);
   const recentSpotlightResults = useMemo(
     () => conversations
       .filter((conversation) => conversationMatchesSpotlightFilter(conversation, spotlightFilter))
@@ -2799,15 +2863,13 @@ export function ChatApp() {
   useEffect(() => {
     setWorkspaceTabs((current) => current.map((tab) => {
       if (tab.id !== activeWorkspaceTabId || tab.kind !== "chat") return tab;
-      const nextTitle = activeConversationId ? activeChatTitle : "New Conversation";
-      if (tab.conversationId === activeConversationId && tab.title === nextTitle) return tab;
+      if (tab.conversationId || !activeConversationId) return tab;
       return {
         ...tab,
         conversationId: activeConversationId,
-        title: nextTitle,
       };
     }));
-  }, [activeChatTitle, activeConversationId, activeWorkspaceTabId]);
+  }, [activeConversationId, activeWorkspaceTabId]);
   const activePromptUsage = latestActiveMetadata.prompt_usage && typeof latestActiveMetadata.prompt_usage === "object" && !Array.isArray(latestActiveMetadata.prompt_usage)
     ? latestActiveMetadata.prompt_usage as PromptUsageSummary
     : null;
@@ -3429,9 +3491,13 @@ export function ChatApp() {
   };
 
   const rememberPendingRequest = (request: PendingChatRequest) => {
+    const storedRequest = {
+      ...request,
+      updatedAt: request.updatedAt ?? request.startedAt ?? Date.now(),
+    };
     updatePendingRequests((current) => ({
       ...current,
-      [request.conversationId]: request,
+      [request.conversationId]: storedRequest,
     }));
   };
 
@@ -4344,19 +4410,20 @@ export function ChatApp() {
     setError(null);
     setPendingNewTaskContext(null);
     setActiveHistoryCompanyId(null);
-    const activeTab = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId);
-    if (!workspaceTabsEnabled) {
-      setWorkspaceTabs((current) => current.map((tab) => tab.id === activeWorkspaceTabId
-        ? { ...tab, kind: "chat", title: "AI Chat", conversationId }
-        : tab));
-    } else if (activeTab?.kind === "chat") {
-      setWorkspaceTabs((current) => current.map((tab) => tab.id === activeWorkspaceTabId ? { ...tab, conversationId } : tab));
-    } else {
-      const nextTab = createWorkspaceTab("chat", { conversationId, title: "AI Chat" });
-      setWorkspaceTabs((current) => [...current, nextTab]);
-      setActiveWorkspaceTabId(nextTab.id);
-    }
-    void loadConversation(conversationId);
+    markConversationRead(conversationId);
+    const activation = workspaceTabsEnabled
+      ? workspaceTabsForConversation(workspaceTabs, activeWorkspaceTabId, conversationId)
+      : {
+          tabs: workspaceTabs.map((tab) => tab.id === activeWorkspaceTabId
+            ? { ...tab, kind: "chat" as const, title: "AI Chat", conversationId }
+            : tab),
+          activeTab: { ...workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId)!, kind: "chat" as const, conversationId },
+        };
+    setWorkspaceTabs(activation.tabs);
+    setActiveWorkspaceTabId(activation.activeTab.id);
+    setMode("agent");
+    pushWorkspaceRoute("chat", conversationId);
+    void loadConversation(conversationId, false);
   };
 
   const handleHistoryMetadataChange = (conversationId: string, updates: { is_pinned?: boolean; is_starred?: boolean; tags?: string[] }) => {
@@ -5521,6 +5588,7 @@ export function ChatApp() {
     setError(null);
     if (tab.kind === "chat") {
       handleModeChange("agent", false);
+      if (tab.conversationId) markConversationRead(tab.conversationId);
       pushWorkspaceRoute("chat", tab.conversationId ?? null);
       void loadConversation(tab.conversationId ?? null, false);
       return;
@@ -5549,9 +5617,9 @@ export function ChatApp() {
     if (tab) activateWorkspaceTab(tab);
   };
 
-  const handleWorkspaceTabCreate = (kind: WorkspaceTabKind) => {
+  const handleWorkspaceTabCreate = (kind: WorkspaceTabKind): boolean => {
     const option = workspaceTabCreateOptions.find((candidate) => candidate.kind === kind);
-    if (!option || option.disabled) return;
+    if (!option || option.disabled) return false;
     const tab = createWorkspaceTab(kind, {
       title: kind === "chat" ? "New Conversation" : option?.label,
     });
@@ -5560,22 +5628,72 @@ export function ChatApp() {
         currentTab.id === activeWorkspaceTabId ? tab : currentTab
       )));
       activateWorkspaceTab(tab);
-      return;
+      return true;
     }
     setWorkspaceTabs((current) => [...current, tab]);
     activateWorkspaceTab(tab);
+    return true;
   };
 
-  const handleWorkspaceTabClose = (tabId: string) => {
-    if (workspaceTabs.length <= 1) return;
-    const closedIndex = workspaceTabs.findIndex((tab) => tab.id === tabId);
-    const nextTabs = workspaceTabs.filter((tab) => tab.id !== tabId);
-    setWorkspaceTabs(nextTabs);
-    if (activeWorkspaceTabId === tabId) {
-      const nextTab = nextTabs[Math.max(0, closedIndex - 1)] ?? nextTabs[0];
-      if (nextTab) activateWorkspaceTab(nextTab);
-    }
+  const handleWorkspaceTabClose = (tabId: string): boolean => {
+    const result = closeWorkspaceTab(workspaceTabs, activeWorkspaceTabId, tabId);
+    if (!result.closedTab) return false;
+    const history = closedWorkspaceTabsRef.current.profileId === runtimeProfileId
+      ? closedWorkspaceTabsRef.current.tabs : [];
+    closedWorkspaceTabsRef.current = { profileId: runtimeProfileId, tabs: rememberClosedWorkspaceTab(history, result.closedTab) };
+    setWorkspaceTabs(result.tabs);
+    if (result.nextActiveTab) activateWorkspaceTab(result.nextActiveTab);
+    return true;
   };
+
+  const handleWorkspaceTabRestore = (): boolean => {
+    const history = closedWorkspaceTabsRef.current.profileId === runtimeProfileId
+      ? closedWorkspaceTabsRef.current.tabs : [];
+    const result = restoreLastClosedWorkspaceTab(workspaceTabs, history);
+    closedWorkspaceTabsRef.current = { profileId: runtimeProfileId, tabs: result.closedTabs };
+    if (!result.restoredTab) return false;
+    setWorkspaceTabs(result.tabs);
+    activateWorkspaceTab(result.restoredTab);
+    return true;
+  };
+
+  useEffect(() => {
+    const handleWorkspaceTabShortcut = (event: KeyboardEvent) => {
+      // Global capture runs before a dialog can prevent its own key event.
+      // Never change the workspace behind a settings, search, or share modal.
+      const action = workspaceTabShortcutAction(event);
+      if (!action) return;
+      const visibleDialog = Array.from(document.querySelectorAll('[role="dialog"]'))
+        .some((dialog) => dialog.getClientRects().length > 0);
+      if (!workspaceTabsEnabled || isSettingsOpen || isSpotlightOpen || shareDialogOpen || visibleDialog) {
+        event.preventDefault();
+        return;
+      }
+      let handled = false;
+      if (action === "create_chat") {
+        handled = handleWorkspaceTabCreate("chat");
+      } else if (action === "close_active") {
+        // Consuming the last-tab close keeps the host window open by design.
+        handled = workspaceTabs.length <= 1 || handleWorkspaceTabClose(activeWorkspaceTabId);
+      } else {
+        // An empty app restore must not fall through to browser-level tab restore.
+        handleWorkspaceTabRestore();
+        handled = true;
+      }
+      if (handled) event.preventDefault();
+    };
+    window.addEventListener("keydown", handleWorkspaceTabShortcut, { capture: true });
+    return () => window.removeEventListener("keydown", handleWorkspaceTabShortcut, { capture: true });
+  }, [
+    activeConversationId,
+    activeWorkspaceTabId,
+    isSettingsOpen,
+    isSpotlightOpen,
+    shareDialogOpen,
+    runtimeProfileId,
+    workspaceTabsEnabled,
+    workspaceTabs,
+  ]);
 
   const handleCodingBranchSwitch = (branch: string, create = false) => {
     void api.switchGitBranch(branch, create, { workspace_id: effectiveWorkspaceId })
@@ -7013,6 +7131,7 @@ export function ChatApp() {
       return <div role="status" className="mx-3 mb-3 flex min-h-14 items-center justify-center border border-zinc-800 bg-zinc-950 px-4 text-center text-sm text-zinc-400">Read-only imported copy. Import the share again with continue mode to send messages.</div>;
     }
     return <Renderers.composer
+      voiceScopeKey={`${runtimeProfileId}:${activeConversationId ?? ""}`}
       widgetContext={widgetContext}
       input={input}
       placeholder={isCentered ? getNewConversationPlaceholder() : placeholder}
@@ -7123,6 +7242,8 @@ export function ChatApp() {
             isHistoryMinimized ? "rumi-history-rail is-compact" : "rumi-history-pane rumi-layer-panel",
           )}>
             <Renderers.historyBoard
+              key={runtimeProfileId}
+              profileId={runtimeProfileId}
               activeChatId={activeConversationId}
               chatItems={chatItems}
               account={catalog?.app?.account}
@@ -7181,6 +7302,7 @@ export function ChatApp() {
                 tabs={workspaceTabs}
                 activeTabId={activeWorkspaceTabId}
                 createOptions={workspaceTabCreateOptions}
+                conversationPresentations={conversationPresentations}
                 onSelect={handleWorkspaceTabSelect}
                 onClose={handleWorkspaceTabClose}
                 onCreate={handleWorkspaceTabCreate}
@@ -7189,7 +7311,14 @@ export function ChatApp() {
 
             {showRegion("chat_header") && isChatWorkspace && !isCalendarMode && !isKanbanMode && (
               <Renderers.chatHeader
-                title={activeWorkspaceTab ? workspaceTabDisplayTitle(activeWorkspaceTab) : activeChatTitle}
+                title={activeWorkspaceTab
+                  ? workspaceTabDisplayTitle(
+                    activeWorkspaceTab,
+                    activeWorkspaceTab.conversationId
+                      ? conversationPresentations[activeWorkspaceTab.conversationId]
+                      : undefined,
+                  )
+                  : activeChatTitle}
                 showPreview={effectiveShowPreview}
                 canShowPreview={showRegion("activity_preview") && canShowCanvas}
                 canOpenSettings={showRegion("settings_modal")}
@@ -7502,6 +7631,7 @@ export function ChatApp() {
             workspaceTabs={workspaceTabs}
             workspaceTabsEnabled={workspaceTabsEnabled}
             workspaceTabCreateOptions={workspaceTabCreateOptions}
+            conversationPresentations={conversationPresentations}
             activeWorkspaceTabId={activeWorkspaceTabId}
             activeConversationId={activeConversationId}
             onSettingChange={handleSettingChange}

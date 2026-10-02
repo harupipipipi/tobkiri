@@ -110,7 +110,8 @@ import {
   transcriptAttachmentFromAudio,
 } from "../features/voice/composerVoice";
 import { fileToAttachment } from "../lib/attachments";
-import { composerFileMentionWidget, composerKnownMentionValues, composerMentionToolIdsFromWidgets, composerServiceMentionWidget, composerSkillMentionDisplay, composerSkillMentionWidget, composerToolMentionDisplay, composerToolMentionWidget, filterComposerSkillMentions, filterComposerToolMentions, resolveComposerWidgetDrop, skillMentionIdsFromText, toolMentionIdsFromText } from "../lib/composerWidgets";
+import { composerFileMentionWidget, composerKnownMentionValues, composerMentionToolIdsFromWidgets, composerServiceMentionWidget, composerSkillMentionDisplay, composerSkillMentionWidget, composerToolMentionDisplay, composerToolMentionWidget, filterComposerSkillMentions, filterComposerToolMentions, resolveComposerWidgetDrop, skillMentionIdsFromText, toolMentionIdsFromText, widgetWithCurrentPresentation } from "../lib/composerWidgets";
+import { WidgetAttentionIcon } from "../lib/widgetAttention";
 import {
   COMPOSER_REFERENCE_MIME,
   composerReferencesAsMarkdown,
@@ -125,6 +126,7 @@ import { HISTORY_CHAT_DROP_MIME, parseHistoryChatDrop } from "../lib/historyComp
 import { activeMentionAtCursor, isMentionStart, utf16OffsetToCodePointIndex } from "../lib/mentionContract";
 import { withSettingsAssistantSkill } from "../lib/settingsMode";
 import { sortedToolGroups, toolGroupFor } from "../lib/toolUi";
+import { declarativeIconForName } from "../lib/declarativeIcons";
 import { startPinchAudioRecorder, type ActiveAudioRecorder, type AmbientAudioRecording } from "../ambient/ambientMedia";
 import composerPaletteTemplateJson from "../templates/composerPalette.template.json";
 
@@ -390,6 +392,8 @@ function ComposerTextareaResizeButton({
 }
 
 function composerIconForName(iconName: string | undefined, fallback: LucideIcon): LucideIcon {
+  const declaredIcon = declarativeIconForName(iconName);
+  if (declaredIcon) return declaredIcon;
   const normalized = String(iconName ?? "").trim().toLowerCase();
   if (/search|browser|web|globe/.test(normalized)) return Search;
   if (/file|document|pdf|text/.test(normalized)) return FileText;
@@ -1518,7 +1522,12 @@ function DroppedWidgetChip({
             : "border-amber-500/30 bg-amber-500/10 text-amber-200 hover:bg-amber-500/15"
         }`}
       >
-        <ConversationIcon size={11} className="flex-shrink-0" />
+        <WidgetAttentionIcon
+          attention={widget.presentation?.icon_attention}
+          widgetId={widget.id}
+        >
+          <ConversationIcon size={11} className="flex-shrink-0" />
+        </WidgetAttentionIcon>
         <span className="truncate">{widget.label}</span>
       </button>
     );
@@ -1538,7 +1547,12 @@ function DroppedWidgetChip({
         onClick={() => onAction?.(widget)}
         className="inline-flex max-w-[160px] items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.05] px-2 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-zinc-100"
       >
-        <Icon size={10} />
+        <WidgetAttentionIcon
+          attention={widget.presentation?.icon_attention}
+          widgetId={widget.id}
+        >
+          <Icon size={10} />
+        </WidgetAttentionIcon>
         <span className="truncate">{widget.label}</span>
       </button>
     );
@@ -1552,7 +1566,12 @@ function DroppedWidgetChip({
   }`;
   const toolToggleContent = (
     <>
-      <ToolIcon size={11} className="flex-shrink-0" />
+      <WidgetAttentionIcon
+        attention={widget.presentation?.icon_attention}
+        widgetId={widget.id}
+      >
+        <ToolIcon size={11} className="flex-shrink-0" />
+      </WidgetAttentionIcon>
       <span className="truncate">{widget.label}</span>
     </>
   );
@@ -3131,8 +3150,10 @@ export function ComposerRenderer({
   );
 	  const selectedToolIdSet = useMemo(() => new Set(selectedToolIds), [selectedToolIds]);
   const visibleDroppedWidgets = useMemo(
-    () => droppedWidgets.filter((widget) => widget.metadata?.source !== "composer_at_mention"),
-    [droppedWidgets],
+    () => droppedWidgets
+      .filter((widget) => widget.metadata?.source !== "composer_at_mention")
+      .map((widget) => widgetWithCurrentPresentation(widget, toolItems)),
+    [droppedWidgets, toolItems],
   );
   const visibleToolWidgetIdSet = useMemo(
     () => new Set(

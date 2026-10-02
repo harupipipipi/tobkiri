@@ -17,6 +17,9 @@ import {
 
 import type { KanbanBoardScope, SidebarItem } from "../lib/api";
 import { cn } from "../lib/cn";
+import type { ConversationPresentation } from "../features/conversations/conversationPresentation";
+import { ConversationAttentionIndicator } from "./conversation/ConversationAttentionIndicator";
+import { ConversationGlyph } from "./conversation/ConversationGlyph";
 
 export type WorkspaceTabKind =
   | "chat"
@@ -37,6 +40,23 @@ export type WorkspaceTab = {
   kanbanScope?: KanbanBoardScope | null;
   kanbanScopeLabel?: string | null;
   createdAt: number;
+};
+
+export type ClosedWorkspaceTab = {
+  index: number;
+  tab: WorkspaceTab;
+};
+
+export type WorkspaceTabCloseResult = {
+  closedTab: ClosedWorkspaceTab | null;
+  nextActiveTab: WorkspaceTab | null;
+  tabs: WorkspaceTab[];
+};
+
+export type WorkspaceTabRestoreResult = {
+  closedTabs: ClosedWorkspaceTab[];
+  restoredTab: WorkspaceTab | null;
+  tabs: WorkspaceTab[];
 };
 
 export type WorkspaceTabCreateOption = {
@@ -134,10 +154,91 @@ export function createWorkspaceTab(
   return tab;
 }
 
-export function workspaceTabDisplayTitle(tab: WorkspaceTab): string {
+/** Reuse, bind, or create exactly one chat tab for a history activation. */
+export function workspaceTabsForConversation(
+  tabs: WorkspaceTab[],
+  activeTabId: string,
+  conversationId: string,
+  now = Date.now(),
+): { tabs: WorkspaceTab[]; activeTab: WorkspaceTab } {
+  const existing = tabs.find((tab) => (
+    tab.kind === "chat" && tab.conversationId === conversationId
+  ));
+  if (existing) return { tabs, activeTab: existing };
+
+  const active = tabs.find((tab) => tab.id === activeTabId);
+  if (active?.kind === "chat" && !active.conversationId) {
+    const bound = { ...active, conversationId };
+    return {
+      tabs: tabs.map((tab) => tab.id === active.id ? bound : tab),
+      activeTab: bound,
+    };
+  }
+
+  const created = createWorkspaceTab("chat", { conversationId }, now);
+  return { tabs: [...tabs, created], activeTab: created };
+}
+
+export function workspaceTabDisplayTitle(
+  tab: WorkspaceTab,
+  presentation?: ConversationPresentation | null,
+): string {
+  if (tab.kind === "chat" && tab.conversationId && presentation?.title.trim()) {
+    return presentation.title.trim();
+  }
   const title = tab.title.trim();
   if (title) return title;
   return workspaceTabOption(tab.kind).label;
+}
+
+export const CLOSED_WORKSPACE_TAB_LIMIT = 20;
+
+/** Retain a bounded session history; closing never deletes a conversation. */
+export function rememberClosedWorkspaceTab(
+  history: ClosedWorkspaceTab[],
+  closed: ClosedWorkspaceTab,
+): ClosedWorkspaceTab[] {
+  return [...history, closed].slice(-CLOSED_WORKSPACE_TAB_LIMIT);
+}
+
+/** Close one workspace tab while preserving browser-like adjacent selection. */
+export function closeWorkspaceTab(
+  tabs: WorkspaceTab[],
+  activeTabId: string,
+  tabId: string,
+): WorkspaceTabCloseResult {
+  if (tabs.length <= 1) return { closedTab: null, nextActiveTab: null, tabs };
+  const closedIndex = tabs.findIndex((tab) => tab.id === tabId);
+  if (closedIndex < 0) return { closedTab: null, nextActiveTab: null, tabs };
+  const closed = tabs[closedIndex];
+  const nextTabs = tabs.filter((tab) => tab.id !== tabId);
+  const nextActiveTab = activeTabId === tabId
+    ? nextTabs[Math.max(0, closedIndex - 1)] ?? nextTabs[0] ?? null
+    : null;
+  return {
+    closedTab: { index: closedIndex, tab: closed },
+    nextActiveTab,
+    tabs: nextTabs,
+  };
+}
+
+/** Restore the newest non-duplicate closed tab at its previous position. */
+export function restoreLastClosedWorkspaceTab(
+  tabs: WorkspaceTab[],
+  closedTabs: ClosedWorkspaceTab[],
+): WorkspaceTabRestoreResult {
+  const remaining = [...closedTabs];
+  while (remaining.length > 0) {
+    const candidate = remaining.pop();
+    if (!candidate || tabs.some((tab) => tab.id === candidate.tab.id)) continue;
+    const insertAt = Math.max(0, Math.min(candidate.index, tabs.length));
+    return {
+      closedTabs: remaining,
+      restoredTab: candidate.tab,
+      tabs: [...tabs.slice(0, insertAt), candidate.tab, ...tabs.slice(insertAt)],
+    };
+  }
+  return { closedTabs: remaining, restoredTab: null, tabs };
 }
 
 function iconForKind(kind: WorkspaceTabKind): LucideIcon {
@@ -196,6 +297,7 @@ function NewTabMenu({
 export function WorkspaceTabBar({
   tabs,
   activeTabId,
+  conversationPresentations = {},
   createOptions = WORKSPACE_TAB_CREATE_OPTIONS,
   onSelect,
   onClose,
@@ -203,6 +305,7 @@ export function WorkspaceTabBar({
 }: {
   tabs: WorkspaceTab[];
   activeTabId: string;
+  conversationPresentations?: Readonly<Record<string, ConversationPresentation | undefined>>;
   createOptions?: WorkspaceTabCreateOption[];
   onSelect: (tabId: string) => void;
   onClose: (tabId: string) => void;
@@ -240,7 +343,10 @@ export function WorkspaceTabBar({
         {tabs.map((tab) => {
           const Icon = iconForKind(tab.kind);
           const isActive = tab.id === activeTabId;
-          const title = workspaceTabDisplayTitle(tab);
+          const presentation = tab.kind === "chat" && tab.conversationId
+            ? conversationPresentations[tab.conversationId]
+            : undefined;
+          const title = workspaceTabDisplayTitle(tab, presentation);
           return (
             <div
               key={tab.id}
@@ -257,12 +363,25 @@ export function WorkspaceTabBar({
                 role="tab"
                 aria-selected={isActive}
                 aria-current={isActive ? "page" : undefined}
+                aria-label={presentation?.accessibleStatusLabel
+                  ? `${title}, ${presentation.accessibleStatusLabel}`
+                  : title}
                 onClick={() => onSelect(tab.id)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  onSelect(tab.id);
+                }}
                 className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-md px-0.5 text-left"
               >
-                <Icon size={13} className="shrink-0" />
+                {presentation ? (
+                  <ConversationGlyph presentation={presentation} size={13} tone="text-current" />
+                ) : (
+                  <Icon size={13} className="shrink-0" />
+                )}
                 <span className="min-w-0 flex-1 truncate">{title}</span>
               </button>
+              {presentation && <ConversationAttentionIndicator presentation={presentation} />}
               {tabs.length > 1 && (
                 <button
                   type="button"
@@ -309,6 +428,7 @@ export function WorkspaceTabBar({
 export function WorkspaceTabRailPanel({
   tabs,
   activeTabId,
+  conversationPresentations = {},
   createOptions = WORKSPACE_TAB_CREATE_OPTIONS,
   onSelect,
   onClose,
@@ -316,6 +436,7 @@ export function WorkspaceTabRailPanel({
 }: {
   tabs: WorkspaceTab[];
   activeTabId: string;
+  conversationPresentations?: Readonly<Record<string, ConversationPresentation | undefined>>;
   createOptions?: WorkspaceTabCreateOption[];
   onSelect: (tabId: string) => void;
   onClose: (tabId: string) => void;
@@ -327,7 +448,10 @@ export function WorkspaceTabRailPanel({
         {tabs.map((tab) => {
           const Icon = iconForKind(tab.kind);
           const isActive = tab.id === activeTabId;
-          const title = workspaceTabDisplayTitle(tab);
+          const presentation = tab.kind === "chat" && tab.conversationId
+            ? conversationPresentations[tab.conversationId]
+            : undefined;
+          const title = workspaceTabDisplayTitle(tab, presentation);
           return (
             <div
               key={tab.id}
@@ -345,13 +469,18 @@ export function WorkspaceTabRailPanel({
                 className="flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-md text-left"
               >
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-zinc-950 text-zinc-400">
-                  <Icon size={15} />
+                  {presentation ? (
+                    <ConversationGlyph presentation={presentation} size={15} tone="text-current" />
+                  ) : (
+                    <Icon size={15} />
+                  )}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[12px] font-medium">{title}</span>
                   <span className="block truncate text-[10px] text-zinc-600">{workspaceTabOption(tab.kind).label}</span>
                 </span>
               </button>
+              {presentation && <ConversationAttentionIndicator presentation={presentation} />}
               {tabs.length > 1 && (
                 <button
                   type="button"
