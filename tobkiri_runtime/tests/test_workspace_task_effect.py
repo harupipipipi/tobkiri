@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import replace
+import json
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 from typing import Any, Iterator, Mapping
 
 import pytest
+from jsonschema import Draft202012Validator, ValidationError
 
 from core_runtime.authority.v4 import AuthorityScope
 from core_runtime.host_contract import bind_host_contract
@@ -43,6 +45,7 @@ from tobkiri_protocol.workspace_task_v1 import EXECUTE, PREPARE, TASK_CONTRACT
 
 def _request(context: RequestContext) -> dict[str, Any]:
     return {
+        "task_request_id": "request.portable",
         "profile_id": context.profile_id,
         "workspace_id": "workspace.portable",
         "expected_revision": 4,
@@ -105,6 +108,8 @@ def test_workspace_task_has_only_the_finite_prepare_execute_pair() -> None:
         {"expected_revision": 0},
         {"expected_writer_epoch": 1.5},
         {"profile_id": "../foreign"},
+        {"task_request_id": "../foreign"},
+        {"task_request_id": "n" * 129},
         {"argv": "python -m pytest"},
         {"argv": []},
         {"argv": ["-c", "command"]},
@@ -132,6 +137,7 @@ def test_workspace_task_rejects_malformed_and_authority_bearing_request(
     "patch",
     [
         {"workspace_id": "workspace.foreign"},
+        {"task_request_id": "request.foreign"},
         {"expected_revision": 5},
         {"expected_writer_epoch": 3},
         {"argv": ["python", "different"]},
@@ -580,3 +586,47 @@ def test_workspace_task_foreign_presentation_owner_cannot_manage_effect(
     with pytest.raises(InteractiveEffectUnavailable):
         getattr(fixture.service, f"{action}_interactive_effect")(query)
     assert fixture.backend.invocations == 0
+
+
+def test_adoption_schema_preserves_each_finite_kind_and_management_phase() -> None:
+    """The proposed canonical schema adds tasks without breaking current kinds."""
+
+    adoption = json.loads(
+        (
+            Path(__file__).parents[1]
+            / "docs"
+            / "workspace-task-effect-adoption.v1.json"
+        ).read_text()
+    )
+    schema = adoption["canonical_source_updates"][0]["input_schema"]
+    Draft202012Validator.check_schema(schema)
+    validator = Draft202012Validator(schema)
+    correlation_id = "a7188ed0-45d5-4b1b-9abc-6de80c41d5a1"
+    for kind in INTERACTIVE_EFFECT_SPECS:
+        request = _request(_coordinator_context()) if kind == "workspace_task" else {}
+        validator.validate(
+            {
+                "phase": "prepare",
+                "effect_kind": kind,
+                "request": request,
+                "correlation_id": correlation_id,
+            }
+        )
+        validator.validate(
+            {"phase": "lookup", "effect_kind": kind, "correlation_id": correlation_id}
+        )
+    for phase in ("status", "resume", "cancel"):
+        validator.validate({"phase": phase, "effect_id": "pending-effect-1"})
+    for payload in (
+        {"phase": "prepare", "effect_kind": "unknown", "request": {}},
+        {"phase": "prepare", "effect_kind": "workspace_task", "request": {}},
+        {
+            "phase": "prepare",
+            "effect_kind": "shell_execute",
+            "request": {},
+            "approved": True,
+        },
+        {"phase": "resume", "effect_id": "pending-effect-1", "request": {}},
+    ):
+        with pytest.raises(ValidationError):
+            validator.validate(payload)
