@@ -19,7 +19,7 @@
         {
           "contract_id": "tobkiri.resource.cloud.workspace.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:70dc9a28fe0e1df1373f194244218b2af2bef0fbe9f3e3b0c4cb4eb90e62ca21",
+          "revision_digest": "sha256:9d4b108cca4535d2ede376a6705efbc7326d911eaf0cb0c4a468751f0c44e00e",
           "operation_id": "tobkiri_cloud_workspace_pack.workspace-resource",
           "input_schema": {
             "type": "object",
@@ -124,7 +124,7 @@
         {
           "contract_id": "tobkiri.action.cloud.workspace.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:7e46808402d29ba212b4605e47044862b1277ac853bd653f389c91d3212ebb4e",
+          "revision_digest": "sha256:4bcfe52decd401eef0ab1c55789e602e0a21fa578c6d6303d828138c39b8b177",
           "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage",
           "input_schema": {
             "type": "object",
@@ -261,5 +261,5 @@
       ]
     }
   ],
-  "catalog_digest": "sha256:bd9f22f51e9bd7ed1341a00aad6677b5bfbc51c4f402d44b8120ba5ade02f38d"
+  "catalog_digest": "sha256:78bb8e90ebc69d58f46e14365a915e44cf2197813c6caf696dbec7eb93cfb79f"
 }
