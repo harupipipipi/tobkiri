@@ -8,9 +8,8 @@ PackAPIHandler の /health エンドポイントをテストする。
 import json
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 # core_setup のパスを追加
 _CORE_SETUP_DIR = (
@@ -26,16 +25,207 @@ if str(_CORE_SETUP_DIR) not in sys.path:
 class TestAppLifecycleManagerHealth:
     """AppLifecycleManager.get_health() のテスト"""
 
+    def test_reconfirmation_health_remains_setup_required(
+        self, tmp_path, monkeypatch
+    ):
+        """A control-only capture cannot be projected as launch-ready."""
+
+        from core_runtime import app_lifecycle_manager as lifecycle_module
+        from core_runtime.bootstrap import profile_capture
+
+        diagnostic = "ResolvedPlan binding lacks a verified artifact"
+        monkeypatch.setattr(
+            lifecycle_module,
+            "get_runtime_readiness",
+            lambda: {
+                "panel_ready": True,
+                "runtime_ready": False,
+                "runtime_status": "profile_reconfirmation_required",
+                "runtime_error": diagnostic,
+            },
+        )
+        monkeypatch.setattr(
+            profile_capture,
+            "active_profile_exists",
+            lambda **_kwargs: (_ for _ in ()).throw(
+                AssertionError("reconfirmation health recaptured the Profile")
+            ),
+        )
+
+        result = lifecycle_module.AppLifecycleManager(base_dir=tmp_path).get_health()
+
+        assert result["needs_setup"] is True
+        assert result["runtime_ready"] is False
+        assert result["runtime_status"] == "profile_reconfirmation_required"
+        assert result["runtime_error"] == diagnostic
+        assert result["host_catalog_verified"] is True
+        assert result["profile_ceremony_available"] is True
+        assert result["active_profile_ready"] is False
+        assert result["launch_ready"] is False
+
+    def test_pack_activation_health_stays_pending_until_host_pointer_is_published(
+        self, tmp_path, monkeypatch
+    ):
+        from core_runtime import app_lifecycle_manager as lifecycle_module
+        from core_runtime import pack_control_v4
+
+        alm = lifecycle_module.AppLifecycleManager(base_dir=tmp_path)
+        monkeypatch.setattr(
+            alm,
+            "check_setup_status",
+            lambda: (_ for _ in ()).throw(AssertionError("captured during Pack activation")),
+        )
+        monkeypatch.setattr(
+            lifecycle_module,
+            "get_runtime_readiness",
+            lambda: {"panel_ready": True},
+        )
+        monkeypatch.setattr(
+            pack_control_v4,
+            "resolve_profile_pack_set",
+            lambda _pack_ids: SimpleNamespace(plan={"plan_digest": "sha256:" + "a" * 64}),
+        )
+        observed = []
+        monkeypatch.setattr(
+            pack_control_v4,
+            "activate_resolved_profile_pack_set",
+            lambda *_args, **_kwargs: observed.append(alm.get_health()),
+        )
+
+        pack_control_v4._activate_pack_set(
+            {
+                "resolved_profile": {"profile_id": "defaults"},
+                "resolved_plan": {
+                    "profile_revision": "sha256:" + "b" * 64,
+                    "plan_digest": "sha256:" + "c" * 64,
+                },
+                "activation": {"activation_id": "activation:predecessor"},
+            },
+            ["example_pack"],
+        )
+
+        assert len(observed) == 1
+        assert observed[0]["status"] == "ok"
+        assert observed[0]["runtime_status"] == "panel_ready"
+        assert observed[0]["runtime_ready"] is False
+        assert observed[0]["launch_ready"] is False
+
+    def test_health_disregards_capture_that_overlapped_a_pack_transition(
+        self, tmp_path, monkeypatch
+    ):
+        from core_runtime import app_lifecycle_manager as lifecycle_module
+
+        alm = lifecycle_module.AppLifecycleManager(base_dir=tmp_path)
+        monkeypatch.setattr(
+            lifecycle_module,
+            "get_runtime_readiness",
+            lambda: {"panel_ready": True},
+        )
+
+        def overlapping_capture():
+            with lifecycle_module.pack_profile_transition():
+                pass
+            return {"runtime_status": "error", "runtime_error": "stale capture"}
+
+        monkeypatch.setattr(alm, "check_setup_status", overlapping_capture)
+        result = alm.get_health()
+
+        assert result["status"] == "ok"
+        assert result["runtime_status"] == "panel_ready"
+        assert result["runtime_error"] is None
+        assert result["launch_ready"] is False
+
+    def test_overlapping_pack_activation_does_not_log_a_false_setup_failure(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        from core_runtime import app_lifecycle_manager as lifecycle_module
+        from core_runtime import profile_runtime_port
+        from core_runtime.bootstrap import profile_capture
+
+        alm = lifecycle_module.AppLifecycleManager(base_dir=tmp_path)
+        monkeypatch.setattr(profile_capture, "active_profile_exists", lambda **_kwargs: True)
+        monkeypatch.setattr(
+            profile_runtime_port,
+            "require_profile_runtime",
+            lambda: SimpleNamespace(),
+        )
+
+        def overlapping_capture(**_kwargs):
+            with lifecycle_module.pack_profile_transition():
+                pass
+            raise RuntimeError("Host active pointer does not match the Profile activation")
+
+        monkeypatch.setattr(profile_capture, "capture_active_profile", overlapping_capture)
+        monkeypatch.setattr(
+            lifecycle_module,
+            "get_runtime_readiness",
+            lambda: {"panel_ready": True},
+        )
+
+        result = alm.check_setup_status()
+
+        assert result["reason"] == "pack_profile_transition_in_progress"
+        assert result["runtime_ready"] is False
+        assert result["launch_ready"] is False
+        assert "canonical v4 setup status failed" not in caplog.text
+
+    def test_health_during_activation_does_not_recapture_profile(self, tmp_path, monkeypatch):
+        from core_runtime import app_lifecycle_manager as lifecycle_module
+
+        alm = lifecycle_module.AppLifecycleManager(base_dir=tmp_path)
+        monkeypatch.setattr(
+            alm,
+            "check_setup_status",
+            lambda: (_ for _ in ()).throw(AssertionError("profile recaptured")),
+        )
+        monkeypatch.setattr(
+            lifecycle_module,
+            "get_runtime_readiness",
+            lambda: {"panel_ready": True},
+        )
+
+        with alm._activation_lock:
+            result = alm.get_health()
+
+        assert result["status"] == "ok"
+        assert result["needs_setup"] is True
+        assert result["panel_ready"] is True
+        assert result["runtime_ready"] is False
+        assert result["runtime_status"] == "panel_ready"
+        assert result["launch_ready"] is False
+
+    def test_parallel_health_does_not_recapture_profile(self, tmp_path, monkeypatch):
+        from core_runtime import app_lifecycle_manager as lifecycle_module
+
+        alm = lifecycle_module.AppLifecycleManager(base_dir=tmp_path)
+        monkeypatch.setattr(
+            alm,
+            "check_setup_status",
+            lambda: (_ for _ in ()).throw(AssertionError("profile recaptured")),
+        )
+        monkeypatch.setattr(
+            lifecycle_module,
+            "get_runtime_readiness",
+            lambda: {"panel_ready": True},
+        )
+
+        with alm._health_capture_lock:
+            result = alm.get_health()
+
+        assert result["needs_setup"] is True
+        assert result["runtime_ready"] is False
+        assert result["launch_ready"] is False
+
     def test_health_needs_setup_true(self, tmp_path):
-        """profile.json が存在しない場合 -> needs_setup: True"""
+        """A fresh home requires explicit canonical Defaults v4 confirmation."""
         from core_runtime.app_lifecycle_manager import AppLifecycleManager
         alm = AppLifecycleManager(base_dir=tmp_path)
         result = alm.get_health()
         assert result["status"] == "ok"
         assert result["needs_setup"] is True
 
-    def test_health_needs_setup_false(self, tmp_path):
-        """profile.json が有効な場合 -> needs_setup: False"""
+    def test_health_ignores_legacy_profile_json(self, tmp_path):
+        """A legacy profile.json cannot activate Defaults v4."""
         from core_runtime.app_lifecycle_manager import AppLifecycleManager
 
         settings_dir = tmp_path / "user_data" / "settings"
@@ -56,10 +246,10 @@ class TestAppLifecycleManagerHealth:
         alm = AppLifecycleManager(base_dir=tmp_path)
         result = alm.get_health()
         assert result["status"] == "ok"
-        assert result["needs_setup"] is False
+        assert result["needs_setup"] is True
 
-    def test_health_needs_setup_false_after_setup_pack_selection(self, tmp_path):
-        """setup-pack install 済みの場合 -> needs_setup: False"""
+    def test_health_ignores_legacy_setup_pack_selection(self, tmp_path):
+        """A legacy setup selection cannot activate Defaults v4."""
         from core_runtime.app_lifecycle_manager import AppLifecycleManager
 
         setup_pack_dir = tmp_path / "ecosystem" / "setup_pack" / "defaultspack"
@@ -103,10 +293,10 @@ class TestAppLifecycleManagerHealth:
         result = alm.get_health()
 
         assert result["status"] == "ok"
-        assert result["needs_setup"] is False
+        assert result["needs_setup"] is True
 
     def test_health_does_not_accept_stale_setup_pack_selection(self, tmp_path):
-        """壊れた setup-pack selection では setup gate を閉じない"""
+        """Stale legacy selection cannot override canonical Defaults v4 state."""
         from core_runtime.app_lifecycle_manager import AppLifecycleManager
 
         settings_dir = tmp_path / "user_data" / "settings"

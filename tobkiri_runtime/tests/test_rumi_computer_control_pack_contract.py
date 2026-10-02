@@ -105,7 +105,7 @@ def test_rumi_computer_control_pack_setup_selector_discovers_overlap_metadata():
     assert candidate.overlap_policy["rumi_browser_automation_pack"]
     assert candidate.overlap_policy["rumi_security_review_pack"]
     assert candidate.overlap_policy["rumi_agent_services_pack"]
-    assert candidate.defaultspack_promotion["eligible"] is False
+    assert candidate.base_pack_promotion["eligible"] is False
 
     issues = PackSelector(SETUP_PACK_ROOT).validate_candidates(
         installed_packs={
@@ -137,7 +137,7 @@ def test_rumi_computer_control_pack_no_secrets_and_contract_text():
         "rumi_browser_automation_pack",
         "rumi_security_review_pack",
         "rumi_agent_services_pack",
-        "defaultspack_promotion",
+        "base_pack_promotion",
         "eligible: false",
         "unrestricted local testing",
         "not an unrestricted grant",

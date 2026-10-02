@@ -1,0 +1,76 @@
+{
+  "version": "rumi.ui.contribution.v1",
+  "id": "tobkiri.lifecycle.mode",
+  "kind": "view",
+  "mode": "declarative",
+  "label": "Conversation lifecycle",
+  "priority": 0,
+  "accessibility": {
+    "name": "Conversation lifecycle",
+    "keyboard": true
+  },
+  "view": {
+    "version": "tobkiri.ui.view.v1",
+    "slot": "chat_header",
+    "renderer": "panel",
+    "data_source": {
+      "contribution_id": "pack.tobkiri_conversation_lifecycle_pack.tobkiri_conversation_lifecycle_pack.lifecycle-status",
+      "contract_id": "tobkiri.resource.conversation.lifecycle.v1",
+      "operation_id": "tobkiri_conversation_lifecycle_pack.lifecycle-status",
+      "input": {
+        "operation": "get"
+      },
+      "context_bindings": {
+        "conversation_id": "conversation_id"
+      }
+    },
+    "fields": [
+      {
+        "label": "Mode",
+        "path": "mode",
+        "kind": "text"
+      },
+      {
+        "label": "Task state",
+        "path": "state",
+        "kind": "text"
+      }
+    ],
+    "controls": [
+      {
+        "id": "automatic",
+        "label": "Archive one hour after completion",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.tobkiri_conversation_lifecycle_pack.tobkiri_conversation_lifecycle_pack.lifecycle-manage",
+          "contract_id": "tobkiri.action.conversation.lifecycle.v1",
+          "operation_id": "tobkiri_conversation_lifecycle_pack.lifecycle-manage"
+        },
+        "input": {
+          "operation": "configure",
+          "mode": "archive_after_completion"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        }
+      },
+      {
+        "id": "manual",
+        "label": "Keep conversation in history",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.tobkiri_conversation_lifecycle_pack.tobkiri_conversation_lifecycle_pack.lifecycle-manage",
+          "contract_id": "tobkiri.action.conversation.lifecycle.v1",
+          "operation_id": "tobkiri_conversation_lifecycle_pack.lifecycle-manage"
+        },
+        "input": {
+          "operation": "configure",
+          "mode": "manual"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        }
+      }
+    ]
+  }
+}

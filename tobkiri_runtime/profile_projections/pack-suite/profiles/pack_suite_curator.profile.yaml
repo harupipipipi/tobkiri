@@ -1,0 +1,7 @@
+profile_id: rumi_pack_suite.curator
+projection_id: tobkiri.profile-content.pack-suite.v1
+purpose: Recommend pack bundles and defaultspack promotion candidates without changing runtime state.
+policy:
+  local_first: true
+  network_default: deny
+  advisory_only: true

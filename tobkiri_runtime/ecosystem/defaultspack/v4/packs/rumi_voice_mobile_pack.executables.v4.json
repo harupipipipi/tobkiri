@@ -1,0 +1,8 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "rumi_voice_mobile_pack",
+  "source_identity": "sha256:199cc4fa6b2e1265e2c2cc52a1cc952110a8e1d11637f12111e68c05eb1d9b90",
+  "variants": [],
+  "materialization_catalog_digest": "sha256:aeb6def0523eac385b2db261e7fbce6cbbb1eee9b535b57415c5054d057f36f6",
+  "catalog_digest": "sha256:ecb49e0a9478e24af1b5fb074f2d0ea7f476d79023bc3e779f681fd7515e2689"
+}

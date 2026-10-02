@@ -1,8 +1,5 @@
 """ModifierLoader — Flow Modifier ローダー（最小動作版スタブ）"""
 
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from blocks._common import ok, error, gen_id, timestamp
 
 

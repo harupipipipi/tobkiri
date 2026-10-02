@@ -1,0 +1,133 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:c0f1198dfe188942ff8ecbaae15e2ca5f0e04e0bf2dde08e4eb8f799892b3cfa",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:2f2226bfa6c28d2a1e8c653351b8b793aedd227daef8455a7d6ec8d342ebf6a6",
+      "kind": "executable",
+      "path": "runtime/broker.py"
+    },
+    {
+      "digest": "sha256:316ffe851f4ad830f47614245b8a4f1cdea3c391de992167d42f5a0179aee611",
+      "kind": "executable",
+      "path": "runtime/dispatch_envelope.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.job.v1",
+      "operations": [
+        "rumi_job_action_broker_pack.job-action-broker"
+      ],
+      "revision_digest": "sha256:ab96a0e5e59960b6495a7e2a790c73b6f6720901b9994d3e89f84c56d515e36f"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:ab96a0e5e59960b6495a7e2a790c73b6f6720901b9994d3e89f84c56d515e36f",
+      "id": "rumi_job_action_broker_pack.job-action.broker",
+      "implementation_digest": "sha256:2f2226bfa6c28d2a1e8c653351b8b793aedd227daef8455a7d6ec8d342ebf6a6",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_job_action_broker_pack.job-action-broker"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:f76850c07d01621555f5a81101c3c27007944069a0486b4821974ade0031d949",
+    "artifact_set_digest": "sha256:5108138fe4491b352dbafb2f68238cfdc9aaecf5df976be234f540bad9b8811f",
+    "contract_catalog_digest": "sha256:ab233f421cd02807d072d8945813a9ce1e07e1ac14bfcb2891b661e37257413b"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.job.v1",
+      "rumi:ecosystem/rumi_job_action_broker_pack",
+      "rumi_job_action_broker_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_job_action_broker_pack.job-action-broker",
+      "owner": "rumi_job_action_broker_pack",
+      "contract_reference": "tobkiri.action.job.v1",
+      "provider_id": "rumi_job_action_broker_pack.job-action.broker",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:dc76441bac3965fe6f2d3208de4cb3a970956197c10c90f8c11a773529b60039",
+    "display_name": "Rumi Job Action Broker",
+    "id": "rumi_job_action_broker_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_job_action_broker_pack/pack.v4.json",
+    "source_digest": "sha256:f76850c07d01621555f5a81101c3c27007944069a0486b4821974ade0031d949",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:380c59f45281329f7ab6bb0247b7afb1762efde529451934d6592e07cde525be",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
+    "input_inventory_digest": "sha256:a3de29309507883339818cb2924a23565e6e1a83eaab8c70cb58f031322673fd",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
+      },
+      {
+        "path": "ecosystem/rumi_job_action_broker_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:f76850c07d01621555f5a81101c3c27007944069a0486b4821974ade0031d949"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_job_action_broker_pack.job-action.broker",
+      "owner": "rumi_job_action_broker_pack",
+      "contract_reference": "tobkiri.action.job.v1",
+      "operations": [
+        "rumi_job_action_broker_pack.job-action-broker"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "job.adapter.invoke",
+      "job.dispatch"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.action.job.adapter.v2",
+        "optional": false,
+        "version_range": ">=2.0.0 <3.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

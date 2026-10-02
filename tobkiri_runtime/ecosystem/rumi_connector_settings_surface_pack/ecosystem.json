@@ -1,0 +1,69 @@
+{
+  "connectivity": {
+    "provides": [],
+    "requires": [
+      "rumi.resource.connector.gateway.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_connector_transport_gateway_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Removable Connections route and secret-free settings contribution.",
+  "display_name": "Rumi Connector Settings Surface",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:3cb71d9e00e41d0e17c4bcba4fe3ea3cbae3ab41533bab20378424b7f30713e0",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:3f4e269d2fff172f009bd63a5ba019d8a09104eb00b762f56bfaaf573a634166"
+    },
+    "executable_code": true,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:3f4e269d2fff172f009bd63a5ba019d8a09104eb00b762f56bfaaf573a634166"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "isolated_ui": true,
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "connections_route",
+      "connections_settings"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_connector_settings_surface_pack",
+  "pack_identity": "rumi:ecosystem/rumi_connector_settings_surface_pack",
+  "provenance": {
+    "build_identity": "rumi_connector_settings_surface_pack:1.0.0",
+    "content_hash": "sha256:4a77e61fd89da631289e967c1f72a41f424b6f547cd1f7f1ab23dc91f6f97743",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "connector.gateway.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [
+    "frontend/contributions/connections-route.json",
+    "frontend/contributions/connections-settings.json"
+  ],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "artifacts": [
+    {
+      "path": "runtime/turns.py",
+      "role": "runtime",
+      "sha256": "sha256:1783d96299bcf25433eb785df86f47550af9f5d5689de63658acfd69787c8102"
+    },
+    {
+      "path": "runtime/input_context.py",
+      "role": "runtime",
+      "sha256": "766e7c9d7fcc428785616608e8fa5eb624cc7da0c7435e811a0b8ea896fa8f72"
+    },
+    {
+      "path": "runtime/host.py",
+      "role": "runtime",
+      "sha256": "bcb429ed196230eee66660ae1eb1b9ccedf04d36afff3faba7da3cc2c7d34e71"
+    },
+    {
+      "path": "runtime/progress.py",
+      "role": "runtime",
+      "sha256": "eeca3684d93590a88935d615b00db0932d6fc3cde2e2f6bd32f66630f4bbc69e"
+    },
+    {
+      "path": "runtime/progress_host.py",
+      "role": "runtime",
+      "sha256": "5a5ddfa95f7f47b78736e0fe0e64f6a9eaff10010cff7038984707d6511b5e8c"
+    }
+  ],
+  "schema_version": "rumi.artifact-manifest.v1"
+}

@@ -22,9 +22,6 @@ HTTP メソッドに応じた処理を行う:
     {"status": "ok", "data": {...}}
 """
 
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from blocks._common import ok, error
 from domain.prompt.versioning import get_version_manager

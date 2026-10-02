@@ -1,5 +1,6 @@
 import { type ComponentType, type ReactElement } from "react";
 
+import type { ModelProfile } from "../../lib/api";
 import type { SettingChangeHandler } from "../types";
 import {
   settingsFieldRendererLookupKeys,
@@ -13,6 +14,8 @@ export type SettingsFieldRendererProps = {
   field: TemplateSettingsField;
   value: unknown;
   sectionValues?: Record<string, unknown>;
+  /** Separate Host-read registry resource; settings option values stay minimal. */
+  modelProfiles?: ModelProfile[];
   onChange: SettingChangeHandler;
 };
 

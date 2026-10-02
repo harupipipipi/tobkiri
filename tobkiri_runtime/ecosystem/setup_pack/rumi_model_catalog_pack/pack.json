@@ -1,24 +1,17 @@
 {
   "pack_id": "rumi_model_catalog_pack",
   "display_name": "Rumi Model Catalog Pack",
-  "description": "Concrete provider and model catalog data separated from defaultspack core.",
+  "description": "Verified provider and model catalog resources separated from execution adapters.",
   "target_pack_id": "rumi_model_catalog_pack",
-  "version": "1.0.0",
-  "compatibility": {
-    "target_pack_version": ">=1.0.0",
-    "python": ">=3.10",
-    "platforms": ["windows", "linux", "macos"]
-  },
-  "marketplace": {
-    "registry": "bundled",
-    "publisher": "rumi-ai",
-    "status": "verified"
-  },
-  "signing": {
-    "mode": "repository_reviewed",
-    "verified": true
-  },
+  "version": "2.0.0",
   "recommended": true,
   "risk_level": "low",
-  "supports_all_ok": true
+  "supports_all_ok": true,
+  "depends_on": [],
+  "required_permissions": ["ai.model.catalog.read"],
+  "conflicts_with": [],
+  "compatibility": {"target_pack_version": ">=2.0.0", "python": ">=3.10", "platforms": ["windows", "linux", "macos"]},
+  "marketplace": {"registry": "bundled", "publisher": "rumi-ai", "status": "verified"},
+  "signing": {"mode": "repository_reviewed", "verified": true},
+  "security_notes": ["Catalog resources contain no credentials.", "Catalog activation imports no provider adapter code."]
 }
