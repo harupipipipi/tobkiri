@@ -2,7 +2,7 @@
   "artifacts": [
     {
       "path": "runtime/store.py",
-      "sha256": "sha256:9c96770dcc6c50bc09b5ab7e22525a7af343aa192d21b9f0f04455a5fc26aa7a"
+      "sha256": "sha256:bc797ffde5a044538c21332ee7dddee0cb3b94cf49529c5362d18334750fecd6"
     }
   ],
   "version": "rumi.pack-artifacts.v1"

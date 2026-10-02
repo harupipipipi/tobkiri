@@ -7,8 +7,7 @@
       "operations": [
         {
           "effect_ceiling": [
-            "capability:conversation.lifecycle.read",
-            "host:brokered-execution"
+            "capability:conversation.lifecycle.read"
           ],
           "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "idempotency": {
@@ -22,16 +21,22 @@
       ],
       "owner": "tobkiri_conversation_lifecycle_pack",
       "provenance": {
-        "evidence": [],
-        "generator": "tobkiri-protocol",
+        "evidence": [
+          {
+            "digest": "sha256:ef73b4071b4852f03ab71ace42b3a3ca290009abb8bd9749d2da7c2b348a7dd6",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
         "generator_version": "1.0.0",
-        "normative": false,
-        "repository_commit": "f5ebf978fa9b89120a98a17bad308ea1607ed6ce",
-        "repository_tree": "82fb5519a2fad814e6f81c1b750cb695d36016eca9bc7f75ab1325ffaa8cf79c",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:b3ee8db441c81d140f1290f258ec2910aafdb55aa54c56402e6577db0e5ac3a4",
-        "source_kind": "repository",
-        "source_path": "ecosystem/tobkiri_conversation_lifecycle_pack/pack-source.v1.json"
+        "source_digest": "sha256:ef73b4071b4852f03ab71ace42b3a3ca290009abb8bd9749d2da7c2b348a7dd6",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_conversation_lifecycle_pack"
       },
       "provider_semantics": {
         "cardinality": "one",
@@ -47,7 +52,7 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:4bc3b88e023480947e3bbf9a5668a707301d13005d55c7a3e0ab17169ff04beb",
+      "revision_digest": "sha256:e22ac237123d146733440711eedcc4d97e65ec33ad8803bf56188e69ca6e747f",
       "schema_catalog": {
         "sha256:83445aed0fdb09b3914bb6ef42d9aa15d5f4e107a9ca0e8a03583e72255adb79": {
           "additionalProperties": false,
@@ -102,16 +107,22 @@
       ],
       "owner": "tobkiri_conversation_lifecycle_pack",
       "provenance": {
-        "evidence": [],
-        "generator": "tobkiri-protocol",
+        "evidence": [
+          {
+            "digest": "sha256:ef73b4071b4852f03ab71ace42b3a3ca290009abb8bd9749d2da7c2b348a7dd6",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
         "generator_version": "1.0.0",
-        "normative": false,
-        "repository_commit": "f5ebf978fa9b89120a98a17bad308ea1607ed6ce",
-        "repository_tree": "82fb5519a2fad814e6f81c1b750cb695d36016eca9bc7f75ab1325ffaa8cf79c",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:b3ee8db441c81d140f1290f258ec2910aafdb55aa54c56402e6577db0e5ac3a4",
-        "source_kind": "repository",
-        "source_path": "ecosystem/tobkiri_conversation_lifecycle_pack/pack-source.v1.json"
+        "source_digest": "sha256:ef73b4071b4852f03ab71ace42b3a3ca290009abb8bd9749d2da7c2b348a7dd6",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_conversation_lifecycle_pack"
       },
       "provider_semantics": {
         "cardinality": "one",
@@ -127,7 +138,7 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:09edadfed8333374d03977e25f4203c7e4e3c66367e1e53a362eae8b56bc4849",
+      "revision_digest": "sha256:afe5f1283fcaefe48d80b60401e47fa26f85b99e26114528b01d6802c12bb1f1",
       "schema_catalog": {
         "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
           "type": "object"
@@ -189,21 +200,26 @@
       ],
       "owner": "tobkiri_conversation_lifecycle_pack",
       "provenance": {
-        "evidence": [],
-        "generator": "tobkiri-protocol",
+        "evidence": [
+          {
+            "digest": "sha256:ef73b4071b4852f03ab71ace42b3a3ca290009abb8bd9749d2da7c2b348a7dd6",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
         "generator_version": "1.0.0",
-        "normative": false,
-        "repository_commit": "f5ebf978fa9b89120a98a17bad308ea1607ed6ce",
-        "repository_tree": "82fb5519a2fad814e6f81c1b750cb695d36016eca9bc7f75ab1325ffaa8cf79c",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:b3ee8db441c81d140f1290f258ec2910aafdb55aa54c56402e6577db0e5ac3a4",
-        "source_kind": "repository",
-        "source_path": "ecosystem/tobkiri_conversation_lifecycle_pack/pack-source.v1.json"
+        "source_digest": "sha256:ef73b4071b4852f03ab71ace42b3a3ca290009abb8bd9749d2da7c2b348a7dd6",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_conversation_lifecycle_pack"
       },
       "provider_semantics": {
         "cardinality": "many",
         "failure": "fail_closed",
-        "instance_key": "conversation-lifecycle.archive-due",
         "isolation": "in_process",
         "lifecycle": {
           "data_owner": "tobkiri_conversation_lifecycle_pack",
@@ -215,7 +231,7 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:023c9504c82201f499275a7d72850916efbe0c7161b327f0dd42c9f430906fa2",
+      "revision_digest": "sha256:f756f573af843bf554d4d8e829dae1b3294df25ca86863015b357d802e708a19",
       "schema_catalog": {
         "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
           "type": "object"
@@ -272,5 +288,5 @@
     }
   ],
   "pack_id": "tobkiri_conversation_lifecycle_pack",
-  "source_identity": "sha256:b3ee8db441c81d140f1290f258ec2910aafdb55aa54c56402e6577db0e5ac3a4"
+  "source_identity": "sha256:ef73b4071b4852f03ab71ace42b3a3ca290009abb8bd9749d2da7c2b348a7dd6"
 }

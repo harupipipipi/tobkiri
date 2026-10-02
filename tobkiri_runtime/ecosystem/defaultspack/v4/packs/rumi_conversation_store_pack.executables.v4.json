@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_conversation_store_pack",
-  "source_identity": "sha256:eec0de278543f1488bffe0f6cfbbb1e74d9f169033fd36997040aa1106cbd040",
+  "source_identity": "sha256:fe96de3324a6226bdcb8d64946ae83d2b1fdb7cd99efcbc470625b629e4d5059",
   "variants": [
     {
       "variant_id": "rumi_conversation_store_pack.conversation-store.manage.python",
@@ -75,7 +75,7 @@
       "variant_id": "rumi_conversation_store_pack.conversation-store.message-resource.python",
       "function_id": "rumi_conversation_store_pack.conversation-store.message-resource",
       "implementation_path": "runtime/store.py",
-      "implementation_digest": "sha256:9c96770dcc6c50bc09b5ab7e22525a7af343aa192d21b9f0f04455a5fc26aa7a",
+      "implementation_digest": "sha256:bc797ffde5a044538c21332ee7dddee0cb3b94cf49529c5362d18334750fecd6",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -109,7 +109,7 @@
       "variant_id": "rumi_conversation_store_pack.conversation-store.migrate.python",
       "function_id": "rumi_conversation_store_pack.conversation-store.migrate",
       "implementation_path": "runtime/store.py",
-      "implementation_digest": "sha256:9c96770dcc6c50bc09b5ab7e22525a7af343aa192d21b9f0f04455a5fc26aa7a",
+      "implementation_digest": "sha256:bc797ffde5a044538c21332ee7dddee0cb3b94cf49529c5362d18334750fecd6",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -174,6 +174,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:3f5b8d049bab2b336c1e4bd35213d11c285d01be8d910e4a99b600d79a08deb5",
-  "catalog_digest": "sha256:d38f031cb94d2016a22cdfc3a254c8e4cdd87fbc2db8bb027ae0030abb77da69"
+  "materialization_catalog_digest": "sha256:867b9254c7b18523b8083e706d2f7b1602230c0b25dd868d6f9fbc3c2efb7513",
+  "catalog_digest": "sha256:09c7800a14dc670924ab8e5f282789bd931c10528b928b28ef32a20c3274ca6b"
 }

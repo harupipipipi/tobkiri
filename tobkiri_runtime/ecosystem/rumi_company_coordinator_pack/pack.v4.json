@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:7bd8329a9cd820419a4ded2a36c17471d4e814e2d8342362dcfe5eb6c7af66f6",
+      "digest": "sha256:2cd2581ddb338adb7d13872c446511bc52378680a20ee666d1aac1e52739cfa9",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
+      "digest": "sha256:4c388794d59a96b5d239cca29c5575ed2d8fff515ca6ace72d9a6f96d22889f4",
       "kind": "executable",
       "path": "runtime/coordinator.py"
     }
@@ -38,7 +38,7 @@
     {
       "contract_revision_digest": "sha256:35210adcc5c145e82b9f0139c2438037291786d6b7277da638a284c1038ffee0",
       "id": "rumi_company_coordinator_pack.company.coordinator",
-      "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
+      "implementation_digest": "sha256:4c388794d59a96b5d239cca29c5575ed2d8fff515ca6ace72d9a6f96d22889f4",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_company_coordinator_pack.company-coordinator-control"
@@ -48,7 +48,7 @@
     {
       "contract_revision_digest": "sha256:da063e0f6f1c9e42d56406159022ab1eb5e49f9771e9014510e8d9e34d783c33",
       "id": "rumi_company_coordinator_pack.company.runtime",
-      "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
+      "implementation_digest": "sha256:4c388794d59a96b5d239cca29c5575ed2d8fff515ca6ace72d9a6f96d22889f4",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_company_coordinator_pack.company-runtime-resource"
@@ -58,7 +58,7 @@
     {
       "contract_revision_digest": "sha256:cda76ede5258c3305d4786a5b48255737d4dff5862579f8f7befaa023c4469f3",
       "id": "rumi_company_coordinator_pack.job-adapter.company-supervisor",
-      "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
+      "implementation_digest": "sha256:4c388794d59a96b5d239cca29c5575ed2d8fff515ca6ace72d9a6f96d22889f4",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_company_coordinator_pack.company-supervisor-job-adapter"
@@ -67,9 +67,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:f8a6a189af5ab5a2116f2173ea416090e7f304f9e149505ba22159e94111c34e",
-    "contract_catalog_digest": "sha256:bce4dc5bb568348b9f81189de701e4e58ebbb230d02d8168283b96c062225597",
-    "source_identity": "sha256:68b4ef66221dc661719564ef59cb4b838f5ededf7d4223046a90e2faf3dbf618"
+    "artifact_set_digest": "sha256:fb1641f287580670150445f2aa9440fd0576bd9ffccecdc6e215f594c957f2dc",
+    "contract_catalog_digest": "sha256:bf9bc175311455847434694280a313b766b78e8307fe6563bedd9708fea4d444",
+    "source_identity": "sha256:65d92f11294a5e5f3d580b70b02f1234b754e4ef4590e4c5ef6a5ce0c552da3f"
   },
   "migration": {
     "compatibility": "read_only",
@@ -116,7 +116,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:f8a6a189af5ab5a2116f2173ea416090e7f304f9e149505ba22159e94111c34e",
+    "artifact_digest": "sha256:fb1641f287580670150445f2aa9440fd0576bd9ffccecdc6e215f594c957f2dc",
     "display_name": "Rumi Company Coordinator",
     "id": "rumi_company_coordinator_pack",
     "kind": "normal_sandbox",
@@ -126,7 +126,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:68b4ef66221dc661719564ef59cb4b838f5ededf7d4223046a90e2faf3dbf618",
+        "digest": "sha256:65d92f11294a5e5f3d580b70b02f1234b754e4ef4590e4c5ef6a5ce0c552da3f",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -137,7 +137,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:68b4ef66221dc661719564ef59cb4b838f5ededf7d4223046a90e2faf3dbf618",
+    "source_digest": "sha256:65d92f11294a5e5f3d580b70b02f1234b754e4ef4590e4c5ef6a5ce0c552da3f",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_company_coordinator_pack"
   },

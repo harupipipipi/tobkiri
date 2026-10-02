@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_deepthink_pack",
-  "source_identity": "sha256:726fe0ecfc988e542d35bba2cb9d5346a8c1ce48820ca6cf6c8c0ede1e57a109",
+  "source_identity": "sha256:88d9c685090a1cc05882871a859c56355e535790c63fcaa28fcb98ce310cb49e",
   "variants": [
     {
       "variant_id": "rumi_deepthink_pack.deepthink.execute.python",
       "function_id": "rumi_deepthink_pack.deepthink.execute",
       "implementation_path": "runtime/strategy.py",
-      "implementation_digest": "sha256:acd2b6a612ce7f381fa218491b49bb5e2cdd83fa37e1109829dfbd95b2f4da61",
+      "implementation_digest": "sha256:d54caa69e2b482cc0612ba3b2321d844123c82af5013b00e39ae6ec275289485",
       "execution_kind": "pack_vm",
       "platform": "any",
       "architecture": "any",
@@ -266,6 +266,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:7caa3fd16a3cc10bd6df7ba14f893b6c80b7211ed200856634cf37806a19edbe",
-  "catalog_digest": "sha256:ca1cbcd308e4a5e9f3a1b51413a0883dd70f0c571c4626d63605a1b88a282128"
+  "materialization_catalog_digest": "sha256:e39dd76fff6ed2344886a2f012cd50867960496d4564df571a3f06541bd99c74",
+  "catalog_digest": "sha256:0d9918cedd97fe57b6096d41a4fd263cc81c05c70711ba1e0bfaf559eb255abc"
 }

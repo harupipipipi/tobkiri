@@ -3,7 +3,7 @@
   "artifacts": [
     {
       "path": "runtime/adapter.py",
-      "sha256": "585a6c6e0f2ed28c4d478eb4eaf39df73cbe3e4df9d2f7eb5196058bfc816a6d",
+      "sha256": "57fdce0cee3b5660cc37ccc3df9ad1fc633b96f14c9743371342adfaf987a6e2",
       "role": "runtime"
     }
   ]

@@ -3,7 +3,7 @@
     {
       "path": "frontend/contributions/scheduler.json",
       "role": "ui_contribution",
-      "sha256": "sha256:14c4747a79a9af491051c88dac2550298d074490f80e3370422884ecfcfe3449"
+      "sha256": "sha256:5358ac8f5df69481a33dd81a3b739d8cb17c68b15987ca00d4796a5d3bdb929b"
     },
     {
       "path": "ui/app.js",

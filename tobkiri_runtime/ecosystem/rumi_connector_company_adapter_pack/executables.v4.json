@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:75d152b61e2d43806d1687d0f4df311b75b2aefb7de18d0d30f131d721acdaf9",
+  "catalog_digest": "sha256:fc0e7fb2f543959872505ea321bf8fb5eaf86dae019174c7bad4ae757b7e955f",
   "pack_id": "rumi_connector_company_adapter_pack",
-  "source_identity": "sha256:64d95a6b924fe40904bf6e97a328f646edd7a4e2314aae8d1d3850dbe1cff208",
+  "source_identity": "sha256:5037828d32c4c19f465bf433b7fdfc9ee2d3dafa27d2bc42d07126d0bc35b0d6",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "rumi_connector_company_adapter_pack.connector-route.company",
-      "implementation_digest": "sha256:585a6c6e0f2ed28c4d478eb4eaf39df73cbe3e4df9d2f7eb5196058bfc816a6d",
+      "implementation_digest": "sha256:57fdce0cee3b5660cc37ccc3df9ad1fc633b96f14c9743371342adfaf987a6e2",
       "implementation_path": "runtime/adapter.py",
       "materialization_mode": "on_demand",
       "operations": [

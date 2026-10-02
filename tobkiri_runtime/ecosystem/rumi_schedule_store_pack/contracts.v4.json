@@ -7,23 +7,24 @@
       "operations": [
         {
           "effect_ceiling": [
-            "capability:schedule.manage"
+            "capability:schedule.manage",
+            "host:brokered-execution"
           ],
           "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "input_schema_digest": "sha256:e28c3cacfbf9e9712b89cc0e8060b748dd1e9e4d9757576d0353c6841d1e62ef",
           "operation_id": "rumi_schedule_store_pack.schedule-action",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-          "scope_semantics": "declarative"
+          "scope_semantics": "host_broker"
         }
       ],
       "owner": "rumi_schedule_store_pack",
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:2bc4498c0994b83e28217b5c57b3892e782ff4f6e1b6c9b1f670876ee1fb41c4",
+            "digest": "sha256:dd0d4f8787c442b64a8cc3112725cca54e2ae8ff023297eaa499c4a8a331a819",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -34,7 +35,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:2bc4498c0994b83e28217b5c57b3892e782ff4f6e1b6c9b1f670876ee1fb41c4",
+        "source_digest": "sha256:dd0d4f8787c442b64a8cc3112725cca54e2ae8ff023297eaa499c4a8a331a819",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_schedule_store_pack"
       },
@@ -53,9 +54,124 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:6579ff13cf85aeed81d819dc0e92182c9c05ec7ceebdd9dc999910bfe1b91d1c",
+      "revision_digest": "sha256:094dd6b099c3501af33e506a2f13fd6cac77dae4cfeda2eb880eeb9ed534ee03",
       "schema_catalog": {
         "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:e28c3cacfbf9e9712b89cc0e8060b748dd1e9e4d9757576d0353c6841d1e62ef": {
+          "additionalProperties": false,
+          "properties": {
+            "action_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "error": {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            "expected_revision": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "interval_ms": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "lease_expires_at_ms": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "lease_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "max_attempts": {
+              "maximum": 20,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "name": {
+              "maxLength": 120,
+              "type": "string"
+            },
+            "next_run_at_ms": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "operation": {
+              "enum": [
+                "create",
+                "update",
+                "delete",
+                "pause",
+                "resume",
+                "cancel",
+                "claim",
+                "complete",
+                "fail"
+              ]
+            },
+            "payload": {
+              "maxProperties": 64,
+              "type": "object"
+            },
+            "profile_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "schedule_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "updates": {
+              "additionalProperties": false,
+              "properties": {
+                "action_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                  "type": "string"
+                },
+                "interval_ms": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "max_attempts": {
+                  "maximum": 20,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "name": {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                "next_run_at_ms": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "payload": {
+                  "maxProperties": 64,
+                  "type": "object"
+                }
+              },
+              "required": [],
+              "type": "object"
+            }
+          },
+          "required": [
+            "operation",
+            "schedule_id",
+            "expected_revision"
+          ],
           "type": "object"
         }
       },
@@ -74,17 +190,17 @@
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "input_schema_digest": "sha256:c5e92b4e9bf3d0812464060a604eb5b4e26287a40c14eca53856c1115d46e630",
           "operation_id": "rumi_schedule_store_pack.schedule-resource",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-          "scope_semantics": "declarative"
+          "scope_semantics": "host_broker"
         }
       ],
       "owner": "rumi_schedule_store_pack",
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:2bc4498c0994b83e28217b5c57b3892e782ff4f6e1b6c9b1f670876ee1fb41c4",
+            "digest": "sha256:dd0d4f8787c442b64a8cc3112725cca54e2ae8ff023297eaa499c4a8a331a819",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -95,7 +211,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:2bc4498c0994b83e28217b5c57b3892e782ff4f6e1b6c9b1f670876ee1fb41c4",
+        "source_digest": "sha256:dd0d4f8787c442b64a8cc3112725cca54e2ae8ff023297eaa499c4a8a331a819",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_schedule_store_pack"
       },
@@ -114,9 +230,46 @@
         ],
         "security": "sensitive"
       },
-      "revision_digest": "sha256:58b74bdc43db876d2a0fd73cf116710b68fc6a44972e280174628e88553885d7",
+      "revision_digest": "sha256:2f67fe9ed625a5c6b192df106a8550423d6fd911af33d6cab9f9da00abcc64a5",
       "schema_catalog": {
         "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:c5e92b4e9bf3d0812464060a604eb5b4e26287a40c14eca53856c1115d46e630": {
+          "additionalProperties": false,
+          "properties": {
+            "limit": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "now_ms": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "operation": {
+              "enum": [
+                "list",
+                "get",
+                "due"
+              ]
+            },
+            "profile_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "schedule_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation"
+          ],
           "type": "object"
         }
       },
@@ -125,5 +278,5 @@
     }
   ],
   "pack_id": "rumi_schedule_store_pack",
-  "source_identity": "sha256:2bc4498c0994b83e28217b5c57b3892e782ff4f6e1b6c9b1f670876ee1fb41c4"
+  "source_identity": "sha256:dd0d4f8787c442b64a8cc3112725cca54e2ae8ff023297eaa499c4a8a331a819"
 }

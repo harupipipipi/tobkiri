@@ -7,23 +7,24 @@
       "operations": [
         {
           "effect_ceiling": [
-            "capability:company.state.manage"
+            "capability:company.state.manage",
+            "host:brokered-execution"
           ],
           "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "input_schema_digest": "sha256:199c311add3d2fe30db4645a99313dce4c59f4e805659bf92459bedb59bcd2d5",
           "operation_id": "rumi_company_state_store_pack.company-state-action",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-          "scope_semantics": "declarative"
+          "scope_semantics": "host_broker"
         }
       ],
       "owner": "rumi_company_state_store_pack",
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:d0748d5cb0391d2dc4bf9ea0bf4b6d464383f68ac38d82d3617a40a15d08d884",
+            "digest": "sha256:42e2404b2356cc1b5949c1c2c668499b246ff2c3fbd8228566a8c740605ffcae",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -34,7 +35,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:d0748d5cb0391d2dc4bf9ea0bf4b6d464383f68ac38d82d3617a40a15d08d884",
+        "source_digest": "sha256:42e2404b2356cc1b5949c1c2c668499b246ff2c3fbd8228566a8c740605ffcae",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_company_state_store_pack"
       },
@@ -53,8 +54,156 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:d0c3f520322553871e3a352cfe6a8eaa0036514526ade9cea2f3f355b1e70cd7",
+      "revision_digest": "sha256:da56983a36f194ea0e57202956512780f492d26ca23291c1b82f270cb30167fb",
       "schema_catalog": {
+        "sha256:199c311add3d2fe30db4645a99313dce4c59f4e805659bf92459bedb59bcd2d5": {
+          "additionalProperties": false,
+          "properties": {
+            "agent_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "company_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "conversation_group_id": {
+              "maxLength": 256,
+              "type": "string"
+            },
+            "description": {
+              "maxLength": 16384,
+              "type": "string"
+            },
+            "details": {
+              "maxProperties": 64,
+              "type": "object"
+            },
+            "expected_entity_revision": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "expected_revision": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "fencing_token": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "idempotency_key": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "lease_duration_ms": {
+              "maximum": 3600000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "legacy_state": {
+              "maxProperties": 64,
+              "type": "object"
+            },
+            "member": {
+              "maxProperties": 64,
+              "type": "object"
+            },
+            "member_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "metadata": {
+              "maxProperties": 64,
+              "type": "object"
+            },
+            "name": {
+              "maxLength": 16384,
+              "type": "string"
+            },
+            "operation": {
+              "enum": [
+                "company.create",
+                "company.update",
+                "company.delete",
+                "agent.upsert",
+                "agent.delete",
+                "role.upsert",
+                "role.delete",
+                "member.upsert",
+                "member.delete",
+                "channel.upsert",
+                "channel.delete",
+                "route.upsert",
+                "route.delete",
+                "task.upsert",
+                "task.delete",
+                "task.transition",
+                "task.claim",
+                "lease.renew",
+                "inbound.append",
+                "message.append",
+                "migration.operations.import"
+              ]
+            },
+            "profile_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "record": {
+              "maxProperties": 64,
+              "type": "object"
+            },
+            "record_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "replace_settings": {
+              "type": "boolean"
+            },
+            "role": {
+              "maxProperties": 64,
+              "type": "object"
+            },
+            "settings": {
+              "maxProperties": 64,
+              "type": "object"
+            },
+            "status": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "task_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "updates": {
+              "maxProperties": 64,
+              "type": "object"
+            }
+          },
+          "required": [
+            "operation",
+            "company_id",
+            "expected_revision"
+          ],
+          "type": "object"
+        },
         "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
           "type": "object"
         }
@@ -74,17 +223,17 @@
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "input_schema_digest": "sha256:63ed35d7e8fc9f969747df18b9419ed42449aa494089abefef15bd4575be96e8",
           "operation_id": "rumi_company_state_store_pack.company-state-resource",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-          "scope_semantics": "declarative"
+          "scope_semantics": "host_broker"
         }
       ],
       "owner": "rumi_company_state_store_pack",
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:d0748d5cb0391d2dc4bf9ea0bf4b6d464383f68ac38d82d3617a40a15d08d884",
+            "digest": "sha256:42e2404b2356cc1b5949c1c2c668499b246ff2c3fbd8228566a8c740605ffcae",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -95,7 +244,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:d0748d5cb0391d2dc4bf9ea0bf4b6d464383f68ac38d82d3617a40a15d08d884",
+        "source_digest": "sha256:42e2404b2356cc1b5949c1c2c668499b246ff2c3fbd8228566a8c740605ffcae",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_company_state_store_pack"
       },
@@ -114,8 +263,55 @@
         ],
         "security": "sensitive"
       },
-      "revision_digest": "sha256:e479e9a2bc9e07eee9dbc84480b00f3ff66eca7b5b7deb2a529ee53c355b1467",
+      "revision_digest": "sha256:ea0c3f641fb0198f7aa632088231cbda3330d64c01d5ffdfb74494e3c98a6f9b",
       "schema_catalog": {
+        "sha256:63ed35d7e8fc9f969747df18b9419ed42449aa494089abefef15bd4575be96e8": {
+          "additionalProperties": false,
+          "properties": {
+            "after_sequence": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "company_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "cursor": {
+              "maxLength": 256,
+              "type": "string"
+            },
+            "kind": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "limit": {
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "operation": {
+              "enum": [
+                "list",
+                "get",
+                "timeline"
+              ]
+            },
+            "profile_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation"
+          ],
+          "type": "object"
+        },
         "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
           "type": "object"
         }
@@ -125,5 +321,5 @@
     }
   ],
   "pack_id": "rumi_company_state_store_pack",
-  "source_identity": "sha256:d0748d5cb0391d2dc4bf9ea0bf4b6d464383f68ac38d82d3617a40a15d08d884"
+  "source_identity": "sha256:42e2404b2356cc1b5949c1c2c668499b246ff2c3fbd8228566a8c740605ffcae"
 }

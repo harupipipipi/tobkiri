@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:7caa3fd16a3cc10bd6df7ba14f893b6c80b7211ed200856634cf37806a19edbe",
+  "catalog_digest": "sha256:e39dd76fff6ed2344886a2f012cd50867960496d4564df571a3f06541bd99c74",
   "pack_id": "rumi_deepthink_pack",
-  "source_identity": "sha256:1fbc6d186115a1c7fe2bc381ff3adc649f6a31a1f6930b62cbc5e27dd61b1762",
+  "source_identity": "sha256:ac9ca2277749d092109d1d57c69b16b087a561acb7824e01e14b6c2ac177db4d",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "rumi_deepthink_pack.deepthink.execute",
-      "implementation_digest": "sha256:acd2b6a612ce7f381fa218491b49bb5e2cdd83fa37e1109829dfbd95b2f4da61",
+      "implementation_digest": "sha256:d54caa69e2b482cc0612ba3b2321d844123c82af5013b00e39ae6ec275289485",
       "implementation_path": "runtime/strategy.py",
       "materialization_mode": "on_demand",
       "operations": [

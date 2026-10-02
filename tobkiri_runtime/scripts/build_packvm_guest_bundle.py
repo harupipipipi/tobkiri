@@ -26,6 +26,8 @@ _SOURCES = {
     "tobkiri_protocol/canonical.py": "tobkiri_protocol/canonical.py",
     "tobkiri_protocol/errors.py": "tobkiri_protocol/errors.py",
     "tobkiri_protocol/saved_context.py": "tobkiri_protocol/saved_context.py",
+    "tobkiri_protocol/saved_task_context.py": "tobkiri_protocol/saved_task_context.py",
+    "tobkiri_protocol/conversation_context.py": "tobkiri_protocol/conversation_context.py",
     "tobkiri_protocol/saved_conversation.py": "tobkiri_protocol/saved_conversation.py",
     "tobkiri_protocol/saved_tools.py": "tobkiri_protocol/saved_tools.py",
 }

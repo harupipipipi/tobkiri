@@ -7,23 +7,24 @@
       "operations": [
         {
           "effect_ceiling": [
-            "capability:job.dispatch"
+            "capability:job.dispatch",
+            "host:brokered-execution"
           ],
           "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "idempotency": {
             "mode": "none"
           },
-          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "input_schema_digest": "sha256:bb17f5c7a0d074d7296471be004776535591d8a28d06c40ce085dfd03c4685cc",
           "operation_id": "rumi_job_action_broker_pack.job-action-broker",
           "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
-          "scope_semantics": "declarative"
+          "scope_semantics": "host_broker"
         }
       ],
       "owner": "rumi_job_action_broker_pack",
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:e3813b73fc0b5c599ba9a1075f10d81b89fcaed9796690d768ad02b66bc881b4",
+            "digest": "sha256:5c5b56b6a45adde78bfab5b9a6106f6867c85e299ba4387b0d0f28bf74bb1f72",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -34,7 +35,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:e3813b73fc0b5c599ba9a1075f10d81b89fcaed9796690d768ad02b66bc881b4",
+        "source_digest": "sha256:5c5b56b6a45adde78bfab5b9a6106f6867c85e299ba4387b0d0f28bf74bb1f72",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_job_action_broker_pack"
       },
@@ -53,9 +54,55 @@
         ],
         "security": "sensitive"
       },
-      "revision_digest": "sha256:b14b031e9b4d5498b9d1d2476f8d573af7d1bdd87444b95d8cac251b3cc70d83",
+      "revision_digest": "sha256:ab96a0e5e59960b6495a7e2a790c73b6f6720901b9994d3e89f84c56d515e36f",
       "schema_catalog": {
         "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:bb17f5c7a0d074d7296471be004776535591d8a28d06c40ce085dfd03c4685cc": {
+          "additionalProperties": false,
+          "properties": {
+            "action_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "idempotency_key": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "lease_id": {
+              "maxLength": 256,
+              "type": "string"
+            },
+            "operation": {
+              "enum": [
+                "dispatch",
+                "cancel",
+                "status"
+              ]
+            },
+            "payload": {
+              "type": "object"
+            },
+            "profile_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+              "type": "string"
+            },
+            "schedule_id": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          "required": [
+            "operation",
+            "idempotency_key"
+          ],
           "type": "object"
         }
       },
@@ -64,5 +111,5 @@
     }
   ],
   "pack_id": "rumi_job_action_broker_pack",
-  "source_identity": "sha256:e3813b73fc0b5c599ba9a1075f10d81b89fcaed9796690d768ad02b66bc881b4"
+  "source_identity": "sha256:5c5b56b6a45adde78bfab5b9a6106f6867c85e299ba4387b0d0f28bf74bb1f72"
 }
