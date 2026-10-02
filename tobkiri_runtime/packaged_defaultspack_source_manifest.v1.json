@@ -4128,6 +4128,13 @@
       "executable": false
     },
     {
+      "path": "tobkiri_protocol/schemas/surface_resource_request_v1.schema.json",
+      "type": "regular-file",
+      "size": 604,
+      "sha256": "12cfd00ca10e9782d30538baa88c3e9bfcd2cc69c5f51d67191a7806e6a2c5b0",
+      "executable": false
+    },
+    {
       "path": "tobkiri_protocol/schemas/surface_resource_v1.schema.json",
       "type": "regular-file",
       "size": 858,
@@ -4179,8 +4186,8 @@
     {
       "path": "tobkiri_protocol/surface_templates_v1.py",
       "type": "regular-file",
-      "size": 12553,
-      "sha256": "7c5ff5ce51973b816624ae5937472d2925489c4fea5b398f59853f7f19032e6b",
+      "size": 12915,
+      "sha256": "6dfeb204ab1b9d6bfbbc6031a150cbdf0fd4dba63c0778c7fa41209ddde3c068",
       "executable": false
     },
     {
