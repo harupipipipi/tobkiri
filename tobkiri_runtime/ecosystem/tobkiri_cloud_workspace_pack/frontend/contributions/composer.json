@@ -15,7 +15,7 @@
     "slot": "composer_above",
     "renderer": "status",
     "title": "Cloud workspace",
-    "body": "Prepare a portable local workspace. Open the Cloud workspace tab for checkpoints and restore. Cloud connection and container start are unavailable until their approved Host ports are bound.",
+    "body": "Prepare a portable local workspace. Open the Cloud workspace tab to save and restore checkpoints. Local tasks require work environment setup and approval, and remain unavailable until the environment is ready. Cloud connection and deployment are still in preparation.",
     "data_source": {
       "contribution_id": "pack.tobkiri_cloud_workspace_pack.tobkiri_cloud_workspace_pack.workspace-resource",
       "contract_id": "tobkiri.resource.cloud.workspace.v1",
