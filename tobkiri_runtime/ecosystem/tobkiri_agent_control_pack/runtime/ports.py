@@ -69,7 +69,8 @@ class Ports:
                 "model_policy": settings["model_policy"],
                 "thinking_policy": settings["thinking_policy"],
                 "context": {
-                    "conversation_model_profile_id": conversation.get("model_reference") or conversation.get("model"),
+                    "conversation_model_profile_id": conversation.get("model_reference")
+                    or conversation.get("model"),
                     "conversation_thinking_level": conversation.get("thinking_level"),
                 },
                 **(

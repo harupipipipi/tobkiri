@@ -15,7 +15,7 @@
     "slot": "settings",
     "renderer": "panel",
     "title": "Work plan settings",
-    "body": "These settings apply to this conversation. The default interval is 600 seconds. Selecting an agent or model grants no additional permissions. Missing or failed providers remain unavailable.",
+    "body": "Settings apply to this conversation. The default review interval is 600 seconds. The supported executor binding is conversation:<conversation ID>; assigned-agent execution is currently unavailable. Selecting a role or model grants no additional permissions.",
     "data_source": {
       "contribution_id": "pack.tobkiri_agent_control_pack.tobkiri_agent_control_pack.work-plan-resource",
       "contract_id": "tobkiri.resource.work-plan.v1",
@@ -30,7 +30,7 @@
     "controls": [
       {
         "id": "executor",
-        "label": "Execution agent profile",
+        "label": "Executor binding",
         "kind": "text",
         "operation": {
           "contribution_id": "pack.tobkiri_agent_control_pack.tobkiri_agent_control_pack.work-plan-settings",
@@ -52,7 +52,7 @@
       },
       {
         "id": "reviewer",
-        "label": "Independent review agent profile",
+        "label": "Independent review role binding",
         "kind": "text",
         "operation": {
           "contribution_id": "pack.tobkiri_agent_control_pack.tobkiri_agent_control_pack.work-plan-settings",
@@ -147,6 +147,21 @@
         "label": "Independent review",
         "path": "plan.review_status",
         "kind": "status"
+      },
+      {
+        "label": "Resolved review model",
+        "path": "plan.review.model_resolution.resolved_profile_id",
+        "kind": "text"
+      },
+      {
+        "label": "Resolved review thinking level",
+        "path": "plan.review.model_resolution.thinking_level",
+        "kind": "text"
+      },
+      {
+        "label": "Model policy fallback",
+        "path": "plan.review.model_resolution.fallback_reason",
+        "kind": "text"
       }
     ]
   }

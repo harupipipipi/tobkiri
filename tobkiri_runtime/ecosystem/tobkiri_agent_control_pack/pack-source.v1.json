@@ -43,7 +43,7 @@
         {
           "entrypoint_id": "work-plan-resource",
           "id": "tobkiri_agent_control_pack.work-plan-resource",
-          "implementation_digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268"
+          "implementation_digest": "sha256:22ab3693bcaa8dc0d96e0528f8031ed0a5f5f5b8c1ec941c94c9719ade7e933d"
         }
       ],
       "owner": "tobkiri_agent_control_pack",
@@ -110,7 +110,7 @@
         {
           "entrypoint_id": "work-plan-action",
           "id": "tobkiri_agent_control_pack.work-plan-action",
-          "implementation_digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268"
+          "implementation_digest": "sha256:22ab3693bcaa8dc0d96e0528f8031ed0a5f5f5b8c1ec941c94c9719ade7e933d"
         }
       ],
       "owner": "tobkiri_agent_control_pack",
@@ -340,7 +340,7 @@
         {
           "entrypoint_id": "work-plan-settings",
           "id": "tobkiri_agent_control_pack.work-plan-settings",
-          "implementation_digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268"
+          "implementation_digest": "sha256:22ab3693bcaa8dc0d96e0528f8031ed0a5f5f5b8c1ec941c94c9719ade7e933d"
         }
       ],
       "owner": "tobkiri_agent_control_pack",
@@ -583,7 +583,7 @@
         {
           "entrypoint_id": "context-replace",
           "id": "tobkiri_agent_control_pack.context-replace",
-          "implementation_digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268"
+          "implementation_digest": "sha256:22ab3693bcaa8dc0d96e0528f8031ed0a5f5f5b8c1ec941c94c9719ade7e933d"
         }
       ],
       "owner": "tobkiri_agent_control_pack",
@@ -674,7 +674,7 @@
         {
           "entrypoint_id": "context-project",
           "id": "tobkiri_agent_control_pack.context-project",
-          "implementation_digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268"
+          "implementation_digest": "sha256:22ab3693bcaa8dc0d96e0528f8031ed0a5f5f5b8c1ec941c94c9719ade7e933d"
         }
       ],
       "owner": "tobkiri_agent_control_pack",
@@ -775,7 +775,7 @@
         {
           "entrypoint_id": "inbox-action",
           "id": "tobkiri_agent_control_pack.inbox-action",
-          "implementation_digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268"
+          "implementation_digest": "sha256:22ab3693bcaa8dc0d96e0528f8031ed0a5f5f5b8c1ec941c94c9719ade7e933d"
         }
       ],
       "owner": "tobkiri_agent_control_pack",
@@ -1241,7 +1241,7 @@
         {
           "entrypoint_id": "work-plan-execute",
           "id": "tobkiri_agent_control_pack.work-plan-execute",
-          "implementation_digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268"
+          "implementation_digest": "sha256:22ab3693bcaa8dc0d96e0528f8031ed0a5f5f5b8c1ec941c94c9719ade7e933d"
         }
       ],
       "owner": "tobkiri_agent_control_pack",
@@ -1320,7 +1320,7 @@
         {
           "entrypoint_id": "work-plan-job",
           "id": "tobkiri_agent_control_pack.work-plan-job",
-          "implementation_digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268"
+          "implementation_digest": "sha256:22ab3693bcaa8dc0d96e0528f8031ed0a5f5f5b8c1ec941c94c9719ade7e933d"
         }
       ],
       "owner": "tobkiri_agent_control_pack",
@@ -1399,7 +1399,7 @@
         {
           "entrypoint_id": "work-plan-review",
           "id": "tobkiri_agent_control_pack.work-plan-review",
-          "implementation_digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268"
+          "implementation_digest": "sha256:22ab3693bcaa8dc0d96e0528f8031ed0a5f5f5b8c1ec941c94c9719ade7e933d"
         }
       ],
       "owner": "tobkiri_agent_control_pack",
@@ -1502,7 +1502,7 @@
   ],
   "runtime_artifacts": [
     {
-      "digest": "sha256:74d3c909f32f25d009c65f1ce7533a344974f18c504edaff2bf57f8f26adcce1",
+      "digest": "sha256:46c3e3e14d4dad45689f07f242b80a0ce42ae4161d9660831d218767e69c1c15",
       "kind": "sidecar",
       "path": "frontend/contributions/settings.json"
     },
@@ -1522,22 +1522,22 @@
       "path": "runtime/goal.py"
     },
     {
-      "digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268",
+      "digest": "sha256:22ab3693bcaa8dc0d96e0528f8031ed0a5f5f5b8c1ec941c94c9719ade7e933d",
       "kind": "executable",
       "path": "runtime/host.py"
     },
     {
-      "digest": "sha256:cb49b6fa1c22422add539a54e28ef42bbd75ebad46d48cfc62c5ea3ac82c08ec",
+      "digest": "sha256:ff9f83e294c5f4b43d37f1335410831e35212bbf7d48fcd4346fb1c5b85c5b12",
       "kind": "executable",
       "path": "runtime/inbox.py"
     },
     {
-      "digest": "sha256:f513ea945283f421cea2921ecd31bb8bb5672335c4adae38bd663026b8a030f9",
+      "digest": "sha256:ef3f6101e2ce868542766206da083201f2c5b3d0d96cb726e567a0dcff3d2f3e",
       "kind": "executable",
       "path": "runtime/ports.py"
     },
     {
-      "digest": "sha256:228eb7cc0ff93d0c8f26c702e867159f54261b1098aefba1b99b9eb2fac4d78d",
+      "digest": "sha256:60727529f3d60cffa426e92df3400c1880e3f7b159850dc15931f0bad36c9ea0",
       "kind": "executable",
       "path": "runtime/review.py"
     },
@@ -1547,7 +1547,7 @@
       "path": "runtime/schedules.py"
     },
     {
-      "digest": "sha256:1eb56f0b423cbfc4fa50d7bb2957aa3a5e7fe86f71b65ff9f7e3fad417baf8a1",
+      "digest": "sha256:58d06cb1e8f9a78b32d73282404f9bdf00fb3e3f0a8c9d6f931ad88ec35ac858",
       "kind": "executable",
       "path": "runtime/service.py"
     },

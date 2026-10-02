@@ -66,7 +66,7 @@ PYTHONDONTWRITEBYTECODE=1 /opt/miniconda3/bin/python -B -m pytest \
   --noconftest tests/test_agent_control_pack.py tests/test_agent_control_acceptance.py -q
 ```
 
-The saved-input and Workflow checkpoint passes 34 isolated tests, targeted Ruff and mypy. These
+The saved-input and Workflow checkpoint passes 35 isolated tests, targeted Ruff and mypy. These
 exercise real Pack state and deterministic fake external contracts/test tools;
 they are not actual model, Pack activation or native-app acceptance evidence.
 The normal packaged-fixture suite must run after integration regenerates the
