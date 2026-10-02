@@ -21,6 +21,7 @@ from ecosystem.tobkiri_cloud_workspace_pack.runtime.capsule import (
 
 MAX_RETAINED_BYTES = 32 * 1024 * 1024
 MAX_WORKSPACES = 64
+MAX_CHECKPOINTS = 256
 WRITER_TTL_MS = 120_000
 
 
@@ -78,6 +79,10 @@ class WorkspaceStore:
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS replay "
                     "(id TEXT PRIMARY KEY, digest TEXT NOT NULL, result BLOB NOT NULL)"
+                )
+                connection.execute(
+                    "CREATE TABLE IF NOT EXISTS restores "
+                    "(digest TEXT PRIMARY KEY, total_bytes INTEGER NOT NULL)"
                 )
             yield connection
             if write:
@@ -190,6 +195,11 @@ class WorkspaceStore:
                 >= MAX_WORKSPACES
             ):
                 raise ValueError("workspace retention capacity exceeded")
+            if (
+                connection.execute("SELECT count(*) FROM replay").fetchone()[0]
+                >= MAX_CHECKPOINTS
+            ):
+                raise ValueError("workspace checkpoint retention capacity exceeded")
             retained = connection.execute(
                 "SELECT coalesce(sum(length(data)),0) FROM blobs"
             ).fetchone()[0]
@@ -273,37 +283,50 @@ class WorkspaceStore:
     ) -> dict[str, Any]:
         """Restore verified files into a new Pack-owned directory, never a Host path."""
         manifest, blobs = self.read_capsule(checkpoint)
-        guard()
-        destination = self.root / "restored" / checkpoint[7:]
-        for part in [destination, *destination.parents]:
-            if part.is_symlink():
-                raise PermissionError("workspace restore contains a symbolic link")
-        destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        temporary = Path(tempfile.mkdtemp(prefix=".restore-", dir=destination.parent))
-        try:
-            for entry in manifest["files"]:
-                path = temporary / entry["path"]
-                path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-                with path.open("xb") as stream:
-                    stream.write(blobs[entry["digest"]])
-                path.chmod(0o600)
-            (temporary / "capsule-manifest.json").write_bytes(canonical(manifest))
+        restore_bytes = manifest["total_bytes"] + len(canonical(manifest))
+        with self.connection(write=True) as connection:
+            restored = connection.execute(
+                "SELECT coalesce(sum(total_bytes),0) FROM restores"
+            ).fetchone()[0]
+            if restored + restore_bytes > MAX_RETAINED_BYTES:
+                raise ValueError("workspace restore retention capacity exceeded")
             guard()
-            # Retained restores are immutable. Repeating restoration creates
-            # no write into an existing user/Host workspace.
-            if destination.exists():
-                raise Conflict("workspace checkpoint was already restored")
-            temporary.rename(destination)
-        finally:
-            if temporary.exists():
-                shutil.rmtree(temporary)
-        return {
-            "status": "restored_locally",
-            "checkpoint_digest": checkpoint,
-            "file_count": len(manifest["files"]),
-            "total_bytes": manifest["total_bytes"],
-            "container_status": "not_started",
-        }
+            destination = self.root / "restored" / checkpoint[7:]
+            for part in [destination, *destination.parents]:
+                if part.is_symlink():
+                    raise PermissionError("workspace restore contains a symbolic link")
+            destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            temporary = Path(
+                tempfile.mkdtemp(prefix=".restore-", dir=destination.parent)
+            )
+            try:
+                for entry in manifest["files"]:
+                    path = temporary / entry["path"]
+                    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                    with path.open("xb") as stream:
+                        stream.write(blobs[entry["digest"]])
+                    path.chmod(0o600)
+                (temporary / "capsule-manifest.json").write_bytes(canonical(manifest))
+                guard()
+                # Retained restores are immutable. Repeating restoration creates
+                # no write into an existing user/Host workspace.
+                if destination.exists():
+                    raise Conflict("workspace checkpoint was already restored")
+                temporary.rename(destination)
+                connection.execute(
+                    "INSERT INTO restores VALUES (?,?)",
+                    (checkpoint, restore_bytes),
+                )
+            finally:
+                if temporary.exists():
+                    shutil.rmtree(temporary)
+            return {
+                "status": "restored_locally",
+                "checkpoint_digest": checkpoint,
+                "file_count": len(manifest["files"]),
+                "total_bytes": manifest["total_bytes"],
+                "container_status": "not_started",
+            }
 
 
 def _replay(row: sqlite3.Row | None, fingerprint: str) -> dict[str, Any] | None:

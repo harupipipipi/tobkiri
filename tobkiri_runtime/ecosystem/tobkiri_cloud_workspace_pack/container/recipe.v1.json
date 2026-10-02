@@ -11,7 +11,7 @@
     },
     {
       "path": "runtime/capsule.py",
-      "digest": "sha256:2bedefe682b7d37175d2111c4af98cb4766ee63bdcfe325f4716efdde6cf2591"
+      "digest": "sha256:94e87d304539e7eb359d8fc2b474719e2c3b59cf0233790cd4ec36ff76f01edb"
     }
   ],
   "runtime_user": "65532:65532",

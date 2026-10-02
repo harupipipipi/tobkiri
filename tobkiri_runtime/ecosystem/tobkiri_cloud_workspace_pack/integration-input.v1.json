@@ -316,12 +316,12 @@
       },
       {
         "path": "runtime/capsule.py",
-        "digest": "sha256:2bedefe682b7d37175d2111c4af98cb4766ee63bdcfe325f4716efdde6cf2591",
+        "digest": "sha256:94e87d304539e7eb359d8fc2b474719e2c3b59cf0233790cd4ec36ff76f01edb",
         "kind": "executable"
       },
       {
         "path": "runtime/store.py",
-        "digest": "sha256:0385b3b82ba4161e587a4d6516b46079166d91d6f9a4e54045cd1f00be142d7e",
+        "digest": "sha256:59a06641552219b280541536b835dab0d8db7c44c8843a3a621020fd05af5d38",
         "kind": "executable"
       },
       {
@@ -331,7 +331,7 @@
       },
       {
         "path": "runtime/recipe.py",
-        "digest": "sha256:8cabdec140fb00d30654b4eae46ae1ee28df9ea0de1f1d02da17e4c6c6334f5b",
+        "digest": "sha256:da533c89379b03c375baeaf785fe79e59b448eab9fb207bcf3f9634c1f1cea5d",
         "kind": "executable"
       },
       {
@@ -346,7 +346,7 @@
       },
       {
         "path": "container/recipe.v1.json",
-        "digest": "sha256:74fd0d347074d6e922ac62a7aa49d41685e9fd7aee041c09c7f578f22edebb9b",
+        "digest": "sha256:9c9fe76c4606e2ecb2019201ebf34248836c94e0b4c1ad7a541fa941d8f0b633",
         "kind": "sidecar"
       },
       {

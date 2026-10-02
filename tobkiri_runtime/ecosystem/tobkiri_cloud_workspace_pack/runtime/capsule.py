@@ -290,8 +290,8 @@ def import_archive(data: bytes) -> tuple[dict[str, Any], dict[str, bytes]]:
                     entry.filename in names
                     or entry.is_dir()
                     or entry.flag_bits & 1
-                    or entry.compress_type
-                    not in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
+                    or entry.compress_type != zipfile.ZIP_STORED
+                    or entry.compress_size != entry.file_size
                     or stat.S_IFMT(entry.external_attr >> 16) not in {0, stat.S_IFREG}
                     or entry.file_size > max(MAX_FILE_BYTES, MAX_MANIFEST_BYTES)
                     or entry.file_size > max(1, entry.compress_size) * 100
