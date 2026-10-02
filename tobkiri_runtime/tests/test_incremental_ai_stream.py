@@ -475,3 +475,69 @@ def test_revoked_actual_lease_is_fenced_before_host_contribution_entry(
     with pytest.raises(PermissionError):
         backend.invoke(envelope)
     assert calls == ["entered"]
+
+
+def test_retained_parent_scope_fails_after_its_actual_lease_commits(
+    tmp_path: Path,
+) -> None:
+    """A retained child capability cannot renew a completed parent's authority."""
+    from core_runtime.authority.v4 import LeaseState
+
+    authority, envelope = _dispatched_envelope(tmp_path)
+    scope = CapturedInvocationScopeV4(
+        envelope, lambda: assert_dispatched_invocation(envelope, authority.store)
+    )
+    scope.assert_current()
+    lease, _state = authority.store.inspect_lease_token(
+        envelope.lease.token.decode("ascii")
+    )
+    authority.store.finish_lease(
+        lease.lease_id, state=LeaseState.COMMITTED, outcome_digest=canonical_digest({})
+    )
+    with pytest.raises(PermissionError, match="lease does not match"):
+        scope.assert_current()
+
+
+def test_request_session_cleanup_preserves_peer_domain_and_audit(
+    tmp_path: Path,
+) -> None:
+    """Only an exact drained private channel is removed; history stays audited."""
+    from core_runtime.authority.v4 import AuthorityDenied
+
+    authority, _envelope = _dispatched_envelope(tmp_path)
+    domain = replace(authority.caller_domain, domain_id="domain.private.request")
+    peer = authority.target_domain
+    session_id = "session.host-execution.private"
+    authority.store.put_record(domain)
+    authority.store.bind_authenticated_session(
+        session_id=session_id,
+        domain=domain,
+        channel_digest=domain.authenticated_channel_digest,
+        principal_id=authority.caller.principal_id,
+    )
+    with pytest.raises(AuthorityDenied, match="identity changed"):
+        authority.store.release_authenticated_request_session(
+            session_id=session_id,
+            expected_domain=replace(domain, boot_epoch=99),
+            principal_id=authority.caller.principal_id,
+        )
+    with pytest.raises(AuthorityDenied, match="not request-local"):
+        authority.store.release_authenticated_request_session(
+            session_id="session.panel.stable",
+            expected_domain=domain,
+            principal_id=authority.caller.principal_id,
+        )
+    options = {
+        "session_id": session_id,
+        "expected_domain": domain,
+        "principal_id": authority.caller.principal_id,
+    }
+    authority.store.release_authenticated_request_session(**options)
+    authority.store.release_authenticated_request_session(**options)
+    assert authority.store.get_domain(domain.domain_id) is None
+    assert authority.store.get_domain(peer.domain_id) == peer
+    with pytest.raises(AuthorityDenied):
+        authority.store.resolve_authenticated_session(session_id)
+    assert authority.store.audit_events()[-1]["event_type"] == (
+        "execution_session_drained"
+    )

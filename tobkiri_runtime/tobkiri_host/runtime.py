@@ -288,6 +288,7 @@ class V4DispatchSession:
         parent_cancellation_proof: NestedCancellationProof | None = None,
         before_dispatch: Callable[[], None] | None = None,
         execution_guard: Callable[[], None] | None = None,
+        on_resources_drained: Callable[[], None] | None = None,
     ) -> Mapping[str, Any]:
         """Dispatch through the captured Broker without identity from payload.
 
@@ -297,53 +298,62 @@ class V4DispatchSession:
         The optional parent deadline is a Host-only absolute ceiling, never
         derived from application payload fields or renewed for nested work.
         """
-        self._assert_open()
-        arguments = dict(payload)
-        session_id = str(arguments.pop("_session_id", "")).strip()
-        parameter_count = len(inspect.signature(self.context_for).parameters)
-        if parameter_count >= 3:
-            if not session_id:
-                raise ValueError("authenticated session binding is required")
-            context = self.context_for(contract_id, operation_id, session_id)
-        else:
-            context = self.context_for(contract_id, operation_id)
-        scope_parameter_count = len(inspect.signature(self.effect_scope_for).parameters)
-        if scope_parameter_count >= 4:
-            scope = self.effect_scope_for(
-                contract_id,
-                operation_id,
-                arguments,
-                context,
+        broker_started = False
+        try:
+            self._assert_open()
+            arguments = dict(payload)
+            session_id = str(arguments.pop("_session_id", "")).strip()
+            parameter_count = len(inspect.signature(self.context_for).parameters)
+            if parameter_count >= 3:
+                if not session_id:
+                    raise ValueError("authenticated session binding is required")
+                context = self.context_for(contract_id, operation_id, session_id)
+            else:
+                context = self.context_for(contract_id, operation_id)
+            scope_parameter_count = len(inspect.signature(self.effect_scope_for).parameters)
+            if scope_parameter_count >= 4:
+                scope = self.effect_scope_for(
+                    contract_id,
+                    operation_id,
+                    arguments,
+                    context,
+                )
+            else:
+                # Compatibility for the small conformance adapters that still
+                # expose the original three-argument callback.  Production
+                # capture always supplies the context-aware form above.
+                scope = self.effect_scope_for(contract_id, operation_id, arguments)
+            invocation = InvocationFrame(
+                contract_id=contract_id,
+                version_range=version_range,
+                operation_id=operation_id,
+                payload=arguments,
             )
-        else:
-            # Compatibility for the small conformance adapters that still
-            # expose the original three-argument callback.  Production
-            # capture always supplies the context-aware form above.
-            scope = self.effect_scope_for(contract_id, operation_id, arguments)
-        invocation = InvocationFrame(
-            contract_id=contract_id,
-            version_range=version_range,
-            operation_id=operation_id,
-            payload=arguments,
-        )
-        if (
-            parent_deadline_monotonic is None
-            and parent_cancellation is None
-            and parent_cancellation_proof is None
-            and before_dispatch is None
-            and execution_guard is None
-        ):
-            return self.broker.invoke(invocation, context, effect_scope=scope)
-        return self.broker.invoke(
-            invocation,
-            context,
-            effect_scope=scope,
-            parent_deadline_monotonic=parent_deadline_monotonic,
-            parent_cancellation=parent_cancellation,
-            parent_cancellation_proof=parent_cancellation_proof,
-            before_dispatch=before_dispatch,
-            execution_guard=execution_guard,
-        )
+            if (
+                parent_deadline_monotonic is None
+                and parent_cancellation is None
+                and parent_cancellation_proof is None
+                and before_dispatch is None
+                and execution_guard is None
+                and on_resources_drained is None
+            ):
+                broker_started = True
+                return self.broker.invoke(invocation, context, effect_scope=scope)
+            broker_started = True
+            return self.broker.invoke(
+                invocation,
+                context,
+                effect_scope=scope,
+                parent_deadline_monotonic=parent_deadline_monotonic,
+                parent_cancellation=parent_cancellation,
+                parent_cancellation_proof=parent_cancellation_proof,
+                before_dispatch=before_dispatch,
+                execution_guard=execution_guard,
+                on_resources_drained=on_resources_drained,
+            )
+        finally:
+            if not broker_started and on_resources_drained is not None:
+                self.broker.complete_unadmitted_resources(on_resources_drained)
 
     def run_packvm_acceptance(
         self,

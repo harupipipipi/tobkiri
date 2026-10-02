@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
+from contextlib import contextmanager
 import contextvars
 from dataclasses import dataclass, field, replace
 import hashlib
@@ -11,8 +12,9 @@ import math
 import threading
 import time
 from types import MappingProxyType
-from typing import Any, Callable, Mapping, Protocol, Sequence, cast
+from typing import Any, Callable, Iterator, Mapping, Protocol, Sequence, cast
 
+from .resource_drain import RequestResourceDrain
 from .admission import AdmissionEstimate, QueueScope, ResourceReservation
 from .acceptance_receipts import AcceptanceReceipt, AcceptanceReceiptPort
 from .backends import BackendRegistry, ExecutionBackend, RequestScopedBackend
@@ -366,11 +368,53 @@ class RequestBroker:
         self._lifecycle_lock = threading.RLock()
         self._closed = False
         self._active_requests: dict[int, _ActiveRequest] = {}
+        self._resource_drains: set[RequestResourceDrain] = set()
         self._next_active_request_id = 0
         self._executor = ThreadPoolExecutor(
             max_workers=max_workers,
             thread_name_prefix="tobkiri-v4-request",
         )
+
+    @contextmanager
+    def _resource_drain_scope(
+        self, callback: Callable[[], None] | None
+    ) -> Iterator[RequestResourceDrain]:
+        if callback is not None and not callable(callback):
+            raise TypeError("Host resource-drain callback must be callable")
+        drain = RequestResourceDrain(callback)
+        with self._lifecycle_lock:
+            self._resource_drains.add(drain)
+        try:
+            yield drain
+        finally:
+            drain.finish_unadmitted()
+            self._discard_finished_drain(drain)
+
+    def _discard_finished_drain(self, drain: RequestResourceDrain) -> None:
+        if drain.finished:
+            with self._lifecycle_lock:
+                self._resource_drains.discard(drain)
+
+    def complete_unadmitted_resources(self, callback: Callable[[], None]) -> None:
+        """Complete a Host context-creation failure through the same retry ledger."""
+        with self._resource_drain_scope(callback):
+            pass
+
+    def retry_resource_drains(self) -> None:
+        """Retry verified cleanup failures, keeping Authority open until success."""
+        with self._lifecycle_lock:
+            drains = tuple(self._resource_drains)
+        first_error: Exception | None = None
+        for drain in drains:
+            if drain.ready:
+                try:
+                    drain.run()
+                    self._discard_finished_drain(drain)
+                except Exception as error:
+                    if first_error is None:
+                        first_error = error
+        if first_error is not None:
+            raise RuntimeError("request resource cleanup remains pending") from first_error
 
     def take_acceptance_receipt(self, request_id: str, nonce: str) -> AcceptanceReceipt:
         """Consume Host-owned QA evidence when the non-publishable port is enabled."""
@@ -401,37 +445,40 @@ class RequestBroker:
         parent_cancellation_proof: NestedCancellationProof | None = None,
         before_dispatch: Callable[[], None] | None = None,
         execution_guard: Callable[[], None] | None = None,
+        on_resources_drained: Callable[[], None] | None = None,
     ) -> Mapping[str, Any]:
         """Resolve, admit, materialize, authorize, dispatch, and validate."""
-        with self._lifecycle_lock:
-            if self._closed:
-                raise RuntimeError("request broker is closed")
-        _validate_parent_cancellation(parent_cancellation, parent_cancellation_proof)
-        if execution_guard is not None:
-            execution_guard()
-        _validate_parent_deadline(parent_deadline_monotonic, time.monotonic)
-        prepared = self._prepare_invocation(
-            frame,
-            context,
-            allow_lossy_adapters=allow_lossy_adapters,
-        )
-        if parent_deadline_monotonic is not None:
-            prepared = replace(
-                prepared,
-                deadline_monotonic=min(
-                    prepared.deadline_monotonic, parent_deadline_monotonic
-                ),
+        with self._resource_drain_scope(on_resources_drained) as resource_drain:
+            with self._lifecycle_lock:
+                if self._closed:
+                    raise RuntimeError("request broker is closed")
+            _validate_parent_cancellation(parent_cancellation, parent_cancellation_proof)
+            if execution_guard is not None:
+                execution_guard()
+            _validate_parent_deadline(parent_deadline_monotonic, time.monotonic)
+            prepared = self._prepare_invocation(
+                frame,
+                context,
+                allow_lossy_adapters=allow_lossy_adapters,
             )
-        return self._execute_prepared(
-            prepared,
-            context,
-            effect_scope=effect_scope,
-            monotonic_clock=time.monotonic,
-            before_dispatch=before_dispatch,
-            cancellation_requested=parent_cancellation,
-            nested_cancellation_proof=parent_cancellation_proof,
-            execution_guard=execution_guard,
-        )
+            if parent_deadline_monotonic is not None:
+                prepared = replace(
+                    prepared,
+                    deadline_monotonic=min(
+                        prepared.deadline_monotonic, parent_deadline_monotonic
+                    ),
+                )
+            return self._execute_prepared(
+                prepared,
+                context,
+                effect_scope=effect_scope,
+                monotonic_clock=time.monotonic,
+                before_dispatch=before_dispatch,
+                cancellation_requested=parent_cancellation,
+                nested_cancellation_proof=parent_cancellation_proof,
+                execution_guard=execution_guard,
+                resource_drain=resource_drain,
+            )
 
     def invoke_prepared(
         self,
@@ -448,6 +495,7 @@ class RequestBroker:
         nested_cancellation_proof: NestedCancellationProof | None = None,
         execution_guard: Callable[[], None] | None = None,
         parent_deadline_monotonic: float | None = None,
+        on_resources_drained: Callable[[], None] | None = None,
     ) -> Mapping[str, Any]:
         """Execute one durable Host snapshot without re-running adapters.
 
@@ -461,47 +509,49 @@ class RequestBroker:
         Host inputs, preserved through the ordinary backend-entry gate.
         """
 
-        with self._lifecycle_lock:
-            if self._closed:
-                raise RuntimeError("request broker is closed")
-        _validate_parent_cancellation(cancellation_requested, nested_cancellation_proof)
-        _validate_parent_deadline(parent_deadline_monotonic, monotonic_clock)
-        if not isinstance(snapshot, PreparedInvocationSnapshot):
-            raise TypeError("prepared invocation snapshot is required")
-        if pending_effect_link is not None and not isinstance(
-            pending_effect_link, PendingEffectLeaseLink
-        ):
-            raise TypeError("pending effect lease link is invalid")
-        prepared = self._prepared_from_snapshot(snapshot, context)
-        deadline = _fresh_prepared_deadline(
-            timeout_ms=prepared.timeout_ms,
-            execute_not_after_wall=execute_not_after_wall,
-            wall_clock=wall_clock,
-            monotonic_clock=monotonic_clock,
-        )
-        if parent_deadline_monotonic is not None:
-            deadline = min(deadline, parent_deadline_monotonic)
-        return self._execute_prepared(
-            PreparedInvocation(
-                binding=prepared.binding,
-                normalized_payload=prepared.normalized_payload,
-                request_digest=prepared.request_digest,
+        with self._resource_drain_scope(on_resources_drained) as resource_drain:
+            with self._lifecycle_lock:
+                if self._closed:
+                    raise RuntimeError("request broker is closed")
+            _validate_parent_cancellation(cancellation_requested, nested_cancellation_proof)
+            _validate_parent_deadline(parent_deadline_monotonic, monotonic_clock)
+            if not isinstance(snapshot, PreparedInvocationSnapshot):
+                raise TypeError("prepared invocation snapshot is required")
+            if pending_effect_link is not None and not isinstance(
+                pending_effect_link, PendingEffectLeaseLink
+            ):
+                raise TypeError("pending effect lease link is invalid")
+            prepared = self._prepared_from_snapshot(snapshot, context)
+            deadline = _fresh_prepared_deadline(
                 timeout_ms=prepared.timeout_ms,
-                deadline_monotonic=deadline,
-                idempotency_key=prepared.idempotency_key,
-                binding_fingerprint=prepared.binding_fingerprint,
-                context_fingerprint=prepared.context_fingerprint,
-                allow_lossy_adapters=prepared.allow_lossy_adapters,
-            ),
-            context,
-            effect_scope=effect_scope,
-            monotonic_clock=monotonic_clock,
-            before_dispatch=before_dispatch,
-            pending_effect_link=pending_effect_link,
-            cancellation_requested=cancellation_requested,
-            nested_cancellation_proof=nested_cancellation_proof,
-            execution_guard=execution_guard,
-        )
+                execute_not_after_wall=execute_not_after_wall,
+                wall_clock=wall_clock,
+                monotonic_clock=monotonic_clock,
+            )
+            if parent_deadline_monotonic is not None:
+                deadline = min(deadline, parent_deadline_monotonic)
+            return self._execute_prepared(
+                PreparedInvocation(
+                    binding=prepared.binding,
+                    normalized_payload=prepared.normalized_payload,
+                    request_digest=prepared.request_digest,
+                    timeout_ms=prepared.timeout_ms,
+                    deadline_monotonic=deadline,
+                    idempotency_key=prepared.idempotency_key,
+                    binding_fingerprint=prepared.binding_fingerprint,
+                    context_fingerprint=prepared.context_fingerprint,
+                    allow_lossy_adapters=prepared.allow_lossy_adapters,
+                ),
+                context,
+                effect_scope=effect_scope,
+                monotonic_clock=monotonic_clock,
+                before_dispatch=before_dispatch,
+                pending_effect_link=pending_effect_link,
+                cancellation_requested=cancellation_requested,
+                nested_cancellation_proof=nested_cancellation_proof,
+                execution_guard=execution_guard,
+                resource_drain=resource_drain,
+            )
 
     def _execute_prepared(
         self,
@@ -515,6 +565,7 @@ class RequestBroker:
         nested_cancellation_proof: NestedCancellationProof | None = None,
         pending_effect_link: PendingEffectLeaseLink | None = None,
         execution_guard: Callable[[], None] | None = None,
+        resource_drain: RequestResourceDrain,
     ) -> Mapping[str, Any]:
         """Run the shared static-auth through dispatch pipeline once."""
 
@@ -589,7 +640,13 @@ class RequestBroker:
         background_requests: list[Future[object]] = []
         acceptance_request_id: str | None = None
 
-        def release_resources(_completed: Future[object] | None = None) -> None:
+        resources_released = False
+        draining_future: Future[object] | None = None
+
+        def release_resources() -> None:
+            nonlocal resources_released
+            if resources_released:
+                return
             if isinstance(backend, RequestScopedBackend):
                 materialization_released = False
                 try:
@@ -625,8 +682,23 @@ class RequestBroker:
             with self._lifecycle_lock:
                 self._active_requests.pop(active_request_id, None)
             active_request.completed.set()
-            if nested_cancellation_proof is not None and _completed is not None:
-                nested_cancellation_proof.record_resource_drain(_completed)
+            if nested_cancellation_proof is not None and draining_future is not None:
+                nested_cancellation_proof.record_resource_drain(draining_future)
+            resources_released = True
+
+        resource_drain.handoff(release_resources)
+
+        def finish_resources(completed: Future[object] | None = None) -> None:
+            resource_drain.run()
+            self._discard_finished_drain(resource_drain)
+
+        def finish_background(completed: Future[object]) -> None:
+            try:
+                finish_resources(completed)
+            except Exception:
+                # Kept in the Host retry ledger; Future callbacks cannot raise
+                # cleanup errors to the already-returned invocation caller.
+                pass
 
         try:
             workload_key = WorkloadInstanceKey(
@@ -720,16 +792,17 @@ class RequestBroker:
                 # the provider Future actually exits, even after returning
                 # an error or reconciliation record to the caller.
                 completed_request = background_requests[0]
+                draining_future = completed_request
                 if completed_request.done():
                     # Future.add_done_callback only logs callback
                     # exceptions instead of raising them.  Drain a
                     # finished Future inline so release failures still
                     # reach the caller and keep the exact child binding.
-                    release_resources(completed_request)
+                    finish_resources(completed_request)
                 else:
-                    completed_request.add_done_callback(release_resources)
+                    completed_request.add_done_callback(finish_background)
             else:
-                release_resources()
+                finish_resources()
 
     def prepare(
         self,
@@ -1272,12 +1345,13 @@ class RequestBroker:
         for active_request in active_requests:
             active_request.completed.wait(max(0.0, deadline - time.monotonic()))
         self._executor.shutdown(wait=False, cancel_futures=True)
+        self.retry_resource_drains()
 
     def has_undrained_requests(self) -> bool:
         """Retain captured Authority while an entered Provider still owns it."""
 
         with self._lifecycle_lock:
-            return bool(self._active_requests)
+            return bool(self._active_requests or self._resource_drains)
 
     def cancel_pending_requests(self, *, reads_only: bool = False) -> None:
         """Signal admitted requests, or only reads before an HTTP drain."""

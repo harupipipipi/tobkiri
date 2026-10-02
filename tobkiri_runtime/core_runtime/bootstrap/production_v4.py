@@ -2272,11 +2272,13 @@ def capture_production_dispatch(
         parent_cancellation = getattr(outer_request, "cancellation_requested", None)
         if type(parent_cancellation) is not threading.Event:
             raise AuthorityDenied("PackVM capability bridge cancellation signal is missing")
+        scope = capture_invocation_scope(outer_request)
+        scope.assert_current()
         bridge_authority_session_id = bind_nested_session(
             bridge_session_id,
             outer_edge.target.principal_id,
             presentation_owner_for(outer_request),
-            parent_invocation=capture_invocation_scope(outer_request),
+            parent_invocation=scope,
         )
         try:
             provider_result = dispatch.invoke(
@@ -2286,6 +2288,10 @@ def capture_production_dispatch(
                 parent_deadline_monotonic=parent_deadline,
                 parent_cancellation=parent_cancellation,
                 parent_cancellation_proof=parent_cancellation_proof,
+                execution_guard=scope.assert_current,
+                on_resources_drained=lambda: release_nested_session(
+                    bridge_session_id, bridge_authority_session_id
+                ),
             )
             if not isinstance(provider_result, Mapping):
                 raise TypeError("verified Provider capability returned a non-object")
@@ -2301,8 +2307,6 @@ def capture_production_dispatch(
 
             record_bridge_failure(error)
             result = _provider_unavailable_bridge_result(error)
-        finally:
-            release_nested_session(bridge_session_id, bridge_authority_session_id)
         return result
 
     def capability_bridge(
@@ -2680,9 +2684,23 @@ def capture_production_dispatch(
         """Release one stable nested-session user without racing a peer call."""
 
         with caller_session_bindings_lock:
+            users = nested_session_refcounts.get(session_id, 0)
+            if not users:
+                return
+            remaining = users - 1
+            if not remaining and parent_invocation_scopes.lookup(resolved_session_id):
+                with caller_sessions_lock:
+                    domain = request_caller_domains.get(resolved_session_id)
+                    if domain is not None:
+                        authority_store.release_authenticated_request_session(
+                            session_id=resolved_session_id,
+                            expected_domain=domain,
+                            principal_id=caller_session_bindings[session_id],
+                        )
+                        request_caller_domains.pop(resolved_session_id)
+                        caller_sessions.discard(resolved_session_id)
             release_presentation_owner(resolved_session_id)
             parent_invocation_scopes.release(resolved_session_id)
-            remaining = nested_session_refcounts.get(session_id, 0) - 1
             if remaining > 0:
                 nested_session_refcounts[session_id] = remaining
                 return
@@ -2739,6 +2757,9 @@ def capture_production_dispatch(
                     parent_deadline_monotonic=self._envelope.deadline_monotonic,
                     parent_cancellation=self._envelope.cancellation_requested,
                     execution_guard=scope.assert_current,
+                    on_resources_drained=lambda: release_nested_session(
+                        nested_session_id, nested_authority_session_id
+                    ),
                     parent_cancellation_proof=nested_cancellation_proof_for(
                         self._envelope,
                         self._presentation_owner[0],
@@ -2750,8 +2771,6 @@ def capture_production_dispatch(
             except Exception as error:
                 log_nested_dispatch_failure(contract_id, operation_id, error)
                 raise
-            finally:
-                release_nested_session(nested_session_id, nested_authority_session_id)
 
     class _HostInvocation(HostProviderInvocationContextV4):
         """Expose only declared nested dispatch and one credential transport."""
@@ -3185,6 +3204,7 @@ def capture_production_dispatch(
         )
         edge_candidates_by_operation.setdefault(operation_key, []).append(captured_edge)
 
+    request_caller_domains: dict[str, ExecutionDomain] = {}
     caller_sessions: set[str] = set()
     caller_sessions_lock = threading.RLock()
 
@@ -3284,6 +3304,8 @@ def capture_production_dispatch(
                     principal=caller,
                 )
                 caller_sessions.add(resolved_authority_session_id)
+                if parent_invocation_scopes.lookup(resolved_authority_session_id):
+                    request_caller_domains[resolved_authority_session_id] = caller_domain
         return context
 
     providers: dict[str, tuple[Mapping[str, Any], ...]] = {}

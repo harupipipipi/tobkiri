@@ -2684,6 +2684,97 @@ class AuthorityStore:
             raise AuthorityStoreError("session binding failed") from exc
 
     @_process_owned
+    def release_authenticated_request_session(
+        self,
+        *,
+        session_id: str,
+        expected_domain: ExecutionDomain,
+        principal_id: str,
+    ) -> None:
+        """Remove an exact drained request-local channel without fencing peers.
+
+        The Host calls this only after verified resource drain. Stable panel,
+        approval and workflow identities are outside these finite namespaces.
+        Terminal leases and audit history remain immutable.
+        """
+        if not session_id.startswith(
+            ("session.host-execution.", "session.packvm-bridge.")
+        ):
+            raise AuthorityDenied("session is not request-local")
+        try:
+            with self._lock, self._connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                row = connection.execute(
+                    "SELECT * FROM execution_sessions WHERE session_id=?",
+                    (session_id,),
+                ).fetchone()
+                domain_row = connection.execute(
+                    "SELECT encrypted_payload FROM authority_records"
+                    " WHERE record_type='execution_domain' AND record_id=?",
+                    (expected_domain.domain_id,),
+                ).fetchone()
+                if row is None and domain_row is None:
+                    return
+                if row is None or domain_row is None:
+                    raise AuthorityDenied("request session cleanup identity is missing")
+                domain = ExecutionDomain.from_dict(
+                    self._decrypt(domain_row["encrypted_payload"])
+                )
+                if (
+                    domain.identity_digest != expected_domain.identity_digest
+                    or row["domain_id"] != domain.domain_id
+                    or row["principal_id"] != principal_id
+                    or row["boot_epoch"] != domain.boot_epoch
+                    or row["channel_digest"] != domain.authenticated_channel_digest
+                    or row["profile_id"] != domain.profile_id
+                    or row["activation_id"] != domain.activation_id
+                ):
+                    raise AuthorityDenied("request session cleanup identity changed")
+                peers = connection.execute(
+                    "SELECT COUNT(*) FROM execution_sessions WHERE domain_id=?",
+                    (domain.domain_id,),
+                ).fetchone()[0]
+                live = connection.execute(
+                    "SELECT COUNT(*) FROM invocation_leases"
+                    " WHERE (caller_domain_id=? OR target_domain_id=?)"
+                    " AND state IN (?, ?)",
+                    (
+                        domain.domain_id,
+                        domain.domain_id,
+                        LeaseState.ISSUED.value,
+                        LeaseState.DISPATCHED.value,
+                    ),
+                ).fetchone()[0]
+                if peers != 1 or live:
+                    raise AuthorityDenied("request session still owns live resources")
+                self._append_audit(
+                    connection,
+                    event_id="request-session-drain-" + secrets.token_hex(16),
+                    event_type="execution_session_drained",
+                    event_state="committed",
+                    payload={
+                        "session_id": session_id,
+                        "domain_id": domain.domain_id,
+                        "domain_identity_digest": domain.identity_digest,
+                        "principal_id": principal_id,
+                        "security_epoch": domain.security_epoch,
+                    },
+                )
+                connection.execute(
+                    "DELETE FROM execution_sessions WHERE session_id=?", (session_id,)
+                )
+                connection.execute(
+                    "DELETE FROM authority_records"
+                    " WHERE record_type='execution_domain' AND record_id=?",
+                    (domain.domain_id,),
+                )
+                connection.commit()
+        except (AuthorityDenied, AuditUnavailable):
+            raise
+        except sqlite3.Error as error:
+            raise AuthorityStoreError("request session cleanup failed") from error
+
+    @_process_owned
     def transition_domain(
         self,
         domain_id: str,
