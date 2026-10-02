@@ -1156,7 +1156,7 @@
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
       "size": 60086,
-      "sha256": "cc0d0efdb61a2db463d071c7b7ca7f2935b45fdaad1ccfd95504bb744283f8f4",
+      "sha256": "7a8b8816777d62391be0db43e665b1a0a182c7d5a4ec5264b8e25c397c1a631a",
       "executable": false
     },
     {
@@ -1177,7 +1177,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
       "size": 51150,
-      "sha256": "705a9f493af3971eeed5dfebf3ed338fed1dba0c05b24b4fef8c985e6f9e81a0",
+      "sha256": "2558a85d766ac2da9c383753b9b75af902e95e9863c3a1f99205c7ec5f5a7623",
       "executable": false
     },
     {
@@ -1191,7 +1191,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
       "size": 67636,
-      "sha256": "475eadff0ed799685972d8e1390c7c2b36a5ce1146559cae48f27f53fa448a3a",
+      "sha256": "980e0b0d27971ad6f3a0aabe4e2b0050eb6bc21d3835387ef147b892024121c1",
       "executable": false
     },
     {
@@ -3200,14 +3200,14 @@
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_cloud_workspace_pack.executables.v4.json",
       "type": "regular-file",
       "size": 11182,
-      "sha256": "fada53a74493ffb8c15898dba4c9941c6591e16ae7f4de87b00f8260d69571ae",
+      "sha256": "09b0a7e67a375e5e754805744aeb83a6f2b38c36c6c4cc80604b43e7285f11b5",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_cloud_workspace_pack.pack.v4.json",
       "type": "regular-file",
       "size": 9524,
-      "sha256": "570eee8509cda6b9b4b1be42d438e96c34e389ab70092066e9ba1c337ec9da63",
+      "sha256": "3eb36472248150474dc3090bcadebaa6c8c3bcc8e87066aaa2abdccfefb60ba4",
       "executable": false
     },
     {

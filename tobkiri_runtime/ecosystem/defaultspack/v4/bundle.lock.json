@@ -1434,12 +1434,12 @@
     {
       "path": "packs/tobkiri_cloud_workspace_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:fada53a74493ffb8c15898dba4c9941c6591e16ae7f4de87b00f8260d69571ae"
+      "digest": "sha256:09b0a7e67a375e5e754805744aeb83a6f2b38c36c6c4cc80604b43e7285f11b5"
     },
     {
       "path": "packs/tobkiri_cloud_workspace_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:570eee8509cda6b9b4b1be42d438e96c34e389ab70092066e9ba1c337ec9da63"
+      "digest": "sha256:3eb36472248150474dc3090bcadebaa6c8c3bcc8e87066aaa2abdccfefb60ba4"
     },
     {
       "path": "packs/tobkiri_conversation_lifecycle_pack.executables.v4.json",

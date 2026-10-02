@@ -22862,12 +22862,12 @@
         },
         {
           "path": "frontend/contributions/composer.json",
-          "digest": "sha256:bbdc7f1bdc619f607b06297a19bfff319d1e2ee4ac86c1da4af0f9f8e1eb1583",
+          "digest": "sha256:6a7d975de095f827d22a6cf8541e52242dfa7983da0e1c25107afa4c18699ae5",
           "kind": "sidecar"
         },
         {
           "path": "frontend/contributions/workspace.json",
-          "digest": "sha256:a1cf408caea3d2222fd7f068f82e43b2675226ae9e06d968a281851c2a1bacb5",
+          "digest": "sha256:1d7cd3f5ababd755aecbe4063081c8444bc60331cd979738db2bb99b5f55ba28",
           "kind": "sidecar"
         }
       ],

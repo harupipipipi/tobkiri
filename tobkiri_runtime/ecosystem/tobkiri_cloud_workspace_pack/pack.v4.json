@@ -36,17 +36,17 @@
       "path": "container/workspace_tree_v1.py"
     },
     {
-      "digest": "sha256:d554eabb0c6fe9e250a4678fcacadb04fca8a6fb5578a47d9173c0f65cc1ee48",
+      "digest": "sha256:c204b770cf098f3475b9fe4e01fc22632e2771bb38ecd2bbf9648a6827e9f2be",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:bbdc7f1bdc619f607b06297a19bfff319d1e2ee4ac86c1da4af0f9f8e1eb1583",
+      "digest": "sha256:6a7d975de095f827d22a6cf8541e52242dfa7983da0e1c25107afa4c18699ae5",
       "kind": "sidecar",
       "path": "frontend/contributions/composer.json"
     },
     {
-      "digest": "sha256:a1cf408caea3d2222fd7f068f82e43b2675226ae9e06d968a281851c2a1bacb5",
+      "digest": "sha256:1d7cd3f5ababd755aecbe4063081c8444bc60331cd979738db2bb99b5f55ba28",
       "kind": "sidecar",
       "path": "frontend/contributions/workspace.json"
     },
@@ -130,9 +130,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:72cd0f8d085d263de73f760114671129379c09e121dd9d319ee26ed05696cef8",
-    "contract_catalog_digest": "sha256:ddf40902411de60b6c4aa7b12535f362643f7431a9305e766eef83fbf7398b57",
-    "source_identity": "sha256:c41ae90ff2f92260cc30821e0adb1bba9c253de30fbd4e3b4bfa656dc80de82b"
+    "artifact_set_digest": "sha256:cf1076fc89310b103cc49cff49121416b92606af64a82e3a086d27ca89541b37",
+    "contract_catalog_digest": "sha256:1d360819f177f708b4c3473709295bdccd7265432ac4fbd6a2868d0a7f671105",
+    "source_identity": "sha256:e798da3c20bdcc8d0048aa13f6702a00f89e2812737e111f8810c79938118262"
   },
   "migration": {
     "compatibility": "read_only",
@@ -165,7 +165,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:72cd0f8d085d263de73f760114671129379c09e121dd9d319ee26ed05696cef8",
+    "artifact_digest": "sha256:cf1076fc89310b103cc49cff49121416b92606af64a82e3a086d27ca89541b37",
     "display_name": "Tobkiri Cloud Workspace",
     "id": "tobkiri_cloud_workspace_pack",
     "kind": "host_extension",
@@ -175,7 +175,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:c41ae90ff2f92260cc30821e0adb1bba9c253de30fbd4e3b4bfa656dc80de82b",
+        "digest": "sha256:e798da3c20bdcc8d0048aa13f6702a00f89e2812737e111f8810c79938118262",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -186,7 +186,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:c41ae90ff2f92260cc30821e0adb1bba9c253de30fbd4e3b4bfa656dc80de82b",
+    "source_digest": "sha256:e798da3c20bdcc8d0048aa13f6702a00f89e2812737e111f8810c79938118262",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_cloud_workspace_pack"
   },
