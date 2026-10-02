@@ -59,6 +59,8 @@ class HTTPContractTarget:
     artifact_digest: str = ""
     # Canonical schema from the selected operation, never display metadata.
     input_schema: bytes = b""
+    # Captured from the selected executable Operation, never UI declarations.
+    read_only: bool = False
 
 
 @dataclass(frozen=True)

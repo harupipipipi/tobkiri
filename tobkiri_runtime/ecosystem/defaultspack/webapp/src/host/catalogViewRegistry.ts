@@ -330,6 +330,17 @@ export function viewOperationRequest(
   };
 }
 
+/** Automatic reads require Host evidence of a pure/read executable Operation. */
+export function viewReadRequest(
+  catalog: FrontendCatalog, registered: RegisteredCatalogView,
+  operation: ViewOperation, payload: Record<string, unknown>,
+): CapturedCapabilityInvocation | null {
+  const request = viewOperationRequest(catalog, registered, operation, payload);
+  if (!request || !catalog.contributions.some((item) =>
+    item.contribution_id === request.contributionId && item.read_only === true)) return null;
+  return request;
+}
+
 export function controlPayload(
   control: ViewControl, snapshot: unknown, value?: unknown,
   context: ViewInputContext = {},

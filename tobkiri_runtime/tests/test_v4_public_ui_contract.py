@@ -81,9 +81,12 @@ class _Session:
     activation_id = "activation"
     plan_digest = "plan"
 
-    def __init__(self, *, ready: bool = True, current: bool = True) -> None:
+    def __init__(
+        self, *, ready: bool = True, current: bool = True, effect_class: str = "write"
+    ) -> None:
         self.ready = ready
         self.current = current
+        self.effect_class = effect_class
 
     def assert_current(self) -> None:
         if not self.current:
@@ -96,6 +99,7 @@ class _Session:
                     "provider_id": "qa.logic.update",
                     "function_id": "qa.logic.update",
                     "operation_id": "settings.update",
+                    "effect_class": self.effect_class,
                     "artifact_digest": "sha256:logic",
                     "profile_id": self.profile_id,
                     "profile_revision": self.profile_revision,
@@ -115,6 +119,25 @@ class _Session:
 def _binding() -> HTTPContractBinding:
     return HTTPContractBinding(
         method="POST", path="/api/ui/capability/invoke", presentation="capability", targets=()
+    )
+
+
+@pytest.mark.parametrize(
+    ("effect_class", "read_only"),
+    [("pure", True), ("read", True), ("write", False), ("privileged", False),
+     ("external_effect", False), ("unknown", False)],
+)
+def test_automatic_read_evidence_comes_only_from_selected_operation(
+    effect_class: str, read_only: bool,
+) -> None:
+    """A catalog/display hint cannot turn a captured mutation into a source."""
+    catalog = _catalog()
+    catalog["packs"][0]["operations"][0]["read_only"] = True
+    snapshot = _snapshot(_Session(effect_class=effect_class), catalog)
+    assert len(snapshot.targets) == 1
+    assert snapshot.targets[0].read_only is read_only
+    assert _snapshot(_Session(effect_class="read")).catalog_hash != (
+        _snapshot(_Session(effect_class="write")).catalog_hash
     )
 
 
