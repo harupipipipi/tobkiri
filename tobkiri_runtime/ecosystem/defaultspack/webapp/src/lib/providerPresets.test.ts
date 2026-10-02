@@ -30,7 +30,7 @@ test("known hosted providers resolve their catalog endpoint and adapter", () => 
     protocol: "openai-compatible",
   });
   assert.deepEqual(providerSetupPreset("anthropic"), {
-    endpoint: "https://api.anthropic.com",
+    endpoint: "https://api.anthropic.com/v1",
     protocol: "anthropic",
   });
 });

@@ -16,6 +16,16 @@
       "path": "runtime/configuration.py"
     },
     {
+      "digest": "sha256:5f770146d5294ec2edd4c0316f419916b9e62676e8fe8fa117358ddba9fe8ce7",
+      "kind": "executable",
+      "path": "runtime/connection_adapters.py"
+    },
+    {
+      "digest": "sha256:e13479854b255e9baca70f2cfd0d11f91bcf128e07296860c04775d804bb8f0c",
+      "kind": "executable",
+      "path": "runtime/connection_catalog.py"
+    },
+    {
       "digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c",
       "kind": "executable",
       "path": "runtime/health_process.py"

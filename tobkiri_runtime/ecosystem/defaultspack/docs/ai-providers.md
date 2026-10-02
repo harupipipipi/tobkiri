@@ -15,7 +15,7 @@ runtime 内の curated table は互換 fallback であり、新規 provider を�
 | `openai` | OpenAI API（GPT-4o, GPT-4o-mini, o3, o4-mini 等） |
 | `anthropic` | Anthropic API（Claude Opus 4, Sonnet 4, Haiku 3 等） |
 | `google` | Google Gemini API（Gemini 2.5 Pro, Gemini 2.5 Flash 等） |
-| `openrouter` | OpenRouter API（defaultspack bundled catalog allowlist） |
+| `openrouter` | OpenRouter API（公式Models APIの全モデルをJSONに保存） |
 | `gitlawb-opengateway` | Gitlawb OpenGateway（MiMo の固定allowlist。全モデルで API key 必須） |
 | `groq` | Groq OpenAI-compatible API |
 | `cerebras` | Cerebras OpenAI-compatible API |
@@ -57,9 +57,10 @@ GOOGLE_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
 
 ### OpenRouter
 
-defaultspack の OpenRouter 統合は、bundled catalog allowlist に載っているモデルを実行対象にする。
-API キーはデスクトップ UI の Settings から保存できる。値は `user_data/secrets/OPENROUTER_API_KEY.json`
-に暗号化保存され、フロントエンドには保存済みかどうかだけが返る。
+Tobkiri Defaults の Settings では、OpenRouterを選び、APIの名前とAPIキーを保存する。
+base URLは自動設定され、モデルはJSONカタログの一覧から選択できる。
+キーは承認後にCredential Brokerへ保存され、公開ステータスには含まれない。
+モデルを保存する際は、実際に登録したAPI接続へ紐付ける。
 
 ```bash
 OPENROUTER_API_KEY=sk-or-...
@@ -414,3 +415,45 @@ rumi プロバイダーは他のプロバイダーのモデルを組み合わせ
 ```
 
 rumi プロバイダーの定義は全て `user_data/shared/ai_models/rumi/profiles/` に配置される。defaults は rumi プロバイダーの実行エンジンの仕組みだけを提供し、具体的なパイプライン構成は user_data 側で定義する。
+
+## Named API connections and the bundled model catalog
+
+In Tobkiri Defaults, select a hosted provider, enter an API name and API key,
+and save through the existing Launcher approval flow. The endpoint and
+protocol come from the provider JSON. OpenRouter uses
+`https://openrouter.ai/api/v1`; Anthropic Messages uses
+`https://api.anthropic.com/v1`. Unicode API names are preserved for display.
+
+Select a model from the API connection's searchable model list and choose
+“このモデルを使う”. The model ID and settings ID are filled automatically.
+The saved route binds the raw provider model ID to the exact registered
+connection and revision. Multiple keys for the same provider remain separate.
+Custom endpoints and models absent from the catalog have an explicit advanced
+input. Provider readiness continues to distinguish key storage from verified
+reachability.
+
+The canonical discovery snapshot is
+`../rumi_model_catalog_pack/catalog/provider-setup.json` (relative to the
+Defaultspack directory). It includes all models returned by OpenRouter's
+public Models API at refresh time and the supported providers' catalogs from
+models.dev, with public Avian and SambaNova inventories and existing bundled
+entries where needed. The Defaults frontend imports a generated JSON
+projection, so setup and model selection work without a catalog network
+request. API keys and credential handles are never stored in either JSON.
+
+models.dev data is MIT licensed. Its complete copyright and license notice
+is retained at `rumi_model_catalog_pack/catalog/licenses/models.dev-MIT.txt`.
+Each upstream source URL, retrieval date, and source digest is recorded.
+
+Refresh explicitly from the repository root:
+
+```bash
+python -B scripts/sync_provider_model_catalog.py --refresh
+python -B scripts/sync_provider_model_catalog.py --check
+```
+
+A refresh must be followed by the normal catalog digest, Pack artifact and
+frontend bundle regeneration. Builds and startup do not fetch these sources.
+The snapshot supplies discovery choices; it does not attest account access
+or tool capabilities. OpenRouter's live inventory and freshness gates remain
+authoritative for execution and tool support.

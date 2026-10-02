@@ -795,8 +795,8 @@
       },
       {
         "path": "src/features/apiKeys/resources/providerApiKeyResources.ts",
-        "size": 719,
-        "sha256": "daae2cba7051ee03783a29ecf94fbe573cd6ad6ee82a0284e6148e3ced03398d"
+        "size": 752,
+        "sha256": "87e34a3da2ace99e07c5deb35bf709ec7e4243781c807f7fb77ba168cd8f07fc"
       },
       {
         "path": "src/features/chat/resources/authorityApprovalResources.ts",
@@ -1602,6 +1602,16 @@
         "path": "src/lib/profileRoute.ts",
         "size": 3695,
         "sha256": "1f986003b2aeb09c061528b0181237a3164d9cae2ddabf458f638aa4f65abd53"
+      },
+      {
+        "path": "src/lib/providerCatalog.test.ts",
+        "size": 2360,
+        "sha256": "b0783590a3396fab2221ea74e9e62494fb0a1a063626a233d760efcf4727d237"
+      },
+      {
+        "path": "src/lib/providerCatalog.ts",
+        "size": 2187,
+        "sha256": "72ebdf8f8ddffa514dff64327c7cdcb877ddf0baf0419d12eb84d8633b6a5adb"
       },
       {
         "path": "src/lib/providerConfiguration.ts",

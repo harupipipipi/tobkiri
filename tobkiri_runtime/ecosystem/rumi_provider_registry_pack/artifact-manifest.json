@@ -17,6 +17,10 @@
       "sha256": "sha256:0dad88a9dacf779d6de5c3db705fb9c3512c4705f373e260a9bd1f8ee8ce16ed"
     },
     {
+      "path": "runtime/configuration.py",
+      "sha256": "sha256:7d610307f140cbaa4c45f1b3a9dcbd5f3750931d022ce4491a054b3d1be8432d"
+    },
+    {
       "path": "runtime/connection_adapters.py",
       "sha256": "sha256:5f770146d5294ec2edd4c0316f419916b9e62676e8fe8fa117358ddba9fe8ce7"
     },

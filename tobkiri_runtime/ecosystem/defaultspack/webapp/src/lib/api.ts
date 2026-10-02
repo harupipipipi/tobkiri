@@ -12,6 +12,7 @@ import {
   providerSetupPreset,
   type ProviderSetupProtocol,
 } from "./providerPresets";
+import { providerConnectionName } from "./providerCatalog";
 
 const PANEL_CSRF_STORAGE_KEY = "rumi-panel-csrf";
 const DEFAULTSPACK_CSRF_STORAGE_KEY = "rumi-defaultspack-csrf";
@@ -1702,6 +1703,7 @@ export type RegisteredProviderConnection = {
   health_status: "verified" | "unverified";
   reachability: "available" | "unavailable" | "unknown";
   observed_at: number | null;
+  catalog_provider_id?: string;
 };
 
 export type ProviderConnectionSnapshot = {
@@ -2737,6 +2739,7 @@ function isProviderConnectionSnapshot(
     health_status: "verified" | "unverified";
     reachability: "available" | "unavailable" | "unknown";
     observed_at: number | null;
+    catalog_provider_id?: string;
   }>;
 } {
   const record = objectRecord(value);
@@ -2753,7 +2756,12 @@ function isProviderConnectionSnapshot(
     const item = objectRecord(provider);
     return Boolean(
       item
-      && Object.keys(item).length === 7
+      && Object.keys(item).every((key) => [
+        "provider_instance_id", "display_name", "enabled", "credential_status",
+        "health_status", "reachability", "observed_at", "catalog_provider_id",
+      ].includes(key))
+      && (item.catalog_provider_id === undefined
+        || hasNonEmptyString(item, "catalog_provider_id"))
       && hasNonEmptyString(item, "provider_instance_id")
       && hasNonEmptyString(item, "display_name")
       && typeof item.enabled === "boolean"
@@ -4452,6 +4460,7 @@ export const api = {
         health_status: "verified" | "unverified";
         reachability: "available" | "unavailable" | "unknown";
         observed_at: number | null;
+        catalog_provider_id?: string;
       }>;
     }>(defaultspackContractRoute("api/connections/status"), {
       cache: "no-store",
@@ -4467,6 +4476,7 @@ export const api = {
           health_status: provider.health_status,
           reachability: provider.reachability,
           observed_at: provider.observed_at,
+          ...(provider.catalog_provider_id ? { catalog_provider_id: provider.catalog_provider_id } : {}),
         }];
       }),
     };
@@ -5107,7 +5117,7 @@ export const api = {
     if (options?.allowedModels?.length || options?.defaultModel || options?.notes || options?.quotaLabel) {
       throw new Error("モデル・メモ・quotaの同時保存は未対応です。接続設定とは別に設定してください。");
     }
-    const connection = `${providerId}.${options?.apiId || "default"}`;
+    const connection = await providerConnectionName(providerId, options?.apiId || "default");
     const endpoint = options?.baseUrl?.trim() || preset?.endpoint || "";
     const localOpenAICompatible = isLocalOpenAICompatibleProtocol(protocol);
     if (customSetup && !options?.baseUrl?.trim()) {
@@ -5154,6 +5164,8 @@ export const api = {
     );
     await configureProvider({
       connection_name: connection, protocol, endpoint, key_value: value,
+      ...(preset && endpoint === preset.endpoint ? { catalog_provider_id: providerId } : {}),
+      ...(options?.name ? { display_name: options.name } : {}),
     }, {
       storage: window.sessionStorage,
       prepare: (configuration, correlation_id) => post({ phase: "prepare", effect_kind: "provider_configure", request: configuration, correlation_id }),
@@ -5167,9 +5179,10 @@ export const api = {
     });
     return {
       provider_id: providerId, api_id: options?.apiId ?? "default", configured: true,
+      provider_instance_id: `provider.${connection}`,
       model_availability: {
         status: "route_required", provider_id: providerId, api_id: options?.apiId ?? "default", candidate_models: [],
-        reason: "接続を保存しました。モデルルートは別途設定が必要です。",
+        reason: "APIキーを保存しました。この接続のモデル一覧から使いたいモデルを選んでください。",
       } as ModelAvailabilityAfterKeySave,
     };
   },

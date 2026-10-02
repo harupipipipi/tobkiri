@@ -6,6 +6,7 @@ import { userFacingModelProfiles, profileNeedsApiKey } from "../../App";
 import {
   ModelRouteErrorNotices,
   ModelRouteSetup,
+  CatalogModelPicker,
   ProviderReadiness,
   modelRouteConnectionsErrorMessage,
   modelRouteSaveErrorMessage,
@@ -49,11 +50,26 @@ test("saved canonical routes remain selectable without claiming Provider health"
 test("model route setup never offers a free-form provider connection ID", () => {
   const html = renderToStaticMarkup(createElement(ModelRouteSetup));
 
-  assert.match(html, /Provider接続ID（登録済みのみ）/);
+  assert.match(html, /API接続/);
   assert.match(html, /aria-label="Provider connection ID"/);
   assert.match(html, /<select/);
   assert.match(html, /登録済みの接続がありません/);
   assert.doesNotMatch(html, /provider\.deepseek\.main/);
+  assert.doesNotMatch(html, /モデル設定ID/);
+});
+
+test("catalog picker searches the complete list and retains the selected model", () => {
+  const models = Array.from({ length: 80 }, (_, index) => ({
+    model_id: `vendor/model-${index}`, display_name: `Model ${index}`, type: "chat",
+  }));
+  const html = renderToStaticMarkup(createElement(CatalogModelPicker, {
+    models, value: "vendor/model-70", query: "Model 79",
+    onChange: () => {}, onQueryChange: () => {},
+  }));
+  assert.match(html, /モデル一覧（80件）/);
+  assert.match(html, /vendor\/model-79/);
+  assert.match(html, /value="vendor\/model-70" selected/);
+  assert.doesNotMatch(html, /value="vendor\/model-1"/);
 });
 
 test("model route setup errors keep severity icons separate from stable copy actions", () => {

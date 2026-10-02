@@ -21,7 +21,7 @@ if TYPE_CHECKING:
         HostProviderInvocationContextV4,
     )
 
-CATALOG_REVISION = "sha256:23cd323554cef32f891827a9a6ddd9c75b7fd3c898d0b501c7e62b091a5001cd"
+CATALOG_REVISION = "sha256:ed621f501f5851221bd7ed0c5ea972ed9552794d633574d9edb88f8e9e1b2231"
 _ROOT = Path(__file__).resolve().parents[1] / "catalog" / "providers"
 _EXTENSION_ROOT = Path(__file__).resolve().parents[1] / "extensions" / "llm" / "providers"
 _OPENROUTER_PROVIDER_ID = "openrouter"
@@ -186,6 +186,24 @@ def _load_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
             raw = _read_json(model_path)
             item = _model(provider_id, raw, manifest)
             model_items[(provider_id, item["model_id"])] = item
+    # The complete credential-free setup snapshot supplies model choices for
+    # supported hosted providers. Runtime inventory and tool evidence remain
+    # owned by their live discovery paths, including the OpenRouter filter.
+    setup = _read_json(_ROOT.parent / "provider-setup.json")
+    for provider_id, descriptor in setup["providers"].items():
+        provider_items.setdefault(provider_id, {
+            "provider_id": provider_id,
+            "display_name": descriptor["display_name"],
+            "kind": "cloud",
+            "capabilities": [],
+            "execution_provider_instance_id": "provider.compatibility",
+            "available": True,
+            "catalog_revision": CATALOG_REVISION,
+        })
+        for raw in descriptor["models"]:
+            item = _model(provider_id, raw, {})
+            # Existing curated metadata can enrich the imported discovery data.
+            model_items.setdefault((provider_id, item["model_id"]), item)
     providers = list(provider_items.values())
     models = list(model_items.values())
     providers.sort(key=lambda item: item["provider_id"])
@@ -626,6 +644,7 @@ def _catalog_revision() -> str:
     lines = []
     pack_root = _ROOT.parent.parent
     paths = list(_ROOT.glob("*/*.json"))
+    paths.append(_ROOT.parent / "provider-setup.json")
     paths.extend(_EXTENSION_ROOT.glob("**/*.json"))
     for path in sorted(paths):
         content = path.read_bytes().replace(b"\r\n", b"\n")

@@ -257,3 +257,57 @@ def test_configuration_prepare_rejects_invalid_input_without_writes(
     with pytest.raises(ValueError):
         prepare_configuration(registry, {**_request(), **change})
     assert not (tmp_path / "packs").exists()
+
+
+def test_configuration_keeps_unicode_name_and_provider_catalog_identity(
+    tmp_path: Path,
+) -> None:
+    """The approved key remains bound to its exact named provider connection."""
+    registry = ProviderRegistry("defaults", user_data_root=tmp_path)
+    client = _Client(tmp_path)
+    request = {
+        **_request(), "display_name": "仕事用 API",
+        "catalog_provider_id": "openrouter",
+    }
+    plan = prepare_configuration(registry, request)
+    execute_configuration(
+        registry, client, {"request": request, "plan": plan},
+        consumer_pack_id="fixture.consumer",
+    )
+    saved = registry.snapshot()["providers"][0]
+    assert saved["display_name"] == "仕事用 API"
+    assert saved["metadata"] == {"catalog_provider_id": "openrouter"}
+    assert request["key_value"] not in registry.path.read_text()
+
+
+@pytest.mark.parametrize("field,value", [
+    ("catalog_provider_id", "openrouter"), ("display_name", "仕事用 API"),
+])
+def test_configuration_cannot_change_discovery_identity_after_approval(
+    tmp_path: Path, field: str, value: str,
+) -> None:
+    """Catalog or label substitution fails before any credential creation."""
+    registry = ProviderRegistry("defaults", user_data_root=tmp_path)
+    client = _Client(tmp_path)
+    original = {**_request(), "catalog_provider_id": "openai", "display_name": "main"}
+    plan = prepare_configuration(registry, original)
+    with pytest.raises(PermissionError, match="changed after preparation"):
+        execute_configuration(
+            registry, client, {"request": {**original, field: value}, "plan": plan},
+            consumer_pack_id="fixture.consumer",
+        )
+    assert client.calls == []
+
+
+@pytest.mark.parametrize("change", [
+    {"catalog_provider_id": "../other"}, {"display_name": "bad\nlabel"},
+    {"display_name": "fixture-secret-123"}, {"display_name": ""},
+])
+def test_configuration_rejects_invalid_public_setup_metadata(
+    tmp_path: Path, change: dict[str, str],
+) -> None:
+    """Public labels cannot leak a key or introduce unsafe identifiers."""
+    registry = ProviderRegistry("defaults", user_data_root=tmp_path)
+    with pytest.raises(ValueError):
+        prepare_configuration(registry, {**_request(), **change})
+    assert not registry.path.exists()
