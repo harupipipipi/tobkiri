@@ -1,0 +1,1824 @@
+{
+  "schema": "tobkiri.pack-state-scheduler.integration-input.v1",
+  "baseline": "51bbc8180732f7f6f525256d0ab8a0f3dc878899",
+  "source_only": true,
+  "factory_symbol": "HOST_PROVIDER_FACTORY",
+  "host_extension_packs": [
+    "rumi_schedule_store_pack",
+    "rumi_scheduler_runtime_pack",
+    "rumi_job_action_broker_pack",
+    "rumi_company_state_store_pack"
+  ],
+  "catalog_owner_patches": {
+    "kind": "host_extension",
+    "execution_boundary": "host_brokered",
+    "workspace_boundary": "host_brokered",
+    "approval_policy": "capability_gated"
+  },
+  "semantic_operations": {
+    "rumi_schedule_store_pack": [
+      {
+        "contract_id": "tobkiri.action.schedule.v1",
+        "provider_id": "rumi_schedule_store_pack.schedule-store.action",
+        "operation_id": "rumi_schedule_store_pack.schedule-action",
+        "capabilities": [
+          "schedule.manage"
+        ],
+        "effect_class": "privileged",
+        "schemas": {
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "operation": {
+                "enum": [
+                  "create",
+                  "update",
+                  "delete",
+                  "pause",
+                  "resume",
+                  "cancel",
+                  "claim",
+                  "complete",
+                  "fail"
+                ]
+              },
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "schedule_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "expected_revision": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "action_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "payload": {
+                "type": "object",
+                "maxProperties": 64
+              },
+              "next_run_at_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "interval_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_attempts": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "updates": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "action_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                  },
+                  "payload": {
+                    "type": "object",
+                    "maxProperties": 64
+                  },
+                  "next_run_at_ms": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "interval_ms": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "max_attempts": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20
+                  }
+                },
+                "required": []
+              },
+              "lease_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "lease_expires_at_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "error": {
+                "type": "string",
+                "maxLength": 1000
+              }
+            },
+            "required": [
+              "operation",
+              "schedule_id",
+              "expected_revision"
+            ]
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        }
+      },
+      {
+        "contract_id": "tobkiri.resource.schedule.v1",
+        "provider_id": "rumi_schedule_store_pack.schedule-store.resource",
+        "operation_id": "rumi_schedule_store_pack.schedule-resource",
+        "capabilities": [
+          "schedule.read"
+        ],
+        "effect_class": "read",
+        "schemas": {
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "operation": {
+                "enum": [
+                  "list",
+                  "get",
+                  "due"
+                ]
+              },
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "schedule_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "now_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        }
+      }
+    ],
+    "rumi_scheduler_runtime_pack": [
+      {
+        "contract_id": "tobkiri.action.scheduler.v1",
+        "provider_id": "rumi_scheduler_runtime_pack.scheduler.control",
+        "operation_id": "rumi_scheduler_runtime_pack.scheduler-control",
+        "capabilities": [
+          "scheduler.control"
+        ],
+        "effect_class": "privileged",
+        "schemas": {
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "operation": {
+                "enum": [
+                  "tick",
+                  "trigger",
+                  "stop"
+                ]
+              },
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "now_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "schedule_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        }
+      },
+      {
+        "contract_id": "tobkiri.resource.scheduler.v1",
+        "provider_id": "rumi_scheduler_runtime_pack.scheduler.status",
+        "operation_id": "rumi_scheduler_runtime_pack.scheduler-resource",
+        "capabilities": [
+          "scheduler.observe"
+        ],
+        "effect_class": "read",
+        "schemas": {
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "operation": {
+                "const": "status"
+              },
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        }
+      }
+    ],
+    "rumi_job_action_broker_pack": [
+      {
+        "contract_id": "tobkiri.action.job.v1",
+        "provider_id": "rumi_job_action_broker_pack.job-action.broker",
+        "operation_id": "rumi_job_action_broker_pack.job-action-broker",
+        "capabilities": [
+          "job.dispatch"
+        ],
+        "effect_class": "privileged",
+        "schemas": {
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "operation": {
+                "enum": [
+                  "dispatch",
+                  "cancel",
+                  "status"
+                ]
+              },
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "action_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "payload": {
+                "type": "object"
+              },
+              "idempotency_key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "schedule_id": {
+                "type": "string",
+                "maxLength": 256
+              },
+              "lease_id": {
+                "type": "string",
+                "maxLength": 256
+              }
+            },
+            "required": [
+              "operation",
+              "idempotency_key"
+            ]
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        }
+      }
+    ],
+    "rumi_company_state_store_pack": [
+      {
+        "contract_id": "tobkiri.action.company.state.v1",
+        "provider_id": "rumi_company_state_store_pack.company-state.action",
+        "operation_id": "rumi_company_state_store_pack.company-state-action",
+        "capabilities": [
+          "company.state.manage"
+        ],
+        "effect_class": "privileged",
+        "schemas": {
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "operation": {
+                "enum": [
+                  "company.create",
+                  "company.update",
+                  "company.delete",
+                  "agent.upsert",
+                  "agent.delete",
+                  "role.upsert",
+                  "role.delete",
+                  "member.upsert",
+                  "member.delete",
+                  "channel.upsert",
+                  "channel.delete",
+                  "route.upsert",
+                  "route.delete",
+                  "task.upsert",
+                  "task.delete",
+                  "task.transition",
+                  "task.claim",
+                  "lease.renew",
+                  "inbound.append",
+                  "message.append",
+                  "migration.operations.import"
+                ]
+              },
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "company_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "expected_revision": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "expected_entity_revision": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 16384
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 16384
+              },
+              "settings": {
+                "type": "object",
+                "maxProperties": 64
+              },
+              "metadata": {
+                "type": "object",
+                "maxProperties": 64
+              },
+              "conversation_group_id": {
+                "type": "string",
+                "maxLength": 256
+              },
+              "updates": {
+                "type": "object",
+                "maxProperties": 64
+              },
+              "replace_settings": {
+                "type": "boolean"
+              },
+              "role": {
+                "type": "object",
+                "maxProperties": 64
+              },
+              "member": {
+                "type": "object",
+                "maxProperties": 64
+              },
+              "record_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "record": {
+                "type": "object",
+                "maxProperties": 64
+              },
+              "agent_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "task_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "status": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "details": {
+                "type": "object",
+                "maxProperties": 64
+              },
+              "legacy_state": {
+                "type": "object",
+                "maxProperties": 64
+              },
+              "lease_duration_ms": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 3600000
+              },
+              "member_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "idempotency_key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "fencing_token": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "operation",
+              "company_id",
+              "expected_revision"
+            ]
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        }
+      },
+      {
+        "contract_id": "tobkiri.resource.company.v1",
+        "provider_id": "rumi_company_state_store_pack.company-state.resource",
+        "operation_id": "rumi_company_state_store_pack.company-state-resource",
+        "capabilities": [
+          "company.state.read"
+        ],
+        "effect_class": "read",
+        "schemas": {
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "operation": {
+                "enum": [
+                  "list",
+                  "get",
+                  "timeline"
+                ]
+              },
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "company_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              "cursor": {
+                "type": "string",
+                "maxLength": 256
+              },
+              "kind": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "after_sequence": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        }
+      }
+    ],
+    "rumi_model_registry_pack": [
+      {
+        "contract_id": "tobkiri.resource.ai.model.profile.v1",
+        "provider_id": "rumi_model_registry_pack.model-registry.profile",
+        "operation_id": "rumi_model_registry_pack.model-profile-resource",
+        "capabilities": [
+          "ai.model.profile.read"
+        ],
+        "effect_class": "existing_privileged",
+        "schemas": {
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "operation": {
+                "enum": [
+                  "list",
+                  "get",
+                  "resolve",
+                  "policy.resolve"
+                ]
+              },
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "model_profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "identifier": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "model_policy": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "inherit_conversation",
+                      "fixed",
+                      "snapshot"
+                    ]
+                  },
+                  "profile_id": {
+                    "type": "string",
+                    "maxLength": 256
+                  },
+                  "snapshot_profile_id": {
+                    "type": "string",
+                    "maxLength": 256
+                  },
+                  "fallback_profile_id": {
+                    "type": "string",
+                    "maxLength": 256
+                  },
+                  "on_unavailable": {
+                    "enum": [
+                      "fail",
+                      "fallback"
+                    ]
+                  },
+                  "required_capabilities": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                    }
+                  }
+                },
+                "required": []
+              },
+              "thinking_policy": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "inherit_conversation",
+                      "fixed",
+                      "model_default"
+                    ]
+                  },
+                  "level": {
+                    "enum": [
+                      "none",
+                      "minimal",
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh",
+                      "max",
+                      "ultra"
+                    ]
+                  }
+                },
+                "required": []
+              },
+              "context": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "conversation_model_profile_id": {
+                    "type": "string",
+                    "maxLength": 256
+                  },
+                  "conversation_thinking_level": {
+                    "type": "string",
+                    "maxLength": 256
+                  },
+                  "turn_model_profile_id": {
+                    "type": "string",
+                    "maxLength": 256
+                  },
+                  "turn_thinking_level": {
+                    "type": "string",
+                    "maxLength": 256
+                  },
+                  "global_model_profile_id": {
+                    "type": "string",
+                    "maxLength": 256
+                  },
+                  "global_thinking_level": {
+                    "type": "string",
+                    "maxLength": 256
+                  }
+                },
+                "required": []
+              },
+              "snapshot_receipt": {
+                "type": "object",
+                "maxProperties": 64
+              }
+            },
+            "required": [],
+            "anyOf": [
+              {
+                "required": [
+                  "operation"
+                ]
+              },
+              {
+                "required": [
+                  "identifier"
+                ]
+              }
+            ]
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        }
+      }
+    ]
+  },
+  "runtime_artifacts": {
+    "rumi_schedule_store_pack": [
+      {
+        "path": "runtime/store.py",
+        "kind": "executable",
+        "digest": "sha256:c7449cfdc0e292d9036598a3b37f17b1700840ab5ea754dfb457822edb845180"
+      }
+    ],
+    "rumi_scheduler_runtime_pack": [
+      {
+        "path": "runtime/scheduler.py",
+        "kind": "executable",
+        "digest": "sha256:a302c3cb9f6fa884f23cca7b03845d378128ec931d0a6d855d2620246e4ac2d7"
+      }
+    ],
+    "rumi_job_action_broker_pack": [
+      {
+        "path": "runtime/broker.py",
+        "kind": "executable",
+        "digest": "sha256:55a6cc8bcbd72961f4ab097a9e13544a8defd400ffe6d03f72adb4148a2f22db"
+      }
+    ],
+    "rumi_company_state_store_pack": [
+      {
+        "path": "runtime/store.py",
+        "kind": "executable",
+        "digest": "sha256:d78d540d44b5e5e379c054666e444c5710d6a37c50e457a4803d2b326cdaeac6"
+      },
+      {
+        "path": "runtime/team_store.py",
+        "kind": "executable",
+        "digest": "sha256:e53219332e652d5cb6b39b1896ebac04d10aea3be053384b69efddb0290842a0"
+      }
+    ],
+    "rumi_model_registry_pack": [
+      {
+        "path": "runtime/__init__.py",
+        "kind": "executable",
+        "digest": "sha256:70a156cfce2e38caa85cd299302c8161d958fbc60947f80e1e6bfd8bf373029b"
+      },
+      {
+        "path": "runtime/process.py",
+        "kind": "executable",
+        "digest": "sha256:6c52c45dd0aaf9db000f41a33a8d9bf30aa519366f9e5c921fd5c12b3c75bdb5"
+      },
+      {
+        "path": "runtime/registry.py",
+        "kind": "executable",
+        "digest": "sha256:e35a376f5bb191e8524da6e1e261c2d0e288eb14cc00b64639198a398e241d6a"
+      },
+      {
+        "path": "runtime/service.py",
+        "kind": "executable",
+        "digest": "sha256:8276438b203636f1f8d724cd97d4320b55e3a32f1368c7daf4325e25a17c6844"
+      }
+    ]
+  },
+  "fixture_packs_merge_entries": {
+    "rumi_model_registry_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_model_registry_pack.model-registry.profile",
+          "operation_ids": [
+            "rumi_model_registry_pack.model-profile-resource"
+          ],
+          "contract_id": "tobkiri.resource.ai.model.profile.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/process.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "list",
+                    "get",
+                    "resolve",
+                    "policy.resolve"
+                  ]
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "model_profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "identifier": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "model_policy": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "mode": {
+                      "enum": [
+                        "inherit_conversation",
+                        "fixed",
+                        "snapshot"
+                      ]
+                    },
+                    "profile_id": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "snapshot_profile_id": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "fallback_profile_id": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "on_unavailable": {
+                      "enum": [
+                        "fail",
+                        "fallback"
+                      ]
+                    },
+                    "required_capabilities": {
+                      "type": "array",
+                      "maxItems": 32,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                      }
+                    }
+                  },
+                  "required": []
+                },
+                "thinking_policy": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "mode": {
+                      "enum": [
+                        "inherit_conversation",
+                        "fixed",
+                        "model_default"
+                      ]
+                    },
+                    "level": {
+                      "enum": [
+                        "none",
+                        "minimal",
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max",
+                        "ultra"
+                      ]
+                    }
+                  },
+                  "required": []
+                },
+                "context": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "conversation_model_profile_id": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "conversation_thinking_level": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "turn_model_profile_id": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "turn_thinking_level": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "global_model_profile_id": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "global_thinking_level": {
+                      "type": "string",
+                      "maxLength": 256
+                    }
+                  },
+                  "required": []
+                },
+                "snapshot_receipt": {
+                  "type": "object",
+                  "maxProperties": 64
+                }
+              },
+              "required": [],
+              "anyOf": [
+                {
+                  "required": [
+                    "operation"
+                  ]
+                },
+                {
+                  "required": [
+                    "identifier"
+                  ]
+                }
+              ]
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "shared_job_adapter_schemas": {
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "enum": [
+            "describe",
+            "dispatch",
+            "cancel",
+            "status"
+          ]
+        },
+        "profile_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+        },
+        "action_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+        },
+        "payload": {
+          "type": "object"
+        },
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+        },
+        "schedule_id": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "lease_id": {
+          "type": "string",
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "operation"
+      ]
+    },
+    "output": {
+      "type": "object"
+    },
+    "error": {
+      "type": "object"
+    }
+  },
+  "source_dependencies": [
+    "tobkiri_protocol/secondary_model_policy_v1.py"
+  ],
+  "required_contracts": {
+    "rumi_schedule_store_pack": [],
+    "rumi_company_state_store_pack": [],
+    "rumi_scheduler_runtime_pack": [
+      "tobkiri.resource.schedule.v1",
+      "tobkiri.action.schedule.v1",
+      "tobkiri.action.job.v1"
+    ],
+    "rumi_job_action_broker_pack": [
+      "tobkiri.action.job.adapter.v1"
+    ],
+    "rumi_model_registry_pack": [
+      "tobkiri.resource.ai.provider.registry.v1"
+    ]
+  },
+  "notes": [
+    "Root reviews source-authoritative catalog/fixture adoption and recomputes all digests from final integrated source.",
+    "For privileged mutation operation effect_ceiling retains host:execute, plus capability ceiling; resource read ceiling excludes host:execute.",
+    "Existing model profile generate/stream operation records and existing provider-registry dependency declarations must be preserved.",
+    "No generated-only admissions, signature/receipt changes, or GREEN execution claims are included.",
+    "fixture_packs_merge_entries is additive only: the model base operation is new. reviewed_schema_overrides modifies exact existing v3/source fixture operations without adding duplicates. Model shared input admits discriminator-based resource/policy calls or the existing gateway {identifier} wire; preserve generate/stream operations."
+  ],
+  "reviewed_schema_overrides": {
+    "rumi_schedule_store_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_schedule_store_pack.schedule-store.action",
+          "operation_ids": [
+            "rumi_schedule_store_pack.schedule-action"
+          ],
+          "contract_id": "tobkiri.action.schedule.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/store.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "create",
+                    "update",
+                    "delete",
+                    "pause",
+                    "resume",
+                    "cancel",
+                    "claim",
+                    "complete",
+                    "fail"
+                  ]
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "schedule_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "expected_revision": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                "action_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "payload": {
+                  "type": "object",
+                  "maxProperties": 64
+                },
+                "next_run_at_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "interval_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "max_attempts": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 20
+                },
+                "updates": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "maxLength": 120
+                    },
+                    "action_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                    },
+                    "payload": {
+                      "type": "object",
+                      "maxProperties": 64
+                    },
+                    "next_run_at_ms": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "interval_ms": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "max_attempts": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 20
+                    }
+                  },
+                  "required": []
+                },
+                "lease_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "lease_expires_at_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "error": {
+                  "type": "string",
+                  "maxLength": 1000
+                }
+              },
+              "required": [
+                "operation",
+                "schedule_id",
+                "expected_revision"
+              ]
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "function_id": "rumi_schedule_store_pack.schedule-store.resource",
+          "operation_ids": [
+            "rumi_schedule_store_pack.schedule-resource"
+          ],
+          "contract_id": "tobkiri.resource.schedule.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/store.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "list",
+                    "get",
+                    "due"
+                  ]
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "schedule_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "now_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                }
+              },
+              "required": [
+                "operation"
+              ]
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "rumi_scheduler_runtime_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_scheduler_runtime_pack.scheduler.control",
+          "operation_ids": [
+            "rumi_scheduler_runtime_pack.scheduler-control"
+          ],
+          "contract_id": "tobkiri.action.scheduler.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/scheduler.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "tick",
+                    "trigger",
+                    "stop"
+                  ]
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "now_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "schedule_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                }
+              },
+              "required": [
+                "operation"
+              ]
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "function_id": "rumi_scheduler_runtime_pack.scheduler.status",
+          "operation_ids": [
+            "rumi_scheduler_runtime_pack.scheduler-resource"
+          ],
+          "contract_id": "tobkiri.resource.scheduler.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/scheduler.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "const": "status"
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                }
+              },
+              "required": [
+                "operation"
+              ]
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "rumi_job_action_broker_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_job_action_broker_pack.job-action.broker",
+          "operation_ids": [
+            "rumi_job_action_broker_pack.job-action-broker"
+          ],
+          "contract_id": "tobkiri.action.job.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/broker.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "dispatch",
+                    "cancel",
+                    "status"
+                  ]
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "action_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "payload": {
+                  "type": "object"
+                },
+                "idempotency_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "schedule_id": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "lease_id": {
+                  "type": "string",
+                  "maxLength": 256
+                }
+              },
+              "required": [
+                "operation",
+                "idempotency_key"
+              ]
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "rumi_company_state_store_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_company_state_store_pack.company-state.action",
+          "operation_ids": [
+            "rumi_company_state_store_pack.company-state-action"
+          ],
+          "contract_id": "tobkiri.action.company.state.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/store.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "company.create",
+                    "company.update",
+                    "company.delete",
+                    "agent.upsert",
+                    "agent.delete",
+                    "role.upsert",
+                    "role.delete",
+                    "member.upsert",
+                    "member.delete",
+                    "channel.upsert",
+                    "channel.delete",
+                    "route.upsert",
+                    "route.delete",
+                    "task.upsert",
+                    "task.delete",
+                    "task.transition",
+                    "task.claim",
+                    "lease.renew",
+                    "inbound.append",
+                    "message.append",
+                    "migration.operations.import"
+                  ]
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "company_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "expected_revision": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "expected_entity_revision": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 16384
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 16384
+                },
+                "settings": {
+                  "type": "object",
+                  "maxProperties": 64
+                },
+                "metadata": {
+                  "type": "object",
+                  "maxProperties": 64
+                },
+                "conversation_group_id": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "updates": {
+                  "type": "object",
+                  "maxProperties": 64
+                },
+                "replace_settings": {
+                  "type": "boolean"
+                },
+                "role": {
+                  "type": "object",
+                  "maxProperties": 64
+                },
+                "member": {
+                  "type": "object",
+                  "maxProperties": 64
+                },
+                "record_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "record": {
+                  "type": "object",
+                  "maxProperties": 64
+                },
+                "agent_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "task_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "status": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "details": {
+                  "type": "object",
+                  "maxProperties": 64
+                },
+                "legacy_state": {
+                  "type": "object",
+                  "maxProperties": 64
+                },
+                "lease_duration_ms": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 3600000
+                },
+                "member_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "idempotency_key": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "fencing_token": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "operation",
+                "company_id",
+                "expected_revision"
+              ]
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "function_id": "rumi_company_state_store_pack.company-state.resource",
+          "operation_ids": [
+            "rumi_company_state_store_pack.company-state-resource"
+          ],
+          "contract_id": "tobkiri.resource.company.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/store.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "list",
+                    "get",
+                    "timeline"
+                  ]
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "company_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000
+                },
+                "cursor": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "kind": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "after_sequence": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "operation"
+              ]
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "rumi_model_registry_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_model_registry_pack.model-registry.profile",
+          "operation_ids": [
+            "rumi_model_registry_pack.model-profile-resource.generate",
+            "rumi_model_registry_pack.model-profile-resource.stream"
+          ],
+          "contract_id": "tobkiri.resource.ai.model.profile.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/process.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "list",
+                    "get",
+                    "resolve",
+                    "policy.resolve"
+                  ]
+                },
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "model_profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "identifier": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                },
+                "model_policy": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "mode": {
+                      "enum": [
+                        "inherit_conversation",
+                        "fixed",
+                        "snapshot"
+                      ]
+                    },
+                    "profile_id": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "snapshot_profile_id": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "fallback_profile_id": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "on_unavailable": {
+                      "enum": [
+                        "fail",
+                        "fallback"
+                      ]
+                    },
+                    "required_capabilities": {
+                      "type": "array",
+                      "maxItems": 32,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+                      }
+                    }
+                  },
+                  "required": []
+                },
+                "thinking_policy": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "mode": {
+                      "enum": [
+                        "inherit_conversation",
+                        "fixed",
+                        "model_default"
+                      ]
+                    },
+                    "level": {
+                      "enum": [
+                        "none",
+                        "minimal",
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max",
+                        "ultra"
+                      ]
+                    }
+                  },
+                  "required": []
+                },
+                "context": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "conversation_model_profile_id": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "conversation_thinking_level": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "turn_model_profile_id": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "turn_thinking_level": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "global_model_profile_id": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "global_thinking_level": {
+                      "type": "string",
+                      "maxLength": 256
+                    }
+                  },
+                  "required": []
+                },
+                "snapshot_receipt": {
+                  "type": "object",
+                  "maxProperties": 64
+                }
+              },
+              "required": [],
+              "anyOf": [
+                {
+                  "required": [
+                    "operation"
+                  ]
+                },
+                {
+                  "required": [
+                    "identifier"
+                  ]
+                }
+              ]
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

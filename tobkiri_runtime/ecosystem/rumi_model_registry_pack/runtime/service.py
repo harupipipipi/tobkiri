@@ -49,7 +49,8 @@ class ModelRegistryService:
                 ]
                 provider = matches[0] if len(matches) == 1 else None
                 profile["availability"] = {"active": provider is not None}
-                if profile.get("metadata", {}).get("requires_api_key") is True:
+                credential_required = profile.get("metadata", {}).get("requires_credentials")
+                if credential_required is True:
                     profile["availability"]["configured"] = bool(
                         provider and provider.get("credential_handle")
                     )
