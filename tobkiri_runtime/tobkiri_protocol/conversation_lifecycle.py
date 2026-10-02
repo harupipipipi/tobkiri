@@ -45,6 +45,8 @@ def message_task_state(message: Mapping[str, Any]) -> str:
         return "waiting_approval"
     if states & _WAIT_USER or metadata.get("waiting_for_user") is True:
         return "waiting_user"
+    if states & {"error", "failed", "failure"}:
+        return "failed"
     if (
         states & _RUNNING
         or metadata.get("draft") is True

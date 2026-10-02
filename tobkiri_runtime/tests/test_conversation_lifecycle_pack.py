@@ -16,6 +16,8 @@ from ecosystem.rumi_conversation_store_pack.runtime.store import (
 from ecosystem.tobkiri_conversation_lifecycle_pack.runtime.lifecycle import (
     CONVERSATION,
     CONVERSATION_ACTION,
+    SCHEDULE,
+    SCHEDULE_ACTION,
     ConversationLifecycle,
 )
 from tobkiri_protocol.conversation_lifecycle import (
@@ -74,6 +76,7 @@ class PublicClient:
         self.owner = owner
         self.before_update: Any = None
         self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.schedules: list[dict[str, Any]] = []
 
     def invoke(self, contract: str, operation: str, payload: Any) -> Any:
         self.calls.append((contract, dict(payload)))
@@ -83,6 +86,16 @@ class PublicClient:
             if payload["operation"] == "list":
                 return self.owner.snapshot()
             return {"conversation": self.owner.get(payload["conversation_id"])}
+        if contract == SCHEDULE:
+            return {"schedules": self.schedules, "revision": len(self.schedules)}
+        if contract == SCHEDULE_ACTION:
+            schedule = {
+                **dict(payload),
+                "id": payload["schedule_id"],
+                "status": "active",
+            }
+            self.schedules.append(schedule)
+            return {"schedule": schedule, "revision": len(self.schedules)}
         assert contract == CONVERSATION_ACTION
         assert operation == "rumi_conversation_store_pack.conversation-manage"
         assert "approved" not in payload
@@ -367,3 +380,159 @@ def test_stale_completion_write_does_not_mutate_source(
             expected_conversation_revision=current["conversation_revision"],
         )
     assert owner.get("conversation")["lifecycle"]["completed_at_ms"] is None
+
+
+def test_terminal_without_active_turn_parent_is_unknown(
+    owner: ConversationStore,
+) -> None:
+    _append(owner, {"id": "user", "role": "user"})
+    _append(owner, {"id": "assistant", "role": "assistant", "finish_reason": "stop"})
+    assert completion_source(owner.get("conversation"))["state"] == "running"
+
+
+def test_unconfirmed_schedule_does_not_save_mode(owner: ConversationStore) -> None:
+    class Unconfirmed(PublicClient):
+        def invoke(self, contract: str, operation: str, payload: Any) -> Any:
+            if contract == SCHEDULE_ACTION:
+                return {"status": "accepted"}
+            return super().invoke(contract, operation, payload)
+
+    runtime = ConversationLifecycle(Unconfirmed(owner), "fixture")
+    with pytest.raises(LookupError, match="unconfirmed"):
+        runtime.configure("conversation", ARCHIVE_MODE)
+    assert completion_source(owner.get("conversation"))["mode"] == "manual"
+
+
+def test_captured_adapter_describes_exact_action_and_rejects_claims(
+    owner: ConversationStore,
+) -> None:
+    from types import SimpleNamespace
+    from ecosystem.tobkiri_conversation_lifecycle_pack.runtime.host import (
+        ARCHIVE_ACTION_ID,
+        HOST_PROVIDER_FACTORY,
+        JOB_CONTRACT,
+        PACK_ID,
+    )
+
+    function_id = f"{PACK_ID}.archive-job"
+    operation_id = f"{PACK_ID}.archive-job-adapter"
+    context = SimpleNamespace(
+        profile_id="fixture",
+        provider_bindings=(
+            SimpleNamespace(
+                function=SimpleNamespace(
+                    function_id=function_id, implementation_digest="implementation"
+                ),
+                operation=SimpleNamespace(
+                    contract_id=JOB_CONTRACT,
+                    operation_id=operation_id,
+                    contract_version="1.0.0",
+                ),
+                principal_ref=SimpleNamespace(value="principal"),
+                artifact=SimpleNamespace(digest="artifact"),
+            ),
+        ),
+        domain_ids={(JOB_CONTRACT, operation_id, "principal"): "domain"},
+    )
+    checks: list[str] = []
+    invocation = SimpleNamespace(assert_current=lambda: checks.append("current"))
+    invoke = HOST_PROVIDER_FACTORY[function_id].capture(context).contributions[0].invoke
+    assert invoke(
+        operation_id, {"profile_id": "fixture", "operation": "describe"}, invocation
+    ) == {"action_ids": [ARCHIVE_ACTION_ID]}
+    assert checks == ["current"]
+    with pytest.raises(PermissionError):
+        invoke(
+            operation_id, {"profile_id": "other", "operation": "describe"}, invocation
+        )
+    with pytest.raises(ValueError):
+        invoke(
+            operation_id,
+            {"profile_id": "fixture", "operation": "describe", "approved": True},
+            invocation,
+        )
+    context.provider_bindings[0].operation.contract_version = "2.0.0"
+    with pytest.raises(PermissionError):
+        HOST_PROVIDER_FACTORY[function_id].capture(context)
+
+
+def test_captured_manage_client_is_restricted_and_profile_bound(
+    owner: ConversationStore,
+) -> None:
+    from types import SimpleNamespace
+    from ecosystem.tobkiri_conversation_lifecycle_pack.runtime.host import (
+        HOST_PROVIDER_FACTORY,
+        MANAGE_CONTRACT,
+        PACK_ID,
+    )
+
+    function_id = f"{PACK_ID}.manage"
+    operation_id = f"{PACK_ID}.lifecycle-manage"
+    context = SimpleNamespace(
+        profile_id="fixture",
+        provider_bindings=(
+            SimpleNamespace(
+                function=SimpleNamespace(
+                    function_id=function_id, implementation_digest="implementation"
+                ),
+                operation=SimpleNamespace(
+                    contract_id=MANAGE_CONTRACT,
+                    operation_id=operation_id,
+                    contract_version="1.0.0",
+                ),
+                principal_ref=SimpleNamespace(value="principal"),
+                artifact=SimpleNamespace(digest="artifact"),
+            ),
+        ),
+        domain_ids={(MANAGE_CONTRACT, operation_id, "principal"): "domain"},
+    )
+    claims: list[dict[str, Any]] = []
+
+    def client(**kwargs: Any) -> PublicClient:
+        claims.append(kwargs)
+        return PublicClient(owner)
+
+    invocation = SimpleNamespace(assert_current=lambda: None, contract_client=client)
+    invoke = HOST_PROVIDER_FACTORY[function_id].capture(context).contributions[0].invoke
+    result = invoke(
+        operation_id,
+        {
+            "profile_id": "fixture",
+            "operation": "configure",
+            "conversation_id": "conversation",
+            "mode": ARCHIVE_MODE,
+        },
+        invocation,
+    )
+    assert result["status"] == "configured"
+    assert claims == [
+        {
+            "allowed_contract_ids": frozenset(
+                {CONVERSATION, CONVERSATION_ACTION, SCHEDULE, SCHEDULE_ACTION}
+            ),
+            "consumer_pack_id": PACK_ID,
+            "include_credentials": False,
+        }
+    ]
+
+
+def test_internal_gap_insertion_never_rewrites_user_text(
+    owner: ConversationStore,
+) -> None:
+    import sys
+
+    sys.path.insert(
+        0, str(Path(__file__).resolve().parents[1] / "ecosystem/defaultspack")
+    )
+    from domain.temporal_context import add_task_gap_context_message
+
+    _complete(owner)
+    gap = task_gap_context(owner.get("conversation"), BASE_MS + 3_600_000)
+    messages = [
+        {"role": "system", "content": "instructions"},
+        {"role": "user", "content": "どう？"},
+    ]
+    add_task_gap_context_message(messages, gap)
+    assert messages[1]["role"] == "system"
+    assert "elapsed_seconds: 3600" in messages[1]["content"]
+    assert messages[2] == {"role": "user", "content": "どう？"}

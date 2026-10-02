@@ -818,13 +818,16 @@ def _record_lifecycle(
             if ancestor.get("role") == "user":
                 break
         active_user = source.get("active_user_message_id")
-        if active_user and message.get("parent_id") is not None and (
+        if active_user and (
             ancestor.get("role") != "user" or ancestor.get("id") != active_user
         ):
             # A delayed final response for an older user turn cannot end a new one.
             return
         state = message_task_state(message)
-        if state == "completed" and source.get("completion_message_id") != message["id"]:
+        if state == "completed" and (
+            source.get("completion_message_id") != message["id"]
+            or source.get("state") != "completed"
+        ):
             source["completed_at_ms"] = now_ms
             source["completion_message_id"] = message["id"]
         source["state"] = state
