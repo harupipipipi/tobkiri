@@ -1,57 +1,7 @@
-from blocks._common import ok, error
-from domain.company.mimo_sync import sync_mimo_company_workspace
-from domain.company.runtime_store import CompanyRuntimeStore
-from domain.company.store import CompanyStore
+from blocks._common import error, ok
+from domain.company.contract_facade import CompanyContractFacade, CompanyFacadeError
 
-from ._helpers import company_id_from, invalid, missing_company, require_dict, subagent_team_write_denied
-
-
-MIMO_CODING_COMPANY_ID = "mimo-coding-company"
-MIMO_OPS_CHANNEL_ID = "ops-company"
-
-
-def _runtime_message_total(company_id, channel_id, runtime_store):
-    try:
-        _latest_messages, total = runtime_store.list_messages(
-            company_id,
-            channel_id=channel_id,
-            limit=1,
-            offset=0,
-            order="desc",
-        )
-        return int(total)
-    except Exception:
-        return 0
-
-
-def _sync_for_runtime_counts(company_id, runtime_store, channel_id=None):
-    sync_mimo_company_workspace(company_id, sync_observability=False)
-    if str(company_id or "").strip() != MIMO_CODING_COMPANY_ID:
-        return
-    probe_channel_id = str(channel_id or MIMO_OPS_CHANNEL_ID)
-    if _runtime_message_total(company_id, probe_channel_id, runtime_store) > 0:
-        return
-    sync_mimo_company_workspace(company_id, force=True, sync_observability=True)
-
-
-def _with_runtime_counts(company_id, channel, runtime_store):
-    enriched = dict(channel)
-    channel_id = str(enriched.get("id") or enriched.get("channel_id") or "ops-company")
-    latest_messages, total = runtime_store.list_messages(company_id, channel_id=channel_id, limit=1, offset=0, order="desc")
-    enriched["message_count"] = max(int(enriched.get("message_count", 0) or 0), int(total))
-    if latest_messages:
-        enriched["last_message_at"] = latest_messages[0].get("created_at") or enriched.get("last_message_at")
-    return enriched
-
-
-def _runtime_channel(channel_id):
-    return {
-        "id": str(channel_id),
-        "name": str(channel_id),
-        "description": "Runtime channel",
-        "visibility": "team",
-        "members": [],
-    }
+from ._helpers import company_id_from, invalid, missing_company, require_dict
 
 
 def run(input_data, context):
@@ -61,59 +11,35 @@ def run(input_data, context):
     if not company_id:
         return invalid("company_id is required")
     action = str(input_data.get("action") or "list").lower()
-    store = CompanyStore()
-    runtime_store = CompanyRuntimeStore()
+    if action in {"get", "delete", "remove"}:
+        if not input_data.get("channel_id") and not input_data.get("id"):
+            return invalid("channel_id is required")
+        if not input_data.get("channel_id"):
+            input_data = {**input_data, "channel_id": input_data["id"]}
     try:
+        facade = CompanyContractFacade(input_data, context)
         if action == "list":
-            _sync_for_runtime_counts(company_id, runtime_store)
-            channels = store.list_channels(company_id)
+            channels = facade.run("list_channels")
             if channels is None:
                 return missing_company(company_id)
-            channels = [_with_runtime_counts(company_id, channel, runtime_store) for channel in channels]
-            seen = {str(channel.get("id") or channel.get("channel_id") or "") for channel in channels}
-            for channel_id in runtime_store.list_channel_ids(company_id):
-                if channel_id not in seen:
-                    channels.append(_with_runtime_counts(company_id, _runtime_channel(channel_id), runtime_store))
-                    seen.add(channel_id)
             return ok({"channels": channels, "total": len(channels)})
         if action == "get":
-            channel_id = input_data.get("channel_id") or input_data.get("id")
-            if not channel_id:
-                return invalid("channel_id is required")
-            _sync_for_runtime_counts(company_id, runtime_store, channel_id=channel_id)
-            if store.get_company(company_id) is None:
-                return missing_company(company_id)
-            channel = store.get_channel(company_id, str(channel_id))
+            channel = facade.run("get_channel")
             if channel is None:
-                runtime_ids = set(runtime_store.list_channel_ids(company_id))
-                if str(channel_id) not in runtime_ids:
-                    return error("channel not found: " + str(channel_id), "NOT_FOUND")
-                channel = _runtime_channel(channel_id)
-            return ok(_with_runtime_counts(company_id, channel, runtime_store))
+                return error("channel not found", "NOT_FOUND")
+            return ok(channel)
         if action in {"upsert", "create", "update"}:
-            blocked = subagent_team_write_denied(company_id)
-            if blocked is not None:
-                return blocked
-            channel = input_data.get("channel")
-            if channel is None:
-                channel = {key: value for key, value in input_data.items() if key not in {"company_id", "action"}}
-            if not isinstance(channel, dict):
-                return invalid("channel must be a dict")
-            updated = store.upsert_channel(company_id, channel)
+            updated = facade.run("upsert_channel")
             if updated is None:
                 return missing_company(company_id)
             return ok(updated)
         if action in {"delete", "remove"}:
-            blocked = subagent_team_write_denied(company_id)
-            if blocked is not None:
-                return blocked
-            channel_id = input_data.get("channel_id") or input_data.get("id")
-            if not channel_id:
-                return invalid("channel_id is required")
-            deleted = store.delete_channel(company_id, str(channel_id))
+            deleted = facade.run("delete_channel")
             if not deleted:
-                return error("channel not found: " + str(channel_id), "NOT_FOUND")
-            return ok({"deleted": True, "channel_id": str(channel_id)})
+                return error("channel not found", "NOT_FOUND")
+            return ok({"deleted": True, "channel_id": input_data["channel_id"]})
         return invalid("unsupported channels action: " + action)
+    except CompanyFacadeError as exc:
+        return error(str(exc), exc.code)
     except Exception as exc:
         return error("company channels failed: " + str(exc), "COMPANY_CHANNELS_ERROR")

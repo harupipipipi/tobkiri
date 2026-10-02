@@ -1,0 +1,43 @@
+{
+  "schema_version": "tobkiri.activity/v1",
+  "kind": "activity",
+  "id": "coding.repository-context",
+  "version": "1.0.0",
+  "enabled": true,
+  "display_name": {
+    "en": "Repository context preparation",
+    "ja": "リポジトリ文脈の事前選別"
+  },
+  "description": {
+    "en": "Use a low-cost Subagent to select and summarize relevant files before investigation.",
+    "ja": "原因調査前に安価なSubagentで関連ファイルを選別・要約します。"
+  },
+  "aliases": [
+    "repository context",
+    "file relevance scout",
+    "cheap model context preparation"
+  ],
+  "members": {
+    "tool_ids": ["repository_context_prepare"],
+    "skills": {
+      "required": ["tobkiri.repository-context-preparation"],
+      "optional": [],
+      "safety": []
+    }
+  },
+  "selection": {
+    "explicit_intent_required": false,
+    "schema_policy": "progressive",
+    "max_candidate_tools": 8,
+    "max_attached_tools": 4
+  },
+  "permissions": {
+    "default_action_class": "read",
+    "minimum": "auto"
+  },
+  "ui": {
+    "mentionable": true,
+    "pinnable": true,
+    "default_pinned": false
+  }
+}

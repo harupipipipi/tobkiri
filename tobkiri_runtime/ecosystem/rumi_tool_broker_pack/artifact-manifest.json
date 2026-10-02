@@ -1,0 +1,10 @@
+{
+  "artifacts": [
+    {
+      "path": "runtime/broker.py",
+      "role": "runtime",
+      "sha256": "sha256:b2427cb917f0e036a58281e2b2d83761c6ee547af4062b9c93882d734a9f963b"
+    }
+  ],
+  "schema_version": "rumi.artifact-manifest.v1"
+}

@@ -1,0 +1,311 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "pack_id": "tobkiri_cloud_workspace_pack",
+  "source_identity": "sha256:a76668949060e273f85baa07d5e4228d51a24b0acc35891db1fb860bbb37afa6",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.resource.cloud.workspace.v1",
+      "version": "1.0.0",
+      "owner": "tobkiri_cloud_workspace_pack",
+      "status": "accepted",
+      "operations": [
+        {
+          "operation_id": "tobkiri_cloud_workspace_pack.workspace-resource",
+          "input_schema_digest": "sha256:67ac4ab1b321da602e2834b877b80df3636c9650e1e5dda115719fb532fb0590",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "effect_ceiling": [
+            "capability:cloud.workspace.resource"
+          ],
+          "scope_semantics": "host_broker",
+          "idempotency": {
+            "mode": "none"
+          }
+        }
+      ],
+      "schema_catalog": {
+        "sha256:67ac4ab1b321da602e2834b877b80df3636c9650e1e5dda115719fb532fb0590": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "profile_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+            },
+            "operation": {
+              "enum": [
+                "get_for_conversation",
+                "export",
+                "verify"
+              ]
+            },
+            "conversation_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+            },
+            "workspace_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+            },
+            "expected_revision": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "profile_id",
+            "operation"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "operation": {
+                  "const": "get_for_conversation"
+                }
+              },
+              "required": [
+                "conversation_id"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "export"
+                }
+              },
+              "required": [
+                "expected_revision",
+                "workspace_id"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "verify"
+                }
+              },
+              "required": [
+                "expected_revision",
+                "workspace_id"
+              ]
+            }
+          ]
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "provider_semantics": {
+        "provider_id": "tobkiri_cloud_workspace_pack.resource",
+        "cardinality": "one",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "required_capabilities": [
+          "cloud.workspace.resource"
+        ],
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "data_owner": "tobkiri_cloud_workspace_pack"
+        }
+      },
+      "provenance": {
+        "source_kind": "repository",
+        "source_path": "ecosystem/tobkiri_cloud_workspace_pack/pack-source.v1.json",
+        "source_digest": "sha256:a76668949060e273f85baa07d5e4228d51a24b0acc35891db1fb860bbb37afa6",
+        "repository_commit": "f8e29844f012b74c1ef0e303e856015188739e36",
+        "repository_tree": "414377e61aedb69b64a993e93bb5e053bbb4272a007c6ca0c33490b1ddf9f5a1",
+        "generator": "tobkiri-protocol",
+        "generator_version": "1.0.0",
+        "normative": false,
+        "evidence": [],
+        "schema": "io.tobkiri.provenance.v1"
+      },
+      "revision_digest": "sha256:029fe3600b2bd9c1d9596d7fe7e5815b0beda89add2ea013a30da731ca5a6f5e"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.cloud.workspace.v1",
+      "version": "1.0.0",
+      "owner": "tobkiri_cloud_workspace_pack",
+      "status": "accepted",
+      "operations": [
+        {
+          "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage",
+          "input_schema_digest": "sha256:b2f36da2acb4d702eb8124f8329a3a29e97dca1af3e33f1db9a4722afdab603a",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "effect_ceiling": [
+            "capability:cloud.workspace.manage",
+            "host:brokered-execution"
+          ],
+          "scope_semantics": "host_broker",
+          "idempotency": {
+            "mode": "none"
+          }
+        }
+      ],
+      "schema_catalog": {
+        "sha256:b2f36da2acb4d702eb8124f8329a3a29e97dca1af3e33f1db9a4722afdab603a": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "profile_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+            },
+            "operation": {
+              "enum": [
+                "initialize",
+                "capture",
+                "import",
+                "restore",
+                "prepare_handoff"
+              ]
+            },
+            "conversation_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+            },
+            "expected_revision": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "expected_writer_epoch": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "paths": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32768
+            },
+            "archive_base64": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 13981016
+            },
+            "expected_receiver_head": {
+              "type": "string",
+              "maxLength": 71,
+              "pattern": "^(?:sha256:[0-9a-f]{64})?$"
+            }
+          },
+          "required": [
+            "profile_id",
+            "operation"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "operation": {
+                  "const": "initialize"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "expected_revision",
+                "expected_writer_epoch"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "capture"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "expected_revision",
+                "expected_writer_epoch",
+                "paths"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "import"
+                }
+              },
+              "required": [
+                "archive_base64",
+                "conversation_id",
+                "expected_revision",
+                "expected_writer_epoch"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "restore"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "expected_revision",
+                "expected_writer_epoch"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "prepare_handoff"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "expected_receiver_head",
+                "expected_revision",
+                "expected_writer_epoch"
+              ]
+            }
+          ]
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "provider_semantics": {
+        "provider_id": "tobkiri_cloud_workspace_pack.manage",
+        "cardinality": "one",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "required_capabilities": [
+          "cloud.workspace.manage"
+        ],
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "data_owner": "tobkiri_cloud_workspace_pack"
+        }
+      },
+      "provenance": {
+        "source_kind": "repository",
+        "source_path": "ecosystem/tobkiri_cloud_workspace_pack/pack-source.v1.json",
+        "source_digest": "sha256:a76668949060e273f85baa07d5e4228d51a24b0acc35891db1fb860bbb37afa6",
+        "repository_commit": "f8e29844f012b74c1ef0e303e856015188739e36",
+        "repository_tree": "414377e61aedb69b64a993e93bb5e053bbb4272a007c6ca0c33490b1ddf9f5a1",
+        "generator": "tobkiri-protocol",
+        "generator_version": "1.0.0",
+        "normative": false,
+        "evidence": [],
+        "schema": "io.tobkiri.provenance.v1"
+      },
+      "revision_digest": "sha256:c00e5fbec12d341f2b92e3812cb260fea92ddfea3c860fd330b949d5460fe521"
+    }
+  ]
+}

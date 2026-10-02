@@ -1,0 +1,110 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:9c93060d3c1799ac398bc9b4c9df4134211c2d3c214f47a7d9efa6f533b3f521",
+  "pack_id": "rumi_agent_runtime_service_pack",
+  "source_identity": "sha256:b6c513a9c5bd44722a3695dbfb111572bd8bf8cd18fee6ea77e440abde1bea45",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_agent_runtime_service_pack.agent-runtime.control",
+      "implementation_digest": "sha256:979341d7a8acf1e89a35b6f365c41fde52efef241672c606da84facc1a40bc45",
+      "implementation_path": "runtime/runtime.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.agent.run.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_agent_runtime_service_pack.agent-runtime-control",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:59d361e84a3eaf53a8ac92ed8c38fff4e3fa5d5fd1d8519e3c1bc3e3133c3307",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_agent_runtime_service_pack.agent-runtime.control.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_agent_runtime_service_pack.agent-runtime.status",
+      "implementation_digest": "sha256:979341d7a8acf1e89a35b6f365c41fde52efef241672c606da84facc1a40bc45",
+      "implementation_path": "runtime/runtime.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.agent.runtime.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_agent_runtime_service_pack.agent-runtime-resource",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:acf89f9d5731e2b87bd358058717c0ecd7f19e292673ff99dd93e166aa592ea5",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_agent_runtime_service_pack.agent-runtime.status.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_agent_runtime_service_pack.job-adapter.agent-turn",
+      "implementation_digest": "sha256:979341d7a8acf1e89a35b6f365c41fde52efef241672c606da84facc1a40bc45",
+      "implementation_path": "runtime/runtime.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.job.adapter.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_agent_runtime_service_pack.agent-turn-job-adapter",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:d318cdaf4adb0ae87b1b50e3c19cc91069cd4bcd2c13eda3e903478f75b8448a",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_agent_runtime_service_pack.job-adapter.agent-turn.python"
+    }
+  ]
+}

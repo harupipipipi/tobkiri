@@ -1,0 +1,15 @@
+{
+  "artifacts": [
+    {
+      "path": "runtime/__init__.py",
+      "role": "runtime",
+      "sha256": "sha256:bf06a7bdec60f689279ff379d9b0c7f47898d8bb559eca1eb6e205dd35f4f273"
+    },
+    {
+      "path": "runtime/catalog.py",
+      "role": "runtime",
+      "sha256": "sha256:cf3cf9b016c326188cfa58c759799079f7a970715cac6054b406930dbd1ea645"
+    }
+  ],
+  "schema_version": "rumi.artifact-manifest.v1"
+}

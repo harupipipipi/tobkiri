@@ -1,0 +1,242 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.resource.knowledge.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_knowledge_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "knowledge-v1",
+          "rollback_id": "knowledge-v1"
+        },
+        "provider_instance_id": "knowledge-store.resource",
+        "required_capabilities": [
+          "knowledge.read"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.knowledge.manage.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_knowledge_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "knowledge-v1",
+          "rollback_id": "knowledge-v1"
+        },
+        "provider_instance_id": "knowledge-store.manage",
+        "required_capabilities": [
+          "knowledge.manage"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.knowledge.migrate.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_knowledge_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "knowledge-v1",
+          "rollback_id": "knowledge-v1"
+        },
+        "provider_instance_id": "knowledge-store.migrate",
+        "required_capabilities": [
+          "knowledge.migrate"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:1adc7542788dbf49e2ec9a6fdbf4b219913ef53e70c24d4c8a325d2ae929f41e",
+      "contract_id": "rumi.resource.knowledge.v1",
+      "id": "knowledge-resource",
+      "loader": "python",
+      "module": "ecosystem.rumi_knowledge_store_pack.runtime.store",
+      "symbol": "create_knowledge_resource"
+    },
+    {
+      "artifact_hash": "sha256:1adc7542788dbf49e2ec9a6fdbf4b219913ef53e70c24d4c8a325d2ae929f41e",
+      "contract_id": "rumi.action.knowledge.manage.v1",
+      "id": "knowledge-manage",
+      "loader": "python",
+      "module": "ecosystem.rumi_knowledge_store_pack.runtime.store",
+      "symbol": "create_knowledge_action"
+    },
+    {
+      "artifact_hash": "sha256:1adc7542788dbf49e2ec9a6fdbf4b219913ef53e70c24d4c8a325d2ae929f41e",
+      "contract_id": "rumi.action.knowledge.migrate.v1",
+      "id": "knowledge-migrate",
+      "loader": "python",
+      "module": "ecosystem.rumi_knowledge_store_pack.runtime.store",
+      "symbol": "create_migration_action"
+    }
+  ],
+  "extensions": {
+    "rumi.knowledge_store.boundary": {
+      "embedding_authoritative": false,
+      "first_found_fallback": false,
+      "network_required": false,
+      "single_write": true
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.knowledge.manage.v1",
+            "rumi.action.knowledge.migrate.v1",
+            "rumi.resource.knowledge.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Single-write authoritative source knowledge storage.",
+        "display_name": "Rumi Knowledge Store",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:7ef869be74baf850bb0c244bad81a9abc6d00012e1110644bb70cf827dde43e5",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:e6336b9d1c81b4be1e4cd4673d61c0a5c2936ad22fb1b1d226f8c551c72ab342"
+          },
+          "owner_surfaces": [
+            "knowledge"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "dual_write": false,
+            "embedding_authoritative": false,
+            "local_first": true
+          }
+        },
+        "pack_id": "rumi_knowledge_store_pack",
+        "pack_identity": "rumi:ecosystem/rumi_knowledge_store_pack",
+        "provenance": {
+          "build_identity": "rumi_knowledge_store_pack:1.0.0",
+          "content_hash": "sha256:1adc7542788dbf49e2ec9a6fdbf4b219913ef53e70c24d4c8a325d2ae929f41e",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "knowledge.manage",
+          "knowledge.migrate",
+          "knowledge.read"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_knowledge_store_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_knowledge_store_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:e6336b9d1c81b4be1e4cd4673d61c0a5c2936ad22fb1b1d226f8c551c72ab342"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.knowledge.store"
+    ],
+    "removal_wave": 10,
+    "rollback": "Restore the marker-bound owner backup; retain legacy source read-only.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Single-write authoritative source knowledge storage.",
+    "display_name": "Rumi Knowledge Store",
+    "id": "rumi.knowledge_store",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "knowledge.read"
+    },
+    {
+      "access": "write",
+      "approval_required": false,
+      "capability": "knowledge.manage"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "knowledge.migrate"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_knowledge_store_pack:1.0.0",
+    "content_hash": "sha256:1adc7542788dbf49e2ec9a6fdbf4b219913ef53e70c24d4c8a325d2ae929f41e",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": [
+    {
+      "authoritative": true,
+      "export_import": true,
+      "namespace": "rumi.knowledge",
+      "retention": "until explicit deletion or profile removal",
+      "schema_version": "1.0.0"
+    }
+  ]
+}

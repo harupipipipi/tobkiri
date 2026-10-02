@@ -1,0 +1,105 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:cbe8ed78eff73cc4d9991ddffb7be4fe4577eb8b7078bab5ccfb1e3b6ae0f38e",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:5358ac8f5df69481a33dd81a3b739d8cb17c68b15987ca00d4796a5d3bdb929b",
+      "kind": "sidecar",
+      "path": "frontend/contributions/scheduler.json"
+    },
+    {
+      "digest": "sha256:3b76e73bdfc0dd7670a05f4c65374dec68836cf0e4ba11352b177913946feb7d",
+      "kind": "sidecar",
+      "path": "ui/app.js"
+    },
+    {
+      "digest": "sha256:769e1cc433b606f914ef7120e9be8605b7fbd92d4f390d912e37e84be03565a8",
+      "kind": "sidecar",
+      "path": "ui/index.html"
+    },
+    {
+      "digest": "sha256:276fae893cbaa617e4593545b26bef24b3a4eaacc275a34538f2651c147ab632",
+      "kind": "sidecar",
+      "path": "ui/style.css"
+    }
+  ],
+  "contracts": [],
+  "functions": [],
+  "integrity": {
+    "artifact_set_digest": "sha256:9c75a2db9e50f2a361b5d31309282818f2851ca62eec0d2b0f01f89833b6ebb1",
+    "contract_catalog_digest": "sha256:7b4f374bd165f746f46dd800aef5d3ad9f951d8c0c53b29e9edd31b950091d67",
+    "source_identity": "sha256:f28bcebf1d726b270f44763bd19e0410a30d49b01f91fcdee505d7a2bad9e05a"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi:ecosystem/rumi_scheduler_surface_pack",
+      "rumi_scheduler_surface_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [],
+  "pack": {
+    "artifact_digest": "sha256:9c75a2db9e50f2a361b5d31309282818f2851ca62eec0d2b0f01f89833b6ebb1",
+    "display_name": "Rumi Scheduler Surface",
+    "id": "rumi_scheduler_surface_pack",
+    "kind": "application",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:f28bcebf1d726b270f44763bd19e0410a30d49b01f91fcdee505d7a2bad9e05a",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:f28bcebf1d726b270f44763bd19e0410a30d49b01f91fcdee505d7a2bad9e05a",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_scheduler_surface_pack"
+  },
+  "provider_catalog": [],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "schedule.read",
+      "scheduler.observe"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.schedule.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.scheduler.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_schedule_store_pack": ">=1.0.0,<2.0.0",
+      "rumi_scheduler_runtime_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

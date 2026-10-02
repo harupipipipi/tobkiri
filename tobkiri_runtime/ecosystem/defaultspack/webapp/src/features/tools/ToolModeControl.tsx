@@ -17,7 +17,7 @@ const MODE_OPTIONS: Array<{
   description: string;
   icon: typeof Sparkles;
 }> = [
-  { mode: "auto", label: "機能 自動", shortLabel: "自動", title: "自動で選ぶ", description: "依頼に必要な機能だけをRumiが選びます", icon: Sparkles },
+  { mode: "auto", label: "機能 自動", shortLabel: "自動", title: "自動で選ぶ", description: "依頼に必要な機能だけをTobkiriが選びます", icon: Sparkles },
   { mode: "review", label: "機能 確認", shortLabel: "確認", title: "使う前に確認", description: "候補を確認してから回答を開始します", icon: ShieldCheck },
   { mode: "manual", label: "機能 手動", shortLabel: "手動", title: "自分で選ぶ", description: "選んだ機能だけを候補にします", icon: SlidersHorizontal },
   { mode: "none", label: "機能 なし", shortLabel: "なし", title: "機能を使わない", description: "このメッセージでは外部機能を使いません", icon: Ban },
@@ -31,6 +31,7 @@ export function ToolModeControl({
   tabIndex,
   onModeChange,
   onOpenPicker,
+  availableModes,
 }: {
   mode: ToolSelectionMode;
   manualCount?: number;
@@ -39,6 +40,7 @@ export function ToolModeControl({
   tabIndex?: number;
   onModeChange: (mode: ToolSelectionMode) => void;
   onOpenPicker?: () => void;
+  availableModes?: readonly ToolSelectionMode[];
 }) {
   const [open, setOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null);
@@ -125,7 +127,7 @@ export function ToolModeControl({
         style={menuStyle ?? undefined}
         className="fixed rumi-layer-command-palette overflow-y-auto rounded-[1.35rem] border border-zinc-700/70 bg-[#2b2b2b] p-2 shadow-2xl shadow-black/40 max-[760px]:rounded-[1.6rem]"
       >
-        {MODE_OPTIONS.map((option) => {
+        {MODE_OPTIONS.filter((option) => !availableModes || availableModes.includes(option.mode)).map((option) => {
           const OptionIcon = option.icon;
           const selected = option.mode === mode;
           return (

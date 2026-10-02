@@ -34,6 +34,8 @@ test('viewer package, Tauri, and Cargo versions stay aligned', () => {
   assert.equal(RUMI_VIEWER_VERSION, packageMetadata.version);
   assert.equal(packageLock.version, packageMetadata.version);
   assert.equal(packageLock.packages[''].version, packageMetadata.version);
+  assert.equal(packageMetadata.engines.node, '>=22.22.0');
+  assert.equal(packageLock.packages[''].engines.node, packageMetadata.engines.node);
   assert.equal(tauriConfig.version, packageMetadata.version);
   assert.equal(cargoVersion, packageMetadata.version);
   assert.equal(cargoLockVersion, packageMetadata.version);
