@@ -12,7 +12,7 @@ from ecosystem.defaultspack.runtime import saved_conversation as saved
 from ecosystem.rumi_conversation_store_pack.runtime.store import ConversationStore
 from tobkiri_host.continuation_chain import ChainIdentity
 from tobkiri_host.continuation_envelope import seal_continuation_intent
-from tobkiri_protocol.canonical import canonical_json, strict_loads
+from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
 from tobkiri_protocol.saved_context import PROMPT_TARGET
 from ecosystem.rumi_prompt_studio_pack.runtime.store import PromptStudioStore
 
@@ -793,7 +793,14 @@ def test_normal_defaults_saved_coordinator_dispatches_owner_stages_once(
             assert repeated["status"] == "completed", repeated
             assert repeated["turn"]["result_reference"]["conversation_revision"] == 3
         else:
-            assert repeated == {"status": "existing", "turn": result["turn"]}
+            assert repeated["status"] == "existing"
+            assert repeated["turn"] == result["turn"]
+        assert repeated["input_context_receipt"] == {
+            "source_input_digest": canonical_digest({"request": initial["request"]}),
+            "accepted_input_digest": canonical_digest({"request": initial["request"]}),
+            "task_context_digest": canonical_digest(None),
+            "delivery_status": "not_applicable",
+        }
         assert len(guest_requests) == len(ai_calls) == 1
         assert [item["content"] for item in store.get("conversation-1")["messages"]] == [
             "Hello",
