@@ -134,7 +134,7 @@ import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/de
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
 import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
-import { shortcutLabel, shortcutSpecMatchesEvent, workspaceTabShortcutAction } from "./lib/keyboardShortcuts";
+import { shortcutLabel, shortcutSpecMatchesEvent, workspaceTabShortcutDisposition } from "./lib/keyboardShortcuts";
 import { normalizePinnedPlacements, withPinnedPlacements } from "./lib/placement";
 import { reportClientDiagnostic } from "./lib/clientDiagnostics";
 import {
@@ -5765,26 +5765,21 @@ export function ChatApp() {
     const handleWorkspaceTabShortcut = (event: KeyboardEvent) => {
       // Global capture runs before a dialog can prevent its own key event.
       // Never change the workspace behind a settings, search, or share modal.
-      const action = workspaceTabShortcutAction(event);
-      if (!action) return;
-      const visibleDialog = Array.from(document.querySelectorAll('[role="dialog"]'))
+      const { action, consume } = workspaceTabShortcutDisposition(event);
+      if (!consume) return;
+      // Even a vetoed close/restore stays inside this Application.
+      event.preventDefault();
+      event.stopPropagation();
+      const visibleDialog = Array.from(document.querySelectorAll('[role="dialog"],[role="alertdialog"]'))
         .some((dialog) => dialog.getClientRects().length > 0);
-      if (!workspaceTabsEnabled || isSettingsOpen || isSpotlightOpen || shareDialogOpen || visibleDialog) {
-        event.preventDefault();
-        return;
-      }
-      let handled = false;
+      if (!action || !workspaceTabsEnabled || isSettingsOpen || isSpotlightOpen || shareDialogOpen || visibleDialog) return;
       if (action === "create_chat") {
-        handled = handleWorkspaceTabCreate("chat");
+        handleWorkspaceTabCreate("chat");
       } else if (action === "close_active") {
-        // Consuming the last-tab close keeps the host window open by design.
-        handled = workspaceTabs.length <= 1 || handleWorkspaceTabClose(activeWorkspaceTabId);
+        handleWorkspaceTabClose(activeWorkspaceTabId);
       } else {
-        // An empty app restore must not fall through to browser-level tab restore.
         handleWorkspaceTabRestore();
-        handled = true;
       }
-      if (handled) event.preventDefault();
     };
     window.addEventListener("keydown", handleWorkspaceTabShortcut, { capture: true });
     return () => window.removeEventListener("keydown", handleWorkspaceTabShortcut, { capture: true });
