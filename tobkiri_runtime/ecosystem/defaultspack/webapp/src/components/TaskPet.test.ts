@@ -74,3 +74,20 @@ test("same turn identifiers from another Profile remain unavailable", () => {
   assert.equal(taskPetBoundViewModel("profile-a", scope, "profile-b", snapshot("completed", 2)).mood, "idle");
   assert.equal(taskPetBoundViewModel("profile-a", scope, "profile-a", snapshot("completed", 2)).mood, "completed");
 });
+
+test("restart preserves opt-in but a historical terminal cannot trigger a new notification", () => {
+  const values = new Map<string, string>();
+  const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
+  saveTaskPetPreference(storage, "profile-a", "notifications", true);
+  const restarted = new TaskPetCompletionObserver();
+  assert.equal(loadTaskPetPreference(storage, "profile-a", "notifications"), true);
+  assert.equal(restarted.observe(taskPetViewModel(scope, snapshot("completed", 2))), null);
+  restarted.observe(taskPetViewModel(scope, snapshot("waiting", 3)));
+  assert.equal(restarted.observe(taskPetViewModel(scope, snapshot("completed", 4))), "completed");
+});
+
+test("TaskPet actual stylesheet disables motion for reduced-motion preference", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const css = await readFile(new URL("./TaskPet.css", import.meta.url), "utf8");
+  assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[^]*\.task-pet-character,\s*\.task-pet-spinner\s*\{\s*animation:\s*none\s*!important/);
+});

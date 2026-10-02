@@ -92,3 +92,11 @@ def test_voice_directive_input_has_a_fixed_size_limit() -> None:
 
     with pytest.raises(ValueError, match="too large"):
         protocol.speech_plan("x" * 16_385)
+
+
+def test_voice_directive_size_limit_applies_to_utf8_bytes() -> None:
+    """Multibyte speech cannot exceed the same source payload budget."""
+    import pytest
+
+    with pytest.raises(ValueError, match="too large"):
+        protocol.speech_plan("声" * 5500)

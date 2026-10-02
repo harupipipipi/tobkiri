@@ -11,13 +11,17 @@ _COLON = re.compile(r"(?:(?<=^)|(?<=[\s　]))(SAY|WAIT|SCHEDULE|ASK)\s*:", re.IG
 _BARE = re.compile(r"(?<!\S)(CONTINUE|FINISH|ASK)(?=\s*$)", re.IGNORECASE | re.MULTILINE)
 _DURATION = re.compile(r"\s*(\d+(?:\.\d+)?)\s*(?:s|sec|seconds)?\s*\Z", re.IGNORECASE)
 _MAX_DELAY = 120.0
-_MAX_INPUT_CHARS = 16_384
+_MAX_INPUT_BYTES = 16_384
 _MAX_SEGMENTS = 6
 
 
 def parse_directives(raw: str) -> list[tuple[str, str]]:
     """Parse line directives, including model output packed onto one line."""
-    if not isinstance(raw, str) or len(raw) > _MAX_INPUT_CHARS:
+    if (
+        not isinstance(raw, str)
+        or len(raw) > _MAX_INPUT_BYTES
+        or len(raw.encode("utf-8")) > _MAX_INPUT_BYTES
+    ):
         raise ValueError("voice directive input is invalid or too large")
     source = raw.replace("```", "")
     markers = [
