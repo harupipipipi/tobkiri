@@ -19,6 +19,43 @@
       "preserve_existing_phases_and_effect_kinds": true,
       "preserve_exact_payload_keys": true,
       "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "correlation_id": {
+            "maxLength": 36,
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "effect_id": {
+            "maxLength": 255,
+            "type": "string"
+          },
+          "effect_kind": {
+            "enum": [
+              "provider_configure",
+              "shell_execute",
+              "git_commit",
+              "git_restore",
+              "git_apply_patch",
+              "git_push",
+              "mcp_connect",
+              "workspace_task"
+            ]
+          },
+          "phase": {
+            "enum": [
+              "prepare",
+              "resume",
+              "status",
+              "cancel",
+              "lookup"
+            ]
+          },
+          "request": {
+            "type": "object"
+          }
+        },
+        "type": "object",
         "oneOf": [
           {
             "type": "object",
@@ -34,13 +71,13 @@
               },
               "effect_kind": {
                 "enum": [
-                  "mcp_connect",
                   "provider_configure",
                   "shell_execute",
                   "git_commit",
                   "git_restore",
                   "git_apply_patch",
                   "git_push",
+                  "mcp_connect",
                   "workspace_task"
                 ]
               },
@@ -138,13 +175,13 @@
               },
               "effect_kind": {
                 "enum": [
-                  "mcp_connect",
                   "provider_configure",
                   "shell_execute",
                   "git_commit",
                   "git_restore",
                   "git_apply_patch",
                   "git_push",
+                  "mcp_connect",
                   "workspace_task"
                 ]
               },
@@ -172,11 +209,24 @@
               "effect_id": {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 128
+                "maxLength": 255
               }
             }
           }
         ]
+      },
+      "source_fixture_entry": {
+        "path": "tests/fixtures/legacy_executable_sources.v1.json",
+        "pack_id": "rumi_host_authority_bridge_pack",
+        "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+        "contract_id": "tobkiri.service.interactive-effect.v1",
+        "contract_version": "1.0.0",
+        "operation_ids": [
+          "interactive_effect.manage"
+        ],
+        "implementation_path": "runtime/bridge.py",
+        "field": "schemas.input",
+        "existing_entry_only": true
       }
     }
   ],
