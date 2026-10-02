@@ -2738,7 +2738,7 @@ def capture_production_dispatch(
                     version_range=version_range,
                     parent_deadline_monotonic=self._envelope.deadline_monotonic,
                     parent_cancellation=self._envelope.cancellation_requested,
-                    before_dispatch=scope.assert_current,
+                    execution_guard=scope.assert_current,
                     parent_cancellation_proof=nested_cancellation_proof_for(
                         self._envelope,
                         self._presentation_owner[0],
