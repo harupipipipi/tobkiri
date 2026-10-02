@@ -10,10 +10,12 @@ import {
   buildHistoryCalendarSummary,
   HistoryBoard,
   loadCustomGroups,
+  toggleHistoryGroupCollapsed,
   type ChatItem,
   type CustomGroupInfo,
 } from "./HistoryBoard";
 import { droppedWidgetFromHistoryChat, historyChatDragPayload, parseHistoryChatDrop } from "../lib/historyComposer";
+import { HISTORY_ORGANIZATION_STORAGE_KEY } from "../features/history/historyOrganization";
 import { filterProjects, newProjectId, projectFromStorageItem, projectTaskContext } from "../features/projects/projectStorage";
 
 test("buildGroupsFromChats places LINE conversations into a dedicated group", () => {
@@ -40,6 +42,26 @@ test("buildGroupsFromChats places LINE conversations into a dedicated group", ()
   assert.deepEqual(groups[0]?.chats.map((chat) => chat.id), ["line-1"]);
   assert.equal(groups[1]?.title, "Today");
   assert.deepEqual(groups[1]?.chats.map((chat) => chat.id), ["chat-1"]);
+});
+
+test("toggleHistoryGroupCollapsed preserves nested groups while updating the selected group", () => {
+  const groups = [{
+    id: "parent",
+    title: "Parent",
+    chats: [],
+    isCollapsed: false,
+    subGroups: [{
+      id: "child",
+      title: "Child",
+      chats: [],
+      isCollapsed: false,
+      subGroups: [],
+    }],
+  }];
+
+  const toggled = toggleHistoryGroupCollapsed(groups, "child");
+  assert.equal(toggled[0]?.isCollapsed, false);
+  assert.equal(toggled[0]?.subGroups[0]?.isCollapsed, true);
 });
 
 test("buildGroupsFromChats groups metadata chats in compact workspace buckets", () => {
@@ -204,6 +226,35 @@ test("Project state never exposes legacy localStorage before owner acknowledgeme
     } else {
       Reflect.deleteProperty(globalThis, "localStorage");
     }
+  }
+});
+
+test("HistoryBoard exposes recovery controls when organization storage is corrupt", () => {
+  const previousDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => key === HISTORY_ORGANIZATION_STORAGE_KEY ? "{broken" : null,
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    },
+  });
+
+  try {
+    const html = renderToStaticMarkup(createElement(HistoryBoard, {
+      activeChatId: null,
+      chatItems: [],
+      onChatSelect: () => undefined,
+      onNewTask: () => undefined,
+      onSettingsClick: () => undefined,
+    }));
+    assert.match(html, /data-history-save-state="corrupt"/);
+    assert.match(html, /History changes are not saved/);
+    assert.match(html, /Export<\/button>/);
+    assert.match(html, />Reset</);
+  } finally {
+    if (previousDescriptor) Object.defineProperty(globalThis, "localStorage", previousDescriptor);
+    else Reflect.deleteProperty(globalThis, "localStorage");
   }
 });
 
@@ -374,6 +425,14 @@ test("HistoryBoard ignores stored SVG markup and renders host icon IDs", () => {
       icon_id: "database",
       icon_svg: '<svg onload="globalThis.pwned=true"></svg>',
     },
+    presentation: {
+      conversationId: "custom-icon-chat",
+      title: "Custom icon chat",
+      iconId: "database",
+      activity: "waiting",
+      unread: true,
+      accessibleStatusLabel: "Waiting for approval or input, unread",
+    },
   }];
   const baseProps = {
     activeChatId: null,
@@ -390,6 +449,8 @@ test("HistoryBoard ignores stored SVG markup and renders host icon IDs", () => {
     assert.match(html, /data-history-chat-icon="true"/);
     assert.match(html, /data-history-chat-icon-id="database"/);
     assert.match(html, /data-history-chat-icon-size="14"/);
+    assert.match(html, /data-conversation-activity="waiting"/);
+    assert.match(html, /data-conversation-unread="true"/);
     assert.match(html, /style="width:14px;height:14px;flex-basis:14px"/);
     assert.doesNotMatch(html, /onload=/);
     assert.doesNotMatch(html, /globalThis\.pwned/);

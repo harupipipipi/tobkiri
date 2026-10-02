@@ -2042,6 +2042,7 @@ export type ToolUiMetadata = {
   composer_description?: string;
   composer_icon?: string;
   composer_action?: ComposerWidgetAction;
+  icon_attention?: unknown;
 };
 
 export type ToolCapabilityRequirements = {
@@ -2079,6 +2080,7 @@ export type SidebarItem = {
   tags?: string[];
   risk?: "low" | "medium" | "high" | string | null;
   ui?: ToolUiMetadata;
+  presentation?: import("./widgetAttention").WidgetPresentation;
   tool_info?: ToolInfo;
   origin?: {
     kind: string;
