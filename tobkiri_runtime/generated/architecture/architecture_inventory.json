@@ -82,14 +82,14 @@
       },
       {
         "evidence": "pack_api_server",
-        "line": 232,
+        "line": 234,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/bootstrap/runtime.py",
         "rule_id": "legacy_direct_pack_route"
       },
       {
         "evidence": "pack_api_server",
-        "line": 298,
+        "line": 300,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/bootstrap/runtime.py",
         "rule_id": "legacy_direct_pack_route"
@@ -117,13 +117,6 @@
       },
       {
         "evidence": "pack_api_server",
-        "line": 3188,
-        "message": "legacy execution or authority path is present",
-        "path": "tobkiri_runtime/core_runtime/pack_api_server.py",
-        "rule_id": "legacy_direct_pack_route"
-      },
-      {
-        "evidence": "pack_api_server",
         "line": 3194,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/pack_api_server.py",
@@ -131,28 +124,35 @@
       },
       {
         "evidence": "pack_api_server",
-        "line": 3235,
+        "line": 3200,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/pack_api_server.py",
         "rule_id": "legacy_direct_pack_route"
       },
       {
         "evidence": "pack_api_server",
-        "line": 3248,
+        "line": 3241,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/pack_api_server.py",
         "rule_id": "legacy_direct_pack_route"
       },
       {
         "evidence": "pack_api_server",
-        "line": 3249,
+        "line": 3254,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/pack_api_server.py",
         "rule_id": "legacy_direct_pack_route"
       },
       {
         "evidence": "pack_api_server",
-        "line": 3250,
+        "line": 3255,
+        "message": "legacy execution or authority path is present",
+        "path": "tobkiri_runtime/core_runtime/pack_api_server.py",
+        "rule_id": "legacy_direct_pack_route"
+      },
+      {
+        "evidence": "pack_api_server",
+        "line": 3256,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/core_runtime/pack_api_server.py",
         "rule_id": "legacy_direct_pack_route"
@@ -166,7 +166,7 @@
       },
       {
         "evidence": "pack_api_server",
-        "line": 791,
+        "line": 793,
         "message": "legacy execution or authority path is present",
         "path": "tobkiri_runtime/ecosystem/defaultspack/defaultspack/desktop_app.py",
         "rule_id": "legacy_direct_pack_route"
@@ -8169,7 +8169,7 @@
         "version": "0.1.0"
       },
       {
-        "digest": "sha256:514fca4444e5eef29b7c6217f41e803c5166be5d84545aa8c3b7279154cebcca",
+        "digest": "sha256:7132959a87c54aa8922bf570b1636b75d9713f4a9ef56ee3fb25f5f539634480",
         "identity": "rumi_ai_gateway_pack",
         "kind": "manifest",
         "legacy": true,
@@ -8177,7 +8177,7 @@
         "version": "1.0.0"
       },
       {
-        "digest": "sha256:a5c32105f7d47551cf81b848d253d6315d5f85c46c7566a009a72346f5067b8a",
+        "digest": "sha256:e0fdf1320f0343fa23351d393f4fe0c09ded9729a9e87287484d7934de0aeedf",
         "identity": "rumi.ai_gateway",
         "kind": "manifest",
         "legacy": true,
@@ -9241,7 +9241,7 @@
         "version": "1.0.0"
       },
       {
-        "digest": "sha256:e65e76b76b10a655aac4a78e972ef62d82c939ae4f86eed0bdbac74118f2958b",
+        "digest": "sha256:3d6216383fb362145d75696a1c8577259b94647e743e71a8c5bfd7c2f0cc78e5",
         "identity": "rumi_model_catalog_pack",
         "kind": "manifest",
         "legacy": true,
@@ -9249,7 +9249,7 @@
         "version": "2.0.0"
       },
       {
-        "digest": "sha256:64b6f66e8372f4e5c51daefc03b1eb397aee658db15cbb198a1998df0df4482f",
+        "digest": "sha256:55acea7ecc10996ee6b762b607427b2684fcd9b1ecd530e5c54d7e33f4078af2",
         "identity": "rumi.model_catalog",
         "kind": "manifest",
         "legacy": true,
@@ -9385,7 +9385,7 @@
         "version": "1.0.0"
       },
       {
-        "digest": "sha256:f094c7bddb51160989bc636793961c2ca4705bebacec3ffa0700e8429d41ed99",
+        "digest": "sha256:05047c8e535d5f0bb8bf3fc0b813c91b9be8c9c3d31dd04a9951d450c1c00e4f",
         "identity": "rumi_provider_registry_pack",
         "kind": "manifest",
         "legacy": true,
@@ -9393,7 +9393,7 @@
         "version": "1.0.0"
       },
       {
-        "digest": "sha256:b0f3abb00fba01cf9a975e2c382d4a733fc7e82d3a60e1e8e229b534ac0a9974",
+        "digest": "sha256:873a948e5523f6f031e637e02128258cbda3802111ff212ebe988d7ea1c75263",
         "identity": "rumi.provider_registry",
         "kind": "manifest",
         "legacy": true,
@@ -9889,7 +9889,7 @@
         "version": "1.0.0"
       },
       {
-        "digest": "sha256:bb7eb91f90633fbfbf0b3db884f4b7c46c0a96a63cbf4104f18119a9359e6872",
+        "digest": "sha256:0cb6e8e9fd7b87f07a1b9451353433306d5af300d9ad0a4ab1b9a8a36e1564ec",
         "identity": "rumi_turn_runtime_pack",
         "kind": "manifest",
         "legacy": true,
@@ -9897,7 +9897,7 @@
         "version": "1.0.0"
       },
       {
-        "digest": "sha256:e065951fa9f26f2dd76d1f65836c6c1d950321bfc4c8aadefbe763d34e0968af",
+        "digest": "sha256:7534d11812e3a1d808cc265eacca535276bc6d8a482f5bf16bda2fa7b4444339",
         "identity": "rumi.turn_runtime",
         "kind": "manifest",
         "legacy": true,
@@ -10019,32 +10019,32 @@
         "rule_id": "legacy_direct_pack_route"
       },
       {
-        "evidence_digest": "sha256:6cef784468c2d34cc46c264248dbe808225b47face9ff390e253413fa570c2fe",
+        "evidence_digest": "sha256:92f165822414d27a6313085734f02f626f6a8ff1ac25b41f78b4ff35664dafcd",
         "line": 16,
         "path": "tobkiri_runtime/core_runtime/app_lifecycle_manager.py",
         "rule_id": "legacy_direct_pack_route"
       },
       {
-        "evidence_digest": "sha256:e61c04f28682b869d1e89f17908883e85fceea5eb522a67edbfa13079d9e65bf",
+        "evidence_digest": "sha256:c5b001c4b6322dd9cd3132b32c668e8f29f21a7ceee64bf8f81e39ed18d37cdd",
         "line": 25,
         "path": "tobkiri_runtime/core_runtime/bootstrap/runtime.py",
         "rule_id": "legacy_direct_pack_route"
       },
       {
-        "evidence_digest": "sha256:e61c04f28682b869d1e89f17908883e85fceea5eb522a67edbfa13079d9e65bf",
+        "evidence_digest": "sha256:c5b001c4b6322dd9cd3132b32c668e8f29f21a7ceee64bf8f81e39ed18d37cdd",
         "line": 30,
         "path": "tobkiri_runtime/core_runtime/bootstrap/runtime.py",
         "rule_id": "legacy_direct_pack_route"
       },
       {
-        "evidence_digest": "sha256:e61c04f28682b869d1e89f17908883e85fceea5eb522a67edbfa13079d9e65bf",
-        "line": 232,
+        "evidence_digest": "sha256:c5b001c4b6322dd9cd3132b32c668e8f29f21a7ceee64bf8f81e39ed18d37cdd",
+        "line": 234,
         "path": "tobkiri_runtime/core_runtime/bootstrap/runtime.py",
         "rule_id": "legacy_direct_pack_route"
       },
       {
-        "evidence_digest": "sha256:e61c04f28682b869d1e89f17908883e85fceea5eb522a67edbfa13079d9e65bf",
-        "line": 298,
+        "evidence_digest": "sha256:c5b001c4b6322dd9cd3132b32c668e8f29f21a7ceee64bf8f81e39ed18d37cdd",
+        "line": 300,
         "path": "tobkiri_runtime/core_runtime/bootstrap/runtime.py",
         "rule_id": "legacy_direct_pack_route"
       },
@@ -10067,38 +10067,38 @@
         "rule_id": "legacy_direct_pack_route"
       },
       {
-        "evidence_digest": "sha256:d7378ecc1498950dc07119cb34fc0ab8f8459752d83e4ec8dfc2ffa461b1e368",
-        "line": 3188,
-        "path": "tobkiri_runtime/core_runtime/pack_api_server.py",
-        "rule_id": "legacy_direct_pack_route"
-      },
-      {
-        "evidence_digest": "sha256:d7378ecc1498950dc07119cb34fc0ab8f8459752d83e4ec8dfc2ffa461b1e368",
+        "evidence_digest": "sha256:8f476ddf892bce85ff379e8daf5148e5e13077c26d63599df3da02f90a69c9f4",
         "line": 3194,
         "path": "tobkiri_runtime/core_runtime/pack_api_server.py",
         "rule_id": "legacy_direct_pack_route"
       },
       {
-        "evidence_digest": "sha256:d7378ecc1498950dc07119cb34fc0ab8f8459752d83e4ec8dfc2ffa461b1e368",
-        "line": 3235,
+        "evidence_digest": "sha256:8f476ddf892bce85ff379e8daf5148e5e13077c26d63599df3da02f90a69c9f4",
+        "line": 3200,
         "path": "tobkiri_runtime/core_runtime/pack_api_server.py",
         "rule_id": "legacy_direct_pack_route"
       },
       {
-        "evidence_digest": "sha256:d7378ecc1498950dc07119cb34fc0ab8f8459752d83e4ec8dfc2ffa461b1e368",
-        "line": 3248,
+        "evidence_digest": "sha256:8f476ddf892bce85ff379e8daf5148e5e13077c26d63599df3da02f90a69c9f4",
+        "line": 3241,
         "path": "tobkiri_runtime/core_runtime/pack_api_server.py",
         "rule_id": "legacy_direct_pack_route"
       },
       {
-        "evidence_digest": "sha256:d7378ecc1498950dc07119cb34fc0ab8f8459752d83e4ec8dfc2ffa461b1e368",
-        "line": 3249,
+        "evidence_digest": "sha256:8f476ddf892bce85ff379e8daf5148e5e13077c26d63599df3da02f90a69c9f4",
+        "line": 3254,
         "path": "tobkiri_runtime/core_runtime/pack_api_server.py",
         "rule_id": "legacy_direct_pack_route"
       },
       {
-        "evidence_digest": "sha256:d7378ecc1498950dc07119cb34fc0ab8f8459752d83e4ec8dfc2ffa461b1e368",
-        "line": 3250,
+        "evidence_digest": "sha256:8f476ddf892bce85ff379e8daf5148e5e13077c26d63599df3da02f90a69c9f4",
+        "line": 3255,
+        "path": "tobkiri_runtime/core_runtime/pack_api_server.py",
+        "rule_id": "legacy_direct_pack_route"
+      },
+      {
+        "evidence_digest": "sha256:8f476ddf892bce85ff379e8daf5148e5e13077c26d63599df3da02f90a69c9f4",
+        "line": 3256,
         "path": "tobkiri_runtime/core_runtime/pack_api_server.py",
         "rule_id": "legacy_direct_pack_route"
       },
@@ -10109,8 +10109,8 @@
         "rule_id": "legacy_direct_pack_route"
       },
       {
-        "evidence_digest": "sha256:73e9c02e15a6b869245f76d5d9d2e8232d8dd1a260fd1b11c44cc760ea86d62a",
-        "line": 791,
+        "evidence_digest": "sha256:e1f442e6c275effddbbfd560e3248c301141f540b1da186dce14616e0ff51edc",
+        "line": 793,
         "path": "tobkiri_runtime/ecosystem/defaultspack/defaultspack/desktop_app.py",
         "rule_id": "legacy_direct_pack_route"
       },
@@ -10121,7 +10121,7 @@
         "rule_id": "legacy_direct_pack_route"
       },
       {
-        "evidence_digest": "sha256:ff0c0f79cd3249f005e12b1e0a87892054add74f34c6c32cb5e3e4b5b7274d3c",
+        "evidence_digest": "sha256:3f34739ddfb75a6a8384d080ad56aed17446a21116cd7dc2d50ef90c30a3a032",
         "line": 14,
         "path": "tobkiri_runtime/ecosystem/defaultspack/defaultspack/runtime_composition.py",
         "rule_id": "legacy_direct_pack_route"
@@ -12941,19 +12941,19 @@
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:514fca4444e5eef29b7c6217f41e803c5166be5d84545aa8c3b7279154cebcca",
+        "evidence_digest": "sha256:7132959a87c54aa8922bf570b1636b75d9713f4a9ef56ee3fb25f5f539634480",
         "line": 25,
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/ecosystem.json",
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:a5c32105f7d47551cf81b848d253d6315d5f85c46c7566a009a72346f5067b8a",
+        "evidence_digest": "sha256:e0fdf1320f0343fa23351d393f4fe0c09ded9729a9e87287484d7934de0aeedf",
         "line": 184,
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json",
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:a5c32105f7d47551cf81b848d253d6315d5f85c46c7566a009a72346f5067b8a",
+        "evidence_digest": "sha256:e0fdf1320f0343fa23351d393f4fe0c09ded9729a9e87287484d7934de0aeedf",
         "line": 209,
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json",
         "rule_id": "legacy_host_execution"
@@ -14123,19 +14123,19 @@
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:e65e76b76b10a655aac4a78e972ef62d82c939ae4f86eed0bdbac74118f2958b",
+        "evidence_digest": "sha256:3d6216383fb362145d75696a1c8577259b94647e743e71a8c5bfd7c2f0cc78e5",
         "line": 11,
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/ecosystem.json",
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:64b6f66e8372f4e5c51daefc03b1eb397aee658db15cbb198a1998df0df4482f",
+        "evidence_digest": "sha256:55acea7ecc10996ee6b762b607427b2684fcd9b1ecd530e5c54d7e33f4078af2",
         "line": 47,
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/rumi.pack.v3.json",
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:64b6f66e8372f4e5c51daefc03b1eb397aee658db15cbb198a1998df0df4482f",
+        "evidence_digest": "sha256:55acea7ecc10996ee6b762b607427b2684fcd9b1ecd530e5c54d7e33f4078af2",
         "line": 58,
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/rumi.pack.v3.json",
         "rule_id": "legacy_host_execution"
@@ -14261,19 +14261,19 @@
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:f094c7bddb51160989bc636793961c2ca4705bebacec3ffa0700e8429d41ed99",
+        "evidence_digest": "sha256:05047c8e535d5f0bb8bf3fc0b813c91b9be8c9c3d31dd04a9951d450c1c00e4f",
         "line": 13,
         "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/ecosystem.json",
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:b0f3abb00fba01cf9a975e2c382d4a733fc7e82d3a60e1e8e229b534ac0a9974",
+        "evidence_digest": "sha256:873a948e5523f6f031e637e02128258cbda3802111ff212ebe988d7ea1c75263",
         "line": 112,
         "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/rumi.pack.v3.json",
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:b0f3abb00fba01cf9a975e2c382d4a733fc7e82d3a60e1e8e229b534ac0a9974",
+        "evidence_digest": "sha256:873a948e5523f6f031e637e02128258cbda3802111ff212ebe988d7ea1c75263",
         "line": 125,
         "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/rumi.pack.v3.json",
         "rule_id": "legacy_host_execution"
@@ -14789,19 +14789,19 @@
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:bb7eb91f90633fbfbf0b3db884f4b7c46c0a96a63cbf4104f18119a9359e6872",
+        "evidence_digest": "sha256:0cb6e8e9fd7b87f07a1b9451353433306d5af300d9ad0a4ab1b9a8a36e1564ec",
         "line": 18,
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/ecosystem.json",
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:e065951fa9f26f2dd76d1f65836c6c1d950321bfc4c8aadefbe763d34e0968af",
+        "evidence_digest": "sha256:7534d11812e3a1d808cc265eacca535276bc6d8a482f5bf16bda2fa7b4444339",
         "line": 126,
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json",
         "rule_id": "legacy_host_execution"
       },
       {
-        "evidence_digest": "sha256:e065951fa9f26f2dd76d1f65836c6c1d950321bfc4c8aadefbe763d34e0968af",
+        "evidence_digest": "sha256:7534d11812e3a1d808cc265eacca535276bc6d8a482f5bf16bda2fa7b4444339",
         "line": 144,
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json",
         "rule_id": "legacy_host_execution"
@@ -15503,13 +15503,13 @@
         "rule_id": "legacy_v3_manifest"
       },
       {
-        "evidence_digest": "sha256:514fca4444e5eef29b7c6217f41e803c5166be5d84545aa8c3b7279154cebcca",
+        "evidence_digest": "sha256:7132959a87c54aa8922bf570b1636b75d9713f4a9ef56ee3fb25f5f539634480",
         "line": 39,
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/ecosystem.json",
         "rule_id": "legacy_v3_manifest"
       },
       {
-        "evidence_digest": "sha256:a5c32105f7d47551cf81b848d253d6315d5f85c46c7566a009a72346f5067b8a",
+        "evidence_digest": "sha256:e0fdf1320f0343fa23351d393f4fe0c09ded9729a9e87287484d7934de0aeedf",
         "line": 294,
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json",
         "rule_id": "legacy_v3_manifest"
@@ -16175,13 +16175,13 @@
         "rule_id": "legacy_v3_manifest"
       },
       {
-        "evidence_digest": "sha256:e65e76b76b10a655aac4a78e972ef62d82c939ae4f86eed0bdbac74118f2958b",
+        "evidence_digest": "sha256:3d6216383fb362145d75696a1c8577259b94647e743e71a8c5bfd7c2f0cc78e5",
         "line": 25,
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/ecosystem.json",
         "rule_id": "legacy_v3_manifest"
       },
       {
-        "evidence_digest": "sha256:64b6f66e8372f4e5c51daefc03b1eb397aee658db15cbb198a1998df0df4482f",
+        "evidence_digest": "sha256:55acea7ecc10996ee6b762b607427b2684fcd9b1ecd530e5c54d7e33f4078af2",
         "line": 149,
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/rumi.pack.v3.json",
         "rule_id": "legacy_v3_manifest"
@@ -16259,13 +16259,13 @@
         "rule_id": "legacy_v3_manifest"
       },
       {
-        "evidence_digest": "sha256:f094c7bddb51160989bc636793961c2ca4705bebacec3ffa0700e8429d41ed99",
+        "evidence_digest": "sha256:05047c8e535d5f0bb8bf3fc0b813c91b9be8c9c3d31dd04a9951d450c1c00e4f",
         "line": 26,
         "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/ecosystem.json",
         "rule_id": "legacy_v3_manifest"
       },
       {
-        "evidence_digest": "sha256:b0f3abb00fba01cf9a975e2c382d4a733fc7e82d3a60e1e8e229b534ac0a9974",
+        "evidence_digest": "sha256:873a948e5523f6f031e637e02128258cbda3802111ff212ebe988d7ea1c75263",
         "line": 209,
         "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/rumi.pack.v3.json",
         "rule_id": "legacy_v3_manifest"
@@ -16595,13 +16595,13 @@
         "rule_id": "legacy_v3_manifest"
       },
       {
-        "evidence_digest": "sha256:bb7eb91f90633fbfbf0b3db884f4b7c46c0a96a63cbf4104f18119a9359e6872",
+        "evidence_digest": "sha256:0cb6e8e9fd7b87f07a1b9451353433306d5af300d9ad0a4ab1b9a8a36e1564ec",
         "line": 31,
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/ecosystem.json",
         "rule_id": "legacy_v3_manifest"
       },
       {
-        "evidence_digest": "sha256:e065951fa9f26f2dd76d1f65836c6c1d950321bfc4c8aadefbe763d34e0968af",
+        "evidence_digest": "sha256:7534d11812e3a1d808cc265eacca535276bc6d8a482f5bf16bda2fa7b4444339",
         "line": 224,
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json",
         "rule_id": "legacy_v3_manifest"
@@ -16671,14 +16671,14 @@
       },
       {
         "legacy": true,
-        "manifest_digest": "sha256:514fca4444e5eef29b7c6217f41e803c5166be5d84545aa8c3b7279154cebcca",
+        "manifest_digest": "sha256:7132959a87c54aa8922bf570b1636b75d9713f4a9ef56ee3fb25f5f539634480",
         "pack_id": "rumi_ai_gateway_pack",
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/ecosystem.json",
         "version": "1.0.0"
       },
       {
         "legacy": true,
-        "manifest_digest": "sha256:a5c32105f7d47551cf81b848d253d6315d5f85c46c7566a009a72346f5067b8a",
+        "manifest_digest": "sha256:e0fdf1320f0343fa23351d393f4fe0c09ded9729a9e87287484d7934de0aeedf",
         "pack_id": "rumi.ai_gateway",
         "path": "tobkiri_runtime/ecosystem/rumi_ai_gateway_pack/rumi.pack.v3.json",
         "version": "1.0.0"
@@ -17609,14 +17609,14 @@
       },
       {
         "legacy": true,
-        "manifest_digest": "sha256:e65e76b76b10a655aac4a78e972ef62d82c939ae4f86eed0bdbac74118f2958b",
+        "manifest_digest": "sha256:3d6216383fb362145d75696a1c8577259b94647e743e71a8c5bfd7c2f0cc78e5",
         "pack_id": "rumi_model_catalog_pack",
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/ecosystem.json",
         "version": "2.0.0"
       },
       {
         "legacy": true,
-        "manifest_digest": "sha256:64b6f66e8372f4e5c51daefc03b1eb397aee658db15cbb198a1998df0df4482f",
+        "manifest_digest": "sha256:55acea7ecc10996ee6b762b607427b2684fcd9b1ecd530e5c54d7e33f4078af2",
         "pack_id": "rumi.model_catalog",
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/rumi.pack.v3.json",
         "version": "2.0.0"
@@ -17735,14 +17735,14 @@
       },
       {
         "legacy": true,
-        "manifest_digest": "sha256:f094c7bddb51160989bc636793961c2ca4705bebacec3ffa0700e8429d41ed99",
+        "manifest_digest": "sha256:05047c8e535d5f0bb8bf3fc0b813c91b9be8c9c3d31dd04a9951d450c1c00e4f",
         "pack_id": "rumi_provider_registry_pack",
         "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/ecosystem.json",
         "version": "1.0.0"
       },
       {
         "legacy": true,
-        "manifest_digest": "sha256:b0f3abb00fba01cf9a975e2c382d4a733fc7e82d3a60e1e8e229b534ac0a9974",
+        "manifest_digest": "sha256:873a948e5523f6f031e637e02128258cbda3802111ff212ebe988d7ea1c75263",
         "pack_id": "rumi.provider_registry",
         "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/rumi.pack.v3.json",
         "version": "1.0.0"
@@ -18176,14 +18176,14 @@
       },
       {
         "legacy": true,
-        "manifest_digest": "sha256:bb7eb91f90633fbfbf0b3db884f4b7c46c0a96a63cbf4104f18119a9359e6872",
+        "manifest_digest": "sha256:0cb6e8e9fd7b87f07a1b9451353433306d5af300d9ad0a4ab1b9a8a36e1564ec",
         "pack_id": "rumi_turn_runtime_pack",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/ecosystem.json",
         "version": "1.0.0"
       },
       {
         "legacy": true,
-        "manifest_digest": "sha256:e065951fa9f26f2dd76d1f65836c6c1d950321bfc4c8aadefbe763d34e0968af",
+        "manifest_digest": "sha256:7534d11812e3a1d808cc265eacca535276bc6d8a482f5bf16bda2fa7b4444339",
         "pack_id": "rumi.turn_runtime",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json",
         "version": "1.0.0"
@@ -18411,8 +18411,8 @@
     ]
   },
   "repository": {
-    "commit": "ada05e9f25eac9f97dc99c42c3a8f23f156cfe66",
-    "tree_digest": "f2020e0d7867f37488dd507de72fca5335779249c1fa557fbe8662e81cbfcdc2"
+    "commit": "ece42e73f2c41b3e98c8d9295026f43c6cd6a245",
+    "tree_digest": "8c2aa19c1750693f76a6e33b8672044af62522c75e1d6245e2005a282c356513"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",
   "schema": "io.tobkiri.architecture.inventory.v1"
