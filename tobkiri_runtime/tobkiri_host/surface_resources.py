@@ -19,7 +19,7 @@ import time
 from typing import Callable, Literal, Mapping, Protocol, TypeVar, cast
 
 from .errors import HostCoreError
-from .models import RequestContext
+from .models import OpaqueAuthorityRef, RequestContext
 
 SURFACE_RESOURCE_VERSION = "tobkiri.ui.surface-resource.v1"
 ResourceKind = Literal["file", "image", "audio"]
@@ -66,7 +66,9 @@ class SurfaceResourceScope:
     renderer_descriptor_hash: str
     renderer_expires_at_ms: int
     consumer_contract_id: str
+    consumer_contract_version: str
     consumer_operation_id: str
+    consumer_principal_id: str
     consumer_provider_id: str
     consumer_function_id: str
     consumer_artifact_digest: str
@@ -511,6 +513,12 @@ class SurfaceResourceEnvelope(Protocol):
     def contract_id(self) -> str: ...
 
     @property
+    def contract_version(self) -> str: ...
+
+    @property
+    def target_principal(self) -> OpaqueAuthorityRef: ...
+
+    @property
     def operation_id(self) -> str: ...
 
 
@@ -567,7 +575,9 @@ class SurfaceResourceActionAdapter:
         scope = self._scope(invocation)
         if (
             invocation.envelope.contract_id != scope.consumer_contract_id
+            or invocation.envelope.contract_version != scope.consumer_contract_version
             or invocation.envelope.operation_id != scope.consumer_operation_id
+            or invocation.envelope.target_principal.value != scope.consumer_principal_id
         ):
             raise SurfaceResourceRejected("resource consuming operation changed")
         return self.port.consume(

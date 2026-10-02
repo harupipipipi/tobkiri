@@ -13,6 +13,7 @@ in `tobkiri_protocol/`; the frontend independently validates the same wire.
 | `tobkiri.ui.surface-intent.v1` | Exact template/node/intent/event and typed values |
 | `tobkiri.ui.surface-outcome.v1` | Same identity, accepted/rejected/pending, optional text |
 | `tobkiri.ui.surface-resource.v1` | Inert public ticket syntax; Host lookup required |
+| `tobkiri.action.surface.resource.v1` | Finite acquire/exchange input schema for an explicitly captured provider |
 
 ## Patterns
 
@@ -57,7 +58,8 @@ Only then may metadata select `semantic_standard` or `semantic_compact`.
 
 Capture pins renderer contribution/owner, API, artifact, descriptor, build and
 Host-issued bounded expiry into the existing Profile/revision/activation/Plan/
-catalog view reference. Disable, uninstall, update, collision, rollback or expiry
+catalog view reference. A catalog refresh can verify the original capture but
+does not extend its expiry or replace unsent drafts. Disable, uninstall, update, collision, rollback or expiry
 makes the old capture unavailable. No builtin fallback or silent tab recapture
 occurs. Both layouts use native accessible controls and static presentation that
 also respects reduced-motion preferences.
@@ -72,7 +74,8 @@ are the other finite kinds. The response has exactly `version`, `selection_id`,
 
 The Host-owned `SurfaceResourcePort` stores one-use random tickets bound to the
 server presentation owner/session, Profile/revision/activation/Plan/catalog/
-security epoch, view/renderer identity, recipient Operation/Provider/Function/
+security epoch, view/renderer identity/API/expiry, recipient Contract version,
+Operation/Provider/Function/principal/
 artifact/schema and deadline-bound expiry. Ticket syntax grants nothing.
 
 `SurfaceResourceActionAdapter` checks the authenticated origin and server scope.
@@ -81,9 +84,11 @@ then forward only the finite public fields. It derives recipient/renderer pins
 from captured verified records and retains the normal Broker authorization and
 approval policy. No client `approved`, Profile, raw path or handle is accepted.
 
-The explicit captured provider supplies acquisition, portable private exchange,
+The explicit captured provider receives the fresh authenticated RequestContext
+for acquisition, portable private exchange and consumption, and supplies
 revocation and optional fresh-context consumption callbacks. A later exact
-Logic RPC consumes once and privately rebinds to that invocation; existing
+Logic RPC checks its actual target principal/Contract version/Operation, consumes
+once and privately rebinds to that invocation; existing
 `ResourceHandleTable` handles remain request-local. Private paths, references,
 principals and descriptors never enter the public response. Expiry, replay,
 changed owner/Profile/recipient, errors and close races fail closed with cleanup.

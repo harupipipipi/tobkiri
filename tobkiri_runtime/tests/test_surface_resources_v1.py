@@ -48,7 +48,9 @@ def scope() -> SurfaceResourceScope:
         renderer_descriptor_hash=digest("e"),
         renderer_expires_at_ms=1_700_000_400_000,
         consumer_contract_id="example.inspect.v1",
+        consumer_contract_version="1.0.0",
         consumer_operation_id="inspect",
+        consumer_principal_id="principal.inspect",
         consumer_provider_id="provider.inspect",
         consumer_function_id="function.inspect",
         consumer_artifact_digest=digest(),
@@ -602,7 +604,9 @@ def test_action_adapter_consume_binds_actual_contract_and_operation(rig) -> None
             context=context(),
             deadline_monotonic=100.0,
             contract_id="other.contract",
+            contract_version=scope().consumer_contract_version,
             operation_id=scope().consumer_operation_id,
+            target_principal=OpaqueAuthorityRef(scope().consumer_principal_id),
         ),
         assert_current=lambda: None,
         presentation_owner_principal_id=scope().presentation_owner_principal_id,
@@ -617,5 +621,15 @@ def test_action_adapter_consume_binds_actual_contract_and_operation(rig) -> None
     with pytest.raises(SurfaceResourceRejected):
         adapter.consume(ticket["selection_id"], kind="image", invocation=invocation)
     invocation.envelope.operation_id = scope().consumer_operation_id
+    invocation.envelope.contract_version = "2.0.0"
+    with pytest.raises(SurfaceResourceRejected):
+        adapter.consume(ticket["selection_id"], kind="image", invocation=invocation)
+    invocation.envelope.contract_version = scope().consumer_contract_version
+    invocation.envelope.target_principal = OpaqueAuthorityRef("principal.other")
+    with pytest.raises(SurfaceResourceRejected):
+        adapter.consume(ticket["selection_id"], kind="image", invocation=invocation)
+    invocation.envelope.target_principal = OpaqueAuthorityRef(
+        scope().consumer_principal_id
+    )
     assert adapter.consume(ticket["selection_id"], kind="image", invocation=invocation)
     assert len(provider.consumed) == 1
