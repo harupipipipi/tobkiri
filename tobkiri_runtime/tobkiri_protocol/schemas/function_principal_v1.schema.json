@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/function-principal.v1.schema.json",
+  "title": "Tobkiri exact FunctionPrincipal v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "parent_artifact_digest",
+    "function_implementation_digest",
+    "function_id",
+    "contract_revision_digest",
+    "operation_id"
+  ],
+  "properties": {
+    "parent_artifact_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "function_implementation_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "function_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$", "maxLength": 128},
+    "contract_revision_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "operation_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$", "maxLength": 128},
+    "principal_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

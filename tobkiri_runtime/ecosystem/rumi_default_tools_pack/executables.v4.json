@@ -1,0 +1,42 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:9719cea8ccbc4ba30adb75e084ff9b4a46cfa03457ead46643ce9a534ec29ba8",
+  "pack_id": "rumi_default_tools_pack",
+  "source_identity": "sha256:4ea1f3d1996bc6b34c70ba3d4e75e6f12e23294170758edfe344d0134a4c0743",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_default_tools_pack.calculator",
+      "implementation_digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa",
+      "implementation_path": "runtime/calculator.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_default_tools_pack.calculator-evaluate",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:df8675d478395ad57d70438196be7bd2321fffe492d56a954cfed7da42dfca4b",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_default_tools_pack.calculator.python"
+    }
+  ]
+}

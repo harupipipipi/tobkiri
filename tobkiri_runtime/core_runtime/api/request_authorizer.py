@@ -8,8 +8,10 @@ from typing import Any
 from urllib.parse import unquote
 
 from .auth_principal import AuthenticatedPrincipal
-from ..authority.config_lattice import meet_authority_configs
-from ..authority.service import AuthorityService
+from ..authority.config_lattice import (
+    meet_authority_configs,
+    resource_within_authority_config,
+)
 
 
 @dataclass(frozen=True)
@@ -155,6 +157,6 @@ def authorize_route(
         config = meet_authority_configs(*checks)
     except ValueError as exc:
         return RouteAuthorization(False, 403, str(exc), permission_id)
-    if not AuthorityService._resource_allowed(config, resource):
+    if not resource_within_authority_config(config, resource):
         return RouteAuthorization(False, 403, "Route resource is outside granted authority", permission_id)
     return RouteAuthorization(True, permission_id=permission_id)

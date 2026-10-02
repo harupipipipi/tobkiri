@@ -2,32 +2,35 @@
 
 このチュートリアルは **「今のリポジトリで runtime が動くところまで」** を最短で確認する手順です。
 
-> Tobkiri の公開名への移行中のため、このブランチでは互換 CLI
-> `python -m rumi_ai` を使用します。
+> Tobkiri の公開名への移行中のため、互換 CLI `python -m rumi_ai` も残っていますが、
+> Launcher 注入の activation snapshot がない環境では意図的に fail closed します。
+> このチュートリアルでは実際の composition root である `python -m app` を使います。
 
 ## 前提
 
 - repo ルートで作業する
-- Python が使える
+- `pip install -e ./tobkiri_runtime` 済みの Python 環境が使える
 
-## Step 1. ヘルスチェックを実行
-
-```bash
-python -m rumi_ai --health
-```
-
-`status: "UP"` なら正常で exit code 0 です。`DEGRADED` と `DOWN` は JSON を出力しますが、
-CI / 監視では異常として exit code 1 になります。
-
-## Step 2. runtime を起動
+## Step 1. runtime を起動
 
 ```bash
-python -m rumi_ai
+python -m app
 ```
-
-`[Rumi] startup.success` が出れば起動完了です。
 
 このコマンドは HTTP server を起動したままにします。
+
+## Step 2. ヘルスチェックを実行
+
+別ターミナルで:
+
+```bash
+python -m app --health
+```
+
+`--health` は起動中の Host の `http://127.0.0.1:8765/health` を probe するだけで、
+listen port は取りません。`status: "ok"` なら正常で exit code 0、Host 未起動の
+`"down"` や `"error"` の場合は JSON を出力して exit code 1 になります。probe 先の
+ポートは `RUMI_PORT` に従います。
 
 ## Step 3. API の疎通確認
 
@@ -50,11 +53,11 @@ HTTP 200 と JSON が返れば API は利用可能です。
 ## 補足: headless 初期化だけを確認する場合
 
 ```bash
-python -m rumi_ai --headless
+python -m app --headless
 ```
 
-`--headless` は HTTP server を起動せず、初期化後に終了します。そのため、このモードでは
-`/health` と `/panel/` の確認は行いません。
+`--headless` は Host HTTP surface を capture して検証したあと、待機せずに終了します。
+プロセスは残らないため、このモードでは `/health` と `/panel/` の確認は行いません。
 
 ## 検証スクリーンショット
 

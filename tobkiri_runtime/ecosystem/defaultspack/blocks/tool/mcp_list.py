@@ -1,13 +1,9 @@
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from _common import ok  # noqa: E402
+from blocks._common import ok
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-from domain.tool.mcp_client import McpClient  # noqa: E402
-from domain.tool.mcp_registry import McpRegistry  # noqa: E402
-from domain.tool.registry import ToolRegistry  # noqa: E402
+from domain.tool.mcp_client import McpClient
+from domain.tool.mcp_registry import McpRegistry
+from domain.tool.registry import ToolRegistry
 
 
 def run(input_data, context):

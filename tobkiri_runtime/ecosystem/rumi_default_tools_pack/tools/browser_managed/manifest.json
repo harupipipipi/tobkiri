@@ -1,0 +1,85 @@
+{
+  "id": "browser_managed",
+  "category": "tool",
+  "version": "1",
+  "display_name": "Tobkiri Browser",
+  "description": "Use the Tobkiri Defaults model browser with its own persistent Chromium profile. Start with browser.runtime.status, then browser.runtime.start. List and select live tabs, open HTTP(S) URLs, inspect DOM, install AI-created unpacked extensions from a UTF-8 files map, import exported JSON or Netscape cookies, evaluate JavaScript, and capture network requests and console event metadata. browser.capture.page returns screenshot metadata with image_forwarding_supported=false; the current text tool transport cannot show you the image. For browser.network.capture use a bounded duration_ms (100-10000); reload=true captures a page load. Network captures omit cookie/auth headers, query values, bodies and console argument values. Browser control always passes through the selected Profile's Host authority. Never supply executable paths, debug endpoints or approval flags.",
+  "enabled": true,
+  "config": {
+    "name": "browser_managed",
+    "summary": "モデル専用ブラウザ・拡張機能・Cookie インポート・開発者ツール・ネットワーク監視",
+    "tags": ["browser", "devtools", "network", "extensions", "approval"],
+    "schema": {
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["action"],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "browser.runtime.status", "browser.runtime.start", "browser.runtime.stop",
+              "browser.session", "browser.profiles.list", "browser.profile.create",
+              "browser.profile.set_active", "browser.tabs", "browser.select_tab",
+              "browser.open_url", "browser.capture.page", "browser.extensions.list",
+              "browser.extensions.install", "browser.extensions.remove",
+              "browser.cookies.list", "browser.cookies.import",
+              "browser.devtools.inspect", "browser.devtools.evaluate",
+              "browser.network.capture"
+            ]
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {"type": "string", "maxLength": 64},
+              "name": {"type": "string", "maxLength": 64},
+              "label": {"type": "string", "maxLength": 128},
+              "set_active": {"type": "boolean"},
+              "headless": {"type": "boolean"},
+              "url": {"type": "string", "maxLength": 8192},
+              "tab_id": {"type": "string", "maxLength": 128},
+              "extension_id": {"type": "string", "maxLength": 128},
+              "files": {
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 256,
+                "additionalProperties": {"type": "string", "maxLength": 1048576},
+                "description": "Relative filenames to UTF-8 source, including manifest.json. The browser copies these files into its managed extension directory."
+              },
+              "cookies": {"type": "array", "maxItems": 5000, "items": {"type": "object"}},
+              "content": {"type": "string", "maxLength": 4194304},
+              "format": {"type": "string", "enum": ["json", "netscape"]},
+              "domains": {"type": "array", "maxItems": 256, "items": {"type": "string", "maxLength": 253}},
+              "replace": {"type": "boolean"},
+              "expression": {"type": "string", "maxLength": 16384},
+              "duration_ms": {"type": "integer", "minimum": 100, "maximum": 10000},
+              "max_entries": {"type": "integer", "minimum": 1, "maximum": 500},
+              "reload": {"type": "boolean"}
+            }
+          }
+        }
+      }
+    },
+    "execution": {
+      "type": "global_contract",
+      "contract_id": "tobkiri.service.tool.browser.operation.v1",
+      "provider_instance_id": "rumi_browser_host_service_pack.browser-host.tool",
+      "operation": "rumi_browser_host_service_pack.browser-tool-execute"
+    },
+    "tool_category": "browser",
+    "action_type": "browser",
+    "risk": "high",
+    "approval_policy": "ask",
+    "capability_grants": ["browser.control"],
+    "requires_approval": true,
+    "ui": {
+      "group_id": "browser",
+      "group_label": "Browser",
+      "composer_label": "Tobkiri Browser",
+      "composer_icon": "globe",
+      "widget_kind": "tool_toggle",
+      "drop_capabilities": ["composer.toggle_chip"]
+    }
+  }
+}

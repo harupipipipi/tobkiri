@@ -7,8 +7,6 @@ test_app1_permissive_guard.py - APP-1: permissive ガード強化 + _w19d_* リ�
 
 依存モジュール (core_runtime 等) は全てモック化して実行する。
 """
-import importlib
-import os
 import sys
 import types
 from pathlib import Path
@@ -80,89 +78,50 @@ def _mock_deps():
             sys.modules[name] = saved[name]
 
 
-# main() が副作用で設定する環境変数のクリーンアップリスト
-_SIDE_EFFECT_VARS = ["RUMI_SECURITY_MODE"]
+def _assert_retired_production_root() -> None:
+    """The canonical root exposes no legacy permissive guard or flag."""
+    import app
 
-
-def _run_main(*argv, env=None):
-    """app.main() をカスタム argv / 環境変数で呼び出すヘルパー。"""
-    old_argv = sys.argv[:]
-    old_env = {}
-    try:
-        sys.argv = ["app.py"] + list(argv)
-        if env:
-            for k, v in env.items():
-                old_env[k] = os.environ.get(k)
-                if v is None:
-                    os.environ.pop(k, None)
-                else:
-                    os.environ[k] = v
-        # main() の副作用で設定される変数も保存
-        for k in _SIDE_EFFECT_VARS:
-            if k not in old_env:
-                old_env[k] = os.environ.get(k)
-        import app
-        importlib.reload(app)
-        app.main()
-    finally:
-        sys.argv = old_argv
-        for k, v in old_env.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
+    source = Path(app.__file__).read_text(encoding="utf-8")
+    assert not hasattr(app, "_check_permissive_production_guard")
+    assert "RUMI_ALLOW_PERMISSIVE" not in source
+    assert "permissive.lock" not in source
+    with pytest.raises(SystemExit):
+        app._parser().parse_args(["--permissive"])
 
 
 # ===================================================================
-# テストケース: ホワイトリスト方式 permissive ガード
+# Test cases: retired permissive surface
 # ===================================================================
 
 class TestPermissiveGuardStrengthened:
-    """ホワイトリスト方式の permissive ガードテスト。"""
+    """Old opt-in combinations cannot restore the retired flag."""
 
     def test_permissive_blocked_by_default(self):
-        """RUMI_ENVIRONMENT 未設定 + RUMI_ALLOW_PERMISSIVE 未設定 → 拒否"""
-        with pytest.raises(SystemExit) as exc:
-            _run_main("--permissive", env={
-                "RUMI_ENVIRONMENT": None,
-                "RUMI_ALLOW_PERMISSIVE": None,
-            })
-        assert exc.value.code == 1
+        """No environment values add a permissive parser option."""
+        _assert_retired_production_root()
 
     def test_permissive_blocked_in_production(self):
-        """RUMI_ENVIRONMENT=production → 拒否"""
-        with pytest.raises(SystemExit) as exc:
-            _run_main("--permissive", env={
-                "RUMI_ENVIRONMENT": "production",
-                "RUMI_ALLOW_PERMISSIVE": None,
-            })
-        assert exc.value.code == 1
+        """Production labels cannot alter the finite parser surface."""
+        _assert_retired_production_root()
 
     def test_permissive_allowed_with_explicit_flag(self, tmp_path):
-        """RUMI_ALLOW_PERMISSIVE=true → 許可"""
+        """An old explicit allow flag is not accepted by the root."""
         (tmp_path / "permissive.lock").touch()
-        _run_main("--permissive", "--headless", env={
-            "RUMI_ALLOW_PERMISSIVE": "true",
-            "RUMI_USER_DATA": str(tmp_path),
-        })
+        _assert_retired_production_root()
+        import app
+
+        assert app._parser().parse_args(["--headless"]).headless is True
 
     def test_permissive_allowed_in_dev_environment(self, tmp_path):
-        """RUMI_ENVIRONMENT=development → 許可"""
+        """Development labels cannot restore a removed opt-in."""
         (tmp_path / "permissive.lock").touch()
-        _run_main("--permissive", "--headless", env={
-            "RUMI_ENVIRONMENT": "development",
-            "RUMI_ALLOW_PERMISSIVE": None,
-            "RUMI_USER_DATA": str(tmp_path),
-        })
+        _assert_retired_production_root()
 
     def test_permissive_allowed_in_dev_short(self, tmp_path):
-        """RUMI_ENVIRONMENT=dev → 許可"""
+        """The short development label is not a production-root authority."""
         (tmp_path / "permissive.lock").touch()
-        _run_main("--permissive", "--headless", env={
-            "RUMI_ENVIRONMENT": "dev",
-            "RUMI_ALLOW_PERMISSIVE": None,
-            "RUMI_USER_DATA": str(tmp_path),
-        })
+        _assert_retired_production_root()
 
 
 # ===================================================================
