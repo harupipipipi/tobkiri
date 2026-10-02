@@ -2962,6 +2962,8 @@ function ModelCommandCandidatePopup({
 }
 
 export function ComposerRenderer({
+  surfaceMode = "standard",
+  submissionDisabled = false,
   input,
   placeholder,
   isNewConversation = false,
@@ -3125,7 +3127,7 @@ export function ComposerRenderer({
     () => templateComposerFeatureFlags(composerInput?.feature_flags),
     [composerInput?.feature_flags],
   );
-  const templateAllowsSlashCommands = templateFeatureFlags.slash_commands !== false;
+  const templateAllowsSlashCommands = surfaceMode !== "thread" && templateFeatureFlags.slash_commands !== false;
   const templateComposerInfoItems = useMemo(() => {
     const items = [
       ...templateAcceptedModalities.map((modality) => TEMPLATE_COMPOSER_MODALITY_LABELS[modality] ?? modality),
@@ -3136,17 +3138,17 @@ export function ComposerRenderer({
     return [...new Set(items)].slice(0, 6);
   }, [templateAcceptedModalities, templateFeatureFlags]);
   const templateHasModalityLimit = templateAcceptedModalities.length > 0;
-  const templateAllowsFileAttachments = templateFeatureFlags.file_attachments !== false
+  const templateAllowsFileAttachments = surfaceMode !== "thread" && templateFeatureFlags.file_attachments !== false
     && templateFeatureFlags.attachments !== false
     && (!templateHasModalityLimit || templateAcceptedModalities.some((item) => (
       item === "file" || item === "files" || item === "image" || item === "images" || item === "audio" || item === "video"
     )));
-  const templateAllowsVoiceInput = templateFeatureFlags.voice_input !== false
+  const templateAllowsVoiceInput = surfaceMode !== "thread" && templateFeatureFlags.voice_input !== false
     && templateFeatureFlags.voice !== false
     && (!templateHasModalityLimit || templateAcceptedModalities.some((item) => (
       item === "voice" || item === "speech" || item === "audio"
     )));
-  const templateAllowsAtMentions = templateFeatureFlags.at_mentions !== false
+  const templateAllowsAtMentions = surfaceMode !== "thread" && templateFeatureFlags.at_mentions !== false
     && templateFeatureFlags.mentions !== false;
 	  const toolItems = useMemo(() => [...inlineExtensions, ...belowExtensions], [inlineExtensions, belowExtensions]);
   const mentionSkills = useMemo(
@@ -3219,7 +3221,7 @@ export function ComposerRenderer({
   const activeToolGroup = toolGroups.find((group) => group.id === openToolGroup) ?? toolGroups[0] ?? null;
   const showToolGroups = toolItems.length > 4;
   const isEscapedSlash = input.startsWith("//");
-  const isSteerMode = isGenerating && !isNewConversation;
+  const isSteerMode = surfaceMode !== "thread" && isGenerating && !isNewConversation;
   const effectiveComposerPlaceholder = composerPlaceholderCopy({
     isSteerMode,
     mode,
@@ -3923,6 +3925,7 @@ export function ComposerRenderer({
       event.preventDefault();
       if (voiceStatus !== "idle" && !isGenerating) return;
       if (isGenerating) {
+        if (surfaceMode === "thread") { if (event.type === "click") onStopGenerating?.(); return; }
         const prompt = input.trim();
         if (prompt && !steerBusy) {
           onSteerSubmit?.(prompt);
@@ -3931,7 +3934,7 @@ export function ComposerRenderer({
         }
         return;
       }
-      if (pendingMentionAttachmentPaths.length > 0) return;
+      if (submissionDisabled || pendingMentionAttachmentPaths.length > 0) return;
       if (needsApiKey(selectedProfile)) {
         if (selectedProfile) setApiKeyPromptProfile(selectedProfile);
         return;
@@ -3942,7 +3945,7 @@ export function ComposerRenderer({
       submissionLockRef.current = { signature, submittedAt: now };
       onSubmit(event);
     },
-    [voiceStatus, attachedFiles, input, isGenerating, needsApiKey, onStopGenerating, onSteerSubmit, onSubmit, pendingMentionAttachmentPaths.length, selectedProfile, steerBusy],
+    [surfaceMode, submissionDisabled, voiceStatus, attachedFiles, input, isGenerating, needsApiKey, onStopGenerating, onSteerSubmit, onSubmit, pendingMentionAttachmentPaths.length, selectedProfile, steerBusy],
   );
 
   const handleSendButtonClick = useCallback(
@@ -4730,16 +4733,16 @@ export function ComposerRenderer({
           onClick={handleSendButtonClick}
           tabIndex={chromeButtonTabIndex}
           aria-label={isGenerating
-            ? (input.trim() ? "追加指示を送る" : "生成を停止")
+            ? ((surfaceMode !== "thread" && input.trim()) ? "追加指示を送る" : "生成を停止")
             : pendingMentionAttachmentPaths.length > 0
               ? "ファイルを読み込み中"
               : "メッセージを送信"}
-          disabled={!isGenerating && (
-            pendingMentionAttachmentPaths.length > 0
+          disabled={isGenerating ? surfaceMode === "thread" && !onStopGenerating : (
+            submissionDisabled || pendingMentionAttachmentPaths.length > 0
             || (!input.trim() && attachedFiles.length === 0)
           )}
           title={isGenerating
-            ? (input.trim() ? "追加指示を送る" : "停止")
+            ? ((surfaceMode !== "thread" && input.trim()) ? "追加指示を送る" : "停止")
             : pendingMentionAttachmentPaths.length > 0
               ? "ファイルを読み込み中"
               : "送信"}
@@ -4747,7 +4750,7 @@ export function ComposerRenderer({
             "h-8 min-h-8 w-8 min-w-8"
           } ${
             isGenerating
-              ? input.trim()
+              ? (surfaceMode !== "thread" && input.trim())
                 ? "bg-zinc-100 text-zinc-950 hover:bg-white"
                 : "bg-zinc-100 text-zinc-900 hover:bg-white"
               : pendingMentionAttachmentPaths.length > 0 || (!input.trim() && attachedFiles.length === 0)
@@ -4755,7 +4758,7 @@ export function ComposerRenderer({
                 : "bg-zinc-100 text-zinc-950 shadow-[0_6px_18px_rgba(0,0,0,0.28)] hover:bg-white"
           }`}
         >
-          {isGenerating && !input.trim() ? (
+          {isGenerating && !(surfaceMode !== "thread" && input.trim()) ? (
             <Square size={11} strokeWidth={2.4} fill="currentColor" aria-hidden="true" />
           ) : isGenerating ? (
             <CornerDownRight size={15} strokeWidth={2.4} />
@@ -4767,14 +4770,15 @@ export function ComposerRenderer({
     },
   ];
 
-  const conversationFileAttachWidget = chromeWidgets.find((widget) => widget.id === "file-attach" && widget.visible !== false);
-  const leadingChromeWidgets = composerChromeWidgetsForSlot(chromeWidgets, "leading")
+  const availableChromeWidgets = surfaceMode === "thread" ? chromeWidgets.filter((widget) => widget.id === "send") : chromeWidgets;
+  const conversationFileAttachWidget = availableChromeWidgets.find((widget) => widget.id === "file-attach" && widget.visible !== false);
+  const leadingChromeWidgets = composerChromeWidgetsForSlot(availableChromeWidgets, "leading")
     .filter((widget) => widget.id !== "file-attach");
-  const trailingChromeWidgets = composerChromeWidgetsForSlot(chromeWidgets, "trailing");
-  const newConversationInlineLeadingWidgets = composerChromeWidgetsForHomeSlot(chromeWidgets, "editor-leading");
-  const newConversationTopRightWidgets = composerChromeWidgetsForHomeSlot(chromeWidgets, "editor-trailing");
-  const newConversationInlineActionWidgets = composerChromeWidgetsForHomeSlot(chromeWidgets, "toolbar-leading");
-  const newConversationTrailingWidgets = composerChromeWidgetsForHomeSlot(chromeWidgets, "toolbar-trailing");
+  const trailingChromeWidgets = composerChromeWidgetsForSlot(availableChromeWidgets, "trailing");
+  const newConversationInlineLeadingWidgets = composerChromeWidgetsForHomeSlot(availableChromeWidgets, "editor-leading");
+  const newConversationTopRightWidgets = composerChromeWidgetsForHomeSlot(availableChromeWidgets, "editor-trailing");
+  const newConversationInlineActionWidgets = composerChromeWidgetsForHomeSlot(availableChromeWidgets, "toolbar-leading");
+  const newConversationTrailingWidgets = composerChromeWidgetsForHomeSlot(availableChromeWidgets, "toolbar-trailing");
   const menuFolders = templateAllowsSlashCommands
     ? ([
         ["tools", "Tools", Wrench],
@@ -5248,7 +5252,7 @@ export function ComposerRenderer({
                       autoFocus
                       rows={1}
                       value={input}
-                      readOnly={voiceStatus !== "idle"}
+                      readOnly={voiceStatus !== "idle" || (surfaceMode === "thread" && isGenerating)}
                       data-template-composer-input={templateComposerInputId || undefined}
                       onChange={(event) => {
                         resizeComposerTextarea(event.currentTarget);
@@ -5353,7 +5357,7 @@ export function ComposerRenderer({
                     ref={textareaRef}
                     rows={1}
                     value={input}
-                    readOnly={voiceStatus !== "idle"}
+                    readOnly={voiceStatus !== "idle" || (surfaceMode === "thread" && isGenerating)}
                     data-template-composer-input={templateComposerInputId || undefined}
                     onChange={(event) => {
                       resizeComposerTextarea(event.currentTarget);

@@ -191,6 +191,8 @@ export type ChatMessagesRendererProps = {
 };
 
 export type ComposerRendererProps = {
+  surfaceMode?: "standard" | "thread";
+  submissionDisabled?: boolean;
   widgetContext?: WidgetConversationContext;
   input: string;
   placeholder: string;

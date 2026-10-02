@@ -1,3 +1,4 @@
+import { chatMessageToUiMessage } from "./lib/chatUiMessage";
 import { FrontendViewSlot } from "./host/FrontendViewSlot";
 import { viewsForSlot, matchesViewReference, type CatalogViewReference, type ViewSlot } from "./host/catalogViewRegistry";
 import { useVerifiedFrontendHost } from "./host/VerifiedFrontendHostContext";
@@ -66,7 +67,7 @@ import { ConversationShareLanding, ImportedConversationNotice } from "./pages/Co
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "./components/HistoryBoard";
 import type { ToolPreviewItem, ToolPreviewMode } from "./components/ToolPreview";
 import { buildToolPreviewDisplayItems, hasCanvasItems } from "./components/ToolPreview";
-import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, mergeComposerCommands, savedTurnContentFromAttachments, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SavedTurnEventSnapshot, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
+import { admittedStrategyContributions, ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, mergeComposerCommands, savedTurnContentFromAttachments, type ChatActivityEvent, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SavedTurnEventSnapshot, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
 import { applyCommandStateSnapshots, createCommandInvocationId } from "./lib/commandState";
 import type { ActionApprovalMode } from "./features/tools/ActionApprovalControl";
 import {
@@ -98,6 +99,7 @@ import { pendingBrowserApproval, pendingRuntimeApproval, staleRuntimeApproval, t
 import { browserApprovalViewModel, runtimeApprovalViewModel, type ApprovalViewModel } from "./lib/approvalPresentation";
 import { reduceBrowserStateFromEvents } from "./lib/browserState";
 import { deriveConversationTitle, formatRelativeTime, inspectConversationIntegrity, messageToText, orderConversationMessages } from "./lib/chat";
+import { conversationVisibleInHistory } from "./lib/conversationVisibility";
 import { isMessageScrollerNearBottom } from "./lib/chatScroll";
 import { loadConversationForRefresh, resolveSupersededConversationRedirect } from "./lib/chatRouteLoading";
 import { cn } from "./lib/cn";
@@ -110,7 +112,6 @@ import {
   composerSkillMentionWidget,
   composerToolMentionWidget,
   isSafeLocalEndpoint,
-  normalizeComposerMentionMetadata,
   publicComposerWidgetMetadata,
   reconcileComposerSemanticDraft,
   skillMentionIdsFromText,
@@ -129,7 +130,6 @@ import { fileToAttachment } from "./lib/attachments";
 import { toolGroupFor } from "./lib/toolUi";
 import type { ComposerEntityReference } from "./lib/composerReferences";
 import { conversationMatchesSpotlightFilter, conversationToSearchResult, type SpotlightFilter } from "./lib/conversationSpotlight";
-import { boundedDurationLabel } from "./lib/duration";
 import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/desktopApproval";
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
 import { normalizeLocale } from "./lib/i18n";
@@ -1469,6 +1469,7 @@ function buildChatItems(
   conversations: Conversation[],
   presentations: Readonly<Record<string, ConversationPresentation | undefined>> = {},
 ): ChatItem[] {
+  conversations = conversations.filter(conversationVisibleInHistory);
   const byId = new Map(conversations.map((conversation) => [conversation.id, conversation]));
   const childIds = new Set<string>();
 
@@ -1503,77 +1504,6 @@ function buildChatItems(
   return conversations
     .filter((conversation) => !childIds.has(conversation.id))
     .map(build);
-}
-
-function normalizeBlocks(message: ChatMessage): ChatContentBlock[] {
-  if (typeof message.content === "string") {
-    return [{ type: "text", text: message.content }];
-  }
-  return message.content;
-}
-
-function chatMessageMetadataRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
-}
-
-function toUiMessage(message: ChatMessage, profile?: ModelProfile | null): ChatUiMessage {
-  const isUser = message.role === "user";
-  const metadata = message.metadata ?? {};
-  const thinking = metadata.thinking as Record<string, unknown> | undefined;
-  const timing = metadata.timing as Record<string, unknown> | undefined;
-  const pendingApproval = metadata.pending_approval;
-  const pendingAuthorityApproval = chatMessageMetadataRecord(metadata.pendingAuthorityApproval ?? metadata.pending_authority_approval);
-  const authorityFollowup = chatMessageMetadataRecord(metadata.authority_followup ?? metadata.authorityFollowup);
-  const chatDisplay = chatMessageMetadataRecord(metadata.chat_display ?? metadata.chatDisplay);
-  const promptUsage = metadata.prompt_usage && typeof metadata.prompt_usage === "object" && !Array.isArray(metadata.prompt_usage)
-    ? metadata.prompt_usage as NonNullable<ChatUiMessage["metadata"]>["promptUsage"]
-    : undefined;
-  const attachedToolCount = Number(metadata.attached_tool_count ?? 0);
-  const thinkingDuration = String(timing?.thinking_duration_label ?? "")
-    || boundedDurationLabel(timing?.thinking_started_at, timing?.completed_at);
-  const displayMetadata = {
-    ...(authorityFollowup ? { authorityFollowup } : {}),
-    ...(chatDisplay ? { chatDisplay } : {}),
-  };
-  const explicitMentions = normalizeComposerMentionMetadata(metadata.mentions);
-  const fallbackMentions = explicitMentions.length === 0 && Array.isArray(metadata.dropped_widgets)
-    ? composerMentionMetadataFromWidgets(metadata.dropped_widgets as DroppedWidget[])
-    : [];
-  const mentions = explicitMentions.length > 0 ? explicitMentions : fallbackMentions;
-  const userMetadata = Object.keys(displayMetadata).length > 0 || mentions.length > 0
-    ? { ...displayMetadata, ...(mentions.length > 0 ? { mentions } : {}) }
-    : undefined;
-  return {
-    id: message.id,
-    conversationId: message.conversation_id,
-    createdAt: message.created_at,
-    role: isUser ? "user" : "agent",
-    content: normalizeBlocks(message),
-    rawText: messageToText(message),
-    widget: message.widget,
-    events: message.events ?? [],
-    toolLogs: message.tool_logs ?? [],
-    metadata: isUser
-      ? userMetadata
-      : {
-          executionTime: formatRelativeTime(message.created_at),
-          modelName: profile?.display_name ?? String(message.model ?? ""),
-          thinkingLabel: String(thinking?.state ?? ""),
-          thinkingDuration,
-          thinkingTranscript: String(thinking?.transcript ?? ""),
-          interrupted: metadata.interrupted === true || message.finish_reason === "interrupted",
-          interruptionReason: String(metadata.interruption_reason ?? ""),
-          attachedToolCount,
-          pendingApproval: pendingApproval && typeof pendingApproval === "object" && !Array.isArray(pendingApproval)
-            ? pendingApproval as Record<string, unknown>
-            : undefined,
-          pendingAuthorityApproval,
-          ...displayMetadata,
-          promptUsage,
-        },
-  };
 }
 
 function optimisticUserMessage(
@@ -2841,12 +2771,15 @@ export function ChatApp() {
   }, [activeConversation?.updated_at, activeConversationId, markConversationRead]);
   const recentSpotlightResults = useMemo(
     () => conversations
+      .filter(conversationVisibleInHistory)
       .filter((conversation) => conversationMatchesSpotlightFilter(conversation, spotlightFilter))
       .slice(0, 10)
       .map(conversationToSearchResult),
     [conversations, spotlightFilter],
   );
-  const visibleSpotlightResults = spotlightQuery.trim() ? spotlightResults : recentSpotlightResults;
+  const hiddenConversationIds = new Set(conversations.filter((conversation) => !conversationVisibleInHistory(conversation)).map((conversation) => conversation.id));
+  const visibleSpotlightResults = (spotlightQuery.trim() ? spotlightResults : recentSpotlightResults)
+    .filter((result) => !hiddenConversationIds.has(result.conversation_id));
   const activeModelId = activeConversation?.model ?? String(settingsValues.models?.preferred_model ?? "stub/default").trim();
   const activeProfile = findProfile(modelProfiles, activeModelId);
   const orderedMessages = useMemo(
@@ -2886,7 +2819,7 @@ export function ChatApp() {
   const latestActivePendingSignature = latestActiveMessage
     ? `${latestActiveMessage.id}:${latestActiveMessage.role}:${latestActiveMessage.finish_reason ?? ""}:${String(latestActiveThinking.state ?? "")}`
     : "";
-  const messages = orderedMessages.map((message) => toUiMessage(message, activeProfile));
+  const messages = orderedMessages.map((message) => chatMessageToUiMessage(message, activeProfile));
   const backendConnectionBanner = backendConnectionCopy(
     backendConnectionState,
     lastHealthyAtRef.current,
