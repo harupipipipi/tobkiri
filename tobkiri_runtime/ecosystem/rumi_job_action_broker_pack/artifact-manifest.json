@@ -3,7 +3,12 @@
   "artifacts": [
     {
       "path": "runtime/broker.py",
-      "sha256": "51bcd27448a1c0e24a7108436d83c6a589c9c005639707959b89562c3ae19595",
+      "sha256": "d9a642ede0c9e7c5ed686d01ab462f4299812728f53e9f9a60f148632eaa1fe2",
+      "role": "runtime"
+    },
+    {
+      "path": "runtime/dispatch_envelope.py",
+      "sha256": "316ffe851f4ad830f47614245b8a4f1cdea3c391de992167d42f5a0179aee611",
       "role": "runtime"
     }
   ]

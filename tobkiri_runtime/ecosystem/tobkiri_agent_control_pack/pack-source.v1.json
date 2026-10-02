@@ -841,6 +841,49 @@
                         }
                       ]
                     },
+                    "context_binding": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "context_digest": {
+                          "pattern": "^sha256:[0-9a-f]{64}$",
+                          "type": "string"
+                        },
+                        "parent_conversation_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "not": {
+                            "pattern": "[^A-Za-z0-9._:-]"
+                          },
+                          "pattern": "^[A-Za-z0-9]",
+                          "type": "string"
+                        },
+                        "parent_revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "profile_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "not": {
+                            "pattern": "[^A-Za-z0-9._:-]"
+                          },
+                          "pattern": "^[A-Za-z0-9]",
+                          "type": "string"
+                        },
+                        "version": {
+                          "const": "tobkiri.conversation-context-binding.v1"
+                        }
+                      },
+                      "required": [
+                        "version",
+                        "profile_id",
+                        "parent_conversation_id",
+                        "parent_revision",
+                        "context_digest"
+                      ],
+                      "type": "object"
+                    },
                     "conversation_id": {
                       "maxLength": 256,
                       "minLength": 1,
@@ -1522,12 +1565,12 @@
       "path": "runtime/review.py"
     },
     {
-      "digest": "sha256:43ffa17fe1ecf646c52031d2236d0adfdb937f7fe8d134c475ee20451428d40b",
+      "digest": "sha256:fd1dd6463d96d227be63593b2f33217b4e69f6d2ed0b5f45f62a2838bcb58e05",
       "kind": "executable",
       "path": "runtime/schedules.py"
     },
     {
-      "digest": "sha256:e3379e1478cef4e36d892a677c7c95602b2f51d1b1d3be57ad953bfe26af971c",
+      "digest": "sha256:d7078330058fb15d5d171a268fd4266c6dc34a0c3b628d432251297599972287",
       "kind": "executable",
       "path": "runtime/service.py"
     },
@@ -1542,7 +1585,7 @@
       "path": "runtime/todo.py"
     },
     {
-      "digest": "sha256:f1b71aa2ceca78b78dfd6ba754a13509e3a2c16e4a68b75b5f10380cbb7447a3",
+      "digest": "sha256:a9995687fce245180865119fb804bd2e36a17c46448d2e1990ff002549de5c62",
       "kind": "executable",
       "path": "runtime/workflow.py"
     }
