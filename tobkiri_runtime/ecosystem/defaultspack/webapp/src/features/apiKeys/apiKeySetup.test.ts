@@ -2,13 +2,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  apiKeySaveResource,
   buildApiKeySavePayload,
   collectApiProviderOptions,
   collectExternalProviderOptions,
   customProviderRegistrationPayload,
   filterApiProviderOptions,
+  filterApiProviderOptionsByScope,
+  filterRegisteredApiRowsByScope,
+  normalizeApiProviderScope,
   normalizeCustomProviderId,
   parseAllowedModels,
+  requiresExplicitApiProviderProtocol,
   summarizeApiKeySetupForDiagnostics,
 } from "./apiKeySetup";
 
@@ -39,6 +44,7 @@ test("collectApiProviderOptions includes builtins, custom providers, and OAuth m
   assert.equal(acme?.oauth_client_configured, true);
   assert.equal(searchapi?.kind, "custom");
   assert.equal(searchapi?.builtin, false);
+  assert.equal(options.find((option) => option.provider_id === "cloudflare")?.kind, "custom");
 });
 
 test("collectExternalProviderOptions keeps external providers custom", () => {
@@ -56,6 +62,35 @@ test("filterApiProviderOptions searches label and provider id", () => {
 
   assert.deepEqual(filterApiProviderOptions(options, "acme").map((option) => option.provider_id), ["acme-ai"]);
   assert(filterApiProviderOptions(options, "OpenAI").some((option) => option.provider_id === "openai"));
+});
+
+test("API provider scope keeps AI and non-AI credential surfaces separate", () => {
+  const options = collectApiProviderOptions([
+    { provider_id: "openai", label: "OpenAI", kind: "llm" },
+    { provider_id: "cloudflare", label: "Cloudflare", kind: "custom" },
+  ]);
+
+  assert.equal(filterApiProviderOptionsByScope(options, "llm").some((option) => option.provider_id === "openai"), true);
+  assert.equal(filterApiProviderOptionsByScope(options, "non_llm").some((option) => option.provider_id === "openai"), false);
+  assert.equal(filterApiProviderOptionsByScope(options, "non_llm").some((option) => option.provider_id === "cloudflare"), true);
+
+  const rows = [
+    { provider_id: "openai", api_id: "main", kind: "llm" },
+    { provider_id: "cloudflare", api_id: "work", kind: "custom" },
+  ];
+  assert.deepEqual(
+    filterRegisteredApiRowsByScope(rows, options, "non_llm").map((row) => row.provider_id),
+    ["cloudflare"],
+  );
+  assert.equal(apiKeySaveResource("llm"), "provider");
+  assert.equal(apiKeySaveResource("custom"), "external_token");
+});
+
+test("normalizeApiProviderScope accepts declarative template aliases", () => {
+  assert.equal(normalizeApiProviderScope("ai"), "llm");
+  assert.equal(normalizeApiProviderScope("non-llm"), "non_llm");
+  assert.equal(normalizeApiProviderScope("external"), "non_llm");
+  assert.equal(normalizeApiProviderScope(undefined), "all");
 });
 
 test("custom provider registration normalizes provider ids", () => {
@@ -88,6 +123,36 @@ test("buildApiKeySavePayload parses form metadata while keeping secret only in s
   assert.equal(payload?.value, "sk-secret");
   assert.deepEqual(payload?.options.allowedModels, ["gpt-4.1", "o4-mini"]);
   assert.equal(payload?.options.baseUrl, "https://example.test");
+});
+
+test("custom LLM payload preserves the selected supported protocol", () => {
+  const payload = buildApiKeySavePayload({
+    provider_id: "acme-ai",
+    name: "main",
+    value: "private-key",
+    kind: "llm",
+    protocol: "anthropic",
+    base_url: "https://models.example.test",
+  });
+
+  assert.equal(requiresExplicitApiProviderProtocol("acme-ai", "llm"), true);
+  assert.equal(requiresExplicitApiProviderProtocol("anthropic", "llm"), false);
+  assert.equal(requiresExplicitApiProviderProtocol("acme-search", "custom"), false);
+  assert.equal(payload?.options.protocol, "anthropic");
+});
+
+test("buildApiKeySavePayload accepts an explicit loopback no-key connection", () => {
+  const payload = buildApiKeySavePayload({
+    provider_id: "vllm",
+    name: "local",
+    value: "",
+    base_url: "http://127.0.0.1:8000/v1",
+    credential_mode: "none",
+  });
+
+  assert.equal(payload?.value, "");
+  assert.equal(payload?.options.credentialMode, "none");
+  assert.equal(payload?.options.baseUrl, "http://127.0.0.1:8000/v1");
 });
 
 test("summarizeApiKeySetupForDiagnostics never exposes secret values", () => {

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-open-launcher-update-release"
+description = "Enables the open_launcher_update_release command without any pre-configured scope."
+commands.allow = ["open_launcher_update_release"]
+
+[[permission]]
+identifier = "deny-open-launcher-update-release"
+description = "Denies the open_launcher_update_release command without any pre-configured scope."
+commands.deny = ["open_launcher_update_release"]

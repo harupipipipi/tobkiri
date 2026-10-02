@@ -281,6 +281,25 @@ def append_history(schedule_id, entry):
     max_entries = 200
     with _lock:
         history = _load_history_unlocked(path)
+        # Scheduler startup and a profile runtime bootstrap can observe the
+        # same orphaned execution in either order.  Recovery is identified by
+        # the execution id, so recording it twice would turn one restart into
+        # two visible runs.  Keep ordinary execution history append-only; only
+        # the explicitly marked obsolete recovery records are idempotent.
+        if (
+            isinstance(entry, dict)
+            and entry.get("status") == "obsolete"
+            and entry.get("recovered_obsolete_running_execution") is True
+        ):
+            execution_id = str(entry.get("execution_id") or "").strip()
+            if execution_id and any(
+                isinstance(item, dict)
+                and str(item.get("execution_id") or "").strip() == execution_id
+                and item.get("status") == "obsolete"
+                and item.get("recovered_obsolete_running_execution") is True
+                for item in history
+            ):
+                return
         history.append(_json_safe(entry))
         if len(history) > max_entries:
             history = history[-max_entries:]

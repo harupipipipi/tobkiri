@@ -57,4 +57,4 @@ asset_index:
     executable_code: false
     supports_all_ok: false
     external_actions_are_handoffs: true
-    defaultspack_promotion_eligible: false
+    base_pack_promotion_eligible: false

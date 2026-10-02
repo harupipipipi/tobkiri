@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tobkiri",
+  "mainBinaryName": "tobkiri-shell",
+  "identifier": "io.tobkiri.shell.tauri",
+  "build": {
+    "beforeBuildCommand": null,
+    "beforeDevCommand": null
+  },
+  "app": {
+    "trayIcon": null,
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Tobkiri",
+        "visible": true
+      }
+    ]
+  },
+  "bundle": {
+    "resources": null
+  }
+}

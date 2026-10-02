@@ -316,6 +316,81 @@
         "type": "string"
       }
     },
+    "required_capabilities": {
+      "type": "array",
+      "description": "Pack がホストへ要求する capability のリスト",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "resources": {
+      "type": "array",
+      "description": "Pack に含まれる宣言済みリソース",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "content_hash"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "type": "string",
+                "minLength": 1
+              },
+              "content_hash": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "description": "Pack 内容とビルド元をホスト検証へ結び付ける metadata",
+      "required": [
+        "content_hash",
+        "build_identity",
+        "trust_class",
+        "signature"
+      ],
+      "properties": {
+        "content_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "build_identity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trust_class": {
+          "type": "string",
+          "minLength": 1
+        },
+        "signature": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "required_network": {
       "description": "Pack が必要とするネットワークアクセス先のリスト",
       "oneOf": [

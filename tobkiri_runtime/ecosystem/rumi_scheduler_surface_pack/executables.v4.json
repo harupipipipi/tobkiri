@@ -1,0 +1,7 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:23b210999386b90c3c9b43243d5e6033baaa62ea1a166617ca40f71518e0b27f",
+  "pack_id": "rumi_scheduler_surface_pack",
+  "source_identity": "sha256:f28bcebf1d726b270f44763bd19e0410a30d49b01f91fcdee505d7a2bad9e05a",
+  "variants": []
+}

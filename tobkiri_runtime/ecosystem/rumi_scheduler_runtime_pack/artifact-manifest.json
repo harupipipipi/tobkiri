@@ -1,0 +1,15 @@
+{
+  "schema_version": "rumi.artifact-manifest.v1",
+  "artifacts": [
+    {
+      "path": "runtime/scheduler.py",
+      "sha256": "a302c3cb9f6fa884f23cca7b03845d378128ec931d0a6d855d2620246e4ac2d7",
+      "role": "runtime"
+    },
+    {
+      "path": "runtime/clock.py",
+      "role": "runtime",
+      "sha256": "e791852be8e726c6fb26f992d1e59f7654cbff9648336c672228616aa9e769fd"
+    }
+  ]
+}

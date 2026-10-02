@@ -1,0 +1,10 @@
+.task-pet-character { transform-origin: 50% 90%; }
+.task-pet[data-state="thinking"] .task-pet-character { animation: task-pet-breathe 2.4s ease-in-out infinite; }
+.task-pet-spinner { animation: task-pet-spin 1.8s linear infinite; }
+.task-pet[data-state="completed"] .task-pet-bubble { border-color: rgb(110 231 183 / 45%); }
+.task-pet[data-state="error"] .task-pet-bubble { border-color: rgb(252 211 77 / 45%); }
+@keyframes task-pet-breathe { 50% { transform: translateY(-3px); } }
+@keyframes task-pet-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .task-pet-character, .task-pet-spinner { animation: none !important; }
+}

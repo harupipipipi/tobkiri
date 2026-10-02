@@ -1,10 +1,15 @@
+function routeKey(path: string): string {
+  return `/${path}`;
+}
+
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
   canExecuteComposerEndpointAction,
+  composerExtensionItems,
   composerMentionMetadataFromWidgets,
   composerFileMentionWidget,
   composerServiceMentionWidget,
@@ -19,6 +24,7 @@ import {
   skillMentionIdsFromText,
   toolMentionIdsFromText,
   trustedComposerActionForWidget,
+  widgetWithCurrentPresentation,
   withComposerMentionSelectionOwnership,
 } from "./composerWidgets";
 import {
@@ -48,11 +54,16 @@ type BoundaryFixture = {
   tokens: string[];
 };
 
-const boundaryFixtures = JSON.parse(readFileSync(resolve(
+const sharedBoundaryFixturePath = resolve(
   import.meta.dirname,
   "../../../../..",
   "tests/fixtures/mention_boundaries.json",
-), "utf8")) as BoundaryFixture[];
+);
+const packagedBoundaryFixturePath = resolve(import.meta.dirname, "fixtures/mention_boundaries.json");
+const boundaryFixtures = JSON.parse(readFileSync(
+  existsSync(sharedBoundaryFixturePath) ? sharedBoundaryFixturePath : packagedBoundaryFixturePath,
+  "utf8",
+)) as BoundaryFixture[];
 
 test("frontend follows the shared Unicode mention boundary fixtures", () => {
   for (const fixture of boundaryFixtures) {
@@ -85,7 +96,7 @@ test("frontend follows the shared Unicode mention boundary fixtures", () => {
 });
 
 test("composer endpoint actions are limited to safe local non-approval APIs", () => {
-  assert.equal(isSafeLocalEndpoint("/api/coding/git/status"), true);
+  assert.equal(isSafeLocalEndpoint(routeKey("api/coding/git/status")), true);
   assert.equal(isSafeLocalEndpoint("//evil.example/api"), false);
   assert.equal(isSafeLocalEndpoint("https://evil.example/api"), false);
   assert.equal(isSafeLocalEndpoint("/not-api/status"), false);
@@ -93,7 +104,7 @@ test("composer endpoint actions are limited to safe local non-approval APIs", ()
   assert.equal(
     canExecuteComposerEndpointAction({
       type: "call_endpoint",
-      endpoint: "/api/coding/git/status",
+      endpoint: routeKey("api/coding/git/status"),
       requires_approval: false,
     }),
     true,
@@ -101,7 +112,7 @@ test("composer endpoint actions are limited to safe local non-approval APIs", ()
   assert.equal(
     canExecuteComposerEndpointAction({
       type: "call_endpoint",
-      endpoint: "/api/coding/files/write",
+      endpoint: routeKey("api/coding/files/write"),
       requires_approval: true,
     }),
     false,
@@ -109,7 +120,7 @@ test("composer endpoint actions are limited to safe local non-approval APIs", ()
   assert.equal(
     canExecuteComposerEndpointAction({
       type: "call_endpoint",
-      endpoint: "/api/ui/settings",
+      endpoint: routeKey("api/ui/settings"),
       method: "PUT",
       requires_approval: false,
     }),
@@ -130,7 +141,7 @@ test("composer widget drops rebuild actions from trusted catalog items", () => {
         composer_icon: "git",
         composer_action: {
           type: "call_endpoint",
-          endpoint: "/api/coding/git/status",
+          endpoint: routeKey("api/coding/git/status"),
           method: "GET",
           result_surface: "preview",
           requires_approval: false,
@@ -147,7 +158,7 @@ test("composer widget drops rebuild actions from trusted catalog items", () => {
     widgetKind: "button",
     action: {
       type: "call_endpoint",
-      endpoint: "/api/ui/settings",
+      endpoint: routeKey("api/ui/settings"),
       method: "PUT",
       payload: { values: { yolo_mode: true } },
       requires_approval: false,
@@ -159,6 +170,70 @@ test("composer widget drops rebuild actions from trusted catalog items", () => {
   assert.equal(action.widget.label, "Git Status");
   assert.deepEqual(action.widget.action, toolItems[0].ui.composer_action);
   assert.equal(trustedComposerActionForWidget(action.widget, toolItems), toolItems[0].ui.composer_action);
+});
+
+test("composer widget attention updates and clears without recreating the widget", () => {
+  const widget = {
+    id: "notifications",
+    sourceItemId: "notifications",
+    type: "tool",
+    label: "Notifications",
+    widgetKind: "tool_toggle",
+    presentation: {
+      icon_attention: {
+        active: true,
+        tone: "danger",
+        effect: "pulse",
+      },
+    },
+  };
+  const updated = widgetWithCurrentPresentation(widget, [{
+    id: "notifications",
+    label: "Notifications",
+    presentation: {
+      icon_attention: {
+        active: true,
+        tone: "info",
+        effect: "pulse",
+      },
+    },
+  }]);
+  assert.equal(updated.id, widget.id);
+  assert.deepEqual(updated.presentation?.icon_attention, {
+    active: true,
+    tone: "info",
+    effect: "pulse",
+  });
+
+  const cleared = widgetWithCurrentPresentation(updated, [{
+    id: "notifications",
+    label: "Notifications",
+  }]);
+  assert.equal(cleared.id, widget.id);
+  assert.equal(cleared.presentation, undefined);
+});
+
+test("sidebar projection keeps root widget presentation for composer surfaces", () => {
+  const attention = {
+    active: true,
+    tone: "info",
+    effect: "pulse",
+    accessible_label: "New activity",
+  };
+  assert.deepEqual(composerExtensionItems([{
+    id: "notifications",
+    label: "Notifications",
+    category: "tool",
+    presentation: { icon_attention: attention },
+  }]), [{
+    id: "notifications",
+    label: "Notifications",
+    category: "tool",
+    description: undefined,
+    tags: [],
+    ui: undefined,
+    presentation: { icon_attention: attention },
+  }]);
 });
 
 test("composer skill mentions resolve aliases and create prompt widgets", () => {

@@ -6,9 +6,8 @@ from typing import Any, Dict, Mapping, Optional
 
 _SURFACE_ENV_KEYS = {
     "RUMI_PROFILE_SURFACE",
-    "RUMI_DEFAULTSPACK_OPEN_BROWSER",
-    "RUMI_DEFAULTSPACK_SURFACE",
 }
+_SURFACE_CONTRIBUTION_SCHEMA = "io.tobkiri.surface-contribution.v1"
 
 
 def extract_surface_launch_target(
@@ -33,7 +32,7 @@ def extract_surface_launch_target(
     if explicit:
         return explicit
 
-    target = _from_defaultspack_frontend_surface(runtime_profile, surfaces=surfaces)
+    target = _from_surface_contributions(runtime_profile, surfaces=surfaces)
     if target:
         return target
 
@@ -119,52 +118,35 @@ def resolve_surface_mode(surfaces: Any) -> str:
 
 
 def surface_env(mode: str) -> Dict[str, str]:
+    """Return core-owned surface selection environment for a launch target."""
     normalized = "desktop" if str(mode).strip().lower() == "desktop" else "browser"
-    env = {
-        "RUMI_PROFILE_SURFACE": normalized,
-        "RUMI_DEFAULTSPACK_OPEN_BROWSER": "1",
-    }
-    if normalized == "desktop":
-        env["RUMI_DEFAULTSPACK_SURFACE"] = "webview"
-    else:
-        env["RUMI_DEFAULTSPACK_SURFACE"] = "browser"
-    return env
+    return {"RUMI_PROFILE_SURFACE": normalized}
 
 
-def _from_defaultspack_frontend_surface(
+def _from_surface_contributions(
     runtime_profile: Dict[str, Any],
     *,
     surfaces: Optional[Dict[str, Any]],
 ) -> Optional[Dict[str, Any]]:
-    defaultspack = runtime_profile.get("defaultspack")
-    if not isinstance(defaultspack, dict):
+    """Resolve a launch target supplied by a validated Pack contribution."""
+    contributions = runtime_profile.get("surface_contributions")
+    if not isinstance(contributions, (list, tuple)):
         return None
-    frontends = defaultspack.get("frontends")
-    if not isinstance(frontends, dict):
-        return None
-    for frontend in frontends.values():
-        if not isinstance(frontend, dict):
+    for contribution in contributions:
+        if not isinstance(contribution, Mapping):
             continue
-        explicit = normalize_surface_launch_target(
-            frontend.get("surface_launch_target"),
+        if contribution.get("schema") != _SURFACE_CONTRIBUTION_SCHEMA:
+            continue
+        if contribution.get("kind") != "surface_launch_target":
+            continue
+        owner_pack_id = _clean_string(contribution.get("owner_pack_id"))
+        target = normalize_surface_launch_target(
+            contribution.get("target"),
             fallback_pack_id=None,
             surfaces=surfaces,
         )
-        if explicit:
-            return explicit
-        refs = []
-        if isinstance(frontend.get("surface"), str):
-            refs.append(frontend["surface"])
-        refs.extend(item for item in frontend.get("surfaces", []) if isinstance(item, str))
-        for node_instance_id in refs:
-            target = _target_from_runtime_node_instance(
-                runtime_profile,
-                node_instance_id=node_instance_id,
-                surfaces=surfaces,
-                diagnostics=None,
-            )
-            if target:
-                return target
+        if target and owner_pack_id == target["pack_id"]:
+            return target
     return None
 
 
@@ -196,26 +178,6 @@ def _from_launch_metadata_nodes(
         if target:
             return target
     return None
-
-
-def _target_from_runtime_node_instance(
-    runtime_profile: Dict[str, Any],
-    *,
-    node_instance_id: str,
-    surfaces: Optional[Dict[str, Any]],
-    diagnostics: Optional[list[Dict[str, Any]]],
-) -> Optional[Dict[str, Any]]:
-    payload = _runtime_node_payload(runtime_profile, node_instance_id)
-    node = payload.get("node")
-    if not isinstance(node, dict):
-        return None
-    return _target_from_node_payload(
-        node,
-        node_instance_id=node_instance_id,
-        node_id=_clean_string(payload.get("node_id") or node.get("node_id")),
-        surfaces=surfaces,
-        diagnostics=diagnostics,
-    )
 
 
 def _target_from_node_payload(
@@ -310,6 +272,7 @@ def _normalize_target_mapping(
     else:
         mode = _clean_string(target.get("surface")) or resolve_surface_mode(surfaces)
     env = surface_env(mode)
+    env.update(_surface_environment(target.get("env_by_surface"), mode))
     target_env = _string_dict(target.get("env"))
     if surface_source == "profile":
         target_env = {
@@ -331,6 +294,19 @@ def _normalize_target_mapping(
         if value:
             normalized[key] = value
     return normalized
+
+
+def _surface_environment(value: Any, mode: str) -> Dict[str, str]:
+    """Return Pack-supplied, mode-specific environment from a generic contract."""
+    if not isinstance(value, Mapping):
+        return {}
+    normalized_mode = "desktop" if mode == "desktop" else "browser"
+    environment = _string_dict(value.get(normalized_mode))
+    return {
+        key: item
+        for key, item in environment.items()
+        if key not in _SURFACE_ENV_KEYS
+    }
 
 
 def _runtime_node_payload(runtime_profile: Dict[str, Any], node_instance_id: str) -> Dict[str, Any]:
