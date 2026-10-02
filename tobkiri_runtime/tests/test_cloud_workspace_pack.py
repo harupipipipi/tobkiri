@@ -34,6 +34,7 @@ from ecosystem.tobkiri_cloud_workspace_pack.runtime.store import (
     Conflict,
     WorkspaceStore,
 )
+from ecosystem.tobkiri_cloud_workspace_pack.runtime.task import TASK_RESOURCE
 from tobkiri_protocol.provenance import sha256_file
 from tobkiri_protocol.validation import validate_document
 
@@ -355,6 +356,8 @@ class PublicFiles:
 
     def invoke(self, contract: str, operation: str, payload: Any) -> Any:
         self.calls.append((contract, operation, payload))
+        if contract == TASK_RESOURCE:
+            raise LookupError("optional task provider is not selected")
         if contract == WORKSPACE:
             count = sum(c[0] == WORKSPACE for c in self.calls)
             return {

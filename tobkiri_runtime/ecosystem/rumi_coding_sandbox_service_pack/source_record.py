@@ -171,6 +171,7 @@ def build_source() -> dict[str, Any]:
                 "runtime/host_v4.py",
                 "runtime/task_state.py",
                 "runtime/task_container.py",
+                "runtime/task_execution.py",
                 "pack-source.v1.json",
                 "compatibility-source.v1.json",
             ]
@@ -180,6 +181,7 @@ def build_source() -> dict[str, Any]:
             for path in [
                 "tobkiri_protocol/workspace_capsule_v1.py",
                 "tobkiri_protocol/workspace_task_v1.py",
+                "tobkiri_protocol/workspace_tree_v1.py",
             ]
         ],
         "public_dependencies": [

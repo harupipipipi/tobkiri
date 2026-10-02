@@ -58,6 +58,9 @@ def build_source() -> dict[str, Any]:
     """Derive current byte digests and public finite operation requirements."""
     shared = PACK.parents[1] / "tobkiri_protocol/workspace_capsule_v1.py"
     (PACK / "container/workspace_capsule_v1.py").write_bytes(shared.read_bytes())
+    (PACK / "container/workspace_tree_v1.py").write_bytes(
+        (PACK.parents[1] / "tobkiri_protocol/workspace_tree_v1.py").read_bytes()
+    )
     recipe_paths = [
         "container/Dockerfile",
         "container/runtime.py",
@@ -120,6 +123,22 @@ def build_source() -> dict[str, Any]:
         "read_only_root": True,
         "max_timeout_seconds": 120,
         "max_work_bytes": 4 * 1024 * 1024,
+        "workspace_tmpfs_bytes": 8 * 1024 * 1024,
+        "workspace_tmpfs_inodes": 512,
+        "tmp_tmpfs_bytes": 16 * 1024 * 1024,
+        "tmp_tmpfs_inodes": 256,
+        "files": [
+            {
+                "path": path,
+                "digest": "sha256:"
+                + hashlib.sha256((PACK / path).read_bytes()).hexdigest(),
+            }
+            for path in [
+                "container/task_runner.py",
+                "container/workspace_capsule_v1.py",
+                "container/workspace_tree_v1.py",
+            ]
+        ],
     }
     (PACK / "container/task-recipe.v1.json").write_text(
         json.dumps(task_recipe, indent=2) + "\n"
@@ -178,6 +197,8 @@ def build_source() -> dict[str, Any]:
         "container/recipe.v1.json",
         "container/task-recipe.v1.json",
         "container/workspace_capsule_v1.py",
+        "container/workspace_tree_v1.py",
+        "container/task_runner.py",
         "pack-source.v1.json",
         "frontend/contributions/composer.json",
         "frontend/contributions/workspace.json",

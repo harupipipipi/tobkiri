@@ -383,6 +383,14 @@
       "kind": "sidecar"
     },
     {
+      "path": "container/workspace_tree_v1.py",
+      "kind": "sidecar"
+    },
+    {
+      "path": "container/task_runner.py",
+      "kind": "sidecar"
+    },
+    {
       "path": "pack-source.v1.json",
       "kind": "sidecar"
     },

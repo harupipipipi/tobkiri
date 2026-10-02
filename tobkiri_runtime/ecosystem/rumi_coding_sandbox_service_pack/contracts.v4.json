@@ -166,10 +166,10 @@
         "generator": "tobkiri-protocol",
         "generator_version": "1.0.0",
         "normative": false,
-        "repository_commit": "410f8373d9dbfad117840ea4f9a9e9e80a61931d",
-        "repository_tree": "5dd3d2bd97df68e66c69eb766e3668c24ac17fadb8bd56fc3dd8d2ca0f83a5de",
+        "repository_commit": "cc11ce7001b4b737965bb17c4e83ebc512fc9656",
+        "repository_tree": "f8e93227b2cc31d00ad147ee7c55dbd15e8bb87bda152fb35e0a475a0d167986",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:cc040cb5a7a023583ca8cfb9d1c861629d0bab2ec881f3403b95be802ff04243",
+        "source_digest": "sha256:5bfc7e9db7dd99bab47379d5d62ff9991065db7abaf2fc07cb91eedbb516a5e8",
         "source_kind": "repository",
         "source_path": "ecosystem/rumi_coding_sandbox_service_pack/pack-source.v1.json"
       },
@@ -183,12 +183,13 @@
         },
         "provider_id": "rumi_coding_sandbox_service_pack.task-execute",
         "required_capabilities": [
-          "coding.sandbox.task.prepare",
-          "coding.sandbox.task.execute"
+          "cloud.workspace.resource",
+          "coding.sandbox.task.execute",
+          "coding.sandbox.task.prepare"
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:f6a3790a4fef577b72ec311dd0fcb3a89bd50478a7b6996f1ac82ae2b357b20b",
+      "revision_digest": "sha256:7edca18c7270e1d2d4c7000fefb1086d477c493e22f162fa6bc188d77c783c33",
       "schema_catalog": {
         "sha256:01f6dfea3bdabb9e2e418ab78fe43ff7392c8d54a43d141b5db83d11756f6aa8": {
           "additionalProperties": false,
@@ -520,10 +521,10 @@
         "generator": "tobkiri-protocol",
         "generator_version": "1.0.0",
         "normative": false,
-        "repository_commit": "410f8373d9dbfad117840ea4f9a9e9e80a61931d",
-        "repository_tree": "5dd3d2bd97df68e66c69eb766e3668c24ac17fadb8bd56fc3dd8d2ca0f83a5de",
+        "repository_commit": "cc11ce7001b4b737965bb17c4e83ebc512fc9656",
+        "repository_tree": "f8e93227b2cc31d00ad147ee7c55dbd15e8bb87bda152fb35e0a475a0d167986",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:cc040cb5a7a023583ca8cfb9d1c861629d0bab2ec881f3403b95be802ff04243",
+        "source_digest": "sha256:5bfc7e9db7dd99bab47379d5d62ff9991065db7abaf2fc07cb91eedbb516a5e8",
         "source_kind": "repository",
         "source_path": "ecosystem/rumi_coding_sandbox_service_pack/pack-source.v1.json"
       },
@@ -541,7 +542,7 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:c16ddebdbeae826e61d3dd0add3f050034b5101eab704c3944033e6507717d37",
+      "revision_digest": "sha256:69a3381e7ddba65225b233f3f3296510cf77129e93360179421aafe2c0414045",
       "schema_catalog": {
         "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
           "type": "object"
@@ -608,5 +609,5 @@
     }
   ],
   "pack_id": "rumi_coding_sandbox_service_pack",
-  "source_identity": "sha256:cc040cb5a7a023583ca8cfb9d1c861629d0bab2ec881f3403b95be802ff04243"
+  "source_identity": "sha256:5bfc7e9db7dd99bab47379d5d62ff9991065db7abaf2fc07cb91eedbb516a5e8"
 }

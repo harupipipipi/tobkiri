@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import json
 from pathlib import Path
 import sqlite3
 from typing import Any, Iterator, Mapping
@@ -40,6 +41,13 @@ class TaskState:
                 "CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, owner TEXT, "
                 "plan BLOB, archive BLOB, executable BLOB, status TEXT, receipt BLOB, output BLOB)"
             )
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS requests "
+                "(nonce TEXT PRIMARY KEY, owner TEXT, request_digest TEXT, task_id TEXT)"
+            )
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS containers (task_id TEXT PRIMARY KEY, name TEXT, token TEXT, cid TEXT)"
+            )
             yield db
             db.commit()
         except BaseException:
@@ -65,6 +73,15 @@ class TaskState:
     ) -> dict[str, Any]:
         """Seal one request identity without replacing an earlier plan."""
         with self.connection() as db:
+            association = db.execute(
+                "SELECT * FROM requests WHERE nonce=?", (plan["task_request_id"],)
+            ).fetchone()
+            if association and (
+                association["owner"] != owner
+                or association["request_digest"] != plan["request_digest"]
+                or association["task_id"] != plan["task_id"]
+            ):
+                raise PermissionError("Profile task nonce was rebound")
             prior = db.execute(
                 "SELECT * FROM tasks WHERE id=?", (plan["task_id"],)
             ).fetchone()
@@ -105,6 +122,15 @@ class TaskState:
                     canonical(executable),
                 ),
             )
+            db.execute(
+                "INSERT INTO requests VALUES (?,?,?,?)",
+                (
+                    plan["task_request_id"],
+                    owner,
+                    plan["request_digest"],
+                    plan["task_id"],
+                ),
+            )
         return dict(plan)
 
     def read(self, task_id: str, owner: str) -> dict[str, Any]:
@@ -118,7 +144,12 @@ class TaskState:
         result = dict(row)
         for key in ("plan", "executable", "receipt"):
             if result[key] is not None:
-                result[key] = parse_json(result[key])
+                if key == "receipt":
+                    if len(result[key]) > 512 * 1024:
+                        raise ValueError("retained task receipt exceeds the size limit")
+                    result[key] = json.loads(result[key])
+                else:
+                    result[key] = parse_json(result[key])
         return result
 
     def claim(self, task_id: str, owner: str, plan: Mapping[str, Any]) -> None:
@@ -142,6 +173,9 @@ class TaskState:
     ) -> None:
         """Retain bounded verified output, or preserve an ambiguous failure."""
         with self.connection() as db:
+            encoded = canonical(receipt)
+            if len(encoded) > 512 * 1024:
+                raise ValueError("task receipt exceeds the size limit")
             retained = db.execute(
                 "SELECT coalesce(sum(length(archive)+coalesce(length(output),0)),0) FROM tasks"
             ).fetchone()[0]
@@ -149,5 +183,15 @@ class TaskState:
                 raise ValueError("task output retention capacity exceeded")
             db.execute(
                 "UPDATE tasks SET status=?,receipt=?,output=? WHERE id=? AND status='running'",
-                (receipt["status"], canonical(receipt), output, task_id),
+                (receipt["status"], encoded, output, task_id),
+            )
+
+    def bind_container(
+        self, task_id: str, name: str, token: str, cid: str = ""
+    ) -> None:
+        """Persist private ownership before creation, retaining recovery evidence."""
+        with self.connection() as db:
+            db.execute(
+                "INSERT OR REPLACE INTO containers VALUES (?,?,?,?)",
+                (task_id, name, token, cid),
             )
