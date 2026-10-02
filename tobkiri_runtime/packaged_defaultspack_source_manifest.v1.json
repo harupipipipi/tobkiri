@@ -315,8 +315,8 @@
     {
       "path": "ecosystem/defaultspack/runtime/saved_conversation.py",
       "type": "regular-file",
-      "size": 28568,
-      "sha256": "f1b25aaf986c02261897936ced097683f3c47cb9439bc7560fc3a4fc49009055",
+      "size": 28999,
+      "sha256": "4435f3d3409a01be4c3fecc46eaf45b706deaebddfcb5ccbb5a342baef343c4c",
       "executable": false
     },
     {
@@ -3325,8 +3325,8 @@
     {
       "path": "scripts/build_packvm_guest_bundle.py",
       "type": "regular-file",
-      "size": 4685,
-      "sha256": "b1d1d61803b63cd8abc9ea9cd0367f95d2990da118293ff46ebbfefbf85fa626",
+      "size": 4769,
+      "sha256": "ed49d520fee3eb33f9616ff3d1cb399f75d9e8e71e56cf86490ddcb6c0b86b76",
       "executable": false
     },
     {
@@ -3834,6 +3834,13 @@
       "executable": false
     },
     {
+      "path": "tobkiri_protocol/provider_sse_v1.py",
+      "type": "regular-file",
+      "size": 4987,
+      "sha256": "73d4006bac1691a423b93b62188b868c9a230ac61deda3cfdf984b1f4c4ac946",
+      "executable": false
+    },
+    {
       "path": "tobkiri_protocol/saved_context.py",
       "type": "regular-file",
       "size": 2241,
@@ -4146,6 +4153,13 @@
       "type": "regular-file",
       "size": 2562,
       "sha256": "15f7e82c1d264643417af517bb8928ffb03b0792c780a2e03715760767a04e29",
+      "executable": false
+    },
+    {
+      "path": "tobkiri_protocol/turn_progress_v1.py",
+      "type": "regular-file",
+      "size": 3177,
+      "sha256": "4bc494feca9a152be8e934409ebd7e2b707e42b77613734269766ebe40a72752",
       "executable": false
     },
     {
