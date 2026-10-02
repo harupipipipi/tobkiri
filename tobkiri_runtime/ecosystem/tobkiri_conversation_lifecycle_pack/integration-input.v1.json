@@ -1,0 +1,474 @@
+{
+  "schema": "tobkiri.pack-integration-input.v1",
+  "pack_catalog_record": {
+    "pack_id": "tobkiri_conversation_lifecycle_pack",
+    "authority": "v4-authoritative",
+    "display_name": "Tobkiri Conversation Lifecycle",
+    "description": "Optional completion-based archiving and shared elapsed-context source.",
+    "version": "1.0.0",
+    "kind": "host_extension",
+    "dependencies": {},
+    "capabilities": [
+      "conversation.read",
+      "conversation.manage",
+      "schedule.read",
+      "schedule.manage",
+      "conversation.lifecycle.read",
+      "conversation.lifecycle.manage",
+      "conversation.lifecycle.archive"
+    ],
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "secrets": [],
+    "execution_boundary": "host_brokered",
+    "approval_policy": "capability_gated",
+    "workspace_boundary": "none",
+    "legacy_ids": [],
+    "legacy_operations": [],
+    "migration": {
+      "removal_wave": 0,
+      "sunset_at": "2027-12-31"
+    },
+    "required_contracts": [
+      {
+        "contract_id": "tobkiri.resource.conversation.v1",
+        "cardinality": "one",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0",
+        "operations": [
+          "rumi_conversation_store_pack.conversation-resource"
+        ]
+      },
+      {
+        "contract_id": "tobkiri.action.conversation.manage.v1",
+        "cardinality": "one",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0",
+        "operations": [
+          "rumi_conversation_store_pack.conversation-manage"
+        ]
+      },
+      {
+        "contract_id": "tobkiri.resource.schedule.v1",
+        "cardinality": "one",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0",
+        "operations": [
+          "rumi_schedule_store_pack.schedule-resource"
+        ]
+      },
+      {
+        "contract_id": "tobkiri.action.schedule.v1",
+        "cardinality": "one",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0",
+        "operations": [
+          "rumi_schedule_store_pack.schedule-action"
+        ]
+      }
+    ],
+    "runtime_artifacts": [
+      {
+        "digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3",
+        "kind": "executable",
+        "path": "runtime/host.py"
+      },
+      {
+        "digest": "sha256:b09cf3c3fcc5105f49d2a14c9622a42f92a6c566331cfd991d28fef916d26d18",
+        "kind": "sidecar",
+        "path": "runtime/lifecycle.py"
+      },
+      {
+        "digest": "sha256:d609cc58478a17072146aa4f9a2263237a483b13d29430052a10918724f61750",
+        "kind": "ui.contribution",
+        "path": "frontend/contributions/lifecycle.json"
+      },
+      {
+        "digest": "sha256:b2a504c8f0495a06d3049988ee361dcf8570bb2cf2f2589313660e21c17805fa",
+        "kind": "sidecar",
+        "path": "pack-source.v1.json"
+      }
+    ],
+    "source_evidence": [
+      {
+        "path": "ecosystem/tobkiri_conversation_lifecycle_pack/pack-source.v1.json",
+        "rule_id": "reviewed-conversation-lifecycle-source",
+        "digest": "sha256:b2a504c8f0495a06d3049988ee361dcf8570bb2cf2f2589313660e21c17805fa"
+      }
+    ],
+    "source_provenance": {
+      "mode": "reviewed-source",
+      "owner": "tobkiri_conversation_lifecycle_pack",
+      "source_format": "pack-source.v1.json"
+    },
+    "provided_contracts": [
+      {
+        "contract_id": "tobkiri.resource.conversation.lifecycle.v1",
+        "version": "1.0.0",
+        "owner": "tobkiri_conversation_lifecycle_pack",
+        "provider_id": "tobkiri_conversation_lifecycle_pack.status",
+        "cardinality": "one",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "required_capabilities": [
+          "conversation.lifecycle.read"
+        ],
+        "lifecycle": {
+          "data_owner": "tobkiri_conversation_lifecycle_pack",
+          "introduced": "1.0.0"
+        },
+        "operations": [
+          {
+            "id": "tobkiri_conversation_lifecycle_pack.lifecycle-status",
+            "entrypoint_id": "lifecycle-status",
+            "implementation_digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3"
+          }
+        ],
+        "schemas": {
+          "input": {
+            "additionalProperties": false,
+            "properties": {
+              "_session_id": {
+                "type": "string"
+              },
+              "conversation_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "operation": {
+                "const": "get"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "operation",
+              "conversation_id"
+            ],
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        }
+      },
+      {
+        "contract_id": "tobkiri.action.conversation.lifecycle.v1",
+        "version": "1.0.0",
+        "owner": "tobkiri_conversation_lifecycle_pack",
+        "provider_id": "tobkiri_conversation_lifecycle_pack.manage",
+        "cardinality": "one",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "required_capabilities": [
+          "conversation.lifecycle.manage"
+        ],
+        "lifecycle": {
+          "data_owner": "tobkiri_conversation_lifecycle_pack",
+          "introduced": "1.0.0"
+        },
+        "operations": [
+          {
+            "id": "tobkiri_conversation_lifecycle_pack.lifecycle-manage",
+            "entrypoint_id": "lifecycle-manage",
+            "implementation_digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3"
+          }
+        ],
+        "schemas": {
+          "input": {
+            "additionalProperties": false,
+            "properties": {
+              "_session_id": {
+                "type": "string"
+              },
+              "conversation_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "manual",
+                  "archive_after_completion"
+                ]
+              },
+              "operation": {
+                "const": "configure"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "operation",
+              "conversation_id",
+              "mode"
+            ],
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        }
+      },
+      {
+        "contract_id": "tobkiri.action.job.adapter.v2",
+        "version": "2.0.0",
+        "owner": "tobkiri_conversation_lifecycle_pack",
+        "provider_id": "tobkiri_conversation_lifecycle_pack.archive-job",
+        "cardinality": "many",
+        "security": "restricted",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "required_capabilities": [
+          "conversation.lifecycle.archive"
+        ],
+        "lifecycle": {
+          "data_owner": "tobkiri_conversation_lifecycle_pack",
+          "introduced": "1.0.0"
+        },
+        "operations": [
+          {
+            "id": "tobkiri_conversation_lifecycle_pack.archive-job-adapter",
+            "entrypoint_id": "archive-job-adapter",
+            "implementation_digest": "sha256:8885ad3b75ce0fd24843e385715ab9db7902c406286e0d8b36208b1c4340b5f3"
+          }
+        ],
+        "schemas": {
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "operation": {
+                "enum": [
+                  "describe",
+                  "dispatch",
+                  "cancel",
+                  "status"
+                ]
+              },
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "action_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "payload": {
+                "type": "object"
+              },
+              "idempotency_key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "schedule_id": {
+                "type": "string",
+                "maxLength": 256
+              },
+              "lease_id": {
+                "type": "string",
+                "maxLength": 256
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        }
+      }
+    ]
+  },
+  "semantic_source_entry": {
+    "entries": [
+      {
+        "function_id": "tobkiri_conversation_lifecycle_pack.status",
+        "operation_ids": [
+          "tobkiri_conversation_lifecycle_pack.lifecycle-status"
+        ],
+        "contract_id": "tobkiri.resource.conversation.lifecycle.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/host.py",
+        "schemas": {
+          "input": {
+            "additionalProperties": false,
+            "properties": {
+              "_session_id": {
+                "type": "string"
+              },
+              "conversation_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "operation": {
+                "const": "get"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "operation",
+              "conversation_id"
+            ],
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        }
+      },
+      {
+        "function_id": "tobkiri_conversation_lifecycle_pack.manage",
+        "operation_ids": [
+          "tobkiri_conversation_lifecycle_pack.lifecycle-manage"
+        ],
+        "contract_id": "tobkiri.action.conversation.lifecycle.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/host.py",
+        "schemas": {
+          "input": {
+            "additionalProperties": false,
+            "properties": {
+              "_session_id": {
+                "type": "string"
+              },
+              "conversation_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "manual",
+                  "archive_after_completion"
+                ]
+              },
+              "operation": {
+                "const": "configure"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "operation",
+              "conversation_id",
+              "mode"
+            ],
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        }
+      },
+      {
+        "function_id": "tobkiri_conversation_lifecycle_pack.archive-job",
+        "operation_ids": [
+          "tobkiri_conversation_lifecycle_pack.archive-job-adapter"
+        ],
+        "contract_id": "tobkiri.action.job.adapter.v2",
+        "contract_version": "2.0.0",
+        "implementation_path": "runtime/host.py",
+        "schemas": {
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "operation": {
+                "enum": [
+                  "describe",
+                  "dispatch",
+                  "cancel",
+                  "status"
+                ]
+              },
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "action_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "payload": {
+                "type": "object"
+              },
+              "idempotency_key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+              },
+              "schedule_id": {
+                "type": "string",
+                "maxLength": 256
+              },
+              "lease_id": {
+                "type": "string",
+                "maxLength": 256
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "output": {
+            "type": "object"
+          },
+          "error": {
+            "type": "object"
+          }
+        }
+      }
+    ]
+  },
+  "host_factory": {
+    "module": "ecosystem.tobkiri_conversation_lifecycle_pack.runtime.host",
+    "symbol": "HOST_PROVIDER_FACTORY"
+  },
+  "ui_contributions": [
+    "frontend/contributions/lifecycle.json"
+  ],
+  "requested_default_selection": "optional, disabled until explicit selection; never fabricate release evidence"
+}

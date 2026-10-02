@@ -1,0 +1,70 @@
+{
+  "version": "rumi.ui.contribution.v1",
+  "id": "tobkiri.cloud-workspace.composer",
+  "kind": "view",
+  "mode": "declarative",
+  "label": "Cloud workspace",
+  "priority": 90,
+  "accessibility": {
+    "name": "Cloud workspace",
+    "keyboard": true,
+    "live": "polite"
+  },
+  "view": {
+    "version": "tobkiri.ui.view.v1",
+    "slot": "composer_above",
+    "renderer": "status",
+    "title": "Cloud workspace",
+    "body": "Prepare a portable local workspace. Open the Cloud workspace tab for checkpoints and restore. Cloud connection and container start are unavailable until their approved Host ports are bound.",
+    "data_source": {
+      "contribution_id": "pack.tobkiri_cloud_workspace_pack.tobkiri_cloud_workspace_pack.workspace-resource",
+      "contract_id": "tobkiri.resource.cloud.workspace.v1",
+      "operation_id": "tobkiri_cloud_workspace_pack.workspace-resource",
+      "input": {
+        "operation": "get_for_conversation"
+      },
+      "context_bindings": {
+        "conversation_id": "conversation_id"
+      }
+    },
+    "fields": [
+      {
+        "label": "Workspace",
+        "path": "workspace.status",
+        "kind": "status"
+      },
+      {
+        "label": "Container",
+        "path": "container.status",
+        "kind": "status"
+      },
+      {
+        "label": "Cloud",
+        "path": "cloud.status",
+        "kind": "status"
+      }
+    ],
+    "controls": [
+      {
+        "id": "initialize",
+        "label": "Create local workspace",
+        "kind": "button",
+        "operation": {
+          "contribution_id": "pack.tobkiri_cloud_workspace_pack.tobkiri_cloud_workspace_pack.workspace-manage",
+          "contract_id": "tobkiri.action.cloud.workspace.v1",
+          "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage"
+        },
+        "input": {
+          "operation": "initialize"
+        },
+        "input_bindings": {
+          "expected_revision": "workspace.revision",
+          "expected_writer_epoch": "workspace.writer_epoch"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        }
+      }
+    ]
+  }
+}

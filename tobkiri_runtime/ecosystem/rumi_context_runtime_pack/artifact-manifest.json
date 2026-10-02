@@ -1,0 +1,10 @@
+{
+  "schema_version": "rumi.artifact-manifest.v1",
+  "artifacts": [
+    {
+      "path": "runtime/materializer.py",
+      "sha256": "0f5cf7acdb2419c0f921b100506eee87acd21681a4f7ae88814a999a97deea33",
+      "role": "runtime"
+    }
+  ]
+}

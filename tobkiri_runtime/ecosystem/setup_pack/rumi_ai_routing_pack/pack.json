@@ -1,0 +1,18 @@
+{
+  "pack_id": "rumi_ai_routing_pack",
+  "display_name": "Rumi AI Routing Pack",
+  "description": "Replaceable deterministic capability, health, cost, and policy router.",
+  "target_pack_id": "rumi_ai_routing_pack",
+  "version": "1.0.0",
+  "recommended": true,
+  "risk_level": "medium",
+  "supports_all_ok": false,
+  "depends_on": [],
+  "required_permissions": ["ai.route"],
+  "conflicts_with": [],
+  "compatibility": {"python": ">=3.10", "platforms": ["macos", "linux", "windows"]},
+  "marketplace": {"id": "rumi.ai_routing", "registry": "bundled", "publisher": "rumi-ai", "status": "verified", "category": "ai-runtime", "channel": "experimental"},
+  "signing": {"mode": "repository_reviewed", "verified": true},
+  "security_notes": ["No network or secrets.", "Unknown health and cost are never treated as verified healthy/free."]
+}
+

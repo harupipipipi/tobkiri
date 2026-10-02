@@ -1,0 +1,331 @@
+{
+  "source_api_version": "tobkiri.pack-source.v1",
+  "pack_id": "tobkiri_cloud_workspace_pack",
+  "version": "1.0.0",
+  "display_name": "Tobkiri Cloud Workspace",
+  "kind": "host_extension",
+  "optional": true,
+  "implementation_path": "runtime/host.py",
+  "runtime_module": "ecosystem.tobkiri_cloud_workspace_pack.runtime.host",
+  "factory_symbol": "HOST_PROVIDER_FACTORY",
+  "providers": [
+    {
+      "function_id": "tobkiri_cloud_workspace_pack.resource",
+      "contract_id": "tobkiri.resource.cloud.workspace.v1",
+      "operation_id": "tobkiri_cloud_workspace_pack.workspace-resource",
+      "contract_version": "1.0.0",
+      "capability": "cloud.workspace.resource",
+      "effect_class": "read",
+      "effect_ceiling": [
+        "capability:cloud.workspace.resource"
+      ],
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "profile_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+            },
+            "operation": {
+              "enum": [
+                "get_for_conversation",
+                "export",
+                "verify"
+              ]
+            },
+            "conversation_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+            },
+            "workspace_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+            },
+            "expected_revision": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "profile_id",
+            "operation"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "operation": {
+                  "const": "get_for_conversation"
+                }
+              },
+              "required": [
+                "conversation_id"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "export"
+                }
+              },
+              "required": [
+                "expected_revision",
+                "workspace_id"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "verify"
+                }
+              },
+              "required": [
+                "expected_revision",
+                "workspace_id"
+              ]
+            }
+          ]
+        },
+        "output": {
+          "type": "object"
+        },
+        "error": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "function_id": "tobkiri_cloud_workspace_pack.manage",
+      "contract_id": "tobkiri.action.cloud.workspace.v1",
+      "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage",
+      "contract_version": "1.0.0",
+      "capability": "cloud.workspace.manage",
+      "effect_class": "write",
+      "effect_ceiling": [
+        "capability:cloud.workspace.manage",
+        "host:brokered-execution"
+      ],
+      "schemas": {
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "profile_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+            },
+            "operation": {
+              "enum": [
+                "initialize",
+                "capture",
+                "import",
+                "restore",
+                "prepare_handoff"
+              ]
+            },
+            "conversation_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+            },
+            "expected_revision": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "expected_writer_epoch": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "paths": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32768
+            },
+            "archive_base64": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 13981016
+            },
+            "expected_receiver_head": {
+              "type": "string",
+              "maxLength": 71,
+              "pattern": "^(?:sha256:[0-9a-f]{64})?$"
+            }
+          },
+          "required": [
+            "profile_id",
+            "operation"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "operation": {
+                  "const": "initialize"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "expected_revision",
+                "expected_writer_epoch"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "capture"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "expected_revision",
+                "expected_writer_epoch",
+                "paths"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "import"
+                }
+              },
+              "required": [
+                "archive_base64",
+                "conversation_id",
+                "expected_revision",
+                "expected_writer_epoch"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "restore"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "expected_revision",
+                "expected_writer_epoch"
+              ]
+            },
+            {
+              "properties": {
+                "operation": {
+                  "const": "prepare_handoff"
+                }
+              },
+              "required": [
+                "conversation_id",
+                "expected_receiver_head",
+                "expected_revision",
+                "expected_writer_epoch"
+              ]
+            }
+          ]
+        },
+        "output": {
+          "type": "object"
+        },
+        "error": {
+          "type": "object"
+        }
+      }
+    }
+  ],
+  "runtime_artifacts": [
+    {
+      "path": "runtime/__init__.py",
+      "kind": "executable"
+    },
+    {
+      "path": "runtime/host.py",
+      "kind": "executable"
+    },
+    {
+      "path": "runtime/capsule.py",
+      "kind": "executable"
+    },
+    {
+      "path": "runtime/store.py",
+      "kind": "executable"
+    },
+    {
+      "path": "runtime/service.py",
+      "kind": "executable"
+    },
+    {
+      "path": "runtime/recipe.py",
+      "kind": "executable"
+    },
+    {
+      "path": "container/Dockerfile",
+      "kind": "sidecar"
+    },
+    {
+      "path": "container/runtime.py",
+      "kind": "sidecar"
+    },
+    {
+      "path": "container/recipe.v1.json",
+      "kind": "sidecar"
+    },
+    {
+      "path": "pack-source.v1.json",
+      "kind": "sidecar"
+    },
+    {
+      "path": "frontend/contributions/composer.json",
+      "kind": "sidecar"
+    },
+    {
+      "path": "frontend/contributions/workspace.json",
+      "kind": "sidecar"
+    }
+  ],
+  "public_capabilities": [
+    "workspace.metadata.read",
+    "file.inspect"
+  ],
+  "public_dependencies": [
+    {
+      "contract_id": "tobkiri.resource.workspace.v1",
+      "version_range": ">=1.0.0 <2.0.0",
+      "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+      "optional": true
+    },
+    {
+      "contract_id": "tobkiri.service.file.inspect.v1",
+      "version_range": ">=1.0.0 <2.0.0",
+      "operation_id": "rumi_file_inspect_pack.file-inspect",
+      "optional": true
+    }
+  ],
+  "network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "secrets": [],
+  "ui_contributions": [
+    "frontend/contributions/composer.json",
+    "frontend/contributions/workspace.json"
+  ],
+  "future_boundaries": {
+    "container_host_contract": "tobkiri.action.workspace.container.v1",
+    "deployment_pack_contract": "tobkiri.service.workspace.deploy.v1",
+    "handoff_protocol": "tobkiri.workspace-handoff.v1",
+    "bound": false,
+    "remote_execution": "unavailable"
+  }
+}

@@ -1,5 +1,7 @@
 """Create a GitHub pull request for a pushed coding branch."""
 
+from collections.abc import Mapping
+
 from blocks._common import error, ok
 from blocks.coding._approval import approval_invalid_response, approval_required, is_server_approved
 from blocks.coding._workspace import resolve_workspace, with_workspace, workspace_error_response
@@ -18,19 +20,44 @@ def _explicit_repo_and_head(input_data: dict) -> bool:
     )
 
 
+def _has_workspace_reference(input_data: Mapping, context: Mapping | None) -> bool:
+    """Return whether the caller explicitly selected a workspace.
+
+    GitHub can create a pull request from an explicit repository and branch;
+    that contract does not require a local checkout.  Keep the workspace
+    resolver for callers that actually supplied one, but do not let its
+    compatibility ``cwd`` projection leak into an explicit remote-only call.
+    """
+
+    sources = [input_data]
+    if isinstance(context, Mapping):
+        sources.append(context)
+        for key in ("inputs", "profile_policy"):
+            nested = context.get(key)
+            if isinstance(nested, Mapping):
+                sources.append(nested)
+    return any(
+        str(source.get(key) or "").strip()
+        for source in sources
+        for key in ("workspace_id", "workspace_root", "root", "cwd")
+    )
+
+
 def run(input_data, context=None):
     input_data = input_data or {}
     client = GitHubWriteClient()
     workspace = None
     workspace_error = None
-    try:
-        workspace = resolve_workspace(input_data, context, mutation=True, operation=OPERATION)
-    except Exception as exc:
-        workspace_error = workspace_error_response(exc, error)
-        if not _explicit_repo_and_head(input_data):
-            if workspace_error:
-                return workspace_error
-            return error(str(exc), code="WORKSPACE_ERROR")
+    explicit_remote_args = _explicit_repo_and_head(input_data)
+    if not (explicit_remote_args and not _has_workspace_reference(input_data, context)):
+        try:
+            workspace = resolve_workspace(input_data, context, mutation=True, operation=OPERATION)
+        except Exception as exc:
+            workspace_error = workspace_error_response(exc, error)
+            if not explicit_remote_args:
+                if workspace_error:
+                    return workspace_error
+                return error(str(exc), code="WORKSPACE_ERROR")
 
     try:
         resolved = client.resolve_pull_request_args(

@@ -1,0 +1,491 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:94973024a19bc51c86d0b25c7b86b6bbff8c3efc6daf2c5bb5405d113ca267e9",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:46c3e3e14d4dad45689f07f242b80a0ce42ae4161d9660831d218767e69c1c15",
+      "kind": "sidecar",
+      "path": "frontend/contributions/settings.json"
+    },
+    {
+      "digest": "sha256:11197d5a41a7164cd5790a686eb360569d01ea5e9d9c6c67ce6305247ab02dfb",
+      "kind": "sidecar",
+      "path": "frontend/contributions/work-plan.json"
+    },
+    {
+      "digest": "sha256:1f2fa83e656a144b3d0b6ee198dca5a9d8600acc21d6f0962095530217b58809",
+      "kind": "executable",
+      "path": "runtime/__init__.py"
+    },
+    {
+      "digest": "sha256:31da74634398bd06858001f39a7b11c248921d8bb44100a43f0fb9aec6db6c6f",
+      "kind": "executable",
+      "path": "runtime/goal.py"
+    },
+    {
+      "digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
+      "kind": "executable",
+      "path": "runtime/host.py"
+    },
+    {
+      "digest": "sha256:9b521eda829b2a63f686c812024db93c8dedd4ac95b24befa0a90d3f904d639f",
+      "kind": "executable",
+      "path": "runtime/inbox.py"
+    },
+    {
+      "digest": "sha256:793366f76a5a5b57bcf60bd4eee52c9b2ccb63597757560d334346a0b8f09607",
+      "kind": "executable",
+      "path": "runtime/ports.py"
+    },
+    {
+      "digest": "sha256:cfe3216ae85da1a52947eeb9f11f64838637a43a9910f0fac666fa6fef31aa92",
+      "kind": "executable",
+      "path": "runtime/review.py"
+    },
+    {
+      "digest": "sha256:43ffa17fe1ecf646c52031d2236d0adfdb937f7fe8d134c475ee20451428d40b",
+      "kind": "executable",
+      "path": "runtime/schedules.py"
+    },
+    {
+      "digest": "sha256:e3379e1478cef4e36d892a677c7c95602b2f51d1b1d3be57ad953bfe26af971c",
+      "kind": "executable",
+      "path": "runtime/service.py"
+    },
+    {
+      "digest": "sha256:97e7b3cb9c84b09b2ca8eb970d843d36b566b69b21cb6ac36d9a7cc460d41c1f",
+      "kind": "executable",
+      "path": "runtime/store.py"
+    },
+    {
+      "digest": "sha256:4b35dafdacd57c6ca926a050627fafe36d82a8afc2de446da58008ff3a06dc58",
+      "kind": "executable",
+      "path": "runtime/todo.py"
+    },
+    {
+      "digest": "sha256:f1b71aa2ceca78b78dfd6ba754a13509e3a2c16e4a68b75b5f10380cbb7447a3",
+      "kind": "executable",
+      "path": "runtime/workflow.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.resource.work-plan.v1",
+      "operations": [
+        "tobkiri_agent_control_pack.work-plan-resource"
+      ],
+      "revision_digest": "sha256:66a6b398839098b27200cfc70c42a3c371bcbc89cf004dffb551997db8285bc2"
+    },
+    {
+      "contract_id": "tobkiri.action.work-plan.v1",
+      "operations": [
+        "tobkiri_agent_control_pack.work-plan-action"
+      ],
+      "revision_digest": "sha256:aa7f60fc5a3ae8b294777dca17e06026f223fb710d59713b385fcec8888b2939"
+    },
+    {
+      "contract_id": "tobkiri.action.work-plan.settings.v1",
+      "operations": [
+        "tobkiri_agent_control_pack.work-plan-settings"
+      ],
+      "revision_digest": "sha256:ed84b4e88da1cb0f74b13b2b3c30458e8340aaec3783540f2c4be41828420be7"
+    },
+    {
+      "contract_id": "tobkiri.action.context.replace.v1",
+      "operations": [
+        "tobkiri_agent_control_pack.context-replace"
+      ],
+      "revision_digest": "sha256:a218c545e335f38c2d4fdc7089ea531eb0bcce70a5295d24866b743bba814863"
+    },
+    {
+      "contract_id": "tobkiri.resource.context.projection.v1",
+      "operations": [
+        "tobkiri_agent_control_pack.context-project"
+      ],
+      "revision_digest": "sha256:58a2650f16bd110efe6a75ee6166c905e660f3475c67eaf6e952a39c2197c256"
+    },
+    {
+      "contract_id": "tobkiri.action.agent.inbox.v1",
+      "operations": [
+        "tobkiri_agent_control_pack.inbox-action"
+      ],
+      "revision_digest": "sha256:da9a52691f947c7d457618ba15e8744af62700aec6473ee5b0afd7ea4414593d"
+    },
+    {
+      "contract_id": "tobkiri.action.work-plan.execute.v1",
+      "operations": [
+        "tobkiri_agent_control_pack.work-plan-execute"
+      ],
+      "revision_digest": "sha256:c1692874504c6accd5e3c9678ebf91f6c2c83af7287f985bd552d65aba4415a7"
+    },
+    {
+      "contract_id": "tobkiri.action.job.adapter.v2",
+      "operations": [
+        "tobkiri_agent_control_pack.work-plan-job"
+      ],
+      "revision_digest": "sha256:596986115723868093565b9972e3042b51e812db86b77a32a61278dba36a3b77"
+    },
+    {
+      "contract_id": "tobkiri.action.work-plan.review.v1",
+      "operations": [
+        "tobkiri_agent_control_pack.work-plan-review"
+      ],
+      "revision_digest": "sha256:f4217681169581d7101fd3fe353015d8dfb2d0106107783dc6e0dc3d668a8e03"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:aa7f60fc5a3ae8b294777dca17e06026f223fb710d59713b385fcec8888b2939",
+      "id": "tobkiri_agent_control_pack.work-plan.action",
+      "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
+      "isolation": "dedicated_process",
+      "operations": [
+        "tobkiri_agent_control_pack.work-plan-action"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:58a2650f16bd110efe6a75ee6166c905e660f3475c67eaf6e952a39c2197c256",
+      "id": "tobkiri_agent_control_pack.work-plan.context",
+      "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
+      "isolation": "dedicated_process",
+      "operations": [
+        "tobkiri_agent_control_pack.context-project"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:c1692874504c6accd5e3c9678ebf91f6c2c83af7287f985bd552d65aba4415a7",
+      "id": "tobkiri_agent_control_pack.work-plan.execute",
+      "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
+      "isolation": "dedicated_process",
+      "operations": [
+        "tobkiri_agent_control_pack.work-plan-execute"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:da9a52691f947c7d457618ba15e8744af62700aec6473ee5b0afd7ea4414593d",
+      "id": "tobkiri_agent_control_pack.work-plan.inbox",
+      "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
+      "isolation": "dedicated_process",
+      "operations": [
+        "tobkiri_agent_control_pack.inbox-action"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:596986115723868093565b9972e3042b51e812db86b77a32a61278dba36a3b77",
+      "id": "tobkiri_agent_control_pack.work-plan.job",
+      "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
+      "isolation": "dedicated_process",
+      "operations": [
+        "tobkiri_agent_control_pack.work-plan-job"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:a218c545e335f38c2d4fdc7089ea531eb0bcce70a5295d24866b743bba814863",
+      "id": "tobkiri_agent_control_pack.work-plan.replace",
+      "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
+      "isolation": "dedicated_process",
+      "operations": [
+        "tobkiri_agent_control_pack.context-replace"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:66a6b398839098b27200cfc70c42a3c371bcbc89cf004dffb551997db8285bc2",
+      "id": "tobkiri_agent_control_pack.work-plan.resource",
+      "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
+      "isolation": "dedicated_process",
+      "operations": [
+        "tobkiri_agent_control_pack.work-plan-resource"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:f4217681169581d7101fd3fe353015d8dfb2d0106107783dc6e0dc3d668a8e03",
+      "id": "tobkiri_agent_control_pack.work-plan.review",
+      "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
+      "isolation": "dedicated_process",
+      "operations": [
+        "tobkiri_agent_control_pack.work-plan-review"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:ed84b4e88da1cb0f74b13b2b3c30458e8340aaec3783540f2c4be41828420be7",
+      "id": "tobkiri_agent_control_pack.work-plan.settings",
+      "implementation_digest": "sha256:aec6e9f46fbdf0fac0b3c217dd737ab8785532332cbd406c2b48c352deffad5e",
+      "isolation": "dedicated_process",
+      "operations": [
+        "tobkiri_agent_control_pack.work-plan-settings"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:3ddff5a990944565042007d6597965833d67de92c483e3fa5ba8c1ed502df51b",
+    "artifact_set_digest": "sha256:930628b1d95e30807ead18e3dc67eb392451b3fdbbb316cf7a014956e3c56563",
+    "contract_catalog_digest": "sha256:bcd964ceeb0bb0a3d8ae221232b584738cd1fedef15ccd1fd024f8673e15ec38"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "tobkiri_agent_control_pack.context-project",
+      "owner": "tobkiri_agent_control_pack",
+      "contract_reference": "tobkiri.resource.context.projection.v1",
+      "provider_id": "tobkiri_agent_control_pack.work-plan.context",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "tobkiri_agent_control_pack.context-replace",
+      "owner": "tobkiri_agent_control_pack",
+      "contract_reference": "tobkiri.action.context.replace.v1",
+      "provider_id": "tobkiri_agent_control_pack.work-plan.replace",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "tobkiri_agent_control_pack.inbox-action",
+      "owner": "tobkiri_agent_control_pack",
+      "contract_reference": "tobkiri.action.agent.inbox.v1",
+      "provider_id": "tobkiri_agent_control_pack.work-plan.inbox",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "tobkiri_agent_control_pack.work-plan-action",
+      "owner": "tobkiri_agent_control_pack",
+      "contract_reference": "tobkiri.action.work-plan.v1",
+      "provider_id": "tobkiri_agent_control_pack.work-plan.action",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "tobkiri_agent_control_pack.work-plan-execute",
+      "owner": "tobkiri_agent_control_pack",
+      "contract_reference": "tobkiri.action.work-plan.execute.v1",
+      "provider_id": "tobkiri_agent_control_pack.work-plan.execute",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "tobkiri_agent_control_pack.work-plan-job",
+      "owner": "tobkiri_agent_control_pack",
+      "contract_reference": "tobkiri.action.job.adapter.v2",
+      "provider_id": "tobkiri_agent_control_pack.work-plan.job",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "tobkiri_agent_control_pack.work-plan-resource",
+      "owner": "tobkiri_agent_control_pack",
+      "contract_reference": "tobkiri.resource.work-plan.v1",
+      "provider_id": "tobkiri_agent_control_pack.work-plan.resource",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "tobkiri_agent_control_pack.work-plan-review",
+      "owner": "tobkiri_agent_control_pack",
+      "contract_reference": "tobkiri.action.work-plan.review.v1",
+      "provider_id": "tobkiri_agent_control_pack.work-plan.review",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "tobkiri_agent_control_pack.work-plan-settings",
+      "owner": "tobkiri_agent_control_pack",
+      "contract_reference": "tobkiri.action.work-plan.settings.v1",
+      "provider_id": "tobkiri_agent_control_pack.work-plan.settings",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:995c6d5790f40f7fe90a29c519d20eec1c7549732940c1ce76a2ef7773e94b87",
+    "display_name": "Tobkiri Agent Control",
+    "id": "tobkiri_agent_control_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/tobkiri_agent_control_pack/pack.v4.json",
+    "source_digest": "sha256:3ddff5a990944565042007d6597965833d67de92c483e3fa5ba8c1ed502df51b",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:e1f6f4f6bf8a896e3691d70fd9f8beea323a044173b4d485f99b4775fd5b507b",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
+    "input_inventory_digest": "sha256:e660dcb856876871e89f7a89f78aa2c58753eca6f11df4e5168137f7eaa9a484",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
+      },
+      {
+        "path": "ecosystem/tobkiri_agent_control_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:3ddff5a990944565042007d6597965833d67de92c483e3fa5ba8c1ed502df51b"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "tobkiri_agent_control_pack.work-plan.action",
+      "owner": "tobkiri_agent_control_pack",
+      "contract_reference": "tobkiri.action.work-plan.v1",
+      "operations": [
+        "tobkiri_agent_control_pack.work-plan-action"
+      ]
+    },
+    {
+      "provider_id": "tobkiri_agent_control_pack.work-plan.context",
+      "owner": "tobkiri_agent_control_pack",
+      "contract_reference": "tobkiri.resource.context.projection.v1",
+      "operations": [
+        "tobkiri_agent_control_pack.context-project"
+      ]
+    },
+    {
+      "provider_id": "tobkiri_agent_control_pack.work-plan.execute",
+      "owner": "tobkiri_agent_control_pack",
+      "contract_reference": "tobkiri.action.work-plan.execute.v1",
+      "operations": [
+        "tobkiri_agent_control_pack.work-plan-execute"
+      ]
+    },
+    {
+      "provider_id": "tobkiri_agent_control_pack.work-plan.inbox",
+      "owner": "tobkiri_agent_control_pack",
+      "contract_reference": "tobkiri.action.agent.inbox.v1",
+      "operations": [
+        "tobkiri_agent_control_pack.inbox-action"
+      ]
+    },
+    {
+      "provider_id": "tobkiri_agent_control_pack.work-plan.job",
+      "owner": "tobkiri_agent_control_pack",
+      "contract_reference": "tobkiri.action.job.adapter.v2",
+      "operations": [
+        "tobkiri_agent_control_pack.work-plan-job"
+      ]
+    },
+    {
+      "provider_id": "tobkiri_agent_control_pack.work-plan.replace",
+      "owner": "tobkiri_agent_control_pack",
+      "contract_reference": "tobkiri.action.context.replace.v1",
+      "operations": [
+        "tobkiri_agent_control_pack.context-replace"
+      ]
+    },
+    {
+      "provider_id": "tobkiri_agent_control_pack.work-plan.resource",
+      "owner": "tobkiri_agent_control_pack",
+      "contract_reference": "tobkiri.resource.work-plan.v1",
+      "operations": [
+        "tobkiri_agent_control_pack.work-plan-resource"
+      ]
+    },
+    {
+      "provider_id": "tobkiri_agent_control_pack.work-plan.review",
+      "owner": "tobkiri_agent_control_pack",
+      "contract_reference": "tobkiri.action.work-plan.review.v1",
+      "operations": [
+        "tobkiri_agent_control_pack.work-plan-review"
+      ]
+    },
+    {
+      "provider_id": "tobkiri_agent_control_pack.work-plan.settings",
+      "owner": "tobkiri_agent_control_pack",
+      "contract_reference": "tobkiri.action.work-plan.settings.v1",
+      "operations": [
+        "tobkiri_agent_control_pack.work-plan-settings"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "work_plan.resource",
+      "work_plan.action",
+      "work_plan.settings",
+      "work_plan.replace",
+      "work_plan.context",
+      "work_plan.inbox",
+      "work_plan.execute",
+      "work_plan.job",
+      "work_plan.review"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.schedule.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.turn.saved.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.ai.model.profile.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.conversation.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.schedule.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.ai.generate.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.workflow.v4",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "none"
+  }
+}
