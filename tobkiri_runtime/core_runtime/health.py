@@ -7,6 +7,7 @@ Wave 13 T-051: ヘルスチェックエンドポイント基盤モジュール�
 
 主要コンポーネント:
 - HealthStatus: UP / DOWN / DEGRADED / UNKNOWN の列挙型
+- HealthProbeResult: ステータスと診断メッセージを返すプローブ結果
 - HealthChecker: プローブ登録・実行・集約クラス
 - probe_disk_space(): ディスク空き容量チェック
 - probe_memory(): メモリ使用量チェック
@@ -24,8 +25,9 @@ import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional, overload
 
 
 _this_module = sys.modules.get(__name__)
@@ -52,8 +54,20 @@ class HealthStatus(enum.Enum):
 # HealthChecker
 # ============================================================
 
-# プローブ関数の型: 引数なしで HealthStatus を返す
-ProbeFunc = Callable[[], HealthStatus]
+@dataclass(frozen=True)
+class HealthProbeResult:
+    """A probe status with an optional diagnostic reason.
+
+    Omit ``message`` to use ``ok`` for UP or a status-specific fallback for
+    other statuses. Existing probes returning only HealthStatus remain valid.
+    """
+
+    status: HealthStatus
+    message: Optional[str] = None
+
+
+# プローブ関数の型: 引数なしでステータス、または理由付きの結果を返す
+ProbeFunc = Callable[[], HealthStatus | HealthProbeResult]
 
 
 class HealthChecker:
@@ -65,7 +79,9 @@ class HealthChecker:
 
     Usage:
         checker = HealthChecker()
-        checker.register_probe("disk", lambda: probe_disk_space("/tmp"))
+        checker.register_probe(
+            "disk", lambda: probe_disk_space("/tmp", with_reason=True)
+        )
         result = checker.aggregate_health()
         # result = {"status": "UP", "timestamp": "...", "probes": {...}}
     """
@@ -97,7 +113,7 @@ class HealthChecker:
 
         Args:
             name: プローブの一意な名前
-            func: 引数なしで HealthStatus を返す関数
+            func: 引数なしで HealthStatus または HealthProbeResult を返す関数
         """
         with self._lock:
             self._probes[name] = func
@@ -136,11 +152,21 @@ class HealthChecker:
         try:
             with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(func)
-                status = future.result(timeout=timeout)
+                result = future.result(timeout=timeout)
+            if isinstance(result, HealthProbeResult):
+                status, message = result.status, result.message
+            else:
+                status, message = result, None
+            if not message or not message.strip():
+                message = (
+                    "ok"
+                    if status is HealthStatus.UP
+                    else f"{name}: probe returned {status.value} without a reason"
+                )
             elapsed_ms = (time.monotonic() - start) * 1000.0
             return {
                 "status": status.value,
-                "message": "ok",
+                "message": message,
                 "duration_ms": round(elapsed_ms, 2),
             }
         except FuturesTimeoutError:
@@ -237,9 +263,42 @@ class HealthChecker:
 # 組み込みプローブ関数
 # ============================================================
 
+@overload
 def probe_disk_space(
-    path: str = "/", threshold_pct: float = 90.0
+    path: str = "/",
+    threshold_pct: float = 90.0,
+    *,
+    with_reason: Literal[False] = False,
 ) -> HealthStatus:
+    ...
+
+
+@overload
+def probe_disk_space(
+    path: str = "/",
+    threshold_pct: float = 90.0,
+    *,
+    with_reason: Literal[True],
+) -> HealthProbeResult:
+    ...
+
+
+@overload
+def probe_disk_space(
+    path: str = "/",
+    threshold_pct: float = 90.0,
+    *,
+    with_reason: bool,
+) -> HealthStatus | HealthProbeResult:
+    ...
+
+
+def probe_disk_space(
+    path: str = "/",
+    threshold_pct: float = 90.0,
+    *,
+    with_reason: bool = False,
+) -> HealthStatus | HealthProbeResult:
     """
     ディスク空き容量をチェックするプローブ。
 
@@ -249,20 +308,31 @@ def probe_disk_space(
     Args:
         path: チェック対象のパス
         threshold_pct: 警告しきい値（パーセント）
+        with_reason: True の場合、使用率としきい値を含む診断結果を返す
 
     Returns:
-        HealthStatus
+        HealthStatus, or HealthProbeResult when with_reason=True.
     """
     try:
         usage = shutil.disk_usage(path)
         used_pct = (usage.used / usage.total) * 100.0
         if used_pct >= 95.0:
-            return HealthStatus.DOWN
-        if used_pct >= threshold_pct:
-            return HealthStatus.DEGRADED
-        return HealthStatus.UP
-    except Exception:
-        return HealthStatus.UNKNOWN
+            result = HealthProbeResult(
+                HealthStatus.DOWN,
+                f"disk: {used_pct:.1f}% used >= 95% threshold",
+            )
+        elif used_pct >= threshold_pct:
+            result = HealthProbeResult(
+                HealthStatus.DEGRADED,
+                f"disk: {used_pct:.1f}% used >= {threshold_pct:g}% threshold",
+            )
+        else:
+            result = HealthProbeResult(HealthStatus.UP)
+    except Exception as exc:
+        result = HealthProbeResult(
+            HealthStatus.UNKNOWN, f"disk: unable to read usage: {exc}"
+        )
+    return result if with_reason else result.status
 
 
 def probe_memory(threshold_pct: float = 90.0) -> HealthStatus:
