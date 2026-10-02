@@ -34,6 +34,7 @@ mod sealed_python;
 mod sealed_python_protocol;
 mod shell_handoff;
 mod shell_runtime;
+mod signed_pack_panel;
 mod tray;
 mod updater;
 
@@ -354,6 +355,20 @@ fn validate_debug_approval_window(window: &tauri::WebviewWindow) -> Result<(), S
     validate_launcher_main_window(window, "debug approval")
 }
 
+fn validate_signed_pack_panel(
+    window: &tauri::WebviewWindow,
+    config: &AppConfig,
+    operation: &str,
+) -> Result<(), String> {
+    let url = window
+        .url()
+        .map_err(|_| format!("{operation} caller is unavailable"))?;
+    if !signed_pack_panel::caller_allowed(window.label(), &url, config.kernel_port) {
+        return Err(format!("{operation} requires the current Launcher panel"));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 async fn arm_debug_approval(
     duration: String,
@@ -473,7 +488,7 @@ async fn signed_pack_admission_status(
     window: tauri::WebviewWindow,
     config: tauri::State<'_, AppConfig>,
 ) -> Result<NativePackAdmissionStatus, String> {
-    validate_launcher_main_window(&window, "signed Pack trust status")?;
+    validate_signed_pack_panel(&window, &config, "signed Pack trust status")?;
     let config = config.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let bootstrap_secret = load_or_create_panel_bootstrap_secret(&config)
@@ -512,7 +527,7 @@ async fn admit_signed_pack_from_folder(
     window: tauri::WebviewWindow,
     config: tauri::State<'_, AppConfig>,
 ) -> Result<Option<NativePackAdmission>, String> {
-    validate_launcher_main_window(&window, "signed Pack admission")?;
+    validate_signed_pack_panel(&window, &config, "signed Pack admission")?;
     let app = window.app_handle().clone();
     let selected =
         tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_folder())
@@ -521,11 +536,13 @@ async fn admit_signed_pack_from_folder(
     let Some(selected) = selected else {
         return Ok(None);
     };
+    validate_signed_pack_panel(&window, &config, "signed Pack admission")?;
     let source_root = selected
         .into_path()
         .map_err(|_| "Pack folder picker returned an invalid path".to_string())?;
     let config = config.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
+        validate_signed_pack_panel(&window, &config, "signed Pack admission")?;
         let bootstrap_secret = load_or_create_panel_bootstrap_secret(&config)
             .map_err(|_| "Launcher Pack admission authentication is unavailable".to_string())?;
         let client = reqwest::blocking::Client::builder()
@@ -568,7 +585,7 @@ async fn onboard_signed_pack_from_folder(
     window: tauri::WebviewWindow,
     config: tauri::State<'_, AppConfig>,
 ) -> Result<Option<NativePackAdmission>, String> {
-    validate_launcher_main_window(&window, "signed Pack onboarding")?;
+    validate_signed_pack_panel(&window, &config, "signed Pack onboarding")?;
     let app = window.app_handle().clone();
     let folder =
         tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_folder())
@@ -577,6 +594,7 @@ async fn onboard_signed_pack_from_folder(
     let Some(folder) = folder else {
         return Ok(None);
     };
+    validate_signed_pack_panel(&window, &config, "signed Pack onboarding")?;
     let source_root = folder
         .into_path()
         .map_err(|_| "Pack folder picker returned an invalid path".to_string())?;
@@ -592,11 +610,13 @@ async fn onboard_signed_pack_from_folder(
     let Some(key_file) = key_file else {
         return Ok(None);
     };
+    validate_signed_pack_panel(&window, &config, "signed Pack onboarding")?;
     let public_key_path = key_file
         .into_path()
         .map_err(|_| "Public key picker returned an invalid path".to_string())?;
     let config = config.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
+        validate_signed_pack_panel(&window, &config, "signed Pack onboarding")?;
         let secret = load_or_create_panel_bootstrap_secret(&config)
             .map_err(|_| "Launcher Pack onboarding authentication is unavailable".to_string())?;
         let client = reqwest::blocking::Client::builder()
@@ -631,6 +651,7 @@ async fn onboard_signed_pack_from_folder(
                 .map(|(name, version)| format!("{name}: {version}"))
                 .collect::<Vec<_>>().join(", ")
         };
+        validate_signed_pack_panel(&window, &config, "signed Pack onboarding")?;
         let confirmed = window.dialog().message(format!(
             "Trust this separately selected publisher key for this signed Pack and add it?\n\nPack: {} {}\nPublisher: {}\nKey fingerprint: {}\nCapabilities: {}\nContracts: {}\nArtifact: {}\n\nThis grants trust for this exact Pack identity and artifact. Installation and capability approval remain separate.",
             preview.pack_id, preview.version, preview.publisher_id,
@@ -641,6 +662,7 @@ async fn onboard_signed_pack_from_folder(
         .buttons(MessageDialogButtons::OkCancelCustom("Trust and add".into(), "Cancel".into()))
         .blocking_show();
         if !confirmed { return Ok(None) }
+        validate_signed_pack_panel(&window, &config, "signed Pack onboarding")?;
         let response = client.post(format!("{base}/commit"))
             .header("X-Rumi-Desktop-Bootstrap", &secret)
             .json(&serde_json::json!({
@@ -4232,6 +4254,10 @@ fn launcher_setup(app: &mut tauri::App, ctx: &LauncherSetupContext) -> AnyResult
     {
         config.kernel_port = resolve_available_kernel_port(&config, &panel_bootstrap_secret);
     }
+    let pack_panel_capability = signed_pack_panel::capability_document(config.kernel_port)
+        .context("selected Host panel port is invalid")?;
+    app.add_capability(pack_panel_capability)
+        .context("failed to bind native Pack admission to the selected Host panel")?;
     set_allowed_navigation_ports(
         &ctx.allowed_navigation_ports,
         navigation_ports_with_tauri_dev_server(vec![

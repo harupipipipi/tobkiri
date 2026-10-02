@@ -13,6 +13,7 @@ import { CopyErrorButton } from '@/src/components/ui/CopyErrorButton';
 import { InlineLoadError } from '@/src/components/ui/InlineLoadError';
 import { PackScopeSummary } from '@/src/components/packs/PackScopeSummary';
 import { isPackInCatalogScope } from '@/src/lib/packScope';
+import { packAdmissionStatusDiagnostic, type PackAdmissionStatusDiagnostic } from '@/src/lib/packAdmissionStatusDiagnostic';
 import {
   admitSignedPackFromFolder,
   fetchSignedPackAdmissionStatus,
@@ -96,6 +97,7 @@ export function Packs() {
   const [admissionReady, setAdmissionReady] = useState<boolean | null>(null);
   const [onboardingSupported, setOnboardingSupported] = useState<boolean | null>(null);
   const [trustStatusUnavailable, setTrustStatusUnavailable] = useState(false);
+  const [trustStatusDiagnostic, setTrustStatusDiagnostic] = useState<PackAdmissionStatusDiagnostic | null>(null);
 
   useEffect(() => {
     void loadPacks();
@@ -103,14 +105,16 @@ export function Packs() {
 
   const refreshAdmissionStatus = async () => {
     setTrustStatusUnavailable(false);
+    setTrustStatusDiagnostic(null);
     try {
       const status = await fetchSignedPackAdmissionStatus();
       setAdmissionReady(status.ready);
       setOnboardingSupported(status.onboarding_supported);
-    } catch {
+    } catch (error) {
       setAdmissionReady(null);
       setOnboardingSupported(null);
       setTrustStatusUnavailable(true);
+      setTrustStatusDiagnostic(packAdmissionStatusDiagnostic(error));
     }
   };
 
@@ -219,6 +223,11 @@ export function Packs() {
               {trustStatusUnavailable ? (
                 <>
                   <span className="text-xs text-destructive">Host Pack service is unavailable.</span>
+                  {trustStatusDiagnostic ? (
+                    <span className="text-xs text-destructive" role="alert">
+                      {trustStatusDiagnostic.summary} ({trustStatusDiagnostic.code})
+                    </span>
+                  ) : null}
                   <Button type="button" size="sm" variant="outline" onClick={() => void refreshAdmissionStatus()}>
                     Check Pack service
                   </Button>
