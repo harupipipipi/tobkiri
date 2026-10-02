@@ -253,3 +253,29 @@ test("cancelled or replaced voice attempts dispose late microphone recorders", a
   operation.next();
   assert.equal(await operation.settle(next, Promise.resolve("stale transcript")), null);
 });
+
+test("Profile and conversation scope changes discard late transcript and recorder completions", async () => {
+  const operation = new ComposerVoiceOperation();
+  operation.bindScope("profile-a/conversation-a");
+  const generation = operation.next();
+  let finish!: (value: string) => void;
+  const transcript = operation.settle(generation, new Promise<string>((resolve) => { finish = resolve; }));
+  operation.bindScope("profile-b/conversation-b");
+  finish("late words from conversation-a");
+  assert.equal(await transcript, null);
+  const token = operation.token();
+  operation.bindScope("profile-b/conversation-b");
+  assert.equal(operation.isCurrent(token), true);
+});
+
+test("cancellation restores the original selection without replacing a changed draft", async () => {
+  const { restoreComposerVoiceSelection } = await import("./composerVoice");
+  const draft = "original selected draft  ";
+  assert.deepEqual(restoreComposerVoiceSelection(draft, draft, { start: 9, end: 17 }), { start: 9, end: 17 });
+  assert.equal(restoreComposerVoiceSelection(draft, "new conversation draft", { start: 9, end: 17 }), null);
+  assert.equal(draft, "original selected draft  ");
+});
+
+test("an empty STT response reports silence and never becomes a review transcript", async () => {
+  await assert.rejects(requestComposerAudioTranscript({ id: "silent", name: "silent.webm", size: 20, type: "audio/webm", dataUrl: "data:audio/webm;base64,AAAA" }, {}, { async transcribeAudio() { return { transcript: "   " }; } }), /No speech/);
+});

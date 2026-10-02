@@ -15,7 +15,7 @@ and narrow transcription route, then requires editable transcript review and
 explicit insertion. No second recorder, HTTP server, model store, or credential
 configuration is introduced here.
 
-The speech parser accepts at most 16,384 input characters and at most six total
+The speech parser accepts at most 16,384 UTF-8 input bytes and at most six total
 playback segments. Delays are bounded to 120 seconds, invalid/negative durations
 become zero, and the first ASK/CONTINUE/FINISH directive ends the plan. Directives
 are playback data; they cannot authorize a tool action.

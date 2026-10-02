@@ -110,6 +110,7 @@ import {
   isAudioAttachment,
   readableTranscriptionError,
   requestComposerAudioTranscript,
+  restoreComposerVoiceSelection,
   transcriptAttachmentFromAudio,
   type ComposerVoiceInsertMode,
   type ComposerVoicePhase,
@@ -3070,6 +3071,7 @@ export function ComposerRenderer({
   const inlineMentionLayerRef = useRef<HTMLDivElement | null>(null);
   const voiceRecorderRef = useRef<ActiveAudioRecorder | null>(null);
   const voiceGenerationRef = useRef(new ComposerVoiceOperation());
+  const attachmentTranscriptionRef = useRef(new ComposerVoiceOperation());
   const voiceStartedAtRef = useRef(0);
   const voiceOriginalDraftRef = useRef({ value: input, selection: { start: input.length, end: input.length } });
   const chromeWidgetNodeMapRef = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -3844,10 +3846,12 @@ export function ComposerRenderer({
   }, [selectedProfile]);
 
   const transcribeAttachedAudio = useCallback(async (file: AttachedFile) => {
+    const generation = attachmentTranscriptionRef.current.token();
     const transcript = await requestAudioTranscript(file, {
       action: "replace_audio_attachment_with_transcript",
       source_attachment_id: file.id,
     });
+    if (!attachmentTranscriptionRef.current.isCurrent(generation)) return;
     const transcriptFile = transcriptAttachmentFromAudio(file, transcript);
     onFileRemove?.(file.id);
     onFileAttach?.([transcriptFile]);
@@ -3938,6 +3942,7 @@ export function ComposerRenderer({
 
   useEffect(() => () => {
     voiceGenerationRef.current.invalidate();
+    attachmentTranscriptionRef.current.invalidate();
     voiceRecorderRef.current?.cancel();
     voiceRecorderRef.current = null;
   }, []);
@@ -3953,14 +3958,17 @@ export function ComposerRenderer({
     const selection = voiceOriginalDraftRef.current.selection;
     window.setTimeout(() => {
       textareaRef.current?.focus({ preventScroll: true });
-      if (textareaRef.current?.value === voiceOriginalDraftRef.current.value) {
-        textareaRef.current.setSelectionRange(selection.start, selection.end);
-      }
+      const restored = restoreComposerVoiceSelection(
+        voiceOriginalDraftRef.current.value, textareaRef.current?.value ?? "", selection,
+      );
+      if (restored) textareaRef.current?.setSelectionRange(restored.start, restored.end);
     }, 0);
   }, []);
 
   useEffect(() => {
-    voiceGenerationRef.current.invalidate();
+    const scope = JSON.stringify([voiceScopeKey, widgetContext?.activeConversationId, selectedProfile?.profile_id, isGenerating]);
+    voiceGenerationRef.current.bindScope(scope);
+    attachmentTranscriptionRef.current.bindScope(scope);
     voiceRecorderRef.current?.cancel();
     voiceRecorderRef.current = null;
     setVoiceElapsedSeconds(0);
