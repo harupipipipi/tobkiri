@@ -40,14 +40,16 @@ def audit_event(context: dict[str, Any] | None, event_type: str, payload: dict[s
 
     context = context if isinstance(context, dict) else {}
     details = redact_sensitive(payload or {})
-    owner_pack = context.get("pack_id") or context.get("_source_pack_id") or "defaultspack"
+    owner_pack = str(
+        context.get("pack_id") or context.get("_source_pack_id") or ""
+    ).strip()
     entry = AuditEntry(
         ts=_utc_now(),
         category="system",
         severity="info",
         action=event_type,
         success=True,
-        owner_pack=str(owner_pack),
+        owner_pack=owner_pack or None,
         details=details,
     )
     logger = context.get("audit_logger")

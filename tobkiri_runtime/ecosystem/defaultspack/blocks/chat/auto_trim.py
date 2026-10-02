@@ -1,7 +1,4 @@
-import sys
-import os
 import json
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from blocks._common import ok, error, gen_id, timestamp
 
 from domain.chat.store import ChatStore

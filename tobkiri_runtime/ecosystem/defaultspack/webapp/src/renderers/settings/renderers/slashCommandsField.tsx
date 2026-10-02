@@ -111,7 +111,7 @@ export function BuiltinSlashCommandsRenderer({ sectionId, field, value, onChange
     if (hasYolo) return;
     const next = [
       ...drafts,
-      { rowId: nextRowId(), name: "yolo", action: "toggle_yolo" as const, aliases: "", description: "会話で /yolo と打つとYOLOを切り替えます。", enabled: true },
+      { rowId: nextRowId(), name: "yolo", action: "toggle_yolo" as const, aliases: "", description: "会話で /yolo と打つとフルアクセスと「承認を求める」を切り替えます。", enabled: true },
     ];
     setDrafts(next);
     emitDrafts(next);

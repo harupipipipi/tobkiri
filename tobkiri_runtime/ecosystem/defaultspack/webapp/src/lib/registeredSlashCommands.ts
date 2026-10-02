@@ -43,16 +43,16 @@ export type RegisteredSlashCommandRecord = {
 export const REGISTERED_SLASH_COMMAND_ACTIONS: RegisteredSlashCommandActionOption[] = [
   {
     id: "toggle_yolo",
-    label: "YOLO",
-    description: "YOLOを切り替えます。",
+    label: "Full Access (YOLO)",
+    description: "フルアクセスと「承認を求める」を切り替えます。",
     category: "mode",
     risk: "medium",
     args: [{ name: "enabled", type: "boolean", required: false }],
   },
   {
     id: "toggle_ultra_yolo",
-    label: "Ultra YOLO",
-    description: "Ultra YOLOを切り替えます。",
+    label: "Full Access（旧YOLO互換）",
+    description: "フルアクセスと「承認を求める」を切り替えます。",
     category: "mode",
     risk: "medium",
     args: [{ name: "enabled", type: "boolean", required: false }],

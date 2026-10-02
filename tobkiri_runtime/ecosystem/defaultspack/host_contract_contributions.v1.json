@@ -1,0 +1,24 @@
+{
+  "schema": "io.tobkiri.host-contract-contribution.v1",
+  "pack_id": "defaultspack",
+  "system_pack": {
+    "trust_class": "system",
+    "allow_in_process": false
+  },
+  "update_target": {
+    "target": "defaultspack",
+    "source_root": "tobkiri_runtime/ecosystem/defaultspack",
+    "destination_root": "ecosystem/defaultspack",
+    "version_path": "update_metadata.v1.json",
+    "version_format": "json",
+    "protected_paths": [
+      "user_data",
+      "user_data/**",
+      "pack_backups",
+      "pack_backups/**",
+      "pack_staging",
+      "pack_staging/**"
+    ],
+    "runtime_reload_recommended": true
+  }
+}
