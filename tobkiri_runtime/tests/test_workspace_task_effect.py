@@ -621,8 +621,13 @@ def test_workspace_task_foreign_presentation_owner_cannot_manage_effect(
     assert fixture.backend.invocations == 0
 
 
-def test_adoption_schema_preserves_each_finite_kind_and_management_phase() -> None:
-    """The proposed canonical schema adds tasks without breaking current kinds."""
+@pytest.mark.parametrize(
+    "schema_source", ("proposal", "canonical", "source_fixture", "generated")
+)
+def test_adoption_schema_preserves_each_finite_kind_and_management_phase(
+    schema_source: str,
+) -> None:
+    """The adopted action remains usable through UI and Profile validation."""
 
     adoption = json.loads(
         (
@@ -631,7 +636,39 @@ def test_adoption_schema_preserves_each_finite_kind_and_management_phase() -> No
             / "workspace-task-effect-adoption.v1.json"
         ).read_text()
     )
-    schema = adoption["canonical_source_updates"][0]["input_schema"]
+    root = Path(__file__).parents[1]
+    update = adoption["canonical_source_updates"][0]
+    target = update["source_fixture_entry"]
+    schema = update["input_schema"]
+    if schema_source == "canonical":
+        catalog = json.loads((root / "schemas/pack_v4_catalog.v1.json").read_text())
+        pack = next(
+            pack for pack in catalog["packs"] if pack["pack_id"] == target["pack_id"]
+        )
+        schema = next(
+            contract["schemas"]["input"]
+            for contract in pack["provided_contracts"]
+            if contract["provider_id"] == target["function_id"]
+        )
+    elif schema_source == "source_fixture":
+        fixture = json.loads((root / target["path"]).read_text())
+        schema = next(
+            entry["schemas"]["input"]
+            for entry in fixture["packs"][target["pack_id"]]["entries"]
+            if entry["function_id"] == target["function_id"]
+        )
+    elif schema_source == "generated":
+        catalog = json.loads(
+            (root / "ecosystem" / target["pack_id"] / "executables.v4.json").read_text()
+        )
+        schema = next(
+            operation["input_schema"]
+            for variant in catalog["variants"]
+            if variant["function_id"] == target["function_id"]
+            for operation in variant["operations"]
+            if operation["operation_id"] == update["operation_id"]
+        )
+    assert schema == update["input_schema"]
     Draft202012Validator.check_schema(schema)
     from ecosystem.defaultspack.defaultspack.http_dynamic_targets import (
         _captured_input_schema,
