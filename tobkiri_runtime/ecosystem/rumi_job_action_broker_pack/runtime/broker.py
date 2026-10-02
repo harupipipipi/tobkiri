@@ -21,6 +21,15 @@ from core_runtime.host_provider_backend_v4 import (
 from core_runtime.paths import USER_DATA_DIR
 from core_runtime.profile_workspace import validate_profile_id
 from core_runtime.runtime_locks import NamedLock
+from .dispatch_envelope import (
+    PENDING,
+    TERMINAL,
+    VERSION as ENVELOPE_VERSION,
+    envelope_digest,
+    immutable_json,
+    restored_envelope,
+    retained_status,
+)
 
 ADAPTER = "rumi.action.job.adapter.v1"
 SERVICE_PACK_ID = "rumi_job_action_broker_pack"
@@ -58,7 +67,9 @@ class JobActionBroker:
 
     def invoke(self, name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Dispatch or cancel one idempotent job action."""
-
+        _reject_authority_material(payload)
+        if self.canonical and payload.get("profile_id", self.profile_id) != self.profile_id:
+            raise PermissionError("job Profile differs from the captured owner")
         if name == "dispatch":
             return self._dispatch(payload)
         if name == "cancel":
@@ -73,12 +84,36 @@ class JobActionBroker:
         key = _identifier(payload.get("idempotency_key"), "idempotency_key")
         arguments = dict(_mapping(payload.get("payload")))
         digest = _digest({"action_id": action_id, "payload": arguments})
+        envelope = {
+            "version": ENVELOPE_VERSION,
+            "profile_id": self.profile_id,
+            "action_id": action_id,
+            "payload": arguments,
+            "idempotency_key": key,
+            "schedule_id": str(payload.get("schedule_id") or ""),
+            "lease_id": str(payload.get("lease_id") or ""),
+        }
+        if self.canonical:
+            envelope = immutable_json(envelope)
+            for field in ("schedule_id", "lease_id"):
+                if envelope[field]:
+                    envelope[field] = _identifier(envelope[field], field)
         with NamedLock(self.lock_root, "dispatch"):
             state = self._read()
             current = state["entries"].get(key)
             if current is not None:
-                if current["payload_hash"] != digest:
+                if self.canonical and self._retained_envelope(current, key) is None:
+                    return self._reconciliation(key, "retained_job_binding_missing")
+                if current.get("payload_hash") != digest:
                     raise PermissionError("idempotency key payload does not match")
+                if self.canonical:
+                    retained = self._retained_envelope(current, key)
+                    if retained is None:
+                        return self._reconciliation(key, "retained_job_binding_missing")
+                    if envelope_digest(
+                        {"version": ENVELOPE_VERSION, **retained}
+                    ) != envelope_digest(envelope):
+                        raise PermissionError("idempotency key scheduler binding changed")
                 return {
                     "status": current["status"],
                     "deduplicated": True,
@@ -96,6 +131,11 @@ class JobActionBroker:
                 "created_at_ms": _now_ms(),
                 "updated_at_ms": _now_ms(),
             }
+            if self.canonical:
+                entry.update(
+                    dispatch_envelope=envelope,
+                    dispatch_envelope_digest=envelope_digest(envelope),
+                )
             state["entries"][key] = entry
             self._write(state)
         try:
@@ -104,26 +144,40 @@ class JobActionBroker:
                 provider.get("provider_instance_id") or provider.get("provider_id") or ""
             )
             entry["operation_id"] = str(provider.get("operation_id") or "")
+            if self.canonical:
+                entry["provider_binding"] = _provider_binding(provider)
+                entry["provider_binding_digest"] = envelope_digest(entry["provider_binding"])
+                # Bind the exact adapter before issuing any effect. A crash before
+                # this commit is ambiguous and never authorizes redispatch.
+                entry = self._finish(key, entry)
+                if entry.get("cancel_requested"):
+                    return self._cancel({"idempotency_key": key})
             result = self._adapter(
                 provider,
                 "dispatch",
-                {
-                    "action_id": action_id,
-                    "payload": arguments,
-                    "idempotency_key": key,
-                    "schedule_id": str(payload.get("schedule_id") or ""),
-                    "lease_id": str(payload.get("lease_id") or ""),
-                    "profile_id": self.profile_id,
-                },
+                (
+                    {field: value for field, value in envelope.items() if field != "version"}
+                    if self.canonical
+                    else {
+                        "action_id": action_id,
+                        "payload": arguments,
+                        "idempotency_key": key,
+                        "schedule_id": str(payload.get("schedule_id") or ""),
+                        "lease_id": str(payload.get("lease_id") or ""),
+                        "profile_id": self.profile_id,
+                    }
+                ),
             )
-            entry["status"] = _status(result)
+            entry["status"] = retained_status(result) if self.canonical else _status(result)
             entry["result"] = _bounded(result)
         except Exception as exc:
-            entry["status"] = "failed"
+            entry["status"] = "reconciliation_required" if self.canonical else "failed"
             entry["error"] = f"Job dispatch failed: {type(exc).__name__}"
             self._finish(key, entry)
+            if self.canonical:
+                return self._reconciliation(key, "job_dispatch_outcome_unconfirmed")
             raise
-        self._finish(key, entry)
+        entry = self._finish(key, entry)
         return {
             "status": entry["status"],
             "idempotency_key": key,
@@ -137,6 +191,25 @@ class JobActionBroker:
         entry = state["entries"].get(key)
         if entry is None:
             return {"status": "unknown", "idempotency_key": key}
+        if self.canonical:
+            envelope = self._retained_envelope(entry, key)
+            if envelope is None:
+                return self._reconciliation(key, "retained_job_binding_missing")
+            entry["cancel_requested"] = True
+            entry["status"] = "cancellation_pending"
+            entry = self._finish(key, entry)
+            provider = self._retained_provider(entry)
+            if provider is None:
+                return self._reconciliation(key, "retained_job_provider_unavailable")
+            try:
+                result = self._adapter(provider, "cancel", envelope)
+            except Exception:
+                return self._reconciliation(key, "job_cancellation_unconfirmed")
+            status = retained_status(result)
+            entry["status"] = status if status in TERMINAL else "cancellation_pending"
+            entry["result"] = _bounded(result)
+            entry = self._finish(key, entry)
+            return {"status": entry["status"], "idempotency_key": key, "result": result}
         provider_id = str(entry.get("provider_instance_id") or "")
         if not provider_id:
             return {"status": "cancellation_pending", "idempotency_key": key}
@@ -163,6 +236,22 @@ class JobActionBroker:
     def _status(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         key = _identifier(payload.get("idempotency_key"), "idempotency_key")
         value = self._read()["entries"].get(key)
+        if self.canonical and value is not None:
+            envelope = self._retained_envelope(value, key)
+            if envelope is None:
+                return self._reconciliation(key, "retained_job_binding_missing")
+            if value.get("status") in PENDING:
+                provider = self._retained_provider(value)
+                if provider is None:
+                    return self._reconciliation(key, "retained_job_provider_unavailable")
+                try:
+                    result = self._adapter(provider, "status", envelope)
+                except Exception:
+                    return self._reconciliation(key, "job_status_unavailable")
+                value["status"] = retained_status(result)
+                value["result"] = _bounded(result)
+                value = self._finish(key, value)
+            return _copy(value)
         if (
             self.canonical
             and value is not None
@@ -233,15 +322,55 @@ class JobActionBroker:
             raise ValueError("job adapter returned an invalid result")
         return result
 
-    def _finish(self, key: str, entry: dict[str, Any]) -> None:
+    def _retained_envelope(self, entry: Mapping[str, Any], key: str) -> dict[str, Any] | None:
+        value = restored_envelope(entry, profile_id=self.profile_id, key=key)
+        if value is not None:
+            _reject_authority_material(value)
+            if _digest({"action_id": value["action_id"], "payload": value["payload"]}) != entry.get(
+                "payload_hash"
+            ):
+                raise PermissionError("retained job payload hash changed")
+        return value
+
+    def _retained_provider(self, entry: Mapping[str, Any]) -> Mapping[str, Any] | None:
+        binding = entry.get("provider_binding")
+        if not isinstance(binding, Mapping):
+            return None
+        if envelope_digest(binding) != entry.get("provider_binding_digest"):
+            raise PermissionError("retained job provider hash changed")
+        if binding.get("operation_id") != entry.get("operation_id"):
+            raise PermissionError("retained job provider operation changed")
+        try:
+            providers = self.client.providers("tobkiri.action.job.adapter.v2")
+        except Exception:
+            return None
+        matches = [item for item in providers if _provider_binding(item) == binding]
+        return matches[0] if len(matches) == 1 else None
+
+    @staticmethod
+    def _reconciliation(key: str, reason: str) -> dict[str, Any]:
+        return {"status": "reconciliation_required", "idempotency_key": key, "reason": reason}
+
+    def _finish(self, key: str, entry: dict[str, Any]) -> dict[str, Any]:
         with NamedLock(self.lock_root, "dispatch"):
             state = self._read()
             current = state["entries"].get(key)
             if current is None or current["payload_hash"] != entry["payload_hash"]:
                 raise RuntimeError("job dispatch ledger changed during execution")
+            if self.canonical:
+                current_envelope = self._retained_envelope(current, key)
+                incoming_envelope = self._retained_envelope(entry, key)
+                if current_envelope != incoming_envelope:
+                    raise PermissionError("job dispatch envelope changed during execution")
+                entry["cancel_requested"] = bool(
+                    entry.get("cancel_requested") or current.get("cancel_requested")
+                )
+                if current.get("status") == "cancelled":
+                    entry["status"], entry["result"] = "cancelled", current.get("result")
             entry["updated_at_ms"] = _now_ms()
             state["entries"][key] = _copy(entry)
             self._write(state)
+            return _copy(entry)
 
     def _read(self) -> dict[str, Any]:
         if not self.path.exists():
@@ -310,6 +439,28 @@ def _status(result: Any) -> str:
         return "failed"
     value = str(result.get("status") or "")
     return value if value in {"ok", "accepted", "running", "completed", "failed"} else "failed"
+
+
+def _provider_binding(provider: Mapping[str, Any]) -> dict[str, str]:
+    """Pin only finite identity metadata supplied by the captured public port."""
+    return {
+        key: value
+        for key in (
+            "operation_id",
+            "provider_id",
+            "provider_instance_id",
+            "function_principal_id",
+            "principal_id",
+            "artifact_digest",
+            "implementation_digest",
+            "contract_revision_digest",
+            "profile_id",
+            "profile_revision",
+            "activation_id",
+            "plan_digest",
+        )
+        if isinstance((value := provider.get(key)), str) and value
+    }
 
 
 def _bounded(value: Any) -> Any:
