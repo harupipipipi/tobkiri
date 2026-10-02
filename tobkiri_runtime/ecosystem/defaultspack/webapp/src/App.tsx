@@ -2566,6 +2566,8 @@ export function ChatApp() {
     }
     return true;
   }, []);
+  const navigationLocationRef = useRef(window.location.href);
+  navigationLocationRef.current = window.location.href;
   const [hasVisibleModal, setHasVisibleModal] = useState(false);
   useEffect(() => {
     const update = () => setHasVisibleModal(Array.from(document.querySelectorAll<HTMLElement>("[role='dialog'],[aria-modal='true']"))
@@ -4188,6 +4190,10 @@ export function ChatApp() {
 
   useEffect(() => {
     const handlePopState = () => {
+      if (!canLeavePackViews()) {
+        window.history.pushState(null, "", navigationLocationRef.current);
+        return;
+      }
       setError(null);
       const routeKind = workspaceKindForPathname(window.location.pathname) ?? "chat";
       if (routeKind !== "chat") {
@@ -5671,7 +5677,8 @@ export function ChatApp() {
     }
   };
 
-  const activateWorkspaceTab = (tab: WorkspaceTab) => {
+  const activateWorkspaceTab = (tab: WorkspaceTab, navigationApproved = false) => {
+    if (!navigationApproved && tab.id !== activeWorkspaceTabId && !canLeavePackViews()) return;
     setActiveWorkspaceTabId(tab.id);
     setError(null);
     if (tab.kind === "chat") {
@@ -5703,7 +5710,7 @@ export function ChatApp() {
   const handleWorkspaceTabSelect = (tabId: string) => {
     if (tabId !== activeWorkspaceTabId && !canLeavePackViews()) return;
     const tab = workspaceTabs.find((candidate) => candidate.id === tabId);
-    if (tab) activateWorkspaceTab(tab);
+    if (tab) activateWorkspaceTab(tab, true);
   };
 
   const handleWorkspaceTabCreate = (kind: WorkspaceTabKind, reference?: CatalogViewReference): boolean => {
@@ -5723,34 +5730,34 @@ export function ChatApp() {
       setWorkspaceTabs((current) => current.map((currentTab) => (
         currentTab.id === activeWorkspaceTabId ? tab : currentTab
       )));
-      activateWorkspaceTab(tab);
+      activateWorkspaceTab(tab, true);
       return true;
     }
     setWorkspaceTabs((current) => [...current, tab]);
-    activateWorkspaceTab(tab);
+    activateWorkspaceTab(tab, true);
     return true;
   };
 
   const handleWorkspaceTabClose = (tabId: string): boolean => {
-    if (tabId === activeWorkspaceTabId && !canLeavePackViews()) return false;
     const result = closeWorkspaceTab(workspaceTabs, activeWorkspaceTabId, tabId);
-    if (!result.closedTab) return false;
+    if (!result.closedTab || (tabId === activeWorkspaceTabId && !canLeavePackViews())) return false;
     const history = closedWorkspaceTabsRef.current.profileId === runtimeProfileId
       ? closedWorkspaceTabsRef.current.tabs : [];
     closedWorkspaceTabsRef.current = { profileId: runtimeProfileId, tabs: rememberClosedWorkspaceTab(history, result.closedTab) };
     setWorkspaceTabs(result.tabs);
-    if (result.nextActiveTab) activateWorkspaceTab(result.nextActiveTab);
+    if (result.nextActiveTab) activateWorkspaceTab(result.nextActiveTab, true);
     return true;
   };
 
   const handleWorkspaceTabRestore = (): boolean => {
+    if (!canLeavePackViews()) return false;
     const history = closedWorkspaceTabsRef.current.profileId === runtimeProfileId
       ? closedWorkspaceTabsRef.current.tabs : [];
     const result = restoreLastClosedWorkspaceTab(workspaceTabs, history);
     closedWorkspaceTabsRef.current = { profileId: runtimeProfileId, tabs: result.closedTabs };
     if (!result.restoredTab) return false;
     setWorkspaceTabs(result.tabs);
-    activateWorkspaceTab(result.restoredTab);
+    activateWorkspaceTab(result.restoredTab, true);
     return true;
   };
 
