@@ -369,7 +369,8 @@ export function viewOperationRequest(
     && item.action_contract === operation.contract_id
     && item.operation_id === operation.operation_id
     && isActive(catalog, item, registered.reference.planHash));
-  if (targets.length !== 1) return null;
+  if (targets.length !== 1 || catalog.contributions.filter((item) =>
+    item.contribution_id === operation.contribution_id).length !== 1) return null;
   return {
     contractId: operation.contract_id, payload,
     profileId: catalog.profile_id, profileRevision: catalog.profile_revision,
@@ -386,7 +387,9 @@ export function viewReadRequest(
 ): CapturedCapabilityInvocation | null {
   const request = viewOperationRequest(catalog, registered, operation, payload);
   if (!request || !catalog.contributions.some((item) =>
-    item.contribution_id === request.contributionId && item.read_only === true)) return null;
+    item.kind === "action" && item.contribution_id === request.contributionId
+    && item.action_contract === operation.contract_id && item.operation_id === operation.operation_id
+    && item.read_only === true && isActive(catalog, item, registered.reference.planHash))) return null;
   return request;
 }
 
