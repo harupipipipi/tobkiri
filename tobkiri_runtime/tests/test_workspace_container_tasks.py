@@ -79,6 +79,7 @@ class DockerFixture:
         self.calls: list[dict[str, Any]] = []
         self.cleanup, self.cancel, self.bad_output = True, False, False
         self.started, self.removed, self.name_conflict = False, False, False
+        self.changed_token, self.changed_id = False, False
         self.work_exit, self.container_exit = 0, 0
         self.token, self.cid = "", "b" * 64
         self.archive = b""
@@ -106,8 +107,12 @@ class DockerFixture:
             return process(
                 stdout=json.dumps(
                     {
-                        "id": self.cid,
-                        "token": "foreign" if self.name_conflict else self.token,
+                        "id": "c" * 64
+                        if self.started and self.changed_id
+                        else self.cid,
+                        "token": "foreign"
+                        if self.name_conflict or (self.started and self.changed_token)
+                        else self.token,
                         "state": {
                             "StartedAt": "2026-10-03T00:00:00Z"
                             if self.started
@@ -279,6 +284,7 @@ def test_task_cow_output_is_sealed_and_replay_never_starts_a_second_container(
     run = next(call for call in env.docker.calls if call["argv"][1] == "create")
     argv = run["argv"]
     assert "--pull=never" in argv and argv[argv.index("--network") + 1] == "none"
+    assert argv[argv.index("--log-driver") + 1] == "none"
     assert argv[argv.index("--user") + 1].split(":")[0] != "0"
     assert argv[argv.index("--entrypoint") + 1] == "python3"
     assert argv[argv.index("--cap-drop") + 1] == "ALL"
@@ -529,6 +535,22 @@ def test_daemon_or_local_socket_change_fails_before_task_execution(
     with pytest.raises(PermissionError):
         execute(env, payload)
     assert not any(call["argv"][1] == "create" for call in env.docker.calls)
+
+
+@pytest.mark.parametrize("field", ["changed_token", "changed_id"])
+def test_confirmed_container_identity_change_never_claims_verified_cleanup(
+    environment: Any, field: str
+) -> None:
+    env = environment
+    payload = prepared(env)
+    setattr(env.docker, field, True)
+    result = execute(env, payload)
+    assert result["status"] == "ambiguous"
+    assert not result["container_cleanup_verified"]
+    assert not any(call["argv"][1] == "rm" for call in env.docker.calls)
+    assert (env.tasks.state.root / payload["task_plan"]["task_id"]).exists()
+    with pytest.raises(LookupError):
+        env.tasks.resource(payload["task_plan"]["task_id"], OWNER, export=True)
 
 
 def test_guard_failure_before_claim_starts_nothing_and_invalid_guest_output_is_rejected(

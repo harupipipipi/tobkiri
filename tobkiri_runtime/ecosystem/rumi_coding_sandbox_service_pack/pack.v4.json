@@ -26,7 +26,7 @@
       "path": "runtime/task_container.py"
     },
     {
-      "digest": "sha256:59c1424fe942042b7ec583f9e9ea0071ba69390f0b3f1bea496cd8dbdfd7d3c4",
+      "digest": "sha256:28d7eeff4388d5be60467f6632d16b8d025245d803778cb277b20903a5d0f38e",
       "kind": "executable",
       "path": "runtime/task_execution.py"
     },
@@ -62,14 +62,14 @@
         "rumi_coding_sandbox_service_pack.task-prepare",
         "rumi_coding_sandbox_service_pack.task-execute"
       ],
-      "revision_digest": "sha256:769fac8a270911389deb1f8f607bcfc440ea50b54a208f059216a20daca149dc"
+      "revision_digest": "sha256:9aebf34de9cf78423f6f083ed27c45a5e32603e4c3e011a90d4872871999167a"
     },
     {
       "contract_id": "tobkiri.resource.workspace.container-task.v1",
       "operations": [
         "rumi_coding_sandbox_service_pack.task-resource"
       ],
-      "revision_digest": "sha256:dd5683180de8e31c14fcfb812f5fc725776be85fbbbb68ed3e914b5c8ebfb0dc"
+      "revision_digest": "sha256:935184425d523caf9391f31ffe9d283925e3bfc7f425e288f0c4b5d5cc59230a"
     }
   ],
   "functions": [
@@ -94,7 +94,7 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:769fac8a270911389deb1f8f607bcfc440ea50b54a208f059216a20daca149dc",
+      "contract_revision_digest": "sha256:9aebf34de9cf78423f6f083ed27c45a5e32603e4c3e011a90d4872871999167a",
       "id": "rumi_coding_sandbox_service_pack.task-prepare",
       "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
       "operations": [
@@ -103,7 +103,7 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:769fac8a270911389deb1f8f607bcfc440ea50b54a208f059216a20daca149dc",
+      "contract_revision_digest": "sha256:9aebf34de9cf78423f6f083ed27c45a5e32603e4c3e011a90d4872871999167a",
       "id": "rumi_coding_sandbox_service_pack.task-execute",
       "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
       "operations": [
@@ -112,7 +112,7 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:dd5683180de8e31c14fcfb812f5fc725776be85fbbbb68ed3e914b5c8ebfb0dc",
+      "contract_revision_digest": "sha256:935184425d523caf9391f31ffe9d283925e3bfc7f425e288f0c4b5d5cc59230a",
       "id": "rumi_coding_sandbox_service_pack.task-resource",
       "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
       "operations": [
@@ -122,8 +122,8 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:da4ef9dff4774af25750b0afeba334d33288348965a90937c18b7e4e23b21a13",
-    "contract_catalog_digest": "sha256:7d3552abee84d8c69e304d5a57a0ae0284fc76a9f6bb9bd0393c27c5e1626dc2",
+    "artifact_set_digest": "sha256:45eb82cd0360f2e85d1b1268456b2407743c6a8bf2bcae5b91acc72780826c82",
+    "contract_catalog_digest": "sha256:5a30903ad8015bb9fd5b4bbc5f716da2da19f6a053517e9c7da5b0e618c8fc67",
     "source_identity": "sha256:5bfc7e9db7dd99bab47379d5d62ff9991065db7abaf2fc07cb91eedbb516a5e8"
   },
   "migration": {
@@ -196,7 +196,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:24cd4c4792ab5ad9ff9ee73580801e19316dbb0a8c4a400a4693125eea39169f",
+    "artifact_digest": "sha256:cba61aa74982c82b7432175e616249ddd79b88ca557894de025219b312e1f2e4",
     "display_name": "Tobkiri Coding Sandbox Service",
     "id": "rumi_coding_sandbox_service_pack",
     "kind": "host_extension",
@@ -208,7 +208,7 @@
     "generator": "tobkiri-protocol",
     "generator_version": "1.0.0",
     "normative": false,
-    "repository_commit": "217d02e896f3eb1841b198923d5c67ee53ba7ec4",
+    "repository_commit": "8a707f3e61f470d759ce1172666c33fcc7e32d49",
     "repository_tree": "f8e93227b2cc31d00ad147ee7c55dbd15e8bb87bda152fb35e0a475a0d167986",
     "schema": "io.tobkiri.provenance.v1",
     "source_digest": "sha256:5bfc7e9db7dd99bab47379d5d62ff9991065db7abaf2fc07cb91eedbb516a5e8",
