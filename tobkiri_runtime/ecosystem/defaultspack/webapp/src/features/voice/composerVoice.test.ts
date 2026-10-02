@@ -3,6 +3,11 @@ import test from "node:test";
 
 import {
   appendVoiceTranscript,
+  applyComposerVoiceTranscript,
+  assertComposerMicrophoneAllowed,
+  ComposerVoiceOperation,
+  composerVoiceLanguage,
+  composerVoiceErrorMessage,
   audioTranscriptFileName,
   isAudioAttachment,
   modelSupportsAudioInput,
@@ -208,4 +213,43 @@ test("transcription failures leave attachment ownership to the caller", async ()
   );
   assert.equal(source.name, "voice.webm");
   assert.equal(source.dataUrl, "data:audio/webm;base64,AAAA");
+});
+
+
+test("reviewable voice insertion preserves draft whitespace and selected range", () => {
+  assert.deepEqual(applyComposerVoiceTranscript("before selected after  ", " spoken ", "insert", { start: 7, end: 15 }), { value: "before spoken after  ", cursor: 13 });
+  assert.deepEqual(applyComposerVoiceTranscript("draft  ", "spoken", "append", { start: 0, end: 0 }), { value: "draft  \nspoken", cursor: 14 });
+  assert.deepEqual(applyComposerVoiceTranscript("draft", "  ", "replace", { start: 2, end: 4 }), { value: "draft", cursor: 4 });
+});
+
+test("voice language validation and silence/permission errors are actionable", () => {
+  assert.equal(composerVoiceLanguage("ja-JP", "en-US"), "ja-JP");
+  assert.equal(composerVoiceLanguage("invalid locale", ""), "en-US");
+  assert.match(composerVoiceErrorMessage("not-allowed"), /permission was denied/);
+  assert.match(composerVoiceErrorMessage("no-speech"), /No speech/);
+  assert.doesNotMatch(readableTranscriptionError(new Error("secret-token=private-server-trace")), /private-server|secret-token/);
+});
+
+test("microphone Host permission is read-only and missing permission fails closed", async () => {
+  let reads = 0;
+  const client = { async status() { reads += 1; return { permissions: { rumi: {} } } as Awaited<ReturnType<typeof import("../../ambient/ambientTriggerClient").ambientTriggerClient.status>>; } };
+  await assert.rejects(assertComposerMicrophoneAllowed(client), { name: "ComposerMicrophonePermissionError" });
+  assert.equal(reads, 1);
+  await assertComposerMicrophoneAllowed({ async status() { return { permissions: { rumi: { "host.microphone.capture": { granted: true } } } } as Awaited<ReturnType<typeof import("../../ambient/ambientTriggerClient").ambientTriggerClient.status>>; } });
+});
+
+test("cancelled or replaced voice attempts dispose late microphone recorders", async () => {
+  const operation = new ComposerVoiceOperation();
+  const generation = operation.next();
+  let finish!: (value: { cancel(): void }) => void;
+  let stopped = 0;
+  const result = operation.settle(generation, new Promise<{ cancel(): void }>((resolve) => { finish = resolve; }), (recorder) => recorder.cancel());
+  operation.invalidate();
+  finish({ cancel() { stopped += 1; } });
+  assert.equal(await result, null);
+  assert.equal(stopped, 1);
+  const next = operation.next();
+  assert.equal(await operation.settle(next, Promise.resolve("reviewed transcript")), "reviewed transcript");
+  operation.next();
+  assert.equal(await operation.settle(next, Promise.resolve("stale transcript")), null);
 });
