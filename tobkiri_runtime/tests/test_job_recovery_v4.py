@@ -28,7 +28,7 @@ from ecosystem.rumi_scheduler_runtime_pack.runtime.scheduler import SchedulerRun
 from ecosystem.tobkiri_agent_control_pack.runtime.host import WorkPlanHostFactory
 from ecosystem.tobkiri_agent_control_pack.runtime.ports import SAVED, SAVED_OP
 from ecosystem.tobkiri_agent_control_pack.runtime.service import WorkPlanService
-from ecosystem.tobkiri_agent_control_pack.runtime.store import PlanStore
+from ecosystem.tobkiri_agent_control_pack.runtime.store import Conflict, PlanStore
 from ecosystem.tobkiri_agent_control_pack.runtime.workflow import (
     REVIEW,
     REVIEW_OP,
@@ -480,7 +480,7 @@ def test_received_reminder_requires_canonical_acceptance_and_never_claims_cancel
     pending = ports.broker.invoke("cancel", {"idempotency_key": key})
     assert pending["status"] == "cancellation_pending"
     plan = ports.service.store.get("plan")
-    with pytest.raises(ValueError):
+    with pytest.raises(Conflict):
         ports.service.ack(
             {
                 "plan_id": "plan",
