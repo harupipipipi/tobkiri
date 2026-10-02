@@ -1,5 +1,5 @@
 {
-  "artifact_set_digest": "sha256:0041a55ae8a67c2772d18ce77d3d44d66cbdf3e20a6d7bd24960b0009fc23921",
+  "artifact_set_digest": "sha256:fc7b7ceb550f5ce7c049c7e13b2271d01a1f7afcb38d2da7ae13da503b6c435f",
   "artifacts": [
     {
       "digest": "sha256:7fc3fa56d16a6cdc23a1b821cb452fbc95a2be04424eb929be3f08d14e9a7945",
@@ -7,12 +7,12 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:07d8bc77b224a17435dd31eede4d2d757c2851ce4b7ca2c7393cc9b1ca8d9af0",
+      "digest": "sha256:e195460c7db5b69bd1796f353122c704f26105e67a3ce5d4837696acee7f372e",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:c835942842cc68bb12e1dab1b491227ab63231c085471c64b75d0013ba7796c8",
+      "digest": "sha256:2da2246c1a9188f3fae3893dab0aa03e491c98beee82b07a81140f1971f4ebe2",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -22,7 +22,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:716cdb12f79942cd6f3c34dc7e4b325b3954c85d84dfd20fe0253f65a2dfbcdc",
+      "digest": "sha256:1a7f2d4c3504e5e401de9761c7cde18d7e5f4ffa03ee4c31d5d3ed22c4694ac9",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -47,7 +47,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:7d9213608f4a8805e2e6c5a0bab66da2852fdfea4ad7d957e1832c67a3e03c82",
+      "digest": "sha256:c75a76d032ff12c33607a97136eaebe0a3d2dd1280a07a8df752a392e147a6bc",
       "path": "runtime/task_execution.py",
       "role": "runtime"
     },
@@ -60,8 +60,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:53288c27c982b327aa4b7e679488cdf1ed7bbc4747d4d392fa3a8a403772abe8"
+    "signed_digest": "sha256:855a3be3d7476016752dd5e13b0c017a668d6f2e94cdfadac97d287ff1187bd4"
   },
   "pack_id": "rumi_coding_sandbox_service_pack",
-  "source_identity": "sha256:1630e11c3b8a8dff307aee14e583c10d1a4b0f702893d36897e2dd19c51d494a"
+  "source_identity": "sha256:1d04f38b81449511087ba4e518f933e612763aad849a9479813aca401e7bdd8c"
 }

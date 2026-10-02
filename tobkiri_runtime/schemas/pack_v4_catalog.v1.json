@@ -4925,7 +4925,7 @@
           "path": "runtime/task_container.py"
         },
         {
-          "digest": "sha256:7d9213608f4a8805e2e6c5a0bab66da2852fdfea4ad7d957e1832c67a3e03c82",
+          "digest": "sha256:c75a76d032ff12c33607a97136eaebe0a3d2dd1280a07a8df752a392e147a6bc",
           "kind": "executable",
           "path": "runtime/task_execution.py"
         },

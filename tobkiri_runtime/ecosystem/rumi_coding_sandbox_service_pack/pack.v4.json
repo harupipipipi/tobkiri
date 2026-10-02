@@ -6,7 +6,7 @@
       "path": "compatibility-source.v1.json"
     },
     {
-      "digest": "sha256:c835942842cc68bb12e1dab1b491227ab63231c085471c64b75d0013ba7796c8",
+      "digest": "sha256:2da2246c1a9188f3fae3893dab0aa03e491c98beee82b07a81140f1971f4ebe2",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -36,7 +36,7 @@
       "path": "runtime/task_container.py"
     },
     {
-      "digest": "sha256:7d9213608f4a8805e2e6c5a0bab66da2852fdfea4ad7d957e1832c67a3e03c82",
+      "digest": "sha256:c75a76d032ff12c33607a97136eaebe0a3d2dd1280a07a8df752a392e147a6bc",
       "kind": "executable",
       "path": "runtime/task_execution.py"
     },
@@ -130,9 +130,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:0041a55ae8a67c2772d18ce77d3d44d66cbdf3e20a6d7bd24960b0009fc23921",
-    "contract_catalog_digest": "sha256:07d8bc77b224a17435dd31eede4d2d757c2851ce4b7ca2c7393cc9b1ca8d9af0",
-    "source_identity": "sha256:1630e11c3b8a8dff307aee14e583c10d1a4b0f702893d36897e2dd19c51d494a"
+    "artifact_set_digest": "sha256:fc7b7ceb550f5ce7c049c7e13b2271d01a1f7afcb38d2da7ae13da503b6c435f",
+    "contract_catalog_digest": "sha256:e195460c7db5b69bd1796f353122c704f26105e67a3ce5d4837696acee7f372e",
+    "source_identity": "sha256:1d04f38b81449511087ba4e518f933e612763aad849a9479813aca401e7bdd8c"
   },
   "migration": {
     "compatibility": "read_only",
@@ -204,7 +204,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:0041a55ae8a67c2772d18ce77d3d44d66cbdf3e20a6d7bd24960b0009fc23921",
+    "artifact_digest": "sha256:fc7b7ceb550f5ce7c049c7e13b2271d01a1f7afcb38d2da7ae13da503b6c435f",
     "display_name": "Tobkiri Coding Sandbox Service",
     "id": "rumi_coding_sandbox_service_pack",
     "kind": "host_extension",
@@ -214,7 +214,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:1630e11c3b8a8dff307aee14e583c10d1a4b0f702893d36897e2dd19c51d494a",
+        "digest": "sha256:1d04f38b81449511087ba4e518f933e612763aad849a9479813aca401e7bdd8c",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -225,7 +225,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:1630e11c3b8a8dff307aee14e583c10d1a4b0f702893d36897e2dd19c51d494a",
+    "source_digest": "sha256:1d04f38b81449511087ba4e518f933e612763aad849a9479813aca401e7bdd8c",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_coding_sandbox_service_pack"
   },

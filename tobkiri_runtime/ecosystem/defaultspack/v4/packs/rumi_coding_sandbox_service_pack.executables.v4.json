@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_coding_sandbox_service_pack",
-  "source_identity": "sha256:716cdb12f79942cd6f3c34dc7e4b325b3954c85d84dfd20fe0253f65a2dfbcdc",
+  "source_identity": "sha256:1a7f2d4c3504e5e401de9761c7cde18d7e5f4ffa03ee4c31d5d3ed22c4694ac9",
   "variants": [
     {
       "variant_id": "rumi_coding_sandbox_service_pack.coding-sandbox.control.python",
@@ -585,6 +585,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:094412330251dea69f2ce0f139cdbe7b5690e4bace41173fa1ee04f423809ede",
-  "catalog_digest": "sha256:3e791d8b2579d4ae227f5aa9ac57f841f19fe76fe43a3efdc1dd6036fdc13a61"
+  "materialization_catalog_digest": "sha256:0723fddf7f48dbcafaf18828e13fbfea095ea086e6a3f5fff1b3b9abe9d562d3",
+  "catalog_digest": "sha256:bed6841dbe7514b41ed66886d47d6e81406dc8ff92d9248cf14c3428360c3a31"
 }

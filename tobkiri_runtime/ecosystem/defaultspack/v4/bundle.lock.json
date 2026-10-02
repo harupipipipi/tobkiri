@@ -289,12 +289,12 @@
     {
       "path": "packs/rumi_coding_sandbox_service_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:cbe37023626e928a62a6615b870ccb48543eae2c0316ec4d0828fcc8feb9b80a"
+      "digest": "sha256:4e076145e0cbe5a44c08a0179f23fead8623a01279705a5d7e6574d9f7c6beda"
     },
     {
       "path": "packs/rumi_coding_sandbox_service_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:286bd18b9690e5816736299f60b0fa0fbf16be8e56e46483c119e5b38a5a32be"
+      "digest": "sha256:b4e667b45d0ea7f6d5df5c9e17fc756cea8a0dc13fc3c52d4d91d829e36b0230"
     },
     {
       "path": "packs/rumi_command_protocol_pack.executables.v4.json",
