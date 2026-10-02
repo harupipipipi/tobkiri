@@ -179,6 +179,9 @@ class SearchTargetResolver:
                 resolution_reason="empty_query_fallback",
             )
 
+        if attachment_decision := self._attachment_decision(cleaned, fallback_url, context):
+            return attachment_decision
+
         direct_url = self._direct_url_query(cleaned)
         if direct_url:
             public = [self._public_candidate({"url": direct_url, "final_url": direct_url, "title": direct_url, "domain": self._domain(direct_url), "source": "direct_url"})]
@@ -988,3 +991,29 @@ class SearchTargetResolver:
         if normalized_host == "yahoo.com" or normalized_host.endswith(".yahoo.com"):
             return path.startswith("/search") or "p" in query
         return False
+
+    @staticmethod
+    def _attachment_decision(
+        query: str,
+        fallback_url: str,
+        context: dict[str, Any] | None,
+    ) -> RouteDecision | None:
+        attachments = (context or {}).get("attachments")
+        if not isinstance(attachments, list) or not attachments:
+            return None
+        return RouteDecision(
+            route_type=ASK_AI_WITH_SEARCH,
+            query=query,
+            target_url="",
+            target_candidates=[],
+            selected_index=-1,
+            fallback_url=fallback_url,
+            resolution_reason="attachment_context:defaultspack_chat_node",
+            used_ai_judge=True,
+            metadata={
+                "answer_required": True,
+                "attachment_count": len(attachments),
+                "defaultspack_node": "blocks.chat.send",
+                "selected_tools": ["web_search"],
+            },
+        )

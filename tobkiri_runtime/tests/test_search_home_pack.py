@@ -119,6 +119,24 @@ def test_question_like_query_routes_to_defaultspack_ai_answer():
     assert decision.metadata["selected_tools"] == ["web_search"]
 
 
+def test_attachment_context_never_routes_to_a_destination():
+    from ecosystem.search_home_pack.domain.route_decision import ASK_AI_WITH_SEARCH
+    from ecosystem.search_home_pack.domain.search_target_resolver import SearchTargetResolver
+
+    bridge = FakeBridge()
+    resolver = SearchTargetResolver(bridge=bridge, probe_fn=_probe)
+
+    decision = resolver.resolve(
+        "example.com",
+        context={"attachments": [{"id": "a1", "name": "notes.txt", "size": 5, "type": "text/plain"}]},
+    )
+
+    assert decision.route_type == ASK_AI_WITH_SEARCH
+    assert decision.target_url == ""
+    assert decision.metadata["attachment_count"] == 1
+    assert bridge.search_calls == []
+
+
 def test_site_name_query_still_resolves_to_best_url():
     from ecosystem.search_home_pack.domain.search_target_resolver import SearchTargetResolver
 
