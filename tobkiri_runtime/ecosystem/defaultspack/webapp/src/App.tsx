@@ -2570,10 +2570,10 @@ export function ChatApp() {
   navigationLocationRef.current = window.location.href;
   const [hasVisibleModal, setHasVisibleModal] = useState(false);
   useEffect(() => {
-    const update = () => setHasVisibleModal(Array.from(document.querySelectorAll<HTMLElement>("[role='dialog'],[aria-modal='true']"))
+    const update = () => setHasVisibleModal(Array.from(document.querySelectorAll<HTMLElement>("[role='dialog'],[role='alertdialog'],[aria-modal='true'],dialog[open]"))
       .some((element) => element.getClientRects().length > 0 && !element.hidden));
     const observer = new MutationObserver(update);
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["role", "aria-modal", "hidden", "style", "class"] });
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["role", "aria-modal", "hidden", "open", "style", "class"] });
     update();
     return () => observer.disconnect();
   }, []);
@@ -5770,7 +5770,7 @@ export function ChatApp() {
       // Even a vetoed close/restore stays inside this Application.
       event.preventDefault();
       event.stopPropagation();
-      const visibleDialog = Array.from(document.querySelectorAll('[role="dialog"],[role="alertdialog"]'))
+      const visibleDialog = Array.from(document.querySelectorAll('[role="dialog"],[role="alertdialog"],dialog[open]'))
         .some((dialog) => dialog.getClientRects().length > 0);
       if (!action || !workspaceTabsEnabled || isSettingsOpen || isSpotlightOpen || shareDialogOpen || visibleDialog) return;
       if (action === "create_chat") {
@@ -7179,6 +7179,7 @@ export function ChatApp() {
     scope: KanbanBoardScope = { type: "global", id: "default" },
     label = "All Rumi Runs",
   ) => {
+    if (!canLeavePackViews()) return;
     if (!workspaceTabsEnabled) {
       const tab = createWorkspaceTab("kanban", {
         title: label || "Kanban",
@@ -7188,7 +7189,7 @@ export function ChatApp() {
       setWorkspaceTabs((current) => current.map((currentTab) => (
         currentTab.id === activeWorkspaceTabId ? tab : currentTab
       )));
-      activateWorkspaceTab(tab);
+      activateWorkspaceTab(tab, true);
       return;
     }
     const existingTab = workspaceTabs.find((tab) => (
@@ -7197,7 +7198,7 @@ export function ChatApp() {
       && (tab.kanbanScope?.id ?? "default") === scope.id
     ));
     if (existingTab) {
-      activateWorkspaceTab(existingTab);
+      activateWorkspaceTab(existingTab, true);
       return;
     }
     const tab = createWorkspaceTab("kanban", {
@@ -7206,7 +7207,7 @@ export function ChatApp() {
       kanbanScopeLabel: label || "Kanban",
     });
     setWorkspaceTabs((current) => [...current, tab]);
-    activateWorkspaceTab(tab);
+    activateWorkspaceTab(tab, true);
   };
 
   const handleKanbanModeToggle = () => {
@@ -7235,7 +7236,7 @@ export function ChatApp() {
     if (!reference && !viewsForSlot(verifiedHost.catalog, slot, verifiedHost.activePlanHash).length) return null;
     return <FrontendViewSlot
       {...verifiedHost}
-      {...{ onNavigationGuardChange: registerViewNavigationGuard }}
+      onNavigationGuardChange={registerViewNavigationGuard}
       slot={slot}
       contributionId={reference?.contributionId}
       reference={reference}
