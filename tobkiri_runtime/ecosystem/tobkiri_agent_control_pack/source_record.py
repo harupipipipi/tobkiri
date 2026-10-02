@@ -287,7 +287,7 @@ def build() -> dict[str, Any]:
         provided.append(
             {
                 "contract_id": contract,
-                "version": "1.0.0",
+                "version": "2.0.0" if kind == "job" else "1.0.0",
                 "owner": PACK,
                 "provider_id": f"{PACK}.work-plan.{kind}",
                 "cardinality": "many" if kind == "job" else "one",

@@ -43,7 +43,7 @@
         {
           "entrypoint_id": "work-plan-resource",
           "id": "tobkiri_agent_control_pack.work-plan-resource",
-          "implementation_digest": "sha256:c383132c89bd67ce83df48684416afe78c177ea151daa200da91a06879c8117d"
+          "implementation_digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268"
         }
       ],
       "owner": "tobkiri_agent_control_pack",
@@ -110,7 +110,7 @@
         {
           "entrypoint_id": "work-plan-action",
           "id": "tobkiri_agent_control_pack.work-plan-action",
-          "implementation_digest": "sha256:c383132c89bd67ce83df48684416afe78c177ea151daa200da91a06879c8117d"
+          "implementation_digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268"
         }
       ],
       "owner": "tobkiri_agent_control_pack",
@@ -340,7 +340,7 @@
         {
           "entrypoint_id": "work-plan-settings",
           "id": "tobkiri_agent_control_pack.work-plan-settings",
-          "implementation_digest": "sha256:c383132c89bd67ce83df48684416afe78c177ea151daa200da91a06879c8117d"
+          "implementation_digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268"
         }
       ],
       "owner": "tobkiri_agent_control_pack",
@@ -583,7 +583,7 @@
         {
           "entrypoint_id": "context-replace",
           "id": "tobkiri_agent_control_pack.context-replace",
-          "implementation_digest": "sha256:c383132c89bd67ce83df48684416afe78c177ea151daa200da91a06879c8117d"
+          "implementation_digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268"
         }
       ],
       "owner": "tobkiri_agent_control_pack",
@@ -674,7 +674,7 @@
         {
           "entrypoint_id": "context-project",
           "id": "tobkiri_agent_control_pack.context-project",
-          "implementation_digest": "sha256:c383132c89bd67ce83df48684416afe78c177ea151daa200da91a06879c8117d"
+          "implementation_digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268"
         }
       ],
       "owner": "tobkiri_agent_control_pack",
@@ -775,7 +775,7 @@
         {
           "entrypoint_id": "inbox-action",
           "id": "tobkiri_agent_control_pack.inbox-action",
-          "implementation_digest": "sha256:c383132c89bd67ce83df48684416afe78c177ea151daa200da91a06879c8117d"
+          "implementation_digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268"
         }
       ],
       "owner": "tobkiri_agent_control_pack",
@@ -1241,7 +1241,7 @@
         {
           "entrypoint_id": "work-plan-execute",
           "id": "tobkiri_agent_control_pack.work-plan-execute",
-          "implementation_digest": "sha256:c383132c89bd67ce83df48684416afe78c177ea151daa200da91a06879c8117d"
+          "implementation_digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268"
         }
       ],
       "owner": "tobkiri_agent_control_pack",
@@ -1308,7 +1308,7 @@
     },
     {
       "cardinality": "many",
-      "contract_id": "tobkiri.action.job.adapter.v1",
+      "contract_id": "tobkiri.action.job.adapter.v2",
       "failure": "fail_closed",
       "isolation": "in_process",
       "lifecycle": {
@@ -1320,7 +1320,7 @@
         {
           "entrypoint_id": "work-plan-job",
           "id": "tobkiri_agent_control_pack.work-plan-job",
-          "implementation_digest": "sha256:c383132c89bd67ce83df48684416afe78c177ea151daa200da91a06879c8117d"
+          "implementation_digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268"
         }
       ],
       "owner": "tobkiri_agent_control_pack",
@@ -1383,7 +1383,7 @@
         }
       },
       "security": "sensitive",
-      "version": "1.0.0"
+      "version": "2.0.0"
     },
     {
       "cardinality": "one",
@@ -1399,7 +1399,7 @@
         {
           "entrypoint_id": "work-plan-review",
           "id": "tobkiri_agent_control_pack.work-plan-review",
-          "implementation_digest": "sha256:c383132c89bd67ce83df48684416afe78c177ea151daa200da91a06879c8117d"
+          "implementation_digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268"
         }
       ],
       "owner": "tobkiri_agent_control_pack",
@@ -1522,7 +1522,7 @@
       "path": "runtime/goal.py"
     },
     {
-      "digest": "sha256:c383132c89bd67ce83df48684416afe78c177ea151daa200da91a06879c8117d",
+      "digest": "sha256:f48752fd5c1dd7a954111d87cddf94cc545c51acabb93e2de1315ad344612268",
       "kind": "executable",
       "path": "runtime/host.py"
     },
