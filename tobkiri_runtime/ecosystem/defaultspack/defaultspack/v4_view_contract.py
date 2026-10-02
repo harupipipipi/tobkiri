@@ -165,6 +165,29 @@ def validate_catalog_view(view: Mapping[str, Any]) -> None:
             for condition in ("available_when", "disabled_when"):
                 if condition in action:
                     _validate_path(action[condition]["path"])
+    thread = view.get("conversation_thread")
+    if isinstance(thread, Mapping):
+        for key in (
+            "conversation_path", "messages_path", "pending_turn_path", "model_reference_path"
+        ):
+            _validate_path(thread.get(key))
+        for key in ("send", "stop", "events"):
+            request = thread.get(key)
+            if not isinstance(request, Mapping):
+                continue
+            validate_public_input(request.get("input", {}), allow_domain_profile_ids=True)
+            claimed = set(request.get("input", {}))
+            for binding in ("source_bindings", "context_bindings"):
+                mapping = request.get(binding, {})
+                validate_public_input({name: None for name in mapping})
+                if claimed & set(mapping):
+                    raise ValueError("thread input binding conflicts")
+                claimed.update(mapping)
+                if binding == "source_bindings":
+                    for path in mapping.values():
+                        _validate_path(path)
+            if "turn_id" in claimed or (key == "send" and "content" in claimed):
+                raise ValueError("thread fixed input binding conflicts")
 
 
 def _validate_path(path: Any) -> None:
