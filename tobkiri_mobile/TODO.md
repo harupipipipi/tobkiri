@@ -19,6 +19,9 @@
       actions, and PC slash commands discovered from the PC command
       manifest/capabilities response.
 - [x] Add local/mobile model selection for on-device chat.
+- [x] Add adaptive conversation navigation over the scoped mobile chat
+      contract, including phone, tablet, desktop, large-text, landscape, and
+      foldable widget coverage.
 
 ## Next Hardening
 
