@@ -23049,6 +23049,486 @@
       ],
       "variant_id": "tobkiri_agent_control_pack.work-plan.settings.python"
     },
+    "tobkiri_cloud_workspace_pack.manage": {
+      "contract_id": "tobkiri.action.cloud.workspace.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "tobkiri_cloud_workspace_pack.manage",
+      "implementation_digest": "sha256:3ebfb5695037c2a7cff6c15cc2f92aeee2f3ea6bf605564e9cc6d29d7384cc28",
+      "implementation_path": "runtime/host.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "properties": {
+              "operation": {
+                "const": "initialize"
+              }
+            },
+            "required": [
+              "conversation_id",
+              "expected_revision",
+              "expected_writer_epoch"
+            ]
+          },
+          {
+            "properties": {
+              "operation": {
+                "const": "capture"
+              }
+            },
+            "required": [
+              "conversation_id",
+              "expected_revision",
+              "expected_writer_epoch",
+              "paths"
+            ]
+          },
+          {
+            "properties": {
+              "operation": {
+                "const": "import"
+              }
+            },
+            "required": [
+              "archive_base64",
+              "conversation_id",
+              "expected_revision",
+              "expected_writer_epoch"
+            ]
+          },
+          {
+            "properties": {
+              "operation": {
+                "const": "restore"
+              }
+            },
+            "required": [
+              "conversation_id",
+              "expected_revision",
+              "expected_writer_epoch"
+            ]
+          },
+          {
+            "properties": {
+              "operation": {
+                "const": "prepare_handoff"
+              }
+            },
+            "required": [
+              "conversation_id",
+              "expected_receiver_head",
+              "expected_revision",
+              "expected_writer_epoch"
+            ]
+          }
+        ],
+        "properties": {
+          "archive_base64": {
+            "maxLength": 13981016,
+            "minLength": 1,
+            "type": "string"
+          },
+          "conversation_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "expected_receiver_head": {
+            "maxLength": 71,
+            "pattern": "^(?:sha256:[0-9a-f]{64})?$",
+            "type": "string"
+          },
+          "expected_revision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expected_writer_epoch": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "operation": {
+            "enum": [
+              "initialize",
+              "capture",
+              "import",
+              "restore",
+              "prepare_handoff"
+            ]
+          },
+          "paths": {
+            "maxLength": 32768,
+            "minLength": 1,
+            "type": "string"
+          },
+          "profile_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_id",
+          "operation"
+        ],
+        "type": "object"
+      },
+      "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.cloud.workspace.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "tobkiri_cloud_workspace_pack.workspace-manage",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:3ebfb5695037c2a7cff6c15cc2f92aeee2f3ea6bf605564e9cc6d29d7384cc28",
+          "implementation_path": "runtime/host.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "oneOf": [
+              {
+                "properties": {
+                  "operation": {
+                    "const": "initialize"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "expected_revision",
+                  "expected_writer_epoch"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "capture"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "expected_revision",
+                  "expected_writer_epoch",
+                  "paths"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "import"
+                  }
+                },
+                "required": [
+                  "archive_base64",
+                  "conversation_id",
+                  "expected_revision",
+                  "expected_writer_epoch"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "restore"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "expected_revision",
+                  "expected_writer_epoch"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "prepare_handoff"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "expected_receiver_head",
+                  "expected_revision",
+                  "expected_writer_epoch"
+                ]
+              }
+            ],
+            "properties": {
+              "archive_base64": {
+                "maxLength": 13981016,
+                "minLength": 1,
+                "type": "string"
+              },
+              "conversation_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "type": "string"
+              },
+              "expected_receiver_head": {
+                "maxLength": 71,
+                "pattern": "^(?:sha256:[0-9a-f]{64})?$",
+                "type": "string"
+              },
+              "expected_revision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "expected_writer_epoch": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "operation": {
+                "enum": [
+                  "initialize",
+                  "capture",
+                  "import",
+                  "restore",
+                  "prepare_handoff"
+                ]
+              },
+              "paths": {
+                "maxLength": 32768,
+                "minLength": 1,
+                "type": "string"
+              },
+              "profile_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "operation"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_cloud_workspace_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_cloud_workspace_pack",
+      "pack_id": "tobkiri_cloud_workspace_pack",
+      "source": [
+        {
+          "entrypoint_id": "tobkiri_cloud_workspace_pack.workspace-manage",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_cloud_workspace_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "tobkiri_cloud_workspace_pack.manage.python"
+    },
+    "tobkiri_cloud_workspace_pack.resource": {
+      "contract_id": "tobkiri.resource.cloud.workspace.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "tobkiri_cloud_workspace_pack.resource",
+      "implementation_digest": "sha256:3ebfb5695037c2a7cff6c15cc2f92aeee2f3ea6bf605564e9cc6d29d7384cc28",
+      "implementation_path": "runtime/host.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "properties": {
+              "operation": {
+                "const": "get_for_conversation"
+              }
+            },
+            "required": [
+              "conversation_id"
+            ]
+          },
+          {
+            "properties": {
+              "operation": {
+                "const": "export"
+              }
+            },
+            "required": [
+              "expected_revision",
+              "workspace_id"
+            ]
+          },
+          {
+            "properties": {
+              "operation": {
+                "const": "verify"
+              }
+            },
+            "required": [
+              "expected_revision",
+              "workspace_id"
+            ]
+          }
+        ],
+        "properties": {
+          "conversation_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "expected_revision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "operation": {
+            "enum": [
+              "get_for_conversation",
+              "export",
+              "verify"
+            ]
+          },
+          "profile_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+            "type": "string"
+          },
+          "workspace_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_id",
+          "operation"
+        ],
+        "type": "object"
+      },
+      "operation_id": "tobkiri_cloud_workspace_pack.workspace-resource",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.cloud.workspace.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "tobkiri_cloud_workspace_pack.workspace-resource",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:3ebfb5695037c2a7cff6c15cc2f92aeee2f3ea6bf605564e9cc6d29d7384cc28",
+          "implementation_path": "runtime/host.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "oneOf": [
+              {
+                "properties": {
+                  "operation": {
+                    "const": "get_for_conversation"
+                  }
+                },
+                "required": [
+                  "conversation_id"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "export"
+                  }
+                },
+                "required": [
+                  "expected_revision",
+                  "workspace_id"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "verify"
+                  }
+                },
+                "required": [
+                  "expected_revision",
+                  "workspace_id"
+                ]
+              }
+            ],
+            "properties": {
+              "conversation_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "type": "string"
+              },
+              "expected_revision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "operation": {
+                "enum": [
+                  "get_for_conversation",
+                  "export",
+                  "verify"
+                ]
+              },
+              "profile_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "type": "string"
+              },
+              "workspace_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "operation"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "tobkiri_cloud_workspace_pack.workspace-resource",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_cloud_workspace_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_cloud_workspace_pack",
+      "pack_id": "tobkiri_cloud_workspace_pack",
+      "source": [
+        {
+          "entrypoint_id": "tobkiri_cloud_workspace_pack.workspace-resource",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_cloud_workspace_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "tobkiri_cloud_workspace_pack.resource.python"
+    },
     "tobkiri_conversation_lifecycle_pack.archive-job": {
       "contract_id": "tobkiri.action.job.adapter.v2",
       "contract_version": "2.0.0",
@@ -23947,7 +24427,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:781f5961f3883548558ef04649d1c7261b33399b5ae0c7f4a082b8216249b271",
+    "input_digest": "sha256:cc230080490d218bb39bbf5062ffccb79c89581e584cefec2a9ca3cf5533811c",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -24698,7 +25178,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:3b46cf451b42a65bd7085f0f97d10bfbb76813c1909f91c9bfe0746ffeb0b82e",
+        "digest": "sha256:d16b2fe8330d80ca81c4c48df783fe091073c0297de930ed31bb6921828ca4f9",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },

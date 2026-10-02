@@ -1,0 +1,87 @@
+{
+  "artifact_set_digest": "sha256:32a839d007ee730147a1b147f2712355f9ac54ade7f3ca8fff1120c66e7865c7",
+  "artifacts": [
+    {
+      "digest": "sha256:3d5115328dab16a358312566b0933b2d257e6bde5b9824cb27ee0aaf3739b9e7",
+      "path": "container/Dockerfile",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:e2c2604cc6ba50715cf43901220a24ec3e14672c8945c7f0c431f4fb56a8ea84",
+      "path": "container/recipe.v1.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:d0f7eebff0d994e580a67d7a5477f0bf3d32e68065d60b33825d228ad827c8a7",
+      "path": "container/runtime.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:9ab926c98b8fdff9d1ccac9d86e5e3b35ba01cb9ab8a3dd97faaa0cdae46e48b",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:5b1e583af2c2a15f1e1065da03ce3fabd1a62a7bc46211fbce10ee163cd256db",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:d1cffed385bd8ce925a8b142772043376d1dd15297ec6121a10fdf8dbf644eed",
+      "path": "frontend/contributions/composer.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:892c919f3a5171b0e3135771a2128eabf8930b8e51f4dbce5e1b8b52752c3c09",
+      "path": "frontend/contributions/workspace.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:f3a7e897d863f3916d8899f5e203522659a770a527c13706c67e33500c7f4231",
+      "path": "pack-source.v1.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:ce1f159e29fefcfda0bddfb51ec4ef685a2c4efb19b7c82389e534ebd6a14ccc",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:0b0afddeded6cae8379e760270af0457f1b3e963809e1f2049c7c50fe4630787",
+      "path": "runtime/__init__.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:1e0103b8c3c4d6fe3f6f8ea72d5df36e6ab27ce2d7e8a69c415e8a34497c90a8",
+      "path": "runtime/capsule.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:3ebfb5695037c2a7cff6c15cc2f92aeee2f3ea6bf605564e9cc6d29d7384cc28",
+      "path": "runtime/host.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:fcc38b1cd5f5af3730e4db5a2506eae34c8f23940cff8ea74fd46a3d976af7fa",
+      "path": "runtime/recipe.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:3d69b5941fa17a1261d2829973a9d22920439641dcf00673b07bd1eaa931d271",
+      "path": "runtime/service.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:d8c50f86dd0d0b73303214198f4e42c572c1825b4cabd38e819531020e4256ba",
+      "path": "runtime/store.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:71eaaaa26ce89233dfb513d569051e87ed18165776f58265d6836a3a45b9a151"
+  },
+  "pack_id": "tobkiri_cloud_workspace_pack",
+  "source_identity": "sha256:ff70a6d87995bf3a65a50e67d4c47d58300401fb7c9268fc9db9829ead89e899"
+}

@@ -1432,6 +1432,16 @@
       "digest": "sha256:89a4fdcb602e747d0fec23ff779cd7af6df2c76ecf227b4aa777725edfde8a2d"
     },
     {
+      "path": "packs/tobkiri_cloud_workspace_pack.executables.v4.json",
+      "kind": "executable_catalog",
+      "digest": "sha256:0d126befce5a9cc982d3f252e279fae1ed7de9ad6baa027801a695149ab3c097"
+    },
+    {
+      "path": "packs/tobkiri_cloud_workspace_pack.pack.v4.json",
+      "kind": "pack",
+      "digest": "sha256:4ca8c63dcd7e9f8450a4d52e10495fa589b760797e10c875a35885c8d8d00366"
+    },
+    {
       "path": "packs/tobkiri_conversation_lifecycle_pack.executables.v4.json",
       "kind": "executable_catalog",
       "digest": "sha256:58508bb6fcf5c5d7c877cd503e405f5eab49450b475773f9b3fba172a71d9975"
