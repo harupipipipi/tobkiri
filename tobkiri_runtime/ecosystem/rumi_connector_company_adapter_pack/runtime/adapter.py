@@ -78,9 +78,11 @@ class ConnectorCompanyAdapter:
     ) -> dict[str, Any]:
         snapshot = self.client.invoke(
             COMPANY_RESOURCE,
-            "list",
-            {"profile_id": profile_id},
+            "get",
+            {"profile_id": profile_id, "company_id": company_id},
         )
+        if not isinstance(snapshot, Mapping):
+            raise KeyError("Team is unknown")
         arguments = {
             "company_id": company_id,
             "expected_revision": int(snapshot.get("revision") or 0),
@@ -204,4 +206,3 @@ def _mapping(value: Any) -> Mapping[str, Any]:
 
 def _hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
-

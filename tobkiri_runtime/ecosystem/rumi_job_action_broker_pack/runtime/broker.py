@@ -11,6 +11,13 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from core_runtime.host_provider_backend_v4 import (
+    CapturedHostProviderV4,
+    HostProviderCaptureContextV4,
+    HostProviderContributionV4,
+    HostProviderInvocationContextV4,
+)
+
 from core_runtime.paths import USER_DATA_DIR
 from core_runtime.profile_workspace import validate_profile_id
 from core_runtime.runtime_locks import NamedLock
@@ -32,18 +39,22 @@ _FORBIDDEN = {
 class JobActionBroker:
     """Route one action ID to one selected adapter and suppress replay."""
 
-    def __init__(self, client: Any, profile_id: str) -> None:
+    def __init__(
+        self,
+        client: Any,
+        profile_id: str,
+        *,
+        root: Path | None = None,
+        canonical: bool = False,
+    ) -> None:
         self.client = client
         self.profile_id = validate_profile_id(profile_id)
         self.root = (
-            Path(USER_DATA_DIR)
-            / "packs"
-            / SERVICE_PACK_ID
-            / "profiles"
-            / self.profile_id
+            Path(root or USER_DATA_DIR) / "packs" / SERVICE_PACK_ID / "profiles" / self.profile_id
         )
         self.path = self.root / "dispatch-ledger.json"
         self.lock_root = self.root / "locks"
+        self.canonical = canonical
 
     def invoke(self, name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Dispatch or cancel one idempotent job action."""
@@ -87,11 +98,14 @@ class JobActionBroker:
             }
             state["entries"][key] = entry
             self._write(state)
-        provider = self._provider(action_id)
-        entry["provider_instance_id"] = str(provider["provider_instance_id"])
         try:
-            result = self.client.invoke(
-                ADAPTER,
+            provider = self._provider(action_id)
+            entry["provider_instance_id"] = str(
+                provider.get("provider_instance_id") or provider.get("provider_id") or ""
+            )
+            entry["operation_id"] = str(provider.get("operation_id") or "")
+            result = self._adapter(
+                provider,
                 "dispatch",
                 {
                     "action_id": action_id,
@@ -101,13 +115,12 @@ class JobActionBroker:
                     "lease_id": str(payload.get("lease_id") or ""),
                     "profile_id": self.profile_id,
                 },
-                provider_instance_id=entry["provider_instance_id"],
             )
             entry["status"] = _status(result)
             entry["result"] = _bounded(result)
         except Exception as exc:
             entry["status"] = "failed"
-            entry["error"] = str(exc)[:1000]
+            entry["error"] = f"Job dispatch failed: {type(exc).__name__}"
             self._finish(key, entry)
             raise
         self._finish(key, entry)
@@ -127,36 +140,98 @@ class JobActionBroker:
         provider_id = str(entry.get("provider_instance_id") or "")
         if not provider_id:
             return {"status": "cancellation_pending", "idempotency_key": key}
-        result = self.client.invoke(
-            ADAPTER,
+        provider = {
+            "provider_instance_id": provider_id,
+            "operation_id": str(entry.get("operation_id") or ""),
+        }
+        result = self._adapter(
+            provider,
             "cancel",
             {
                 "action_id": entry["action_id"],
                 "idempotency_key": key,
                 "profile_id": self.profile_id,
             },
-            provider_instance_id=provider_id,
         )
-        entry["status"] = "cancelled"
+        entry["status"] = (
+            "cancelled" if result.get("status") == "cancelled" else "cancellation_pending"
+        )
         entry["result"] = _bounded(result)
         self._finish(key, entry)
-        return {"status": "cancelled", "idempotency_key": key, "result": result}
+        return {"status": entry["status"], "idempotency_key": key, "result": result}
 
     def _status(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         key = _identifier(payload.get("idempotency_key"), "idempotency_key")
         value = self._read()["entries"].get(key)
+        if (
+            self.canonical
+            and value is not None
+            and value["status"] in {"accepted", "running"}
+            and value.get("operation_id")
+        ):
+            result = self._adapter(
+                {"operation_id": value["operation_id"]},
+                "status",
+                {
+                    "action_id": value["action_id"],
+                    "idempotency_key": key,
+                    "profile_id": self.profile_id,
+                },
+            )
+            if result.get("status") in {"ok", "completed", "failed", "cancelled"}:
+                value["status"] = result["status"]
+                value["result"] = _bounded(result)
+                self._finish(key, value)
         return _copy(value) if value is not None else {"status": "unknown"}
 
     def _provider(self, action_id: str) -> Mapping[str, Any]:
+        if self.canonical:
+            providers = self.client.providers("tobkiri.action.job.adapter.v1")
+            matches = []
+            for item in providers:
+                operation = str(item.get("operation_id") or "")
+                if not operation:
+                    continue
+                description = self._adapter(
+                    item,
+                    "describe",
+                    {"profile_id": self.profile_id},
+                )
+                if action_id in description.get("action_ids", []):
+                    matches.append(item)
+            if len(matches) != 1:
+                raise RuntimeError("selected job adapter is unavailable or ambiguous")
+            return matches[0]
         providers = self.client.providers(ADAPTER)
-        matches = [
-            item for item in providers if str(item.get("instance_key") or "") == action_id
-        ]
+        matches = [item for item in providers if str(item.get("instance_key") or "") == action_id]
         if len(matches) != 1:
             raise RuntimeError(
                 f"expected one selected job adapter for {action_id}; found {len(matches)}"
             )
         return matches[0]
+
+    def _adapter(
+        self, provider: Mapping[str, Any], operation: str, payload: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        if self.canonical:
+            operation_id = str(provider.get("operation_id") or "")
+            if not operation_id:
+                raise RuntimeError("selected job adapter operation is unavailable")
+            result = self.client.invoke(
+                "tobkiri.action.job.adapter.v1",
+                operation_id,
+                {**dict(payload), "operation": operation},
+            )
+        else:
+            result = self.client.invoke(
+                ADAPTER,
+                operation,
+                dict(payload),
+                provider_instance_id=str(provider.get("provider_instance_id") or ""),
+            )
+        if not isinstance(result, Mapping):
+            raise ValueError("job adapter returned an invalid result")
+        return result
 
     def _finish(self, key: str, entry: dict[str, Any]) -> None:
         with NamedLock(self.lock_root, "dispatch"):
@@ -208,7 +283,7 @@ def _authority_keys(value: Any) -> set[str]:
             found.update(_authority_keys(item))
         return found
     if isinstance(value, (list, tuple)):
-        found: set[str] = set()
+        found = set()
         for item in value:
             found.update(_authority_keys(item))
         return found
@@ -234,7 +309,7 @@ def _status(result: Any) -> str:
     if not isinstance(result, Mapping):
         return "failed"
     value = str(result.get("status") or "")
-    return value if value in {"ok", "accepted", "completed", "failed"} else "failed"
+    return value if value in {"ok", "accepted", "running", "completed", "failed"} else "failed"
 
 
 def _bounded(value: Any) -> Any:
@@ -272,3 +347,110 @@ def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
         if os.path.exists(temporary):
             os.unlink(temporary)
 
+
+_V4_ROUTES = {
+    "rumi_job_action_broker_pack.job-action.broker": (
+        "tobkiri.action.job.v1",
+        "rumi_job_action_broker_pack.job-action-broker",
+    ),
+}
+
+
+def _invoke_v4_owner(
+    function_id: str, context: Any, payload: Mapping[str, Any], invocation: Any
+) -> Mapping[str, Any]:
+    del function_id
+    if set(payload) - {
+        "operation",
+        "profile_id",
+        "action_id",
+        "payload",
+        "idempotency_key",
+        "schedule_id",
+        "lease_id",
+    }:
+        raise PermissionError("job broker payload is invalid")
+    client = invocation.contract_client(
+        allowed_contract_ids=frozenset({"tobkiri.action.job.adapter.v1"}),
+        consumer_pack_id=SERVICE_PACK_ID,
+        include_credentials=False,
+    )
+    return JobActionBroker(
+        client,
+        context.profile_id,
+        root=context.user_data_root,
+        canonical=True,
+    ).invoke(str(payload.get("operation") or ""), payload)
+
+
+# Captured v4 entrypoints retain Broker-owned authority and profile scope.
+
+
+class _OwnerHostFactoryV4:
+    """Capture only exact, verified operations for this owner Function."""
+
+    def __init__(self, function_id: str) -> None:
+        self.function_id = function_id
+
+    def capture(self, context: HostProviderCaptureContextV4) -> CapturedHostProviderV4:
+        """Bind operations and persistence to the selected Profile activation."""
+        if (
+            context.user_data_root is None
+            or not context.profile_id
+            or not context.provider_bindings
+            or any(
+                binding.function.function_id != self.function_id
+                for binding in context.provider_bindings
+            )
+        ):
+            raise PermissionError("owner capture scope is incomplete")
+        expected_contract, expected_operation = _V4_ROUTES[self.function_id]
+        if any(
+            binding.operation.contract_id != expected_contract
+            or binding.operation.operation_id != expected_operation
+            for binding in context.provider_bindings
+        ):
+            raise PermissionError("owner operation binding is invalid")
+
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            if operation_id != expected_operation or (
+                "profile_id" in payload and payload["profile_id"] != context.profile_id
+            ):
+                raise PermissionError("owner invocation scope is invalid")
+            invocation.assert_current()
+            result = _invoke_v4_owner(self.function_id, context, payload, invocation)
+            invocation.assert_current()
+            return result
+
+        contributions = []
+        for binding in context.provider_bindings:
+            key = (
+                binding.operation.contract_id,
+                binding.operation.operation_id,
+                binding.principal_ref.value,
+            )
+            domain_id = context.domain_ids.get(key)
+            if domain_id is None:
+                raise PermissionError("owner domain binding is unavailable")
+            contributions.append(
+                HostProviderContributionV4(
+                    contract_id=binding.operation.contract_id,
+                    contract_version=binding.operation.contract_version,
+                    operation_id=binding.operation.operation_id,
+                    principal_id=binding.principal_ref.value,
+                    artifact_digest=binding.artifact.digest,
+                    implementation_digest=binding.function.implementation_digest,
+                    domain_id=domain_id,
+                    invoke=invoke,
+                )
+            )
+        return CapturedHostProviderV4(tuple(contributions), lambda: None)
+
+
+HOST_PROVIDER_FACTORY = {
+    function_id: _OwnerHostFactoryV4(function_id) for function_id in _V4_ROUTES
+}
