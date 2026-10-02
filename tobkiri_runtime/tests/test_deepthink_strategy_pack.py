@@ -432,3 +432,59 @@ print(json.dumps(module.tobkiri_packvm_invoke(
     assert initial["target"] == {"contract_id": strategy.QUOTE_CONTRACT_ID}
     assert "core_runtime" not in source.read_text(encoding="utf-8")
     assert "rumi_ai_gateway_pack" not in source.read_text(encoding="utf-8")
+
+
+def _scripted_run(outputs: list[str], **request_updates: Any) -> dict[str, Any]:
+    """Drive the actual sealed strategy with a deterministic provider transcript."""
+    value = strategy.tobkiri_packvm_invoke(
+        strategy.EXECUTE_OPERATION_ID, _request(**request_updates)
+    )
+    while value.get("kind") == strategy.PACKVM_BRIDGE_REQUEST_KIND:
+        if value["target"]["contract_id"] == strategy.QUOTE_CONTRACT_ID:
+            outcome = _success(_quote())
+        else:
+            outcome = _success(_generation(outputs.pop(0)))
+        value = strategy.tobkiri_packvm_invoke(
+            strategy.EXECUTE_OPERATION_ID,
+            {"continuation": value["continuation"],
+             "bridge_result": _bridge_result(value, outcome)},
+        )
+    return value
+
+
+@pytest.mark.parametrize("review", ["not JSON", "[]", '{"approved":"yes","feedback":""}', '{"approved":true,"feedback":"","extra":"execute"}'])
+def test_strategy_malformed_reviews_never_publish_candidate(review: str) -> None:
+    """Malformed review output cannot become a successful final answer."""
+    with pytest.raises(strategy.StrategyBudgetError, match="reviewer"):
+        _scripted_run(["Plan", "Unverified draft", review])
+
+
+def test_strategy_empty_repair_and_repeated_rejection_fail_closed() -> None:
+    """The only repair must contain text and pass the bounded final review."""
+    rejected = '{"approved":false,"feedback":"Correct the answer"}'
+    with pytest.raises(strategy.StrategyBudgetError, match="revision returned no text"):
+        _scripted_run(["Plan", "Draft", rejected, "  "])
+    with pytest.raises(strategy.StrategyBudgetError, match="rejected the bounded"):
+        _scripted_run(["Plan", "Draft", rejected, "Repaired", rejected])
+
+
+def test_strategy_cancelled_bridge_stops_before_any_further_generation() -> None:
+    """Cancellation is propagated by the generic bridge rather than completion."""
+    bridge = strategy.tobkiri_packvm_invoke(strategy.EXECUTE_OPERATION_ID, _request())
+    outcome = {"status": "error", "error": {"code": "CANCELLED", "message": "Cancelled by Host"}}
+    result = strategy.tobkiri_packvm_invoke(strategy.EXECUTE_OPERATION_ID, {
+        "continuation": bridge["continuation"],
+        "bridge_result": _bridge_result(bridge, outcome),
+    })
+    assert result == outcome
+    assert "output" not in result
+
+
+def test_strategy_tool_phases_require_native_tool_calling_at_quote_and_generate() -> None:
+    """The Gateway must reject non-tool models before a tool-bearing generation."""
+    _result, bridges = _run(_request(tools=[{"name": "fixture_tool"}], requirements={"tool_calling": False}))
+    draft = [bridge for bridge in bridges if bridge["continuation"]["state"]["pending"]["phase"] == "draft"]
+    assert len(draft) == 2
+    assert all(bridge["request"]["requirements"]["tool_calling"] is True for bridge in draft)
+    plan = [bridge for bridge in bridges if bridge["continuation"]["state"]["pending"]["phase"] == "plan"]
+    assert all(bridge["request"]["requirements"]["tool_calling"] is False for bridge in plan)
