@@ -1,0 +1,290 @@
+import type {
+  CapturedCapabilityInvocation, FrontendCatalog, VerifiedFrontendContribution,
+} from "./frontendContracts";
+
+export const VIEW_VERSION = "tobkiri.ui.view.v1";
+export const VIEW_SLOTS = [
+  "workspace_tab", "sidebar", "settings", "chat_header",
+  "composer_above", "composer_below",
+] as const;
+export type ViewSlot = typeof VIEW_SLOTS[number];
+export type ViewOperation = {
+  contribution_id: string; contract_id: string; operation_id: string;
+};
+export type ViewInputContext = { conversation_id?: string; turn_id?: string };
+type ContextBindings = Record<string, keyof ViewInputContext>;
+export type ViewField = {
+  label: string; path: string; kind: "text" | "status" | "progress";
+  total_path?: string;
+};
+export type ViewControl = {
+  id: string; label: string; kind: "button" | "toggle" | "text" | "choice";
+  operation: ViewOperation; input?: Record<string, unknown>;
+  input_bindings?: Record<string, string>; value_key?: string; value_path?: string;
+  options_path?: string; id_path?: string; label_path?: string;
+  disabled_path?: string; multiple?: boolean;
+  context_bindings?: ContextBindings;
+};
+export type CatalogView = {
+  version: typeof VIEW_VERSION; slot: ViewSlot;
+  renderer: "panel" | "status" | "entity_picker";
+  title?: string; body?: string;
+  data_source?: ViewOperation & {
+    input?: Record<string, unknown>; context_bindings?: ContextBindings;
+  };
+  fields?: ViewField[]; controls?: ViewControl[];
+};
+export type CatalogViewReference = {
+  contributionId: string; ownerPackId: string; descriptorHash: string;
+  profileId: string; profileRevision: string; activationId: string;
+  planHash: string; catalogHash: string;
+};
+export type RegisteredCatalogView = {
+  item: VerifiedFrontendContribution; view: CatalogView;
+  reference: CatalogViewReference;
+};
+
+const reserved = new Set([
+  "__proto__", "prototype", "constructor", "approved", "approval",
+  "profile_id", "profile_revision", "activation_id", "plan_digest", "plan_hash",
+  "principal_id", "owner_pack_id", "catalog_hash",
+]);
+const own = (value: object, key: PropertyKey) => Object.prototype.hasOwnProperty.call(value, key);
+const record = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+const bounded = (value: unknown, max: number, min = 0): value is string =>
+  typeof value === "string" && value.length >= min && value.length <= max;
+const identifier = (value: unknown) => bounded(value, 256, 1)
+  && /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(value);
+const keys = (value: Record<string, unknown>, allowed: string[]) =>
+  Object.keys(value).every((key) => allowed.includes(key));
+export const validViewPath = (value: unknown): value is string =>
+  bounded(value, 256, 1)
+  && /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*){0,15}$/.test(value)
+  && value.split(".").every((key) => !["__proto__", "prototype", "constructor"].includes(key));
+
+/** Read own JSON properties only; never evaluate expressions or inherited keys. */
+export function readViewPath(value: unknown, path: string | undefined): unknown {
+  if (!validViewPath(path)) return undefined;
+  let current = value;
+  for (const key of path.split(".")) {
+    if (!record(current) || !own(current, key)) return undefined;
+    current = current[key];
+  }
+  return current;
+}
+
+export function validPublicViewInput(value: unknown, depth = 0): boolean {
+  if (depth > 16) return false;
+  if (record(value)) {
+    if (Object.keys(value).length > 64) return false;
+    if (!Object.entries(value).every(([key, item]) =>
+      key.length <= 128 && !reserved.has(key) && !key.startsWith("_")
+      && validPublicViewInput(item, depth + 1))) return false;
+  } else if (Array.isArray(value)) {
+    if (value.length > 256 || !value.every((item) =>
+      validPublicViewInput(item, depth + 1))) return false;
+  } else if (typeof value === "string") {
+    if (value.length > 16384) return false;
+  } else if (value !== null && typeof value !== "boolean"
+    && !(typeof value === "number" && Number.isFinite(value))) return false;
+  return depth > 0 || new TextEncoder().encode(JSON.stringify(value)).length <= 65536;
+}
+
+const operationValid = (value: unknown, withInput = false) => record(value)
+  && keys(value, ["contribution_id", "contract_id", "operation_id", ...(withInput ? ["input", "context_bindings"] : [])])
+  && identifier(value.contribution_id) && identifier(value.contract_id)
+  && identifier(value.operation_id)
+  && (!own(value, "input") || (record(value.input) && validPublicViewInput(value.input)))
+  && (!own(value, "context_bindings") || validContextBindings(value.context_bindings, value.input));
+
+function validContextBindings(value: unknown, input: unknown): boolean {
+  return record(value) && Object.keys(value).length <= 16
+    && Object.entries(value).every(([key, context]) =>
+      validPublicViewInput({ [key]: null })
+      && ["conversation_id", "turn_id"].includes(String(context))
+      && (!record(input) || !own(input, key)));
+}
+
+/** Validate the complete view before resolving any shipped renderer. */
+export function parseCatalogView(value: unknown): CatalogView | null {
+  if (!record(value) || !keys(value, [
+    "version", "slot", "renderer", "title", "body", "data_source", "fields", "controls",
+  ]) || value.version !== VIEW_VERSION
+    || !VIEW_SLOTS.includes(value.slot as ViewSlot)
+    || !["panel", "status", "entity_picker"].includes(String(value.renderer))
+    || (own(value, "title") && !bounded(value.title, 256))
+    || (own(value, "body") && !bounded(value.body, 4096))
+    || (own(value, "data_source") && !operationValid(value.data_source, true))) return null;
+  if (own(value, "fields") && (!Array.isArray(value.fields) || value.fields.length > 32
+    || !value.fields.every((field) => record(field)
+      && keys(field, ["label", "path", "kind", "total_path"])
+      && bounded(field.label, 256, 1) && validViewPath(field.path)
+      && ["text", "status", "progress"].includes(String(field.kind))
+      && (!own(field, "total_path") || validViewPath(field.total_path))))) return null;
+  if (own(value, "controls")) {
+    if (!Array.isArray(value.controls) || value.controls.length > 16) return null;
+    const ids = new Set<string>();
+    for (const control of value.controls) {
+      if (!record(control) || !keys(control, [
+        "id", "label", "kind", "operation", "input", "input_bindings", "value_key",
+        "value_path", "options_path", "id_path", "label_path", "disabled_path", "multiple", "context_bindings",
+      ]) || !identifier(control.id) || ids.has(String(control.id))
+        || !bounded(control.label, 256, 1)
+        || !["button", "toggle", "text", "choice"].includes(String(control.kind))
+        || !operationValid(control.operation)
+        || (own(control, "input") && (!record(control.input) || !validPublicViewInput(control.input)))
+        || (own(control, "multiple") && typeof control.multiple !== "boolean")) return null;
+      ids.add(String(control.id));
+      const bindings = control.input_bindings ?? {};
+      const contexts = control.context_bindings ?? {};
+      if (!validContextBindings(contexts, control.input)
+        || Object.keys(contexts).some((key) => record(bindings) && own(bindings, key))) return null;
+      if (!record(bindings) || Object.keys(bindings).length > 32
+        || !Object.entries(bindings).every(([key, path]) =>
+          validPublicViewInput({ [key]: null }) && validViewPath(path)
+          && !(record(control.input) && own(control.input, key)))) return null;
+      if (control.kind !== "button" || own(control, "value_key")) {
+        if (!bounded(control.value_key, 64, 1) || !/^[a-z][a-z0-9_]*$/.test(control.value_key)
+          || !validPublicViewInput({ [control.value_key]: null })
+          || own(bindings, control.value_key)
+          || own(contexts, control.value_key)
+          || (record(control.input) && own(control.input, control.value_key))) return null;
+      }
+      for (const key of ["value_path", "options_path", "id_path", "label_path", "disabled_path"]) {
+        if (own(control, key) && !validViewPath(control[key])) return null;
+      }
+      if (control.kind === "choice" && !["options_path", "id_path", "label_path"].every(
+        (key) => validViewPath(control[key]))) return null;
+    }
+  }
+  return value as unknown as CatalogView;
+}
+
+const isActive = (catalog: FrontendCatalog, item: VerifiedFrontendContribution, plan: string) =>
+  catalog.version === "rumi.ui.contribution.v1" && catalog.plan_hash === plan
+  && item.resolved_profile_id === catalog.profile_id
+  && item.resolved_profile_revision === catalog.profile_revision
+  && item.resolved_activation_id === catalog.activation_id
+  && item.resolved_plan_hash === plan
+  && !catalog.quarantined_pack_ids.includes(item.owner_pack_id);
+
+export function viewReference(
+  catalog: FrontendCatalog, item: VerifiedFrontendContribution,
+): CatalogViewReference {
+  return {
+    contributionId: item.contribution_id, ownerPackId: item.owner_pack_id,
+    descriptorHash: item.descriptor_hash, profileId: catalog.profile_id,
+    profileRevision: catalog.profile_revision, activationId: catalog.activation_id,
+    planHash: catalog.plan_hash, catalogHash: catalog.catalog_hash,
+  };
+}
+
+/** Build a new registry for every catalog; disable/unregister leaves no stale entries. */
+export function viewsForSlot(
+  catalog: FrontendCatalog, slot: ViewSlot, activePlanHash: string,
+): RegisteredCatalogView[] {
+  return catalog.contributions.flatMap((item) => {
+    if (item.kind !== "view" || item.mode !== "declarative"
+      || !isActive(catalog, item, activePlanHash)
+      || catalog.contributions.filter((other) => other.contribution_id === item.contribution_id).length !== 1) return [];
+    const view = parseCatalogView(item.view);
+    return view?.slot === slot ? [{ item, view, reference: viewReference(catalog, item) }] : [];
+  }).sort((left, right) => right.item.priority - left.item.priority
+    || left.item.contribution_id.localeCompare(right.item.contribution_id));
+}
+
+export function matchesViewReference(
+  registered: RegisteredCatalogView, reference: CatalogViewReference,
+): boolean {
+  return Object.keys(registered.reference).every((key) =>
+    registered.reference[key as keyof CatalogViewReference] === reference[key as keyof CatalogViewReference]);
+}
+
+/** Select an operation from the captured catalog, never from view-owned authority. */
+export function viewOperationRequest(
+  catalog: FrontendCatalog, registered: RegisteredCatalogView,
+  operation: ViewOperation, payload: Record<string, unknown>,
+): CapturedCapabilityInvocation | null {
+  if (!isActive(catalog, registered.item, registered.reference.planHash)
+    || !matchesViewReference(registered, viewReference(catalog, registered.item))
+    || catalog.contributions.filter((item) =>
+      item.contribution_id === registered.item.contribution_id
+      && item.owner_pack_id === registered.item.owner_pack_id
+      && item.descriptor_hash === registered.item.descriptor_hash).length !== 1
+    || !validPublicViewInput(payload)) return null;
+  const declared = [
+    registered.view.data_source,
+    ...(registered.view.controls ?? []).map((control) => control.operation),
+  ];
+  if (!declared.some((item) => item
+    && item.contribution_id === operation.contribution_id
+    && item.contract_id === operation.contract_id
+    && item.operation_id === operation.operation_id)) return null;
+  const targets = catalog.contributions.filter((item) =>
+    item.kind === "action" && item.contribution_id === operation.contribution_id
+    && item.action_contract === operation.contract_id
+    && item.operation_id === operation.operation_id
+    && isActive(catalog, item, registered.reference.planHash));
+  if (targets.length !== 1) return null;
+  return {
+    contractId: operation.contract_id, payload,
+    profileId: catalog.profile_id, profileRevision: catalog.profile_revision,
+    activationId: catalog.activation_id, planHash: catalog.plan_hash,
+    catalogHash: catalog.catalog_hash, contributionId: targets[0].contribution_id,
+    ownerPackId: targets[0].owner_pack_id,
+  };
+}
+
+export function controlPayload(
+  control: ViewControl, snapshot: unknown, value?: unknown,
+  context: ViewInputContext = {},
+): Record<string, unknown> | null {
+  const payload = requestContextInput(control, context);
+  if (!payload) return null;
+  for (const [key, path] of Object.entries(control.input_bindings ?? {})) {
+    const bound = readViewPath(snapshot, path);
+    if (bound === undefined) return null;
+    payload[key] = bound;
+  }
+  if (control.value_key) payload[control.value_key] = value;
+  return validPublicViewInput(payload) ? payload : null;
+}
+
+export type ViewChoice = { id: string; label: string; disabled: boolean };
+export function viewChoices(control: ViewControl, snapshot: unknown): ViewChoice[] {
+  const items = readViewPath(snapshot, control.options_path);
+  if (!Array.isArray(items) || items.length > 256) return [];
+  const choices = items.flatMap((item) => {
+    const id = readViewPath(item, control.id_path);
+    const label = readViewPath(item, control.label_path);
+    return bounded(id, 256, 1) && bounded(label, 256, 1) ? [{
+      id, label, disabled: readViewPath(item, control.disabled_path) === true,
+    }] : [];
+  });
+  const ids = choices.map((item) => item.id);
+  return choices.filter((item) => ids.filter((id) => id === item.id).length === 1);
+}
+
+export function choicePayload(
+  control: ViewControl, snapshot: unknown, values: string[],
+  context: ViewInputContext = {},
+): Record<string, unknown> | null {
+  const available = viewChoices(control, snapshot).filter((item) => !item.disabled);
+  if (new Set(values).size !== values.length || values.some((value) =>
+    !available.some((item) => item.id === value)) || (!control.multiple && values.length !== 1)) return null;
+  return controlPayload(control, snapshot, control.multiple ? values : values[0], context);
+}
+
+export function requestContextInput(
+  request: { input?: Record<string, unknown>; context_bindings?: ContextBindings },
+  context: ViewInputContext,
+): Record<string, unknown> | null {
+  const payload = { ...request.input };
+  for (const [key, contextKey] of Object.entries(request.context_bindings ?? {})) {
+    const value = context[contextKey];
+    if (!bounded(value, 256, 1) || value.trim() !== value || /[\x00-\x1f\x7f]/.test(value)) return null;
+    payload[key] = value;
+  }
+  return validPublicViewInput(payload) ? payload : null;
+}
