@@ -13,6 +13,9 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from core_runtime.paths import USER_DATA_DIR
+from tobkiri_protocol.conversation_lifecycle import (
+    LIFECYCLE_VERSION, message_task_state,
+)
 from core_runtime.profile_workspace import validate_profile_id
 from core_runtime.runtime_locks import NamedLock
 from ecosystem.rumi_conversation_store_pack.runtime.saved_receipt import append_receipt
@@ -282,6 +285,9 @@ class ConversationStore:
                     for item in messages
                 ]
             normalized["sequence"] = len(messages)
+            # Completion time comes from this transaction, never caller timestamps.
+            now = _now_ms()
+            _record_lifecycle(current, normalized, messages, now)
             if saved_input is not None:
                 receipts = dict(state.get("saved_receipts", {}))
                 turn_id = saved_input.get("request", {}).get("turn_id")
@@ -419,12 +425,17 @@ class ConversationStore:
                 ):
                     if patch is not None and key in patch:
                         messages[index][key] = _safe(patch[key])
-                messages[index]["updated_at"] = _now_ms()
+                now = _now_ms()
+                messages[index]["updated_at"] = now
+                if current.get("current_node_id") == message_id:
+                    _record_lifecycle(current, messages[index], messages, now)
                 action = "message_updated"
                 result_message = _copy(messages[index])
             for sequence, item in enumerate(messages):
                 item["sequence"] = sequence
             current["messages"] = messages
+            if delete:
+                _retain_lifecycle(current, messages)
             if delete and current.get("current_node_id") == message_id:
                 current["current_node_id"] = parent_id
             current["updated_at"] = _now_ms()
@@ -464,6 +475,8 @@ class ConversationStore:
             current = dict(current)
             _assert_conversation_revision(current, expected_conversation_revision)
             current["messages"] = normalized
+            # Replacement/reset is not evidence of a newly completed task.
+            _retain_lifecycle(current, normalized, reset=True)
             current["current_node_id"] = (
                 normalized[-1]["id"] if normalized else None
             )
@@ -738,6 +751,7 @@ def _conversation(value: Mapping[str, Any], *, allow_messages: bool) -> dict[str
         "conversation_kind": str(value.get("conversation_kind") or "chat"),
         "group_id": value.get("group_id"),
         "metadata": _conversation_metadata(value.get("metadata") or {}),
+        "lifecycle": _empty_lifecycle(),
         "messages": normalized_messages,
     }
 
@@ -764,6 +778,73 @@ def _message(value: Mapping[str, Any]) -> dict[str, Any]:
         "events": _safe(value.get("events")),
         "tool_logs": _safe(value.get("tool_logs")),
     }
+
+
+
+def _empty_lifecycle() -> dict[str, Any]:
+    return {
+        "version": LIFECYCLE_VERSION,
+        "state": "unknown",
+        "completed_at_ms": None,
+        "completion_message_id": None,
+        "active_user_message_id": None,
+    }
+
+
+def _record_lifecycle(
+    conversation: dict[str, Any],
+    message: Mapping[str, Any],
+    messages: list[dict[str, Any]],
+    now_ms: int,
+) -> None:
+    """Record owner-confirmed completion in the same CAS message transaction."""
+    source = dict(conversation.get("lifecycle") or _empty_lifecycle())
+    if source.get("version") != LIFECYCLE_VERSION:
+        source = _empty_lifecycle()
+    role = message.get("role")
+    if role == "user":
+        source["state"] = "running"
+        source["active_user_message_id"] = message["id"]
+    elif role == "assistant":
+        by_id = {item["id"]: item for item in messages}
+        ancestor = message
+        visited: set[str] = set()
+        while ancestor.get("parent_id") in by_id:
+            parent_id = ancestor["parent_id"]
+            if parent_id in visited:
+                return
+            visited.add(parent_id)
+            ancestor = by_id[parent_id]
+            if ancestor.get("role") == "user":
+                break
+        active_user = source.get("active_user_message_id")
+        if active_user and message.get("parent_id") is not None and (
+            ancestor.get("role") != "user" or ancestor.get("id") != active_user
+        ):
+            # A delayed final response for an older user turn cannot end a new one.
+            return
+        state = message_task_state(message)
+        if state == "completed" and source.get("completion_message_id") != message["id"]:
+            source["completed_at_ms"] = now_ms
+            source["completion_message_id"] = message["id"]
+        source["state"] = state
+    else:
+        return
+    conversation["lifecycle"] = source
+
+
+def _retain_lifecycle(
+    conversation: dict[str, Any], messages: list[dict[str, Any]], *,
+    reset: bool = False,
+) -> None:
+    source = dict(conversation.get("lifecycle") or _empty_lifecycle())
+    remaining = {item["id"] for item in messages}
+    if source.get("completion_message_id") not in remaining:
+        source = _empty_lifecycle()
+    if reset or source.get("active_user_message_id") not in remaining:
+        source["state"] = "unknown"
+        source["active_user_message_id"] = None
+    conversation["lifecycle"] = source
 
 
 def _normalize_message_links(messages: list[dict[str, Any]]) -> None:
