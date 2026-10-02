@@ -54,7 +54,7 @@ Clock and lease decisions are injectable for isolated execution tests.
 
 The job broker receives `dispatch`, `cancel`, or `status`, plus `action_id`,
 `idempotency_key`, optional object `payload`, `schedule_id`, and `lease_id`.
-It selects only captured public `tobkiri.action.job.adapter.v1` providers. Each
+It selects only captured public `tobkiri.action.job.adapter.v2` providers. Each
 selected adapter's exact operation supports `describe` and returns
 `{action_ids: [registered IDs]}`. Exactly one matching provider is required.
 Dispatch/cancel/status use that selected exact operation with the same envelope

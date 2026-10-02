@@ -139,7 +139,7 @@ class _WireClient:
         self.fail_once = False
 
     def providers(self, contract: str) -> tuple[dict[str, str], ...]:
-        assert contract == "tobkiri.action.job.adapter.v1"
+        assert contract == "tobkiri.action.job.adapter.v2"
         return ({"provider_id": "test.adapter", "operation_id": "test.job-adapter"},)
 
     def invoke(self, contract: str, operation: str, payload: dict[str, Any]) -> Any:
@@ -159,7 +159,7 @@ class _WireClient:
         if contract == "tobkiri.action.job.v1":
             assert operation == "rumi_job_action_broker_pack.job-action-broker"
             return self.broker.invoke(name, payload)
-        assert contract == "tobkiri.action.job.adapter.v1"
+        assert contract == "tobkiri.action.job.adapter.v2"
         assert operation == "test.job-adapter"
         if name == "describe":
             return {"action_ids": ["test.action"]}
