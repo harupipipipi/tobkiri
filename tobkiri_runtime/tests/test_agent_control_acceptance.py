@@ -21,6 +21,7 @@ from ecosystem.tobkiri_agent_control_pack.runtime.service import WorkPlanService
 from ecosystem.tobkiri_agent_control_pack.runtime.store import PlanStore
 from ecosystem.tobkiri_agent_control_pack.runtime.workflow import REVIEW, REVIEW_OP, WORKFLOW
 from tests.test_agent_control_pack import FakePorts, USER, add, apply, configure
+from tests.test_agent_control_pack import trigger
 from tests.test_workflow_v4 import Authority, Catalog, Validator
 from tobkiri_protocol.agent_inbox_v1 import CONTEXT_CONTRACT, INBOX_CONTRACT
 from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
@@ -662,3 +663,167 @@ def test_goal_only_unavailable_scheduler_is_saved_but_never_reported_monitored(
     plan = service.store.get("plan")
     assert plan["goal"]["body"] == "Preserve requirements"
     assert plan["schedule"]["status"] == "binding_failed" and ports.schedules == {}
+
+
+class CorrectionPorts(FakePorts):
+    """Selected evidence/model outputs for correction lifecycle boundary cases."""
+
+    refs = ["evidence-1"]
+    resolved: list[str] = []
+    instruction = "Repair the observed failure."
+
+    def invoke(self, contract: str, operation: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        value = super().invoke(contract, operation, payload)
+        if contract == "tobkiri.service.ai.generate.v1" and "verdict" in value.get("output", {}):
+            value["output"].update(
+                evidence_refs=self.refs,
+                resolved_finding_ids=self.resolved,
+                instruction=self.instruction,
+            )
+        return value
+
+
+def correction_rig(path: Path) -> tuple[WorkPlanService, CorrectionPorts]:
+    """Create one tracked task with one actual public-source drift reference."""
+    ports = CorrectionPorts()
+    service = WorkPlanService(PlanStore(path, "profile-a"), ports, clock=lambda: ports.now)
+    configure(service)
+    add(service)
+    assert trigger(service)["review_status"] == "drift"
+    return service, ports
+
+
+def append_evidence(ports: CorrectionPorts, revision: int, reference: str = "evidence-2") -> None:
+    """Advance the fake public owner revision with a distinct actual message reference."""
+    ports.conversation["conversation_revision"] = revision
+    ports.conversation["messages"].append(
+        {"id": reference, "role": "tool", "content": "test repaired"}
+    )
+    ports.refs = [reference]
+
+
+def prepared_instructions(service: WorkPlanService, input_id: str) -> list[dict[str, Any]]:
+    """Project the next exact input to inspect future guidance rather than history mutation."""
+    plan = service.store.get("plan")
+    return service.prepare_input(
+        {
+            "plan_id": "plan",
+            "conversation_id": "conversation",
+            "expected_revision": plan["revision"],
+            "operation_id": f"prepare-{input_id}",
+            "input_id": input_id,
+            "agent_binding": "conversation:conversation",
+            "boundary": "before_turn",
+        },
+        USER,
+    )["instructions"]
+
+
+def test_same_condition_coalesces_changed_evidence_and_instruction(tmp_path: Path) -> None:
+    service, ports = correction_rig(tmp_path)
+    first = deepcopy(service.store.get("plan")["inbox"][0])
+    append_evidence(ports, 2)
+    ports.instruction = "A revised wording for the same failure."
+    assert trigger(service, "later-drift")["review_status"] == "drift"
+    plan = service.store.get("plan")
+    assert len(plan["inbox"]) == 1 and plan["inbox"][0] == first
+    assert plan["review"]["id"] == first["finding_id"]
+    assert plan["review"]["evidence_refs"] == ["evidence-2"]
+
+
+def test_recheck_must_advance_past_latest_drift_after_storage_key_sorting(tmp_path: Path) -> None:
+    service, ports = correction_rig(tmp_path)
+    append_evidence(ports, 2)
+    trigger(service, "a-newer-drift")
+    plan = service.store.get("plan")
+    service.store.mutate(
+        "plan",
+        plan["revision"],
+        "canonical-history-key-order",
+        {},
+        USER.principal_id,
+        lambda current: (
+            current.update(review_occurrences=dict(sorted(current["review_occurrences"].items())))
+            or {}
+        ),
+    )
+    ports.verdict = "on_track"
+    ports.resolved = [service.store.get("plan")["inbox"][0]["finding_id"]]
+    ports.refs = ["evidence-1"]
+    trigger(service, "recheck-without-newer-revision")
+    assert not service.store.get("plan")["inbox"][0].get("resolved_at_ms")
+
+
+def test_explicit_new_evidence_recheck_retires_future_guidance_and_retains_history(
+    tmp_path: Path,
+) -> None:
+    service, ports = correction_rig(tmp_path)
+    original = deepcopy(service.store.get("plan")["inbox"][0])
+    ports.verdict = "on_track"
+    ports.resolved = [original["finding_id"]]
+    append_evidence(ports, 2)
+    assert trigger(service, "recheck")["review_status"] == "on_track"
+    plan = service.store.get("plan")
+    assert plan["review"]["resolved_finding_ids"] == [original["finding_id"]]
+    assert plan["review_occurrences"]["occurrence-1"]["verdict"] == "drift"
+    assert (
+        plan["inbox"][0]["body"] == original["body"]
+        and plan["inbox"][0]["at_ms"] == original["at_ms"]
+    )
+    assert plan["inbox"][0]["resolution_review_occurrence"] == "recheck"
+    assert prepared_instructions(service, "after-repair") == []
+    restarted = WorkPlanService(PlanStore(tmp_path, "profile-a"), ports, clock=lambda: ports.now)
+    assert prepared_instructions(restarted, "after-restart") == []
+
+
+@pytest.mark.parametrize(
+    "case", ["same_revision", "old_reference", "no_explicit_resolution", "unknown_finding"]
+)
+def test_unproved_recheck_does_not_retire_guidance(tmp_path: Path, case: str) -> None:
+    service, ports = correction_rig(tmp_path)
+    finding = service.store.get("plan")["inbox"][0]["finding_id"]
+    ports.verdict = "on_track"
+    ports.resolved = [finding]
+    append_evidence(ports, 1 if case == "same_revision" else 2)
+    if case == "old_reference":
+        ports.refs = ["evidence-1"]
+    elif case == "no_explicit_resolution":
+        ports.resolved = []
+    elif case == "unknown_finding":
+        ports.resolved = ["forged-finding"]
+    trigger(service, "unproved-recheck")
+    plan = service.store.get("plan")
+    assert not plan["inbox"][0].get("resolved_at_ms")
+    assert len(prepared_instructions(service, "still-needs-repair")) == 1
+
+
+def test_regression_after_resolution_creates_one_new_delivery_and_keeps_old_history(
+    tmp_path: Path,
+) -> None:
+    service, ports = correction_rig(tmp_path)
+    first = deepcopy(service.store.get("plan")["inbox"][0])
+    ports.verdict = "on_track"
+    ports.resolved = [first["finding_id"]]
+    append_evidence(ports, 2)
+    trigger(service, "repair-confirmed")
+    ports.verdict = "drift"
+    ports.resolved = []
+    append_evidence(ports, 3, "evidence-3")
+    trigger(service, "regression")
+    trigger(service, "same-regression")
+    plan = service.store.get("plan")
+    assert len(plan["inbox"]) == 2
+    old, new = plan["inbox"]
+    assert old["id"] != new["id"] and old["finding_id"] == new["finding_id"]
+    assert old["resolved_at_ms"] and not new.get("resolved_at_ms")
+    assert [item["id"] for item in prepared_instructions(service, "new-regression-input")] == [
+        new["id"]
+    ]
+
+
+def test_oversized_review_context_is_failed_before_any_model_generation(tmp_path: Path) -> None:
+    service, ports = correction_rig(tmp_path)
+    before = sum(call[0] == "tobkiri.service.ai.generate.v1" for call in ports.calls)
+    ports.conversation["messages"][0]["content"] = "x" * (129 * 1024)
+    assert trigger(service, "too-large")["review_status"] == "review_failed"
+    assert sum(call[0] == "tobkiri.service.ai.generate.v1" for call in ports.calls) == before

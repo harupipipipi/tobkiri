@@ -28,7 +28,14 @@ The review uses a new, bounded, read-only AI context containing actual public
 conversation/tool evidence, requested/resolved model policy and current plan
 revisions. It records on_track, drift, blocked, unverifiable or review_failed.
 Only supported drift creates executor guidance. Unresolved identical findings
-coalesce; receipt acknowledgement does not prove improvement.
+coalesce by generation, Goal, condition and Todo identity as evidence changes;
+receipt acknowledgement does not prove improvement. An independent on_track
+recheck must name exact unresolved finding IDs, cite an actual new source
+reference, and observe a strictly newer public conversation revision before
+future projection stops for that guidance. The original finding, delivery and
+resolution evidence remain in history. A recurrence creates one new delivery.
+Reviewer context is capped at 128 KiB; larger uninspectable snapshots fail before
+generation instead of silently dropping requirements or source evidence.
 
 Immediate instructions, scheduled reminders and drift guidance use the same
 durable inbox. Consumption is limited to before-turn/between-tool boundaries,
@@ -81,7 +88,7 @@ PYTHONDONTWRITEBYTECODE=1 /opt/miniconda3/bin/python -B -m pytest \
   --noconftest tests/test_agent_control_pack.py tests/test_agent_control_acceptance.py -q
 ```
 
-The saved-input and Workflow checkpoint passes 65 isolated tests, targeted Ruff and mypy. These
+The saved-input and Workflow checkpoint passes 74 isolated tests, targeted Ruff and mypy. These
 exercise real Pack state and deterministic fake external contracts/test tools;
 they are not actual model, Pack activation or native-app acceptance evidence.
 The normal packaged-fixture suite must run after integration regenerates the

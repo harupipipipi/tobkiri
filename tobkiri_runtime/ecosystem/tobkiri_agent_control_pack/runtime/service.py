@@ -619,7 +619,9 @@ class WorkPlanService:
                 conversation,
                 "Independently inspect actual plan and source evidence. Return JSON "
                 "{verdict:on_track|drift|blocked|unverifiable,evidence_refs:[message IDs],"
-                "condition_id:string,todo_ids:[IDs],instruction:string}. Normal long "
+                "condition_id:string,todo_ids:[IDs],instruction:string,resolved_finding_ids:[IDs]}. "
+                "Reuse the stable condition_id for the same Goal/Todo failure. Resolve only "
+                "explicit unresolved finding IDs after newer source evidence verifies repair. Normal long "
                 "work and approval/user waits are blocked, not drift. Unsupported "
                 "claims or inaccessible artifacts are unverifiable. Never relax constraints.",
                 snapshot,

@@ -14,6 +14,21 @@ def review_snapshot(
     plan: Mapping[str, Any], evidence: Mapping[str, Any], occurrence_id: str
 ) -> dict[str, Any]:
     """Create bounded reviewer input from latest public evidence and plan state."""
+    active_ids = {
+        event["finding_id"]
+        for event in plan["inbox"]
+        if event["source"] == "review"
+        and event["status"] not in {"cancelled", "expired"}
+        and not event.get("resolved_at_ms")
+        and event["generation"] == plan["generation"]
+    }
+    findings: dict[str, dict[str, Any]] = {}
+    for finding in plan["review_occurrences"].values():
+        if finding["id"] not in active_ids or finding["verdict"] != "drift":
+            continue
+        prior = findings.get(finding["id"])
+        if prior is None or finding["plan_revision"] > prior["plan_revision"]:
+            findings[finding["id"]] = deepcopy(finding)
     return {
         "version": "tobkiri.work-plan-review.v1",
         "plan_id": plan["id"],
@@ -22,8 +37,11 @@ def review_snapshot(
         "goal": deepcopy(plan["goal"]),
         "todos": deepcopy(plan["todos"]),
         "instructions": [
-            deepcopy(x) for x in plan["inbox"] if x["status"] not in {"cancelled", "expired"}
+            deepcopy(x)
+            for x in plan["inbox"]
+            if x["status"] not in {"cancelled", "expired"} and not x.get("resolved_at_ms")
         ],
+        "unresolved_findings": list(findings.values()),
         "evidence": deepcopy(dict(evidence)),
         "occurrence_id": occurrence_id,
         "executor": plan["settings"]["executor"],
@@ -52,7 +70,12 @@ def record_review(
     ):
         raise Conflict("review snapshot is stale")
     verdict = result.get("verdict")
+    if not isinstance(verdict, str):
+        verdict = "unverifiable"
     references = result.get("evidence_refs")
+    condition = result.get("condition_id")
+    item_ids = result.get("todo_ids", [])
+    resolved_ids = result.get("resolved_finding_ids", [])
     observed = set(snapshot["evidence"].get("reference_ids", []))
     independent = (
         result.get("reviewer_binding") == snapshot["reviewer"]
@@ -60,7 +83,8 @@ def record_review(
         and bool(result.get("run_context_id"))
     )
     valid = (
-        verdict in REVIEW_STATES
+        isinstance(verdict, str)
+        and verdict in REVIEW_STATES
         and independent
         and isinstance(references, list)
         and all(isinstance(x, str) and x in observed for x in references)
@@ -72,21 +96,39 @@ def record_review(
             valid
             and isinstance(result.get("instruction"), str)
             and bool(result["instruction"].strip())
+            and isinstance(condition, str)
+            and 0 < len(condition) <= 256
+            and isinstance(item_ids, list)
+            and len(item_ids) <= 1000
+            and all(
+                isinstance(item, str) and item in {todo["id"] for todo in plan["todos"]}
+                for item in item_ids
+            )
+        )
+    unresolved = {entry["id"]: entry for entry in snapshot["unresolved_findings"]}
+    if verdict == "on_track":
+        valid = valid and isinstance(resolved_ids, list) and len(resolved_ids) <= 100
+        valid = valid and all(
+            isinstance(value, str) and value in unresolved for value in resolved_ids
         )
     if not valid:
         verdict = "unverifiable"
     finding_id = digest(
         {
             "goal": snapshot["goal"],
-            "todo_ids": result.get("todo_ids", []),
-            "condition": result.get("condition_id"),
-            "refs": references if isinstance(references, list) else [],
+            "generation": snapshot["generation"],
+            "todo_ids": sorted(set(item_ids)) if valid and verdict == "drift" else [],
+            "condition": condition if isinstance(condition, str) else None,
         }
     )
     finding = {
         "verdict": verdict,
         "plan_revision": snapshot["plan_revision"],
         "generation": snapshot["generation"],
+        "goal_revision": snapshot["goal"]["revision"] if snapshot["goal"] else None,
+        "conversation_revision": snapshot["evidence"].get("conversation_revision"),
+        "condition_id": condition if isinstance(condition, str) else None,
+        "todo_ids": sorted(set(item_ids)) if valid and verdict == "drift" else [],
         "at_ms": now_ms,
         "evidence_refs": references if valid else [],
         "id": finding_id,
@@ -95,12 +137,24 @@ def record_review(
         "model_resolution": deepcopy(result.get("model_resolution")) if independent else None,
     }
     plan["review"] = finding
-    plan["review_occurrences"][snapshot["occurrence_id"]] = deepcopy(finding)
     if verdict == "drift":
+        previous = next(
+            (
+                event
+                for event in reversed(plan["inbox"])
+                if event["finding_id"] == finding_id and event.get("resolved_at_ms")
+            ),
+            None,
+        )
+        delivery_id = (
+            digest([finding_id, previous["resolution_review_occurrence"]])[:24]
+            if previous
+            else finding_id[:24]
+        )
         delivered = deliver(
             plan,
             {
-                "event_id": f"finding-{finding_id[:24]}",
+                "event_id": f"finding-{delivery_id}",
                 "source": "review",
                 "finding_id": finding_id,
                 "body": result["instruction"],
@@ -111,9 +165,43 @@ def record_review(
         )
         finding["delivery_id"] = delivered["event"]["id"]
     elif verdict == "on_track":
+        assert isinstance(references, list)
         # A read receipt is not improvement. Only an evidence-backed review
         # can resolve previous findings; their immutable delivery history stays.
+        resolved = []
+        revision = snapshot["evidence"].get("conversation_revision")
+        for value in set(resolved_ids):
+            prior = unresolved[value]
+            if (
+                type(revision) is not int
+                or type(prior.get("conversation_revision")) is not int
+                or revision <= prior["conversation_revision"]
+                or not set(references) - set(prior["evidence_refs"])
+                or prior["generation"] != plan["generation"]
+                or prior.get("goal_revision") != finding["goal_revision"]
+            ):
+                continue
+            for event in plan["inbox"]:
+                if (
+                    event["source"] == "review"
+                    and event["finding_id"] == value
+                    and event["generation"] == plan["generation"]
+                    and not event.get("resolved_at_ms")
+                    and event["status"] not in {"cancelled", "expired"}
+                ):
+                    event["resolved_at_ms"] = now_ms
+                    event["resolution_review_occurrence"] = snapshot["occurrence_id"]
+            resolved.append(value)
+        finding["resolved_finding_ids"] = sorted(resolved)
         plan["history"].append(
-            {"kind": "review.on_track", "at_ms": now_ms, "evidence_refs": references}
+            {
+                "kind": "review.on_track",
+                "at_ms": now_ms,
+                "evidence_refs": references,
+                "conversation_revision": revision,
+                "resolved_finding_ids": sorted(resolved),
+                "occurrence_id": snapshot["occurrence_id"],
+            }
         )
+    plan["review_occurrences"][snapshot["occurrence_id"]] = deepcopy(finding)
     return {"status": verdict, "finding": deepcopy(finding)}

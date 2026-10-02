@@ -250,6 +250,11 @@
         "kind": "status"
       },
       {
+        "label": "Resolved findings",
+        "path": "plan.review.resolved_finding_ids",
+        "kind": "text"
+      },
+      {
         "label": "Goal change warning",
         "path": "plan.replacement_preview.warning",
         "kind": "text"
