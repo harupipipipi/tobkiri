@@ -30,6 +30,11 @@ def test_setup_catalog_contains_all_checked_in_model_choices_without_network(
         (item["provider_id"], item["provider_model_id"]) for item in models
     }
     for provider_id, descriptor in setup["providers"].items():
+        descriptor["models"] = json.loads(
+            (setup_path.parent / descriptor["models_file"]).read_text(
+                encoding="utf-8"
+            )
+        )["models"]
         assert provider_id in provider_ids
         assert descriptor["models"], provider_id
         for model in descriptor["models"]:

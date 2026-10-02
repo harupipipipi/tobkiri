@@ -6,12 +6,197 @@
       "path": "catalog/licenses/models.dev-MIT.txt"
     },
     {
-      "digest": "sha256:c246a910c983cb99bdd50b55edac896e9d7dc32e5d58eaa369bbb1b6edaa5a99",
+      "digest": "sha256:4ec00997a29b6b0ed0d6a66829f2f10fc257970416a394da9ae02d055bf44d28",
       "kind": "sidecar",
       "path": "catalog/provider-setup.json"
     },
     {
-      "digest": "sha256:6bbaeafe8edaa321f508e19c41a4d245db45fc2473104d63616b1edd5c210051",
+      "digest": "sha256:27618eb92d79c2c4021bf6a384f5e79265bd2368092ddacba5942e14bde6c883",
+      "kind": "sidecar",
+      "path": "catalog/setup/ai21.json"
+    },
+    {
+      "digest": "sha256:26d1676f1be75eb7915c76bf3e7b87872d215359a6a27da425b30c8d8b984128",
+      "kind": "sidecar",
+      "path": "catalog/setup/alibaba-dashscope.json"
+    },
+    {
+      "digest": "sha256:8a37ebff109e356e329452c94c81f15ba5abcad9a3ac17b316578885ecd8b282",
+      "kind": "sidecar",
+      "path": "catalog/setup/anthropic.json"
+    },
+    {
+      "digest": "sha256:15c35937eb1199ce3dfbd33e3c8b42c7a4197ff20b9356acef225228ce2e00ec",
+      "kind": "sidecar",
+      "path": "catalog/setup/avian.json"
+    },
+    {
+      "digest": "sha256:bd66545da11d09d1f8386d843ee3d4b0b43b1513df815e47d6befe86ba3fc84b",
+      "kind": "sidecar",
+      "path": "catalog/setup/cerebras.json"
+    },
+    {
+      "digest": "sha256:0409de2757ed98c0384d80e9967a51500a3355b36e8b0e86cf86e37438494292",
+      "kind": "sidecar",
+      "path": "catalog/setup/deepinfra.json"
+    },
+    {
+      "digest": "sha256:5a5df0ee1866b9824a7ac7de06c5cdb087a2c92206cc1ef949da29b9e0a1159e",
+      "kind": "sidecar",
+      "path": "catalog/setup/deepseek.json"
+    },
+    {
+      "digest": "sha256:bd21f034d16a2d6bdd5fb0454c8470bcc7095e88e7cc8d02141de80142a7d4a4",
+      "kind": "sidecar",
+      "path": "catalog/setup/fireworks.json"
+    },
+    {
+      "digest": "sha256:c0362abff662fbb35ba87622f704bc4f591acf51a415c09f70e6b32ab32b2497",
+      "kind": "sidecar",
+      "path": "catalog/setup/friendli.json"
+    },
+    {
+      "digest": "sha256:4f1a2b4123d2abe3a5d50caa139a2e5ba1825aa8f956832a38982eb8a0a95dae",
+      "kind": "sidecar",
+      "path": "catalog/setup/gitlawb-opengateway.json"
+    },
+    {
+      "digest": "sha256:e0a43f7370f4288d01cacac5e0529cbeb232ca19398741cd3201fb7f7477735a",
+      "kind": "sidecar",
+      "path": "catalog/setup/glm.json"
+    },
+    {
+      "digest": "sha256:c03909e391d7507878ba2f3c87da6e79905849521a48184bdc9bd4689d0fb7d8",
+      "kind": "sidecar",
+      "path": "catalog/setup/google.json"
+    },
+    {
+      "digest": "sha256:50399d4547c1d189db40b7735f6c8b53d07581c1724c14939848ccb554109816",
+      "kind": "sidecar",
+      "path": "catalog/setup/groq.json"
+    },
+    {
+      "digest": "sha256:c14fd5212e9953af0e3eb36356e6079966ce9ddb981dcabfaa2340831bb4ddae",
+      "kind": "sidecar",
+      "path": "catalog/setup/huggingface-inference.json"
+    },
+    {
+      "digest": "sha256:14cef275f8d685806fd0a846e8cc116251bda4e6c9fd8b089b0c09e455ee173a",
+      "kind": "sidecar",
+      "path": "catalog/setup/hyperbolic.json"
+    },
+    {
+      "digest": "sha256:392b4bb3f45a16c5598f5c99e33043ba45d414015bca44229a8ddea433b9b137",
+      "kind": "sidecar",
+      "path": "catalog/setup/inference-net.json"
+    },
+    {
+      "digest": "sha256:6a09d17c920eca0f1fcf600aba23b14d4f1f9797d662bdea7056984b1f0b8e24",
+      "kind": "sidecar",
+      "path": "catalog/setup/longcat.json"
+    },
+    {
+      "digest": "sha256:e6db9748c946d7ca238a0ae118f66b35ae472e67fb5a7c1bbb3896b0ab218949",
+      "kind": "sidecar",
+      "path": "catalog/setup/mistral.json"
+    },
+    {
+      "digest": "sha256:11b676ddd13fc10132fd64f58b7c0ad901f8fa5774e87ab26151c56922cb286d",
+      "kind": "sidecar",
+      "path": "catalog/setup/moonshotai.json"
+    },
+    {
+      "digest": "sha256:2d2594f22d7b80f332199ef616fec43d898eb18a3256e85cdd7d74fc1257c3a7",
+      "kind": "sidecar",
+      "path": "catalog/setup/nebius.json"
+    },
+    {
+      "digest": "sha256:d378b7aecdbf1acdc43a2329afe1c0b6a66c5f04e1f79fc195116ed7cfe09ef7",
+      "kind": "sidecar",
+      "path": "catalog/setup/novita.json"
+    },
+    {
+      "digest": "sha256:b96a8912fc8ba67b5129b0ac1f631b97633d2fd9d52a60c502da8ec7219e4fdf",
+      "kind": "sidecar",
+      "path": "catalog/setup/nvidia.json"
+    },
+    {
+      "digest": "sha256:207feff6d39255b835bb6c676cb5baf97d536ebf629db6551741bbd2ef3d0550",
+      "kind": "sidecar",
+      "path": "catalog/setup/openai.json"
+    },
+    {
+      "digest": "sha256:71ddaad1b3e6308b4bb0a64d9e707d2e1c6f2b53dd2a68fc3a2428150b56f358",
+      "kind": "sidecar",
+      "path": "catalog/setup/opencode-go.json"
+    },
+    {
+      "digest": "sha256:ce1705e8852770197c504f7ea25d095771b62f1e47b9b1f68909981041333750",
+      "kind": "sidecar",
+      "path": "catalog/setup/opencode-zen.json"
+    },
+    {
+      "digest": "sha256:ecb0a93610dc339dcfb955f9903382ec6bcecbebd016860e594e53fe5ed2e93d",
+      "kind": "sidecar",
+      "path": "catalog/setup/openrouter.json"
+    },
+    {
+      "digest": "sha256:9145bbbd5c758b4cea0ce5f0bf4e63fac0d61e639d68b5d4292b13d771eda6cf",
+      "kind": "sidecar",
+      "path": "catalog/setup/perplexity.json"
+    },
+    {
+      "digest": "sha256:030df65458b22ce03d557051b84f9d86ab57c902fbc8a2fcfff38452c07070c2",
+      "kind": "sidecar",
+      "path": "catalog/setup/sambanova.json"
+    },
+    {
+      "digest": "sha256:4958ef55183b959fe7a25e2e2639ba767b6aa971633f3e383ca26b82f4c86274",
+      "kind": "sidecar",
+      "path": "catalog/setup/siliconflow.json"
+    },
+    {
+      "digest": "sha256:ba96cdfcbd1e0487546bd78e2d36270340c70138c4dc00b9bd858fd54962a909",
+      "kind": "sidecar",
+      "path": "catalog/setup/together.json"
+    },
+    {
+      "digest": "sha256:593e4041977bd2d05b651fb11b534d8a32c4c1e7cbc682ddf220a7fd0d909598",
+      "kind": "sidecar",
+      "path": "catalog/setup/upstage.json"
+    },
+    {
+      "digest": "sha256:58e691c3077e6d19a5db1aabccd78b189fc277587b8da9172f1cfe7b511645e0",
+      "kind": "sidecar",
+      "path": "catalog/setup/vercel-ai-gateway.json"
+    },
+    {
+      "digest": "sha256:ccc894a373ad4d140ad5d20ce500582ba39ba5241f4d5164b32bbdbdecc3f7c3",
+      "kind": "sidecar",
+      "path": "catalog/setup/xai.json"
+    },
+    {
+      "digest": "sha256:7f4c9d4640b713a815ccff873bc0a308c33cba940639c196ce83b5896f8f394e",
+      "kind": "sidecar",
+      "path": "catalog/setup/xiaomi-mimo-global.json"
+    },
+    {
+      "digest": "sha256:6b49d988dc77c647fb80bb7ecac7c23552746155bdd9cef4648b161a9c4da048",
+      "kind": "sidecar",
+      "path": "catalog/setup/xiaomi-token-plan-ams.json"
+    },
+    {
+      "digest": "sha256:b0362359e77b4246eb3929a94f11718b19327d56f14e01c6c202ed3ad14d390f",
+      "kind": "sidecar",
+      "path": "catalog/setup/xiaomi-token-plan-cn.json"
+    },
+    {
+      "digest": "sha256:9bca93ed4c9146d82e244fd9731889586f295953704fe6fafcf15e44fe06b7b6",
+      "kind": "sidecar",
+      "path": "catalog/setup/xiaomi-token-plan-sgp.json"
+    },
+    {
+      "digest": "sha256:fe36f36f62bd119f5a6535fbeb27f2c0f01b2f64e0d883afec7c6e0cb22057b0",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -21,7 +206,7 @@
       "path": "runtime/__init__.py"
     },
     {
-      "digest": "sha256:48cfbcdd1f78a132cbb7126e2955b2300c031ef9fd605a6a0c81cca937b5bf24",
+      "digest": "sha256:02c6a26f519443f9d7bf9ccbe0eb8366eeecc31497a82d278013b45d7079b715",
       "kind": "executable",
       "path": "runtime/catalog.py"
     }
@@ -41,7 +226,7 @@
     {
       "contract_revision_digest": "sha256:edab2fe547a7bb14d2c96ea62a5354a59065a37aeaa112dfc19e63c0b84af35c",
       "id": "rumi_model_catalog_pack.model-catalog.bundled",
-      "implementation_digest": "sha256:48cfbcdd1f78a132cbb7126e2955b2300c031ef9fd605a6a0c81cca937b5bf24",
+      "implementation_digest": "sha256:02c6a26f519443f9d7bf9ccbe0eb8366eeecc31497a82d278013b45d7079b715",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_model_catalog_pack.bundled-model-catalog",
@@ -52,9 +237,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:ea62c1fa378a046f7b9707624a6c9339782578c79f7051e846ec9ef296ddd376",
-    "contract_catalog_digest": "sha256:d0c9cd258078ce70454d64bfa607a6182b4d221fba5f7202bb7be4e8db3a6b3a",
-    "source_identity": "sha256:dd755aee9f8f8293f9e77920842f4d13eb0314db452b43c2d7280dcc40e31e4a"
+    "artifact_set_digest": "sha256:245f9b196a130be900be0ff433f34acb54909aca36bc89b9e3f6ad0fd208ab11",
+    "contract_catalog_digest": "sha256:f29a84043828d6befdbb53ce7e5fdf125faae850a85f9d1d2fec0a7bc33b4407",
+    "source_identity": "sha256:a0a7e772d24748c7b03f4da22c1f89494a10616682b9abc0c3d9a404bc98fd39"
   },
   "migration": {
     "compatibility": "read_only",
@@ -102,7 +287,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:ea62c1fa378a046f7b9707624a6c9339782578c79f7051e846ec9ef296ddd376",
+    "artifact_digest": "sha256:245f9b196a130be900be0ff433f34acb54909aca36bc89b9e3f6ad0fd208ab11",
     "display_name": "Rumi Model Catalog",
     "id": "rumi_model_catalog_pack",
     "kind": "host_extension",
@@ -112,7 +297,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:dd755aee9f8f8293f9e77920842f4d13eb0314db452b43c2d7280dcc40e31e4a",
+        "digest": "sha256:a0a7e772d24748c7b03f4da22c1f89494a10616682b9abc0c3d9a404bc98fd39",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -123,7 +308,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:dd755aee9f8f8293f9e77920842f4d13eb0314db452b43c2d7280dcc40e31e4a",
+    "source_digest": "sha256:a0a7e772d24748c7b03f4da22c1f89494a10616682b9abc0c3d9a404bc98fd39",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_model_catalog_pack"
   },

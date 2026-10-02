@@ -7278,19 +7278,19 @@
         "status": "unverified"
       },
       "source": {
-        "digest": "sha256:8248150ee5cc5d2e7fd293c378db83850a37953ad881d40b64b1c0f68403f69f",
+        "digest": "sha256:6455fe3f214b7a7b83530577e220869d72bebd5e243d0e873fdad07829cb3306",
         "executable_source_registry": {
-          "digest": "sha256:a6764950a7e96d3e21089bd19cca778cba73242911955bca810b1f0169d5b0cc",
+          "digest": "sha256:284056130375e798b3c68fb7e6876bda1fffe396ae36e76fc88237444f449a73",
           "path": "tobkiri_runtime/schemas/executable_sources.v1.json",
           "record_count": 1
         },
         "files": [
           {
-            "digest": "sha256:55acea7ecc10996ee6b762b607427b2684fcd9b1ecd530e5c54d7e33f4078af2",
+            "digest": "sha256:4b4ac0ddc1dd18fa176dc84a8dba6aeb256b8ef9435b75eb4c775dbd1f1246ce",
             "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/rumi.pack.v3.json"
           },
           {
-            "digest": "sha256:99bdbbc5bc8b70ee7bf988610e8601d8b7a5b4709ec12043e0e4378570700b2d",
+            "digest": "sha256:f52f6ea91e7ebbb825130f921da3cc275d7224645e0e8044e76fe620a45301e7",
             "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/artifact-manifest.json"
           }
         ],
@@ -7301,19 +7301,19 @@
       "status": "generated-draft",
       "target": {
         "artifact_verification": {
-          "artifact_count": 7,
-          "artifact_index_digest": "sha256:45781a2f70cbc8ea83d30309367c1c1b3786f1cb4c22720d5850764e8af4dccb",
-          "artifact_set_digest": "sha256:ea62c1fa378a046f7b9707624a6c9339782578c79f7051e846ec9ef296ddd376",
-          "executable_catalog_digest": "sha256:8bc69b9bc9797f9169abd684d44d88e54b22c25e0de5ca85ee242f4843626bb0",
+          "artifact_count": 44,
+          "artifact_index_digest": "sha256:6c5def7684ba8717fed7f09bffb0fc39fdbbdbbf8ef16f739eb2e8bd31ce7867",
+          "artifact_set_digest": "sha256:245f9b196a130be900be0ff433f34acb54909aca36bc89b9e3f6ad0fd208ab11",
+          "executable_catalog_digest": "sha256:2012d0413f7e8590492b4d3c62530645085ee85af034156986f4dd73795fffa7",
           "pack_id": "rumi_model_catalog_pack",
           "quartet": {
-            "artifact-index.v4.json": "sha256:45781a2f70cbc8ea83d30309367c1c1b3786f1cb4c22720d5850764e8af4dccb",
-            "contracts.v4.json": "sha256:d0c9cd258078ce70454d64bfa607a6182b4d221fba5f7202bb7be4e8db3a6b3a",
-            "executables.v4.json": "sha256:6bbaeafe8edaa321f508e19c41a4d245db45fc2473104d63616b1edd5c210051",
-            "pack.v4.json": "sha256:0ac90366f1e373f1531035fb1a58b16dcd52bcf4c4f140f133bf96077134aa10"
+            "artifact-index.v4.json": "sha256:6c5def7684ba8717fed7f09bffb0fc39fdbbdbbf8ef16f739eb2e8bd31ce7867",
+            "contracts.v4.json": "sha256:f29a84043828d6befdbb53ce7e5fdf125faae850a85f9d1d2fec0a7bc33b4407",
+            "executables.v4.json": "sha256:fe36f36f62bd119f5a6535fbeb27f2c0f01b2f64e0d883afec7c6e0cb22057b0",
+            "pack.v4.json": "sha256:ca5a57c33b5b86bee7f0bdb2e8e6512a9991fedcfc7bcdfce32a2b8026da6745"
           }
         },
-        "digest": "sha256:ea62c1fa378a046f7b9707624a6c9339782578c79f7051e846ec9ef296ddd376",
+        "digest": "sha256:245f9b196a130be900be0ff433f34acb54909aca36bc89b9e3f6ad0fd208ab11",
         "format": "tobkiri-pack-v4-quartet",
         "pack_id": "rumi_model_catalog_pack",
         "status": "artifact-integrity-verified"
@@ -11668,7 +11668,7 @@
   "source": {
     "attestation": "none",
     "authority": "evidence-only",
-    "content_digest": "sha256:060b7e1237fea18c4c1e2cf4a85183265206fc44059fa8622dfa16d08896bbf5",
+    "content_digest": "sha256:421f8c637f924363c6f86ea00163e3b273077fab7066b4a660b2dd9a56905268",
     "feasibility_audit": {
       "semantically_reviewed": {
         "count": 39,
@@ -11910,7 +11910,7 @@
     "freshness_basis": "exact-input-digests-and-deterministic-recomputation",
     "generator_id": "tobkiri.quality.migration-proof-generator",
     "generator_version": "2.1.0",
-    "input_digest": "sha256:1e08f824eca5a2d4d69526deee6b159ba4c49188b43bbec6ea27c467abe4a9f1",
+    "input_digest": "sha256:e4f19b80381f765b0998520f54faf9299d442753bd207c61f810021bf892b0fb",
     "input_paths": [
       "tobkiri_runtime/core_runtime/profile_definition_store_v4.py",
       "tobkiri_runtime/ecosystem/defaultspack/artifact-index.v4.json",
@@ -12642,6 +12642,43 @@
       "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/artifact-manifest.json",
       "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/licenses/models.dev-MIT.txt",
       "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/provider-setup.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/ai21.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/alibaba-dashscope.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/anthropic.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/avian.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/cerebras.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/deepinfra.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/deepseek.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/fireworks.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/friendli.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/gitlawb-opengateway.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/glm.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/google.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/groq.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/huggingface-inference.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/hyperbolic.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/inference-net.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/longcat.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/mistral.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/moonshotai.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/nebius.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/novita.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/nvidia.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/openai.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/opencode-go.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/opencode-zen.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/openrouter.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/perplexity.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/sambanova.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/siliconflow.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/together.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/upstage.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/vercel-ai-gateway.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/xai.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/xiaomi-mimo-global.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/xiaomi-token-plan-ams.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/xiaomi-token-plan-cn.json",
+      "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/xiaomi-token-plan-sgp.json",
       "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/contracts.v4.json",
       "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/executables.v4.json",
       "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/pack.v4.json",
@@ -16698,12 +16735,12 @@
         "path": "tobkiri_runtime/ecosystem/rumi_mobile_pairing_connector_pack/runtime/adapter.py"
       },
       {
-        "digest": "sha256:45781a2f70cbc8ea83d30309367c1c1b3786f1cb4c22720d5850764e8af4dccb",
+        "digest": "sha256:6c5def7684ba8717fed7f09bffb0fc39fdbbdbbf8ef16f739eb2e8bd31ce7867",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/artifact-index.v4.json"
       },
       {
-        "digest": "sha256:99bdbbc5bc8b70ee7bf988610e8601d8b7a5b4709ec12043e0e4378570700b2d",
+        "digest": "sha256:f52f6ea91e7ebbb825130f921da3cc275d7224645e0e8044e76fe620a45301e7",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/artifact-manifest.json"
       },
@@ -16713,27 +16750,212 @@
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/licenses/models.dev-MIT.txt"
       },
       {
-        "digest": "sha256:c246a910c983cb99bdd50b55edac896e9d7dc32e5d58eaa369bbb1b6edaa5a99",
+        "digest": "sha256:4ec00997a29b6b0ed0d6a66829f2f10fc257970416a394da9ae02d055bf44d28",
         "kind": "v4-indexed-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/provider-setup.json"
       },
       {
-        "digest": "sha256:d0c9cd258078ce70454d64bfa607a6182b4d221fba5f7202bb7be4e8db3a6b3a",
+        "digest": "sha256:27618eb92d79c2c4021bf6a384f5e79265bd2368092ddacba5942e14bde6c883",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/ai21.json"
+      },
+      {
+        "digest": "sha256:26d1676f1be75eb7915c76bf3e7b87872d215359a6a27da425b30c8d8b984128",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/alibaba-dashscope.json"
+      },
+      {
+        "digest": "sha256:8a37ebff109e356e329452c94c81f15ba5abcad9a3ac17b316578885ecd8b282",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/anthropic.json"
+      },
+      {
+        "digest": "sha256:15c35937eb1199ce3dfbd33e3c8b42c7a4197ff20b9356acef225228ce2e00ec",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/avian.json"
+      },
+      {
+        "digest": "sha256:bd66545da11d09d1f8386d843ee3d4b0b43b1513df815e47d6befe86ba3fc84b",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/cerebras.json"
+      },
+      {
+        "digest": "sha256:0409de2757ed98c0384d80e9967a51500a3355b36e8b0e86cf86e37438494292",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/deepinfra.json"
+      },
+      {
+        "digest": "sha256:5a5df0ee1866b9824a7ac7de06c5cdb087a2c92206cc1ef949da29b9e0a1159e",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/deepseek.json"
+      },
+      {
+        "digest": "sha256:bd21f034d16a2d6bdd5fb0454c8470bcc7095e88e7cc8d02141de80142a7d4a4",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/fireworks.json"
+      },
+      {
+        "digest": "sha256:c0362abff662fbb35ba87622f704bc4f591acf51a415c09f70e6b32ab32b2497",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/friendli.json"
+      },
+      {
+        "digest": "sha256:4f1a2b4123d2abe3a5d50caa139a2e5ba1825aa8f956832a38982eb8a0a95dae",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/gitlawb-opengateway.json"
+      },
+      {
+        "digest": "sha256:e0a43f7370f4288d01cacac5e0529cbeb232ca19398741cd3201fb7f7477735a",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/glm.json"
+      },
+      {
+        "digest": "sha256:c03909e391d7507878ba2f3c87da6e79905849521a48184bdc9bd4689d0fb7d8",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/google.json"
+      },
+      {
+        "digest": "sha256:50399d4547c1d189db40b7735f6c8b53d07581c1724c14939848ccb554109816",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/groq.json"
+      },
+      {
+        "digest": "sha256:c14fd5212e9953af0e3eb36356e6079966ce9ddb981dcabfaa2340831bb4ddae",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/huggingface-inference.json"
+      },
+      {
+        "digest": "sha256:14cef275f8d685806fd0a846e8cc116251bda4e6c9fd8b089b0c09e455ee173a",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/hyperbolic.json"
+      },
+      {
+        "digest": "sha256:392b4bb3f45a16c5598f5c99e33043ba45d414015bca44229a8ddea433b9b137",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/inference-net.json"
+      },
+      {
+        "digest": "sha256:6a09d17c920eca0f1fcf600aba23b14d4f1f9797d662bdea7056984b1f0b8e24",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/longcat.json"
+      },
+      {
+        "digest": "sha256:e6db9748c946d7ca238a0ae118f66b35ae472e67fb5a7c1bbb3896b0ab218949",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/mistral.json"
+      },
+      {
+        "digest": "sha256:11b676ddd13fc10132fd64f58b7c0ad901f8fa5774e87ab26151c56922cb286d",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/moonshotai.json"
+      },
+      {
+        "digest": "sha256:2d2594f22d7b80f332199ef616fec43d898eb18a3256e85cdd7d74fc1257c3a7",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/nebius.json"
+      },
+      {
+        "digest": "sha256:d378b7aecdbf1acdc43a2329afe1c0b6a66c5f04e1f79fc195116ed7cfe09ef7",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/novita.json"
+      },
+      {
+        "digest": "sha256:b96a8912fc8ba67b5129b0ac1f631b97633d2fd9d52a60c502da8ec7219e4fdf",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/nvidia.json"
+      },
+      {
+        "digest": "sha256:207feff6d39255b835bb6c676cb5baf97d536ebf629db6551741bbd2ef3d0550",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/openai.json"
+      },
+      {
+        "digest": "sha256:71ddaad1b3e6308b4bb0a64d9e707d2e1c6f2b53dd2a68fc3a2428150b56f358",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/opencode-go.json"
+      },
+      {
+        "digest": "sha256:ce1705e8852770197c504f7ea25d095771b62f1e47b9b1f68909981041333750",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/opencode-zen.json"
+      },
+      {
+        "digest": "sha256:ecb0a93610dc339dcfb955f9903382ec6bcecbebd016860e594e53fe5ed2e93d",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/openrouter.json"
+      },
+      {
+        "digest": "sha256:9145bbbd5c758b4cea0ce5f0bf4e63fac0d61e639d68b5d4292b13d771eda6cf",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/perplexity.json"
+      },
+      {
+        "digest": "sha256:030df65458b22ce03d557051b84f9d86ab57c902fbc8a2fcfff38452c07070c2",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/sambanova.json"
+      },
+      {
+        "digest": "sha256:4958ef55183b959fe7a25e2e2639ba767b6aa971633f3e383ca26b82f4c86274",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/siliconflow.json"
+      },
+      {
+        "digest": "sha256:ba96cdfcbd1e0487546bd78e2d36270340c70138c4dc00b9bd858fd54962a909",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/together.json"
+      },
+      {
+        "digest": "sha256:593e4041977bd2d05b651fb11b534d8a32c4c1e7cbc682ddf220a7fd0d909598",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/upstage.json"
+      },
+      {
+        "digest": "sha256:58e691c3077e6d19a5db1aabccd78b189fc277587b8da9172f1cfe7b511645e0",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/vercel-ai-gateway.json"
+      },
+      {
+        "digest": "sha256:ccc894a373ad4d140ad5d20ce500582ba39ba5241f4d5164b32bbdbdecc3f7c3",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/xai.json"
+      },
+      {
+        "digest": "sha256:7f4c9d4640b713a815ccff873bc0a308c33cba940639c196ce83b5896f8f394e",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/xiaomi-mimo-global.json"
+      },
+      {
+        "digest": "sha256:6b49d988dc77c647fb80bb7ecac7c23552746155bdd9cef4648b161a9c4da048",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/xiaomi-token-plan-ams.json"
+      },
+      {
+        "digest": "sha256:b0362359e77b4246eb3929a94f11718b19327d56f14e01c6c202ed3ad14d390f",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/xiaomi-token-plan-cn.json"
+      },
+      {
+        "digest": "sha256:9bca93ed4c9146d82e244fd9731889586f295953704fe6fafcf15e44fe06b7b6",
+        "kind": "v4-indexed-artifact",
+        "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/catalog/setup/xiaomi-token-plan-sgp.json"
+      },
+      {
+        "digest": "sha256:f29a84043828d6befdbb53ce7e5fdf125faae850a85f9d1d2fec0a7bc33b4407",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/contracts.v4.json"
       },
       {
-        "digest": "sha256:6bbaeafe8edaa321f508e19c41a4d245db45fc2473104d63616b1edd5c210051",
+        "digest": "sha256:fe36f36f62bd119f5a6535fbeb27f2c0f01b2f64e0d883afec7c6e0cb22057b0",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/executables.v4.json"
       },
       {
-        "digest": "sha256:0ac90366f1e373f1531035fb1a58b16dcd52bcf4c4f140f133bf96077134aa10",
+        "digest": "sha256:ca5a57c33b5b86bee7f0bdb2e8e6512a9991fedcfc7bcdfce32a2b8026da6745",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/pack.v4.json"
       },
       {
-        "digest": "sha256:55acea7ecc10996ee6b762b607427b2684fcd9b1ecd530e5c54d7e33f4078af2",
+        "digest": "sha256:4b4ac0ddc1dd18fa176dc84a8dba6aeb256b8ef9435b75eb4c775dbd1f1246ce",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/rumi.pack.v3.json"
       },
@@ -16743,7 +16965,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/runtime/__init__.py"
       },
       {
-        "digest": "sha256:48cfbcdd1f78a132cbb7126e2955b2300c031ef9fd605a6a0c81cca937b5bf24",
+        "digest": "sha256:02c6a26f519443f9d7bf9ccbe0eb8366eeecc31497a82d278013b45d7079b715",
         "kind": "v4-indexed-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_model_catalog_pack/runtime/catalog.py"
       },
@@ -18778,7 +19000,7 @@
         "path": "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/schemas/workflow-result.v4.schema.json"
       },
       {
-        "digest": "sha256:b2cba8e3fc69316fe4fb45217df9211828695cd5dd694f779d9b51aacb030ee0",
+        "digest": "sha256:2d94b8a44add2bccbd18cac544948a2510de2b0d6a00a6e3d91417d6548afb34",
         "kind": "hardened-executable-source-registry",
         "path": "tobkiri_runtime/schemas/executable_sources.v1.json"
       },
@@ -18839,7 +19061,7 @@
       "release-verified": 0,
       "semantically-reviewed": 39
     },
-    "observed_head_sha": "ece42e73f2c41b3e98c8d9295026f43c6cd6a245",
+    "observed_head_sha": "df15895f2153e354cdddd476ca67ca5aa1b720f8",
     "pack_count": 141,
     "profile_collection_proof": {
       "identity_proof": {

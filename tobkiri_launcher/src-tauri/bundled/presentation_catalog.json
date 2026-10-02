@@ -789,7 +789,7 @@
     "rumi_git_read_pack": "sha256:af8b7c96a7e9af792d42b22a882125a965cd78833aaff0ad22b8e7ff9d3598ec",
     "rumi_git_write_pack": "sha256:2f3b749d30a51919bc9c5c240b242fb90623e0b1157d089658c1a2eddc5ff0ac",
     "rumi_host_authority_bridge_pack": "sha256:b032eb057354f91f5a6e706455070b83f13ccd73236d0bd47f4dbdf2f0f70e0d",
-    "rumi_model_catalog_pack": "sha256:76226d82b77aeecc5b838e3cb3ee9a9fa762a800b12b77f64934ad50e8a723ce",
+    "rumi_model_catalog_pack": "sha256:a56e0111b8f320898e389f6a1bfc819922cb7057d63b1b95e93a8cfe1e1d9f34",
     "rumi_model_registry_pack": "sha256:17c1f705d0a07cbcd073e6e79a1a55791282207c285514178d456d9d5aca2af5",
     "rumi_prompt_studio_pack": "sha256:34aab2926e7bfb9fd1bc43a9f30f1b7e59099d3987bb23b345989f1e03c6f7e5",
     "rumi_provider_adapters_pack": "sha256:95d42ee8c9721a7a19318f57ec02ddea397324ebbba700ca6c8e042c8e134fa9",

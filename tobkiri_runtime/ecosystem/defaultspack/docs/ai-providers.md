@@ -434,7 +434,8 @@ reachability.
 
 The canonical discovery snapshot is
 `../rumi_model_catalog_pack/catalog/provider-setup.json` (relative to the
-Defaultspack directory). It includes all models returned by OpenRouter's
+Defaultspack directory), with model JSON split by provider in `catalog/setup/`
+to keep each file within the source byte budget. It includes all models returned by OpenRouter's
 public Models API at refresh time and the supported providers' catalogs from
 models.dev, with public Avian and SambaNova inventories and existing bundled
 entries where needed. The Defaults frontend imports a generated JSON

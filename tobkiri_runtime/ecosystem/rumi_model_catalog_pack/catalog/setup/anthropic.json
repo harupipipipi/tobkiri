@@ -1,0 +1,533 @@
+{
+ "provider_id": "anthropic",
+ "models": [
+  {
+   "model_id": "claude-fable-5",
+   "display_name": "Claude Fable 5",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 128000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 10,
+    "output": 50,
+    "cache_read": 1,
+    "cache_write": 12.5
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "claude-fable-5-1",
+   "display_name": "Claude Fable 5.1",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 128000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 10,
+    "output": 50,
+    "cache_read": 0.25,
+    "cache_write": 12.5
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "claude-haiku-4-5",
+   "display_name": "Claude Haiku 4.5 (latest)",
+   "type": "reasoning",
+   "context_window": 200000,
+   "max_output_tokens": 64000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1,
+    "output": 5,
+    "cache_read": 0.1,
+    "cache_write": 1.25
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "claude-haiku-4-5-20251001",
+   "display_name": "Claude Haiku 4.5",
+   "type": "reasoning",
+   "context_window": 200000,
+   "max_output_tokens": 64000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 1,
+    "output": 5,
+    "cache_read": 0.1,
+    "cache_write": 1.25
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "claude-opus-4-5",
+   "display_name": "Claude Opus 4.5 (latest)",
+   "type": "reasoning",
+   "context_window": 200000,
+   "max_output_tokens": 64000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 5,
+    "output": 25,
+    "cache_read": 0.5,
+    "cache_write": 6.25
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "claude-opus-4-5-20251101",
+   "display_name": "Claude Opus 4.5",
+   "type": "reasoning",
+   "context_window": 200000,
+   "max_output_tokens": 64000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 5,
+    "output": 25,
+    "cache_read": 0.5,
+    "cache_write": 6.25
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "claude-opus-4-6",
+   "display_name": "Claude Opus 4.6",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 128000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 5,
+    "output": 25,
+    "cache_read": 0.5,
+    "cache_write": 6.25
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "claude-opus-4-7",
+   "display_name": "Claude Opus 4.7",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 128000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 5,
+    "output": 25,
+    "cache_read": 0.5,
+    "cache_write": 6.25
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "claude-opus-4-8",
+   "display_name": "Claude Opus 4.8",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 128000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 5,
+    "output": 25,
+    "cache_read": 0.5,
+    "cache_write": 6.25
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "claude-opus-5",
+   "display_name": "Claude Opus 5",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 128000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 5,
+    "output": 25,
+    "cache_read": 0.5,
+    "cache_write": 6.25
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "claude-opus-5-5",
+   "display_name": "Claude Opus 5.5",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 128000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 4,
+    "output": 20,
+    "cache_read": 0.2,
+    "cache_write": 5
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "claude-sonnet-4-5",
+   "display_name": "Claude Sonnet 4.5 (latest)",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 64000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3,
+    "cache_write": 3.75
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "claude-sonnet-4-5-20250929",
+   "display_name": "Claude Sonnet 4.5",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 64000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3,
+    "cache_write": 3.75
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "claude-sonnet-4-6",
+   "display_name": "Claude Sonnet 4.6",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 128000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 3,
+    "output": 15,
+    "cache_read": 0.3,
+    "cache_write": 3.75
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "claude-sonnet-5",
+   "display_name": "Claude Sonnet 5",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 128000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5
+   },
+   "source": "models.dev"
+  },
+  {
+   "model_id": "claude-sonnet-5-5",
+   "display_name": "Claude Sonnet 5.5",
+   "type": "reasoning",
+   "context_window": 1000000,
+   "max_output_tokens": 128000,
+   "capabilities": {
+    "text_input": true,
+    "text_output": true,
+    "image_input": true,
+    "audio_input": false,
+    "thinking": true,
+    "tool_calling": true,
+    "structured_output": true
+   },
+   "modalities": {
+    "input": [
+     "text",
+     "image",
+     "pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "pricing": {
+    "input": 2,
+    "output": 10,
+    "cache_read": 0.2,
+    "cache_write": 2.5
+   },
+   "source": "models.dev"
+  }
+ ]
+}

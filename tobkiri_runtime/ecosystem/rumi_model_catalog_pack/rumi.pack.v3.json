@@ -33,7 +33,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:48cfbcdd1f78a132cbb7126e2955b2300c031ef9fd605a6a0c81cca937b5bf24",
+      "artifact_hash": "sha256:02c6a26f519443f9d7bf9ccbe0eb8366eeecc31497a82d278013b45d7079b715",
       "contract_id": "rumi.resource.ai.model.catalog.v1",
       "id": "bundled-model-catalog",
       "loader": "python",
@@ -60,9 +60,9 @@
           "authoritative_owner": true,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:ea62c1fa378a046f7b9707624a6c9339782578c79f7051e846ec9ef296ddd376",
+            "artifact_digest": "sha256:245f9b196a130be900be0ff433f34acb54909aca36bc89b9e3f6ad0fd208ab11",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:dd755aee9f8f8293f9e77920842f4d13eb0314db452b43c2d7280dcc40e31e4a"
+            "source_identity": "sha256:a0a7e772d24748c7b03f4da22c1f89494a10616682b9abc0c3d9a404bc98fd39"
           },
           "catalog_revision": "sha256:23cd323554cef32f891827a9a6ddd9c75b7fd3c898d0b501c7e62b091a5001cd",
           "integrity": {
@@ -91,7 +91,7 @@
         "pack_identity": "rumi:ecosystem/rumi_model_catalog_pack",
         "provenance": {
           "build_identity": "rumi_model_catalog_pack:2.0.0",
-          "content_hash": "sha256:99bdbbc5bc8b70ee7bf988610e8601d8b7a5b4709ec12043e0e4378570700b2d",
+          "content_hash": "sha256:f52f6ea91e7ebbb825130f921da3cc275d7224645e0e8044e76fe620a45301e7",
           "signature": null,
           "trust_class": "local"
         },
@@ -126,7 +126,7 @@
       "owner": "rumi_model_catalog_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:dd755aee9f8f8293f9e77920842f4d13eb0314db452b43c2d7280dcc40e31e4a"
+      "source_identity": "sha256:a0a7e772d24748c7b03f4da22c1f89494a10616682b9abc0c3d9a404bc98fd39"
     }
   },
   "migration": {
@@ -156,7 +156,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_model_catalog_pack:2.0.0",
-    "content_hash": "sha256:99bdbbc5bc8b70ee7bf988610e8601d8b7a5b4709ec12043e0e4378570700b2d",
+    "content_hash": "sha256:f52f6ea91e7ebbb825130f921da3cc275d7224645e0e8044e76fe620a45301e7",
     "signature": null,
     "trust_class": "local"
   },
