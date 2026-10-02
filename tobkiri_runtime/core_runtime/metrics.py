@@ -20,8 +20,17 @@ from __future__ import annotations
 
 import threading
 import time
+import sys
 from contextlib import contextmanager
 from typing import Any, Dict, Generator, List, Optional, Tuple
+
+
+_this_module = sys.modules.get(__name__)
+if _this_module is not None:
+    if __name__.startswith("tobkiri_runtime."):
+        sys.modules.setdefault(__name__.removeprefix("tobkiri_runtime."), _this_module)
+    else:
+        sys.modules.setdefault(f"tobkiri_runtime.{__name__}", _this_module)
 
 
 # ============================================================
@@ -196,27 +205,27 @@ class MetricsCollector:
                 "histograms": {},
             }
 
-            for name, buckets in self._counters.items():
-                entries = []
-                for key, value in buckets.items():
-                    entries.append({
+            for name, counter_buckets in self._counters.items():
+                counter_entries: list[Dict[str, Any]] = []
+                for key, value in counter_buckets.items():
+                    counter_entries.append({
                         "labels": _labels_to_dict(key),
                         "value": value,
                     })
-                result["counters"][name] = entries
+                result["counters"][name] = counter_entries
 
-            for name, buckets in self._gauges.items():
-                entries = []
-                for key, value in buckets.items():
-                    entries.append({
+            for name, gauge_buckets in self._gauges.items():
+                gauge_entries: list[Dict[str, Any]] = []
+                for key, value in gauge_buckets.items():
+                    gauge_entries.append({
                         "labels": _labels_to_dict(key),
                         "value": value,
                     })
-                result["gauges"][name] = entries
+                result["gauges"][name] = gauge_entries
 
-            for name, buckets in self._histograms.items():
-                entries = []
-                for key, values in buckets.items():
+            for name, histogram_buckets in self._histograms.items():
+                histogram_entries: list[Dict[str, Any]] = []
+                for key, values in histogram_buckets.items():
                     if values:
                         entry: Dict[str, Any] = {
                             "labels": _labels_to_dict(key),
@@ -235,8 +244,8 @@ class MetricsCollector:
                             "max": 0.0,
                             "avg": 0.0,
                         }
-                    entries.append(entry)
-                result["histograms"][name] = entries
+                    histogram_entries.append(entry)
+                result["histograms"][name] = histogram_entries
 
             return result
 

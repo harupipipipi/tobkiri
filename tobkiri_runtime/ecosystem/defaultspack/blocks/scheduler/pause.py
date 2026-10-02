@@ -1,7 +1,4 @@
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks.scheduler.update import run as update_run
 

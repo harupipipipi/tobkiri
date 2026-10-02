@@ -15,10 +15,10 @@ class ExtensionRegistry:
         *,
         strict: bool = False,
     ) -> None:
-        if isinstance(extensions_root, (list, tuple, set)):
-            self._roots = [Path(root) for root in extensions_root]
-        else:
+        if isinstance(extensions_root, (str, Path)):
             self._roots = [Path(extensions_root)]
+        else:
+            self._roots = [Path(root) for root in extensions_root]
         self._root = self._roots[0] if self._roots else Path(".")
         self._strict = strict
         self._items: Dict[str, Dict[str, Dict[str, Any]]] = {
@@ -96,6 +96,9 @@ class ExtensionRegistry:
 
     def skills(self) -> "SkillExtensionRegistry":
         return SkillExtensionRegistry(self)
+
+    def activities(self) -> "ActivityExtensionRegistry":
+        return ActivityExtensionRegistry(self)
 
     def chat_modes(self) -> "ChatModeRegistry":
         return ChatModeRegistry(self)
@@ -312,6 +315,23 @@ class SkillExtensionRegistry:
         return self._registry.list("skill", enabled_only=enabled_only)
 
 
+class ActivityExtensionRegistry:
+    """Read validated Activity manifests from an extension registry."""
+
+    def __init__(self, registry: ExtensionRegistry) -> None:
+        self._registry = registry
+
+    def list(self, *, enabled_only: bool = True) -> List[Dict[str, Any]]:
+        """Return Activity manifests ordered by extension priority."""
+
+        return self._registry.list("activity", enabled_only=enabled_only)
+
+    def get(self, activity_id: str) -> Optional[Dict[str, Any]]:
+        """Return one Activity manifest by stable identifier."""
+
+        return self._registry.get("activity", activity_id)
+
+
 class ChatModeRegistry:
     def __init__(self, registry: ExtensionRegistry) -> None:
         self._registry = registry
@@ -348,6 +368,9 @@ class TransportRegistry:
 
     def list(self, *, enabled_only: bool = True) -> List[Dict[str, Any]]:
         return self._registry.list("transport", enabled_only=enabled_only)
+
+    def get(self, transport_id: str) -> Optional[Dict[str, Any]]:
+        return self._registry.get("transport", transport_id)
 
 
 class UISurfaceRegistry:

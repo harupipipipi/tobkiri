@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/request-frame.v1.schema.json",
+  "title": "Tobkiri untrusted invocation frame v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol", "type", "contract_id", "version_range", "operation_id", "payload", "timeout_ms"],
+  "properties": {
+    "protocol": {"const": "io.tobkiri.request.v1"},
+    "type": {"const": "invoke"},
+    "contract_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*\\.v[1-9][0-9]*$"},
+    "version_range": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[0-9A-Za-z.<>=~^,*+ -]+$"},
+    "operation_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+    "payload": {},
+    "timeout_ms": {"type": "integer", "minimum": 1, "maximum": 86400000},
+    "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9._:-]+$"},
+    "resource_references": {"type": "array", "items": {"type": "string", "pattern": "^handle:[a-z0-9][a-z0-9._-]{7,127}$"}, "uniqueItems": true}
+  }
+}

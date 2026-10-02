@@ -1,15 +1,15 @@
-import { Check, ChevronDown, Hand, Settings, Shield, ShieldCheck, ShieldAlert } from "lucide-react";
+import { Check, ChevronDown, Hand, ShieldCheck, ShieldAlert } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
-export type ActionApprovalMode = "ask" | "agent" | "full" | "custom";
+export type ActionApprovalMode = "ask" | "agent" | "full";
 
 const MENU_WIDTH = 420;
 const MENU_HEIGHT_ESTIMATE = 260;
 const MENU_GAP = 8;
 const MENU_MARGIN = 10;
 
-const OPTIONS: Array<{
+export const ACTION_APPROVAL_OPTIONS: Array<{
   mode: ActionApprovalMode;
   label: string;
   shortLabel: string;
@@ -37,13 +37,6 @@ const OPTIONS: Array<{
     description: "ネットと全ファイルへ制限なくアクセスします",
     icon: ShieldAlert,
   },
-  {
-    mode: "custom",
-    label: "カスタム（設定）",
-    shortLabel: "カスタム",
-    description: "Settings で定義された権限を使用します",
-    icon: Settings,
-  },
 ];
 
 export function ActionApprovalControl({
@@ -64,8 +57,9 @@ export function ActionApprovalControl({
   const [open, setOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const current = OPTIONS.find((option) => option.mode === mode) ?? OPTIONS[0];
-  const Icon = current.mode === "custom" ? Shield : current.icon;
+  const current = ACTION_APPROVAL_OPTIONS.find((option) => option.mode === mode)
+    ?? ACTION_APPROVAL_OPTIONS[0];
+  const Icon = current.icon;
 
   const closeMenu = useCallback(() => {
     setOpen(false);
@@ -133,8 +127,7 @@ export function ActionApprovalControl({
         style={menuStyle ?? undefined}
         className="fixed rumi-layer-command-palette overflow-y-auto rounded-[0.9rem] border border-zinc-700/70 bg-[#2b2b2b] p-1.5 shadow-xl shadow-black/40"
       >
-        <div className="flex items-center justify-between gap-2 px-3 pb-1.5 pt-1 text-zinc-400">
-          <span className="min-w-0 truncate text-[12px] leading-4">Codex アクションの承認方法</span>
+        <div className="flex items-center justify-end px-3 pb-1.5 pt-1 text-zinc-400">
           <button
             type="button"
             tabIndex={tabIndex}
@@ -147,7 +140,7 @@ export function ActionApprovalControl({
             詳細はこちら
           </button>
         </div>
-        {OPTIONS.map((option) => {
+        {ACTION_APPROVAL_OPTIONS.map((option) => {
           const OptionIcon = option.icon;
           const selected = option.mode === mode;
           return (
@@ -158,11 +151,6 @@ export function ActionApprovalControl({
               aria-checked={selected}
               tabIndex={tabIndex}
               onClick={() => {
-                if (option.mode === "custom") {
-                  closeMenu();
-                  onOpenSettings?.();
-                  return;
-                }
                 onModeChange(option.mode);
                 setOpen(false);
               }}

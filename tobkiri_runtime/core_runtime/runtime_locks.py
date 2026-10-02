@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
+from tobkiri_protocol.secure_persistence import SecureDirectory
+
 
 class LockTimeout(TimeoutError):
     """Raised when a runtime lock cannot be acquired before the timeout."""
@@ -43,8 +45,12 @@ class FileLock:
         stale_after_seconds: Optional[float] = None,
         poll_interval: float = 0.05,
         reentrant: bool = False,
+        directory: SecureDirectory | None = None,
     ) -> None:
         self.path = Path(path)
+        if directory is not None and self.path.parent != directory.root:
+            raise ValueError("lock must be an immediate child of its pinned directory")
+        self._directory = directory
         self.owner = owner or f"pid:{os.getpid()}"
         self.timeout_ms = timeout_ms
         self.stale_after_seconds = stale_after_seconds
@@ -60,7 +66,8 @@ class FileLock:
                 self._held += 1
                 return self
 
-            self.path.parent.mkdir(parents=True, exist_ok=True)
+            if self._directory is None:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
             payload = json.dumps(
                 LockInfo(
                     owner=self.owner,
@@ -74,7 +81,13 @@ class FileLock:
 
             while True:
                 try:
-                    fd = os.open(str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                    fd = (
+                        self._directory.open_lock(self.path.name, exclusive=True)
+                        if self._directory is not None
+                        else os.open(
+                            str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600
+                        )
+                    )
                     with os.fdopen(fd, "w", encoding="utf-8") as handle:
                         handle.write(payload)
                     self._held = 1
@@ -97,13 +110,19 @@ class FileLock:
             try:
                 current = self.read_info()
                 if current is None or current.get("owner") == self.owner:
-                    self.path.unlink(missing_ok=True)
+                    self._unlink(missing_ok=True)
             finally:
                 self._held = 0
 
     def read_info(self) -> Optional[dict[str, Any]]:
         try:
-            raw = self.path.read_text(encoding="utf-8")
+            raw = (
+                self._directory.read_bytes_bounded(
+                    self.path.name, max_bytes=4096
+                ).decode("utf-8")
+                if self._directory is not None
+                else self.path.read_text(encoding="utf-8")
+            )
         except FileNotFoundError:
             return None
         except OSError:
@@ -120,15 +139,23 @@ class FileLock:
             return False
         acquired_at = info.get("acquired_at")
         stale_after = info.get("stale_after_seconds", self.stale_after_seconds)
-        if not isinstance(acquired_at, (int, float)) or not isinstance(stale_after, (int, float)):
+        if not isinstance(acquired_at, (int, float)) or not isinstance(
+            stale_after, (int, float)
+        ):
             return False
         return time.time() - float(acquired_at) > float(stale_after)
+
+    def _unlink(self, *, missing_ok: bool = False) -> None:
+        if self._directory is not None:
+            self._directory.unlink(self.path.name, missing_ok=missing_ok)
+        else:
+            self.path.unlink(missing_ok=missing_ok)
 
     def break_stale(self) -> bool:
         if not self.is_stale():
             return False
         try:
-            self.path.unlink()
+            self._unlink()
             return True
         except FileNotFoundError:
             return False
@@ -154,6 +181,7 @@ class NamedLock:
         timeout_ms: int = 60000,
         stale_after_seconds: Optional[float] = None,
         reentrant: bool = False,
+        directory: SecureDirectory | None = None,
     ) -> None:
         safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in name)
         if not safe:
@@ -164,6 +192,7 @@ class NamedLock:
             timeout_ms=timeout_ms,
             stale_after_seconds=stale_after_seconds,
             reentrant=reentrant,
+            directory=directory,
         )
 
     def acquire(self) -> FileLock:

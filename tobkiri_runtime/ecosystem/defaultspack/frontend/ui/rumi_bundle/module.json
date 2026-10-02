@@ -1,7 +1,7 @@
 {
   "module_id": "rumi_bundle",
   "kind": "frontend",
-  "display_name": "Rumi Bundle Surface",
+  "display_name": "Tobkiri Bundle Surface",
   "description": "Standalone defaultspack bundle metadata for a future desktop-app surface that opens the pack frontend on its assigned port.",
   "dependencies": [],
   "default_state": "experimental",
@@ -18,7 +18,7 @@
     },
     "app": {
       "id": "defaultspack",
-      "name": "Rumi Defaultspack",
+      "name": "Tobkiri",
       "icon": "/static/assets/icons/defaultspack-icon.png"
     }
   }

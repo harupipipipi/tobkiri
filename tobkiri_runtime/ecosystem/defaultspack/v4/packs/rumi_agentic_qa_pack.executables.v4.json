@@ -1,0 +1,8 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "rumi_agentic_qa_pack",
+  "source_identity": "sha256:02ff4f8ba4f1dd774df087399087a0429e5697ace02df2e46b1679c1afadda80",
+  "variants": [],
+  "materialization_catalog_digest": "sha256:257f5a932471c55e94a9eb2c4e670e255d3a3b43b5977fc0e6bee7857a92ee49",
+  "catalog_digest": "sha256:179a8713fb599f499f424432f299225a9485aed1c77d429317822b251c91eee5"
+}
