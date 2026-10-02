@@ -1,0 +1,209 @@
+{
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "pack": {
+    "id": "tobkiri_cloud_workspace_pack",
+    "version": "1.0.0",
+    "kind": "host_extension",
+    "display_name": "Tobkiri Cloud Workspace",
+    "artifact_digest": "sha256:c2d565a1763bf30b65965f4cf272dcbe41878205aa442dabcd966d96b11cafbf"
+  },
+  "functions": [
+    {
+      "id": "tobkiri_cloud_workspace_pack.resource",
+      "implementation_digest": "sha256:1bcb7281ccbeb22f1e2e12a81e974a22f03d407eda0dd9e4be128e16462e7e97",
+      "contract_revision_digest": "sha256:7dec2dbf79d4cc694a7e991593b0a059738593a84274fcb91c6d41e19ca47b67",
+      "operations": [
+        "tobkiri_cloud_workspace_pack.workspace-resource"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "id": "tobkiri_cloud_workspace_pack.manage",
+      "implementation_digest": "sha256:1bcb7281ccbeb22f1e2e12a81e974a22f03d407eda0dd9e4be128e16462e7e97",
+      "contract_revision_digest": "sha256:8d473a66c1b37eb10fe118bf62f98f14d3bab96370dbf24819331e0a6ab6dd8f",
+      "operations": [
+        "tobkiri_cloud_workspace_pack.workspace-manage"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.resource.cloud.workspace.v1",
+      "revision_digest": "sha256:7dec2dbf79d4cc694a7e991593b0a059738593a84274fcb91c6d41e19ca47b67",
+      "operations": [
+        "tobkiri_cloud_workspace_pack.workspace-resource"
+      ]
+    },
+    {
+      "contract_id": "tobkiri.action.cloud.workspace.v1",
+      "revision_digest": "sha256:8d473a66c1b37eb10fe118bf62f98f14d3bab96370dbf24819331e0a6ab6dd8f",
+      "operations": [
+        "tobkiri_cloud_workspace_pack.workspace-manage"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "runtime/__init__.py",
+      "digest": "sha256:0b0afddeded6cae8379e760270af0457f1b3e963809e1f2049c7c50fe4630787",
+      "kind": "executable"
+    },
+    {
+      "path": "runtime/host.py",
+      "digest": "sha256:1bcb7281ccbeb22f1e2e12a81e974a22f03d407eda0dd9e4be128e16462e7e97",
+      "kind": "executable"
+    },
+    {
+      "path": "runtime/capsule.py",
+      "digest": "sha256:b2875bdaf5dab1927bc37c0173c2a53d99f3a86da8539d832c22e9bad20a0286",
+      "kind": "executable"
+    },
+    {
+      "path": "runtime/store.py",
+      "digest": "sha256:758fea08a1944d9ef05225624fb5ebfa117b3000ca8053557ef6a74bc2d82eeb",
+      "kind": "executable"
+    },
+    {
+      "path": "runtime/service.py",
+      "digest": "sha256:c22890f998295d152677e0477128b65848e5fc12194df69e27e3eca9912bff62",
+      "kind": "executable"
+    },
+    {
+      "path": "runtime/recipe.py",
+      "digest": "sha256:a9bf02cc84216f16e0a5105eb1db658ae209bbe8b3765cdb81c99b0af0845bbe",
+      "kind": "executable"
+    },
+    {
+      "path": "container/Dockerfile",
+      "digest": "sha256:a3fbc537756ea95b0e68b5efbcf4612d06ee8337aa1311757f72553a1e39e5ab",
+      "kind": "sidecar"
+    },
+    {
+      "path": "container/runtime.py",
+      "digest": "sha256:11d137b46fb789f2ff403651c8bc6d9ba09cbb43d5991da5a6eeef2143bb07cb",
+      "kind": "sidecar"
+    },
+    {
+      "path": "container/recipe.v1.json",
+      "digest": "sha256:2413505a6761c38ffeb96a8fe829365a67964e811ebe150fd75549f8c4e0c7f3",
+      "kind": "sidecar"
+    },
+    {
+      "path": "pack-source.v1.json",
+      "digest": "sha256:257c2b98275f0afc32824a51f66a7d1bf6c110a689de11768d5e6153268f3f2d",
+      "kind": "sidecar"
+    },
+    {
+      "path": "frontend/contributions/composer.json",
+      "digest": "sha256:1a97a8878a44aa07773bc22f0e6fecc480cc3855e863236993ffd47a107f0d33",
+      "kind": "sidecar"
+    },
+    {
+      "path": "frontend/contributions/workspace.json",
+      "digest": "sha256:a73e841f2020ce0217f1810088d7178987360f962796e4c1c27fefd3af65182a",
+      "kind": "sidecar"
+    }
+  ],
+  "requirements": {
+    "pack_dependencies": {},
+    "contract_dependencies": [
+      {
+        "contract_id": "tobkiri.resource.workspace.v1",
+        "version_range": ">=1.0.0 <2.0.0",
+        "cardinality": "one",
+        "optional": true,
+        "operations": [
+          "rumi_workspace_mount_pack.workspace-resource"
+        ]
+      },
+      {
+        "contract_id": "tobkiri.service.file.inspect.v1",
+        "version_range": ">=1.0.0 <2.0.0",
+        "cardinality": "one",
+        "optional": true,
+        "operations": [
+          "rumi_file_inspect_pack.file-inspect"
+        ]
+      }
+    ],
+    "capabilities": [
+      "workspace.metadata.read",
+      "file.inspect",
+      "cloud.workspace.resource",
+      "cloud.workspace.manage"
+    ],
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "secrets": [],
+    "execution_boundary": "host_brokered",
+    "approval_policy": "capability_gated",
+    "workspace_boundary": "host_brokered"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "tobkiri_cloud_workspace_pack.workspace-resource",
+      "owner": "tobkiri_cloud_workspace_pack",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": [
+        "capability:cloud.workspace.resource"
+      ],
+      "contract_reference": "tobkiri.resource.cloud.workspace.v1",
+      "provider_id": "tobkiri_cloud_workspace_pack.resource"
+    },
+    {
+      "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage",
+      "owner": "tobkiri_cloud_workspace_pack",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": [
+        "capability:cloud.workspace.manage",
+        "host:brokered-execution"
+      ],
+      "contract_reference": "tobkiri.action.cloud.workspace.v1",
+      "provider_id": "tobkiri_cloud_workspace_pack.manage"
+    }
+  ],
+  "provider_catalog": [
+    {
+      "provider_id": "tobkiri_cloud_workspace_pack.resource",
+      "owner": "tobkiri_cloud_workspace_pack",
+      "contract_reference": "tobkiri.resource.cloud.workspace.v1",
+      "operations": [
+        "tobkiri_cloud_workspace_pack.workspace-resource"
+      ]
+    },
+    {
+      "provider_id": "tobkiri_cloud_workspace_pack.manage",
+      "owner": "tobkiri_cloud_workspace_pack",
+      "contract_reference": "tobkiri.action.cloud.workspace.v1",
+      "operations": [
+        "tobkiri_cloud_workspace_pack.workspace-manage"
+      ]
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:52d3563a461adf581613241cd096899034ac2dcbe5265327f90b8a639b82438e",
+    "artifact_set_digest": "sha256:dc926a62ddd0512ad33e6fdb4fed65c375e7f49140bf12fa88d34000afd9d6e6",
+    "contract_catalog_digest": "sha256:5a6be6c3d589950a343861f0287c4f6f1a88553f0620943321ffb7f83ca8ee84"
+  },
+  "provenance": {
+    "source_kind": "repository",
+    "source_path": "ecosystem/tobkiri_cloud_workspace_pack/pack-source.v1.json",
+    "source_digest": "sha256:52d3563a461adf581613241cd096899034ac2dcbe5265327f90b8a639b82438e",
+    "repository_commit": "1526e1f8e63124c0a5637f6a2f42be6e8c3fd692",
+    "repository_tree": "d42d3d6caf0866e1f8131244883fcb23da2a0f6943353714396729fc51da141d",
+    "generator": "tobkiri-protocol",
+    "generator_version": "1.0.0",
+    "normative": false,
+    "evidence": [],
+    "schema": "io.tobkiri.provenance.v1"
+  },
+  "migration": {
+    "compatibility": "none",
+    "legacy_ids": [],
+    "removal_wave": 0,
+    "sunset_at": "2027-12-31"
+  }
+}

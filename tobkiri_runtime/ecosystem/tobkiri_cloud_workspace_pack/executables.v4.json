@@ -1,0 +1,255 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "tobkiri_cloud_workspace_pack",
+  "source_identity": "sha256:52d3563a461adf581613241cd096899034ac2dcbe5265327f90b8a639b82438e",
+  "variants": [
+    {
+      "variant_id": "tobkiri_cloud_workspace_pack.resource.python",
+      "function_id": "tobkiri_cloud_workspace_pack.resource",
+      "implementation_path": "runtime/host.py",
+      "implementation_digest": "sha256:1bcb7281ccbeb22f1e2e12a81e974a22f03d407eda0dd9e4be128e16462e7e97",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.cloud.workspace.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:7dec2dbf79d4cc694a7e991593b0a059738593a84274fcb91c6d41e19ca47b67",
+          "operation_id": "tobkiri_cloud_workspace_pack.workspace-resource",
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              },
+              "operation": {
+                "enum": [
+                  "get_for_conversation",
+                  "export",
+                  "verify"
+                ]
+              },
+              "conversation_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              },
+              "workspace_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              },
+              "expected_revision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "profile_id",
+              "operation"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "operation": {
+                    "const": "get_for_conversation"
+                  }
+                },
+                "required": [
+                  "conversation_id"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "export"
+                  }
+                },
+                "required": [
+                  "expected_revision",
+                  "workspace_id"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "verify"
+                  }
+                },
+                "required": [
+                  "expected_revision",
+                  "workspace_id"
+                ]
+              }
+            ]
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "read",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "tobkiri_cloud_workspace_pack.manage.python",
+      "function_id": "tobkiri_cloud_workspace_pack.manage",
+      "implementation_path": "runtime/host.py",
+      "implementation_digest": "sha256:1bcb7281ccbeb22f1e2e12a81e974a22f03d407eda0dd9e4be128e16462e7e97",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.cloud.workspace.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:8d473a66c1b37eb10fe118bf62f98f14d3bab96370dbf24819331e0a6ab6dd8f",
+          "operation_id": "tobkiri_cloud_workspace_pack.workspace-manage",
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              },
+              "operation": {
+                "enum": [
+                  "initialize",
+                  "capture",
+                  "import",
+                  "restore",
+                  "prepare_handoff"
+                ]
+              },
+              "conversation_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              },
+              "expected_revision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "paths": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32768
+              },
+              "archive_base64": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 13981016
+              },
+              "expected_receiver_head": {
+                "type": "string",
+                "maxLength": 71,
+                "pattern": "^(?:sha256:[0-9a-f]{64})?$"
+              }
+            },
+            "required": [
+              "profile_id",
+              "operation"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "operation": {
+                    "const": "initialize"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "expected_revision"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "capture"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "expected_revision",
+                  "paths"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "import"
+                  }
+                },
+                "required": [
+                  "archive_base64",
+                  "conversation_id",
+                  "expected_revision"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "restore"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "expected_revision"
+                ]
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "prepare_handoff"
+                  }
+                },
+                "required": [
+                  "conversation_id",
+                  "expected_receiver_head",
+                  "expected_revision"
+                ]
+              }
+            ]
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "write",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    }
+  ],
+  "catalog_digest": "sha256:ee6a340f029d539b3b4325c37632070d61323a88a8f2f7a5a8b491bac0ff3cab"
+}
