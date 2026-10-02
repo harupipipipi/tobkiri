@@ -352,6 +352,40 @@ def test_reset_does_not_manufacture_completion(owner: ConversationStore) -> None
     assert completion_source(owner.get("conversation"))["completed_at_ms"] is None
 
 
+@pytest.mark.parametrize("head", ["prior_user", "empty"])
+def test_actual_branch_head_change_invalidates_archive_eligibility(
+    owner: ConversationStore, head: str,
+) -> None:
+    _complete(owner)
+    current = owner.get("conversation")
+    runtime = ConversationLifecycle(
+        PublicClient(owner), "fixture", clock_ms=lambda: BASE_MS + 3_600_000,
+    )
+    runtime.configure("conversation", ARCHIVE_MODE)
+    current = owner.get("conversation")
+    owner.update(
+        "conversation",
+        {"current_node_id": current["messages"][0]["id"] if head == "prior_user" else None},
+        expected_conversation_revision=current["conversation_revision"],
+    )
+    source = completion_source(owner.get("conversation"))
+    assert source["state"] == "unknown"
+    assert source["completed_at_ms"] == BASE_MS
+    assert source["archive_due_at_ms"] is None
+    assert runtime.tick()["count"] == 0
+
+
+def test_same_branch_head_does_not_move_completion_instant(owner: ConversationStore) -> None:
+    _complete(owner)
+    current = owner.get("conversation")
+    owner.update(
+        "conversation", {"current_node_id": current["current_node_id"]},
+        expected_conversation_revision=current["conversation_revision"],
+    )
+    assert completion_source(owner.get("conversation"))["state"] == "completed"
+    assert completion_source(owner.get("conversation"))["completed_at_ms"] == BASE_MS
+
+
 def test_timezone_and_dst_are_utc_durations() -> None:
     completed = datetime(2026, 11, 1, 1, 30, tzinfo=ZoneInfo("America/New_York"), fold=0)
     received = datetime(2026, 11, 1, 1, 30, tzinfo=ZoneInfo("America/New_York"), fold=1)
