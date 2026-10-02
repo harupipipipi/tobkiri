@@ -16,6 +16,7 @@ const LAST_STATUS_KEY = "rumiBrowserCompanionLastStatus";
 const ALARM_NAME = "rumi-browser-companion-poll";
 const BRIDGE_POLL_PATH = "/api/tools/browser-companion/bridge/poll";
 const BRIDGE_RESULT_PATH = "/api/tools/browser-companion/bridge/result";
+const BRIDGE_REQUEST_TIMEOUT_MS = 15_000;
 const SEARCH_HOME_ROUTE_STATE_KEY = "rumiSearchHomeRouteStateByTab";
 const SEARCH_HOME_ROUTE_MAX_AGE_MS = 1000 * 60 * 60 * 6;
 const SEARCH_HOME_MAX_CLOCK_SKEW_MS = 30_000;
@@ -24,6 +25,7 @@ const SEARCH_HOME_TRUSTED_ORIGINS = Object.freeze(
     ? chrome.runtime.getManifest().x_rumi_search_home_origins
     : []
 );
+let pollInFlight = null;
 
 chrome.runtime.onInstalled.addListener(async () => {
   const settings = await ensureSettings();
@@ -203,9 +205,18 @@ async function getStatus() {
 }
 
 async function setStatus(status) {
+  const stored = await chrome.storage.local.get(LAST_STATUS_KEY);
+  const previous = stored[LAST_STATUS_KEY];
+  const updatedAt = new Date().toISOString();
+  const successfulContact = status.ok && status.state === "connected";
   const withTimestamp = {
     ...status,
-    updatedAt: new Date().toISOString()
+    updatedAt,
+    lastSuccessfulContactAt: successfulContact
+      ? updatedAt
+      : status.lastSuccessfulContactAt ||
+        previous?.lastSuccessfulContactAt ||
+        (previous?.ok && previous?.state === "connected" ? previous.updatedAt : null)
   };
   await chrome.storage.local.set({ [LAST_STATUS_KEY]: withTimestamp });
   return withTimestamp;
@@ -219,7 +230,20 @@ function normalizePollInterval(value) {
   return Math.max(1, Math.round(numeric));
 }
 
-async function pollBridge(trigger) {
+function pollBridge(trigger) {
+  if (pollInFlight) {
+    return pollInFlight;
+  }
+  const operation = runPollBridge(trigger).finally(() => {
+    if (pollInFlight === operation) {
+      pollInFlight = null;
+    }
+  });
+  pollInFlight = operation;
+  return operation;
+}
+
+async function runPollBridge(trigger) {
   const settings = await getSettings();
   const identity = await ensureClientIdentity();
   if (!settings.serverUrl || !settings.pairingToken) {
@@ -227,7 +251,13 @@ async function pollBridge(trigger) {
       ok: false,
       state: "not_configured",
       trigger,
-      message: "Set server URL and pairing token in Options."
+      serverUrl: settings.serverUrl,
+      profileLabel: settings.profileLabel || settings.clientLabel || "",
+      pollIntervalMinutes: settings.pollIntervalMinutes,
+      diagnostic: {
+        code: "BRIDGE_NOT_CONFIGURED",
+        request: "poll"
+      }
     });
   }
 
@@ -240,19 +270,15 @@ async function pollBridge(trigger) {
   };
 
   try {
-    const response = await fetch(joinUrl(settings.serverUrl, BRIDGE_POLL_PATH), {
+    const envelope = await fetchBridgeEnvelope(joinUrl(settings.serverUrl, BRIDGE_POLL_PATH), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${settings.pairingToken}`
       },
       body: JSON.stringify(requestBody)
-    });
-    const envelope = await safeJson(response);
+    }, "poll");
     const payload = unwrapBridgePayload(envelope);
-    if (!response.ok || envelope.status === "error") {
-      throw new Error(`Bridge poll failed (${response.status}): ${JSON.stringify(envelope)}`);
-    }
 
     const commands = normalizeCommands(payload);
     const results = [];
@@ -269,15 +295,20 @@ async function pollBridge(trigger) {
       state: "connected",
       trigger,
       commandCount: commands.length,
-      serverUrl: settings.serverUrl
+      serverUrl: settings.serverUrl,
+      profileLabel: settings.profileLabel || settings.clientLabel || metadata.profile_label || "",
+      pollIntervalMinutes: settings.pollIntervalMinutes
     });
   } catch (error) {
+    const failure = normalizeBridgeFailure(error);
     return setStatus({
       ok: false,
-      state: "bridge_error",
+      state: failure.state,
       trigger,
       serverUrl: settings.serverUrl,
-      message: String(error && error.message ? error.message : error)
+      profileLabel: settings.profileLabel || settings.clientLabel || metadata.profile_label || "",
+      pollIntervalMinutes: settings.pollIntervalMinutes,
+      diagnostic: failure.diagnostic
     });
   }
 }
@@ -370,7 +401,7 @@ async function getTabsSummary() {
 }
 
 async function postCommandResults(settings, client, results) {
-  const response = await fetch(joinUrl(settings.serverUrl, BRIDGE_RESULT_PATH), {
+  await fetchBridgeEnvelope(joinUrl(settings.serverUrl, BRIDGE_RESULT_PATH), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -383,11 +414,7 @@ async function postCommandResults(settings, client, results) {
       client,
       results
     })
-  });
-  const envelope = await safeJson(response);
-  if (!response.ok || envelope.status === "error") {
-    throw new Error(`Bridge result post failed (${response.status}): ${JSON.stringify(envelope)}`);
-  }
+  }, "result");
 }
 
 async function executeBridgeCommand(command) {
@@ -707,13 +734,116 @@ async function resolveTabId(candidate) {
 async function safeJson(response) {
   const text = await response.text();
   if (!text) {
-    return {};
+    throw createBridgeFailure(
+      "malformed_response",
+      "MALFORMED_BRIDGE_RESPONSE",
+      "Bridge response body was empty"
+    );
   }
   try {
-    return JSON.parse(text);
+    const value = JSON.parse(text);
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw createBridgeFailure(
+        "malformed_response",
+        "MALFORMED_BRIDGE_RESPONSE",
+        "Bridge response was not an object"
+      );
+    }
+    return value;
   } catch (error) {
-    return { raw: text, parse_error: String(error && error.message ? error.message : error) };
+    if (error?.bridgeFailure) {
+      throw error;
+    }
+    throw createBridgeFailure(
+      "malformed_response",
+      "MALFORMED_BRIDGE_RESPONSE",
+      "Bridge response was not valid JSON"
+    );
   }
+}
+
+async function fetchBridgeEnvelope(url, options, requestKind) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), BRIDGE_REQUEST_TIMEOUT_MS);
+  let response;
+  let envelope;
+  try {
+    response = await fetch(url, { ...options, signal: controller.signal });
+    if (response.ok) {
+      envelope = await safeJson(response);
+    }
+  } catch (error) {
+    if (error?.bridgeFailure) {
+      throw error;
+    }
+    if (error?.name === "AbortError") {
+      throw createBridgeFailure(
+        "timeout",
+        "BRIDGE_REQUEST_TIMEOUT",
+        "Bridge request timed out",
+        { request: requestKind }
+      );
+    }
+    throw createBridgeFailure(
+      "bridge_offline",
+      "BRIDGE_UNAVAILABLE",
+      "Bridge request could not connect",
+      { request: requestKind }
+    );
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (!response.ok || envelope.status === "error") {
+    const state = response.status === 401 || response.status === 403
+      ? "pairing_rejected"
+      : response.status === 409 || response.status === 426
+        ? "version_incompatible"
+        : response.status >= 500
+          ? "bridge_offline"
+          : "bridge_error";
+    const code = state === "pairing_rejected"
+      ? "PAIRING_REJECTED"
+      : state === "version_incompatible"
+        ? "VERSION_INCOMPATIBLE"
+        : state === "bridge_offline"
+          ? "BRIDGE_UNAVAILABLE"
+          : "BRIDGE_REQUEST_REJECTED";
+    throw createBridgeFailure(state, code, "Bridge rejected the request", {
+      request: requestKind,
+      httpStatus: response.status
+    });
+  }
+  if (envelope.status !== "ok") {
+    throw createBridgeFailure(
+      "malformed_response",
+      "MALFORMED_BRIDGE_RESPONSE",
+      "Bridge response omitted its status",
+      { request: requestKind, httpStatus: response.status }
+    );
+  }
+  return envelope;
+}
+
+function createBridgeFailure(state, code, message, diagnostic = {}) {
+  const error = new Error(message);
+  error.bridgeFailure = true;
+  error.state = state;
+  error.diagnostic = { code, ...diagnostic };
+  return error;
+}
+
+function normalizeBridgeFailure(error) {
+  if (error?.bridgeFailure) {
+    return {
+      state: error.state || "bridge_error",
+      diagnostic: error.diagnostic || { code: "BRIDGE_REQUEST_FAILED" }
+    };
+  }
+  return {
+    state: "bridge_error",
+    diagnostic: { code: "BRIDGE_REQUEST_FAILED" }
+  };
 }
 
 function joinUrl(base, path) {

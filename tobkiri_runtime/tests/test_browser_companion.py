@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -523,6 +525,58 @@ def test_browser_companion_extension_keeps_pairing_token_in_local_storage():
     assert "profileLabel" in options
     assert 'name="profileLabel"' in options_html
     assert "chrome.storage.sync.set({ [STORAGE_KEY]: settings })" not in options
+
+
+def test_browser_companion_options_action_state_regressions():
+    extension_root = _browser_companion_extension_root()
+    node = shutil.which("node")
+
+    assert node is not None, "Node.js is required for Browser Companion Options tests"
+    completed = subprocess.run(
+        [
+            node,
+            "--test",
+            "options.test.mjs",
+            "background_status.test.mjs",
+        ],
+        cwd=extension_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+def test_browser_companion_background_status_is_typed_and_token_safe():
+    background = (_browser_companion_extension_root() / "background.js").read_text(
+        encoding="utf-8"
+    )
+
+    for needle in (
+        "BRIDGE_REQUEST_TIMEOUT_MS",
+        "lastSuccessfulContactAt",
+        '"pairing_rejected"',
+        '"version_incompatible"',
+        '"bridge_offline"',
+        '"malformed_response"',
+        "MALFORMED_BRIDGE_RESPONSE",
+        "PAIRING_REJECTED",
+        "fetchBridgeEnvelope",
+        "let pollInFlight = null",
+        "if (pollInFlight)",
+        "return pollInFlight",
+        "runPollBridge(trigger)",
+    ):
+        assert needle in background
+
+    assert "JSON.stringify(envelope)" not in background
+    assert "pairingToken" not in background[
+        background.index("async function setStatus") : background.index(
+            "function normalizePollInterval"
+        )
+    ]
 
 
 def test_browser_companion_bridge_routes_support_batch_results(tmp_path, monkeypatch):

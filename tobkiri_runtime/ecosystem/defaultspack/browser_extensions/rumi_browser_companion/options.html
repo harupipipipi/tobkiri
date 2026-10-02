@@ -3,15 +3,15 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Rumi Browser Companion Options</title>
+    <title>Tobkiri Browser Companion Options</title>
     <link rel="stylesheet" href="options.css">
   </head>
   <body>
     <main class="page">
       <section class="card">
-        <h1>Rumi Browser Companion</h1>
-        <p class="lede">Configure the local Rumi bridge endpoint and pairing token used by this browser.</p>
-        <form id="settings-form">
+        <h1>Tobkiri Browser Companion</h1>
+        <p class="lede">Configure the local Tobkiri bridge endpoint and pairing token used by this browser.</p>
+        <form id="settings-form" aria-busy="false">
           <label class="field">
             <span>Server URL</span>
             <input id="server-url" name="serverUrl" type="url" placeholder="http://127.0.0.1:8766" required>
@@ -22,7 +22,7 @@
           </label>
           <label class="field">
             <span>Client Label</span>
-            <input id="client-label" name="clientLabel" type="text" placeholder="Optional name shown to Rumi">
+            <input id="client-label" name="clientLabel" type="text" placeholder="Optional name shown to Tobkiri">
           </label>
           <label class="field">
             <span>Profile Label</span>
@@ -33,11 +33,46 @@
             <input id="poll-interval" name="pollIntervalMinutes" type="number" min="1" step="1" value="1" required>
           </label>
           <div class="actions">
-            <button type="submit">Save Settings</button>
+            <button id="save-settings" type="submit">Save Settings</button>
             <button id="poll-now" type="button" class="secondary">Poll Bridge Now</button>
           </div>
         </form>
-        <div id="status" class="status" role="status" aria-live="polite"></div>
+        <section id="action-feedback" class="feedback-panel" data-action="load" data-state="idle" aria-labelledby="action-feedback-title">
+          <div class="status-heading">
+            <h2 id="action-feedback-title">Options action</h2>
+            <span id="action-state" class="state-badge idle">Idle</span>
+          </div>
+          <ul class="action-state-list" aria-label="Options action states">
+            <li>Load <span id="load-state" class="state-badge idle">Idle</span></li>
+            <li>Save <span id="save-state" class="state-badge idle">Idle</span></li>
+            <li>Poll <span id="poll-state" class="state-badge idle">Idle</span></li>
+          </ul>
+          <p id="action-status" class="status-message" role="status" aria-live="polite">Ready.</p>
+          <button id="retry-action" type="button" class="secondary compact" hidden>Retry</button>
+          <details id="diagnostic-disclosure" class="diagnostics" hidden>
+            <summary>Diagnostic details</summary>
+            <p>Safe technical details are shown without the pairing token.</p>
+            <pre id="diagnostic-details" tabindex="0"></pre>
+            <div class="copy-row">
+              <button id="copy-diagnostic" type="button" class="secondary compact">Copy diagnostics</button>
+              <span id="copy-feedback" role="status" aria-live="polite"></span>
+            </div>
+          </details>
+        </section>
+        <section class="connection-panel" aria-labelledby="connection-title">
+          <div class="status-heading">
+            <h2 id="connection-title">Connection status</h2>
+            <span id="connection-state" class="state-badge idle">Not contacted</span>
+          </div>
+          <p id="status" class="status-message" role="status" aria-live="polite">The bridge has not been contacted yet.</p>
+          <dl class="status-grid">
+            <div><dt>Endpoint</dt><dd id="status-endpoint">Not configured</dd></div>
+            <div><dt>Profile</dt><dd id="status-profile">Default browser profile</dd></div>
+            <div><dt>Last successful contact</dt><dd><time id="status-last-contact">No successful contact yet</time></dd></div>
+            <div><dt>Freshness</dt><dd id="status-freshness" class="stale">Stale — no successful contact</dd></div>
+            <div><dt>Status updated</dt><dd><time id="status-updated">No status update yet</time></dd></div>
+          </dl>
+        </section>
       </section>
       <section class="card">
         <h2>Capabilities</h2>
