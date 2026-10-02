@@ -9,7 +9,7 @@ from typing import Any, Callable, Mapping
 from . import goal, inbox, review, todo
 from .ports import Ports
 from .schedules import Schedules
-from .store import Conflict, PlanStore, digest, identifier, integer
+from .store import Conflict, PlanStore, digest, identifier, integer, new_plan
 from .workflow import ReviewWorkflow
 
 
@@ -74,6 +74,28 @@ class WorkPlanService:
         arguments = dict(values)
         arguments["conversation_revision"] = conversation["conversation_revision"]
         now = self.clock()
+        if action == "settings.configure":
+            if "snapshot_receipt" in arguments["settings"]:
+                raise PermissionError("snapshot receipt is captured by the model owner")
+            base = (old or new_plan(plan_id, self.store.profile_id))["settings"]
+            candidate = {**base, **arguments["settings"]}
+            model = candidate.get("model_policy", {})
+            if model.get("mode") == "snapshot" and (
+                not candidate.get("snapshot_receipt")
+                or "model_policy" in arguments["settings"]
+                or "thinking_policy" in arguments["settings"]
+            ):
+                candidate.pop("snapshot_receipt", None)
+                resolved = self.ports.resolve_model(candidate, conversation)
+                arguments["settings"] = {
+                    **arguments["settings"],
+                    "snapshot_receipt": {
+                        "contract_version": resolved["contract_version"],
+                        "resolved_profile_id": resolved["resolved_profile_id"],
+                        "thinking_level": resolved["thinking_level"],
+                        "store_revision": resolved["store_revision"],
+                    },
+                }
         if action == "goal.commit_replace":
             actor.require("goal.replace")
             if not old:
@@ -113,6 +135,8 @@ class WorkPlanService:
             if plan["conversation_id"] is None:
                 plan["conversation_id"] = conversation_id
                 plan["owner_actor"] = actor.principal_id
+                plan["settings"]["executor"] = f"conversation:{conversation_id}"
+                plan["settings"]["reviewer"] = f"review:{conversation_id}"
             if action == "goal.set":
                 return goal.set_goal(plan, arguments, actor.principal_id, now)
             if action == "goal.refine":
@@ -162,7 +186,7 @@ class WorkPlanService:
             if action == "settings.configure":
                 actor.require("plan.configure")
                 updates = arguments["settings"]
-                if set(updates) - set(plan["settings"]):
+                if set(updates) - set(plan["settings"]) - {"snapshot_receipt"}:
                     raise ValueError("settings fields are invalid")
                 candidate = {**plan["settings"], **updates}
                 interval = integer(candidate["interval_seconds"], minimum=60)
@@ -314,6 +338,12 @@ class WorkPlanService:
         plan = self.store.get(identifier(values["plan_id"]))
         if not plan or actor.principal_id != plan["owner_actor"]:
             raise PermissionError("inbox acknowledgement caller does not match")
+        identity = {key: value for key, value in values.items() if key != "expected_revision"}
+        replay = self.store.replay(plan["id"], values["operation_id"], identity, actor.principal_id)
+        if replay is not None:
+            if replay["plan"]["generation"] != plan["generation"]:
+                raise Conflict("accepted input belongs to an obsolete generation")
+            return {**replay, "plan": plan, "deduplicated": True}
         initial = values.get("accepted_input")
         if not isinstance(initial, Mapping):
             raise ValueError("canonical accepted input is required")
@@ -330,7 +360,7 @@ class WorkPlanService:
             plan["id"],
             values["expected_revision"],
             values["operation_id"],
-            values,
+            identity,
             actor.principal_id,
             lambda current: inbox.acknowledge(current, values),
             guard=self.guard,
@@ -425,6 +455,39 @@ class WorkPlanService:
             return {"status": "reconciliation_required", "run_id": run_id}
         return {**finished, "run_id": run_id}
 
+    def reminder_job_status(
+        self, values: Mapping[str, Any], actor: Actor, *, cancel: bool = False
+    ) -> dict[str, Any]:
+        """Prove durable enqueue or fence the exact unaccepted delivery occurrence."""
+        actor.require("plan.review")
+        plan = self.store.get(identifier(values["payload"]["plan_id"]))
+        if plan is None or plan["status"] != "active":
+            return {"status": "cancelled"}
+        event_id = f"delivery-{digest(values['occurrence_id'])[:24]}"
+        event = next((item for item in plan["inbox"] if item["id"] == event_id), None)
+        if event is None:
+            return {"status": "reconciliation_required"}
+        if cancel and event["status"] in {"pending", "received"}:
+            self.store.mutate(
+                plan["id"],
+                plan["revision"],
+                f"cancel-{digest(event_id)[:24]}",
+                {"event_id": event_id},
+                actor.principal_id,
+                lambda current: (
+                    next(item for item in current["inbox"] if item["id"] == event_id).update(
+                        status="cancelled"
+                    )
+                    or {}
+                ),
+                guard=self.guard,
+            )
+            return {"status": "cancelled", "delivery_status": "cancelled"}
+        return {
+            "status": "cancelled" if event["status"] in {"cancelled", "expired"} else "completed",
+            "delivery_status": event["status"],
+        }
+
     def dispatch(self, values: Mapping[str, Any], actor: Actor) -> dict[str, Any]:
         """Use one common delivery/review job adapter and deduplicate occurrences."""
         actor.require("plan.review")
@@ -460,7 +523,24 @@ class WorkPlanService:
                 ),
                 guard=self.guard,
             )
-            return {**delivered, "status": "completed", "delivery_status": "pending"}
+            current = self.store.get(plan["id"])
+            event = next(
+                (
+                    item
+                    for item in (current or {}).get("inbox", [])
+                    if item["id"] == f"delivery-{digest(occurrence)[:24]}"
+                ),
+                None,
+            )
+            if event is None:
+                return {"status": "reconciliation_required"}
+            return {
+                **delivered,
+                "status": "cancelled"
+                if event["status"] in {"cancelled", "expired"}
+                else "completed",
+                "delivery_status": event["status"],
+            }
         if values["action_id"] != "agent-control.review":
             raise ValueError("job action is unknown")
         if payload["generation"] != plan["generation"] or not plan["settings"]["enabled"]:

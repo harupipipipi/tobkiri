@@ -11,7 +11,12 @@ The Pack owns only its SQLite CAS/replay state. It reads conversations through
 `tobkiri.action.turn.saved.v1`. It opens no other Pack's data files or imports its
 implementation. There is no timer thread or network client in this Pack.
 
-New tracked Goal/Todo records reconcile one 600-second review reservation.
+New conversation scopes default to the primary `conversation:<id>` executor,
+an independent `review:<id>` reviewer context, and inherited model policy.
+Existing explicit roles, settings and OFF are preserved. Tracked Goal/Todo
+records reconcile one 600-second review reservation only through the selected
+public scheduler and ordinary approved authority; this Pack grants no recurring
+permission and enables no global setting.
 Each review occurrence executes an editable captured Workflow v4 definition,
 which invokes the Pack’s independent inspection operation with one attempt.
 Ordinary edits keep its due time. A shorter interval can advance the next due;
@@ -29,10 +34,20 @@ Immediate instructions, scheduled reminders and drift guidance use the same
 durable inbox. Consumption is limited to before-turn/between-tool boundaries,
 exact conversation/recipient/generation and input identity. Acknowledgements
 are atomic and idempotent. Defaults appends instructions as a separately labeled
-user context item without changing stored user text. The canonical coordinator acknowledges only a public conversation-owner saved
+user context item without changing stored user text. Caller task context is
+removed before the selected captured provider supplies its own projection. The
+canonical coordinator acknowledges only a public conversation-owner saved
 receipt whose immutable input digest matches the exact prepared context. Model
 success alone never acknowledges a batch; failed calls retain it unconfirmed.
 Paused/cancelled plans never wake merely because a reminder arrived.
+Saved retries recover the exact owner-captured projection through the original
+source input digest, including after restart or provider disablement. They do not
+prepare a new inbox batch or repeat paid execution. A recovered projection without
+a new verified acknowledgement remains visibly pending.
+
+Snapshot model policy captures the model owner's version, resolved profile,
+thinking level and store revision when configured. The receipt persists across
+restart and is displayed through the public plan resource; callers cannot inject it.
 
 Whole goal replacement uses prepare/commit. A preview binds plan, Goal,
 conversation, proposed contents and expiry. The common commit operation
@@ -66,7 +81,7 @@ PYTHONDONTWRITEBYTECODE=1 /opt/miniconda3/bin/python -B -m pytest \
   --noconftest tests/test_agent_control_pack.py tests/test_agent_control_acceptance.py -q
 ```
 
-The saved-input and Workflow checkpoint passes 35 isolated tests, targeted Ruff and mypy. These
+The saved-input and Workflow checkpoint passes 65 isolated tests, targeted Ruff and mypy. These
 exercise real Pack state and deterministic fake external contracts/test tools;
 they are not actual model, Pack activation or native-app acceptance evidence.
 The normal packaged-fixture suite must run after integration regenerates the

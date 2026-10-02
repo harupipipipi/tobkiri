@@ -65,6 +65,83 @@ class DurableTurnRuntime:
             "input_digest": canonical_digest(initial),
         })
 
+    def saved_input(self, source: Mapping[str, Any]) -> dict[str, Any] | None:
+        """Recover exact source-bound accepted context without preparing another batch."""
+        initial = validate_saved_conversation_input(source)
+        if not self.path.exists():
+            return None
+        self._check_path()
+        connection = sqlite3.connect(self.path.as_uri() + "?mode=ro", uri=True)
+        try:
+            if connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='saved_inputs'"
+            ).fetchone() is None:
+                return None
+            row = connection.execute(
+                "SELECT source_digest, accepted_digest, context FROM saved_inputs WHERE id=?",
+                (initial["request"]["turn_id"],),
+            ).fetchone()
+            return self._saved_input(initial, row) if row is not None else None
+        finally:
+            connection.close()
+
+    def bind_saved_input(
+        self, source: Mapping[str, Any], accepted: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Atomically retain one owner-projected context for the exact original input."""
+        initial = validate_saved_conversation_input(source)
+        captured = validate_saved_conversation_input(accepted)
+        original_request = dict(initial["request"])
+        accepted_request = dict(captured["request"])
+        original_request.pop("task_context", None)
+        context = accepted_request.pop("task_context", None)
+        if canonical_digest(original_request) != canonical_digest(accepted_request):
+            raise PermissionError("context capture cannot change saved user input")
+        body = json.dumps(context, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+        if len(body.encode("utf-8")) > _MAX_RECORD_BYTES:
+            raise ValueError("saved context exceeds size limit")
+        connection = self._connect_write()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT source_digest, accepted_digest, context FROM saved_inputs WHERE id=?",
+                (initial["request"]["turn_id"],),
+            ).fetchone()
+            if row is not None:
+                return self._saved_input(initial, row)
+            turn = connection.execute(
+                "SELECT id, request_id, body FROM turns WHERE id=?",
+                (initial["request"]["turn_id"],),
+            ).fetchone()
+            if turn is not None and self._record(turn).get("input_digest") != canonical_digest(captured):
+                raise TurnConflict("turn input identity was rebound")
+            if connection.execute("SELECT COUNT(*) FROM saved_inputs").fetchone()[0] >= self.max_turns:
+                raise TurnConflict("saved input capacity is exhausted")
+            connection.execute(
+                "INSERT INTO saved_inputs(id, source_digest, accepted_digest, context) VALUES (?, ?, ?, ?)",
+                (initial["request"]["turn_id"], canonical_digest(initial), canonical_digest(captured), body),
+            )
+            connection.commit()
+            return captured
+        finally:
+            connection.close()
+
+    def _saved_input(self, source: Mapping[str, Any], row: tuple[str, str, str]) -> dict[str, Any]:
+        source_digest, accepted_digest, body = row
+        if canonical_digest(source) != source_digest:
+            raise TurnConflict("saved source input identity was rebound")
+        if len(body.encode("utf-8")) > _MAX_RECORD_BYTES:
+            raise ValueError("saved context exceeds size limit")
+        captured = validate_saved_conversation_input(source)
+        captured["request"].pop("task_context", None)
+        context = json.loads(body)
+        if context is not None:
+            captured["request"]["task_context"] = context
+        captured = validate_saved_conversation_input(captured)
+        if canonical_digest(captured) != accepted_digest:
+            raise ValueError("saved accepted input identity is invalid")
+        return captured
+
     def claim_saved(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         """Acquire a saved turn once, without invoking or authorizing execution.
 
@@ -320,6 +397,9 @@ class DurableTurnRuntime:
             self.path.chmod(0o600)
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS turns (id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, updated_at INTEGER NOT NULL, body TEXT NOT NULL)"
+            )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS saved_inputs (id TEXT PRIMARY KEY, source_digest TEXT NOT NULL, accepted_digest TEXT NOT NULL, context TEXT NOT NULL)"
             )
             return connection
         except Exception:

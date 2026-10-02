@@ -27,12 +27,23 @@ def execute_with_input_context(
     client: Any,
     guard: Callable[[], None],
     execute: Callable[[Mapping[str, Any]], Mapping[str, Any]],
+    recover_input: Callable[[Mapping[str, Any]], Mapping[str, Any] | None] = lambda _: None,
+    bind_input: Callable[
+        [Mapping[str, Any], Mapping[str, Any]], Mapping[str, Any]
+    ] = lambda _, value: value,
 ) -> dict[str, Any]:
     """Derive context before immutable capture and ack only owner acceptance."""
     source = validate_saved_conversation_input(payload)
     initial = validate_saved_conversation_input(payload)
+    # Accepted context comes only from the selected captured provider. The
+    # finite request schema gives caller input no projection provenance.
+    initial["request"].pop("task_context", None)
     request = source["request"]
-    operation = _provider(client, CONTEXT_CONTRACT)
+    guard()
+    recovered = recover_input(source)
+    if recovered is not None:
+        initial = validate_saved_conversation_input(recovered)
+    operation = _provider(client, CONTEXT_CONTRACT) if recovered is None else None
     projection = None
     prepare = {
         "operation": "prepare_input_for_conversation",
@@ -57,12 +68,22 @@ def execute_with_input_context(
             raise RuntimeError("optional input context is unavailable")
         else:
             initial["request"].pop("task_context", None)
+    if recovered is None:
+        guard()
+        bound = validate_saved_conversation_input(bind_input(source, initial))
+        if bound != initial:
+            # A concurrent first capture won. Its immutable input is the only
+            # accepted candidate; this invocation cannot ack its losing batch.
+            projection = None
+        initial = bound
     outcome = dict(execute(initial))
     context_receipt = {
         "source_input_digest": canonical_digest(source),
         "accepted_input_digest": canonical_digest(initial),
         "task_context_digest": canonical_digest(initial["request"].get("task_context")),
-        "delivery_status": "not_applicable",
+        "delivery_status": "pending"
+        if initial["request"].get("task_context")
+        else "not_applicable",
     }
     if projection is not None and projection.get("status") == "received":
         context_receipt["delivery_status"] = "pending"

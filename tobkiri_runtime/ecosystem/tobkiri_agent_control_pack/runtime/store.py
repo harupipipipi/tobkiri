@@ -198,6 +198,7 @@ def new_plan(plan_id: str, profile_id: str) -> dict[str, Any]:
             "reviewer": None,
             "model_policy": {"mode": "inherit_conversation"},
             "thinking_policy": {"mode": "inherit_conversation"},
+            "snapshot_receipt": None,
         },
         "schedule": {
             "id": f"work-plan-{digest(plan_id)[:24]}",

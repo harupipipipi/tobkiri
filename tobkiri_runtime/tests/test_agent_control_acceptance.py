@@ -1,7 +1,9 @@
 """Real Workflow state plus isolated public saved-input and acceptance boundaries."""
 
 from copy import deepcopy
+import hashlib
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Mapping
 
 import pytest
@@ -13,6 +15,7 @@ from core_runtime.workflow_v4 import (
     WorkflowStoreV4,
 )
 from core_runtime.workflow_v4.models import InvocationOutcome
+from core_runtime import host_provider_hooks_v4
 from ecosystem.rumi_turn_runtime_pack.runtime.input_context import execute_with_input_context
 from ecosystem.tobkiri_agent_control_pack.runtime.service import WorkPlanService
 from ecosystem.tobkiri_agent_control_pack.runtime.store import PlanStore
@@ -291,3 +294,371 @@ def test_actual_saved_host_bridge_keeps_original_user_content_separate_from_cont
     assert generated["messages"][-1]["role"] == "user"
     assert "lower-authority" in generated["messages"][-1]["content"]
     assert original == generated["messages"][-2]["content"]
+
+
+def test_ack_retry_uses_immutable_input_identity_after_cas_revision_advanced(
+    tmp_path: Path,
+) -> None:
+    service, ports, client = context_rig(tmp_path)
+    source = {
+        "request": {
+            "turn_id": "turn-one",
+            "conversation_id": "conversation",
+            "conversation_revision": 1,
+            "content": "original",
+        }
+    }
+    from ecosystem.tobkiri_agent_control_pack.runtime.ports import SAVED
+
+    first = execute_with_input_context(
+        source,
+        client=client,
+        guard=lambda: None,
+        execute=lambda value: ports.invoke(SAVED, "saved", value),
+    )
+    assert first["input_context_receipt"]["delivery_status"] == "applied"
+    # A retry reaches a retained canonical run: the external model/tool is not called again.
+    second = execute_with_input_context(
+        source, client=client, guard=lambda: None, execute=lambda _: {"status": "completed"}
+    )
+    assert second["input_context_receipt"]["delivery_status"] == "applied"
+    assert ports.tools == 1 and service.store.get("plan")["inbox"][0]["status"] == "applied"
+
+
+def test_reminder_job_status_proves_enqueue_and_cancel_fences_only_unapplied_event(
+    tmp_path: Path,
+) -> None:
+    service, _, _ = context_rig(tmp_path)
+    apply(
+        service,
+        "remind.create",
+        reminder_id="manual",
+        body="Check source",
+        agent_binding="conversation:conversation",
+        timezone="Asia/Tokyo",
+        delay_seconds=600,
+    )
+    plan = service.store.get("plan")
+    values = {
+        "action_id": "agent-control.remind",
+        "occurrence_id": "scheduled-one",
+        "payload": {
+            "plan_id": "plan",
+            "reminder_id": "manual",
+            "generation": plan["reminders"]["manual"]["generation"],
+        },
+    }
+    assert service.reminder_job_status(values, USER)["status"] == "reconciliation_required"
+    assert service.dispatch(values, USER)["status"] == "completed"
+    assert service.reminder_job_status(values, USER) == {
+        "status": "completed",
+        "delivery_status": "pending",
+    }
+    assert service.reminder_job_status(values, USER, cancel=True)["status"] == "cancelled"
+    assert service.reminder_job_status(values, USER)["status"] == "cancelled"
+
+
+def test_snapshot_policy_captures_receipt_on_configuration_and_reuses_it(tmp_path: Path) -> None:
+    service, ports, _ = context_rig(tmp_path)
+    apply(service, "settings.configure", settings={"model_policy": {"mode": "snapshot"}})
+    receipt = service.store.get("plan")["settings"]["snapshot_receipt"]
+    assert receipt == {
+        "contract_version": "tobkiri.secondary-model-policy.v1",
+        "resolved_profile_id": "test-model",
+        "thinking_level": "medium",
+        "store_revision": 1,
+    }
+    apply(service, "settings.configure", settings={"interval_seconds": 300})
+    assert service.store.get("plan")["settings"]["snapshot_receipt"] == receipt
+    service = WorkPlanService(PlanStore(tmp_path, "profile-a"), ports, clock=lambda: ports.now)
+    service.ports.resolve_model(service.store.get("plan")["settings"], ports.conversation)
+    assert ports.calls[-1][2]["snapshot_receipt"] == receipt
+
+
+def test_unavailable_snapshot_configuration_preserves_authoritative_settings(
+    tmp_path: Path,
+) -> None:
+    service, ports, _ = context_rig(tmp_path)
+    before = service.store.get("plan")
+    ports.fail = "tobkiri.resource.ai.model.profile.v1"
+    with pytest.raises(RuntimeError):
+        apply(service, "settings.configure", settings={"model_policy": {"mode": "snapshot"}})
+    assert service.store.get("plan") == before
+
+
+def test_first_configuration_captures_snapshot_with_default_thinking_policy(tmp_path: Path) -> None:
+    ports = FakePorts()
+    service = WorkPlanService(PlanStore(tmp_path, "profile-a"), ports, clock=lambda: ports.now)
+    apply(service, "settings.configure", settings={"model_policy": {"mode": "snapshot"}})
+    assert service.store.get("plan")["settings"]["snapshot_receipt"]["thinking_level"] == "medium"
+
+
+def test_client_cannot_inject_a_snapshot_receipt(tmp_path: Path) -> None:
+    service, _, _ = context_rig(tmp_path)
+    before = service.store.get("plan")
+    with pytest.raises(PermissionError, match="snapshot receipt"):
+        apply(
+            service,
+            "settings.configure",
+            settings={"snapshot_receipt": {"resolved_profile_id": "forged"}},
+        )
+    assert service.store.get("plan") == before
+
+
+@pytest.mark.parametrize("status", [None, "paused", "cancelled", "unavailable", "unconfigured"])
+def test_saved_retry_recovers_immutable_projection_after_restart_without_preparing_again(
+    tmp_path: Path, status: str | None
+) -> None:
+    from core_runtime.global_contract_dispatch import GlobalContractClient
+    from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
+    from ecosystem.rumi_turn_runtime_pack.runtime.saved import SAVED_CONTRACTS, execute_saved_turn
+    from ecosystem.rumi_turn_runtime_pack.runtime.turns import TurnConflict
+    from tests.test_saved_turn_coordinator import _Session
+
+    class ProjectedSession(_Session):
+        context_calls = 0
+        context_status: str | None = "received"
+
+        def provider_metadata(self, contract_id: str) -> tuple:
+            if contract_id == CONTEXT_CONTRACT and self.context_status is not None:
+                return ({"operation_id": "selected-context"},)
+            return ()
+
+        def invoke(self, contract_id: str, operation: str, payload: dict, **kwargs: Any) -> dict:
+            if contract_id == CONTEXT_CONTRACT:
+                self.context_calls += 1
+                return {"status": self.context_status, "task_context": context, "instructions": []}
+            return super().invoke(contract_id, operation, payload, **kwargs)
+
+    session = ProjectedSession(tmp_path)
+    source = deepcopy(session.initial)
+    request = source["request"]
+    context = {
+        "version": "tobkiri.saved-task-context.v1",
+        "source_id": "selected-plan",
+        "conversation_id": request["conversation_id"],
+        "recipient_id": f"conversation:{request['conversation_id']}",
+        "input_id": request["turn_id"],
+        "source_revision": 1,
+        "generation": 1,
+        "items": [{"id": "goal", "kind": "goal", "body": "Preserve exact requirement"}],
+    }
+    client = GlobalContractClient(
+        session=session,
+        allowed_contract_ids=SAVED_CONTRACTS,
+        consumer_pack_id="rumi_turn_runtime_pack",
+    )
+    store = session.turns
+
+    def execute(initial: Mapping[str, Any]) -> dict[str, Any]:
+        session.initial = deepcopy(initial)
+        return execute_saved_turn(store, initial, client=client, guard=lambda: None)
+
+    first = execute_with_input_context(
+        source,
+        client=client,
+        guard=lambda: None,
+        execute=execute,
+        recover_input=store.saved_input,
+        bind_input=store.bind_saved_input,
+    )
+    assert first["status"] == "completed" and session.ai_calls == 1
+    prepared_calls = session.context_calls
+    session.context_status = status
+    store = DurableTurnRuntime("defaults", user_data_root=tmp_path)
+    second = execute_with_input_context(
+        source,
+        client=client,
+        guard=lambda: None,
+        execute=execute,
+        recover_input=store.saved_input,
+        bind_input=store.bind_saved_input,
+    )
+    assert second["status"] == "existing" and second["turn"]["status"] == "completed"
+    assert session.ai_calls == 1 and session.calls == 1
+    assert session.context_calls == prepared_calls
+    assert session.initial["request"]["task_context"] == context
+    assert (
+        first["input_context_receipt"]["accepted_input_digest"]
+        == second["input_context_receipt"]["accepted_input_digest"]
+    )
+    changed = deepcopy(source)
+    changed["request"]["content"] = "changed original user message"
+    with pytest.raises(TurnConflict, match="source input identity"):
+        execute_with_input_context(
+            changed,
+            client=client,
+            guard=lambda: None,
+            execute=execute,
+            recover_input=store.saved_input,
+            bind_input=store.bind_saved_input,
+        )
+    assert session.ai_calls == 1 and session.context_calls == prepared_calls
+
+
+@pytest.mark.parametrize("status", [None, "unconfigured", "paused", "cancelled", "unavailable"])
+def test_caller_context_is_removed_without_an_active_selected_projection(
+    tmp_path: Path, status: str | None
+) -> None:
+    service, _, client = context_rig(tmp_path)
+    projected = client.invoke(
+        CONTEXT_CONTRACT,
+        "context",
+        {
+            "conversation_id": "conversation",
+            "input_id": "turn-one",
+            "boundary": "before_turn",
+            "operation_id": "prepare",
+        },
+    )["task_context"]
+    forged = {**projected, "source_id": "caller-forged-source"}
+
+    class UnavailableClient:
+        session: Any
+        profile_id = "profile-a"
+
+        def __init__(self) -> None:
+            self.session = self
+
+        def provider_metadata(self, _: str) -> tuple[dict[str, str], ...]:
+            return () if status is None else ({"operation_id": "selected-context"},)
+
+        def invoke(self, *_: Any) -> dict[str, Any]:
+            return {"status": status}
+
+    captured: list[Mapping[str, Any]] = []
+    source = {
+        "request": {
+            "turn_id": "turn-one",
+            "conversation_id": "conversation",
+            "conversation_revision": 1,
+            "content": "  exact\n原文  ",
+            "task_context": forged,
+        }
+    }
+    result = execute_with_input_context(
+        source,
+        client=UnavailableClient(),
+        guard=lambda: None,
+        execute=lambda value: captured.append(value) or {"status": "waiting_approval"},
+    )
+    assert captured[0]["request"]["content"] == source["request"]["content"]
+    assert "task_context" not in captured[0]["request"]
+    assert source["request"]["task_context"] == forged
+    assert result["input_context_receipt"]["delivery_status"] == "not_applicable"
+    assert service.store.get("plan")["inbox"][0]["status"] == "received"
+
+
+def test_selected_projection_replaces_caller_forged_source_before_capture(tmp_path: Path) -> None:
+    _, _, client = context_rig(tmp_path)
+    context = client.invoke(
+        CONTEXT_CONTRACT,
+        "context",
+        {
+            "conversation_id": "conversation",
+            "input_id": "turn-one",
+            "boundary": "before_turn",
+            "operation_id": "prepare",
+        },
+    )["task_context"]
+    captured: list[Mapping[str, Any]] = []
+    source = {
+        "request": {
+            "turn_id": "turn-one",
+            "conversation_id": "conversation",
+            "conversation_revision": 1,
+            "content": "original",
+            "task_context": {**context, "source_id": "caller-forged-source"},
+        }
+    }
+    execute_with_input_context(
+        source,
+        client=client,
+        guard=lambda: None,
+        execute=lambda value: captured.append(value) or {"status": "waiting_approval"},
+    )
+    accepted = captured[0]["request"]["task_context"]
+    assert accepted["source_id"] == context["source_id"]
+    assert accepted["items"] == context["items"]
+    assert accepted["source_revision"] >= context["source_revision"]
+    assert source["request"]["task_context"]["source_id"] == "caller-forged-source"
+
+
+@pytest.mark.parametrize(
+    "pack,function",
+    [
+        ("tobkiri_agent_control_pack", f"tobkiri_agent_control_pack.work-plan.{kind}")
+        for kind in (
+            "resource",
+            "action",
+            "settings",
+            "replace",
+            "context",
+            "inbox",
+            "execute",
+            "job",
+            "review",
+        )
+    ]
+    + [("rumi_turn_runtime_pack", "rumi_turn_runtime_pack.turn-runtime.saved")],
+)
+def test_real_host_loader_imports_factories_without_parent_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pack: str, function: str
+) -> None:
+    """Stub materialization verification while exercising the actual digest module loader."""
+    pack_root = Path(__file__).resolve().parents[1] / "ecosystem" / pack
+    implementation_path = "runtime/host.py"
+    source = (pack_root / implementation_path).read_bytes()
+    source_digest = "sha256:" + hashlib.sha256(source).hexdigest()
+    captured = SimpleNamespace(
+        files=(SimpleNamespace(path=implementation_path, content=source),),
+        implementation_path=implementation_path,
+        materialization_digest=source_digest,
+    )
+    monkeypatch.setattr(
+        host_provider_hooks_v4, "capture_materialized_artifact", lambda *_: captured
+    )
+    binding = SimpleNamespace(
+        function=SimpleNamespace(function_id=function, implementation_digest=source_digest)
+    )
+    factory = host_provider_hooks_v4.load_host_provider_factory(pack_root, binding)
+    assert factory is not None and factory.function_id == function
+
+
+def test_goal_only_new_scope_defaults_to_primary_and_independent_600_second_review(
+    tmp_path: Path,
+) -> None:
+    ports = FakePorts()
+    service = WorkPlanService(PlanStore(tmp_path, "profile-a"), ports, clock=lambda: ports.now)
+    apply(service, "goal.set", goal_id="goal", body="Preserve requirements")
+    plan = service.store.get("plan")
+    assert plan["settings"]["executor"] == "conversation:conversation"
+    assert plan["settings"]["reviewer"] == "review:conversation"
+    assert plan["todos"] == []
+    assert len(ports.schedules) == 1
+    assert next(iter(ports.schedules.values()))["next_run_at_ms"] == ports.now + 600000
+
+
+def test_goal_only_defaults_preserve_existing_off_and_explicit_role_configuration(
+    tmp_path: Path,
+) -> None:
+    ports = FakePorts()
+    service = WorkPlanService(PlanStore(tmp_path, "profile-a"), ports, clock=lambda: ports.now)
+    apply(service, "settings.configure", settings={"enabled": False, "reviewer": "custom-review"})
+    apply(service, "goal.set", goal_id="goal", body="Preserve requirements")
+    plan = service.store.get("plan")
+    assert plan["settings"]["enabled"] is False and plan["settings"]["reviewer"] == "custom-review"
+    assert plan["schedule"]["status"] in {"paused", "unconfigured"}
+    assert all(schedule["status"] != "scheduled" for schedule in ports.schedules.values())
+
+
+def test_goal_only_unavailable_scheduler_is_saved_but_never_reported_monitored(
+    tmp_path: Path,
+) -> None:
+    ports = FakePorts()
+    ports.fail = "tobkiri.action.schedule.v1"
+    service = WorkPlanService(PlanStore(tmp_path, "profile-a"), ports, clock=lambda: ports.now)
+    apply(service, "goal.set", goal_id="goal", body="Preserve requirements")
+    plan = service.store.get("plan")
+    assert plan["goal"]["body"] == "Preserve requirements"
+    assert plan["schedule"]["status"] == "binding_failed" and ports.schedules == {}

@@ -11,11 +11,10 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderInvocationContextV4,
 )
 from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
+from ecosystem.rumi_turn_runtime_pack.runtime.input_context import execute_with_input_context
 from ecosystem.rumi_turn_runtime_pack.runtime.saved import (
     RECEIPT_CONTRACT, SAVED_CONTRACTS, execute_saved_turn, reconcile_saved_turn,
 )
-
-from .input_context import execute_with_input_context
 
 _PACK = "rumi_turn_runtime_pack"
 _CONTRACTS = {
@@ -151,6 +150,8 @@ class TurnHostFactoryV4:
                 return execute_with_input_context(
                     {key: value for key, value in payload.items() if key != "_session_id"},
                     client=client, guard=invocation.assert_current,
+                    recover_input=store.saved_input,
+                    bind_input=store.bind_saved_input,
                     execute=lambda initial: execute_saved_turn(
                         store, initial, client=client,
                         guard=invocation.assert_current,
