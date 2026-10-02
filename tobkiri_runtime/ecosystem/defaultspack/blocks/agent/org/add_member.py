@@ -11,9 +11,6 @@ input_data:
     model       : str (任意) AI モデル文字列
 """
 
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from blocks._common import ok, error, gen_id
 from domain.agent.org_manager import OrgManager

@@ -21,6 +21,10 @@ _TOOL_POLICY_LIST_KEYS = ("template_tool_policy_ids", "tool_policy_ids")
 _DISABLED_KEYS = ("disabled_tools",)
 
 
+def _list_or_empty(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
 @dataclass
 class TemplateToolPolicyResolution:
     policy: dict[str, Any]
@@ -113,7 +117,9 @@ def resolve_template_tool_policy(
     loaded_catalog = (
         catalog if isinstance(catalog, dict) else _load_template_catalog(defaultspack_root)
     )
-    if not _catalog_has_template_policy_surface(loaded_catalog):
+    if not isinstance(loaded_catalog, dict) or not _catalog_has_template_policy_surface(
+        loaded_catalog
+    ):
         merged = blocked_template_tool_policy(
             request_disabled_tools=request_disabled_tools,
             diagnostics=[
@@ -139,7 +145,9 @@ def resolve_template_tool_policy(
     resolved_ai_inputs: list[dict[str, Any]] = []
     policy_ids = list(requested_policy_ids)
     for requested_id in requested_ai_input_ids:
-        resolved_ai_input = _find_catalog_item(loaded_catalog.get("ai_inputs"), requested_id)
+        resolved_ai_input = _find_catalog_item(
+            _list_or_empty(loaded_catalog.get("ai_inputs")), requested_id
+        )
         if resolved_ai_input is None:
             diagnostics.append(_diagnostic("template_ai_input_not_found", requested_id))
             continue
@@ -149,7 +157,9 @@ def resolve_template_tool_policy(
     policy_ids = ordered_unique_strings(policy_ids)
     resolved_policies: list[dict[str, Any]] = []
     for policy_id in policy_ids:
-        resolved_policy = _find_catalog_item(loaded_catalog.get("tool_policies"), policy_id)
+        resolved_policy = _find_catalog_item(
+            _list_or_empty(loaded_catalog.get("tool_policies")), policy_id
+        )
         if resolved_policy is None:
             diagnostics.append(_diagnostic("template_tool_policy_not_found", policy_id))
             continue

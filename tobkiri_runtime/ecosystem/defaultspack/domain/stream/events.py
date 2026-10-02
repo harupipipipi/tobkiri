@@ -58,21 +58,42 @@ def to_legacy_chat_stream_event(event: dict[str, Any]) -> dict[str, Any] | None:
         return None
     event_type = str(event.get("type") or "").strip()
     merged = _merged_payload(event)
+    identity = {
+        "run_id": str(event.get("run_id") or "").strip(),
+        "conversation_id": str(event.get("conversation_id") or "").strip(),
+        "seq": int(event.get("seq") or 0),
+    }
 
     if event_type == "content_delta":
-        return {"type": "delta", "delta": str(merged.get("delta") or "")}
+        return {
+            "type": "delta",
+            "delta": str(merged.get("delta") or ""),
+            **identity,
+        }
     if event_type == "thinking_delta":
-        return {"type": "thinking_delta", "delta": str(merged.get("delta") or "")}
+        return {
+            "type": "thinking_delta",
+            "delta": str(merged.get("delta") or ""),
+            **identity,
+        }
     if event_type == "user_message_committed":
-        return {"type": "user_message", "message": _message_from_event(event)}
+        return {
+            "type": "user_message",
+            "message": _message_from_event(event),
+            **identity,
+        }
     if event_type == "assistant_message_completed":
-        return {"type": "message", "message": _message_from_event(event)}
+        return {
+            "type": "message",
+            "message": _message_from_event(event),
+            **identity,
+        }
     if event_type == "done":
-        return {"type": "done", "message": _message_from_event(event)}
+        return {"type": "done", "message": _message_from_event(event), **identity}
     if event_type == "error":
-        return {"type": "error", "error": _error_from_event(event)}
+        return {"type": "error", "error": _error_from_event(event), **identity}
     if event_type == "cancelled":
-        return {"type": "error", "error": "cancelled"}
+        return {"type": "error", "error": "cancelled", **identity}
     if event_type in {"run_started", "assistant_message_started"}:
         return None
     if event_type in {
@@ -88,5 +109,5 @@ def to_legacy_chat_stream_event(event: dict[str, Any]) -> dict[str, Any] | None:
         "ai_retry_scheduled",
         "task_failed",
     }:
-        return {"type": event_type, **merged}
-    return {"type": event_type, **merged}
+        return {"type": event_type, **merged, **identity}
+    return {"type": event_type, **merged, **identity}

@@ -1,0 +1,168 @@
+{
+  "version": "rumi.ui.contribution.v1",
+  "id": "tobkiri.work-plan.settings",
+  "kind": "view",
+  "mode": "declarative",
+  "label": "Work plan settings",
+  "priority": 100,
+  "accessibility": {
+    "name": "Work plan settings",
+    "keyboard": true,
+    "live": "polite"
+  },
+  "view": {
+    "version": "tobkiri.ui.view.v1",
+    "slot": "settings",
+    "renderer": "panel",
+    "title": "Work plan settings",
+    "body": "Settings apply to this conversation. The default review interval is 600 seconds. The supported executor binding is conversation:<conversation ID>; assigned-agent execution is currently unavailable. Selecting a role or model grants no additional permissions.",
+    "data_source": {
+      "contribution_id": "pack.tobkiri_agent_control_pack.tobkiri_agent_control_pack.work-plan-resource",
+      "contract_id": "tobkiri.resource.work-plan.v1",
+      "operation_id": "tobkiri_agent_control_pack.work-plan-resource",
+      "input": {
+        "operation": "get_for_conversation"
+      },
+      "context_bindings": {
+        "conversation_id": "conversation_id"
+      }
+    },
+    "controls": [
+      {
+        "id": "executor",
+        "label": "Executor binding",
+        "kind": "text",
+        "operation": {
+          "contribution_id": "pack.tobkiri_agent_control_pack.tobkiri_agent_control_pack.work-plan-settings",
+          "contract_id": "tobkiri.action.work-plan.settings.v1",
+          "operation_id": "tobkiri_agent_control_pack.work-plan-settings"
+        },
+        "input": {
+          "operation": "settings.configure"
+        },
+        "input_bindings": {
+          "plan_id": "plan.id",
+          "expected_revision": "plan.revision"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        },
+        "value_key": "executor",
+        "value_path": "plan.settings.executor"
+      },
+      {
+        "id": "reviewer",
+        "label": "Independent review role binding",
+        "kind": "text",
+        "operation": {
+          "contribution_id": "pack.tobkiri_agent_control_pack.tobkiri_agent_control_pack.work-plan-settings",
+          "contract_id": "tobkiri.action.work-plan.settings.v1",
+          "operation_id": "tobkiri_agent_control_pack.work-plan-settings"
+        },
+        "input": {
+          "operation": "settings.configure"
+        },
+        "input_bindings": {
+          "plan_id": "plan.id",
+          "expected_revision": "plan.revision"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        },
+        "value_key": "reviewer",
+        "value_path": "plan.settings.reviewer"
+      },
+      {
+        "id": "interval",
+        "label": "Review interval in seconds",
+        "kind": "text",
+        "operation": {
+          "contribution_id": "pack.tobkiri_agent_control_pack.tobkiri_agent_control_pack.work-plan-settings",
+          "contract_id": "tobkiri.action.work-plan.settings.v1",
+          "operation_id": "tobkiri_agent_control_pack.work-plan-settings"
+        },
+        "input": {
+          "operation": "settings.configure"
+        },
+        "input_bindings": {
+          "plan_id": "plan.id",
+          "expected_revision": "plan.revision"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        },
+        "value_key": "interval_seconds",
+        "value_path": "plan.settings.interval_seconds"
+      },
+      {
+        "id": "enabled",
+        "label": "Independent review enabled",
+        "kind": "toggle",
+        "operation": {
+          "contribution_id": "pack.tobkiri_agent_control_pack.tobkiri_agent_control_pack.work-plan-settings",
+          "contract_id": "tobkiri.action.work-plan.settings.v1",
+          "operation_id": "tobkiri_agent_control_pack.work-plan-settings"
+        },
+        "input": {
+          "operation": "settings.configure"
+        },
+        "input_bindings": {
+          "plan_id": "plan.id",
+          "expected_revision": "plan.revision"
+        },
+        "context_bindings": {
+          "conversation_id": "conversation_id"
+        },
+        "value_key": "enabled",
+        "value_path": "plan.settings.enabled"
+      }
+    ],
+    "fields": [
+      {
+        "label": "Goal",
+        "path": "plan.goal.body",
+        "kind": "text"
+      },
+      {
+        "label": "Work",
+        "path": "plan.todo_summary",
+        "kind": "text"
+      },
+      {
+        "label": "State",
+        "path": "plan.status",
+        "kind": "status"
+      },
+      {
+        "label": "Schedule",
+        "path": "plan.schedule.status",
+        "kind": "status"
+      },
+      {
+        "label": "Next check (UTC milliseconds)",
+        "path": "plan.schedule.next_run_at_ms",
+        "kind": "text"
+      },
+      {
+        "label": "Independent review",
+        "path": "plan.review_status",
+        "kind": "status"
+      },
+      {
+        "label": "Resolved review model",
+        "path": "plan.review.model_resolution.resolved_profile_id",
+        "kind": "text"
+      },
+      {
+        "label": "Resolved review thinking level",
+        "path": "plan.review.model_resolution.thinking_level",
+        "kind": "text"
+      },
+      {
+        "label": "Model policy fallback",
+        "path": "plan.review.model_resolution.fallback_reason",
+        "kind": "text"
+      }
+    ]
+  }
+}
