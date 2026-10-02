@@ -16,9 +16,14 @@
       "path": "container/runtime.py"
     },
     {
-      "digest": "sha256:39227f084d948f46b40ef0e405ad98b133d8958d075bbbe00584c7992c3921d3",
+      "digest": "sha256:4120b09164a3789e2635f6541a615f11dbfbb6266cdfff62ac04c36a6c101dc2",
       "kind": "sidecar",
       "path": "container/task-recipe.v1.json"
+    },
+    {
+      "digest": "sha256:dc7b2b4ece00de7cae00789ead5ead3dfb7092f63c75d001f025d11abab736e7",
+      "kind": "sidecar",
+      "path": "container/task_runner.py"
     },
     {
       "digest": "sha256:27ac7545ce0ad483b7d0847a60c3b70d600f5bad2499d9beb502f0a81e34163a",
@@ -26,7 +31,12 @@
       "path": "container/workspace_capsule_v1.py"
     },
     {
-      "digest": "sha256:1af4942169b55b8b1a1ec2c8f3611ae40fe407bc961ca6475f9f20f840c6828b",
+      "digest": "sha256:d4f2727e1d8485d020c4d52071d881ffa6c99e6b0dce97d8279eb5d6fc6ea6de",
+      "kind": "sidecar",
+      "path": "container/workspace_tree_v1.py"
+    },
+    {
+      "digest": "sha256:d554eabb0c6fe9e250a4678fcacadb04fca8a6fb5578a47d9173c0f65cc1ee48",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -41,7 +51,7 @@
       "path": "frontend/contributions/workspace.json"
     },
     {
-      "digest": "sha256:de8c4ae2c8bb2501c4a2a383a08127eb099135004996ea4861fa6ca0209925ba",
+      "digest": "sha256:739694c7ff7ca18c6d988b9802410e18cec317139aed83b334c5a9a10bbfb9bb",
       "kind": "sidecar",
       "path": "pack-source.v1.json"
     },
@@ -61,7 +71,7 @@
       "path": "runtime/host.py"
     },
     {
-      "digest": "sha256:7ca35f6158be921c04322995818b5469ebb4094d68cc7991f03040568b1b082f",
+      "digest": "sha256:a6c16abec9e1d27b5a01e240d166763fad04cba486733c35789778bf46e2164e",
       "kind": "executable",
       "path": "runtime/recipe.py"
     },
@@ -76,7 +86,7 @@
       "path": "runtime/store.py"
     },
     {
-      "digest": "sha256:c6fa1fae2c42904c73a36e320c1f2bf23031e40e231d44ea7a914c021933d3d4",
+      "digest": "sha256:f47759f5195e3f6c75457973e2a615ff9eb9cf77672744213ca459dcad3fccfa",
       "kind": "executable",
       "path": "runtime/task.py"
     }
@@ -120,9 +130,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:a50d6babcfb4b605f1819a7124e66faffce90fa756f36bfbc6ff983170d3609e",
-    "contract_catalog_digest": "sha256:0d871d7970eeabd31a95e7aa8e15360d6a2024d8760e6637e8612310ea102368",
-    "source_identity": "sha256:2db3f4828100e5aebc52b9866af8e006b45d86656a5054a5e8f5e839a42b2539"
+    "artifact_set_digest": "sha256:72cd0f8d085d263de73f760114671129379c09e121dd9d319ee26ed05696cef8",
+    "contract_catalog_digest": "sha256:ddf40902411de60b6c4aa7b12535f362643f7431a9305e766eef83fbf7398b57",
+    "source_identity": "sha256:c41ae90ff2f92260cc30821e0adb1bba9c253de30fbd4e3b4bfa656dc80de82b"
   },
   "migration": {
     "compatibility": "read_only",
@@ -155,7 +165,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:a50d6babcfb4b605f1819a7124e66faffce90fa756f36bfbc6ff983170d3609e",
+    "artifact_digest": "sha256:72cd0f8d085d263de73f760114671129379c09e121dd9d319ee26ed05696cef8",
     "display_name": "Tobkiri Cloud Workspace",
     "id": "tobkiri_cloud_workspace_pack",
     "kind": "host_extension",
@@ -165,7 +175,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:2db3f4828100e5aebc52b9866af8e006b45d86656a5054a5e8f5e839a42b2539",
+        "digest": "sha256:c41ae90ff2f92260cc30821e0adb1bba9c253de30fbd4e3b4bfa656dc80de82b",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -176,7 +186,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:2db3f4828100e5aebc52b9866af8e006b45d86656a5054a5e8f5e839a42b2539",
+    "source_digest": "sha256:c41ae90ff2f92260cc30821e0adb1bba9c253de30fbd4e3b4bfa656dc80de82b",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_cloud_workspace_pack"
   },

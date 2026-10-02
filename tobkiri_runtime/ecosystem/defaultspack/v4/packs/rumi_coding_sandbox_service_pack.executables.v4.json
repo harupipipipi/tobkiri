@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_coding_sandbox_service_pack",
-  "source_identity": "sha256:ff0dc3518101d2a86b2f23bbef395e5a11394b30b2e62f038d94cde35539d666",
+  "source_identity": "sha256:716cdb12f79942cd6f3c34dc7e4b325b3954c85d84dfd20fe0253f65a2dfbcdc",
   "variants": [
     {
       "variant_id": "rumi_coding_sandbox_service_pack.coding-sandbox.control.python",
@@ -75,7 +75,7 @@
       "variant_id": "rumi_coding_sandbox_service_pack.task-execute.python",
       "function_id": "rumi_coding_sandbox_service_pack.task-execute",
       "implementation_path": "runtime/host_v4.py",
-      "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
+      "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -286,7 +286,7 @@
       "variant_id": "rumi_coding_sandbox_service_pack.task-prepare.python",
       "function_id": "rumi_coding_sandbox_service_pack.task-prepare",
       "implementation_path": "runtime/host_v4.py",
-      "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
+      "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -497,7 +497,7 @@
       "variant_id": "rumi_coding_sandbox_service_pack.task-resource.python",
       "function_id": "rumi_coding_sandbox_service_pack.task-resource",
       "implementation_path": "runtime/host_v4.py",
-      "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
+      "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -585,6 +585,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:59b608b03cddd0d41183a551b4b564a0309321ba183f1242fb6176d49f6f7aa3",
-  "catalog_digest": "sha256:0770bc5bea4bc65ad0d624b23103a5ae59705b0553b6c904ca853b89475bebf0"
+  "materialization_catalog_digest": "sha256:094412330251dea69f2ce0f139cdbe7b5690e4bace41173fa1ee04f423809ede",
+  "catalog_digest": "sha256:3e791d8b2579d4ae227f5aa9ac57f841f19fe76fe43a3efdc1dd6036fdc13a61"
 }

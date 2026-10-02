@@ -4561,24 +4561,24 @@
           },
           "operations": [
             {
-              "entrypoint_id": "task-prepare",
-              "id": "rumi_coding_sandbox_service_pack.task-prepare",
-              "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
               "effect_ceiling": [
                 "capability:coding.sandbox.task.prepare",
                 "host:brokered-execution",
                 "capability:cloud.workspace.resource"
-              ]
+              ],
+              "entrypoint_id": "task-prepare",
+              "id": "rumi_coding_sandbox_service_pack.task-prepare",
+              "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad"
             },
             {
-              "entrypoint_id": "task-execute",
-              "id": "rumi_coding_sandbox_service_pack.task-execute",
-              "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
               "effect_ceiling": [
                 "capability:coding.sandbox.task.execute",
                 "host:brokered-execution",
                 "capability:cloud.workspace.resource"
-              ]
+              ],
+              "entrypoint_id": "task-execute",
+              "id": "rumi_coding_sandbox_service_pack.task-execute",
+              "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad"
             }
           ],
           "owner": "rumi_coding_sandbox_service_pack",
@@ -4790,12 +4790,12 @@
           },
           "operations": [
             {
-              "entrypoint_id": "task-resource",
-              "id": "rumi_coding_sandbox_service_pack.task-resource",
-              "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
               "effect_ceiling": [
                 "capability:coding.sandbox.task.read"
-              ]
+              ],
+              "entrypoint_id": "task-resource",
+              "id": "rumi_coding_sandbox_service_pack.task-resource",
+              "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad"
             }
           ],
           "owner": "rumi_coding_sandbox_service_pack",
@@ -4910,22 +4910,27 @@
           "path": "runtime/sandbox.py"
         },
         {
-          "digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
+          "digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
           "kind": "executable",
           "path": "runtime/host_v4.py"
         },
         {
-          "digest": "sha256:600d2b9765ad75c3f8c877ea062a783011459105f4f71b8066a8c5306404e20f",
+          "digest": "sha256:fcf7761d4b8622ead77cce04de27b6256c8b640d911e3135cd8c2d7dfb2c43d8",
           "kind": "executable",
           "path": "runtime/task_state.py"
         },
         {
-          "digest": "sha256:6848ff057a2e3d7debfe3c0c666f57d464c918249ac1c375be47037184ab4a2f",
+          "digest": "sha256:e0145d2bcb95ea2e5dc09c5dfe096ecf30f6b9d059a26347e00ec6cbedf3ccac",
           "kind": "executable",
           "path": "runtime/task_container.py"
         },
         {
-          "digest": "sha256:db35f79aa7d7e794c443df7d677aac3735326d36fb98b64526f48ffe818eb65b",
+          "digest": "sha256:7d9213608f4a8805e2e6c5a0bab66da2852fdfea4ad7d957e1832c67a3e03c82",
+          "kind": "executable",
+          "path": "runtime/task_execution.py"
+        },
+        {
+          "digest": "sha256:4a4e6e6d37ad94268870d0cbe986e60882cde3ab616705003ac6924e2162e1d8",
           "kind": "sidecar",
           "path": "pack-source.v1.json"
         },
@@ -4981,7 +4986,7 @@
         {
           "function_id": "rumi_coding_sandbox_service_pack.task-execute",
           "contract_id": "tobkiri.action.workspace.container.v1",
-          "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
+          "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
           "operation_ids": [
             "rumi_coding_sandbox_service_pack.task-execute"
           ]
@@ -4989,7 +4994,7 @@
         {
           "function_id": "rumi_coding_sandbox_service_pack.task-prepare",
           "contract_id": "tobkiri.action.workspace.container.v1",
-          "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
+          "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
           "operation_ids": [
             "rumi_coding_sandbox_service_pack.task-prepare"
           ]
@@ -4997,7 +5002,7 @@
         {
           "function_id": "rumi_coding_sandbox_service_pack.task-resource",
           "contract_id": "tobkiri.resource.workspace.container-task.v1",
-          "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
+          "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
           "operation_ids": [
             "rumi_coding_sandbox_service_pack.task-resource"
           ]
@@ -22807,12 +22812,12 @@
         },
         {
           "path": "runtime/task.py",
-          "digest": "sha256:c6fa1fae2c42904c73a36e320c1f2bf23031e40e231d44ea7a914c021933d3d4",
+          "digest": "sha256:f47759f5195e3f6c75457973e2a615ff9eb9cf77672744213ca459dcad3fccfa",
           "kind": "executable"
         },
         {
           "path": "runtime/recipe.py",
-          "digest": "sha256:7ca35f6158be921c04322995818b5469ebb4094d68cc7991f03040568b1b082f",
+          "digest": "sha256:a6c16abec9e1d27b5a01e240d166763fad04cba486733c35789778bf46e2164e",
           "kind": "executable"
         },
         {
@@ -22832,7 +22837,7 @@
         },
         {
           "path": "container/task-recipe.v1.json",
-          "digest": "sha256:39227f084d948f46b40ef0e405ad98b133d8958d075bbbe00584c7992c3921d3",
+          "digest": "sha256:4120b09164a3789e2635f6541a615f11dbfbb6266cdfff62ac04c36a6c101dc2",
           "kind": "sidecar"
         },
         {
@@ -22841,8 +22846,18 @@
           "kind": "sidecar"
         },
         {
+          "path": "container/workspace_tree_v1.py",
+          "digest": "sha256:d4f2727e1d8485d020c4d52071d881ffa6c99e6b0dce97d8279eb5d6fc6ea6de",
+          "kind": "sidecar"
+        },
+        {
+          "path": "container/task_runner.py",
+          "digest": "sha256:dc7b2b4ece00de7cae00789ead5ead3dfb7092f63c75d001f025d11abab736e7",
+          "kind": "sidecar"
+        },
+        {
           "path": "pack-source.v1.json",
-          "digest": "sha256:de8c4ae2c8bb2501c4a2a383a08127eb099135004996ea4861fa6ca0209925ba",
+          "digest": "sha256:739694c7ff7ca18c6d988b9802410e18cec317139aed83b334c5a9a10bbfb9bb",
           "kind": "sidecar"
         },
         {
@@ -22866,7 +22881,7 @@
         {
           "path": "ecosystem/tobkiri_cloud_workspace_pack/pack-source.v1.json",
           "rule_id": "reviewed-cloud-workspace-source",
-          "digest": "sha256:de8c4ae2c8bb2501c4a2a383a08127eb099135004996ea4861fa6ca0209925ba"
+          "digest": "sha256:739694c7ff7ca18c6d988b9802410e18cec317139aed83b334c5a9a10bbfb9bb"
         }
       ],
       "source_provenance": {

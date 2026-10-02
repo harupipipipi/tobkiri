@@ -289,12 +289,12 @@
     {
       "path": "packs/rumi_coding_sandbox_service_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:4f89430fcf3a8c12d9a5b2feb7749dc2f901f3fc23cd472aa4d12e8bb564a54d"
+      "digest": "sha256:cbe37023626e928a62a6615b870ccb48543eae2c0316ec4d0828fcc8feb9b80a"
     },
     {
       "path": "packs/rumi_coding_sandbox_service_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:066a5edf0c06583f63a97a1de7ad09658294737e5acabee0ca3aa064f0e80b0f"
+      "digest": "sha256:286bd18b9690e5816736299f60b0fa0fbf16be8e56e46483c119e5b38a5a32be"
     },
     {
       "path": "packs/rumi_command_protocol_pack.executables.v4.json",
@@ -1434,12 +1434,12 @@
     {
       "path": "packs/tobkiri_cloud_workspace_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:126095201f8255ac1640c82982647c246e91525a3435e61437e6a2a349f41776"
+      "digest": "sha256:fada53a74493ffb8c15898dba4c9941c6591e16ae7f4de87b00f8260d69571ae"
     },
     {
       "path": "packs/tobkiri_cloud_workspace_pack.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:aa72d985c9f4468d469f9430c50fe62317c55d3118aba7ba45638ce5101c3da2"
+      "digest": "sha256:570eee8509cda6b9b4b1be42d438e96c34e389ab70092066e9ba1c337ec9da63"
     },
     {
       "path": "packs/tobkiri_conversation_lifecycle_pack.executables.v4.json",

@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:59b608b03cddd0d41183a551b4b564a0309321ba183f1242fb6176d49f6f7aa3",
+  "catalog_digest": "sha256:094412330251dea69f2ce0f139cdbe7b5690e4bace41173fa1ee04f423809ede",
   "pack_id": "rumi_coding_sandbox_service_pack",
-  "source_identity": "sha256:1bfb6140cf9e6f4a94797b60738d43975dd139c0a24711c07caf0ce7f1975c5f",
+  "source_identity": "sha256:1630e11c3b8a8dff307aee14e583c10d1a4b0f702893d36897e2dd19c51d494a",
   "variants": [
     {
       "architecture": "any",
@@ -78,7 +78,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_coding_sandbox_service_pack.task-execute",
-      "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
+      "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
       "implementation_path": "runtime/host_v4.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -289,7 +289,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_coding_sandbox_service_pack.task-prepare",
-      "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
+      "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
       "implementation_path": "runtime/host_v4.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -500,7 +500,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_coding_sandbox_service_pack.task-resource",
-      "implementation_digest": "sha256:354e6cd2eac20cf4c3b90b39ccd221d51ba764720c5fd1a6525a546b27b7369a",
+      "implementation_digest": "sha256:486a754b0380d51ef7265629ad02b2a2d677c4f319fb27ced7baa64299fb89ad",
       "implementation_path": "runtime/host_v4.py",
       "materialization_mode": "on_demand",
       "operations": [
