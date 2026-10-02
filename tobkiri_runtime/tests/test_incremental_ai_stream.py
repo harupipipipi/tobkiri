@@ -6,14 +6,20 @@ from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
-from threading import Event, Thread
+from threading import Barrier, Event, Thread
+from concurrent.futures import ThreadPoolExecutor
 import time
 from typing import Any
 
 import pytest
 
 from core_runtime.credential_transport import CredentialTransportDenied
-from core_runtime.invocation_scope_v4 import assert_dispatched_invocation
+from core_runtime.invocation_scope_v4 import (
+    CapturedInvocationScopeV4,
+    ParentInvocationScopesV4,
+    assert_dispatched_invocation,
+    execution_session_id,
+)
 from core_runtime.local_model_transport import LocalModelBinding, LocalModelTransport
 from ecosystem.rumi_provider_adapters_pack.runtime.streaming import ProviderStream
 from ecosystem.rumi_turn_runtime_pack.runtime.progress import TurnProgressJournal
@@ -23,7 +29,11 @@ from tobkiri_protocol.provider_sse_v1 import MAX_EVENT_BYTES, SSEDecoder
 
 
 def _frame(content: str = "", *, finish: str | None = None) -> bytes:
-    data = {"choices": [{"index": 0, "delta": {"content": content}, "finish_reason": finish}]}
+    data = {
+        "choices": [
+            {"index": 0, "delta": {"content": content}, "finish_reason": finish}
+        ]
+    }
     return b"data: " + json.dumps(data).encode() + b"\n\n"
 
 
@@ -72,7 +82,9 @@ def test_first_actual_http_chunk_is_readable_before_provider_completion(
 
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self) -> None:
-            requests.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+            requests.append(
+                json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            )
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.end_headers()
@@ -81,7 +93,9 @@ def test_first_actual_http_chunk_is_readable_before_provider_completion(
             sent.set()
             release.wait(5)
             try:
-                self.wfile.write(_frame(" second") + _frame(finish="stop") + b"data: [DONE]\n\n")
+                self.wfile.write(
+                    _frame(" second") + _frame(finish="stop") + b"data: [DONE]\n\n"
+                )
                 self.wfile.flush()
             except OSError:
                 pass
@@ -147,7 +161,9 @@ def test_first_actual_http_chunk_is_readable_before_provider_completion(
     try:
         assert sent.wait(2) and published.wait(2)
         page = journal.read(identity, owner="owner", capture="capture", cursor=0)
-        assert page["events"] == [{"cursor": 1, "event": {"type": "text_delta", "delta": "first"}}]
+        assert page["events"] == [
+            {"cursor": 1, "event": {"type": "text_delta", "delta": "first"}}
+        ]
         assert page["provisional"] and not page["provider_complete"]
         assert not finished.is_set() and not release.is_set()
         if interrupt == "cancel":
@@ -163,9 +179,9 @@ def test_first_actual_http_chunk_is_readable_before_provider_completion(
         if interrupt:
             # The server still blocks: the lease watchdog must interrupt actual IO.
             assert finished.wait(2) and failures and not release.is_set()
-            assert not journal.read(identity, owner="owner", capture="capture", cursor=0)[
-                "provider_complete"
-            ]
+            assert not journal.read(
+                identity, owner="owner", capture="capture", cursor=0
+            )["provider_complete"]
         else:
             release.set()
             assert finished.wait(2) and not failures
@@ -216,7 +232,9 @@ def test_decoder_handles_utf8_and_crlf_split_across_real_receive_boundaries() ->
         decoder.finish()
 
 
-def test_host_credential_frames_redact_secrets_split_between_events(tmp_path: Path) -> None:
+def test_host_credential_frames_redact_secrets_split_between_events(
+    tmp_path: Path,
+) -> None:
     transport, arguments = _https_transport(tmp_path, secret="secret-test-token")
 
     class Response:
@@ -250,7 +268,9 @@ def test_host_credential_frames_redact_secrets_split_between_events(tmp_path: Pa
         transport.stream_json(**arguments, on_event=stream.receive)
 
 
-@pytest.mark.parametrize("change", ["owner", "profile", "plan", "epoch", "input", "execution"])
+@pytest.mark.parametrize(
+    "change", ["owner", "profile", "plan", "epoch", "input", "execution"]
+)
 def test_journal_wrong_owner_capture_input_or_execution_cannot_publish(
     tmp_path: Path, change: str
 ) -> None:
@@ -272,11 +292,18 @@ def test_journal_wrong_owner_capture_input_or_execution_cannot_publish(
     }[change]
     arguments[key] = "wrong"
     with pytest.raises(PermissionError):
-        journal.publish(identity, **arguments, cursor=1, event={"type": "text_delta", "delta": "x"})
-    assert journal.read(identity, owner="owner", capture="capture", cursor=0)["events"] == []
+        journal.publish(
+            identity, **arguments, cursor=1, event={"type": "text_delta", "delta": "x"}
+        )
+    assert (
+        journal.read(identity, owner="owner", capture="capture", cursor=0)["events"]
+        == []
+    )
 
 
-def test_journal_replay_order_claim_expiry_and_terminal_are_fenced(tmp_path: Path) -> None:
+def test_journal_replay_order_claim_expiry_and_terminal_are_fenced(
+    tmp_path: Path,
+) -> None:
     journal, identity = _journal(tmp_path)
     arguments = {
         "owner": "owner",
@@ -290,16 +317,28 @@ def test_journal_replay_order_claim_expiry_and_terminal_are_fenced(tmp_path: Pat
     for cursor in (0, 2, True):
         with pytest.raises((PermissionError, ValueError)):
             journal.publish(
-                identity, **arguments, cursor=cursor, event={"type": "text_delta", "delta": "x"}
+                identity,
+                **arguments,
+                cursor=cursor,
+                event={"type": "text_delta", "delta": "x"},
             )
-    journal.publish(identity, **arguments, cursor=1, event={"type": "text_delta", "delta": "x"})
-    with pytest.raises(PermissionError):
-        journal.publish(identity, **arguments, cursor=1, event={"type": "text_delta", "delta": "x"})
     journal.publish(
-        identity, **arguments, cursor=2, event={"type": "finish", "finish_reason": "stop"}
+        identity, **arguments, cursor=1, event={"type": "text_delta", "delta": "x"}
     )
     with pytest.raises(PermissionError):
-        journal.publish(identity, **arguments, cursor=3, event={"type": "text_delta", "delta": "x"})
+        journal.publish(
+            identity, **arguments, cursor=1, event={"type": "text_delta", "delta": "x"}
+        )
+    journal.publish(
+        identity,
+        **arguments,
+        cursor=2,
+        event={"type": "finish", "finish_reason": "stop"},
+    )
+    with pytest.raises(PermissionError):
+        journal.publish(
+            identity, **arguments, cursor=3, event={"type": "text_delta", "delta": "x"}
+        )
     with pytest.raises(PermissionError, match="reserved"):
         journal.begin(_binding(), owner="owner", capture="capture")
     journal.clock = lambda: time.time() + 121
@@ -310,14 +349,23 @@ def test_journal_replay_order_claim_expiry_and_terminal_are_fenced(tmp_path: Pat
 def test_raw_provider_thinking_is_only_a_state_not_public_text() -> None:
     published: list[Any] = []
     stream = ProviderStream("openai", published.append)
-    stream.receive({"data": {"choices": [{"delta": {"reasoning_content": "private reasoning"}}]}})
+    stream.receive(
+        {"data": {"choices": [{"delta": {"reasoning_content": "private reasoning"}}]}}
+    )
     assert published == [{"type": "thinking_delta", "delta": ""}]
 
 
-def test_actual_lease_scope_rejects_profile_plan_request_and_epoch_changes(tmp_path: Path) -> None:
+def test_actual_lease_scope_rejects_profile_plan_request_and_epoch_changes(
+    tmp_path: Path,
+) -> None:
     authority, envelope = _dispatched_envelope(tmp_path)
     assert_dispatched_invocation(envelope, authority.store)
-    for field, value in (("profile_id", "other"), ("security_epoch", 99), ("request_id", "other")):
+    for field, value in (
+        ("profile_id", "other"),
+        ("plan_digest", canonical_digest("other")),
+        ("security_epoch", 99),
+        ("request_id", "other"),
+    ):
         with pytest.raises(PermissionError):
             assert_dispatched_invocation(
                 replace(envelope, context=replace(envelope.context, **{field: value})),
@@ -325,5 +373,105 @@ def test_actual_lease_scope_rejects_profile_plan_request_and_epoch_changes(tmp_p
             )
     with pytest.raises(PermissionError):
         assert_dispatched_invocation(
-            replace(envelope, request_digest=canonical_digest("changed")), authority.store
+            replace(envelope, request_digest=canonical_digest("changed")),
+            authority.store,
         )
+
+
+def test_concurrent_actual_parent_leases_have_distinct_scopes_and_stable_owner(
+    tmp_path: Path,
+) -> None:
+    """Two authorized parents share a Shell owner without sharing execution authority."""
+    from core_runtime.bootstrap.production_v4 import _nested_host_provider_session_id
+    from tests.test_tobkiri_host_authority_v4_adapter import _adapter, _queries
+
+    authority, first = _dispatched_envelope(tmp_path)
+    second_context = replace(first.context, request_id="second.request")
+    digest = canonical_digest("second payload")
+    _, query = _queries(authority, second_context, digest)
+    adapter = _adapter(authority)
+    second_lease = adapter.authorize_and_issue_lease(query)
+    adapter.recheck_effect_boundary(
+        second_context, first.target_principal, second_lease
+    )
+    second = replace(
+        first, context=second_context, request_digest=digest, lease=second_lease
+    )
+    assert _nested_host_provider_session_id(first) == _nested_host_provider_session_id(
+        second
+    )
+    assert execution_session_id(first) != execution_session_id(second)
+    assert execution_session_id(first).startswith("session.host-execution.")
+    registry, barrier = ParentInvocationScopesV4(), Barrier(2)
+
+    def run(envelope: Any) -> None:
+        scope = CapturedInvocationScopeV4(
+            envelope, lambda: assert_dispatched_invocation(envelope, authority.store)
+        )
+        session = execution_session_id(envelope)
+        registry.retain(session, scope)
+        registry.retain(session, scope)
+        barrier.wait(timeout=2)
+        assert registry.lookup(session).envelope is envelope
+        registry.lookup(session).assert_current()
+        registry.release(session)
+        assert registry.lookup(session).envelope is envelope
+        barrier.wait(timeout=2)
+        registry.release(session)
+        assert registry.lookup(session) is None
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        list(executor.map(run, (first, second)))
+    registry.retain("foreign.session", CapturedInvocationScopeV4(first, lambda: None))
+    with pytest.raises(PermissionError, match="parent changed"):
+        registry.retain(
+            "foreign.session", CapturedInvocationScopeV4(second, lambda: None)
+        )
+    registry.release("foreign.session")
+    assert registry.lookup("foreign.session") is None
+
+
+def test_revoked_actual_lease_is_fenced_before_host_contribution_entry(
+    tmp_path: Path,
+) -> None:
+    """Generic entry guards protect a provider that performs no own lease check."""
+    from types import SimpleNamespace
+    from core_runtime.host_provider_backend_v4 import (
+        ExactHostProviderBackendV4,
+        HostProviderContributionV4,
+    )
+
+    authority, envelope = _dispatched_envelope(tmp_path)
+    calls: list[Any] = []
+    contribution = HostProviderContributionV4(
+        envelope.contract_id,
+        envelope.contract_version,
+        envelope.operation_id,
+        envelope.target_principal.value,
+        authority.target.parent_artifact_digest,
+        authority.target.function_implementation_digest,
+        envelope.target_domain.value,
+        lambda *_args: calls.append("entered") or {"ok": True},
+    )
+    backend = ExactHostProviderBackendV4(
+        (contribution,),
+        backend_id="scope.test",
+        profile_id=envelope.context.profile_id,
+        plan_digest=envelope.context.plan_digest,
+        security_epoch=envelope.context.security_epoch,
+        invocation_context=lambda request: SimpleNamespace(
+            assert_current=lambda: assert_dispatched_invocation(
+                request, authority.store
+            )
+        ),
+    )
+    backend.invoke(envelope)
+    assert calls == ["entered"]
+    authority.kernel.revoke(
+        target_kind="function_principal",
+        target_id=authority.target.principal_id,
+        reason="entry test revoke",
+    )
+    with pytest.raises(PermissionError):
+        backend.invoke(envelope)
+    assert calls == ["entered"]

@@ -247,15 +247,19 @@ class ExactHostProviderBackendV4:
             or request.target_domain.value != contribution.domain_id
         ):
             raise AuthorizationError("Host Provider envelope binding is invalid")
-        return ProviderOutcome(
+        invocation = self._invocation_context(request)
+        invocation.assert_current()
+        outcome = ProviderOutcome(
             dict(
                 contribution.invoke(
                     request.operation_id,
                     request.payload,
-                    self._invocation_context(request),
+                    invocation,
                 )
             )
         )
+        invocation.assert_current()
+        return outcome
 
     def cancel(self, request_id: str) -> None:
         """Accept cancellation; individual providers observe durable fences."""

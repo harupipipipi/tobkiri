@@ -207,6 +207,7 @@ class HostBoundCredentialTransport:
         clock: Callable[[], float] = time.time,
         monotonic_clock: Callable[[], float] = time.monotonic,
         expected_resource_binding: Mapping[str, Any] | None = None,
+        parent_guard: Callable[[], None] | None = None,
     ) -> None:
         self._envelope = envelope
         self._store = store
@@ -224,6 +225,7 @@ class HostBoundCredentialTransport:
             else None
         )
         self._consumed = False
+        self._parent_guard = parent_guard
         self._lock = RLock()
 
     @classmethod
@@ -246,6 +248,7 @@ class HostBoundCredentialTransport:
         clock: Callable[[], float] = time.time,
         monotonic_clock: Callable[[], float] = time.monotonic,
         expected_resource_binding: Mapping[str, Any] | None = None,
+        parent_guard: Callable[[], None] | None = None,
     ) -> "HostBoundCredentialTransport":
         """Capture a transport lease from the Broker-authenticated envelope."""
         bound_origin = _credential_origin(endpoint_origin)
@@ -299,6 +302,7 @@ class HostBoundCredentialTransport:
             authority_store=authority_store,
             invocation_token=invocation_token,
             binding=binding,
+            parent_guard=parent_guard,
             current_security_epoch=current_security_epoch,
             audit_sink=audit_sink,
             clock=clock,
@@ -648,6 +652,8 @@ class HostBoundCredentialTransport:
 
     def _authority_still_active(self) -> bool:
         try:
+            if self._parent_guard is not None:
+                self._parent_guard()
             if self._current_security_epoch() != self._binding.security_epoch:
                 return False
             if self._envelope.cancellation_requested.is_set():
@@ -744,6 +750,7 @@ class AuthorizedEnvelopeCredentialTransport:
         audit_sink: Callable[[Mapping[str, Any]], None] | None = None,
         clock: Callable[[], float] = time.time,
         monotonic_clock: Callable[[], float] = time.monotonic,
+        parent_guard: Callable[[], None] | None = None,
     ) -> None:
         self._envelope = envelope
         self._provider_principal = provider_principal
@@ -755,6 +762,7 @@ class AuthorizedEnvelopeCredentialTransport:
         self._audit_sink = audit_sink
         self._clock = clock
         self._monotonic_clock = monotonic_clock
+        self._parent_guard = parent_guard
         self._used = False
         self._selection_used = False
         self._git_selection: dict[str, Any] | None = None
@@ -888,6 +896,7 @@ class AuthorizedEnvelopeCredentialTransport:
             audit_sink=self._audit_sink,
             clock=self._clock,
             monotonic_clock=self._monotonic_clock,
+            parent_guard=self._parent_guard,
         )
         method = transport.stream_json if _on_event is not None else transport.post_json
         extra = {"on_event": _on_event} if _on_event is not None else {}
@@ -980,6 +989,7 @@ class AuthorizedEnvelopeCredentialTransport:
             audit_sink=self._audit_sink,
             clock=self._clock,
             monotonic_clock=self._monotonic_clock,
+            parent_guard=self._parent_guard,
         )
         return transport.push_git_https(
             git_executable=git_executable,

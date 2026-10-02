@@ -185,8 +185,8 @@ class LocalModelTransport:
             connection.close()
 
     def _check(self, binding: LocalModelBinding, lifetime: HttpRequestLifetime) -> None:
-        lifetime.check()
         self._assert_current()
+        lifetime.check()
         if self._resolve_binding(binding.provider_instance_id) != binding:
             raise PermissionError("local model configuration changed")
         # Resolving the registry is a nested Broker call and may block. Fence

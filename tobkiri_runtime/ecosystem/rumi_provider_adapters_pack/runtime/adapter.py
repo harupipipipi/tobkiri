@@ -259,7 +259,7 @@ def _openai_compatible(
         "usage": dict(value.get("usage") or {}),
         "finish_reason": (first.get("finish_reason") if isinstance(first, Mapping) else None),
     }
-    return _stream_result(result) if streaming else result
+    return result
 
 
 def _local_openai(
@@ -302,7 +302,7 @@ def _local_openai(
         "output": message["content"], "tool_intents": [],
         "usage": dict(usage), "finish_reason": first.get("finish_reason"),
     }
-    return _stream_result(result) if streaming else result
+    return result
 
 
 def _local_text_messages(value: Any) -> list[dict[str, str]]:
@@ -377,7 +377,7 @@ def _anthropic(
         "usage": dict(value.get("usage") or {}),
         "finish_reason": value.get("stop_reason"),
     }
-    return _stream_result(result) if streaming else result
+    return result
 
 
 def _openai_embedding(
@@ -453,28 +453,6 @@ def _provider_model_id(request: Mapping[str, Any]) -> str:
     if provider_id and model_id.startswith(prefix):
         return model_id[len(prefix) :]
     return model_id
-
-
-def _stream_result(result: Mapping[str, Any]) -> dict[str, Any]:
-    events: list[dict[str, Any]] = []
-    output = str(result.get("output") or "")
-    if output:
-        events.append({"type": "text_delta", "delta": output})
-    for intent in result.get("tool_intents") or []:
-        if isinstance(intent, Mapping):
-            events.append(
-                {
-                    "type": "tool_intent_delta",
-                    "tool_intent": dict(intent),
-                }
-            )
-    events.extend(
-        [
-            {"type": "usage", "usage": dict(result.get("usage") or {})},
-            {"type": "finish", "finish_reason": result.get("finish_reason")},
-        ]
-    )
-    return {"events": events}
 
 
 def _endpoint(connection: Mapping[str, Any], suffix: str) -> str:
