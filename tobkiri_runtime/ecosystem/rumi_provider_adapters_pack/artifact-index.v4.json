@@ -1,18 +1,18 @@
 {
-  "artifact_set_digest": "sha256:ece292bf05178438fe3a183c91c5527522727d804e426055b71150123e37ab77",
+  "artifact_set_digest": "sha256:0f7265c69f5e9233a25386357930c6fc88cc4c77bb92c398be1e54a8f0cac43e",
   "artifacts": [
     {
-      "digest": "sha256:f14bc58127dddca25fee0fa6b3d2c06c26c0be606deb598f3958bb80051b065e",
+      "digest": "sha256:84651c47af4c31eb819b662228131606d2b4db932f8bf3dab9556c00af111410",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:68cce6281e1fa559b25a014817809255c47fce7fc1e1bb47cdac214f48338bb8",
+      "digest": "sha256:24d75af6cd22591f77d54660296495acf8bffcf887adfff865b0f436fdfe6b87",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:cc901acd29e1a2daaff9e36f5077c6a02d1f864dcd3d9a57c0705fd89dc9b0d3",
+      "digest": "sha256:b278afdcfe67f8356a29a2e690c109964c9e660c05cb59b2b977fc162cb97f31",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -22,16 +22,21 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:638df28e85042c3cd1d6438bc8fa1805d7d39b8d3ad18a2eab00246fceff9320",
+      "digest": "sha256:f5c385b0282a6a80f6a18c2d3443edf4dbd86a91a29d7051eb124c5d9c7049e0",
       "path": "runtime/adapter.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:4e7d793405ecfe5cd2264ed5811558be2fd59e6f4f9ab6706154cb6cbd5d9de6",
+      "path": "runtime/streaming.py",
       "role": "runtime"
     }
   ],
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:733b7a44543ea34361e2709f86fcaa71738494f1b96ad09a054cb4939499d577"
+    "signed_digest": "sha256:043f72460fd42a3c46a03237d0983effefbbb6d6a3bb55d33b293b0de1d99eb9"
   },
   "pack_id": "rumi_provider_adapters_pack",
-  "source_identity": "sha256:855906e4586beba64f0602168193ec830f312e8c4f82d319386b86a68fbd4f6b"
+  "source_identity": "sha256:39d2191da60e025cdc1bb167d429e62ce187d3bd938050013542543654be12e8"
 }

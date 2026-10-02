@@ -1,18 +1,18 @@
 {
-  "artifact_set_digest": "sha256:2c8c1a735a2ffb557320d158add17d67b14749dcbb7a03b9c5b5fe477d5f9f04",
+  "artifact_set_digest": "sha256:2962438b56e3b25680810a8e192ae896d3c9fbd49ece7fedd69ad61666d8e9ad",
   "artifacts": [
     {
-      "digest": "sha256:409f355cc1682b951f889083c997a08e502023b31d153a85221c67ad24572b42",
+      "digest": "sha256:22da6180bed837c7a0cbac9d494e90b9f7e5389a852a5cd1a2ebeccc19411617",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:1c69165325c8dd859be90602a2cafa85f7d3ffe24217a86455e190235dd3cdd1",
+      "digest": "sha256:65fe2ab5b3f3270086c246f3c4db4ffc69e50d3e75b1b0cd212f1af7c9f6c91b",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:91469c9696a7b10e40d2dc80e80e2fb6fe6505ffe7175bb5454bb6a2aa145291",
+      "digest": "sha256:0de2c299fbb162010377a2a48479279c5a5044ecc5062f0e9948e854fd73f2ac",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -22,13 +22,23 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:9768d890f40c645686c3f050d518b0cd514f733853b23ebc1bc25e82f4c9fb0d",
+      "digest": "sha256:bcb429ed196230eee66660ae1eb1b9ccedf04d36afff3faba7da3cc2c7d34e71",
       "path": "runtime/host.py",
       "role": "runtime"
     },
     {
       "digest": "sha256:766e7c9d7fcc428785616608e8fa5eb624cc7da0c7435e811a0b8ea896fa8f72",
       "path": "runtime/input_context.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:eeca3684d93590a88935d615b00db0932d6fc3cde2e2f6bd32f66630f4bbc69e",
+      "path": "runtime/progress.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:5a5ddfa95f7f47b78736e0fe0e64f6a9eaff10010cff7038984707d6511b5e8c",
+      "path": "runtime/progress_host.py",
       "role": "runtime"
     },
     {
@@ -45,8 +55,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:fa39f4c70d3eeb98e87603dc33612e8365de0b8371eaffc89444267f6153811b"
+    "signed_digest": "sha256:ec64e023582b6ed5046144017929787c5c3d1adc74fe80c9eaf077f17c8fceab"
   },
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:6162df9c90e2a241589aee9f08ab216b449d14866110ea943f389b531b09c6a3"
+  "source_identity": "sha256:35a8d8cc74b98c5292690d3a78787136367ae07b1269ca994b486b8b773ebc2a"
 }

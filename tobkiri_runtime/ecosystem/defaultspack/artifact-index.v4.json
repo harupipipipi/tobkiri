@@ -1,13 +1,13 @@
 {
-  "artifact_set_digest": "sha256:93e7dafe11b09149da6add97439203c450df5e628e11e0fa4bae3b273f8dbb9f",
+  "artifact_set_digest": "sha256:ab50a2d99b67bb1b041740090d80da70255119c0ccf90757fbe52efa6a0a7e0d",
   "artifacts": [
     {
-      "digest": "sha256:51e2dc228b19a8a635af2910765f9e941e873c96f0f5ad9b914e1e659474c3ef",
+      "digest": "sha256:eb3c22b3c496934f99ad7224ec8f69f809bf03df05e345d12fbfa08b40d513c7",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:2c22ca0b93daeb6ea7553d08854c79fe29b08ce43ea5ee14fe86a2e3b6246dd2",
+      "digest": "sha256:17ad02fa64affb4eb2ad7a3fda5b8e2e0ce7b16bb8a2bdc65a45e83038f5318a",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
@@ -27,7 +27,7 @@
       "role": "host_contract_contribution"
     },
     {
-      "digest": "sha256:60cd851039332d4b2dfc41b71c4d05b65547b13038d8708d7f7e8f890984608a",
+      "digest": "sha256:246ab1f1db404c2008f8e1a3cadab58ddd347ad554e496e422d8cc2de45c74f6",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -42,7 +42,7 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:f1b25aaf986c02261897936ced097683f3c47cb9439bc7560fc3a4fc49009055",
+      "digest": "sha256:4435f3d3409a01be4c3fecc46eaf45b706deaebddfcb5ccbb5a342baef343c4c",
       "path": "runtime/saved_conversation.py",
       "role": "runtime"
     },
@@ -640,8 +640,8 @@
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:e899b32b759990ad21ac819b0e50c82a68f7383561eb8af3651de8acc40760bd"
+    "signed_digest": "sha256:2c94def3aaea631631051ee98d1fb4043e98b0e88b919ac556f5447f2dcbda9d"
   },
   "pack_id": "defaultspack",
-  "source_identity": "sha256:efd2d17407f42a4130521a262219701d9704911984b53e2d42f297c7d9f129c9"
+  "source_identity": "sha256:de368895beefa9124cb7b1a08350b0b2c162ed34c6743aac9fca5a9ae7722607"
 }

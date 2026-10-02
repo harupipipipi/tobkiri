@@ -16,7 +16,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:9768d890f40c645686c3f050d518b0cd514f733853b23ebc1bc25e82f4c9fb0d"
+      "implementation_digest": "sha256:bcb429ed196230eee66660ae1eb1b9ccedf04d36afff3faba7da3cc2c7d34e71"
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
@@ -32,7 +32,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:9768d890f40c645686c3f050d518b0cd514f733853b23ebc1bc25e82f4c9fb0d"
+      "implementation_digest": "sha256:bcb429ed196230eee66660ae1eb1b9ccedf04d36afff3faba7da3cc2c7d34e71"
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
@@ -48,7 +48,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:9768d890f40c645686c3f050d518b0cd514f733853b23ebc1bc25e82f4c9fb0d"
+      "implementation_digest": "sha256:bcb429ed196230eee66660ae1eb1b9ccedf04d36afff3faba7da3cc2c7d34e71"
     },
     {
       "function_id": "rumi_conversation_store_pack.conversation-store.message-manage",
@@ -849,6 +849,12 @@
                 },
                 "requirements": {
                   "type": "object"
+                },
+                "delivery_mode": {
+                  "enum": [
+                    "buffered",
+                    "incremental"
+                  ]
                 }
               }
             },
@@ -2700,6 +2706,579 @@
                 }
               },
               "additionalProperties": false
+            }
+          }
+        },
+        {
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.progress",
+          "operation_ids": [
+            "rumi_turn_runtime_pack.turn-progress"
+          ],
+          "contract_id": "tobkiri.action.turn.progress.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/host.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "phase": {
+                  "enum": [
+                    "ready",
+                    "begin",
+                    "bind",
+                    "claim",
+                    "publish"
+                  ]
+                },
+                "turn_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "conversation_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "parent_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "request_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "conversation_revision": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "input_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "ai_input_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "progress_id": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "producer": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "producer_input_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "cursor": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4096
+                },
+                "event": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "type",
+                        "delta"
+                      ],
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "text_delta",
+                            "thinking_delta"
+                          ]
+                        },
+                        "delta": {
+                          "type": "string",
+                          "maxLength": 16384
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "type",
+                        "finish_reason"
+                      ],
+                      "properties": {
+                        "type": {
+                          "const": "finish"
+                        },
+                        "finish_reason": {
+                          "enum": [
+                            "stop",
+                            "length",
+                            "tool_calls",
+                            "end_turn",
+                            "max_tokens",
+                            "tool_use"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "phase"
+                  ],
+                  "properties": {
+                    "phase": {
+                      "const": "ready"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "phase",
+                    "turn_id",
+                    "conversation_id",
+                    "parent_id",
+                    "request_id",
+                    "conversation_revision",
+                    "input_digest",
+                    "ai_input_digest"
+                  ],
+                  "properties": {
+                    "phase": {
+                      "const": "begin"
+                    },
+                    "turn_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "conversation_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "parent_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "conversation_revision": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "input_digest": {
+                      "type": "string",
+                      "pattern": "^sha256:[0-9a-f]{64}$"
+                    },
+                    "ai_input_digest": {
+                      "type": "string",
+                      "pattern": "^sha256:[0-9a-f]{64}$"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "phase",
+                    "progress_id",
+                    "producer",
+                    "producer_input_digest"
+                  ],
+                  "properties": {
+                    "phase": {
+                      "const": "bind"
+                    },
+                    "progress_id": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "producer": {
+                      "type": "string",
+                      "pattern": "^sha256:[0-9a-f]{64}$"
+                    },
+                    "producer_input_digest": {
+                      "type": "string",
+                      "pattern": "^sha256:[0-9a-f]{64}$"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "phase",
+                    "progress_id"
+                  ],
+                  "properties": {
+                    "phase": {
+                      "const": "claim"
+                    },
+                    "progress_id": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "phase",
+                    "progress_id",
+                    "cursor",
+                    "event"
+                  ],
+                  "properties": {
+                    "phase": {
+                      "const": "publish"
+                    },
+                    "progress_id": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "cursor": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 4096
+                    },
+                    "event": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "type",
+                            "delta"
+                          ],
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "text_delta",
+                                "thinking_delta"
+                              ]
+                            },
+                            "delta": {
+                              "type": "string",
+                              "maxLength": 16384
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "type",
+                            "finish_reason"
+                          ],
+                          "properties": {
+                            "type": {
+                              "const": "finish"
+                            },
+                            "finish_reason": {
+                              "enum": [
+                                "stop",
+                                "length",
+                                "tool_calls",
+                                "end_turn",
+                                "max_tokens",
+                                "tool_use"
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "ready": {
+                  "type": "boolean"
+                },
+                "progress_id": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "bound": {
+                  "const": true
+                },
+                "claimed": {
+                  "const": true
+                },
+                "cursor": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4096
+                }
+              },
+              "oneOf": [
+                {
+                  "required": [
+                    "ready"
+                  ],
+                  "maxProperties": 1
+                },
+                {
+                  "required": [
+                    "progress_id"
+                  ],
+                  "maxProperties": 1
+                },
+                {
+                  "required": [
+                    "bound"
+                  ],
+                  "maxProperties": 1
+                },
+                {
+                  "required": [
+                    "claimed"
+                  ],
+                  "maxProperties": 1
+                },
+                {
+                  "required": [
+                    "cursor"
+                  ],
+                  "maxProperties": 1
+                }
+              ]
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.progress-resource",
+          "operation_ids": [
+            "rumi_turn_runtime_pack.turn-progress-resource"
+          ],
+          "contract_id": "tobkiri.resource.turn.progress.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/host.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "turn_id",
+                "conversation_id",
+                "cursor"
+              ],
+              "properties": {
+                "turn_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "conversation_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "cursor": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                }
+              }
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "version",
+                "provisional",
+                "binding",
+                "events",
+                "cursor",
+                "provider_complete",
+                "expires_at_ms",
+                "canonical_turn_status"
+              ],
+              "properties": {
+                "version": {
+                  "const": "tobkiri.turn-progress.v1"
+                },
+                "provisional": {
+                  "const": true
+                },
+                "binding": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "turn_id",
+                    "conversation_id",
+                    "parent_id",
+                    "request_id",
+                    "conversation_revision",
+                    "input_digest",
+                    "ai_input_digest"
+                  ],
+                  "properties": {
+                    "turn_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "conversation_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "parent_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "conversation_revision": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "input_digest": {
+                      "type": "string",
+                      "pattern": "^sha256:[0-9a-f]{64}$"
+                    },
+                    "ai_input_digest": {
+                      "type": "string",
+                      "pattern": "^sha256:[0-9a-f]{64}$"
+                    }
+                  }
+                },
+                "events": {
+                  "type": "array",
+                  "maxItems": 128,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "cursor",
+                      "event"
+                    ],
+                    "properties": {
+                      "cursor": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 4096
+                      },
+                      "event": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "type",
+                              "delta"
+                            ],
+                            "properties": {
+                              "type": {
+                                "enum": [
+                                  "text_delta",
+                                  "thinking_delta"
+                                ]
+                              },
+                              "delta": {
+                                "type": "string",
+                                "maxLength": 16384
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "type",
+                              "finish_reason"
+                            ],
+                            "properties": {
+                              "type": {
+                                "const": "finish"
+                              },
+                              "finish_reason": {
+                                "enum": [
+                                  "stop",
+                                  "length",
+                                  "tool_calls",
+                                  "end_turn",
+                                  "max_tokens",
+                                  "tool_use"
+                                ]
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                "cursor": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "provider_complete": {
+                  "type": "boolean"
+                },
+                "expires_at_ms": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "canonical_turn_status": {
+                  "enum": [
+                    "queued",
+                    "running",
+                    "waiting",
+                    "completed",
+                    "failed",
+                    "cancelled",
+                    null
+                  ]
+                }
+              }
+            },
+            "error": {
+              "type": "object"
             }
           }
         }

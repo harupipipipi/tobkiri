@@ -192,7 +192,7 @@
             {
               "entrypoint_id": "saved_complete",
               "id": "saved_complete",
-              "implementation_digest": "sha256:f1b25aaf986c02261897936ced097683f3c47cb9439bc7560fc3a4fc49009055"
+              "implementation_digest": "sha256:4435f3d3409a01be4c3fecc46eaf45b706deaebddfcb5ccbb5a342baef343c4c"
             }
           ],
           "owner": "defaultspack",
@@ -792,6 +792,24 @@
           "contract_id": "tobkiri.service.ai.stream.v1",
           "optional": false,
           "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "contract_id": "tobkiri.action.turn.progress.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": true,
+          "operations": [
+            "rumi_turn_runtime_pack.turn-progress"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.resource.turn.progress.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": true,
+          "operations": [
+            "rumi_turn_runtime_pack.turn-progress-resource"
+          ]
         }
       ],
       "runtime_artifacts": [
@@ -806,7 +824,7 @@
           "path": "runtime/application_presentation.py"
         },
         {
-          "digest": "sha256:f1b25aaf986c02261897936ced097683f3c47cb9439bc7560fc3a4fc49009055",
+          "digest": "sha256:4435f3d3409a01be4c3fecc46eaf45b706deaebddfcb5ccbb5a342baef343c4c",
           "kind": "executable",
           "path": "runtime/saved_conversation.py"
         },
@@ -2133,7 +2151,7 @@
             {
               "entrypoint_id": "ai-gateway-route-quote",
               "id": "rumi_ai_gateway_pack.ai-gateway.route-quote",
-              "implementation_digest": "sha256:44be6a6f20a8e90e9ab30b7540e13ca2dfda50aed21932a035f7eac979777494"
+              "implementation_digest": "sha256:efb1761895c8b3577813c48cea9d996f4c4ab4859e158445a51778c9968c9ec2"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2199,6 +2217,12 @@
                 },
                 "requirements": {
                   "type": "object"
+                },
+                "delivery_mode": {
+                  "enum": [
+                    "buffered",
+                    "incremental"
+                  ]
                 }
               }
             },
@@ -2348,7 +2372,7 @@
             {
               "entrypoint_id": "ai-gateway-routing-diagnostics",
               "id": "rumi_ai_gateway_pack.ai-gateway-routing-diagnostics",
-              "implementation_digest": "sha256:5cdf9f981ed0c123cf28796f2554204260dde5f3f9b7f343642c89bc8f53a88d"
+              "implementation_digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2381,7 +2405,7 @@
             {
               "entrypoint_id": "ai-gateway-generate",
               "id": "rumi_ai_gateway_pack.ai-gateway.generate",
-              "implementation_digest": "sha256:5cdf9f981ed0c123cf28796f2554204260dde5f3f9b7f343642c89bc8f53a88d"
+              "implementation_digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2414,7 +2438,7 @@
             {
               "entrypoint_id": "ai-gateway-stream",
               "id": "rumi_ai_gateway_pack.ai-gateway.stream",
-              "implementation_digest": "sha256:5cdf9f981ed0c123cf28796f2554204260dde5f3f9b7f343642c89bc8f53a88d"
+              "implementation_digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2500,6 +2524,21 @@
           "contract_id": "tobkiri.service.ai.usage.cost.v1",
           "optional": false,
           "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "contract_id": "tobkiri.action.turn.progress.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": true,
+          "operations": [
+            "rumi_turn_runtime_pack.turn-progress"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": true
         }
       ],
       "runtime_artifacts": [
@@ -2509,12 +2548,12 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:5cdf9f981ed0c123cf28796f2554204260dde5f3f9b7f343642c89bc8f53a88d",
+          "digest": "sha256:8acdbaade63c4eabecc00bdd45090b4ccdf6c8b8a791e70b109fc6c961c7381e",
           "kind": "executable",
           "path": "runtime/gateway.py"
         },
         {
-          "digest": "sha256:44be6a6f20a8e90e9ab30b7540e13ca2dfda50aed21932a035f7eac979777494",
+          "digest": "sha256:efb1761895c8b3577813c48cea9d996f4c4ab4859e158445a51778c9968c9ec2",
           "kind": "executable",
           "path": "runtime/route_quote.py"
         }
@@ -15026,7 +15065,7 @@
             {
               "entrypoint_id": "provider-embedding",
               "id": "rumi_provider_adapters_pack.provider-embedding",
-              "implementation_digest": "sha256:638df28e85042c3cd1d6438bc8fa1805d7d39b8d3ad18a2eab00246fceff9320"
+              "implementation_digest": "sha256:f5c385b0282a6a80f6a18c2d3443edf4dbd86a91a29d7051eb124c5d9c7049e0"
             }
           ],
           "owner": "rumi_provider_adapters_pack",
@@ -15062,7 +15101,7 @@
             {
               "entrypoint_id": "provider-generate",
               "id": "rumi_provider_adapters_pack.provider-generate",
-              "implementation_digest": "sha256:638df28e85042c3cd1d6438bc8fa1805d7d39b8d3ad18a2eab00246fceff9320"
+              "implementation_digest": "sha256:f5c385b0282a6a80f6a18c2d3443edf4dbd86a91a29d7051eb124c5d9c7049e0"
             }
           ],
           "owner": "rumi_human_operator_provider_pack",
@@ -15098,7 +15137,7 @@
             {
               "entrypoint_id": "provider-image",
               "id": "rumi_provider_adapters_pack.provider-image",
-              "implementation_digest": "sha256:638df28e85042c3cd1d6438bc8fa1805d7d39b8d3ad18a2eab00246fceff9320"
+              "implementation_digest": "sha256:f5c385b0282a6a80f6a18c2d3443edf4dbd86a91a29d7051eb124c5d9c7049e0"
             }
           ],
           "owner": "rumi_provider_adapters_pack",
@@ -15134,7 +15173,7 @@
             {
               "entrypoint_id": "provider-stream",
               "id": "rumi_provider_adapters_pack.provider-stream",
-              "implementation_digest": "sha256:638df28e85042c3cd1d6438bc8fa1805d7d39b8d3ad18a2eab00246fceff9320"
+              "implementation_digest": "sha256:f5c385b0282a6a80f6a18c2d3443edf4dbd86a91a29d7051eb124c5d9c7049e0"
             }
           ],
           "owner": "rumi_human_operator_provider_pack",
@@ -15163,6 +15202,15 @@
           "contract_id": "tobkiri.resource.ai.provider.registry.v1",
           "optional": false,
           "version_range": ">=1.0.0 <2.0.0"
+        },
+        {
+          "contract_id": "tobkiri.action.turn.progress.v1",
+          "version_range": ">=1.0.0 <2.0.0",
+          "cardinality": "one",
+          "optional": true,
+          "operations": [
+            "rumi_turn_runtime_pack.turn-progress"
+          ]
         }
       ],
       "runtime_artifacts": [
@@ -15172,9 +15220,14 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:638df28e85042c3cd1d6438bc8fa1805d7d39b8d3ad18a2eab00246fceff9320",
+          "digest": "sha256:f5c385b0282a6a80f6a18c2d3443edf4dbd86a91a29d7051eb124c5d9c7049e0",
           "kind": "executable",
           "path": "runtime/adapter.py"
+        },
+        {
+          "path": "runtime/streaming.py",
+          "kind": "executable",
+          "digest": "sha256:4e7d793405ecfe5cd2264ed5811558be2fd59e6f4f9ab6706154cb6cbd5d9de6"
         }
       ],
       "secrets": [],
@@ -19673,7 +19726,7 @@
             {
               "entrypoint_id": "turn-lifecycle",
               "id": "rumi_turn_runtime_pack.turn-lifecycle",
-              "implementation_digest": "sha256:9768d890f40c645686c3f050d518b0cd514f733853b23ebc1bc25e82f4c9fb0d"
+              "implementation_digest": "sha256:bcb429ed196230eee66660ae1eb1b9ccedf04d36afff3faba7da3cc2c7d34e71"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -19706,7 +19759,7 @@
             {
               "entrypoint_id": "turn-reconcile",
               "id": "rumi_turn_runtime_pack.turn-reconcile",
-              "implementation_digest": "sha256:9768d890f40c645686c3f050d518b0cd514f733853b23ebc1bc25e82f4c9fb0d"
+              "implementation_digest": "sha256:bcb429ed196230eee66660ae1eb1b9ccedf04d36afff3faba7da3cc2c7d34e71"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -19770,7 +19823,7 @@
             {
               "entrypoint_id": "turn-saved",
               "id": "rumi_turn_runtime_pack.turn-saved",
-              "implementation_digest": "sha256:9768d890f40c645686c3f050d518b0cd514f733853b23ebc1bc25e82f4c9fb0d"
+              "implementation_digest": "sha256:bcb429ed196230eee66660ae1eb1b9ccedf04d36afff3faba7da3cc2c7d34e71"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -20187,7 +20240,7 @@
             {
               "entrypoint_id": "turn-stop",
               "id": "rumi_turn_runtime_pack.turn-stop",
-              "implementation_digest": "sha256:9768d890f40c645686c3f050d518b0cd514f733853b23ebc1bc25e82f4c9fb0d"
+              "implementation_digest": "sha256:bcb429ed196230eee66660ae1eb1b9ccedf04d36afff3faba7da3cc2c7d34e71"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -20293,7 +20346,7 @@
             {
               "entrypoint_id": "turn-events",
               "id": "rumi_turn_runtime_pack.turn-events",
-              "implementation_digest": "sha256:9768d890f40c645686c3f050d518b0cd514f733853b23ebc1bc25e82f4c9fb0d"
+              "implementation_digest": "sha256:bcb429ed196230eee66660ae1eb1b9ccedf04d36afff3faba7da3cc2c7d34e71"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -20326,7 +20379,7 @@
             {
               "entrypoint_id": "turn-resource",
               "id": "rumi_turn_runtime_pack.turn-resource",
-              "implementation_digest": "sha256:9768d890f40c645686c3f050d518b0cd514f733853b23ebc1bc25e82f4c9fb0d"
+              "implementation_digest": "sha256:bcb429ed196230eee66660ae1eb1b9ccedf04d36afff3faba7da3cc2c7d34e71"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -20343,6 +20396,605 @@
             }
           },
           "security": "sensitive",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.turn.progress.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_turn_runtime_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "turn-progress",
+              "id": "rumi_turn_runtime_pack.turn-progress",
+              "implementation_digest": "sha256:bcb429ed196230eee66660ae1eb1b9ccedf04d36afff3faba7da3cc2c7d34e71"
+            }
+          ],
+          "owner": "rumi_turn_runtime_pack",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.progress",
+          "required_capabilities": [
+            "turn.manage"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "phase": {
+                  "enum": [
+                    "ready",
+                    "begin",
+                    "bind",
+                    "claim",
+                    "publish"
+                  ]
+                },
+                "turn_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "conversation_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "parent_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "request_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "conversation_revision": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "input_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "ai_input_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "progress_id": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "producer": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "producer_input_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "cursor": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4096
+                },
+                "event": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "type",
+                        "delta"
+                      ],
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "text_delta",
+                            "thinking_delta"
+                          ]
+                        },
+                        "delta": {
+                          "type": "string",
+                          "maxLength": 16384
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "type",
+                        "finish_reason"
+                      ],
+                      "properties": {
+                        "type": {
+                          "const": "finish"
+                        },
+                        "finish_reason": {
+                          "enum": [
+                            "stop",
+                            "length",
+                            "tool_calls",
+                            "end_turn",
+                            "max_tokens",
+                            "tool_use"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "phase"
+                  ],
+                  "properties": {
+                    "phase": {
+                      "const": "ready"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "phase",
+                    "turn_id",
+                    "conversation_id",
+                    "parent_id",
+                    "request_id",
+                    "conversation_revision",
+                    "input_digest",
+                    "ai_input_digest"
+                  ],
+                  "properties": {
+                    "phase": {
+                      "const": "begin"
+                    },
+                    "turn_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "conversation_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "parent_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "conversation_revision": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "input_digest": {
+                      "type": "string",
+                      "pattern": "^sha256:[0-9a-f]{64}$"
+                    },
+                    "ai_input_digest": {
+                      "type": "string",
+                      "pattern": "^sha256:[0-9a-f]{64}$"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "phase",
+                    "progress_id",
+                    "producer",
+                    "producer_input_digest"
+                  ],
+                  "properties": {
+                    "phase": {
+                      "const": "bind"
+                    },
+                    "progress_id": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "producer": {
+                      "type": "string",
+                      "pattern": "^sha256:[0-9a-f]{64}$"
+                    },
+                    "producer_input_digest": {
+                      "type": "string",
+                      "pattern": "^sha256:[0-9a-f]{64}$"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "phase",
+                    "progress_id"
+                  ],
+                  "properties": {
+                    "phase": {
+                      "const": "claim"
+                    },
+                    "progress_id": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "phase",
+                    "progress_id",
+                    "cursor",
+                    "event"
+                  ],
+                  "properties": {
+                    "phase": {
+                      "const": "publish"
+                    },
+                    "progress_id": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "cursor": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 4096
+                    },
+                    "event": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "type",
+                            "delta"
+                          ],
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "text_delta",
+                                "thinking_delta"
+                              ]
+                            },
+                            "delta": {
+                              "type": "string",
+                              "maxLength": 16384
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "type",
+                            "finish_reason"
+                          ],
+                          "properties": {
+                            "type": {
+                              "const": "finish"
+                            },
+                            "finish_reason": {
+                              "enum": [
+                                "stop",
+                                "length",
+                                "tool_calls",
+                                "end_turn",
+                                "max_tokens",
+                                "tool_use"
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "ready": {
+                  "type": "boolean"
+                },
+                "progress_id": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "bound": {
+                  "const": true
+                },
+                "claimed": {
+                  "const": true
+                },
+                "cursor": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4096
+                }
+              },
+              "oneOf": [
+                {
+                  "required": [
+                    "ready"
+                  ],
+                  "maxProperties": 1
+                },
+                {
+                  "required": [
+                    "progress_id"
+                  ],
+                  "maxProperties": 1
+                },
+                {
+                  "required": [
+                    "bound"
+                  ],
+                  "maxProperties": 1
+                },
+                {
+                  "required": [
+                    "claimed"
+                  ],
+                  "maxProperties": 1
+                },
+                {
+                  "required": [
+                    "cursor"
+                  ],
+                  "maxProperties": 1
+                }
+              ]
+            }
+          },
+          "security": "restricted",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.turn.progress.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "data_owner": "rumi_turn_runtime_pack",
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "turn-progress-resource",
+              "id": "rumi_turn_runtime_pack.turn-progress-resource",
+              "implementation_digest": "sha256:bcb429ed196230eee66660ae1eb1b9ccedf04d36afff3faba7da3cc2c7d34e71"
+            }
+          ],
+          "owner": "rumi_turn_runtime_pack",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.progress-resource",
+          "required_capabilities": [
+            "turn.manage"
+          ],
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "turn_id",
+                "conversation_id",
+                "cursor"
+              ],
+              "properties": {
+                "turn_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "conversation_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                },
+                "cursor": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                }
+              }
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "version",
+                "provisional",
+                "binding",
+                "events",
+                "cursor",
+                "provider_complete",
+                "expires_at_ms",
+                "canonical_turn_status"
+              ],
+              "properties": {
+                "version": {
+                  "const": "tobkiri.turn-progress.v1"
+                },
+                "provisional": {
+                  "const": true
+                },
+                "binding": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "turn_id",
+                    "conversation_id",
+                    "parent_id",
+                    "request_id",
+                    "conversation_revision",
+                    "input_digest",
+                    "ai_input_digest"
+                  ],
+                  "properties": {
+                    "turn_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "conversation_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "parent_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "request_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "conversation_revision": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "input_digest": {
+                      "type": "string",
+                      "pattern": "^sha256:[0-9a-f]{64}$"
+                    },
+                    "ai_input_digest": {
+                      "type": "string",
+                      "pattern": "^sha256:[0-9a-f]{64}$"
+                    }
+                  }
+                },
+                "events": {
+                  "type": "array",
+                  "maxItems": 128,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "cursor",
+                      "event"
+                    ],
+                    "properties": {
+                      "cursor": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 4096
+                      },
+                      "event": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "type",
+                              "delta"
+                            ],
+                            "properties": {
+                              "type": {
+                                "enum": [
+                                  "text_delta",
+                                  "thinking_delta"
+                                ]
+                              },
+                              "delta": {
+                                "type": "string",
+                                "maxLength": 16384
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "type",
+                              "finish_reason"
+                            ],
+                            "properties": {
+                              "type": {
+                                "const": "finish"
+                              },
+                              "finish_reason": {
+                                "enum": [
+                                  "stop",
+                                  "length",
+                                  "tool_calls",
+                                  "end_turn",
+                                  "max_tokens",
+                                  "tool_use"
+                                ]
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                "cursor": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4096
+                },
+                "provider_complete": {
+                  "type": "boolean"
+                },
+                "expires_at_ms": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "canonical_turn_status": {
+                  "enum": [
+                    "queued",
+                    "running",
+                    "waiting",
+                    "completed",
+                    "failed",
+                    "cancelled",
+                    null
+                  ]
+                }
+              }
+            }
+          },
+          "security": "restricted",
           "version": "1.0.0"
         }
       ],
@@ -20400,7 +21052,7 @@
           "path": "runtime/durable.py"
         },
         {
-          "digest": "sha256:9768d890f40c645686c3f050d518b0cd514f733853b23ebc1bc25e82f4c9fb0d",
+          "digest": "sha256:bcb429ed196230eee66660ae1eb1b9ccedf04d36afff3faba7da3cc2c7d34e71",
           "kind": "executable",
           "path": "runtime/host.py"
         },
@@ -20418,6 +21070,16 @@
           "digest": "sha256:1783d96299bcf25433eb785df86f47550af9f5d5689de63658acfd69787c8102",
           "kind": "executable",
           "path": "runtime/turns.py"
+        },
+        {
+          "path": "runtime/progress.py",
+          "kind": "executable",
+          "digest": "sha256:eeca3684d93590a88935d615b00db0932d6fc3cde2e2f6bd32f66630f4bbc69e"
+        },
+        {
+          "path": "runtime/progress_host.py",
+          "kind": "executable",
+          "digest": "sha256:5a5ddfa95f7f47b78736e0fe0e64f6a9eaff10010cff7038984707d6511b5e8c"
         }
       ],
       "secrets": [],
