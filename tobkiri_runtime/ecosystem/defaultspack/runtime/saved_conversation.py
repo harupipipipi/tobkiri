@@ -160,13 +160,31 @@ def _saved_user_content(value: Any) -> bool:
     )
 
 
+def _context_binding(value: Any) -> None:
+    if (
+        type(value) is not dict
+        or set(value) != {"version", "profile_id", "parent_conversation_id",
+                          "parent_revision", "context_digest"}
+        or value["version"] != "tobkiri.conversation-context-binding.v1"
+        or not isinstance(value["context_digest"], str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", value["context_digest"]) is None
+    ):
+        raise ValueError("saved conversation context binding is invalid")
+    _identifier(value["profile_id"])
+    _identifier(value["parent_conversation_id"])
+    _revision(value["parent_revision"])
+
+
 def _request(value: Any) -> dict[str, Any]:
     if type(value) is not dict or set(value) - {
         "tool_selection",
         "strategy_reference",
         "thinking_level",
+        "context_binding",
     } != _REQUEST_FIELDS:
         raise ValueError("saved conversation request fields are invalid")
+    if "context_binding" in value:
+        _context_binding(value["context_binding"])
     if "strategy_reference" in value and value["strategy_reference"] is not None:
         _identifier(value["strategy_reference"])
     if "thinking_level" in value and (
@@ -216,12 +234,15 @@ def _request(value: Any) -> dict[str, Any]:
 def _state_request(value: Any) -> dict[str, Any]:
     """Validate compact request identity retained after the user append."""
     fields = {"turn_id", "conversation_id", "conversation_revision"}
-    optional = {"tool_selection", "strategy_reference", "thinking_level"}
+    optional = {"tool_selection", "strategy_reference", "thinking_level",
+                "context_binding"}
     if type(value) is not dict or set(value) - optional != fields:
         raise ValueError("saved continuation request fields are invalid")
     _identifier(value["turn_id"])
     _identifier(value["conversation_id"])
     _revision(value["conversation_revision"])
+    if "context_binding" in value:
+        _context_binding(value["context_binding"])
     if "strategy_reference" in value and value["strategy_reference"] is not None:
         _identifier(value["strategy_reference"])
     if "thinking_level" in value and value["thinking_level"] not in {
