@@ -451,3 +451,115 @@ def test_context_binding_schema_and_guest_validate_the_same_strict_input(
         validate_saved_conversation_input(initial)
     with pytest.raises(ValueError):
         saved.start(initial["request"])
+
+
+def test_concurrent_ensure_recovers_only_exact_owner_slot_winner(service: Any) -> None:
+    side, client = service
+    parent = client.store.get("conversation-1")
+    client.before_create = lambda: client.store.create(
+        _child_record(parent, "winner"),
+        expected_revision=1,
+    )
+    result = side.ensure("conversation-1", 1)
+    assert result["conversation_id"] == "winner"
+    assert len(client.store.snapshot()["conversations"]) == 2
+
+
+@pytest.mark.parametrize("kind", ["resource", "manage", "turn"])
+def test_capture_exact_profile_version_and_restricted_client(
+    service: Any, kind: str
+) -> None:
+    from ecosystem.tobkiri_side_chat_pack.runtime.host import (
+        BINDINGS,
+        HOST_PROVIDER_FACTORY,
+        PACK_ID,
+    )
+
+    side, client = service
+    child = side.ensure("conversation-1", 1)
+    contract, suffix = BINDINGS[kind]
+    operation = f"{PACK_ID}.{suffix}"
+    function = f"{PACK_ID}.{kind}"
+    context = SimpleNamespace(
+        profile_id="defaults",
+        provider_bindings=(
+            SimpleNamespace(
+                function=SimpleNamespace(
+                    function_id=function, implementation_digest="implementation"
+                ),
+                operation=SimpleNamespace(
+                    contract_id=contract,
+                    operation_id=operation,
+                    contract_version="1.0.0",
+                ),
+                principal_ref=SimpleNamespace(value="principal"),
+                artifact=SimpleNamespace(digest="artifact"),
+            ),
+        ),
+        domain_ids={(contract, operation, "principal"): "domain"},
+    )
+    claims = []
+    checks = []
+    invocation = SimpleNamespace(
+        assert_current=lambda: checks.append("current"),
+        contract_client=lambda **kwargs: claims.append(kwargs) or client,
+    )
+    captured = HOST_PROVIDER_FACTORY[function].capture(context)
+    invoke = captured.contributions[0].invoke
+    payload = {
+        "resource": {"operation": "get", "parent_conversation_id": "conversation-1"},
+        "manage": {
+            "operation": "ensure",
+            "parent_conversation_id": "conversation-1",
+            "expected_parent_revision": 2,
+        },
+        "turn": {
+            "operation": "send",
+            "conversation_id": child["conversation_id"],
+            "turn_id": "side-turn",
+            "expected_child_revision": 1,
+            "expected_parent_revision": 2,
+            "content": "Hi",
+        },
+    }[kind]
+    invoke(operation, {"profile_id": "defaults", **payload}, invocation)
+    assert checks == ["current"]
+    assert claims[0]["include_credentials"] is False
+    assert claims[0]["consumer_pack_id"] == PACK_ID
+    if kind == "resource":
+        assert claims[0]["allowed_contract_ids"] == frozenset(
+            {CONVERSATION[0], TURN[0], EVENTS[0]}
+        )
+    for extra in (
+        {"approved": True},
+        {"model_reference": "forged"},
+        {"workspace_root": "/outside"},
+    ):
+        with pytest.raises(PermissionError, match="fields"):
+            invoke(
+                operation, {"profile_id": "defaults", **payload, **extra}, invocation
+            )
+    with pytest.raises(PermissionError, match="Profile"):
+        invoke(operation, {"profile_id": "other", **payload}, invocation)
+    context.provider_bindings[0].operation.contract_version = "2.0.0"
+    with pytest.raises(PermissionError, match="binding"):
+        HOST_PROVIDER_FACTORY[function].capture(context)
+
+
+def test_buffered_event_and_cancel_receipts_remain_truthful(service: Any) -> None:
+    side, client = service
+    result = side.ensure("conversation-1", 1)
+    client.turns["side-turn"] = {
+        "id": "side-turn",
+        "conversation_id": result["conversation_id"],
+        "status": "running",
+        "events": [],
+    }
+    events = side.turn("events", result["conversation_id"], "side-turn")
+    assert events["events"] == []
+    assert events["status"] == "running"
+    assert side.turn("stop", result["conversation_id"], "side-turn") == {
+        "status": "cancellation_requested",
+        "turn_id": "side-turn",
+        "stopped": False,
+    }
