@@ -28,7 +28,9 @@ Pack's state are never serialized. Known secret paths are rejected; files remain
 explicitly selected work and are not claimed to undergo general secret scanning.
 
 Limits are 128 files, 1 MiB per file, 8 MiB total work, a 10 MiB archive and 32 MiB
-retained unique content per Profile. ZIP links, traversal, encrypted entries,
+retained unique content and 32 MiB restored copies per Profile, with at most 256
+retained checkpoint requests. V1 accepts only uncompressed ZIP_STORED members;
+declared compressed and uncompressed sizes must agree. ZIP links, traversal, encrypted entries,
 duplicate names, platform path aliases, excessive compression ratios, unlisted
 blobs, altered manifests and mismatched content digests are rejected. Arbitrary
 binary files can travel in imported capsules; selected Host capture uses its

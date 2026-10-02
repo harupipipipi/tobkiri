@@ -9,14 +9,17 @@ import json
 from pathlib import Path
 import runpy
 import stat
+import struct
 import sys
 from types import SimpleNamespace
 from typing import Any
 import zipfile
+import zlib
 
 import pytest
 
 from ecosystem.tobkiri_cloud_workspace_pack.runtime import capsule
+from ecosystem.tobkiri_cloud_workspace_pack.runtime import store as store_module
 from ecosystem.tobkiri_cloud_workspace_pack.runtime.host import (
     CloudWorkspaceHostFactoryV4,
 )
@@ -159,6 +162,48 @@ def test_manifest_bounds_duplicate_json_and_version_are_strict() -> None:
     manifest["version"] = "future"
     with pytest.raises(ValueError, match="version"):
         capsule.validate_capsule(manifest, blobs)
+
+
+def test_import_rejects_deflate_stream_with_forged_one_byte_size() -> None:
+    """Central size fields cannot bound zipfile's internal deflate allocation."""
+    manifest, blobs = sealed(**{"safe.txt": b"x"})
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.writestr("manifest.json", capsule.canonical(manifest))
+        archive.writestr(
+            "blobs/" + next(iter(blobs))[7:],
+            b"x" * (8 * 1024 * 1024),
+            compress_type=zipfile.ZIP_DEFLATED,
+        )
+    data = bytearray(output.getvalue())
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        header = archive.infolist()[1].header_offset
+    struct.pack_into("<I", data, header + 14, zlib.crc32(b"x"))
+    struct.pack_into("<I", data, header + 22, 1)
+    central = data.index(b"PK\x01\x02", header)
+    central = data.index(b"PK\x01\x02", central + 4)
+    struct.pack_into("<I", data, central + 16, zlib.crc32(b"x"))
+    struct.pack_into("<I", data, central + 24, 1)
+    with pytest.raises(ValueError, match="unsafe"):
+        capsule.import_archive(bytes(data))
+
+
+def test_checkpoint_and_restore_retention_capacity_fail_before_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = WorkspaceStore(tmp_path, "defaults")
+    manifest, blobs = sealed()
+    monkeypatch.setattr(store_module, "MAX_CHECKPOINTS", 0)
+    with pytest.raises(ValueError, match="retention"):
+        publish(store, manifest, blobs)
+    assert store.list() == []
+    monkeypatch.setattr(store_module, "MAX_CHECKPOINTS", 256)
+    publish(store, manifest, blobs)
+    monkeypatch.setattr(store_module, "MAX_RETAINED_BYTES", 0)
+    with pytest.raises(ValueError, match="retention"):
+        store.restore_local(manifest["manifest_digest"], guard=lambda: None)
+    assert not (store.root / "restored").exists()
 
 
 def publish(store: WorkspaceStore, manifest: Any, blobs: Any, **kwargs: Any) -> Any:
