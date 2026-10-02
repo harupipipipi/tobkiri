@@ -164,8 +164,16 @@ python -m app --health
 ```
 
 `npm run desktop` builds and starts **Tobkiri Launcher Developer.app** with its
-native PackVM helper. Reuse this command for later starts. Keep the terminal
-open while using the app. The raw `npm run tauri -- dev` command is for Launcher
+native PackVM helper. Keep the terminal open while using the app. For later
+starts without source changes, open the built app from the repo root:
+
+```bash
+open "tobkiri_launcher/src-tauri/target/aarch64-apple-darwin/debug/bundle/macos/Tobkiri Launcher Developer.app"
+```
+
+Keep the checkout and its `.venv` in place; this development app uses them.
+After source changes, commit them and run `npm run desktop` again.
+The raw `npm run tauri -- dev` command is for Launcher
 UI development; it does not bundle the PackVM helper needed to run Defaults.
 
 When the Launcher window opens, complete setup if prompted. On Apple Silicon macOS, open **Packs** → **Tobkiri Host Pack Control** → **PackVM lifecycle**, prepare and approve the plan, and provision PackVM. Once it reports **Healthy and attested**, use **Home** → **Launch Tobkiri Defaults** to open Defaultspack. The current Windows build can activate the Profile but cannot launch Defaultspack Chat or Pack functions because its PackVM backend is unfinished; see the [Launcher start guide](./tobkiri_runtime/docs/tobkiri_launcher_start.md) and [Windows support issue #1494](https://github.com/harupipipipi/tobkiri/issues/1494). `python -m app` is useful for starting or checking the kernel, but it does not replace Launcher and PackVM setup.

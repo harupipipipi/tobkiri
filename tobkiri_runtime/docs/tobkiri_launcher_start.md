@@ -91,6 +91,15 @@ Defaults bundle can be bound to the exact source commit. Use the same command
 again after changing source. `npm run desktop -- --build-only` prepares the app
 without opening it.
 
+For later starts without source changes, open the built app from the repo root:
+
+```bash
+open "tobkiri_launcher/src-tauri/target/aarch64-apple-darwin/debug/bundle/macos/Tobkiri Launcher Developer.app"
+```
+
+Keep the checkout and `.venv` in place. This starts the existing verified build
+and retains its development Profile and PackVM data without another build.
+
 Complete **Open Setup**, then open **Packs → Tobkiri Host Pack Control →
 PackVM lifecycle → Prepare plan**, review and approve the plan, and provision
 PackVM. After it reports **Healthy and attested**, use
