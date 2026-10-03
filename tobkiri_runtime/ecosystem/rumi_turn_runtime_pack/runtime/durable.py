@@ -270,6 +270,14 @@ class DurableTurnRuntime:
                 raise KeyError("turn is unknown")
             record = self._record(row)
             if (
+                record.get("input_digest") == input_digest
+                and record["request_id"].startswith("saved-turn.")
+                and record["status"] == "completed"
+                and record.get("result_reference") == dict(result_reference)
+            ):
+                connection.rollback()
+                return record
+            if (
                 record.get("input_digest") != input_digest
                 or not record["request_id"].startswith("saved-turn.")
                 or record["status"] not in {"running", "waiting"}

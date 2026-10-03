@@ -18182,7 +18182,7 @@
             {
               "entrypoint_id": "turn-lifecycle",
               "id": "rumi_turn_runtime_pack.turn-lifecycle",
-              "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
+              "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -18215,7 +18215,7 @@
             {
               "entrypoint_id": "turn-guidance",
               "id": "rumi_turn_runtime_pack.turn-guidance",
-              "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
+              "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -18274,7 +18274,7 @@
             {
               "entrypoint_id": "turn-events",
               "id": "rumi_turn_runtime_pack.turn-events",
-              "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
+              "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -18307,7 +18307,7 @@
             {
               "entrypoint_id": "turn-resource",
               "id": "rumi_turn_runtime_pack.turn-resource",
-              "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
+              "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -18340,7 +18340,7 @@
             {
               "entrypoint_id": "turn-stop",
               "id": "rumi_turn_runtime_pack.turn-stop",
-              "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
+              "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -18446,7 +18446,7 @@
             {
               "entrypoint_id": "turn-reconcile",
               "id": "rumi_turn_runtime_pack.turn-reconcile",
-              "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
+              "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -18510,7 +18510,7 @@
             {
               "entrypoint_id": "turn-saved",
               "id": "rumi_turn_runtime_pack.turn-saved",
-              "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
+              "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c"
             }
           ],
           "owner": "rumi_turn_runtime_pack",
@@ -18838,7 +18838,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+          "digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c",
           "kind": "executable",
           "path": "runtime/host.py"
         },
@@ -18848,12 +18848,12 @@
           "path": "runtime/turns.py"
         },
         {
-          "digest": "sha256:39ad8c1ae13a0a9a4eef4bdafc1225f86dd90ca3fc5ffe9d33bb46cdb0054988",
+          "digest": "sha256:93abde0b7b4b4167ab0b31b56250be194004ef3644806e603293b5db872ae9cd",
           "kind": "executable",
           "path": "runtime/durable.py"
         },
         {
-          "digest": "sha256:53da12fba8f375b04fd1e779d2844da5e282bdb961d9f2934cae6c5f87e05d1f",
+          "digest": "sha256:de8a7bb164ed8253a7502f1c6a3d2fc8ea31b87dadbad3a37a94e0833964a045",
           "kind": "executable",
           "path": "runtime/saved.py"
         }

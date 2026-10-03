@@ -192,7 +192,6 @@ class TurnHostFactoryV4:
                 else:
                     raise TurnConflict("guidance stop target changed")
                 if prepared is not None and stop_active_child is None:
-                    invocation.assert_current()
                     return {
                         "status": "cancellation_requested",
                         "turn_id": requested_turn_id,

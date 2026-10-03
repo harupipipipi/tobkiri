@@ -208,11 +208,17 @@ def execute_saved_turn(
     if failure is not None:
         return _settle(store, record, *failure)
     guard()
-    settled = store.settle_saved_from_receipt(
-        record["id"],
-        input_digest=record["input_digest"],
-        result_reference=reference,
-    )
+    try:
+        settled = store.settle_saved_from_receipt(
+            record["id"],
+            input_digest=record["input_digest"],
+            result_reference=reference,
+        )
+    except TurnConflict:
+        current = store.get(record["id"])
+        if current is None:
+            raise ValueError("saved execution lost its durable record")
+        return {"status": "reconciliation_required", "turn": current}
     return _drain_guidance(
         store,
         {"status": "completed", "turn": settled},

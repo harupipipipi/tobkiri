@@ -16,7 +16,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
+      "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c"
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
@@ -32,7 +32,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
+      "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c"
     },
     {
       "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
@@ -48,7 +48,7 @@
         ]
       },
       "implementation_path": "runtime/host.py",
-      "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25"
+      "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c"
     },
     {
       "function_id": "rumi_conversation_store_pack.conversation-store.message-manage",
@@ -1729,6 +1729,96 @@
     },
     "rumi_turn_runtime_pack": {
       "entries": [
+        {
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.guidance",
+          "operation_ids": [
+            "rumi_turn_runtime_pack.turn-guidance"
+          ],
+          "contract_id": "tobkiri.action.turn.guidance.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/host.py",
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "expected_revision": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "guidance": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "auto_send": {
+                      "type": "boolean"
+                    },
+                    "conversation_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "metadata": {
+                      "type": "object"
+                    },
+                    "prompt": {
+                      "maxLength": 20480,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "target_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "target_type": {
+                      "const": "conversation"
+                    },
+                    "visible": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "prompt",
+                    "target_type",
+                    "target_id",
+                    "conversation_id",
+                    "visible",
+                    "auto_send",
+                    "metadata"
+                  ],
+                  "type": "object"
+                },
+                "guidance_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "turn_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id",
+                "turn_id",
+                "expected_revision",
+                "guidance_id",
+                "guidance"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          }
+        },
         {
           "function_id": "rumi_turn_runtime_pack.turn-runtime.stop",
           "operation_ids": [

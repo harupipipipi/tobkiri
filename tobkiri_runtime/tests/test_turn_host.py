@@ -108,7 +108,9 @@ def test_stop_factory_does_not_treat_host_scope_exit_as_nested_termination(
         "stopped": False,
     }
     assert requests == ["saved-turn"]
-    assert fences == ["checked"]
+    # The stop Host checks capture freshness before durable resolution and
+    # again after requesting the scoped cancellation handle.
+    assert fences == ["checked", "checked"]
     observed = _invoke(tmp_path, "resource", operation="get", turn_id="saved-turn")
     assert observed["status"] == "running"
     assert observed["events"][-1] == {
@@ -152,7 +154,8 @@ def test_stop_factory_returns_confirmed_only_for_private_verified_drain(
         "stopped": True,
     }
     assert requests == ["saved-turn"]
-    assert fences == ["checked", "checked"]
+    # Confirmation adds a final freshness check before committing cancelled.
+    assert fences == ["checked", "checked", "checked"]
     observed = _invoke(tmp_path, "resource", operation="get", turn_id="saved-turn")
     assert observed["status"] == "cancelled"
     assert [event["name"] for event in observed["events"][-2:]] == [
@@ -263,7 +266,8 @@ def test_saved_factory_uses_restricted_invocation_and_reuses_durable_result(
         "allowed_contract_ids": SAVED_CONTRACTS,
         "consumer_pack_id": "rumi_turn_runtime_pack",
     }]
-    assert len(guards) == 8
+    # Receipt settlement is guarded after the captured model dispatch returns.
+    assert len(guards) == 9
     assert invoke(factory.operation_id, session.initial, invocation) == {
         "status": "existing", "turn": result["turn"],
     }

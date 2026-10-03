@@ -14586,7 +14586,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
-      "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+      "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "type": "object"
@@ -14600,7 +14600,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+          "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "type": "object"
@@ -14637,6 +14637,197 @@
       ],
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.events.python"
     },
+    "rumi_turn_runtime_pack.turn-runtime.guidance": {
+      "contract_id": "tobkiri.action.turn.guidance.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_turn_runtime_pack.turn-runtime.guidance",
+      "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c",
+      "implementation_path": "runtime/host.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "guidance": {
+            "additionalProperties": false,
+            "properties": {
+              "auto_send": {
+                "type": "boolean"
+              },
+              "conversation_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "metadata": {
+                "type": "object"
+              },
+              "prompt": {
+                "maxLength": 20480,
+                "minLength": 1,
+                "type": "string"
+              },
+              "target_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "target_type": {
+                "const": "conversation"
+              },
+              "visible": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "prompt",
+              "target_type",
+              "target_id",
+              "conversation_id",
+              "visible",
+              "auto_send",
+              "metadata"
+            ],
+            "type": "object"
+          },
+          "guidance_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "profile_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "turn_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_id",
+          "turn_id",
+          "expected_revision",
+          "guidance_id",
+          "guidance"
+        ],
+        "type": "object"
+      },
+      "operation_id": "rumi_turn_runtime_pack.turn-guidance",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.turn.guidance.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "rumi_turn_runtime_pack.turn-guidance",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c",
+          "implementation_path": "runtime/host.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "expected_revision": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "guidance": {
+                "additionalProperties": false,
+                "properties": {
+                  "auto_send": {
+                    "type": "boolean"
+                  },
+                  "conversation_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "type": "object"
+                  },
+                  "prompt": {
+                    "maxLength": 20480,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "target_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "target_type": {
+                    "const": "conversation"
+                  },
+                  "visible": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "prompt",
+                  "target_type",
+                  "target_id",
+                  "conversation_id",
+                  "visible",
+                  "auto_send",
+                  "metadata"
+                ],
+                "type": "object"
+              },
+              "guidance_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "turn_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "turn_id",
+              "expected_revision",
+              "guidance_id",
+              "guidance"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "rumi_turn_runtime_pack.turn-guidance",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_turn_runtime_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_turn_runtime_pack",
+      "pack_id": "rumi_turn_runtime_pack",
+      "source": [
+        {
+          "entrypoint_id": "rumi_turn_runtime_pack.turn-guidance",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_turn_runtime_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_turn_runtime_pack.turn-runtime.guidance.python"
+    },
     "rumi_turn_runtime_pack.turn-runtime.lifecycle": {
       "contract_id": "tobkiri.action.turn.lifecycle.v1",
       "contract_version": "1.0.0",
@@ -14645,7 +14836,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
-      "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+      "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "type": "object"
@@ -14659,7 +14850,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+          "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "type": "object"
@@ -14717,7 +14908,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
-      "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+      "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "additionalProperties": false,
@@ -14759,7 +14950,7 @@
             ],
             "type": "object"
           },
-          "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+          "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "additionalProperties": false,
@@ -14811,7 +15002,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
-      "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+      "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "type": "object"
@@ -14825,7 +15016,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+          "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "type": "object"
@@ -14883,7 +15074,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
-      "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+      "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "$defs": {
@@ -15174,7 +15365,7 @@
             ],
             "type": "object"
           },
-          "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+          "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "$defs": {
@@ -15488,7 +15679,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.stop",
-      "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+      "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c",
       "implementation_path": "runtime/host.py",
       "input_schema": {
         "additionalProperties": false,
@@ -15530,7 +15721,7 @@
             ],
             "type": "object"
           },
-          "implementation_digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+          "implementation_digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c",
           "implementation_path": "runtime/host.py",
           "input_schema": {
             "additionalProperties": false,
@@ -18290,7 +18481,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 206,
-    "input_digest": "sha256:0a04e6765c8ce36ad0485cfd6e09771a17a5a6a284bad841828538b8a342768e",
+    "input_digest": "sha256:e68e0de52af8de63896de094b7f9556cc476510e7ef89c2f3a1aab89aa2344c4",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -18541,17 +18732,17 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_registry_pack/runtime/host.py"
       },
       {
-        "digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+        "digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c",
         "kind": "explicit-implementation-adapter",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py"
       },
       {
-        "digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+        "digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c",
         "kind": "explicit-implementation-adapter",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py"
       },
       {
-        "digest": "sha256:08d4343782acaa0a43a51eb5724d0177ec6a5fba99ec77792902e7987e203b25",
+        "digest": "sha256:12ddbbd2aba834237fd2e87142ec80e0d9ec88f2421a197bbb8cfe150f56207c",
         "kind": "explicit-implementation-adapter",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/runtime/host.py"
       },
@@ -19041,7 +19232,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:bbf6b80dc264f226e966666e81eb7b37c97d40cad709e442d235d597cea6f9a4",
+        "digest": "sha256:cc79ba30f70b17eae77c70d0bade1b955dc72023c99ad1a837a3b8ce0b6bd05b",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -19521,7 +19712,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:5a7ea0cc87f62c6f174dd6a1f5f0cfd97f48216291fb2591c698191847a7d09e",
+        "digest": "sha256:815aa9bec7d38fb091669a3815e6955489f9bbbd96664a1eb7d511624e80c792",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json"
       },
