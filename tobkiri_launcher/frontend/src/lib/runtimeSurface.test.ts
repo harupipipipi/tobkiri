@@ -228,7 +228,7 @@ test('generated Contract Map is pinned to the canonical raw artifact and include
     GENERATED_FRONTEND_CONTRACT_MAP.artifact_digest,
     PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST,
   );
-  assert.equal(GENERATED_FRONTEND_CONTRACT_MAP.routes.length, 63);
+  assert.equal(GENERATED_FRONTEND_CONTRACT_MAP.routes.length, 65);
   for (const path of ['/api/ai/provider-key', '/api/ai/profiles', '/api/chat/turn/stop']) {
     assert.ok(GENERATED_FRONTEND_CONTRACT_MAP.routes.some(
       (route) => route.method === 'POST' && route.path === path,
@@ -236,6 +236,33 @@ test('generated Contract Map is pinned to the canonical raw artifact and include
   }
   assert.ok(GENERATED_FRONTEND_CONTRACT_MAP.routes.some(
     (route) => route.method === 'PUT' && route.path === '/api/ui/settings',
+  ));
+  const guidance = GENERATED_FRONTEND_CONTRACT_MAP.routes.find(
+    (route) => route.method === 'POST' && route.path === '/api/chat/turn/steer',
+  );
+  assert.deepEqual(guidance?.targets, [{
+    contribution_id: 'defaults.conversations.turn.steer',
+    contract_id: 'tobkiri.action.turn.guidance.v1',
+    operation_id: 'rumi_turn_runtime_pack.turn-guidance',
+    provider_id: 'rumi_turn_runtime_pack.turn-runtime.guidance',
+    function_id: 'rumi_turn_runtime_pack.turn-runtime.guidance',
+    allowed_payload_keys: ['turn_id', 'expected_revision', 'guidance_id', 'guidance'],
+  }]);
+  const turns = GENERATED_FRONTEND_CONTRACT_MAP.routes.find(
+    (route) => route.method === 'GET' && route.path === '/api/chat/turns',
+  );
+  assert.deepEqual(turns?.targets, [{
+    contribution_id: 'defaults.conversations.turn.list',
+    contract_id: 'tobkiri.resource.turn.v1',
+    operation_id: 'rumi_turn_runtime_pack.turn-resource',
+    provider_id: 'rumi_turn_runtime_pack.turn-runtime.resource',
+    function_id: 'rumi_turn_runtime_pack.turn-runtime.resource',
+    allowed_payload_keys: ['conversation_id'],
+  }]);
+  assert.ok(GENERATED_FRONTEND_CONTRACT_MAP.routes.every(
+    (route) => route.path !== '/api/chat/steer' && route.targets.every(
+      (target) => target.operation_id !== 'rumi_turn_runtime_pack.turn-lifecycle',
+    ),
   ));
   const catalog = GENERATED_FRONTEND_CONTRACT_MAP.routes.find(
     (route) => route.method === 'GET' && route.path === '/api/tools/catalog',
