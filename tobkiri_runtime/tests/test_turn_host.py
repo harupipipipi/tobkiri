@@ -167,6 +167,90 @@ def test_stop_factory_returns_confirmed_only_for_private_verified_drain(
     }
 
 
+def test_queued_guidance_stop_rechecks_capture_after_durable_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stale capture cannot report success after cancelling queued guidance."""
+
+    from ecosystem.rumi_turn_runtime_pack.runtime.durable import DurableTurnRuntime
+
+    begun = _invoke(tmp_path, "lifecycle", **BEGIN)
+    running = _invoke(
+        tmp_path,
+        "lifecycle",
+        operation="transition",
+        turn_id="turn",
+        expected_revision=begun["revision"],
+        status="running",
+    )
+    guided = _invoke(
+        tmp_path,
+        "lifecycle",
+        operation="steer",
+        turn_id="turn",
+        expected_revision=running["revision"],
+        guidance={
+            "prompt": "Continue.",
+            "target_type": "conversation",
+            "target_id": "conversation",
+            "conversation_id": "conversation",
+            "visible": True,
+            "auto_send": True,
+            "metadata": {},
+        },
+    )
+    _invoke(
+        tmp_path,
+        "lifecycle",
+        operation="transition",
+        turn_id="turn",
+        expected_revision=guided["revision"],
+        status="completed",
+        details={"result_reference": {"conversation_revision": 3}},
+    )
+    stale = False
+    checks = 0
+    original = DurableTurnRuntime.prepare_guidance_stop
+
+    def prepare(
+        self: DurableTurnRuntime,
+        turn_id: str,
+        *,
+        expected_active_turn_id: str | None,
+    ) -> dict[str, Any] | None:
+        nonlocal stale
+        result = original(
+            self,
+            turn_id,
+            expected_active_turn_id=expected_active_turn_id,
+        )
+        stale = True
+        return result
+
+    def assert_current() -> None:
+        nonlocal checks
+        checks += 1
+        if stale:
+            raise TimeoutError("captured stop invocation expired")
+
+    monkeypatch.setattr(DurableTurnRuntime, "prepare_guidance_stop", prepare)
+    factory = TurnHostFactoryV4("stop")
+    invoke = factory.capture(_context(tmp_path, factory)).contributions[0].invoke
+    invocation = SimpleNamespace(
+        assert_current=assert_current,
+        cancellation=SimpleNamespace(),
+        envelope=SimpleNamespace(deadline_monotonic=time.monotonic() + 1),
+    )
+
+    with pytest.raises(TimeoutError, match="expired"):
+        invoke(factory.operation_id, {"turn_id": "turn"}, invocation)
+
+    assert checks == 2
+    observed = _invoke(tmp_path, "resource", operation="get", turn_id="turn")
+    assert observed["guidance"][0]["status"] == "failed"
+
+
 def test_recaptured_actions_resources_events_share_real_store(tmp_path: Path) -> None:
     before = _invoke(tmp_path, "lifecycle", **BEGIN)
     running = _invoke(
